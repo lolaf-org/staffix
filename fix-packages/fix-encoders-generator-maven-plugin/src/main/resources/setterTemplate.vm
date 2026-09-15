@@ -1,0 +1,70 @@
+#if ($f.valuesEnumClassSet)
+    #set($methodsParamType="${fieldsPackage}.${f.name}.${f.valuesEnumClass}")
+    #if ($f.enumType == "IntValuesEnum")
+        #set($paramType="IntValuesEnum")
+    #elseif ($f.enumType == "StringValuesEnum")
+        #set($paramType="StringValuesEnum")
+    #elseif ($f.enumType == "CharValuesEnum")
+        #set($paramType="CharValuesEnum")
+    #end
+#elseif ($fieldType == "java.lang.String")
+    #set($methodsParamType="String")
+    #set($paramType="String")
+#else
+    #set($methodsParamCall="value")
+    #set($methodsParamType=$fieldType)
+    #set($paramType=$fieldType)
+#end
+    #if (${f.deprecated})
+        /**
+         * @deprecated deprecated by the FIX standard for this message. The setter stays so that what a peer may
+         *             still send can still be built, and should not be used in new work.
+         */
+        @Deprecated
+    #end
+    #if (${paramType} == "org.lolaf.staffix.api.time.UTCTime")
+        public ${encoderClassName} set${f.name}(${methodsParamType} value, java.util.concurrent.TimeUnit accuracy) {
+    #elseif (${paramType} == "java.time.LocalTime")
+        public ${encoderClassName} set${f.name}(${methodsParamType} value, java.util.concurrent.TimeUnit accuracy) {
+    #elseif (${paramType} == "java.time.OffsetDateTime")
+        public ${encoderClassName} set${f.name}(${methodsParamType} value, java.util.concurrent.TimeUnit accuracy) {
+    #else
+        public ${encoderClassName} set${f.name}(${methodsParamType} value) {
+    #end
+            #if (${paramType} == "int")
+            addInt(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "double")
+            addDouble(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "java.math.BigDecimal")
+            addBigDecimal(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "DecimalFloat")
+            addDecimalFloat(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "long")
+            addLong(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "boolean")
+            addBoolean(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "char")
+            addChar(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "String")
+            addString(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "IntValuesEnum")
+            addIntEnum(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "StringValuesEnum")
+            addStringEnum(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "CharValuesEnum")
+            addCharEnum(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "org.lolaf.staffix.api.time.UTCTime")
+            addUtcDateTime(${fieldsPackage}.${f.name}.get(), value, accuracy);
+            #elseif (${paramType} == "java.time.LocalDate")
+            addUtcDate(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "java.time.LocalTime")
+            addUtcTime(${fieldsPackage}.${f.name}.get(), value, accuracy);
+            #elseif (${paramType} == "java.time.OffsetTime")
+            addTzTime(${fieldsPackage}.${f.name}.get(), value);
+            #elseif (${paramType} == "java.time.OffsetDateTime")
+            addTzDateTime(${fieldsPackage}.${f.name}.get(), value, accuracy);
+            #else
+            MISSING ${paramType} handling;
+            #end
+            return this;
+        }

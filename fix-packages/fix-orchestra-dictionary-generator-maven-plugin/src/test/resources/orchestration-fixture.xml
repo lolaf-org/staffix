@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A hand written orchestration, small enough to reason about entirely, holding one of each thing a cut has to deal
+  with:
+    - fields from three points of the ladder, one of them deprecated
+    - a codeSet whose codes arrived at different points
+    - a component made of an old field and a new one
+    - a group whose NumInGroup counter is old, and one whose counter is new
+    - a component that holds nothing but a reference to a late field, so it empties out
+    - a message that survives, and one made only of late references, so it disappears
+  and one of each thing deprecation can be attached to, since a dictionary has to be able to carry all of them:
+    - a field deprecated everywhere (Retired), and a field deprecated only where one message uses it (Account, in
+      Logon, while the field itself and its other uses stay current)
+    - a code deprecated inside a code set that is not
+    - a group and a component deprecated as a whole
+  Retired is also the one deprecated *after* FIX.4.4, which a 4.4 cut has to treat as current: a repository always
+  describes the standard as it stands now, so it carries deprecations that had not happened yet at the cut.
+-->
+<fixr:repository xmlns:fixr="http://fixprotocol.io/2020/orchestra/repository" name="Fixture" version="Fixture_EP300">
+    <fixr:codeSets>
+        <fixr:codeSet id="9001" name="SideCodeSet" type="char" added="FIX.4.2">
+            <fixr:code id="9001001" name="Buy" value="1" added="FIX.4.2"/>
+            <fixr:code id="9001002" name="Sell" value="2" added="FIX.4.2"/>
+            <fixr:code id="9001003" name="Undisclosed" value="7" added="FIX.5.0SP2" addedEP="161"/>
+            <fixr:code id="9001004" name="Brandnew" value="9" added="FIX.Latest" addedEP="300"/>
+            <fixr:code id="9001005" name="Oldway" value="8" added="FIX.4.2" deprecated="FIX.4.4"/>
+        </fixr:codeSet>
+    </fixr:codeSets>
+
+    <fixr:fields>
+        <fixr:field id="1" name="Account" type="String" added="FIX.2.7"/>
+        <!-- a base element of its version, spelled the other way the repositories spell it -->
+        <fixr:field id="2" name="AdvId" type="String" added="FIX.4.4" addedEP="-1"/>
+        <fixr:field id="54" name="Side" type="SideCodeSet" added="FIX.4.2"/>
+        <fixr:field id="555" name="NoLegs" type="NumInGroup" added="FIX.4.4"/>
+        <fixr:field id="600" name="LegSymbol" type="String" added="FIX.4.4"/>
+        <fixr:field id="1234" name="Retired" type="String" added="FIX.4.4" deprecated="FIX.5.0" deprecatedEP="41"/>
+        <fixr:field id="40000" name="LateCounter" type="NumInGroup" added="FIX.5.0SP2" addedEP="161"/>
+        <fixr:field id="40001" name="LateField" type="String" added="FIX.5.0SP2" addedEP="161"/>
+        <fixr:field id="42087" name="LatestField" type="String" added="FIX.Latest" addedEP="300"/>
+        <fixr:field id="34" name="MsgSeqNum" type="SeqNum" added="FIX.2.7"/>
+        <fixr:field id="10" name="CheckSum" type="String" added="FIX.2.7"/>
+    </fixr:fields>
+
+    <fixr:components>
+        <fixr:component id="1024" name="StandardHeader" category="Session" added="FIX.4.0">
+            <fixr:fieldRef id="34" presence="required" added="FIX.4.0"/>
+        </fixr:component>
+        <fixr:component id="1025" name="StandardTrailer" category="Session" added="FIX.4.0">
+            <fixr:fieldRef id="10" presence="required" added="FIX.4.0"/>
+        </fixr:component>
+        <fixr:component id="1003" name="Instrument" category="Common" added="FIX.4.2" deprecated="FIX.4.4">
+            <fixr:fieldRef id="1" added="FIX.4.2"/>
+            <fixr:fieldRef id="42087" added="FIX.Latest" addedEP="300"/>
+        </fixr:component>
+        <fixr:component id="1004" name="LateOnly" category="Common" added="FIX.4.2">
+            <fixr:fieldRef id="40001" added="FIX.5.0SP2" addedEP="161"/>
+        </fixr:component>
+    </fixr:components>
+
+    <fixr:groups>
+        <fixr:group id="2019" name="InstrmtLegGrp" category="Common" added="FIX.4.4" deprecated="FIX.4.4"
+                    deprecatedEP="38">
+            <fixr:numInGroup id="555" added="FIX.4.4"/>
+            <fixr:fieldRef id="600" added="FIX.4.4"/>
+        </fixr:group>
+        <fixr:group id="2020" name="LateGrp" category="Common" added="FIX.4.4">
+            <fixr:numInGroup id="40000" added="FIX.5.0SP2" addedEP="161"/>
+            <fixr:fieldRef id="1" added="FIX.4.4"/>
+        </fixr:group>
+    </fixr:groups>
+
+    <fixr:messages>
+        <fixr:message id="11" name="Logon" msgType="A" category="Session" added="FIX.2.7">
+            <fixr:structure>
+                <fixr:componentRef id="1024" presence="required" added="FIX.2.7"/>
+                <!-- the field is current everywhere else; it is this one use of it that is deprecated -->
+                <fixr:fieldRef id="1" added="FIX.2.7" deprecated="FIX.4.4"/>
+                <fixr:componentRef id="1003" added="FIX.4.2"/>
+                <fixr:componentRef id="1004" added="FIX.4.2"/>
+                <fixr:groupRef id="2019" added="FIX.4.4"/>
+                <fixr:groupRef id="2020" added="FIX.4.4"/>
+                <fixr:fieldRef id="1234" added="FIX.4.4"/>
+                <fixr:componentRef id="1025" presence="required" added="FIX.2.7"/>
+            </fixr:structure>
+        </fixr:message>
+        <fixr:message id="12" name="LateMessage" msgType="ZZ" category="Common" added="FIX.4.4">
+            <fixr:structure>
+                <fixr:fieldRef id="42087" added="FIX.Latest" addedEP="300"/>
+            </fixr:structure>
+        </fixr:message>
+        <fixr:message id="13" name="LatestMessage" msgType="ZY" category="Common" added="FIX.Latest" addedEP="300">
+            <fixr:structure>
+                <fixr:fieldRef id="1" added="FIX.Latest" addedEP="300"/>
+            </fixr:structure>
+        </fixr:message>
+        <!--
+          An application message old enough to survive every cut, which every real repository has and without which
+          the fixture is a session layer and nothing else. From FIX.5.0 a field is left to FIXT.1.1 when only a
+          session message reaches it, so what the application side reaches has to be represented here or the
+          question cannot be asked.
+        -->
+        <fixr:message id="14" name="AppMessage" msgType="ZX" category="Common" added="FIX.4.2">
+            <fixr:structure>
+                <fixr:fieldRef id="1" added="FIX.4.2"/>
+                <fixr:fieldRef id="1234" added="FIX.4.4"/>
+            </fixr:structure>
+        </fixr:message>
+    </fixr:messages>
+</fixr:repository>

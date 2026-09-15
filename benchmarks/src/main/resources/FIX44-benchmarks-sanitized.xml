@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fix major="4" minor="4">
+    <header>
+        <field name="BeginString" required="Y"/>
+        <field name="BodyLength" required="Y"/>
+        <field name="MsgType" required="Y"/>
+        <field name="SenderCompID" required="Y"/>
+        <field name="TargetCompID" required="Y"/>
+        <field name="OnBehalfOfCompID" required="N"/>
+        <field name="DeliverToCompID" required="N"/>
+        <field name="SecureDataLen" required="N"/>
+        <field name="SecureData" required="N"/>
+        <field name="MsgSeqNum" required="Y"/>
+        <field name="SenderSubID" required="N"/>
+        <field name="SenderLocationID" required="N"/>
+        <field name="TargetSubID" required="N"/>
+        <field name="TargetLocationID" required="N"/>
+        <field name="OnBehalfOfSubID" required="N"/>
+        <field name="OnBehalfOfLocationID" required="N"/>
+        <field name="DeliverToSubID" required="N"/>
+        <field name="DeliverToLocationID" required="N"/>
+        <field name="PossDupFlag" required="N"/>
+        <field name="PossResend" required="N"/>
+        <field name="SendingTime" required="Y"/>
+        <field name="OrigSendingTime" required="N"/>
+        <field name="XmlDataLen" required="N"/>
+        <field name="XmlData" required="N"/>
+        <field name="MessageEncoding" required="N"/>
+        <field name="LastMsgSeqNumProcessed" required="N"/>
+        <group name="NoHops" required="N">
+            <field name="HopCompID" required="N"/>
+            <field name="HopSendingTime" required="N"/>
+            <field name="HopRefID" required="N"/>
+        </group>
+    </header>
+    <trailer>
+        <field name="SignatureLength" required="N"/>
+        <field name="Signature" required="N"/>
+        <field name="CheckSum" required="Y"/>
+    </trailer>
+    <messages>
+        <message msgcat="admin" msgtype="0" name="Heartbeat">
+            <field name="TestReqID" required="N"/>
+        </message>
+        <message msgcat="admin" msgtype="A" name="Logon">
+            <field name="EncryptMethod" required="Y"/>
+            <field name="HeartBtInt" required="Y"/>
+            <field name="RawDataLength" required="N"/>
+            <field name="RawData" required="N"/>
+            <field name="ResetSeqNumFlag" required="N"/>
+            <field name="NextExpectedMsgSeqNum" required="N"/>
+            <field name="MaxMessageSize" required="N"/>
+            <group name="NoMsgTypes" required="N">
+                <field name="RefMsgType" required="N"/>
+                <field name="MsgDirection" required="N"/>
+            </group>
+            <field name="TestMessageIndicator" required="N"/>
+            <field name="Username" required="N"/>
+            <field name="Password" required="N"/>
+        </message>
+        <message msgcat="admin" msgtype="1" name="TestRequest">
+            <field name="TestReqID" required="Y"/>
+        </message>
+        <message msgcat="admin" msgtype="2" name="ResendRequest">
+            <field name="BeginSeqNo" required="Y"/>
+            <field name="EndSeqNo" required="Y"/>
+        </message>
+        <message msgcat="admin" msgtype="3" name="Reject">
+            <field name="RefSeqNum" required="Y"/>
+            <field name="RefTagID" required="N"/>
+            <field name="RefMsgType" required="N"/>
+            <field name="SessionRejectReason" required="N"/>
+            <field name="Text" required="N"/>
+            <field name="EncodedTextLen" required="N"/>
+            <field name="EncodedText" required="N"/>
+        </message>
+        <message msgcat="admin" msgtype="4" name="SequenceReset">
+            <field name="GapFillFlag" required="N"/>
+            <field name="NewSeqNo" required="Y"/>
+        </message>
+        <message msgcat="admin" msgtype="5" name="Logout">
+            <field name="Text" required="N"/>
+            <field name="EncodedTextLen" required="N"/>
+            <field name="EncodedText" required="N"/>
+        </message>
+        <message msgcat="app" msgtype="j" name="BusinessMessageReject">
+            <field name="RefSeqNum" required="N"/>
+            <field name="RefMsgType" required="Y"/>
+            <field name="BusinessRejectRefID" required="N"/>
+            <field name="BusinessRejectReason" required="Y"/>
+            <field name="Text" required="N"/>
+            <field name="EncodedTextLen" required="N"/>
+            <field name="EncodedText" required="N"/>
+        </message>
+
+        <message msgcat="app" msgtype="R" name="QuoteRequest">
+            <field name="QuoteReqID" required="Y"/>
+            <group name="NoRelatedSym" required="Y">
+                <component name="Instrument" required="Y"/>
+            </group>
+        </message>
+        <message msgcat="app" msgtype="S" name="Quote">
+            <field name="QuoteReqID" required="N"/>
+            <field name="QuoteID" required="Y"/>
+            <component name="Instrument" required="Y"/>
+
+            <field name="Side" required="N"/>
+            <field name="BidPx" required="N"/>
+            <field name="OfferPx" required="N"/>
+            <field name="BidSize" required="N"/>
+            <field name="OfferSize" required="N"/>
+        </message>
+    </messages>
+    <components>
+        <component name="Instrument">
+            <field name="Symbol" required="Y"/>
+        </component>
+    </components>
+    <fields>
+        <field name="BeginSeqNo" number="7" type="SEQNUM"/>
+        <field name="BeginString" number="8" type="STRING"/>
+        <field name="BodyLength" number="9" type="LENGTH"/>
+        <field name="CheckSum" number="10" type="STRING"/>
+        <field name="EndSeqNo" number="16" type="SEQNUM"/>
+        <field name="MsgSeqNum" number="34" type="SEQNUM"/>
+        <field name="MsgType" number="35" type="STRING">
+            <value description="HEARTBEAT" enum="0"/>
+            <value description="TEST_REQUEST" enum="1"/>
+            <value description="RESEND_REQUEST" enum="2"/>
+            <value description="REJECT" enum="3"/>
+            <value description="SEQUENCE_RESET" enum="4"/>
+            <value description="LOGOUT" enum="5"/>
+            <value description="LOGON" enum="A"/>
+            <value description="QUOTE_REQUEST" enum="R"/>
+            <value description="QUOTE" enum="S"/>
+            <value description="BUSINESS_MESSAGE_REJECT" enum="j"/>
+        </field>
+        <field name="NewSeqNo" number="36" type="SEQNUM"/>
+        <field name="PossDupFlag" number="43" type="BOOLEAN"/>
+        <field name="RefSeqNum" number="45" type="SEQNUM"/>
+        <field name="SenderCompID" number="49" type="STRING"/>
+        <field name="SenderSubID" number="50" type="STRING"/>
+        <field name="SendingTime" number="52" type="UTCTIMESTAMP"/>
+        <field name="Side" number="54" type="CHAR">
+            <value description="BUY" enum="1"/>
+            <value description="SELL" enum="2"/>
+            <value description="BUY_MINUS" enum="3"/>
+            <value description="SELL_PLUS" enum="4"/>
+            <value description="SELL_SHORT" enum="5"/>
+            <value description="SELL_SHORT_EXEMPT" enum="6"/>
+            <value description="UNDISCLOSED" enum="7"/>
+            <value description="CROSS" enum="8"/>
+            <value description="CROSS_SHORT" enum="9"/>
+            <value description="CROSS_SHORT_EXEMPT" enum="A"/>
+            <value description="AS_DEFINED" enum="B"/>
+            <value description="OPPOSITE" enum="C"/>
+            <value description="SUBSCRIBE" enum="D"/>
+            <value description="REDEEM" enum="E"/>
+            <value description="LEND" enum="F"/>
+            <value description="BORROW" enum="G"/>
+        </field>
+        <field name="Symbol" number="55" type="STRING"/>
+        <field name="TargetCompID" number="56" type="STRING"/>
+        <field name="TargetSubID" number="57" type="STRING"/>
+        <field name="Text" number="58" type="STRING"/>
+        <field name="Signature" number="89" type="DATA"/>
+        <field name="SecureDataLen" number="90" type="LENGTH"/>
+        <field name="SecureData" number="91" type="DATA"/>
+        <field name="SignatureLength" number="93" type="LENGTH"/>
+        <field name="RawDataLength" number="95" type="LENGTH"/>
+        <field name="RawData" number="96" type="DATA"/>
+        <field name="PossResend" number="97" type="BOOLEAN"/>
+        <field name="EncryptMethod" number="98" type="INT">
+            <value description="NONE_OTHER" enum="0"/>
+            <value description="PKCS" enum="1"/>
+            <value description="DES" enum="2"/>
+            <value description="PKCS_DES" enum="3"/>
+            <value description="PGP_DES" enum="4"/>
+            <value description="PGP_DES_MD5" enum="5"/>
+            <value description="PEM_DES_MD5" enum="6"/>
+        </field>
+        <field name="HeartBtInt" number="108" type="INT"/>
+        <field name="TestReqID" number="112" type="STRING"/>
+        <field name="OnBehalfOfCompID" number="115" type="STRING"/>
+        <field name="OnBehalfOfSubID" number="116" type="STRING"/>
+        <field name="QuoteID" number="117" type="STRING"/>
+        <field name="OrigSendingTime" number="122" type="UTCTIMESTAMP"/>
+        <field name="GapFillFlag" number="123" type="BOOLEAN"/>
+        <field name="DeliverToCompID" number="128" type="STRING"/>
+        <field name="DeliverToSubID" number="129" type="STRING"/>
+        <field name="QuoteReqID" number="131" type="STRING"/>
+        <field name="BidPx" number="132" type="PRICE"/>
+        <field name="OfferPx" number="133" type="PRICE"/>
+        <field name="BidSize" number="134" type="QTY"/>
+        <field name="OfferSize" number="135" type="QTY"/>
+        <!-- Changed to string in FIX5.0, overrides this field type -->
+        <field name="ResetSeqNumFlag" number="141" type="BOOLEAN"/>
+        <field name="SenderLocationID" number="142" type="STRING"/>
+        <field name="TargetLocationID" number="143" type="STRING"/>
+        <field name="OnBehalfOfLocationID" number="144" type="STRING"/>
+        <field name="DeliverToLocationID" number="145" type="STRING"/>
+        <field name="NoRelatedSym" number="146" type="NUMINGROUP"/>
+        <field name="XmlDataLen" number="212" type="LENGTH"/>
+        <field name="XmlData" number="213" type="DATA"/>
+        <field name="MessageEncoding" number="347" type="STRING">
+            <value description="ISO_2022_JP" enum="ISO-2022-JP"/>
+            <value description="EUC_JP" enum="EUC-JP"/>
+            <value description="SHIFT_JIS" enum="SHIFT_JIS"/>
+            <value description="UTF_8" enum="UTF-8"/>
+        </field>
+        <field name="EncodedTextLen" number="354" type="LENGTH"/>
+        <field name="EncodedText" number="355" type="DATA"/>
+        <field name="LastMsgSeqNumProcessed" number="369" type="SEQNUM"/>
+        <field name="RefTagID" number="371" type="INT"/>
+        <field name="RefMsgType" number="372" type="STRING"/>
+        <field name="SessionRejectReason" number="373" type="INT">
+            <value description="INVALID_TAG_NUMBER" enum="0"/>
+            <value description="REQUIRED_TAG_MISSING" enum="1"/>
+            <value description="TAG_NOT_DEFINED_FOR_THIS_MESSAGE_TYPE" enum="2"/>
+            <value description="UNDEFINED_TAG" enum="3"/>
+            <value description="TAG_SPECIFIED_WITHOUT_A_VALUE" enum="4"/>
+            <value description="VALUE_IS_INCORRECT" enum="5"/>
+            <value description="INCORRECT_DATA_FORMAT_FOR_VALUE" enum="6"/>
+            <value description="DECRYPTION_PROBLEM" enum="7"/>
+            <value description="SIGNATURE_PROBLEM" enum="8"/>
+            <value description="COMPID_PROBLEM" enum="9"/>
+            <value description="SENDINGTIME_ACCURACY_PROBLEM" enum="10"/>
+            <value description="INVALID_MSGTYPE" enum="11"/>
+            <value description="XML_VALIDATION_ERROR" enum="12"/>
+            <value description="TAG_APPEARS_MORE_THAN_ONCE" enum="13"/>
+            <value description="TAG_SPECIFIED_OUT_OF_REQUIRED_ORDER" enum="14"/>
+            <value description="REPEATING_GROUP_FIELDS_OUT_OF_ORDER" enum="15"/>
+            <value description="INCORRECT_NUMINGROUP_COUNT_FOR_REPEATING_GROUP" enum="16"/>
+            <value description="NON_DATA_VALUE_INCLUDES_FIELD_DELIMITER" enum="17"/>
+            <value description="OTHER" enum="99"/>
+        </field>
+        <field name="BusinessRejectRefID" number="379" type="STRING"/>
+        <field name="BusinessRejectReason" number="380" type="INT">
+            <value description="OTHER" enum="0"/>
+            <value description="UNKOWN_ID" enum="1"/>
+            <value description="UNKNOWN_SECURITY" enum="2"/>
+            <value description="UNSUPPORTED_MESSAGE_TYPE" enum="3"/>
+            <value description="APPLICATION_NOT_AVAILABLE" enum="4"/>
+            <value description="CONDITIONALLY_REQUIRED_FIELD_MISSING" enum="5"/>
+            <value description="NOT_AUTHORIZED" enum="6"/>
+            <value description="DELIVERTO_FIRM_NOT_AVAILABLE_AT_THIS_TIME" enum="7"/>
+        </field>
+        <field name="MaxMessageSize" number="383" type="LENGTH"/>
+        <field name="NoMsgTypes" number="384" type="NUMINGROUP"/>
+        <field name="MsgDirection" number="385" type="CHAR">
+            <value description="SEND" enum="S"/>
+            <value description="RECEIVE" enum="R"/>
+        </field>
+        <field name="TestMessageIndicator" number="464" type="BOOLEAN"/>
+        <!-- This changed to an int in FIX5.0 -->
+        <field name="Username" number="553" type="STRING"/>
+        <field name="Password" number="554" type="STRING"/>
+        <field name="NoHops" number="627" type="NUMINGROUP"/>
+        <field name="HopCompID" number="628" type="STRING"/>
+        <field name="HopSendingTime" number="629" type="UTCTIMESTAMP"/>
+        <field name="HopRefID" number="630" type="SEQNUM"/>
+        <field name="NextExpectedMsgSeqNum" number="789" type="SEQNUM"/>
+    </fields>
+</fix>

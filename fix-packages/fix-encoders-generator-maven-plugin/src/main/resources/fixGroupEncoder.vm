@@ -1,0 +1,60 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package $packageName;
+
+import org.lolaf.staffix.api.serde.DecimalFloat;
+import org.lolaf.staffix.codec.encoders.AbstractGroupEncoder;
+import org.lolaf.staffix.codec.encoders.FixMessageEncoderImpl;
+## No field imports: every setter names its field and its enum type in full, so there is nothing here to import.
+
+/**
+ * Encodes one entry of the ${groupFieldName} repeating group.
+ * <p>
+ * Shared by every message in this package that carries this group: the setters below write into whichever message
+ * encoder handed the instance out, so the group's field list is all that distinguishes one group encoder from
+ * another. Obtain one from that message encoder's {@code add${groupFieldName}(int)} rather than building one:
+ * the message encoder caches the instance it hands out.
+#if (${deprecated})
+ *
+ * @deprecated deprecated by the FIX standard. It stays here so that a peer still sending this group can be
+ *             answered, and should not be used in new work.
+#end
+ */
+#if (${deprecated})
+@Deprecated
+#end
+#if (${referencesDeprecated})
+// this group holds deprecated fields, and an encoder has to go on being able to build them
+@SuppressWarnings("deprecation")
+#end
+public final class ${className} extends AbstractGroupEncoder<${className}> {
+
+    public ${className}(FixMessageEncoderImpl<?> target) {
+        super(target);
+    }
+
+    #set ($encoderClassName=${className})
+    #foreach($f in ${groupFields})
+        #set($fieldType=${f.type.type.getName()})
+        #parse( "setterTemplate.vm" )
+        #if ($fieldType == "double")
+            #set($fieldType="java.math.BigDecimal")
+            #parse( "setterTemplate.vm" )
+            #set($fieldType="DecimalFloat")
+            #parse( "setterTemplate.vm" )
+        #end
+    #end
+}

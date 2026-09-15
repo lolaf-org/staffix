@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-messages-store-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <packaging>pom</packaging>
+
+    <name>Staffix JDBC Message Store (Parent)</name>
+    <description>
+        The JDBC message store, its Spring Boot auto-configuration, and the plugin that generates its schema.
+    </description>
+
+    <artifactId>staffix-messages-store-jdbc-parent</artifactId>
+
+    <modules>
+        <module>ddl-generator-plugin</module>
+        <module>jdbc-impl</module>
+        <module>jdbc-store-spring-boot</module>
+    </modules>
+
+</project>

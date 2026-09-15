@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-monitoring-tracing-otlp-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>staffix-monitoring-tracing-otlp-sender-grpc</artifactId>
+
+    <name>Staffix OTLP Tracing Sender (gRPC)</name>
+    <description>
+        Adds OTLP/gRPC to staffix-monitoring-tracing-otlp-sender: one provider class and one services file. It is a
+        separate artifact because a META-INF/services file is classpath-global, and registering the gRPC provider
+        alongside the HTTP one would ship it to everyone who wanted only HTTP.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.tracing.otlp.sender.grpc</automatic.module.name>
+        <otel.version>1.65.0</otel.version>
+    </properties>
+
+    <!--
+        A module carrying one class and one services file, and that is the point.
+
+        A META-INF/services file is classpath-global. Registering the gRPC provider alongside the HTTP one
+        would ship it to everyone who wanted only OTLP/HTTP - including anyone who kept OpenTelemetry's
+        own sender-okhttp. Two GrpcSenderProviders would then be registered, OpenTelemetry would take
+        whichever it found first, and if that were ours it would demand a mandatory factory property for a
+        feature the consumer never asked for. Keeping the registration here means this provider reaches
+        exactly the people who added this dependency.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-monitoring-tracing-otlp-sender</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-common</artifactId>
+            <version>${otel.version}</version>
+        </dependency>
+
+        <!--
+            No client module here, unlike the HTTP sender's, because there is no client to default to:
+            gRPC needs HTTP/2 trailers and only okhttp and jetty can read them. The factory property is
+            therefore mandatory rather than defaulted, and the consumer brings the module it names.
+        -->
+
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-http-client-okhttp</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-http-client-grpc-test-kit</artifactId>
+            <version>${project.version}</version>
+            <classifier>tests</classifier>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Test scope only: one test drives a real OtlpGrpcSpanExporter end to end, so the SPI wiring
+             is proven rather than assumed. OTel's own senders are excluded so the test asserts our
+             provider rather than classpath order. -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+            <version>${otel.version}</version>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-sender-okhttp</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-trace</artifactId>
+            <version>${otel.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

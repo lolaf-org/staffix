@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>staffix-api</artifactId>
+
+    <name>Staffix API</name>
+    <description>
+        The interfaces an application writes against - FixInitiator, FixAcceptor, FixSession and FixApplication, the
+        settings that configure them, and the codec, store, logger, plugin and admin SPIs the other modules
+        implement. Compile against this and put staffix-impl on the runtime classpath.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.api</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.betty</groupId>
+            <artifactId>betty-api</artifactId>
+            <version>${betty.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lolaf.ringos</groupId>
+            <artifactId>ringos-lib-api</artifactId>
+            <version>${ringos.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lolaf.ringos</groupId>
+            <artifactId>ringos-unsafe-operations-impl-all</artifactId>
+            <version>${ringos.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

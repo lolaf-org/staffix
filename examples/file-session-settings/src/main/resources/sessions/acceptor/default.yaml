@@ -1,0 +1,14 @@
+# Shared defaults for every acceptor-side session in this directory.
+# Fields set here are merged into the per-session files below (only fields left
+# unset in a session file are taken from these defaults), demonstrating the
+# default.yaml merge feature of the YAML file session settings store.
+# yaml-language-server: $schema=../fix-session-settings.v1.schema.json
+fixSessionId:
+  fixVersion: "FIX.4.4"
+  group: "example-group"
+fixSessionType: "ACCEPTOR"
+fixApplicationFactoryInstanceId: "ACCEPTOR"
+fixApplicationInstanceId: "acceptorApp"
+fixMessageStoreInstanceId: "ACCEPTOR"
+fixMessageLoggerInstanceId: "ACCEPTOR"
+resetSeqNumOnLogon: true

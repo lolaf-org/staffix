@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-monitoring-tracing-otlp-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>staffix-monitoring-tracing-otlp-sender</artifactId>
+
+    <name>Staffix OTLP Tracing Sender (HTTP)</name>
+    <description>
+        Makes OpenTelemetry's OTLP/HTTP exporters publish through this library's HTTP clients instead of one of
+        their own, registered through the HttpSenderProvider SPI. Defaults to the JDK client; a system property
+        points it at OkHttp or Jetty, with no rebuild.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.tracing.otlp.sender</automatic.module.name>
+        <otel.version>1.65.0</otel.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- The sender SPI lives here, in io.opentelemetry.sdk.common.export - a supported package, not
+             the io.opentelemetry.exporter.internal.http it used to live in. This module needs the SDK's
+             common types and nothing of the exporter itself. -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-common</artifactId>
+            <version>${otel.version}</version>
+        </dependency>
+
+        <!-- The default HTTP client, and the reason this module has a dependency on a client at all:
+             a consumer who configures nothing gets a working sender without adding anything to their
+             classpath. It costs a gRPC consumer nothing either, the JDK client being part of the
+             platform. Pointing this at okhttp or jetty instead is a system property, not a rebuild. -->
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-http-client-jdk</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-http-client-test-kit</artifactId>
+            <version>${project.version}</version>
+            <classifier>tests</classifier>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Test scope only, and never a dependency of the shipped module: this is here so one test can
+             drive a real OtlpHttpSpanExporter end to end and prove the SPI wiring, rather than trusting
+             that a services file and a ServiceLoader lookup add up to a working exporter.
+             The okhttp sender is excluded for the same reason step 9 excludes it from tracing-otlp-impl:
+             with two HttpSenderProviders registered, OpenTelemetry takes whichever it finds first, and
+             the test would be asserting classpath order. -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+            <version>${otel.version}</version>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-sender-okhttp</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-trace</artifactId>
+            <version>${otel.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

@@ -1,0 +1,88 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package $packageName;
+
+import org.lolaf.staffix.api.FixDictionaryId;
+import org.lolaf.staffix.api.fields.FieldLocation;
+import org.lolaf.staffix.api.fields.FieldType;
+import org.lolaf.staffix.api.version.FixtVersion;
+import org.lolaf.staffix.api.fields.FixtFieldsRegistry;
+import org.lolaf.staffix.api.fields.FixField;
+import org.lolaf.staffix.collections.Int2ObjectHashMap;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.stream.Collectors;
+
+public class FieldsRegistryImpl implements FixtFieldsRegistry {
+
+    private static FixtVersion TARGET_VERSION = FixtVersion.${fixVersionId};
+
+    private final Int2ObjectHashMap<FixField> fixFields;
+
+    public FieldsRegistryImpl() {
+        String resourceName = TARGET_VERSION.getId() + ".fields";
+        try (InputStream fields = this.getClass().getClassLoader().getResourceAsStream(resourceName)) {
+            if (fields == null) {
+                throw new IllegalStateException("Unable to find resource " + resourceName + " in classpath");
+            }
+            String[] entries = new String(fields.readAllBytes()).split("\n");
+            fixFields = new Int2ObjectHashMap<>(entries.length, 0.1f);
+            Arrays.stream(entries).forEach(codeAndClassName -> {
+                String[] codeAndClassNameArray = codeAndClassName.split("=");
+                try {
+                    Class<?> fieldClass = Class.forName(codeAndClassNameArray[1]);
+                    Method instanceMethod = fieldClass.getMethod("get");
+                    FixField instance = (FixField) instanceMethod.invoke(null);
+                    fixFields.put(Integer.parseInt(codeAndClassNameArray[0]), instance);
+                } catch (Exception e) {
+                    throw new IllegalStateException("Should have never happened", e);
+                }
+            });
+        } catch (IOException e) {
+            throw new IllegalStateException("Should have never happened", e);
+        }
+        fixFields.compact();
+    }
+
+    @Override
+    public FixtVersion getFixtVersion() {
+        return TARGET_VERSION;
+    }
+
+    @Override
+    public Collection<FixField> getFields() {
+        return fixFields.values();
+    }
+
+    @Override
+    public FixDictionaryId getTargetDictionary() {
+        throw new IllegalStateException("Should never have been called");
+    }
+
+    @Override
+    public FixField find(int code) {
+        return fixFields.get(code);
+    }
+
+    @Override
+    public FixField addUserDefinedField(int code, FieldType fieldType, FieldLocation location) {
+        throw new IllegalStateException("Should never have been called");
+    }
+}

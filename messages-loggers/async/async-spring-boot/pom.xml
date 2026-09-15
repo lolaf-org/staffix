@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-spring-boot-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../../spring-boot/pom.xml</relativePath>
+    </parent>
+    <artifactId>staffix-messages-logger-async-spring-boot</artifactId>
+
+    <name>Staffix Asynchronous Message Logger (Spring Boot)</name>
+    <description>
+        Spring Boot auto-configuration for the asynchronous message logger wrapper, bound from staffix.* properties
+        so it can be placed in front of another logger in configuration rather than in code.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.stores.loggers.async.spring</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-messages-logger-async-impl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-spring-boot-spi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+</project>

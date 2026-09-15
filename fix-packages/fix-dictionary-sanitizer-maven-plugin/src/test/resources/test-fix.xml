@@ -1,0 +1,55 @@
+<fix major="4" minor="4">
+    <header>
+        <field name="BeginString" required="Y"/>
+        <field name="MsgType" required="Y"/>
+    </header>
+    <trailer>
+        <field name="CheckSum" required="Y"/>
+    </trailer>
+    <messages>
+        <message name="Heartbeat" msgtype="0" msgcat="admin">
+            <field name="TestReqID" required="N"/>
+        </message>
+        <message name="NewOrderSingle" msgtype="D" msgcat="app">
+            <field name="ClOrdID" required="Y"/>
+            <component name="Instrument" required="Y"/>
+            <field name="Side" required="Y"/>
+            <group name="NoAllocs" required="N">
+                <field name="AllocAccount" required="N"/>
+            </group>
+        </message>
+    </messages>
+    <components>
+        <component name="Instrument">
+            <field name="Symbol" required="Y"/>
+            <field name="SecurityID" required="N"/>
+            <group name="NoSecurityAltID" required="N">
+                <field name="SecurityAltID" required="N"/>
+            </group>
+        </component>
+        <component name="ToRemove">
+            <field name="Symbol" required="Y"/>
+        </component>
+    </components>
+    <fields>
+        <field number="8" name="BeginString" type="STRING"/>
+        <field number="35" name="MsgType" type="STRING">
+            <value enum="0" description="HEARTBEAT"/>
+            <value enum="D" description="NEW_ORDER_SINGLE"/>
+            <value enum="8" description="EXECUTION_REPORT"/>
+            <value enum="V" description="MARKET_DATA_REQUEST"/>
+        </field>
+        <field number="10" name="CheckSum" type="STRING"/>
+        <field number="112" name="TestReqID" type="STRING"/>
+        <field number="11" name="ClOrdID" type="STRING"/>
+        <field number="54" name="Side" type="CHAR"/>
+        <field number="55" name="Symbol" type="STRING"/>
+        <field number="48" name="SecurityID" type="STRING"/>
+        <field number="454" name="NoSecurityAltID" type="NUMINGROUP"/>
+        <field number="455" name="SecurityAltID" type="STRING"/>
+        <field number="79" name="AllocAccount" type="STRING"/>
+        <field number="999" name="UnusedField1" type="STRING"/>
+        <field number="998" name="UnusedField2" type="INT"/>
+        <field number="997" name="UnusedField3" type="BOOLEAN"/>
+    </fields>
+</fix>

@@ -1,0 +1,98 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.lolaf.staffix.plugins.throttling;
+
+import lombok.extern.slf4j.Slf4j;
+import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
+import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
+import org.lolaf.staffix.api.session.plugins.PluginContext;
+
+import java.util.Collection;
+import java.util.Optional;
+
+/**
+ * A {@link FixSessionsPlugin} that wraps another plugin so that the per-message callbacks it produces are
+ * rate-limited (sampled) before reaching the delegate, protecting a delegate that cannot keep up with peak
+ * message throughput.
+ *
+ * <p>The wrapper is transparent to the engine and to session configuration: it reports the delegate's
+ * {@code instanceId} ({@link ThrottlingFixSessionsPluginSettings#getInstanceId()}) and matches the
+ * delegate's plugin class ({@link #matchesPluginClass(Class)}), so a session that referenced the delegate
+ * keeps resolving to it through the wrapper. If the delegate is itself {@link Startable}, its lifecycle is
+ * driven from here.
+ *
+ * @param <C> the wrapped plugin's context type
+ * @see ThrottlingFixSessionPlugin
+ */
+@Slf4j
+public final class ThrottlingFixSessionsPlugin<C extends PluginContext>
+        extends Startable.SimpleStartable<ThrottlingFixSessionsPlugin<C>>
+        implements FixSessionsPlugin<C> {
+
+    private final ThrottlingFixSessionsPluginSettings settings;
+    private final FixSessionsPlugin<C> delegate;
+    private final long windowNanos;
+
+    @SuppressWarnings("unchecked")
+    public ThrottlingFixSessionsPlugin(ThrottlingFixSessionsPluginSettings settings) {
+        if (settings.getDelegateSettings() == null) {
+            throw new IllegalArgumentException("ThrottlingFixSessionsPluginSettings.delegateSettings must not be null");
+        }
+        if (settings.getWindow() == null || settings.getWindow().isZero() || settings.getWindow().isNegative()) {
+            throw new IllegalArgumentException("ThrottlingFixSessionsPluginSettings.window must be strictly positive");
+        }
+        this.settings = settings;
+        this.delegate = (FixSessionsPlugin<C>) settings.getDelegateSettings().instance();
+        this.windowNanos = settings.getWindow().toNanos();
+    }
+
+    @Override
+    public String getInstanceId() {
+        return settings.getInstanceId();
+    }
+
+    @Override
+    public boolean matchesPluginClass(Class<? extends FixSessionsPlugin<?>> pluginClass) {
+        return getClass().equals(pluginClass) || delegate.matchesPluginClass(pluginClass);
+    }
+
+    @Override
+    public Optional<FixSessionPlugin<C, Object>> onSessionCreated(String fixInstanceId, FixSession fixSession,
+                                                                  Collection<MessageType> incomingMessageTypes,
+                                                                  Collection<MessageType> outgoingMessageTypes) {
+        return delegate.onSessionCreated(fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes)
+                .map(sessionPlugin -> new ThrottlingFixSessionPlugin<>(sessionPlugin,
+                        settings.getMaxReceivedMessages(), settings.getMaxSentMessages(), windowNanos));
+    }
+
+    @Override
+    protected void startMe() throws StartStopException {
+        if (delegate instanceof Startable) {
+            ((Startable<?>) delegate).start();
+        }
+    }
+
+    @Override
+    protected void stopMe(Deadline stopDeadline) throws StartStopException {
+        if (delegate instanceof Startable) {
+            ((Startable<?>) delegate).stop(stopDeadline);
+        }
+    }
+}

@@ -1,0 +1,206 @@
+<fix major="4" minor="4">
+    <header>
+        <field name="BeginString" required="Y"/>
+        <field name="BodyLength" required="Y"/>
+        <field name="MsgType" required="Y"/>
+        <field name="SenderCompID" required="Y"/>
+        <field name="TargetCompID" required="Y"/>
+        <field name="MsgSeqNum" required="Y"/>
+        <field name="SendingTime" required="Y"/>
+        <field name="PossDupFlag" required="N"/>
+        <field name="OrigSendingTime" required="N"/>
+    </header>
+    <trailer>
+        <field name="CheckSum" required="Y"/>
+    </trailer>
+    <messages>
+        <message name="Heartbeat" msgtype="0" msgcat="admin">
+            <field name="TestReqID" required="N"/>
+        </message>
+        <message name="Logon" msgtype="A" msgcat="admin">
+            <field name="EncryptMethod" required="Y"/>
+            <field name="HeartBtInt" required="Y"/>
+            <field name="ResetSeqNumFlag" required="N"/>
+            <field name="NextExpectedMsgSeqNum" required="N"/>
+            <field name="MaxMessageSize" required="N"/>
+            <field name="TestMessageIndicator" required="N"/>
+            <field name="Username" required="N"/>
+            <field name="Password" required="N"/>
+        </message>
+        <message name="TestRequest" msgtype="1" msgcat="admin">
+            <field name="TestReqID" required="Y"/>
+        </message>
+        <message name="ResendRequest" msgtype="2" msgcat="admin">
+            <field name="BeginSeqNo" required="Y"/>
+            <field name="EndSeqNo" required="Y"/>
+        </message>
+        <message name="Reject" msgtype="3" msgcat="admin">
+            <field name="RefSeqNum" required="Y"/>
+            <field name="RefTagID" required="N"/>
+            <field name="RefMsgType" required="N"/>
+            <field name="SessionRejectReason" required="N"/>
+            <field name="Text" required="N"/>
+        </message>
+        <message name="SequenceReset" msgtype="4" msgcat="admin">
+            <field name="GapFillFlag" required="N"/>
+            <field name="NewSeqNo" required="Y"/>
+        </message>
+        <message name="Logout" msgtype="5" msgcat="admin">
+            <field name="Text" required="N"/>
+        </message>
+        <message name="BusinessMessageReject" msgtype="j" msgcat="app">
+            <field name="RefSeqNum" required="N"/>
+            <field name="RefMsgType" required="Y"/>
+            <field name="BusinessRejectRefID" required="N"/>
+            <field name="BusinessRejectReason" required="Y"/>
+            <field name="Text" required="N"/>
+        </message>
+
+        <!--
+            Synthetic message covering every FieldType the codec knows, plus a repeating group.
+            Used by the jvm-warmup module to drive every branch of FixFieldsDecoderMapperImpl on
+            startup. msgtype "Z0" is unassigned in FIX 4.4.
+        -->
+        <message name="JVMWarmup" msgtype="Z0" msgcat="app">
+            <field name="WarmupString" required="Y"/>
+            <field name="WarmupChar" required="Y"/>
+            <field name="WarmupBoolean" required="Y"/>
+            <field name="WarmupInt" required="Y"/>
+            <field name="WarmupSeqNum" required="Y"/>
+            <field name="WarmupPrice" required="Y"/>
+            <field name="WarmupQty" required="Y"/>
+            <field name="WarmupAmt" required="Y"/>
+            <field name="WarmupFloat" required="Y"/>
+            <field name="WarmupPercentage" required="Y"/>
+            <field name="WarmupPriceOffset" required="Y"/>
+            <field name="WarmupCountry" required="Y"/>
+            <field name="WarmupCurrency" required="Y"/>
+            <field name="WarmupExchange" required="Y"/>
+            <field name="WarmupMVString" required="Y"/>
+            <field name="WarmupDataLen" required="Y"/>
+            <field name="WarmupData" required="Y"/>
+            <field name="WarmupLocalMktDate" required="Y"/>
+            <field name="WarmupUtcDateOnly" required="Y"/>
+            <field name="WarmupUtcTimeOnly" required="Y"/>
+            <field name="WarmupUtcTimestamp" required="Y"/>
+            <field name="WarmupCharEnum" required="Y"/>
+            <field name="WarmupIntEnum" required="Y"/>
+            <field name="WarmupStringEnum" required="Y"/>
+            <field name="WarmupLocalMktTime" required="Y"/>
+            <field name="WarmupTzTimestamp" required="Y"/>
+            <field name="WarmupTzTime" required="Y"/>
+            <field name="WarmupBooleanObj" required="Y"/>
+            <field name="WarmupDecimalNew" required="Y"/>
+            <field name="WarmupSerdeCtx" required="Y"/>
+            <group name="NoWarmupEntries" required="N">
+                <field name="WarmupEntryId" required="Y"/>
+                <field name="WarmupEntryPrice" required="N"/>
+                <field name="WarmupEntryText" required="N"/>
+            </group>
+        </message>
+    </messages>
+
+    <fields>
+        <!-- Header / trailer -->
+        <field number="8" name="BeginString" type="STRING"/>
+        <field number="9" name="BodyLength" type="LENGTH"/>
+        <field number="10" name="CheckSum" type="STRING"/>
+        <field number="34" name="MsgSeqNum" type="SEQNUM"/>
+        <field number="35" name="MsgType" type="STRING">
+            <value enum="0" description="HEARTBEAT"/>
+            <value enum="A" description="LOGON"/>
+            <value enum="1" description="TEST_REQUEST"/>
+            <value enum="2" description="RESEND_REQUEST"/>
+            <value enum="3" description="REJECT"/>
+            <value enum="4" description="SEQUENCE_RESET"/>
+            <value enum="5" description="LOGOUT"/>
+            <value enum="j" description="BUSINESS_MESSAGE_REJECT"/>
+            <value enum="Z0" description="JVM_WARMUP"/>
+        </field>
+        <field number="43" name="PossDupFlag" type="BOOLEAN"/>
+        <field number="49" name="SenderCompID" type="STRING"/>
+        <field number="52" name="SendingTime" type="UTCTIMESTAMP"/>
+        <field number="56" name="TargetCompID" type="STRING"/>
+        <field number="122" name="OrigSendingTime" type="UTCTIMESTAMP"/>
+
+        <!-- Admin fields -->
+        <field number="7" name="BeginSeqNo" type="SEQNUM"/>
+        <field number="16" name="EndSeqNo" type="SEQNUM"/>
+        <field number="36" name="NewSeqNo" type="SEQNUM"/>
+        <field number="45" name="RefSeqNum" type="SEQNUM"/>
+        <field number="58" name="Text" type="STRING"/>
+        <field number="98" name="EncryptMethod" type="INT">
+            <value enum="0" description="NONE"/>
+        </field>
+        <field number="108" name="HeartBtInt" type="INT"/>
+        <field number="112" name="TestReqID" type="STRING"/>
+        <field number="123" name="GapFillFlag" type="BOOLEAN"/>
+        <field number="141" name="ResetSeqNumFlag" type="BOOLEAN"/>
+        <field number="371" name="RefTagID" type="INT"/>
+        <field number="372" name="RefMsgType" type="STRING"/>
+        <field number="373" name="SessionRejectReason" type="INT"/>
+        <field number="379" name="BusinessRejectRefID" type="STRING"/>
+        <field number="380" name="BusinessRejectReason" type="INT"/>
+        <field number="383" name="MaxMessageSize" type="LENGTH"/>
+        <field number="464" name="TestMessageIndicator" type="BOOLEAN"/>
+        <field number="553" name="Username" type="STRING"/>
+        <field number="554" name="Password" type="STRING"/>
+        <field number="789" name="NextExpectedMsgSeqNum" type="SEQNUM"/>
+
+        <!-- Custom JVMWarmup payload fields (tag 9700+) -->
+        <field number="9700" name="WarmupString" type="STRING"/>
+        <field number="9701" name="WarmupChar" type="CHAR"/>
+        <field number="9702" name="WarmupBoolean" type="BOOLEAN"/>
+        <field number="9703" name="WarmupInt" type="INT"/>
+        <field number="9705" name="WarmupSeqNum" type="SEQNUM"/>
+        <field number="9706" name="WarmupPrice" type="PRICE"/>
+        <field number="9707" name="WarmupQty" type="QTY"/>
+        <field number="9708" name="WarmupAmt" type="AMT"/>
+        <field number="9709" name="WarmupFloat" type="FLOAT"/>
+        <field number="9710" name="WarmupPercentage" type="PERCENTAGE"/>
+        <field number="9711" name="WarmupPriceOffset" type="PRICEOFFSET"/>
+        <field number="9712" name="WarmupCountry" type="COUNTRY"/>
+        <field number="9713" name="WarmupCurrency" type="CURRENCY"/>
+        <field number="9714" name="WarmupExchange" type="EXCHANGE"/>
+        <field number="9715" name="WarmupMVString" type="MULTIPLEVALUESTRING">
+            <value enum="A" description="ALPHA"/>
+            <value enum="B" description="BRAVO"/>
+            <value enum="C" description="CHARLIE"/>
+        </field>
+        <field number="9716" name="WarmupData" type="DATA"/>
+        <field number="9717" name="WarmupDataLen" type="LENGTH"/>
+        <field number="9718" name="WarmupLocalMktDate" type="LOCALMKTDATE"/>
+        <field number="9720" name="WarmupUtcDateOnly" type="UTCDATEONLY"/>
+        <field number="9721" name="WarmupUtcTimeOnly" type="UTCTIMEONLY"/>
+        <field number="9722" name="WarmupUtcTimestamp" type="UTCTIMESTAMP"/>
+        <field number="9723" name="WarmupCharEnum" type="CHAR">
+            <value enum="X" description="X_RAY"/>
+            <value enum="Y" description="YANKEE"/>
+            <value enum="Z" description="ZULU"/>
+        </field>
+        <field number="9724" name="WarmupIntEnum" type="INT">
+            <value enum="1" description="ONE"/>
+            <value enum="2" description="TWO"/>
+            <value enum="3" description="THREE"/>
+        </field>
+        <field number="9725" name="WarmupStringEnum" type="STRING">
+            <value enum="LOW" description="LOW"/>
+            <value enum="MID" description="MID"/>
+            <value enum="HIGH" description="HIGH"/>
+        </field>
+
+        <!-- Extra fields covering the remaining FixFieldsDecoderMapper branches -->
+        <field number="9730" name="WarmupLocalMktTime" type="LOCALMKTTIME"/>
+        <field number="9731" name="WarmupTzTimestamp" type="TZTIMESTAMP"/>
+        <field number="9732" name="WarmupTzTime" type="TZTIMEONLY"/>
+        <field number="9733" name="WarmupBooleanObj" type="BOOLEAN"/>
+        <field number="9734" name="WarmupDecimalNew" type="PRICE"/>
+        <field number="9735" name="WarmupSerdeCtx" type="STRING"/>
+
+        <!-- Repeating group -->
+        <field number="9726" name="NoWarmupEntries" type="NUMINGROUP"/>
+        <field number="9727" name="WarmupEntryId" type="INT"/>
+        <field number="9728" name="WarmupEntryPrice" type="PRICE"/>
+        <field number="9729" name="WarmupEntryText" type="STRING"/>
+    </fields>
+</fix>

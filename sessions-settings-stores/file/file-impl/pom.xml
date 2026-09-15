@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-sessions-settings-store-file-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>staffix-sessions-settings-store-file-impl</artifactId>
+
+    <name>Staffix File Session Settings Store</name>
+    <description>
+        Loads session settings from YAML files, validated against a JSON schema that the build generates from the
+        model and ships inside this jar, so an editor can complete and check a session file. Placeholders in a value
+        resolve at load time.
+    </description>
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.stores.sessions.file</automatic.module.name>
+        <!-- Pinned to Java 11-compatible releases: hibernate-validator 9.x and jakarta-validation 3.1
+             require Java 17, which would break this library's Java 11 runtime promise. -->
+        <jakarta-validation-api.version>3.0.2</jakarta-validation-api.version>
+        <hibernate-validator.version>8.0.4.Final</hibernate-validator.version>
+        <victools-jsonschema.version>4.38.0</victools-jsonschema.version>
+        <jackson-dataformat-yaml.version>2.22.1</jackson-dataformat-yaml.version>
+        <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+        <build-helper-maven-plugin.version>3.6.1</build-helper-maven-plugin.version>
+        <!-- The generated schema: written here by exec-maven-plugin, then attached as a build artifact by
+             build-helper. Both executions read this one property, and FixSessionSettingsJsonSchema#main rejects a path
+             that no longer matches SCHEMA_FILE_NAME and its package, so the pom and the code cannot drift apart
+             (build-helper itself attaches nothing, silently, if the file is missing). -->
+
+        <fix-session-settings-schema-file>
+            ${project.build.outputDirectory}/org/lolaf/staffix/stores/sessions/file/fix-session-settings.v1.schema.json
+        </fix-session-settings-schema-file>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>${jackson-dataformat-yaml.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>${jackson-dataformat-yaml.version}</version>
+        </dependency>
+
+        <!-- Bean Validation: enforce required fields / value constraints when loading session files -->
+        <dependency>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
+            <version>${jakarta-validation-api.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>${hibernate-validator.version}</version>
+        </dependency>
+
+        <!-- JSON Schema generation from the YAML model, for editor autocomplete/validation. Optional: the schema is
+             generated once at build time (see exec-maven-plugin below) and shipped in this jar, so nothing on the
+             runtime path needs the generator and consuming applications do not inherit it. -->
+        <dependency>
+            <groupId>com.github.victools</groupId>
+            <artifactId>jsonschema-generator</artifactId>
+            <version>${victools-jsonschema.version}</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.github.victools</groupId>
+            <artifactId>jsonschema-module-jackson</artifactId>
+            <version>${victools-jsonschema.version}</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.github.victools</groupId>
+            <artifactId>jsonschema-module-jakarta-validation</artifactId>
+            <version>${victools-jsonschema.version}</version>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Generate the session settings JSON schema from YamlFixSessionSettings into target/classes, so it is
+                 packaged in the jar and available to FileFixSessionsSettingsStore without regenerating it at startup.
+                 Bound to process-classes: the model must be compiled first, and resources have already been copied by
+                 then, so nothing overwrites the generated file. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-fix-session-settings-json-schema</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>org.lolaf.staffix.stores.sessions.file.FixSessionSettingsJsonSchemaGenerator
+                            </mainClass>
+                            <classpathScope>compile</classpathScope>
+                            <arguments>
+                                <argument>${fix-session-settings-schema-file}</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Also publish the schema as a standalone artifact, so tooling and CI can fetch it from the repository
+                 (…-file-impl-<version>-schema.json) and reference it by URL from a `$schema=` declaration, without
+                 unpacking the jar or booting the engine. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>${build-helper-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>attach-fix-session-settings-json-schema</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>attach-artifact</goal>
+                        </goals>
+                        <configuration>
+                            <artifacts>
+                                <artifact>
+                                    <file>${fix-session-settings-schema-file}</file>
+                                    <type>json</type>
+                                    <classifier>schema</classifier>
+                                </artifact>
+                            </artifacts>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

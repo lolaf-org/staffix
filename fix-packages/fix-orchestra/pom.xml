@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-fix-packages-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>staffix-fix-orchestra</artifactId>
+
+    <name>Staffix FIX Orchestra Repository</name>
+    <description>
+        The FIX Trading Community's Orchestra repository, kept whole and unmodified as a zip so that 8 MB of XML
+        need not live in a source tree. Every dictionary cut from the standard reads this file.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.fix.orchestra.repository</automatic.module.name>
+    </properties>
+
+    <!--
+      The FIX Orchestra repository, and nothing else: the zip the FIX Trading Community publishes, kept whole and
+      unmodified so the 8 MB of XML inside it never has to live in the source tree.
+
+      Renamed on the way in, dropping the extension pack the published name carries - fix-latest-ep307.zip became
+      fix-orchestra-latest.zip - so that taking a newer pack is replacing this file and nothing more. Run the
+      generator's versions goal on it to see which pack it actually holds, and what cuts it can serve.
+
+      It sits in a module of its own because it is an input to several of them - every dictionary cut from the
+      standard reads this same file, through the ${orchestration.file} property the fix-packages pom names - and
+      belonged to none of them. It used to live in fix-latest, which is not even in the reactor, so the file the
+      other modules read was one no build produced.
+
+      Read from the working tree by path rather than resolved as a dependency, so the cut keeps working whichever
+      modules are being built. The jar this module publishes carries the same file for anyone regenerating the
+      dictionaries from outside the reactor.
+    -->
+
+    <build>
+        <plugins>
+            <!-- This module has no hand-written source: its encoders, fields and message types are generated
+                 from the dictionary in src/main/dictionaries, so javadoc reads nothing and produces nothing.
+                 Keeping it that way is deliberate - fix-latest alone generates some 20,000 classes.
+                 Central requires a -javadoc.jar (and a -sources.jar) for every artifact whose packaging is
+                 not pom, and sanctions a placeholder where neither can be produced: "if you cannot provide
+                 sources or documentation, we allow uploading placeholder .jar files in order to pass
+                 validation". src/placeholder/README.md says so and points at where to look instead. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>placeholder-javadoc-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>javadoc</classifier>
+                            <classesDirectory>${project.basedir}/src/placeholder</classesDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

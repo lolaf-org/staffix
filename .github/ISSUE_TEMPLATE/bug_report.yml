@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in staffix behaves differently from what it documents
+labels: [ bug ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Which implementation you got is decided at runtime, from the JDK and the flags the JVM was
+        started with, so the details below are usually what separates "a bug" from "a different
+        implementation than you think".
+
+  - type: input
+    id: version
+    attributes:
+      label: Staffix version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: jdk
+    attributes:
+      label: JDK
+      description: Vendor and full version, as `java -version` prints it.
+      placeholder: "Zulu 21.0.12"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      placeholder: "Ubuntu 24.04, x86-64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: flags
+    attributes:
+      label: JVM flags
+      description: >
+        The whole command line if you can. `--add-opens java.base/jdk.internal.misc=ALL-UNNAMED`,
+        `-XX:-RestrictContended` and `-XX:ContendedPaddingWidth` change which implementation is
+        selected and how the buffer is laid out.
+      render: shell
+
+  - type: textarea
+    id: selection
+    attributes:
+      label: Which implementation was selected
+      description: >
+        Staffix logs this at INFO on first use
+      render: shell
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Reproducer
+      description: >
+        The access type, the capacity, whether an element instance producer was passed, and the
+        smallest code that shows it. A failing test against the module in question is ideal.
+      render: java

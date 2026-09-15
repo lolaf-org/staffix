@@ -1,0 +1,39 @@
+# Tempo 3.0 - monolithic single-binary deployment (-target=all).
+# All components (distributor, live-store, block-builder, backend-scheduler/worker,
+# querier, query-frontend) run in-process. No Kafka is required in this mode, so the
+# 2.x experimental blocks (partition_ring_live_store, querier.query_live_store,
+# ingest/kafka, block_builder, backend_worker.backend_scheduler_addr) have been dropped.
+stream_over_http_enabled: true   # required for streaming TraceQL search & metrics results to Grafana
+multitenancy_enabled: true
+
+server:
+  http_listen_port: 3200
+  log_level: info
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+
+storage:
+  trace:
+    backend: local                     # backend configuration to use
+    wal:
+      path: /var/tempo/wal             # where to store the wal locally
+    local:
+      path: /var/tempo/blocks
+
+# Block retention is driven by the in-process backend-scheduler in 3.0
+# (this replaces the removed top-level `compactor` block). Kept short for local dev.
+backend_scheduler:
+  provider:
+    compaction:
+      compaction:
+        block_retention: 1h
+
+usage_report:
+  reporting_enabled: false

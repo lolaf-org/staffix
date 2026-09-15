@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <packaging>pom</packaging>
+
+    <name>Staffix Message Loggers</name>
+    <description>
+        Records every message a session sends and receives, for audit and for diagnosis.
+    </description>
+
+    <artifactId>staffix-messages-logger-parent</artifactId>
+
+    <modules>
+        <module>core</module>
+        <module>slf4j</module>
+        <module>file</module>
+        <module>async</module>
+        <module>demux</module>
+        <module>otlp</module>
+    </modules>
+
+</project>

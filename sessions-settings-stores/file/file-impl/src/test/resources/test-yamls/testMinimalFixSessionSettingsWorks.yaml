@@ -1,0 +1,76 @@
+---
+fixSessionId:
+  id: "testMinimalFixSessionSettingsWorks"
+  fixVersion: "FIX.4.4"
+  fixTSession: false
+  group: "test-group"
+  senderCompID: "senderCompId"
+  senderSubID: "senderSubId"
+  senderLocationID: "senderLocId"
+  targetCompID: "targetCompId"
+  targetSubID: "targetSubId"
+  targetLocationID: "targetLocId"
+fixSessionType: "ACCEPTOR"
+dictionaryId: "default"
+heartBeatInterval:
+  initiatorInterval: "PT10S"
+  acceptorLowerBoundInterval: "PT1S"
+  acceptorUpperBoundInterval: "PT20S"
+sendingTimeAccuracy: "MICROSECONDS"
+advertiseMsgTypeGrpOnLogon: false
+advertiseEngineOnLogon: false
+advertiseApplicationOnLogon: false
+enabledLogonNextExpectedMsgSeqNum: true
+allowedAddresses: [ ]
+desiredSessionState: "LOGGED_IN"
+logInOrOutResponseTimeout: "PT10S"
+resendRequestResponseTimeout: "PT30S"
+maxOutOfSequenceMessagesQueued: 10000
+maxOutgoingMessagesHeldDuringRecovery: 1000
+maxMessagesResentPerRequest: 10000
+resendRequestRange: "CLOSED"
+fixApplicationFactoryInstanceId: "default"
+fixApplicationInstanceId: "default"
+fixMessageStoreInstanceId: "default"
+fixMessageLoggerInstanceId: "default"
+validationSettings:
+  validateChecksum: true
+  validateFieldsHaveValues: true
+  allowUserDefinedFields: false
+  allowUnknownFields: false
+  validateRequiredFields: false
+  allowUndefinedTagsForMessage: true
+  validateCompId: false
+  validateBeginString: false
+  detectGarbledMessages: false
+  validateFieldsOutOfOrder: false
+  validateDuplicateTags: false
+testingMode: false
+disconnectMessagesFlushDeadline: "PT2S"
+cancelOnDisconnectSettings:
+  enabled: false
+  cancelOnDisconnectType: "CANCEL_ON_DISCONNECT_OR_LOGOUT"
+  cancelOnDisconnectTypeFieldCodes:
+    CANCEL_ON_DISCONNECT_OR_LOGOUT: "3"
+    CANCEL_ON_DISCONNECT_ONLY: "1"
+    DO_NOT_CANCEL_ON_DISCONNECT_OR_LOGOUT: "0"
+    CANCEL_ON_LOGOUT_ONLY: "2"
+  cancelOnDisconnectTypeFieldCode: 35002
+  codTimeoutWindowFieldCode: 35003
+  codTimeoutWindow: "PT10S"
+  codTimeoutWindowScale: "MILLISECONDS"
+rttMeasurementSettings:
+  emaTimeWindow: "PT30S"
+  maxAcceptedRtt: "PT2S"
+  probeTestReqIdPrefix: "RTT-measurement-"
+  sendingTimeToWireDelay: "PT0.0000015S"
+sessionScheduleSettings:
+  outsideSessionTimePreTriggerDelay: "PT2S"
+  timeZone: "$expectedTz"
+  withinSessionCheckInterval: "PT1S"
+  sessionSchedules: [ ]
+  nonStopSchedules: [ ]
+messageEncodersDirectByteBuffers: true
+pooledMessageEncodersDirectByteBuffers: true
+disconnectOnRemove: true
+restartLiveSessionOnUpdate: true

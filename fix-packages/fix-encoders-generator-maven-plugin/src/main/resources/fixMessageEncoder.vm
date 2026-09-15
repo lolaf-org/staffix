@@ -1,0 +1,120 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package $packageName;
+
+import org.lolaf.staffix.api.codec.FixMessageEncoder;
+import org.lolaf.staffix.api.codec.FixMessageEncodingListener;
+import org.lolaf.staffix.api.codec.FixFieldsEncoder;
+import static ${messagesTypePackage}.MessageTypes.${messageName};
+## a deprecated class is not imported but named in full where it is used: an import is the one place
+## @SuppressWarnings cannot reach, since it sits outside the class the annotation would go on
+#foreach($g in ${groups})
+#if (!${g.field.deprecated})
+import ${fieldsPackage}.${g.field.name};
+#end
+#end
+import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.fields.FixField;
+import org.lolaf.staffix.api.serde.DecimalFloat;
+import org.lolaf.staffix.api.serde.SerDe;
+import org.lolaf.staffix.api.time.Clock;
+import org.lolaf.staffix.api.time.UTCTime;
+import org.lolaf.staffix.codec.encoders.FixMessageEncoderImpl;
+## the group encoders of this dictionary, in their own package so that a message encoder and a group encoder are
+## told apart at a glance. A wildcard rather than one line per group: the biggest FIX Latest messages carry some
+## seven hundred of them.
+import ${groupPackageName}.*;
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.LocalDate;
+import java.time.OffsetTime;
+import java.time.OffsetDateTime;
+import java.nio.ByteBuffer;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.function.Supplier;
+import java.util.function.IntFunction;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.UUID;
+
+#if (${deprecated})
+/**
+ * @deprecated deprecated by the FIX standard. It stays here so that a peer still sending this message can be
+ *             answered, and should not be used in new work.
+ */
+@Deprecated
+#end
+#if (${referencesDeprecated})
+// this message holds deprecated fields, and an encoder has to go on being able to build them
+@SuppressWarnings("deprecation")
+#end
+public class ${className} extends FixMessageEncoderImpl<${className}> {
+
+    private final Map<Class<? extends FixFieldsEncoder>,FixFieldsEncoder> groupEncodersInstances;
+
+    /**
+     * One group encoder per group, per message encoder instance, created on first use and reused afterwards - the
+     * group encoders hold no per-entry state, so the same instance serves every entry of the group.
+     * <p>
+     * The factory is a method reference from the call site rather than a reflective lookup: a group encoder is a
+     * top-level class shared across messages, so there is no synthetic outer instance to pass and nothing left for
+     * reflection to do.
+     */
+    private <T extends FixFieldsEncoder> T getGroupEncoderInstance(Class<T> groupEncoderClass,
+            Function<FixMessageEncoderImpl<?>,T> factory) {
+        T encoder = (T)groupEncodersInstances.get(groupEncoderClass);
+        if (encoder == null) {
+            encoder = factory.apply(this);
+            groupEncodersInstances.put(groupEncoderClass, encoder);
+        }
+        return encoder;
+    }
+
+    /**
+     * Constructor for FixMessageEncoderFactory
+     */
+    protected ${className}(Consumer<FixMessageEncoder<?>> releaser, IntFunction<ByteBuffer> allocator, FixMessageEncodingListener encodingListener, Clock clock) {
+        super(releaser, ${messageName}, allocator, encodingListener, clock);
+        groupEncodersInstances = new IdentityHashMap<>();
+    }
+
+    #foreach($g in ${groups})
+    #if (${g.field.deprecated})
+    /**
+     * @deprecated deprecated by the FIX standard for this message.
+     */
+    @Deprecated
+    #end
+    public ${g.encoderClassName} add${g.field.name}(int entriesCount) {
+        addInt(#if(${g.field.deprecated})${fieldsPackage}.#end${g.field.name}.get(), entriesCount);
+        return getGroupEncoderInstance(${g.encoderClassName}.class, ${g.encoderClassName}::new);
+    }
+
+    #end
+    #set ($encoderClassName=${className})
+    #foreach($f in ${fields})
+        #set($fieldType=${f.type.type.getName()})
+        #parse( "setterTemplate.vm" )
+        #if ($fieldType == "double")
+            #set($fieldType="java.math.BigDecimal")
+            #parse( "setterTemplate.vm" )
+            #set($fieldType="DecimalFloat")
+            #parse( "setterTemplate.vm" )
+        #end
+    #end
+
+}

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-spring-boot-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../../spring-boot/pom.xml</relativePath>
+    </parent>
+    <artifactId>staffix-sessions-settings-store-file-spring-boot</artifactId>
+
+    <name>Staffix File Session Settings Store (Spring Boot)</name>
+    <description>
+        Spring Boot auto-configuration for the YAML session settings store, including a resolver that fills a
+        session file's placeholders from the Spring Environment.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.stores.sessions.file.spring</automatic.module.name>
+        <jackson-dataformat-yaml.version>2.22.1</jackson-dataformat-yaml.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-sessions-settings-store-file-impl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-spring-boot-spi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>${jackson-dataformat-yaml.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>${jackson-dataformat-yaml.version}</version>
+        </dependency>
+    </dependencies>
+</project>

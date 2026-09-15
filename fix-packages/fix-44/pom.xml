@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-fix-packages-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>staffix-fix-44</artifactId>
+
+    <name>Staffix FIX 4.4 Encoders</name>
+    <description>
+        Type-safe encoders, field classes and message-type registries for FIX 4.4, generated from the dictionary
+        this module carries. Add it beside staffix-impl to speak that version.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.fix44</automatic.module.name>
+        <!-- FIX.4.4 holds EP1-38 -->
+        <orchestration.ep>38</orchestration.ep>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-codec</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- This module has no hand-written source: its encoders, fields and message types are generated
+                 from the dictionary in src/main/dictionaries, so javadoc reads nothing and produces nothing.
+                 Keeping it that way is deliberate - fix-latest alone generates some 20,000 classes.
+                 Central requires a -javadoc.jar (and a -sources.jar) for every artifact whose packaging is
+                 not pom, and sanctions a placeholder where neither can be produced: "if you cannot provide
+                 sources or documentation, we allow uploading placeholder .jar files in order to pass
+                 validation". src/placeholder/README.md says so and points at where to look instead. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>placeholder-javadoc-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>javadoc</classifier>
+                            <classesDirectory>${project.basedir}/src/placeholder</classesDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <configuration>
+                    <dictionaryFile>${project.basedir}/src/main/dictionaries/FIX44.xml</dictionaryFile>
+                    <sourcesOutputDirectory>${project.build.directory}/generated-sources/</sourcesOutputDirectory>
+                    <packageName>org.lolaf.staffix.fix44</packageName>
+                    <dictionaryId>default</dictionaryId>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>net.revelc.code.formatter</groupId>
+                <artifactId>formatter-maven-plugin</artifactId>
+                <version>2.24.1</version>
+                <configuration>
+                    <directories>
+                        <directory>${project.build.directory}/generated-sources</directory>
+                    </directories>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>format</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>orchestra-dictionary</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.lolaf.staffix</groupId>
+                        <artifactId>staffix-fix-orchestra-dictionary-generator-maven-plugin</artifactId>
+                        <version>${project.version}</version>
+                        <configuration>
+                            <orchestration>${orchestration.file}</orchestration>
+                            <upToVersion>FIX.4.4</upToVersion>
+                            <upToExtensionPack>${orchestration.ep}</upToExtensionPack>
+                            <markDeprecated>${orchestration.markDeprecated}</markDeprecated>
+                            <outputFile>${project.basedir}/src/main/dictionaries/FIX44.xml</outputFile>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>orchestra-dictionary</id>
+                                <phase>initialize</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

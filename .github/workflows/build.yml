@@ -1,0 +1,38 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+# A superseded run on a pull request is not worth runner minutes, but every commit landing on main gets verified.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # a full build measured 14:19 locally; runners are slower and pull container images, hence the generous ceiling
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 21
+          cache: maven
+
+      - name: Build and test
+        run: mvn -B -T 1C clean install
+
+      - name: Upload surefire reports
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/**'
+          retention-days: 7
+          if-no-files-found: ignore

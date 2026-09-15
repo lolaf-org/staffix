@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-http-client-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>staffix-http-client-grpc-test-kit</artifactId>
+
+    <name>Staffix gRPC Test Kit</name>
+    <description>
+        The contract for the gRPC senders, shipped as a test-jar. Separate from staffix-http-client-test-kit because its
+        stub server must send HTTP/2 trailers, which only the OkHttp and Jetty clients can read.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.grpc.testkit</automatic.module.name>
+    </properties>
+
+    <!--
+        A second test kit rather than more classes in staffix-http-client-test-kit, for one reason: the
+        stub here needs an HTTP/2 server that can send trailers, and the jdk module can never implement
+        GrpcSender - java.net.http.HttpResponse exposes no trailers at all. Folding this into the shared
+        kit would put that server on the test classpath of the one client guaranteed not to use it, and
+        would hand it an AbstractGrpcSenderTest it must never extend.
+    -->
+    <dependencies>
+        <!--
+            Compile scope, not test: everything in this module lives in src/test and ships as a test-jar,
+            and a test-jar's consumers inherit the dependencies its POM declares at compile scope. The
+            contract class exposes both these libraries in its own signatures, so a client module
+            extending it needs them without having to repeat the declaration.
+        -->
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!--
+            MockWebServer speaks HTTP/2 with prior knowledge and can send trailers, which is the whole
+            requirement and is what com.sun.net.httpserver cannot do at any price. It is OkHttp's, and so
+            reaches the Jetty client's tests too; that is a test-scope classpath and the alternative
+            (Jetty's HTTP/2 server) would reach OkHttp's tests just as symmetrically.
+        -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver3</artifactId>
+            <version>${okhttp.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- This module is test-only code with no src/main/java, so neither javadoc nor the source plugin
+                 produces anything.
+                 Central requires a -javadoc.jar (and a -sources.jar) for every artifact whose packaging is
+                 not pom, and sanctions a placeholder where neither can be produced: "if you cannot provide
+                 sources or documentation, we allow uploading placeholder .jar files in order to pass
+                 validation". src/placeholder/README.md says so and points at where to look instead. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>placeholder-javadoc-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>javadoc</classifier>
+                            <classesDirectory>${project.basedir}/src/placeholder</classesDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>placeholder-sources-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>sources</classifier>
+                            <classesDirectory>${project.basedir}/src/placeholder</classesDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Generate test-jar artifact -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                        <configuration>
+                            <!-- The classes are all in src/test, so the test-jar is the artifact that
+                                 lands on a consumer's module path; default-jar's manifest entries do not
+                                 reach a separate execution. -->
+                            <archive>
+                                <manifestEntries>
+                                    <Automatic-Module-Name>${automatic.module.name}</Automatic-Module-Name>
+                                </manifestEntries>
+                            </archive>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

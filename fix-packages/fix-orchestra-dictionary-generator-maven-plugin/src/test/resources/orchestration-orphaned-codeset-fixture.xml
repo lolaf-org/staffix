@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The one shape the main fixture cannot hold without changing what every other test reads off it: a field that is
+  older than the code set which types it.
+
+  SettlMethod is drawn from the real repository, where field 1039 UnderlyingSettlMethod is dated FIX.4.4 and the
+  SettlMethodCodeSet that types it FIX.5.0 - so every cut from FIX.4.4 up to FIX.5.0 as published keeps the field
+  and removes its code set.
+-->
+<fixr:repository xmlns:fixr="http://fixprotocol.io/2020/orchestra/repository" name="Fixture" version="Fixture_EP300">
+    <fixr:codeSets>
+        <fixr:codeSet id="9002" name="SettlMethodCodeSet" type="String" added="FIX.5.0" addedEP="52">
+            <fixr:code id="9002001" name="CashSettlement" value="C" added="FIX.5.0" addedEP="52"/>
+            <fixr:code id="9002002" name="PhysicalSettlement" value="P" added="FIX.5.0" addedEP="52"/>
+        </fixr:codeSet>
+    </fixr:codeSets>
+
+    <fixr:fields>
+        <fixr:field id="34" name="MsgSeqNum" type="SeqNum" added="FIX.2.7"/>
+        <fixr:field id="10" name="CheckSum" type="String" added="FIX.2.7"/>
+        <fixr:field id="1039" name="UnderlyingSettlMethod" type="SettlMethodCodeSet" added="FIX.4.4" addedEP="8"/>
+    </fixr:fields>
+
+    <fixr:components>
+        <fixr:component id="1024" name="StandardHeader" category="Session" added="FIX.4.0">
+            <fixr:fieldRef id="34" presence="required" added="FIX.4.0"/>
+        </fixr:component>
+        <fixr:component id="1025" name="StandardTrailer" category="Session" added="FIX.4.0">
+            <fixr:fieldRef id="10" presence="required" added="FIX.4.0"/>
+        </fixr:component>
+    </fixr:components>
+
+    <fixr:messages>
+        <fixr:message id="11" name="Logon" msgType="A" category="Session" added="FIX.2.7">
+            <fixr:structure>
+                <fixr:componentRef id="1024" presence="required" added="FIX.2.7"/>
+                <fixr:fieldRef id="1039" added="FIX.4.4" addedEP="8"/>
+                <fixr:componentRef id="1025" presence="required" added="FIX.2.7"/>
+            </fixr:structure>
+        </fixr:message>
+    </fixr:messages>
+</fixr:repository>

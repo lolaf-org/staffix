@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <packaging>pom</packaging>
+
+    <name>Staffix HTTP Clients</name>
+    <description>
+        One HttpSender abstraction and a module per HTTP client behind it. The OTLP message logger and the OTLP
+        meter registry both POST protobuf to a fixed endpoint; this is where that client is chosen, so neither of
+        them depends on a particular HTTP library.
+    </description>
+
+    <artifactId>staffix-http-client-parent</artifactId>
+
+    <modules>
+        <module>http-test-kit</module>
+        <module>grpc-test-kit</module>
+        <module>jdk</module>
+        <module>okhttp</module>
+        <module>jetty</module>
+    </modules>
+
+</project>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-monitoring-micrometer-otlp-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>staffix-monitoring-micrometer-otlp-impl</artifactId>
+
+    <name>Staffix Micrometer OTLP Monitoring</name>
+    <description>
+        Publishes Micrometer metrics to an OpenTelemetry collector over OTLP, through this library's own HTTP
+        clients rather than a second HTTP stack of its own.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.monitoring.micrometer.otlp</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-monitoring-micrometer-impl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- The default HTTP sender. It needs nothing itself, which is why it is the default; an
+             application wanting OkHttp or Jetty adds that client module and points the factory at it. -->
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-http-client-jdk</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-otlp</artifactId>
+            <version>${micrometer.version}</version>
+        </dependency>
+    </dependencies>
+</project>

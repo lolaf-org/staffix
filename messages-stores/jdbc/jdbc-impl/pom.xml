@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-messages-store-jdbc-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>staffix-messages-store-jdbc-impl</artifactId>
+
+    <name>Staffix JDBC Message Store</name>
+    <description>
+        Persists messages and sequence numbers to a relational database over JDBC, pooled with HikariCP, for state
+        that must outlive the engine's host or be visible to something other than the engine.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.stores.messages.jdbc</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Test Dependencies -->
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-messages-store-test-kit</artifactId>
+            <version>${project.version}</version>
+            <classifier>tests</classifier>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- postgres test container -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- oracle test container -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-oracle-free</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc17</artifactId>
+            <version>23.26.1.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>${hikaricp.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- DDL Generator Plugin -->
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-messages-store-jdbc-ddl-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-postgresql-ddl</id>
+                        <phase>generate-test-resources</phase>
+                        <goals>
+                            <goal>generate-ddl</goal>
+                        </goals>
+                        <configuration>
+                            <dialect>org.hibernate.dialect.PostgreSQLDialect</dialect>
+                            <outputDirectory>${project.basedir}/src/test/resources/db</outputDirectory>
+                            <outputFileName>schema-postgres.sql</outputFileName>
+                            <formatSql>true</formatSql>
+                            <createDropStatements>true</createDropStatements>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>generate-oracle-ddl</id>
+                        <phase>generate-test-resources</phase>
+                        <goals>
+                            <goal>generate-ddl</goal>
+                        </goals>
+                        <configuration>
+                            <dialect>org.hibernate.dialect.OracleDialect</dialect>
+                            <outputDirectory>${project.basedir}/src/test/resources/db</outputDirectory>
+                            <outputFileName>schema-oracle.sql</outputFileName>
+                            <formatSql>true</formatSql>
+                            <createDropStatements>true</createDropStatements>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

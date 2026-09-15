@@ -1,0 +1,109 @@
+# The messages staffix-fix-latest generates encoders for.
+#
+# FIX Latest holds 173 messages and each one costs hundreds of generated classes once its groups and components are
+# expanded, so this list is what the module costs to build. The 65 messages FIX Latest added after FIX.5.0SP2 are
+# left out by this rule rather than judged one by one; widen it deliberately, not by accident.
+#
+# Editing this file changes nothing until the dictionary beside it is regenerated:
+#
+#     mvn -Porchestra-dictionary initialize -pl fix-packages/fix-latest
+#
+# To build the whole standard instead - every message, no list - use -Pfull-fix-latest, which generates its own
+# dictionary and does not read this file.
+#
+# One entry per line, a message name or a msgType. Every entry must name a message FIX Latest holds, or the build
+# fails saying which do not.
+
+AdjustedPositionReport                   # BL
+Advertisement                            # 7
+AllocationInstruction                    # J
+AllocationInstructionAck                 # P
+AllocationInstructionAlert               # BM
+AllocationReport                         # AS
+AllocationReportAck                      # AT
+AssignmentReport                         # AW
+BidRequest                               # k
+BidResponse                              # l
+BusinessMessageReject                    # j
+CollateralAssignment                     # AY
+CollateralInquiry                        # BB
+CollateralInquiryAck                     # BG
+CollateralReport                         # BA
+CollateralRequest                        # AX
+CollateralResponse                       # AZ
+Confirmation                             # AK
+ConfirmationAck                          # AU
+ConfirmationRequest                      # BH
+ContraryIntentionReport                  # BO
+CrossOrderCancelReplaceRequest           # t
+CrossOrderCancelRequest                  # u
+DerivativeSecurityList                   # AA
+DerivativeSecurityListRequest            # z
+DontKnowTrade                            # Q
+Email                                    # C
+ExecutionAck                             # BN
+ExecutionReport                          # 8
+IOI                                      # 6
+ListCancelRequest                        # K
+ListExecute                              # L
+ListStatus                               # N
+ListStatusRequest                        # M
+ListStrikePrice                          # m
+MarketDataIncrementalRefresh             # X
+MarketDataRequest                        # V
+MarketDataRequestReject                  # Y
+MarketDataSnapshotFullRefresh            # W
+MassQuote                                # i
+MassQuoteAck                             # b
+MultilegOrderCancelReplace               # AC
+NetworkCounterpartySystemStatusRequest   # BC
+NetworkCounterpartySystemStatusResponse  # BD
+NewOrderCross                            # s
+NewOrderList                             # E
+NewOrderMultileg                         # AB
+NewOrderSingle                           # D
+News                                     # B
+OrderCancelReject                        # 9
+OrderCancelReplaceRequest                # G
+OrderCancelRequest                       # F
+OrderMassCancelReport                    # r
+OrderMassCancelRequest                   # q
+OrderMassStatusRequest                   # AF
+OrderStatusRequest                       # H
+PositionMaintenanceReport                # AM
+PositionMaintenanceRequest               # AL
+PositionReport                           # AP
+Quote                                    # S
+QuoteCancel                              # Z
+QuoteRequest                             # R
+QuoteRequestReject                       # AG
+QuoteResponse                            # AJ
+QuoteStatusReport                        # AI
+QuoteStatusRequest                       # a
+RFQRequest                               # AH
+RegistrationInstructions                 # o
+RegistrationInstructionsResponse         # p
+RequestForPositions                      # AN
+RequestForPositionsAck                   # AO
+SecurityDefinition                       # d
+SecurityDefinitionRequest                # c
+SecurityDefinitionUpdateReport           # BP
+SecurityList                             # y
+SecurityListRequest                      # x
+SecurityListUpdateReport                 # BK
+SecurityStatus                           # f
+SecurityStatusRequest                    # e
+SecurityTypeRequest                      # v
+SecurityTypes                            # w
+SettlementInstructionRequest             # AV
+SettlementInstructions                   # T
+TradeCaptureReport                       # AE
+TradeCaptureReportAck                    # AR
+TradeCaptureReportRequest                # AD
+TradeCaptureReportRequestAck             # AQ
+TradingSessionList                       # BJ
+TradingSessionListRequest                # BI
+TradingSessionStatus                     # h
+TradingSessionStatusRequest              # g
+UserRequest                              # BE
+UserResponse                             # BF

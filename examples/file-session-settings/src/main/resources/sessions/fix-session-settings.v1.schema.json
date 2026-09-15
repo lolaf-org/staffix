@@ -1,0 +1,387 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "$defs" : {
+    "DayOfWeek" : {
+      "type" : "string",
+      "enum" : [ "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY" ]
+    },
+    "Map(String,String)" : {
+      "type" : "object"
+    },
+    "TimeUnit" : {
+      "type" : "string",
+      "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS" ]
+    }
+  },
+  "type" : "object",
+  "properties" : {
+    "advertiseApplicationOnLogon" : {
+      "type" : "boolean"
+    },
+    "advertiseEngineOnLogon" : {
+      "type" : "boolean"
+    },
+    "advertiseMsgTypeGrpOnLogon" : {
+      "type" : "boolean"
+    },
+    "allowedAddresses" : {
+      "type" : "array",
+      "items" : {
+        "type" : "object"
+      }
+    },
+    "allowedCertificates" : {
+      "type" : "array",
+      "items" : {
+        "type" : "object",
+        "properties" : {
+          "filePath" : {
+            "type" : "string"
+          },
+          "type" : {
+            "type" : "string"
+          }
+        }
+      }
+    },
+    "cancelOnDisconnectSettings" : {
+      "type" : "object",
+      "properties" : {
+        "cancelOnDisconnectType" : {
+          "type" : "string",
+          "enum" : [ "DO_NOT_CANCEL_ON_DISCONNECT_OR_LOGOUT", "CANCEL_ON_DISCONNECT_ONLY", "CANCEL_ON_LOGOUT_ONLY", "CANCEL_ON_DISCONNECT_OR_LOGOUT" ]
+        },
+        "cancelOnDisconnectTypeFieldCode" : {
+          "type" : "integer"
+        },
+        "cancelOnDisconnectTypeFieldCodes" : {
+          "type" : "object"
+        },
+        "codTimeoutWindow" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        },
+        "codTimeoutWindowFieldCode" : {
+          "type" : "integer"
+        },
+        "codTimeoutWindowScale" : {
+          "$ref" : "#/$defs/TimeUnit"
+        },
+        "enabled" : {
+          "type" : "boolean"
+        }
+      }
+    },
+    "desiredSessionState" : {
+      "type" : "string",
+      "enum" : [ "LOGGED_IN", "LOGGED_OUT", "CONNECTED", "DISCONNECTED" ]
+    },
+    "dictionaryId" : {
+      "type" : "string"
+    },
+    "disconnectMessagesFlushDeadline" : {
+      "type" : "string",
+      "format" : "duration",
+      "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+      "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+    },
+    "disconnectOnRemove" : {
+      "type" : "boolean"
+    },
+    "enabledLogonNextExpectedMsgSeqNum" : {
+      "type" : "boolean"
+    },
+    "fixApplicationFactoryInstanceId" : {
+      "type" : "string"
+    },
+    "fixApplicationInstanceId" : {
+      "type" : "string"
+    },
+    "fixApplicationSessionSettings" : {
+      "$ref" : "#/$defs/Map(String,String)"
+    },
+    "fixMessageLoggerInstanceId" : {
+      "type" : "string"
+    },
+    "fixMessageStoreInstanceId" : {
+      "type" : "string"
+    },
+    "fixSessionId" : {
+      "type" : "object",
+      "properties" : {
+        "fixTSession" : {
+          "type" : "boolean"
+        },
+        "fixVersion" : {
+          "type" : "string",
+          "minLength" : 1
+        },
+        "group" : {
+          "type" : "string"
+        },
+        "id" : {
+          "type" : "string",
+          "minLength" : 1
+        },
+        "senderCompID" : {
+          "type" : "string",
+          "minLength" : 1
+        },
+        "senderLocationID" : {
+          "type" : "string"
+        },
+        "senderSubID" : {
+          "type" : "string"
+        },
+        "targetCompID" : {
+          "type" : "string",
+          "minLength" : 1
+        },
+        "targetLocationID" : {
+          "type" : "string"
+        },
+        "targetSubID" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "fixVersion", "id", "senderCompID", "targetCompID" ]
+    },
+    "fixSessionPluginsInstanceIds" : {
+      "$ref" : "#/$defs/Map(String,String)"
+    },
+    "fixSessionType" : {
+      "type" : "string",
+      "enum" : [ "INITIATOR", "ACCEPTOR" ]
+    },
+    "heartBeatInterval" : {
+      "type" : "object",
+      "properties" : {
+        "acceptorLowerBoundInterval" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        },
+        "acceptorUpperBoundInterval" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        },
+        "initiatorInterval" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        }
+      }
+    },
+    "logInOrOutResponseTimeout" : {
+      "type" : "string",
+      "format" : "duration",
+      "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+      "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+    },
+    "maxMessagesResentPerRequest" : {
+      "type" : "integer"
+    },
+    "maxOutOfSequenceMessagesQueued" : {
+      "type" : "integer"
+    },
+    "maxOutgoingMessagesHeldDuringRecovery" : {
+      "type" : "integer"
+    },
+    "messageEncodersDirectByteBuffers" : {
+      "type" : "boolean"
+    },
+    "pooledMessageEncodersDirectByteBuffers" : {
+      "type" : "boolean"
+    },
+    "resendRequestRange" : {
+      "type" : "string",
+      "enum" : [ "CLOSED", "OPEN_ENDED" ]
+    },
+    "resendRequestResponseTimeout" : {
+      "type" : "string",
+      "format" : "duration",
+      "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+      "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+    },
+    "resetSeqNumOnLogon" : {
+      "type" : "boolean"
+    },
+    "restartLiveSessionOnUpdate" : {
+      "type" : "boolean"
+    },
+    "rttMeasurementSettings" : {
+      "type" : "object",
+      "properties" : {
+        "emaTimeWindow" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        },
+        "maxAcceptedRtt" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        },
+        "probeInterval" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        },
+        "probeTestReqIdPrefix" : {
+          "type" : "string"
+        },
+        "sendingTimeToWireDelay" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        }
+      }
+    },
+    "sendingTimeAccuracy" : {
+      "$ref" : "#/$defs/TimeUnit"
+    },
+    "sessionScheduleSettings" : {
+      "type" : "object",
+      "properties" : {
+        "nonStopSchedules" : {
+          "type" : "array",
+          "items" : {
+            "type" : "object",
+            "properties" : {
+              "dayOfWeek" : {
+                "$ref" : "#/$defs/DayOfWeek"
+              },
+              "initiatesReset" : {
+                "type" : "boolean"
+              },
+              "sequenceResetTime" : {
+                "type" : "string",
+                "pattern" : "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$",
+                "description" : "Local time of day (ISO-8601, no zone), e.g. 09:30, 10:10:11, 10:10:10.099999999"
+              }
+            },
+            "required" : [ "dayOfWeek" ]
+          }
+        },
+        "outsideSessionTimePreTriggerDelay" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        },
+        "sessionSchedules" : {
+          "type" : "array",
+          "items" : {
+            "type" : "object",
+            "properties" : {
+              "endDay" : {
+                "$ref" : "#/$defs/DayOfWeek"
+              },
+              "endTime" : {
+                "type" : "string",
+                "pattern" : "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$",
+                "description" : "Local time of day (ISO-8601, no zone), e.g. 09:30, 10:10:11, 10:10:10.099999999"
+              },
+              "startDay" : {
+                "$ref" : "#/$defs/DayOfWeek"
+              },
+              "startTime" : {
+                "type" : "string",
+                "pattern" : "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$",
+                "description" : "Local time of day (ISO-8601, no zone), e.g. 09:30, 10:10:11, 10:10:10.099999999"
+              }
+            },
+            "required" : [ "endDay", "endTime", "startDay", "startTime" ]
+          }
+        },
+        "timeZone" : {
+          "type" : "object"
+        },
+        "withinSessionCheckInterval" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        }
+      }
+    },
+    "testingMode" : {
+      "type" : "boolean"
+    },
+    "validationSettings" : {
+      "type" : "object",
+      "properties" : {
+        "allowUndefinedTagsForMessage" : {
+          "type" : "boolean"
+        },
+        "allowUnknownFields" : {
+          "type" : "boolean"
+        },
+        "allowUserDefinedFields" : {
+          "type" : "boolean"
+        },
+        "detectGarbledMessages" : {
+          "type" : "boolean"
+        },
+        "expectedDeliverToCompIds" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "expectedOnBehalfOfCompIds" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "maxMessageSize" : {
+          "type" : "integer",
+          "exclusiveMinimum" : 0
+        },
+        "maxSendingTime" : {
+          "type" : "string",
+          "format" : "duration",
+          "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+          "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+        },
+        "requiredPeerMaxMessageSize" : {
+          "type" : "integer",
+          "exclusiveMinimum" : 0
+        },
+        "validateBeginString" : {
+          "type" : "boolean"
+        },
+        "validateChecksum" : {
+          "type" : "boolean"
+        },
+        "validateCompId" : {
+          "type" : "boolean"
+        },
+        "validateDuplicateTags" : {
+          "type" : "boolean"
+        },
+        "validateFieldsHaveValues" : {
+          "type" : "boolean"
+        },
+        "validateFieldsOutOfOrder" : {
+          "type" : "boolean"
+        },
+        "validateRequiredFields" : {
+          "type" : "boolean"
+        }
+      }
+    }
+  },
+  "required" : [ "fixSessionId", "fixSessionType" ]
+}

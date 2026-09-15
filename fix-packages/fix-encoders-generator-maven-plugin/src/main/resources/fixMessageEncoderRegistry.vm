@@ -1,0 +1,70 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package $packageName;
+
+import org.lolaf.staffix.api.codec.FixMessageEncoder;
+import org.lolaf.staffix.api.codec.FixMessageEncodingListener;
+import org.lolaf.staffix.api.time.Clock;
+import java.lang.reflect.Constructor;
+import java.nio.ByteBuffer;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.IntFunction;
+
+#if (${referencesDeprecated})
+// a deprecated message still has an encoder, and the registry still has to hold it
+@SuppressWarnings("deprecation")
+#end
+class FixMessageEncoderRegistry {
+
+    private static final Map<Class<? extends FixMessageEncoder<?>>, Constructor<? extends FixMessageEncoder<?>>> CONSTRUCTORS_BY_CLASS = new IdentityHashMap<>();
+
+    static {
+#foreach($encoder in $encoders)
+        register(${encoder.className}.class);
+#end
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void register(Class<? extends FixMessageEncoder<?>> encoderClass) {
+        try {
+            Constructor<? extends FixMessageEncoder<?>> constructor =
+                    (Constructor<? extends FixMessageEncoder<?>>) encoderClass.getDeclaredConstructor(Consumer.class, IntFunction.class, FixMessageEncodingListener.class, Clock.class);
+            CONSTRUCTORS_BY_CLASS.put(encoderClass, constructor);
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException("Encoder " + encoderClass.getName() + " missing (Consumer, IntFunction, FixMessageEncodingListener, Clock) constructor", e);
+        }
+    }
+
+    static boolean containsEncoder(Class<? extends FixMessageEncoder> encoderClass) {
+        return CONSTRUCTORS_BY_CLASS.containsKey(encoderClass);
+    }
+
+    @SuppressWarnings("unchecked")
+    static <T extends FixMessageEncoder<?>> T newInstance(Class<T> encoderClass, Consumer<FixMessageEncoder<?>> releaser,
+                                                          IntFunction<ByteBuffer> allocator, FixMessageEncodingListener listener, Clock clock) {
+        Constructor<? extends FixMessageEncoder<?>> constructor = CONSTRUCTORS_BY_CLASS.get(encoderClass);
+        if (constructor == null) {
+            throw new IllegalArgumentException("No encoder registered for class " + encoderClass.getName());
+        }
+        try {
+            return (T) constructor.newInstance(releaser, allocator, listener, clock);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create encoder " + encoderClass.getName(), e);
+        }
+    }
+}

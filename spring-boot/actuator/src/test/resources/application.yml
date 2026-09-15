@@ -1,0 +1,43 @@
+staffix:
+  enabled: true
+  engine:
+    instance-id: default
+
+  acceptors:
+    primary:
+      instance-id: ACCEPTOR
+      bind-address: "localhost:17021"
+      target-sessions-settings-store-instance-ids:
+        - ACCEPTOR
+      io-workers:
+        thread-groups:
+          - name: default
+            io-thread-count: 1
+            select-strategy: WAKEUP
+      message-executor:
+        executors-threads-count: 1
+        idle-strategy: WAIT_NOTIFY
+
+  initiators:
+    primary:
+      instance-id: INITIATOR_1
+      fix-session-id:
+        id: test
+        fix-version: VERSION_44
+        sender-comp-id: INITIATOR_1
+        target-comp-id: ACCEPTOR
+      connect-addresses:
+        - "localhost:17021"
+      connection-retry: PT1S
+      io-workers:
+        thread-groups:
+          - name: default
+            io-thread-count: 1
+            select-strategy: WAKEUP
+      message-executor:
+        executors-threads-count: 1
+        idle-strategy: WAIT_NOTIFY
+
+  actuator:
+    enabled: true
+    fixSessionStateContributesToHeathStatus: true

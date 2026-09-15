@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-fix-packages-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>staffix-fix-latest</artifactId>
+
+    <name>Staffix FIX Latest Encoders</name>
+    <description>
+        Encoders for FIX Latest, cut to every application message of FIX 4.4 as FIX Latest describes it today: the
+        whole standard is 173 messages and some 35,000 classes. Pair it with staffix-fixt-11 for the session layer.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.fixlatest</automatic.module.name>
+        <fixlatest.dictionary>${project.basedir}/src/main/dictionaries/fix-latest-minimal.xml</fixlatest.dictionary>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-codec</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- This module has no hand-written source: its encoders, fields and message types are generated
+                 from the dictionary in src/main/dictionaries, so javadoc reads nothing and produces nothing.
+                 Keeping it that way is deliberate - fix-latest alone generates some 20,000 classes.
+                 Central requires a -javadoc.jar (and a -sources.jar) for every artifact whose packaging is
+                 not pom, and sanctions a placeholder where neither can be produced: "if you cannot provide
+                 sources or documentation, we allow uploading placeholder .jar files in order to pass
+                 validation". src/placeholder/README.md says so and points at where to look instead. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>placeholder-javadoc-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>javadoc</classifier>
+                            <classesDirectory>${project.basedir}/src/placeholder</classesDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <configuration>
+                    <dictionaryFile>${fixlatest.dictionary}</dictionaryFile>
+                    <sourcesOutputDirectory>${project.build.directory}/generated-sources/</sourcesOutputDirectory>
+                    <packageName>org.lolaf.staffix.fixlatest</packageName>
+                    <dictionaryId>default</dictionaryId>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>net.revelc.code.formatter</groupId>
+                <artifactId>formatter-maven-plugin</artifactId>
+                <version>2.24.1</version>
+                <configuration>
+                    <directories>
+                        <directory>${project.build.directory}/generated-sources</directory>
+                    </directories>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>format</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!--
+          Regenerates src/main/dictionaries/fix-latest-minimal.xml, on demand and by hand, the way every other
+          fix-* module regenerates the dictionary it keeps in its source tree. Run it after editing
+          fix-latest-messages.txt, or after the FIX Orchestra repository in fix-orchestra is replaced:
+
+              mvn -Porchestra-dictionary initialize -pl fix-packages/fix-latest
+
+          Two steps, both at initialize and in this order, which is the order they are declared in:
+
+          1. the orchestration in, a dictionary out, cut to the messages fix-latest-messages.txt names. No
+             upToVersion, so this is FIX Latest as of whichever extension pack the repository carries - the versions
+             goal prints it - and no session layer either, since from FIX.5.0 the header, trailer and session
+             messages belong to FIXT.1.1 and the fixt-11 module carries them.
+
+          2. the sanitizer over that dictionary, taking out the components and fields the kept messages no longer
+             reach. The generator leaves those whole on purpose; reachability is written once, here.
+        -->
+        <profile>
+            <id>orchestra-dictionary</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.lolaf.staffix</groupId>
+                        <artifactId>staffix-fix-orchestra-dictionary-generator-maven-plugin</artifactId>
+                        <version>${project.version}</version>
+                        <configuration>
+                            <orchestration>${orchestration.file}</orchestration>
+                            <markDeprecated>${orchestration.markDeprecated}</markDeprecated>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>versions</id>
+                                <phase>initialize</phase>
+                                <goals>
+                                    <goal>versions</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>orchestra-dictionary</id>
+                                <phase>initialize</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <includeMessagesFile>
+                                        ${project.basedir}/src/main/dictionaries/fix-latest-messages.txt
+                                    </includeMessagesFile>
+                                    <outputFile>${project.build.directory}/generated-resources/fix-dictionary.xml
+                                    </outputFile>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.lolaf.staffix</groupId>
+                        <artifactId>staffix-fix-dictionary-sanitizer-maven-plugin</artifactId>
+                        <version>${project.version}</version>
+                        <executions>
+                            <execution>
+                                <id>sanitize-dictionary</id>
+                                <phase>initialize</phase>
+                                <goals>
+                                    <goal>sanitize</goal>
+                                </goals>
+                                <configuration>
+                                    <inputFile>${project.build.directory}/generated-resources/fix-dictionary.xml
+                                    </inputFile>
+                                    <outputFile>${fixlatest.dictionary}</outputFile>
+                                    <!--
+                                      MsgType's values are the catalogue of message types, not a list of what this
+                                      dictionary happens to encode. Pruned to the messages kept here it would
+                                      contradict fixt-11, which carries the session types, so it is left alone -
+                                      FIX50SP2.xml keeps all of its 169 for the same reason.
+                                    -->
+                                    <sanitizeMsgTypeField>false</sanitizeMsgTypeField>
+                                    <!--
+                                      From FIX.5.0 the header and the trailer are empty and the session layer lives
+                                      in FIXT.1.1, so nothing in this dictionary references these and every one of
+                                      them would go. fix-50sp2 has them; so does this.
+                                    -->
+                                    <keepFields>
+                                        <keepField>BeginString</keepField>
+                                        <keepField>BodyLength</keepField>
+                                        <keepField>MsgType</keepField>
+                                        <keepField>MsgSeqNum</keepField>
+                                        <keepField>SenderCompID</keepField>
+                                        <keepField>TargetCompID</keepField>
+                                        <keepField>SendingTime</keepField>
+                                        <keepField>CheckSum</keepField>
+                                        <keepField>ApplVerID</keepField>
+                                    </keepFields>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+          The whole standard: every message FIX Latest holds, generated into target and never checked in. Not a
+          package anyone should depend on - it is 173 messages, some 35,000 classes and around 400 MB of
+          target/classes - but it is how a new extension pack gets proven to generate before the message list is
+          widened, and it is what tells us the generator still copes with everything the repository can throw at it.
+        -->
+        <profile>
+            <id>full-fix-latest</id>
+            <properties>
+                <fixlatest.dictionary>${project.build.directory}/generated-resources/fix-dictionary.xml
+                </fixlatest.dictionary>
+                <maven.javadoc.skip>true</maven.javadoc.skip>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.lolaf.staffix</groupId>
+                        <artifactId>staffix-fix-orchestra-dictionary-generator-maven-plugin</artifactId>
+                        <version>${project.version}</version>
+                        <configuration>
+                            <orchestration>${orchestration.file}</orchestration>
+                            <markDeprecated>${orchestration.markDeprecated}</markDeprecated>
+                            <outputFile>${fixlatest.dictionary}</outputFile>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>versions</id>
+                                <phase>initialize</phase>
+                                <goals>
+                                    <goal>versions</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <!-- initialize, not generate-resources: the encoders generator reads this file at
+                                     generate-sources, which Maven runs first of the two -->
+                                <id>full-dictionary</id>
+                                <phase>initialize</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

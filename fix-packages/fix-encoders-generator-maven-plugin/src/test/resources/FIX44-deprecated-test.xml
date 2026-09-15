@@ -1,0 +1,81 @@
+<!--
+
+    Copyright © 2024-2026 Lolaf.org
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<!--
+  A dictionary carrying the deprecation attributes the orchestra dictionary generator writes with markDeprecated on,
+  small enough to read whole. A hand written QuickFIX dictionary has none of them, which is the other half of what is
+  being tested: the same generator over a file without them has to produce what it always produced.
+
+  One of each thing deprecation can be attached to, and above all the two that differ:
+    - Retired(1234) is deprecated as a field, so the class is, and so is every setter that takes it
+    - Account(1) is a current field that DeprecatedThings is deprecated in using, so only that one setter is
+    - LegacyBits(1235) has one deprecated value among current ones
+    - the NoLegs group is deprecated as a whole, and its members are not marked one by one because the class is
+    - the Legacy component is deprecated, and it has no class of its own, so what it contributes is marked instead
+    - OldMessage is a deprecated message
+-->
+<fix major="4" minor="4">
+    <header>
+        <field name="BeginString" required="Y"/>
+        <field name="BodyLength" required="Y"/>
+        <field name="MsgType" required="Y"/>
+        <field name="MsgSeqNum" required="Y"/>
+    </header>
+    <trailer>
+        <field name="CheckSum" required="Y"/>
+    </trailer>
+    <messages>
+        <message name="DeprecatedThings" msgtype="ZD" msgcat="app">
+            <field name="Account" required="N" deprecated="true"/>
+            <field name="Retired" required="N"/>
+            <field name="LegacyBits" required="N"/>
+            <component name="Legacy" required="N"/>
+            <component name="Current" required="N"/>
+            <group name="NoLegs" required="N" deprecated="true">
+                <field name="LegSymbol" required="N"/>
+            </group>
+        </message>
+        <message name="OldMessage" msgtype="ZO" msgcat="app" deprecated="true">
+            <field name="Account" required="N"/>
+        </message>
+    </messages>
+    <components>
+        <component name="Legacy" deprecated="true">
+            <field name="LegacyText" required="N"/>
+        </component>
+        <component name="Current">
+            <field name="CurrentText" required="N"/>
+        </component>
+    </components>
+    <fields>
+        <field number="8" name="BeginString" type="STRING"/>
+        <field number="9" name="BodyLength" type="LENGTH"/>
+        <field number="34" name="MsgSeqNum" type="SEQNUM"/>
+        <field number="35" name="MsgType" type="STRING"/>
+        <field number="10" name="CheckSum" type="STRING"/>
+        <field number="1" name="Account" type="STRING"/>
+        <field number="555" name="NoLegs" type="NUMINGROUP"/>
+        <field number="600" name="LegSymbol" type="STRING"/>
+        <field number="1234" name="Retired" type="STRING" deprecated="true"/>
+        <field number="1235" name="LegacyBits" type="CHAR">
+            <value enum="A" description="STILL_GOOD"/>
+            <value enum="B" description="GONE_BAD" deprecated="true"/>
+        </field>
+        <field number="1236" name="LegacyText" type="STRING"/>
+        <field number="1237" name="CurrentText" type="STRING"/>
+    </fields>
+</fix>

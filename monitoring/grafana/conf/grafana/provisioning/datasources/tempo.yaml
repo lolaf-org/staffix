@@ -1,0 +1,23 @@
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: tempoUID
+    access: proxy
+    url: http://tempo:3200
+    basicAuth: false
+    isDefault: true
+    version: 1
+    editable: false
+    apiVersion: 1
+    jsonData:
+      httpMethod: GET
+      httpHeaderName1: 'X-Scope-Orgid'
+      # Stream partial TraceQL results over gRPC as they are found.
+      # Requires `stream_over_http_enabled: true` in tempo.yaml.
+      streamingEnabled:
+        search: true    # stream TraceQL search query results
+        metrics: true   # stream TraceQL metrics query results
+    secureJsonData:
+      httpHeaderValue1: 'tenant-1'

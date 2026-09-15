@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-messages-store-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>staffix-messages-store-test-kit</artifactId>
+
+    <name>Staffix Message Store Test Kit</name>
+    <description>
+        The contract every message store must satisfy, shipped as a test-jar. Each store subclasses these abstract
+        tests, so a behavioural difference between stores fails the build rather than hiding in one store's own
+        tests.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.stores.messages.testkit</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <!--
+            Compile scope, not test: everything in this module lives in src/test and ships as a test-jar,
+            and a test-jar's consumers inherit the dependencies its POM declares at compile scope. The
+            contract classes expose FixMessagesStore, FixSessionId and MessageType in their own signatures,
+            so a store extending them needs staffix-api without having to repeat the declaration.
+        -->
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- This module is test-only code with no src/main/java, so neither javadoc nor the source plugin
+                 produces anything.
+                 Central requires a -javadoc.jar (and a -sources.jar) for every artifact whose packaging is
+                 not pom, and sanctions a placeholder where neither can be produced: "if you cannot provide
+                 sources or documentation, we allow uploading placeholder .jar files in order to pass
+                 validation". src/placeholder/README.md says so and points at where to look instead. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>placeholder-javadoc-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>javadoc</classifier>
+                            <classesDirectory>${project.basedir}/src/placeholder</classesDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>placeholder-sources-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>sources</classifier>
+                            <classesDirectory>${project.basedir}/src/placeholder</classesDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Generate test-jar artifact -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                        <configuration>
+                            <!-- The classes are all in src/test, so the test-jar is the artifact that
+                                 lands on a consumer's module path; default-jar's manifest entries do not
+                                 reach a separate execution. -->
+                            <archive>
+                                <manifestEntries>
+                                    <Automatic-Module-Name>${automatic.module.name}</Automatic-Module-Name>
+                                </manifestEntries>
+                            </archive>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,44 @@
+services:
+
+  grafana:
+    image: grafana/grafana-enterprise:13.0.3
+    ports:
+      - 3000:${GRAFANA_PORT}
+    volumes:
+      - ${GRAFANA_CONF}:/etc/grafana/grafana.ini
+      - ${GRAFANA_PROVISIONING}:/etc/grafana/provisioning/
+
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ${PROMETHEUS_CONF}:/etc/prometheus/prometheus.yml
+
+  loki:
+    image: grafana/loki:3.7.3
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  tempo:
+    image: grafana/tempo:3.0.0
+    command: [ "-config.file=/etc/tempo.yaml", "-target=all" ]
+    volumes:
+      - ${TEMPO_CONF}:/etc/tempo.yaml
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.158.0
+    ports:
+      - 4318:${OTEL_HTTP_PORT}
+      - 4317:${OTEL_GRPC_PORT}
+    command: --config=/etc/otel/config.yaml
+    volumes:
+      - ${OTEL_CONF}:/etc/otel/config.yaml
+
+volumes:
+  workdir:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-spring-boot-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../../spring-boot/pom.xml</relativePath>
+    </parent>
+    <artifactId>staffix-sessions-settings-store-memory-spring-boot</artifactId>
+
+    <name>Staffix In-Memory Session Settings Store (Spring Boot)</name>
+    <description>
+        Spring Boot auto-configuration for the in-memory session settings store, so sessions can be declared
+        entirely in staffix.* properties.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.stores.sessions.memory.spring</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-sessions-settings-store-memory-impl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-spring-boot-spi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+</project>

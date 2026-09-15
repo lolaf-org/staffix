@@ -1,0 +1,13 @@
+# Initiator-side session: INITIATOR_2 -> ACCEPTOR.
+# fixVersion, group, instance ids and heartbeat are inherited from default.yaml.
+#
+# The id shows a partial placeholder: only part of the value is substituted, and the
+# default after the second colon is empty, so unset it reads "initiator2" and
+# `-Dstaffix.example.initiator.prefix=uat-` makes it "uat-initiator2". The id labels
+# the session locally - the acceptor pairs on senderCompID/targetCompID - so prefixing
+# it does not have to be matched on the other side.
+# yaml-language-server: $schema=../fix-session-settings.v1.schema.json
+fixSessionId:
+  id: "${sysprop:staffix.example.initiator.prefix:}initiator2"
+  senderCompID: "INITIATOR_2"
+  targetCompID: "ACCEPTOR"

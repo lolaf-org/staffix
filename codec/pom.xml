@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>staffix-codec</artifactId>
+
+    <name>Staffix Message Codec</name>
+    <description>
+        The encoding and decoding engine: the base classes every generated encoder extends, the field setters that
+        bind a value to a tag, and the decoders that present a wire message as a DecodedFixMessage. Built on
+        staffix-serde and used by every generated FIX package.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.codec</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-serde</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-messages-logger-core</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.ringos</groupId>
+            <artifactId>ringos-unsafe-operations-impl-all</artifactId>
+            <version>${ringos.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <configuration>
+                    <dictionaryFile>${project.basedir}/src/test/resources/FIX44-tests.xml</dictionaryFile>
+                    <sourcesOutputDirectory>${project.build.directory}/generated-test-sources/</sourcesOutputDirectory>
+                    <resourcesOutputDirectory>${project.build.directory}/test-classes/</resourcesOutputDirectory>
+                    <packageName>org.lolaf.staffix.tests.fix44</packageName>
+                    <dictionaryId>tests</dictionaryId>
+                    <!-- This dictionary exists to exercise the encoders, so its output must not reach
+                         target/classes: it was 1,421 of the published jar's 1,506 entries. -->
+                    <testSources>true</testSources>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

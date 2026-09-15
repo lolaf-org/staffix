@@ -1,0 +1,22 @@
+# Shared defaults for every initiator-side session in this directory.
+# Fields set here are merged into the per-session files below, demonstrating the
+# default.yaml merge feature of the YAML file session settings store.
+#
+# heartBeatInterval below also demonstrates a ${...} placeholder: it is resolved
+# when the file is loaded, from a system property here, falling back to the value
+# after the second colon when the property is not set - so this file runs as-is,
+# and `-Dstaffix.example.heartbeat=PT5S` changes it without editing the file.
+# Note the field is a Duration, not a String: placeholders are resolved on the
+# parsed file before it is bound, so they work in a field of any type.
+# yaml-language-server: $schema=../fix-session-settings.v1.schema.json
+fixSessionId:
+  fixVersion: "FIX.4.4"
+  group: "example-group"
+fixSessionType: "INITIATOR"
+fixApplicationFactoryInstanceId: "INITIATOR"
+fixApplicationInstanceId: "initiatorApp"
+fixMessageStoreInstanceId: "INITIATOR"
+fixMessageLoggerInstanceId: "INITIATOR"
+resetSeqNumOnLogon: true
+heartBeatInterval:
+  initiatorInterval: "${sysprop:staffix.example.heartbeat:PT2S}"

@@ -1,0 +1,231 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package $packageName;
+
+import org.lolaf.staffix.api.version.FixVersion;
+import org.lolaf.staffix.api.fields.FieldsRegistry;
+import org.lolaf.staffix.api.msg.MessageFieldsRegistry;
+import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.msg.MessageTypeRegistry;
+import org.lolaf.staffix.api.fields.FieldType;
+import org.lolaf.staffix.api.fields.FixField;
+import org.lolaf.staffix.collections.IndexableList;
+import org.lolaf.staffix.collections.ImmutableIndexableList;
+import org.lolaf.staffix.collections.IndexableMap;
+import ${packageName}.MessageTypes;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collections;
+
+abstract class AbstractMessageFieldsRegistry implements MessageFieldsRegistry {
+
+    final static String TARGET_DICTIONARY_ID = "${dictionaryId}";
+
+    private final Map<MessageType, FixMessageFields> fixMessagesFields;
+
+    public AbstractMessageFieldsRegistry(FieldsRegistry fieldsRegistry, FixVersion fixVersion) {
+        this.fixMessagesFields = new IndexableMap<>(MessageType.class);
+        for (MessageTypes msg : MessageTypes.values()) {
+            String resourceName = fixVersion.getId() + "." + TARGET_DICTIONARY_ID + "." + msg.name() + ".fieldsInfo";
+            try (InputStream fields = this.getClass().getClassLoader().getResourceAsStream(resourceName)) {
+                if (fields == null) {
+                    throw new IllegalStateException("Unable to find resource " + resourceName + " in classpath");
+                }
+                Collection<FixField> orderedFields = new ArrayList<>();
+                Collection<FixField> requiredFields = new IndexableList<>(FixField.class);
+                Map<FixField, Collection<FixField>> orderedGroupFields = new IndexableMap<>(FixField.class);
+                Map<FixField, Collection<FixField>> requiredGroupFields = new IndexableMap<>(FixField.class);
+                String[] entries = new String(fields.readAllBytes()).split("\n");
+                Arrays.stream(entries)
+                    .filter(e -> !e.isEmpty())
+                    .forEach(fieldInfo ->
+                    parseFieldEntry(fieldsRegistry, fieldInfo, fieldInfo.split(","), orderedFields, requiredFields, orderedGroupFields, requiredGroupFields));
+                fixMessagesFields.put(msg, new FixMessageFieldsImpl(orderedFields, requiredFields, orderedGroupFields, requiredGroupFields));
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to process fields resource " + resourceName + ". Should have never happened", e);
+            }
+        }
+    }
+
+    @Override
+    public Collection<MessageType> getManagedMessageTypes() {
+        return fixMessagesFields.keySet();
+    }
+
+    @Override
+    public FixMessageFields getFixMessageFields(MessageType messageType) {
+        return fixMessagesFields.get(messageType);
+    }
+
+    void parseFieldEntry(FieldsRegistry fieldsRegistry, String fieldInfo, String[] fieldInfoFields,
+            Collection<FixField> orderedFields, Collection<FixField> requiredFields, Map<FixField, Collection<FixField>> orderedGroupFields,
+            Map<FixField, Collection<FixField>> requiredGroupFields) {
+        int fieldCode = Integer.parseInt(fieldInfoFields[0]);
+        int parentGroupField = Integer.parseInt(fieldInfoFields[1]);
+        boolean groupField = fieldInfoFields[2].equals("y");
+        boolean required = fieldInfoFields[3].equals("y");
+        FixField fixField = fieldsRegistry.find(fieldCode);
+        if (parentGroupField == -1) {
+            orderedFields.add(fixField);
+            if (required) {
+                requiredFields.add(fixField);
+            }
+        } else if (groupField && parentGroupField != -1) {
+            // child group field
+            orderedGroupFields.computeIfAbsent(fieldsRegistry.find(parentGroupField), f -> new ArrayList<>()).add(fixField);
+            if (required) {
+                requiredGroupFields.computeIfAbsent(fieldsRegistry.find(parentGroupField), f -> new IndexableList<>(FixField.class)).add(fixField);
+            }
+        } else {
+            throw new IllegalStateException("Invalid state");
+        }
+    }
+
+    private static class FixMessageFieldsImpl implements FixMessageFields {
+
+        private final Collection<FixField> orderedFields;
+        private final Collection<FixField> fields;
+        private final FixField[] requiredFields;
+        private final Collection<FixField> groupFields;
+        private final Map<FixField, Collection<FixField>> orderedGroupFields;
+        private final Map<FixField, Collection<FixField>> nonOrderedGroupFields;
+        private final Map<FixField, FixField[]> requiredGroupFields;
+        // for each group field, a compact lookup (sized to the member count, not the registry index range) from a
+        // member field to its declared order position within the group, precomputed once so out-of-order validation
+        // stays allocation-free on the parsing hot path
+        private final Map<FixField, GroupFieldOrder> groupFieldOrders;
+
+        FixMessageFieldsImpl(Collection<FixField> orderedFields, Collection<FixField> requiredFields,
+                Map<FixField, Collection<FixField>> orderedGroupFields, Map<FixField, Collection<FixField>> requiredGroupFields) {
+            this.orderedFields = Collections.unmodifiableCollection(orderedFields);
+            this.fields = new ImmutableIndexableList<>(FixField.class, orderedFields);
+            this.requiredFields =  requiredFields.toArray(new FixField[0]);
+            this.orderedGroupFields = orderedGroupFields;
+
+            Map<FixField, FixField[]> requiredGroupFieldsLocal = new IndexableMap<>(FixField.class);
+            requiredGroupFields.forEach((k,v) -> requiredGroupFieldsLocal.put(k, v.toArray(new FixField[0])));
+            this.requiredGroupFields = requiredGroupFieldsLocal;
+
+            Collection<FixField> groupFieldsLocal = new ArrayList<>();
+            this.orderedGroupFields.keySet().forEach(groupFieldsLocal::add);
+            this.groupFields = new ImmutableIndexableList<>(FixField.class, groupFieldsLocal);
+
+            this.nonOrderedGroupFields = new IndexableMap<>(FixField.class);
+            this.orderedGroupFields.forEach((field, groupFields) -> nonOrderedGroupFields.put(field, new ImmutableIndexableList<>(FixField.class, groupFields)));
+
+            this.groupFieldOrders = new IndexableMap<>(FixField.class);
+            this.orderedGroupFields.forEach((group, members) -> this.groupFieldOrders.put(group, buildOrderIndex(members)));
+        }
+
+        private static GroupFieldOrder buildOrderIndex(Collection<FixField> orderedMembers) {
+            int n = orderedMembers.size();
+            long[] packed = new long[n];
+            int declaredRank = 0;
+            for (FixField member : orderedMembers) {
+                // high 32 bits = registry index (sort key), low 32 bits = declared order rank
+                packed[declaredRank] = ((long) member.getAsInt() << 32) | declaredRank;
+                declaredRank++;
+            }
+            Arrays.sort(packed); // sorts by registry index, declared rank rides along in the low bits
+            int[] memberIndexAsc = new int[n];
+            int[] orderAtSorted = new int[n];
+            for (int k = 0; k < n; k++) {
+                memberIndexAsc[k] = (int) (packed[k] >>> 32);
+                orderAtSorted[k] = (int) packed[k];
+            }
+            return new GroupFieldOrder(memberIndexAsc, orderAtSorted);
+        }
+
+        @Override
+        public Collection<FixField> getGroupFields() {
+            return groupFields;
+        }
+
+        @Override
+        public Collection<FixField> getFields() {
+            return fields;
+        }
+
+        @Override
+        public Collection<FixField> getOrderedFields() {
+            return orderedFields;
+        }
+
+        @Override
+        public Collection<FixField> getMissingRequiredFields(Collection<FixField> receivedFields) {
+            return getMissingFields(requiredFields, receivedFields);
+        }
+
+        @Override
+        public Collection<FixField> getGroupOrderedFields(FixField groupField) {
+            return orderedGroupFields.get(groupField);
+        }
+
+        @Override
+        public int getGroupFieldOrder(FixField groupField, FixField field) {
+            GroupFieldOrder order = groupFieldOrders.get(groupField);
+            if (order == null) {
+                return -1;
+            }
+            int k = Arrays.binarySearch(order.memberIndexAsc, field.getAsInt());
+            return k < 0 ? -1 : order.orderAtSorted[k];
+        }
+
+        @Override
+        public Collection<FixField> getGroupFields(FixField groupField) {
+            return nonOrderedGroupFields.get(groupField);
+        }
+
+        @Override
+        public Collection<FixField> getGroupMissingRequiredFields(FixField groupField, Collection<FixField> receivedFields) {
+            return getMissingFields(requiredGroupFields.get(groupField), receivedFields);
+        }
+
+        private Collection<FixField> getMissingFields(FixField[] fields, Collection<FixField> receivedFields) {
+            if (fields == null) {
+                return Collections.emptyList();
+            }
+            Collection<FixField> missingFields = null;
+            for (FixField requiredField: fields) {
+                if (!receivedFields.contains(requiredField)) {
+                    if (missingFields == null) {
+                        missingFields = new ArrayList<>();
+                    }
+                    missingFields.add(requiredField);
+                }
+            }
+            return missingFields == null ? Collections.emptyList() : missingFields;
+        }
+    }
+
+    // compact per-group lookup (length == member count) from a member's registry index to its declared order rank;
+    // memberIndexAsc holds the members' registry indices sorted ascending (binary-search key), orderAtSorted holds
+    // the declared order rank of the member at that slot
+    private static final class GroupFieldOrder {
+        private final int[] memberIndexAsc;
+        private final int[] orderAtSorted;
+
+        GroupFieldOrder(int[] memberIndexAsc, int[] orderAtSorted) {
+            this.memberIndexAsc = memberIndexAsc;
+            this.orderAtSorted = orderAtSorted;
+        }
+    }
+}

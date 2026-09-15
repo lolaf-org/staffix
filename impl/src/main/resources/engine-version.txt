@@ -1,0 +1,3 @@
+engineName=Staffix
+engineVersion=${project.version}
+engineVendor=Lolaf

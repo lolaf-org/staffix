@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The other shape the main fixture cannot hold without moving the ladder every other test reads off it: the fields
+  FIXT.1.1 brought with it, dated the way the real repository dates them.
+
+  ApplVerID(1128) and DefaultApplVerID(1137) are drawn from the real repository. EP16 is where the FIX Trading
+  Community published FIXT.1.1, and the ladder puts EP16 inside FIX.4.4's range, so both fields carry
+  added="FIX.4.4" addedEP="16" and a cut to FIX.4.4 as amended keeps them on their stamps alone. The references are
+  the session layer as it stands now, which is FIXT.1.1's: 1128 on the header, 1137 required on the Logon.
+-->
+<fixr:repository xmlns:fixr="http://fixprotocol.io/2020/orchestra/repository" name="Fixture" version="Fixture_EP300">
+    <fixr:fields>
+        <fixr:field id="34" name="MsgSeqNum" type="SeqNum" added="FIX.2.7"/>
+        <fixr:field id="10" name="CheckSum" type="String" added="FIX.2.7"/>
+        <fixr:field id="98" name="EncryptMethod" type="int" added="FIX.2.7"/>
+        <fixr:field id="1128" name="ApplVerID" type="String" added="FIX.4.4" addedEP="16"/>
+        <fixr:field id="1137" name="DefaultApplVerID" type="String" added="FIX.4.4" addedEP="16"/>
+    </fixr:fields>
+
+    <fixr:components>
+        <fixr:component id="1024" name="StandardHeader" category="Session" added="FIX.4.0">
+            <fixr:fieldRef id="34" presence="required" added="FIX.4.0"/>
+            <fixr:fieldRef id="1128" added="FIX.4.4" addedEP="-1"/>
+        </fixr:component>
+        <fixr:component id="1025" name="StandardTrailer" category="Session" added="FIX.4.0">
+            <fixr:fieldRef id="10" presence="required" added="FIX.4.0"/>
+        </fixr:component>
+    </fixr:components>
+
+    <fixr:messages>
+        <fixr:message id="11" name="Logon" msgType="A" category="Session" added="FIX.2.7">
+            <fixr:structure>
+                <fixr:componentRef id="1024" presence="required" added="FIX.2.7"/>
+                <fixr:fieldRef id="98" presence="required" added="FIX.2.7"/>
+                <!-- required, because the repository states FIXT.1.1's Logon and there it is -->
+                <fixr:fieldRef id="1137" presence="required" added="FIX.4.4" addedEP="-1"/>
+                <fixr:componentRef id="1025" presence="required" added="FIX.2.7"/>
+            </fixr:structure>
+        </fixr:message>
+    </fixr:messages>
+</fixr:repository>

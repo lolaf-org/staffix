@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <packaging>pom</packaging>
+
+    <name>Staffix FIX Packages</name>
+    <description>
+        The generated encoder packages, one per FIX version, and the Maven plugins that generate them from a
+        dictionary.
+    </description>
+    <artifactId>staffix-fix-packages-parent</artifactId>
+
+    <properties>
+        <orchestration.file>
+            ${project.basedir}/../fix-orchestra/src/main/resources/fix-orchestra-latest.zip
+        </orchestration.file>
+        <orchestration.markDeprecated>true</orchestration.markDeprecated>
+    </properties>
+
+    <modules>
+        <module>fix-orchestra</module>
+        <module>fix-dictionary-sanitizer-maven-plugin</module>
+        <module>fix-encoders-generator-maven-plugin</module>
+        <module>fix-orchestra-dictionary-generator-maven-plugin</module>
+        <module>fix-42</module>
+        <module>fix-43</module>
+        <module>fix-44</module>
+        <module>fix-50</module>
+        <module>fix-50sp1</module>
+        <module>fix-50sp2</module>
+        <module>fixt-11</module>
+        <module>fix-latest</module>
+    </modules>
+
+</project>

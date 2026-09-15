@@ -1,0 +1,183 @@
+#*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *#
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package $packageName;
+
+#set($className=$field.name)
+import org.lolaf.staffix.api.fields.FixField;
+import org.lolaf.staffix.api.fields.FixField.IntValuesEnum;
+import org.lolaf.staffix.api.fields.FixField.StringValuesEnum;
+import org.lolaf.staffix.api.fields.FieldLocation;
+import static org.lolaf.staffix.api.fields.FieldLocation.${field.location.name()};
+import org.lolaf.staffix.api.fields.FieldType;
+import static org.lolaf.staffix.api.fields.FieldType.${field.type.name()};
+
+#if (${field.deprecated})
+/**
+ * @deprecated deprecated by the FIX standard. It stays here so that a peer still sending it can be decoded, and
+ *             should not be used in new work.
+ */
+@Deprecated
+#end
+public class ${field.name} implements FixField {
+
+    private final static ${field.name} INSTANCE = new ${field.name}();
+
+    public static ${field.name} get() {
+        return INSTANCE;
+    }
+
+    private final byte[] serialized;
+    #if (${fieldValues})
+    private final ${field.valuesEnumClass}[] values;
+    #end
+
+    private ${field.name}() {
+        serialized = (${field.number} + "=").getBytes();
+        #if (${fieldValues})
+        values = ${field.valuesEnumClass}.values();
+        #end
+    }
+
+    @Override
+    public int getAsInt() {
+        return $fieldIndex;
+    }
+
+    @Override
+    public int getCode() {
+        return ${field.number};
+    }
+
+    @Override
+    public byte[] serialized() {
+        return serialized;
+    }
+
+    @Override
+    public int checksum() {
+        return ${field.checksum};
+    }
+
+    @Override
+    public FieldType getType() {
+        return ${field.type.name()};
+    }
+
+    @Override
+    public FieldLocation getLocation() {
+        return ${field.location.name()};
+    }
+
+    @Override
+    public String toString() {
+        return ${field.name}.class.getSimpleName();
+    }
+
+#if (${fieldValues})
+
+    @Override
+    public boolean hasValues() {
+        return true;
+    }
+
+    @Override
+    public ${field.valuesEnumClass}[] getValues() {
+        return values;
+    }
+
+    public enum ${field.valuesEnumClass} implements ${field.enumType} {
+
+        #if (${fieldValues})
+        #foreach($v in ${fieldValues})
+        #if (${v.deprecated})
+        /** @deprecated deprecated by the FIX standard. */
+        @Deprecated
+        #end
+        ${v.text}
+        #end
+        #end
+
+        #if (${field.enumType} == "IntValuesEnum")
+        private final int code;
+        private final byte[] serialized;
+
+        ${field.name}Values(int code) {
+            this.code = code;
+            this.serialized = Integer.toString(code).getBytes();
+        }
+
+        @Override
+        public int code() {
+            return code;
+        }
+
+        @Override
+        public byte[] serialized() {
+            return serialized;
+        }
+        #elseif (${field.enumType} == "StringValuesEnum")
+        private final String code;
+        private final byte[] serialized;
+
+        ${field.name}Values(String code) {
+            this.code = code;
+            this.serialized = code.getBytes();
+        }
+
+        @Override
+        public String code() {
+            return code;
+        }
+
+        @Override
+        public byte[] serialized() {
+            return serialized;
+        }
+        #elseif (${field.enumType} == "CharValuesEnum")
+        private final char code;
+
+        ${field.name}Values(char code) {
+            this.code = code;
+        }
+
+        @Override
+        public char code() {
+            return code;
+        }
+        #end
+
+        @Override
+        public String description() {
+            return name();
+        }
+    }
+#end
+}

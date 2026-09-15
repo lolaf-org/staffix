@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>staffix-collections</artifactId>
+
+    <name>Staffix Collections</name>
+    <description>
+        Primitive-keyed maps and indexable lists for the message path: Int2ObjectHashMap, Long2ObjectHashMap,
+        IndexableList and IndexableMap. A lookup keyed by a tag or a sequence number neither boxes the key nor
+        allocates, which the JDK's equivalents cannot promise.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.collections</automatic.module.name>
+    </properties>
+
+    <!-- Self-contained low-allocation collections; no third-party runtime dependencies. -->
+</project>
