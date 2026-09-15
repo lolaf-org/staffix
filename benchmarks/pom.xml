@@ -25,7 +25,7 @@
         </javadoc.sourcepath>
         <quickfix.version>3.0.2</quickfix.version>
         <artio.version>0.181</artio.version>
-        <otel.version>1.65.0</otel.version>
+        <otel.version>1.66.0</otel.version>
     </properties>
 
     <dependencies>
