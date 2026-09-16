@@ -19,7 +19,8 @@ body:
   - type: textarea
     id: hotpath
     attributes:
-      label: Is this on a hot path
+      label: Is this on the message path
       description: >
-        Staffix will not put work on the publish or poll path for a feature that only some callers
-        need. If this belongs there, say what it would cost and why it is worth it.
+        Staffix will not put work on the message path - parsing, encoding, the session callbacks - for a
+        feature that only some sessions need; such a feature goes behind a setting that is off by default.
+        If this belongs there, say what it would cost and why it is worth it.

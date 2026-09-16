@@ -1,19 +1,19 @@
 name: Bug report
-description: Something in staffix behaves differently from what it documents
+description: Something in staffix behaves differently from what it documents, or from the FIX session protocol
 labels: [ bug ]
 body:
   - type: markdown
     attributes:
       value: |
-        Which implementation you got is decided at runtime, from the JDK and the flags the JVM was
-        started with, so the details below are usually what separates "a bug" from "a different
-        implementation than you think".
+        Most session behaviour - resends, sequence resets, logon and logout, heartbeats, cancel on disconnect -
+        is decided by the session settings and by what the counterparty sent, so the details below are usually
+        what separates "a bug" from "a different configuration than you think".
 
   - type: input
     id: version
     attributes:
       label: Staffix version
-      placeholder: "0.1.0"
+      placeholder: "0.9.0"
     validations:
       required: true
 
@@ -34,36 +34,46 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: flags
+  - type: input
+    id: session
     attributes:
-      label: JVM flags
-      description: >
-        The whole command line if you can. `--add-opens java.base/jdk.internal.misc=ALL-UNNAMED`,
-        `-XX:-RestrictContended` and `-XX:ContendedPaddingWidth` change which implementation is
-        selected and how the buffer is laid out.
-      render: shell
+      label: Session role and FIX version
+      description: Initiator or acceptor, the `staffix-fix-*` package in use, and the counterparty's engine if you know it.
+      placeholder: "initiator, staffix-fix-44, counterparty on QuickFIX/J 2.3"
+    validations:
+      required: true
 
   - type: textarea
-    id: selection
+    id: config
     attributes:
-      label: Which implementation was selected
+      label: Session configuration
       description: >
-        Staffix logs this at INFO on first use
-      render: shell
+        The session settings (the YAML file, the `FixSessionSettings` builder or the Spring properties),
+        including any validation settings you changed, and which message store and message logger are in use.
+      render: yaml
 
   - type: textarea
     id: what
     attributes:
       label: What happens, and what you expected instead
+      description: If the FIX session specification says what should happen, quote or cite the section.
     validations:
       required: true
+
+  - type: textarea
+    id: messages
+    attributes:
+      label: Messages exchanged
+      description: >
+        The relevant part of the message log, both directions, from the last logon to the problem.
+        Replace anything confidential, but keep the tags, sequence numbers and timestamps as they were.
+      render: text
 
   - type: textarea
     id: reproducer
     attributes:
       label: Reproducer
       description: >
-        The access type, the capacity, whether an element instance producer was passed, and the
-        smallest code that shows it. A failing test against the module in question is ideal.
+        The smallest code that shows it. A failing test against `staffix-impl`, or a scripted counterparty
+        sending the messages above, is ideal. Say whether it reproduces every time or only occasionally.
       render: java
