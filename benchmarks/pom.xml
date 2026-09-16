@@ -24,7 +24,7 @@
         <javadoc.sourcepath>${javadoc.delomboked.sources}${path.separator}${project.build.directory}/generated-sources
         </javadoc.sourcepath>
         <quickfix.version>3.0.2</quickfix.version>
-        <artio.version>0.181</artio.version>
+        <artio.version>0.183</artio.version>
         <otel.version>1.66.0</otel.version>
     </properties>
 
@@ -220,7 +220,7 @@
             <plugin>
                 <groupId>org.quickfixj</groupId>
                 <artifactId>quickfixj-codegenerator</artifactId>
-                <version>3.0.1</version>
+                <version>3.0.2</version>
                 <!-- do not change 3.0.2 requires a recent version of maven -->
                 <executions>
                     <execution>
