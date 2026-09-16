@@ -91,7 +91,7 @@
         <ringos.version>0.9.0</ringos.version>
         <betty.version>0.9.0</betty.version>
         <maven-plugin-api.version>3.9.16</maven-plugin-api.version>
-        <maven-plugin-annotations.version>3.15.2</maven-plugin-annotations.version>
+        <maven-plugin-annotations.version>3.16.0</maven-plugin-annotations.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <postgresql.version>42.7.13</postgresql.version>
         <hikaricp.version>7.1.0</hikaricp.version>
@@ -110,10 +110,10 @@
         <awaitility.version>4.3.0</awaitility.version>
 
         <license-maven-plugin.version>5.1.2</license-maven-plugin.version>
-        <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
-        <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
-        <maven-resources-plugin.version>3.4.0</maven-resources-plugin.version>
-        <maven-jar-plugin.version>3.5.0</maven-jar-plugin.version>
+        <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
+        <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
+        <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
+        <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
         <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
         <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
         <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
