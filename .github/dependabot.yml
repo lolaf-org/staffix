@@ -32,16 +32,15 @@ updates:
           - "org.mockito:*"
           - "org.assertj:*"
           - "org.awaitility:*"
-      # Only the benchmarks module compiles against these, and nothing published depends on them:
-      # they are what ringos is measured against, so they move together or not at all.
+      # What staffix is measured and tested against: JMH, and the two engines the benchmarks and the
+      # compatibility tests run beside it. Nothing published depends on them, so they move together.
+      # net.openhft is deliberately not here: chronicle-queue is a compile dependency of the published
+      # staffix-messages-core-async, so its updates arrive on their own.
       benchmark-libraries:
         patterns:
           - "org.openjdk.jmh:*"
-          - "org.openjdk.jol:*"
-          - "org.agrona:*"
-          - "org.jctools:*"
-          - "net.openhft:*"
-          - "tools.profiler:*"
+          - "org.quickfixj:*"
+          - "uk.co.real-logic:*"
 
     # slf4j is held at 2.0.x deliberately.
     ignore:
