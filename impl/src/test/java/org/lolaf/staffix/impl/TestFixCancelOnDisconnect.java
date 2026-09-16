@@ -34,6 +34,9 @@ import org.mockito.Mockito;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
@@ -228,11 +231,12 @@ class TestFixCancelOnDisconnect extends AbstractFixTests {
         assertExpectedCodLogonReceived(initiatorCodSettings.getCancelOnDisconnectTypeFieldCodes().get(initiatorCodSettings.getCancelOnDisconnectType()),
                 initiatorCodSettings.getCodTimeoutWindow().toMillis());
 
+        turnDownEveryFurtherLogon();
         ((FixSessionImpl) fixInitiatorSession).disconnect(); // hard disconnect will not generate a clean logout message
 
         await().untilAsserted(() -> {
-            verify(fixAcceptorApplication).onLogout(any(), Mockito.anyString(), any());
-            verify(fixAcceptorApplication).onDisconnected(any());
+            verify(fixAcceptorApplication, atLeastOnce()).onLogout(any(), Mockito.anyString(), any());
+            verify(fixAcceptorApplication, atLeastOnce()).onDisconnected(any());
         });
         LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(initiatorCodSettings.getCodTimeoutWindow().toMillis()) * 2);
         verify(fixAcceptorApplication, never()).onCancelOnDisconnectTriggered(any(), eq(CancelOnDisconnectType.CANCEL_ON_LOGOUT_ONLY));
@@ -247,11 +251,12 @@ class TestFixCancelOnDisconnect extends AbstractFixTests {
         assertExpectedCodLogonReceived(initiatorCodSettings.getCancelOnDisconnectTypeFieldCodes().get(initiatorCodSettings.getCancelOnDisconnectType()),
                 initiatorCodSettings.getCodTimeoutWindow().toMillis());
 
+        turnDownEveryFurtherLogon();
         ((FixSessionImpl) fixInitiatorSession).disconnect(); // hard disconnect will not generate a clean logout message
 
         await().untilAsserted(() -> {
-            verify(fixAcceptorApplication).onLogout(any(), Mockito.anyString(), any());
-            verify(fixAcceptorApplication).onDisconnected(any());
+            verify(fixAcceptorApplication, atLeastOnce()).onLogout(any(), Mockito.anyString(), any());
+            verify(fixAcceptorApplication, atLeastOnce()).onDisconnected(any());
         });
         await().untilAsserted(() -> verify(fixAcceptorApplication)
                 .onCancelOnDisconnectTriggered(any(), eq(CancelOnDisconnectType.CANCEL_ON_DISCONNECT_ONLY)));
@@ -347,6 +352,22 @@ class TestFixCancelOnDisconnect extends AbstractFixTests {
         // the logout this side asked for, reported as such: not "Remote disconnection"
         await().untilAsserted(() -> verify(fixAcceptorApplication)
                 .onLogout(any(FixSession.class), Mockito.eq(LOGOUT_MESSAGE), Mockito.isNull()));
+    }
+
+    /**
+     * A hard disconnect leaves the initiator wanting to be logged in, so it dials again after its 100ms connection
+     * retry and logs on - and a logon inside the COD window cancels the COD task, which is what
+     * {@link #testLogonWithinTimeframeDoesNotTriggerCODTask()} is about. The window here is 100ms too, so whether a
+     * hard disconnect fired the COD came down to which of the two timers won. Turning every later logon down keeps
+     * the counterparty away without depending on timing: a rejected logon never reaches the session's logon
+     * processing, so it cannot cancel anything, and the disconnect is left as the one thing the acceptor judges.
+     *
+     * <p>The initiator keeps dialling and being turned down, so the acceptor's logout and disconnection callbacks
+     * can fire more than once from here on.
+     */
+    private void turnDownEveryFurtherLogon() {
+        doReturn(CompletableFuture.completedFuture(Optional.of("not letting the initiator back in")))
+                .when(fixAcceptorApplication).validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class));
     }
 
     private void setupInitiatorAndAcceptor(CancelOnDisconnectType codType) {
