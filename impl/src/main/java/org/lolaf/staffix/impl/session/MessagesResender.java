@@ -105,6 +105,9 @@ public class MessagesResender {
      * @return whether the store should carry on reading the range
      */
     private boolean resendStoredMessage(ResendState resendState, ByteBuffer messageContent, int maxMessagesResent) {
+        // a store may hand over the very buffer it holds the message in, and both reads below drain what they are
+        // given, so the position goes back as it was: the same message can be asked for again by a later request
+        int storedMessagePosition = messageContent.position();
         if (messageContent.isDirect()) {
             // use limit as ByteBuffer returned by the stare can have a bigger capacity than their actual real size (limit)
             if (resendState.transformedMessageBuffer == null || resendState.transformedMessageBuffer.limit() < messageContent.limit()) {
@@ -116,6 +119,7 @@ public class MessagesResender {
         }
         resendState.expectedNextSeqNum = resendMessage(fixSessionImpl, transformer, resendState.transformedMessageBuffer,
                 msgTypeField, msgSeqNumField, resendState.expectedNextSeqNum, resendState.encoders);
+        messageContent.position(storedMessagePosition);
         resendState.messagesRead++;
         if (maxMessagesResent > 0 && resendState.messagesRead >= maxMessagesResent) {
             fixSessionImpl.logEvent("Stopping the retransmission after %s messages, the rest of the range is gap filled",

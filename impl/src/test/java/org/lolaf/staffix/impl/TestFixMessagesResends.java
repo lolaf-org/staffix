@@ -16,6 +16,7 @@
 package org.lolaf.staffix.impl;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -721,6 +722,52 @@ class TestFixMessagesResends extends AbstractFixTests {
         assertPossDupMessageReceived(messagesReceiverList, EmailThreadID.get(), "test thread id 19");
 
         assertMessagesSendReceiveStillWorkAfterResync();
+    }
+
+    @ParameterizedTest
+    @MethodSource("initiatorOrAcceptorParams")
+    // a resender that drops the retransmission leaves the peer asking for it over and over rather than failing an
+    // assertion, so this one is cut short instead of holding a CI job for as long as it is let run
+    @Timeout(value = 2, unit = TimeUnit.MINUTES)
+    void testSameMessagesRetransmittedTwice(ConnectorType connectorType) {
+        // A store may hand the resender the very buffer it holds a message in, so a retransmission has to leave that
+        // buffer as it found it. Reading it used to drain it, and a second request for the same message then parsed
+        // nothing at all: the retransmission was silently replaced by a gap fill, the session staying consistent
+        // enough for this to go unnoticed.
+        logonClient();
+
+        List<TestingDecodedFixMessage> messagesReceiverList = getDecodedFixMessages(connectorType.inverse());
+        FixApplication resendRequestSender = getFixApplication(connectorType);
+        FixApplication resendRequestReceiver = getFixApplication(connectorType.inverse());
+        FixSession targetFixSession = getFixSession(connectorType);
+        FixMessageDecoder targetDecoder = getDecoder(testMessageType, connectorType.inverse());
+
+        sendMessagesAndCutConnection(connectorType, i -> targetFixSession.send(encodeTestMessage(i), null));
+
+        clearApplicationsInvocations();
+
+        when(resendRequestSender.onResendRequest(any(), any(), any())).thenReturn(true);
+
+        reconnect(connectorType);
+
+        awaitResendRequestCompleted(resendRequestReceiver);
+        await().untilAsserted(() -> verify(targetDecoder, times(missedMessagesCount())).onDecoded(any(FixSession.class), eq(true), eq(false)));
+
+        clearApplicationsInvocations();
+
+        // the peer forgets what it has just recovered, so that logging on again has it ask for those messages a
+        // second time - the range now ending further on, the Logon of the first recovery having taken a number since
+        getFixSessionImpl(connectorType.inverse()).adminSetIncomingSeqNum(firstMissedSeqNum);
+        cutConnection(connectorType);
+        reconnect(connectorType);
+
+        await().untilAsserted(() -> verify(resendRequestReceiver)
+                .onResendRequestTerminated(any(FixSession.class), eq(firstMissedSeqNum), anyLong()));
+
+        // the same messages come back a second time rather than being gap filled away
+        await().untilAsserted(() -> verify(targetDecoder, times(missedMessagesCount())).onDecoded(any(FixSession.class), eq(true), eq(false)));
+        assertPossDupMessageReceived(messagesReceiverList, EmailThreadID.get(), "test thread id 11");
+        assertPossDupMessageReceived(messagesReceiverList, EmailThreadID.get(), "test thread id 19");
     }
 
     @ParameterizedTest

@@ -100,29 +100,29 @@ pluggable part:
     <version>${staffix.version}</version>
 </dependency>
 <dependency>
-<groupId>org.lolaf.staffix</groupId>
-<artifactId>staffix-fix-44</artifactId>
-<version>${staffix.version}</version>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-fix-44</artifactId>
+    <version>${staffix.version}</version>
 </dependency>
 <dependency>
-<groupId>org.lolaf.staffix</groupId>
-<artifactId>staffix-application-factory-simple</artifactId>
-<version>${staffix.version}</version>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-application-factory-simple</artifactId>
+    <version>${staffix.version}</version>
 </dependency>
 <dependency>
-<groupId>org.lolaf.staffix</groupId>
-<artifactId>staffix-messages-store-memory-impl</artifactId>
-<version>${staffix.version}</version>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-messages-store-memory-impl</artifactId>
+    <version>${staffix.version}</version>
 </dependency>
 <dependency>
-<groupId>org.lolaf.staffix</groupId>
-<artifactId>staffix-sessions-settings-store-memory-impl</artifactId>
-<version>${staffix.version}</version>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-sessions-settings-store-memory-impl</artifactId>
+    <version>${staffix.version}</version>
 </dependency>
 <dependency>
-<groupId>org.lolaf.staffix</groupId>
-<artifactId>staffix-messages-logger-slf4j-impl</artifactId>
-<version>${staffix.version}</version>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-messages-logger-slf4j-impl</artifactId>
+    <version>${staffix.version}</version>
 </dependency>
 ```
 

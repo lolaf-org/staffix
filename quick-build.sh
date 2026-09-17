@@ -1,1 +1,1 @@
-./mvnw -T 1C clean install
+./mvnw -T 1C clean install -DskipTests

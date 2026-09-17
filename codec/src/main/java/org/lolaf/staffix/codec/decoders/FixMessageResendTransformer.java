@@ -108,10 +108,17 @@ public class FixMessageResendTransformer {
 
     public DecodedFixMessage transformForResend(ByteBuffer message) {
         decodedFixMessageDecoder = null;
+        int messageLength = message.remaining();
         try {
             parser.parseMessages(message, this::getDecoder);
         } catch (DecodingException e) {
             throw new IllegalStateException("Unable to parse message for resend, should have never happened", e);
+        }
+        if (decodedFixMessageDecoder == null) {
+            // the parser only asks for a decoder once it has a whole message, so there was nothing to read: a caller
+            // handing over a buffer it has already drained, which a stored message read twice used to do
+            throw new IllegalStateException("No message to resend in the " + messageLength
+                    + " bytes read, a message buffer already consumed");
         }
         return decodedFixMessageDecoder.getDecodedFixMessage();
     }
