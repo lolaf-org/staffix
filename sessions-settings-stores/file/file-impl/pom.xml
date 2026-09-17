@@ -24,8 +24,8 @@
         <hibernate-validator.version>8.0.5.Final</hibernate-validator.version>
         <victools-jsonschema.version>4.38.0</victools-jsonschema.version>
         <jackson-dataformat-yaml.version>2.22.1</jackson-dataformat-yaml.version>
-        <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
-        <build-helper-maven-plugin.version>3.6.1</build-helper-maven-plugin.version>
+        <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
+        <build-helper-maven-plugin.version>3.6.2</build-helper-maven-plugin.version>
         <!-- The generated schema: written here by exec-maven-plugin, then attached as a build artifact by
              build-helper. Both executions read this one property, and FixSessionSettingsJsonSchema#main rejects a path
              that no longer matches SCHEMA_FILE_NAME and its package, so the pom and the code cannot drift apart
