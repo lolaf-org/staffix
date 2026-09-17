@@ -163,8 +163,11 @@ class TestFixSequenceResets extends AbstractFixTests {
         getFixSessionImpl(connectorType).adminResetSequence(AdminApi.ResetFixSessionMode.RESET_SEQUENCE);
         getFixSessionImpl(connectorType.inverse()).adminResetSequence(AdminApi.ResetFixSessionMode.RESET_SEQUENCE);
 
-        await().untilAsserted(() -> assertThat(getFixMessagesStore(connectorType).getOutgoingSeqNum()).isEqualTo(1));
-        await().untilAsserted(() -> assertThat(getFixMessagesStore(connectorType).getIncomingSeqNum()).isEqualTo(1));
+        // each reset runs on its own session's IO thread, so a message sent before both have landed is seen as too low
+        for (ConnectorType side : List.of(connectorType, connectorType.inverse())) {
+            await().untilAsserted(() -> assertThat(getFixMessagesStore(side).getOutgoingSeqNum()).isEqualTo(1));
+            await().untilAsserted(() -> assertThat(getFixMessagesStore(side).getIncomingSeqNum()).isEqualTo(1));
+        }
 
         // and the session keeps working, numbering from 1 again
         exchangeAMessageEachWay(2);
