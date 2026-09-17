@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="http://lolaf.org/staffix.png" alt="Staffix" width="320">
+</p>
+
 # Staffix
 
 [![build](https://github.com/lolaf-org/ringos/actions/workflows/build.yml/badge.svg)](https://github.com/lolaf-org/staffix/actions/workflows/build.yml)
