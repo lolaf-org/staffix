@@ -290,7 +290,7 @@ public class PluginApiExample extends FixExamplesBase implements Callable<Intege
 
             @Override
             public void onDecoded(FixSession session, boolean possDupFlag, boolean possResend) {
-                log.info("acceptor: Email {} \"{}\" — tag {} says it came from {}",
+                log.info("acceptor: Email {} \"{}\": tag {} says it came from {}",
                         emailThreadId, subject, stampFieldCode, sendingDesk);
             }
         }

@@ -1,7 +1,7 @@
 # Stores and loggers
 
 A FIX session has to remember what it sent, so it can resend it. It usually also has to record what it saw, for
-operations and compliance. Both are I/O, and both sit between receiving a message and answering it — so Staffix makes
+operations and compliance. Both are I/O, and both sit between receiving a message and answering it, so Staffix makes
 them pluggable, and gives you a way to take them off the session thread entirely.
 
 ---
@@ -21,7 +21,7 @@ each one needs.
 ## Message stores
 
 All are registered on the engine and selected per session by `fixMessageStoreInstanceId`. Every implementation is
-verified against one shared contract test suite — including one you write yourself.
+verified against one shared contract test suite, including one you write yourself.
 
 ### In memory
 
@@ -58,7 +58,7 @@ FileMessageStoreSettings.builder()
 | `syncWrites` | `true` |
 
 `syncWrites(true)` is the durable setting and the reason a file store costs more than a memory one: it forces the
-write out before the session continues. Turn it off and you trade recovery guarantees for latency — or better, keep
+write out before the session continues. Turn it off and you trade recovery guarantees for latency; better still, keep
 it on and put the store behind the [async wrapper](#taking-io-off-the-session-thread).
 
 ### Over JDBC
@@ -87,7 +87,7 @@ trip. Wrap it.
 
 ### Filtering what is stored
 
-Every store takes a `messageFilter` — a `BiPredicate<MessageType, ByteBuffer>` that decides what *not* to keep. The
+Every store takes a `messageFilter`, a `BiPredicate<MessageType, ByteBuffer>` that decides what *not* to keep. The
 default keeps everything. Dropping high-volume message types you will never resend is the cheapest way to make
 persistence affordable.
 
@@ -103,7 +103,7 @@ Registered the same way, selected per session by `fixMessageLoggerInstanceId`.
 | `FileMessagesLoggerSettings` | straight to file, without going through a logging framework |
 | `OtlpMessagesLoggerSettings` | exports over OTLP, so messages land beside your metrics and traces |
 | `DemuxMessagesLoggerSettings` | fans out to several of the above |
-| `AsyncMessagesLoggerSettings` | wraps any of them — see below |
+| `AsyncMessagesLoggerSettings` | wraps any of them, see below |
 
 The quickstart uses the SLF4J logger with both directions on, which is why you can watch the session come up.
 
@@ -144,7 +144,7 @@ of pushing the failure back onto the session.
 **And the trade:** a store answers resend requests, so a message still in the queue is a message not yet in the
 database. `findWaitForEmptyQueueTimeout` is what stops a resend reading a store that has not caught up. If your
 compliance position is that a message must be durably in the database before it goes on the wire, the async wrapper
-is not what you want — a queue that survives a crash is not the same guarantee as a committed transaction.
+is not what you want: a queue that survives a crash is not the same guarantee as a committed transaction.
 
 ---
 

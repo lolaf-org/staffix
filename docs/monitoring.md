@@ -1,6 +1,6 @@
 # Monitoring
 
-Staffix exports metrics through Micrometer and traces through OpenTelemetry, both as **session plugins** — components
+Staffix exports metrics through Micrometer and traces through OpenTelemetry, both as **session plugins**: components
 registered on the engine and attached to sessions by instance id, exactly like stores and loggers.
 
 The design constraint is the same one that governs everything else: **observability must not land on the message
@@ -19,50 +19,7 @@ path.** The plugin wrappers in this guide are how that is arranged.
 | `staffix-monitoring-throttling-plugin-impl` | wraps a plugin so its per-message callbacks are sampled |
 
 None of them is privileged. Micrometer and OpenTelemetry are *implementations of an API in `staffix-api`*, and if
-neither suits you, the same API is open to you — see [Writing your own](#writing-your-own).
-
----
-
-## Everything here is a plugin
-
-Two interfaces, both in `staffix-api`, carry all of it. What follows is the short version, enough to read the
-monitoring configuration below; [Session plugins](session-plugins.md) is the guide to writing one, and
-[`examples/plugin-api`](../examples/plugin-api) is a working plugin to read.
-
-**`FixSessionsPlugin<C>`** is the engine-level component you register. Its one job is to be asked, per session,
-whether it wants to observe that session:
-
-```java
-Optional<? extends FixSessionPlugin<C, ?>> onSessionCreated(
-        String fixInstanceId, FixSession fixSession,
-        Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes);
-```
-
-Returning `Optional.empty()` means "not interested in this one", and costs nothing thereafter. When you do return a
-plugin it **must be a fresh instance for that session** — shared instances across sessions are not supported, which
-is what lets a per-session plugin keep mutable state without synchronising.
-
-**`FixSessionPlugin<C, T>`** is that per-session instance, and it is where the callbacks live. Every one is a
-`default` method, so you implement only what you care about:
-
-| callback | fires |
-|----------|-------|
-| `onLogon()` / `onLogout()` | session up, session down |
-| `onDecoderSetup(decoder, mapper)` | as a decoder is built — the hook for adding your own field mappings |
-| `onMessageDecodingStarted` / `onMessageDecodingFinished` | around parsing an inbound message |
-| `onMessageReceived(type, payloadSize, …)` | an inbound message is complete |
-| `getMessageEncodingToken` → `onMessageEncodingStarted` / `…Finished` / `onMessageEncodedBody` | around encoding an outbound message |
-| `onMessageSent(type, payloadSize, …)` | an outbound message has gone |
-| `onRttMeasurement(measurement)` | a round-trip sample, if RTT probing is on |
-| `onSessionDestroyed(…)` | teardown |
-
-The encoding callbacks pass a **token** you create in `getMessageEncodingToken` and get handed back — so you can
-carry state from the start of an encode to its end without allocating a map or a thread-local to find it again.
-
-`requiresTimeMeasurement()` deserves a mention of its own. It defaults to `false`, and the engine only takes the
-timestamps the timing callbacks need when some plugin has said it wants them. **A plugin that does not ask does not
-make the session pay for clock reads.** That is the same rule the rest of the engine follows, applied to
-observability.
+neither suits you, the same API is open to you; see [Writing your own](#writing-your-own).
 
 ---
 
@@ -93,11 +50,11 @@ FixSessionSettings.builder()
         .build();
 ```
 
-`baseTimeUnit(MICROSECONDS)` is worth setting deliberately — the default unit will quantise away most of what is
+`baseTimeUnit(MICROSECONDS)` is worth setting deliberately: the default unit will quantise away most of what is
 interesting about a FIX engine measured in microseconds.
 
 `clockOffsetEnabled` and `rttLatencyEnabled` publish the `session.rtt` timer and the `session.clock.offset` gauge
-from the session's own continuous line measurement — see [Network monitoring](network-monitoring.md). They need
+from the session's own continuous line measurement; see [Network monitoring](network-monitoring.md). They need
 `rttMeasurementSettings.probeInterval` set on the session to have anything to report.
 
 `startedMeterRegistryConsumer` hands you the registry once it is up, which is where to bind JVM metrics so they land
@@ -139,10 +96,10 @@ another plugin's instance id.
 
 Both wrappers are registered **instead of** the plugin they wrap, taking its settings as `delegateSettings`. They are
 transparent: the wrapper reports the delegate's `instanceId` and matches the delegate's plugin class, so
-`fixSessionPluginsInstanceId(…)` references in your sessions keep working unchanged — wrapping is an engine-side
+`fixSessionPluginsInstanceId(…)` references in your sessions keep working unchanged. Wrapping is an engine-side
 decision that session configuration never sees.
 
-### Async — move the work to other threads
+### Async: move the work to other threads
 
 ```java
 .fixSessionsPlugin(AsyncFixSessionsPluginSettings.builder()
@@ -161,20 +118,20 @@ Fire-and-forget callbacks go onto a per-session ring buffer and are replayed on 
 | setting | default |
 |---------|---------|
 | `delegateSettings` | *required* |
-| `consumerThreadPoolSize` | `1` — threads draining the queues, assigned round-robin |
-| `queueSize` | `1024` per session — **must be a power of two** |
+| `consumerThreadPoolSize` | `1`, threads draining the queues, assigned round-robin |
+| `queueSize` | `1024` per session; **must be a power of two** |
 | `backpressurePolicy` | `DROP` |
 | `consumerIdleStrategySupplier` / `producerIdleStrategySupplier` | `TimerSlackAwareBackoffIdleStrategy` |
 
 `backpressurePolicy(DROP)` is what keeps this honest: when a queue is full, monitoring data is discarded rather than
-the session being slowed down. That is the right trade — **metrics are not worth latency** — but it means dashboards
+the session being slowed down. That is the right trade (**metrics are not worth latency**), but it means dashboards
 can lose samples under load, and you want to know that before you spend an afternoon debugging a gap in a chart.
 `BLOCK` makes the opposite choice, and applies the producer idle strategy while waiting for a slot.
 
-If the delegate is `Startable`, the wrapper drives its lifecycle — started before the pool and stopped after it, so
+If the delegate is `Startable`, the wrapper drives its lifecycle: started before the pool and stopped after it, so
 buffered callbacks are fully drained into the delegate before it shuts down.
 
-### Throttling — do the work less often
+### Throttling: do the work less often
 
 ```java
 .fixSessionsPlugin(ThrottlingFixSessionsPluginSettings.builder()
@@ -191,15 +148,58 @@ The two compose: throttle to reduce the volume, then wrap that in async to get w
 
 ---
 
+## Everything here is a plugin
+
+Two interfaces, both in `staffix-api`, carry all of it. What follows is the short version, enough to read the
+monitoring configuration above; [Session plugins](session-plugins.md) is the guide to writing one, and
+[`examples/plugin-api`](../examples/plugin-api) is a working plugin to read.
+
+**`FixSessionsPlugin<C>`** is the engine-level component you register. Its one job is to be asked, per session,
+whether it wants to observe that session:
+
+```java
+Optional<? extends FixSessionPlugin<C, ?>> onSessionCreated(
+        String fixInstanceId, FixSession fixSession,
+        Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes);
+```
+
+Returning `Optional.empty()` means "not interested in this one", and costs nothing thereafter. When you do return a
+plugin it **must be a fresh instance for that session**; shared instances across sessions are not supported, which
+is what lets a per-session plugin keep mutable state without synchronising.
+
+**`FixSessionPlugin<C, T>`** is that per-session instance, and it is where the callbacks live. Every one is a
+`default` method, so you implement only what you care about:
+
+| callback | fires |
+|----------|-------|
+| `onLogon()` / `onLogout()` | session up, session down |
+| `onDecoderSetup(decoder, mapper)` | as a decoder is built, the hook for adding your own field mappings |
+| `onMessageDecodingStarted` / `onMessageDecodingFinished` | around parsing an inbound message |
+| `onMessageReceived(type, payloadSize, …)` | an inbound message is complete |
+| `getMessageEncodingToken` → `onMessageEncodingStarted` / `…Finished` / `onMessageEncodedBody` | around encoding an outbound message |
+| `onMessageSent(type, payloadSize, …)` | an outbound message has gone |
+| `onRttMeasurement(measurement)` | a round-trip sample, if RTT probing is on |
+| `onSessionDestroyed(…)` | teardown |
+
+The encoding callbacks pass a **token** you create in `getMessageEncodingToken` and get handed back, so you can
+carry state from the start of an encode to its end without allocating a map or a thread-local to find it again.
+
+`requiresTimeMeasurement()` deserves a mention of its own. It defaults to `false`, and the engine only takes the
+timestamps the timing callbacks need when some plugin has said it wants them. **A plugin that does not ask does not
+make the session pay for clock reads.** That is the same rule the rest of the engine follows, applied to
+observability.
+
+---
+
 ## Writing your own
 
 Micrometer and OpenTelemetry are the implementations that ship. They are not the only ones you can have. The
-mechanics — settings class, SPI factory, threading, what each callback may do — are in
+mechanics (settings class, SPI factory, threading, what each callback may do) are in
 [Session plugins](session-plugins.md); what follows is what is specific to replacing *these* two.
 
 ### Your own metrics backend
 
-`FixSessionsMonitoringManager` — in `staffix-api`, not in a monitoring module — is the metrics contract:
+`FixSessionsMonitoringManager`, in `staffix-api` rather than in a monitoring module, is the metrics contract:
 
 ```java
 public interface FixSessionsMonitoringManager
@@ -216,7 +216,7 @@ exactly as they select the shipped one:
 ```
 
 That selector works because a plugin declares which generic interface it satisfies through
-`matchesPluginClass(Class<? extends FixSessionsPlugin<?>>)` — so **your implementation is addressed by the same
+`matchesPluginClass(Class<? extends FixSessionsPlugin<?>>)`, so **your implementation is addressed by the same
 interface as the shipped one**, and swapping backends is a configuration change rather than a code change in the
 sessions.
 
@@ -227,7 +227,7 @@ written straight into a shared-memory region for an out-of-band collector to rea
 
 Tracing is a plugin like any other, but note the asymmetry: **there is no tracing interface in `staffix-api`.**
 `OtelTracing` and `FixTracer` live in `staffix-monitoring-tracing-otlp-impl`, so a different tracing system is not a
-matter of implementing an API-level contract — you write a `FixSessionsPlugin` of your own against the callbacks
+matter of implementing an API-level contract: you write a `FixSessionsPlugin` of your own against the callbacks
 above, and use its own type as the selector key the way `OtelTracing.class` is used.
 
 `onDecoderSetup` is the callback that makes cross-firm tracing possible at all: it hands you the decoder and its
@@ -235,14 +235,14 @@ field mapper as it is built, which is where a trace-context field gets mapped wi
 
 ### What you get for free
 
-Anything implementing `FixSessionsPlugin` composes with the two wrappers below — so a plugin of your own can be made
+Anything implementing `FixSessionsPlugin` composes with the two wrappers below, so a plugin of your own can be made
 asynchronous or sampled without you writing either mechanism.
 
 ---
 
 ## Somewhere to send it
 
-The repository ships a working stack — Grafana, Prometheus, Loki, Tempo and an OpenTelemetry collector, with
+The repository ships a working stack (Grafana, Prometheus, Loki, Tempo and an OpenTelemetry collector) with
 datasources and a FIX dashboard already provisioned:
 
 ```bash
@@ -254,6 +254,5 @@ Grafana is on `http://localhost:3000` (admin / password), and the collector acce
 `http://localhost:4318`. Point the settings above at it and run the
 [`advanced-monitoring`](../examples/advanced-monitoring) example, which wires up metrics, logs and traces together.
 
-Message logging can go to the same place with the OTLP message logger — see
-[Stores and loggers](stores-and-loggers.md#message-loggers) — so messages, metrics and traces land in one collector
-and correlate.
+Message logging can go to the same place with the OTLP message logger, so messages, metrics and traces land in one
+collector and correlate. See [Stores and loggers](stores-and-loggers.md#message-loggers).

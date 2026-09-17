@@ -1,6 +1,6 @@
 # Staffix documentation
 
-Start with the [quickstart](../examples/README.md#quickstart--the-smallest-complete-staffix-application) — it runs in
+Start with the [quickstart](../examples/README.md#quickstart-the-smallest-complete-staffix-application): it runs in
 one command and is the shortest path to a working session. Then come back here.
 
 ## Guides
@@ -15,14 +15,14 @@ one command and is the shortest path to a working session. Then come back here.
 | [Tuning for latency](tuning-for-latency.md) | What do I actually change to get the numbers in the README, and what does each one cost? |
 | [Efficient identifier usage](efficient-identifiers-usage.md) | How do I mint and decode ids without allocating, and do I want a UUID or a Snowflake? |
 | [Monitoring](monitoring.md) | How do I get metrics, traces and dashboards without putting them on the message path? |
-| [Session plugins](session-plugins.md) | How do I attach my own behaviour to every message — stamp a field, audit, measure — without touching the application? |
+| [Session plugins](session-plugins.md) | How do I attach my own behaviour to every message (stamp a field, audit, measure) without touching the application? |
 | [Network monitoring](network-monitoring.md) | How long is the line to my counterparty, and do our clocks agree? |
-| [Runtime administration](runtime-administration.md) | How do I log a session on, reset a sequence number, or reload settings on a running engine — over the protocol I actually use? |
+| [Runtime administration](runtime-administration.md) | How do I log a session on, reset a sequence number, or reload settings on a running engine, over the protocol I actually use? |
 | [Spring Boot](spring-boot.md) | How do I declare the whole engine in `application.properties`? |
 
 ## How to read the API
 
-Three ideas explain most of Staffix's shape:
+Two ideas explain most of Staffix's shape:
 
 **Everything pluggable is an interface plus a settings object.** Stores, loggers, application factories, session
 settings stores, admin exporters and monitoring plugins all follow the same pattern: a `…Settings` builder handed to
@@ -30,7 +30,4 @@ settings stores, admin exporters and monitoring plugins all follow the same patt
 
 **Instances are addressed by id.** You register a store as `instanceId("acceptor")`, and a session says
 `fixMessageStoreInstanceId("acceptor")`. That indirection is what lets one engine run an acceptor and an initiator
-with entirely different persistence, logging and applications — which is exactly what the quickstart does.
-
-**Nothing costs anything unless you ask for it.** Almost every validation is off by default, and each documents its
-own latency cost. That is a deliberate stance, not an oversight: see [Tuning for latency](tuning-for-latency.md).
+with entirely different persistence, logging and applications, which is exactly what the quickstart does.

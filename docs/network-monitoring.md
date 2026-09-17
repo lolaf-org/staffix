@@ -2,14 +2,14 @@
 
 A FIX session is a TCP connection to a host you do not control, and two things about it are operational questions
 rather than application ones: **how long the line takes**, and **whether the two clocks agree**. Staffix answers both
-from inside the session, continuously, with no external probe and nothing proprietary on the wire — it uses the
+from inside the session, continuously, with no external probe and nothing proprietary on the wire: it uses the
 protocol's own TestRequest/Heartbeat exchange as an NTP-style timing probe.
 
 That gives you three numbers per session, updated as the session runs:
 
 | measurement | what it is |
 |-------------|------------|
-| `roundTripTime` | EMA-smoothed round trip to the peer, measured on a **monotonic** clock — immune to wall-clock skew and leap seconds on either side |
+| `roundTripTime` | EMA-smoothed round trip to the peer, measured on a **monotonic** clock, immune to wall-clock skew and leap seconds on either side |
 | `clockOffset` | EMA-smoothed remote-vs-local wall-clock offset. **Positive means the remote clock is ahead of yours** |
 | `sampleTime` | local wall-clock instant of the most recent accepted sample |
 
@@ -20,11 +20,11 @@ Both estimates are per session, because that is the unit that has a line and a p
 ## How it is measured
 
 Nothing here is an extension. The probe is a plain `TestRequest(35=1)`, and the answer is the `Heartbeat(35=0)` the
-standard obliges the peer to send back with the same `TestReqID(112)` — so this works against any conforming
+standard obliges the peer to send back with the same `TestReqID(112)`, so this works against any conforming
 counterparty, QuickFIX/J, Artio or an exchange gateway alike, with nothing to agree bilaterally.
 
-1. The session sends a TestRequest whose `TestReqID` carries `probeTestReqIdPrefix`. In the **send callback** — so
-   only if the message actually went out — it records the local monotonic time and the local wall-clock time.
+1. The session sends a TestRequest whose `TestReqID` carries `probeTestReqIdPrefix`. In the **send callback**, so
+   only if the message actually went out, it records the local monotonic time and the local wall-clock time.
 2. The peer answers with a Heartbeat echoing the `TestReqID` and carrying its own `SendingTime(52)`, call it `R`.
 3. On receipt the session computes, with `T1` and `T2` the local wall-clock at send and at receipt:
 
@@ -34,29 +34,29 @@ clockOffset   = R − (T1 + T2) / 2          ← the NTP formula, assuming symme
 ```
 
 Both samples then feed a **time-based EMA**: the weight of a sample is derived from how long it has actually been
-since the previous accepted one (`tau = emaTimeWindow / 3`), so the estimator is sample-rate-invariant — continuous
+since the previous accepted one (`tau = emaTimeWindow / 3`), so the estimator is sample-rate-invariant: continuous
 probing, occasional heartbeat-driven probes and dropped outliers all behave the same, and a long idle gap reseeds the
 estimate instead of averaging it with something stale.
 
 **Heartbeat-driven TestRequests feed the same estimator**, whether or not probing is on. Those are the ones the
 session sends by itself when the peer has gone quiet for a heartbeat interval, so even a session with
-`probeInterval` unset produces measurements — irregularly, and only when the line is idle enough to need a
+`probeInterval` unset produces measurements, irregularly and only when the line is idle enough to need a
 TestRequest. Continuous probing is what makes the numbers regular.
 
 Samples are dropped, leaving the EMAs untouched, when the `TestReqID` is unknown or already matched (a duplicate or
 a late answer) or when the measured RTT exceeds `maxAcceptedRtt`. An unanswered probe therefore costs a sample and
-nothing else — it does not arm the liveness timer, which stays the heartbeat machinery's business.
+nothing else: it does not arm the liveness timer, which stays the heartbeat machinery's business.
 
 When continuous probing is on, the whole state is discarded as the session goes down: a new connection is a new
 line, and its predecessor's numbers say nothing about it. A session measuring only from heartbeat-driven
-TestRequests keeps its last estimate across the reconnect, so treat `sampleTime` as part of the reading — an old
+TestRequests keeps its last estimate across the reconnect, so treat `sampleTime` as part of the reading: an old
 `sampleTime` means an old line.
 
 ---
 
 ## Turning it on
 
-Off by default — a session that has not asked pays nothing at all.
+Off by default: a session that has not asked pays nothing at all.
 
 ```java
 FixSessionSettings.builder()
@@ -69,11 +69,11 @@ FixSessionSettings.builder()
 
 | setting | default | what it does |
 |---------|---------|--------------|
-| `probeInterval` | `null` — disabled | interval between TestRequest probes. Floored at 25 ms |
+| `probeInterval` | `null`, disabled | interval between TestRequest probes. Floored at 25 ms |
 | `emaTimeWindow` | 30 seconds | smoothing window; longer absorbs more jitter and converges slower |
 | `maxAcceptedRtt` | 2 seconds | samples above this are discarded as outliers (GC pause, scheduling spike, network blip). `null` accepts anything |
 | `probeTestReqIdPrefix` | `"RTT-measurement-"` | so probes are distinguishable from heartbeat-driven TestRequests in the logs |
-| `sendingTimeToWireDelay` | 1500 ns | bias subtracted from each raw offset sample — see [below](#calibrating-sendingtimetowiredelay) |
+| `sendingTimeToWireDelay` | 1500 ns | bias subtracted from each raw offset sample; see [below](#calibrating-sendingtimetowiredelay) |
 
 The same settings are available where sessions are declared in YAML:
 
@@ -91,7 +91,7 @@ staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].rtt-measure
 ```
 
 **Probing is not free on the wire.** Each interval costs one TestRequest out and one Heartbeat back, and both consume
-a sequence number like any other message — at `probeInterval` of one second that is 86,400 extra messages a day in
+a sequence number like any other message: at `probeInterval` of one second that is 86,400 extra messages a day in
 each direction, all of them stored and logged as the session's settings dictate. Pick the interval from how fast you
 need to see the line change, not from how precise you would like the number to be; the EMA is doing the precision.
 
@@ -107,7 +107,7 @@ Optional<RttMeasurement> measurement = fixSession.getRttMeasurement();
 
 Empty until the first sample lands, and empty again once a probing session goes down.
 
-**As they happen**, in a [session plugin](session-plugins.md) — called only for *accepted* samples, on the session's
+**As they happen**, in a [session plugin](session-plugins.md), called only for *accepted* samples, on the session's
 I/O thread, so keep it cheap or put the plugin behind the async wrapper:
 
 ```java
@@ -117,26 +117,26 @@ public void onRttMeasurement(RttMeasurement measurement) {
 }
 ```
 
-**As metrics**, through the Micrometer plugin — both off by default, and both fed from the same accepted samples, so
+**As metrics**, through the Micrometer plugin, both off by default and both fed from the same accepted samples, so
 without `rttMeasurementSettings.probeInterval` on the session they report only whatever the heartbeat-driven
 TestRequests happen to produce:
 
 ```java
 OtlpMicrometerMonitoringManagerSettings.builder()
         .instanceId("monitoring-acceptor")
-        .rttLatencyEnabled(true)     // session.rtt        — a Timer, fed the EMA after each sample
-        .clockOffsetEnabled(true)    // session.clock.offset — a Gauge, in nanoseconds
+        .rttLatencyEnabled(true)     // session.rtt, a Timer fed the EMA after each sample
+        .clockOffsetEnabled(true)    // session.clock.offset, a Gauge in nanoseconds
         // …
 ```
 
 `session.clock.offset` is a Gauge rather than a histogram on purpose: the offset is **signed**, and Micrometer's
-distribution instruments silently drop negative values — which are exactly the case where your clock is ahead of the
+distribution instruments silently drop negative values, which are exactly the case where your clock is ahead of the
 peer's.
 
 **On a dashboard**, the provisioned Grafana board in [`monitoring/grafana`](../monitoring/grafana) already has both:
 a *Network round trip time* time series in µs and a *Clock offset* gauge in ns, per session id. See
 [Monitoring](monitoring.md). The [`advanced-monitoring`](../examples/advanced-monitoring) example runs the whole
-chain — sessions probing every second, metrics exported over OTLP, dashboard included — against a loopback session,
+chain (sessions probing every second, metrics exported over OTLP, dashboard included) against a loopback session,
 which is also the setup to calibrate on.
 
 The underlying protocol event is also available raw, without any of the estimation, as
@@ -149,7 +149,7 @@ The underlying protocol event is also available raw, without any of the estimati
 Worth understanding before you trust the offset. The NTP formula assumes the remote's timestamp is taken at the
 instant of transmission. It is not: `SendingTime(52)` is stamped while the message is being *encoded*, and then the
 encode tail, the write syscall, kernel queueing and the NIC handoff all happen before the bytes leave. That delay
-lands in the offset as a **persistent positive bias** — the remote looks like its clock is ahead by the length of its
+lands in the offset as a **persistent positive bias**: the remote looks like its clock is ahead by the length of its
 own send path, even when the two clocks are identical.
 
 `sendingTimeToWireDelay` is the empirical correction, subtracted from each raw sample before it reaches the EMA.
@@ -161,7 +161,7 @@ It defaults to 1500 ns, and the right value is specific to the peer's engine and
 
 A few microseconds is typical for a Java FIX engine on a tuned host; a busy or untuned one shows more. The
 correction is only applied when the raw offset exceeds it, so a small sample is left alone rather than being pushed
-through zero into a negative reading — a bias correction that flips the sign of the answer is worse than no
+through zero into a negative reading, since a bias correction that flips the sign of the answer is worse than no
 correction.
 
 Against a real counterparty you cannot calibrate this directly, since you cannot separate their send path from the
@@ -173,7 +173,7 @@ send path costs.
 ## What the numbers are and are not
 
 - **RTT is application-level, not ICMP.** It measures the line *plus* the peer's engine picking the TestRequest up
-  and answering it. For a trading session that is the more useful number — it is what your order will experience —
+  and answering it. For a trading session that is the more useful number, the one your order will experience,
   but do not compare it with `ping` and expect agreement.
 - **The offset assumes symmetric one-way latency.** That is NTP's assumption too, and it is what makes the midpoint
   meaningful. On an asymmetric route the offset is wrong by half the asymmetry; RTT is unaffected.
@@ -188,7 +188,7 @@ send path costs.
 
 ## The liveness layer underneath
 
-The same TestRequest machinery is what tells you the line is alive at all, and that part is always on — it is the
+The same TestRequest machinery is what tells you the line is alive at all, and that part is always on: it is the
 session protocol, not an option:
 
 | setting | default | what it is |
@@ -198,7 +198,7 @@ session protocol, not an option:
 | `heartBeatInterval.acceptorUpperBoundInterval` | 20 s | the largest |
 
 If nothing is received for a heartbeat interval the session sends a TestRequest, and if that goes unanswered within
-another interval it disconnects — which is the point of it: a TCP connection can be dead for minutes without the
+another interval it disconnects, which is the point of it: a TCP connection can be dead for minutes without the
 socket noticing.
 
 ---
@@ -206,7 +206,7 @@ socket noticing.
 ## When the clocks disagree enough to matter
 
 Clock offset is a measurement; `maxSendingTime` is a decision. Set it, and a message whose `SendingTime(52)` differs
-from this session's clock by more than that — **stale or dated in the future, the threshold is two-sided** — is
+from this session's clock by more than that (**stale or dated in the future, the threshold is two-sided**) is
 rejected with `SessionRejectReason(373) = 10`, *SendingTime accuracy problem*, and the session is logged out
 immediately after, which is what section 4.2.3 prescribes.
 
@@ -219,7 +219,7 @@ immediately after, which is what section 4.2.3 prescribes.
 The two work together, and this is the argument for running the measurement even when you have no dashboard for it:
 a peer's clock drifting toward your `maxSendingTime` is a session that is going to start dropping, and the offset
 estimate is what lets you see it coming rather than reading it in a disconnect log. Note that the check compares the
-received timestamp against your own clock and nothing else — it does not use the measured offset, and it cannot: the
+received timestamp against your own clock and nothing else: it does not use the measured offset, and it cannot: the
 estimate is yours, while the rejection has to be defensible to the counterparty.
 
 `maxSendingTime` is `null` by default, and the check parses `SendingTime` on every inbound message, which the parser
@@ -234,5 +234,5 @@ Heartbeat per interval on the wire, a map insert and removal per probe, and two 
 sample. The estimator runs on the session's I/O thread, inside the message processing that was happening anyway.
 
 The metrics are a separate opt-in on top (`rttLatencyEnabled`, `clockOffsetEnabled`), and the plugin carrying them
-can be moved off the message path entirely — see
+can be moved off the message path entirely; see
 [Monitoring](monitoring.md#keeping-monitoring-off-the-message-path).

@@ -53,7 +53,7 @@ An **idle strategy** does the same job for the message executor threads
 spinning threads it makes things worse, not better.
 
 If you go this route, pin the spinning threads to cores. Both the I/O thread group and `MessageExecutorSettings`
-take a `ThreadFactory` (default `FastThreadLocalThread::new`), which is the hook for it — the examples do this with
+take a `ThreadFactory` (default `FastThreadLocalThread::new`), which is the hook for it; the examples do this with
 a small affinity-setting subclass of their own in
 [`FixExamplesBase`](../examples/examples-core/src/main/java/org/lolaf/staffix/examples/FixExamplesBase.java);
 there is no affinity thread factory in the library itself.
@@ -72,7 +72,7 @@ Off by default, each costing "a slight impact on performance" per its javadoc: `
 
 On by default: `validateChecksum`, `validateFieldsHaveValues`, `allowUndefinedTagsForMessage`.
 
-`detectGarbledMessages` is the most expensive of them — it checks the position of every header field of every
+`detectGarbledMessages` is the most expensive of them: it checks the position of every header field of every
 received message.
 
 Turn on what your counterparty relationship actually requires, and no more. See
@@ -85,14 +85,14 @@ Turn on what your counterparty relationship actually requires, and no more. See
 A dictionary is not just documentation the generator reads and forgets. **Its size follows the engine into every
 running session**, because the parsing machinery is indexed by it.
 
-Each field in a dictionary is assigned a **dense index starting at zero**, and that index — not the FIX tag — is what
+Each field in a dictionary is assigned a **dense index starting at zero**, and that index (not the FIX tag) is what
 addresses the collections the parser works with: received-field and required-field tracking, group member ordering,
 the per-message field metadata. Those structures are sized by the dictionary's index space. The field registry itself
 is an `Int2ObjectHashMap` sized to the field count and deliberately kept sparse (load factor 0.1) so lookups stay
 fast, which means its memory is roughly ten slots per field you defined.
 
 The consequence is direct: **a dictionary carrying 6,000 fields you never send makes every one of those structures
-larger than it needs to be** — more memory, more cache lines touched, less of the hot set resident. FIX Latest defines
+larger than it needs to be**: more memory, more cache lines touched, less of the hot set resident. FIX Latest defines
 over 6,000 fields; a real counterparty relationship uses a small fraction of them.
 
 ### The sanitizer
@@ -123,18 +123,19 @@ sanitized file. It reports what it removed, so you can see what the cut bought.
 
 Two options are worth knowing:
 
-- **`keepFields`** — field names to keep even when nothing references them. From FIX 5.0 the header and trailer are
+- **`keepFields`**: field names to keep even when nothing references them. From FIX 5.0 the header and trailer are
   empty (the session layer is FIXT.1.1's), so a 5.0+ dictionary references none of its own session fields and they
   would all be removed. This is how you keep them.
-- **`sanitizeMsgTypeField`** — prunes MsgType(35)'s enumerated values down to the messages the dictionary actually
+- **`sanitizeMsgTypeField`**: prunes MsgType(35)'s enumerated values down to the messages the dictionary actually
   defines. Leave it off when the session layer lives in FIXT.1.1, or the value list stops agreeing with the session
   messages that are still legal on the wire.
 
 ### Better still: do not generate it in the first place
 
 Sanitizing removes what is unreferenced. Cutting the dictionary at the source removes what you are never going to
-trade. If you generate from an Orchestra repository, a message list does that — `fix-latest` ships 93 of the
-standard's 173 messages for exactly this reason, and narrowing the list further is one text file and one command. See
+trade. If you generate from an Orchestra repository, a message list does that. `fix-latest` ships 93 messages out of
+everything the standard defines for exactly this reason, and narrowing the list further is one text file and one
+command. See
 [FIX versions and dictionaries](fix-versions-and-dictionaries.md#fix-latest).
 
 The order to apply them in is: cut the message list to what you trade, then sanitize what that leaves.
@@ -144,20 +145,20 @@ The order to apply them in is: cut the message list to what you trade, then sani
 ## 5. Map only the fields you use
 
 A decoder parses what you map and skips the rest. A field nobody maps is never converted, never allocated and never
-stored. This is not an optimisation to apply later — it is the default behaviour, and the way to lose it is to map
+stored. This is not an optimisation to apply later; it is the default behaviour, and the way to lose it is to map
 fields "just in case".
 
 ---
 
 ## 6. Choose an object strategy per field
 
-For fields that must become objects, pick how each one is produced —
+For fields that must become objects, pick how each one is produced, with
 `FixFieldsDecoderMapper.ObjectInstanceStrategy`:
 
 | strategy | allocation | constraint |
 |----------|-----------|------------|
 | `NEW_INSTANCE` | one object per decoded value | none; safe to retain and to hand to another thread |
-| `CACHED` | only on a value not seen before | **cache is unbounded** — small value universes only |
+| `CACHED` | only on a value not seen before | **cache is unbounded**, so small value universes only |
 | `THREAD_LOCAL` | none | reference dies at the next `THREAD_LOCAL` field; never hand it to another thread |
 
 ```java
@@ -165,7 +166,7 @@ mapper.mapStringField(Symbol.get(), this::setSymbol, null, CACHED)
       .mapStringField(QuoteReqID.get(), this::setQuoteReqId, null, THREAD_LOCAL);
 ```
 
-`CACHED` suits symbols, currencies, exchanges and enumerations — values that repeat forever. **Using it on a
+`CACHED` suits symbols, currencies, exchanges and enumerations: values that repeat forever. **Using it on a
 high-cardinality field leaks memory**: the cache is bound to the session and never evicts, so an order id or a
 timestamp will grow it without limit.
 
@@ -181,7 +182,7 @@ the reference.
 
 `session.newEncoder(X.class).asReusable()` gives an encoder you fill in and send repeatedly instead of building a new
 one per message. Inside a decoder's `onDecoded` you are on the session's I/O thread and the message goes straight to
-the socket, which is what makes reuse safe there — the quickstart's acceptor does exactly this.
+the socket, which is what makes reuse safe there, and the quickstart's acceptor does exactly this.
 
 Sessions also expose a pool via `newEncodersPool()` for the paths where a single reusable instance will not do.
 
@@ -192,7 +193,7 @@ Sessions also expose a pool via `newEncodersPool()` for the paths where a single
 A store or logger that does I/O inline puts that I/O inside your round trip. Wrap it in the async decorator, which
 hands the work to a Chronicle Queue and returns. See [Stores and loggers](stores-and-loggers.md).
 
-The benchmark numbers in the README were produced with an in-memory store and logging off — so they measure the
+The benchmark numbers in the README were produced with an in-memory store and logging off, so they measure the
 protocol path alone. Turning on a real store is what the async wrapper exists to keep out of the round trip.
 
 ---
@@ -214,7 +215,7 @@ mvn clean install -pl benchmarks -am
 java -jar benchmarks/target/benchmarks.jar
 ```
 
-Two habits worth keeping. Measure allocation as well as time — JMH's GC profiler is what shows a change that trades
+Two habits worth keeping. Measure allocation as well as time: JMH's GC profiler is what shows a change that trades
 0.4 bytes per message for a microsecond. And measure the tail, not the mean: the difference between Staffix's stock
 and busy-spin modes is visible in the mean, but it is *dramatic* at the maximum, and the maximum is what a trading
 system feels.

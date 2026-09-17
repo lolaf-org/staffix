@@ -8,7 +8,7 @@ forced onto a management protocol you do not use.
 
 ## The two layers
 
-**`AdminApi`** is the contract — transport-independent, and the whole administrative surface:
+**`AdminApi`** is the contract: transport-independent, and the whole administrative surface:
 
 | operation | |
 |-----------|---|
@@ -45,7 +45,7 @@ FixEngineBuilder.builder()
 
 You get an MBean per session exposing `logon()`, `logout()`, `reset(String resetMode)`, `getIncomingSeqNum()`,
 `setIncomingSeqNum(long)`, `getOutgoingSeqNum()`, `setOutgoingSeqNum(long)` and `getFixSessionId()`, plus an
-engine-level MBean. Any JMX client — JConsole, VisualVM, your monitoring agent — can drive them.
+engine-level MBean. Any JMX client (JConsole, VisualVM, your monitoring agent) can drive them.
 
 ---
 
@@ -53,7 +53,7 @@ engine-level MBean. Any JMX client — JConsole, VisualVM, your monitoring agent
 
 This is the point of the split. If JMX is not your operational protocol, implement `AdminApiExporter`, register it
 with a settings object the same way, and you keep the entire administrative surface over REST, gRPC, a control topic
-or your firm's own management bus — without touching the engine or reimplementing session control.
+or your firm's own management bus, without touching the engine or reimplementing session control.
 
 ```java
 public class RestAdminApi implements AdminApiExporter {
@@ -64,7 +64,7 @@ public class RestAdminApi implements AdminApiExporter {
 The exporter is chosen by settings like every other pluggable part, so swapping transports is a configuration change
 rather than a fork. Look at
 [`JmxAdminApi`](../admin-apis/jmx/jmx-impl/src/main/java/org/lolaf/staffix/admin/jmx/JmxAdminApi.java) as the
-worked example — it is a thin adapter, and yours should be too.
+worked example: it is a thin adapter, and yours should be too.
 
 ---
 
@@ -85,7 +85,7 @@ staffix.actuator.fix-session-state-contributes-to-heath-status=true
 ```
 
 That last line is the one worth thinking about: it makes a session being down turn the application's health
-endpoint red, which is usually what you want a load balancer or an orchestrator to see — and occasionally exactly
+endpoint red, which is usually what you want a load balancer or an orchestrator to see, and occasionally exactly
 what you do not, if a session is scheduled to be down outside trading hours.
 
 ---
@@ -97,7 +97,7 @@ YAML change reaches a running engine: edit the file, call reload, and the engine
 restart.
 
 The engine reconciles what it read against what it manages, keyed by `FixSessionId`, and applies the difference
-through the store's `add`, `remove` and `update` — which is what initiators and acceptors react to.
+through the store's `add`, `remove` and `update`, which is what initiators and acceptors react to.
 
 **Reloading is not a read-only operation.** By default a session whose settings changed is restarted so the new
 values take effect, and a session whose settings disappeared is disconnected. On a running engine that means a reload
@@ -114,5 +114,5 @@ Each session decides its own exposure, through two settings covered in
 Set both to `false` on the sessions that must not be disturbed, and a reload becomes a configuration change that
 takes effect at their next connection instead.
 
-The same applies to calling `add`, `remove` or `update` on a store directly — reload is only one of their callers,
+The same applies to calling `add`, `remove` or `update` on a store directly; reload is only one of their callers,
 and the flags govern every path.

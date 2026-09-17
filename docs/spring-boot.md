@@ -17,7 +17,7 @@ Working example: [`spring-boot-starter-example`](../examples/spring-boot-starter
 
 ## The shape of the configuration
 
-Every pluggable part is a property namespace, and instances are keyed by the same **instance ids** used in Java —
+Every pluggable part is a property namespace, and instances are keyed by the same **instance ids** used in Java;
 see [Configuring a session](configuring-sessions.md#wiring-the-session-to-the-engine). The pattern is
 `staffix.<part>.instances.<INSTANCE_ID>.<setting>`.
 
@@ -91,7 +91,7 @@ staffix.initiators.primary.connection-retry=PT1S
 `select-strategy` and `idle-strategy` are the latency knobs from
 [Tuning for latency](tuning-for-latency.md#2-choose-where-the-cpu-goes), as enum names rather than constructed
 objects: `WAKEUP` for the blocking selector, and the idle strategies by name. This is the one place where the
-properties surface is narrower than the Java one — a custom `SelectStrategy` or `ThreadFactory` needs a bean or Java
+properties surface is narrower than the Java one: a custom `SelectStrategy` or `ThreadFactory` needs a bean or Java
 configuration.
 
 `scheduler-bean` names a bean to use as the scheduler, so the engine's timers share your application's executor
@@ -110,7 +110,7 @@ staffix.actuator.fix-session-state-contributes-to-heath-status=true
 ```
 
 The actuator module adds a `fix-sessions` endpoint and, optionally, folds session state into the application's health
-status — see [Runtime administration](runtime-administration.md#spring-boot).
+status; see [Runtime administration](runtime-administration.md#spring-boot).
 
 Plugin wrappers compose by referencing another instance's key:
 
@@ -121,12 +121,12 @@ staffix.async-plugin.instances.md.consumer-thread-pool-size=1
 staffix.async-plugin.instances.md.backpressure-policy=DROP
 ```
 
-`wraps` takes the instance-id key of another sessions-plugin entry — a `staffix.monitoring-micrometer.instances.<key>`
+`wraps` takes the instance-id key of another sessions-plugin entry: a `staffix.monitoring-micrometer.instances.<key>`
 or `staffix.tracing.otel.instances.<key>`. See [Monitoring](monitoring.md#keeping-monitoring-off-the-message-path).
 
 Note the difference from the Java API here: in properties both plugins are declared and the wrapper *references* the
 one it wraps by key, whereas in Java the wrapper *contains* the delegate's settings as `delegateSettings` and is
-registered in its place. Same result, and the wrapper is transparent either way — sessions go on naming the delegate.
+registered in its place. Same result, and the wrapper is transparent either way: sessions go on naming the delegate.
 
 ---
 

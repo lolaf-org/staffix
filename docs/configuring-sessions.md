@@ -28,7 +28,7 @@ Only two settings have no default: **`fixSessionId`** and **`fixSessionType`**. 
 be safe and cheap.
 
 A `FixSessionId` is the FIX version plus the CompID pair. It is the identity of the session on the wire *and* the key
-the engine uses to find the right application, store and logger — so `id` needs to be unique within the engine.
+the engine uses to find the right application, store and logger, so `id` needs to be unique within the engine.
 
 ---
 
@@ -66,7 +66,7 @@ FixSessionSettings.builder()
 | `dictionaryId` | `FixDictionaryId.DEFAULT_ID` | which FIX dictionary this session speaks |
 
 All four default to the same id, so a single-session engine can leave every one of them out. The moment you run an
-acceptor and an initiator in one process, set them — this is what keeps their sequence numbers, logs and applications
+acceptor and an initiator in one process, set them: this is what keeps their sequence numbers, logs and applications
 apart.
 
 ---
@@ -84,11 +84,11 @@ apart.
 | `resendRequestResponseTimeout` | 30 seconds | how long an answer to your own ResendRequest may stop making progress before it is asked for again, then given up on. `Duration.ZERO` waits forever |
 
 `resetSeqNumOnLogon(true)` is what the quickstart uses so it can be run repeatedly without state. Production sessions
-usually want persistence and real recovery instead — see [Stores and loggers](stores-and-loggers.md).
+usually want persistence and real recovery instead; see [Stores and loggers](stores-and-loggers.md).
 
 A retransmission drives everything behind it: messages received on top of the gap are only delivered once the request
 completes, and your own application messages are held back meanwhile. `resendRequestResponseTimeout` is what keeps an
-answer that stops half way — a garbled message inside the range is the ordinary way there — from stalling the session
+answer that stops half way (a garbled message inside the range is the ordinary way there) from stalling the session
 for good while heartbeats keep both ends believing it is healthy. It is measured from the last message that advanced
 the recovery rather than from the request, so a long but progressing retransmission never trips it; on expiry the
 missing part of the range is asked for once more, and a second expiry logs the session out. Note that the second
@@ -120,7 +120,7 @@ Session schedules live in `sessionScheduleSettings` and decide when the session 
 ## Validation
 
 Validation is where Staffix's defaults will surprise you if you come from another engine: **almost everything is off**.
-That is deliberate — every check costs time on the message path, and the engine will not spend it unless you say so.
+That is deliberate: every check costs time on the message path, and the engine will not spend it unless you say so.
 
 Enabled by default:
 
@@ -130,7 +130,7 @@ Enabled by default:
 | `validateFieldsHaveValues` | rejects `tag=` with an empty value |
 | `allowUndefinedTagsForMessage` | *permits* tags the dictionary does not define for that message type |
 
-Disabled by default — turn on the ones your counterparty relationship needs:
+Disabled by default, so turn on the ones your counterparty relationship needs:
 
 | setting | what it does |
 |---------|--------------|
@@ -141,7 +141,7 @@ Disabled by default — turn on the ones your counterparty relationship needs:
 | `validateBeginString` | checks BeginString(8) matches the session's FIX version |
 | `detectGarbledMessages` | the section 4.5.2 garbled-message conditions |
 | `allowUserDefinedFields` | permits user-defined tags absent from the dictionary |
-| `allowUnknownFields` | permits standard tags this dictionary does not define — how you talk to a peer on a later FIX version |
+| `allowUnknownFields` | permits standard tags this dictionary does not define, which is how you talk to a peer on a later FIX version |
 | `maxSendingTime` | rejects and then logs out on a SendingTime(52) outside the tolerance, in either direction |
 
 ```java
@@ -156,7 +156,7 @@ FixSessionSettings.builder()
 ```
 
 Two of these are about talking to someone on a **different FIX version**: `allowUnknownFields` covers standard tags
-your dictionary predates — the Global Technical Committee's 40000+ block, for instance — and `allowUserDefinedFields`
+your dictionary predates (the Global Technical Committee's 40000+ block, for instance) and `allowUserDefinedFields`
 covers the private range. Without them a peer on a newer version gets rejects for fields that are perfectly legal.
 
 Third-party routing has two more: `expectedOnBehalfOfCompIds` and `expectedDeliverToCompIds` (both `null` = unchecked)
@@ -182,13 +182,13 @@ time and the peer's clock offset using TestRequest probes. It is off by default.
 | setting | default |
 |---------|---------|
 | `probeInterval` | `null` (disabled) |
-| `emaTimeWindow` | 30 seconds — longer absorbs more jitter, converges slower |
-| `maxAcceptedRtt` | 2 seconds — samples above this are discarded as outliers |
-| `probeTestReqIdPrefix` | `"RTT-measurement-"` — so probes are distinguishable in logs |
-| `sendingTimeToWireDelay` | 1500 ns — the modelled delay between the peer stamping SendingTime and the bytes leaving its wire |
+| `emaTimeWindow` | 30 seconds; longer absorbs more jitter, converges slower |
+| `maxAcceptedRtt` | 2 seconds; samples above this are discarded as outliers |
+| `probeTestReqIdPrefix` | `"RTT-measurement-"`, so probes are distinguishable in logs |
+| `sendingTimeToWireDelay` | 1500 ns, the modelled delay between the peer stamping SendingTime and the bytes leaving its wire |
 
 That last one is worth understanding before you trust the offset: the NTP-style formula assumes the remote's
-timestamp is taken at transmission, and it is not — it is taken while encoding. `sendingTimeToWireDelay` is the
+timestamp is taken at transmission, and it is not; it is taken while encoding. `sendingTimeToWireDelay` is the
 empirical correction for the encode tail, write syscall, kernel queueing and NIC handoff.
 
 How the measurement works, how to calibrate that correction, what the numbers are worth and where they surface are
@@ -199,7 +199,7 @@ all in [Network monitoring](network-monitoring.md).
 ## Cancel on disconnect
 
 Cancel on disconnect (COD) is the agreement that if the session goes away, resting orders should not be left working
-on the venue. It is not part of the FIX standard — it is a bilateral convention, negotiated on the Logon with
+on the venue. It is not part of the FIX standard: it is a bilateral convention, negotiated on the Logon with
 user-defined fields, and every venue spells it slightly differently. So Staffix implements the *mechanism* and leaves
 the numbers configurable.
 
@@ -232,8 +232,8 @@ FixSessionSettings.builder()
 
 `enabled` is `false` by default, and means different things on each side:
 
-- **on an initiator** — send the COD fields on the Logon, requesting the agreement;
-- **on an acceptor** — honour COD fields arriving on an inbound Logon.
+- **on an initiator**: send the COD fields on the Logon, requesting the agreement;
+- **on an acceptor**: honour COD fields arriving on an inbound Logon.
 
 ### What gets negotiated
 
@@ -256,7 +256,7 @@ The four types, and the characters they map to by default:
 | `CANCEL_ON_DISCONNECT_OR_LOGOUT` | `3` | either |
 
 **Tags 35002 and 35003 are defaults, not a standard.** They sit in the user-defined range precisely because no
-standard owns them, and your venue will very likely use different ones — change
+standard owns them, and your venue will very likely use different ones, so change
 `cancelOnDisconnectTypeFieldCode` and `codTimeoutWindowFieldCode` to whatever their specification says. The same
 applies to `cancelOnDisconnectTypeFieldCodes` if they encode the types with different characters.
 
@@ -267,11 +267,11 @@ else in the user-defined range is let in as a side effect.
 ### The two asymmetries worth knowing
 
 **`codTimeoutWindow` means different things on each side.** On an initiator it is the window *sent* in the Logon. On
-an acceptor it is the *minimum acceptable* window received — a peer asking for less than you are prepared to honour
+an acceptor it is the *minimum acceptable* window received, and a peer asking for less than you are prepared to honour
 is not silently accepted.
 
 **`cancelOnDisconnectType` is also the acceptor's fallback.** If an inbound Logon carries no COD fields at all, an
-acceptor with `enabled(true)` still applies this value — which means COD can be in force for a counterparty that
+acceptor with `enabled(true)` still applies this value, which means COD can be in force for a counterparty that
 never asked for it. That is deliberate, and it is how you protect yourself from a peer who simply does not implement
 the convention. Set it to `null` to disable that fallback and honour only what the Logon actually requests.
 
@@ -285,8 +285,8 @@ rather than a technical one, and it usually belongs to the same people who set y
 
 ## When settings change under a running session
 
-Settings can change while the session is up — a reload of the settings store, or a direct `add`/`remove`/`update` on
-it. Two flags decide what that does to the live session:
+Settings can change while the session is up, through a reload of the settings store or a direct
+`add`/`remove`/`update` on it. Two flags decide what that does to the live session:
 
 | setting | default | effect |
 |---------|---------|--------|
@@ -306,11 +306,11 @@ FixSessionSettings.builder()
 ```
 
 With `restartLiveSessionOnUpdate(false)` the new settings are managed immediately and the running session keeps the
-ones it was created with — **nothing is applied in place**. That is one rule rather than a list of which settings can
+ones it was created with: **nothing is applied in place**. That is one rule rather than a list of which settings can
 be changed live and which cannot.
 
 "Live" is the whole of the condition: a session that is not connected is never restarted, because it does not need
-to be — it picks the new settings up when it next connects.
+to be: it picks the new settings up when it next connects.
 
 Both flags are read from the settings the session is **running under**, not from the ones replacing them. The flag
 describes how *this* session may be treated, and this session is the one a restart would disturb; a new policy
@@ -332,7 +332,7 @@ The settings model is the same in all three cases; only the transport differs.
 
 ### Reading session files from somewhere other than a directory
 
-A file store normally reads a directory. It can instead be given a list of URIs — a network location, or a
+A file store normally reads a directory. It can instead be given a list of URIs: a network location, or a
 classpath resource the caller has resolved itself:
 
 ```java
@@ -346,7 +346,7 @@ A URI list cannot be enumerated the way a directory can, so **each URI names one
 end in `default.yaml`, and it provides the defaults merged into the others; a second one is an error, as
 is the same session id arriving from two URIs.
 
-**A store takes a directory or a list of URIs, never both** — providing both, or neither, fails at
+**A store takes a directory or a list of URIs, never both**; providing both, or neither, fails at
 construction. And **settings read from a URI are never written back**: there is nowhere to write, so
 `add`, `update` and `remove` are skipped with a log rather than failing.
 
@@ -365,20 +365,20 @@ fixSessionId:
 logInOrOutResponseTimeout: "${env:LOGON_TIMEOUT:PT30S}"
 ```
 
-Three forms are accepted: `${sysprop:key:default}`, `${env:KEY:default}`, and `${key:default}` — the last
+Three forms are accepted: `${sysprop:key:default}`, `${env:KEY:default}`, and `${key:default}`, the last
 matching Spring's own syntax, asking every source in turn. The default is optional, may itself contain
 `:`, and is used only after every resolver has declined; with no default, the load fails naming the
 placeholder and the field. A value may be part placeholder, `prefix-${env:X}-suffix`, and may hold
 several. Nothing escapes an opening brace, so a value that merely looks like a placeholder is treated as
 one.
 
-Placeholders work in a field of **any** type, not only strings — resolution happens on the parsed file
+Placeholders work in a field of **any** type, not only strings: resolution happens on the parsed file
 before it is bound, so `"${env:LOGON_TIMEOUT:PT30S}"` above is a valid `Duration`.
 
 **Writing a session back keeps the placeholder.** The store rebuilds the file from the runtime settings,
 so it remembers the file as it was read and puts each placeholder back. A value backed by a placeholder is
 owned by its source, so **changing one through the store is refused** rather than silently written as a
-literal. A placeholder in `default.yaml` is resolved but not remembered — that file is only ever read, and
+literal. A placeholder in `default.yaml` is resolved but not remembered: that file is only ever read, and
 a value it contributes is written into a session file as the literal it resolved to.
 
 To resolve from somewhere else, implement `ConfigValueResolver` and hand it to the store:
@@ -392,8 +392,8 @@ FileSessionsSettingsStoreSettings.builder()
 
 Resolvers are asked in order and the first non-empty answer wins. Supplying any **replaces** the built-in
 system-property and environment resolvers rather than joining them, so a deployment can say exactly where
-configuration comes from. `refresh()` is called once per load — not once per file, so every file in a load
-sees the same snapshot — for a resolver backed by something that changes.
+configuration comes from. `refresh()` is called once per load, for a resolver backed by something that changes. It
+is not called once per file, so every file in a load sees the same snapshot.
 
 Sessions declared in Spring properties need none of this: Spring resolves `${...}` in
 `application.properties` itself, from every property source it knows.

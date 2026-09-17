@@ -42,11 +42,11 @@ business messages. A FIX 5.0+ application dictionary has an empty `<header>` for
 
 For a message like QuoteRequest, in `org.lolaf.staffix.fix44`:
 
-- **`encoders.QuoteRequestEncoder`** — a fluent, type-safe builder. `setQuoteReqID(String)` exists; a misspelling is
+- **`encoders.QuoteRequestEncoder`**: a fluent, type-safe builder. `setQuoteReqID(String)` exists; a misspelling is
   a compile error, not a runtime reject.
-- **`fields.QuoteReqID`, `fields.Symbol`, …** — one class per field, carrying its tag, type and location.
-- **`msg.MessageTypes`** — the message-type constants, `MessageTypes.QuoteRequest`.
-- **enum classes** for fields the dictionary enumerates — `Side.SideValues.BUY` rather than `'1'`.
+- **`fields.QuoteReqID`, `fields.Symbol`, …**: one class per field, carrying its tag, type and location.
+- **`msg.MessageTypes`**: the message-type constants, `MessageTypes.QuoteRequest`.
+- **enum classes** for fields the dictionary enumerates, so `Side.SideValues.BUY` rather than `'1'`.
 - **registries**, published through the ServiceLoader SPI, so the engine finds the right field and message-type
   metadata for the version a session speaks.
 
@@ -57,7 +57,7 @@ QuoteRequestEncoder encoder = session.newEncoder(QuoteRequestEncoder.class).asRe
 ```
 
 Decoding is the mirror image: implement `FixMessageDecoder`, declare the message type, map the fields you care about
-onto setters. Fields you do not map are never parsed — see
+onto setters. Fields you do not map are never parsed, see
 [Tuning for latency](tuning-for-latency.md#5-map-only-the-fields-you-use).
 
 ---
@@ -75,23 +75,23 @@ dictionary carries deprecated elements with nothing to distinguish them, so noth
 
 ## Running more than one version in one engine
 
-Nothing stops an engine hosting FIX 4.2 and FIX 4.4 sessions at once — add both packages, and give each session the
+Nothing stops an engine hosting FIX 4.2 and FIX 4.4 sessions at once: add both packages, and give each session the
 matching `FixSessionId`. The registries are per-version and resolved through the SPI, so the right metadata follows
 the session.
 
-What each session must not share is its *instance ids* if it needs its own store, logger or application — see
+What each session must not share is its *instance ids* if it needs its own store, logger or application, see
 [Configuring a session](configuring-sessions.md#wiring-the-session-to-the-engine).
 
 ---
 
 ## FIX Latest
 
-`staffix-fix-latest` ships **93 application messages** — every application message that existed in FIX 4.4, described
+`staffix-fix-latest` ships **93 application messages**, every application message that existed in FIX 4.4, described
 as FIX Latest describes it today.
 
-That is a deliberate cut. FIX Latest defines 173 messages, and generating encoders for all of them costs some 35,000
-classes and around 400 MB of `target/classes`. The message list is a checked-in text file, and the whole standard is
-one flag away:
+That is a deliberate cut: FIX Latest defines far more messages than an application is ever likely to encode, and
+generating all of them produces more classes than a dependency should carry. The message list is a checked-in text
+file, and the whole standard is one flag away:
 
 ```bash
 mvn -Pfull-fix-latest install -pl fix-packages/fix-latest
@@ -116,13 +116,13 @@ generates from that file at build time. The dictionary itself is regenerated on 
 mvn -Porchestra-dictionary initialize -pl fix-packages/fix-44
 ```
 
-That cuts the Orchestra repository to a version **and an extension pack** — `FIX50SP2.xml` is 5.0SP2 as amended
+That cuts the Orchestra repository to a version **and an extension pack**: `FIX50SP2.xml` is 5.0SP2 as amended
 through EP98, and the file says so on its root element. The cut is reproducible: the same orchestration plus the same
 version and EP always produces the same dictionary.
 
 Two versions cannot be generated this way and keep hand-maintained dictionaries instead: **FIX 4.2 and FIX 4.3**. An
 Orchestra repository describes each message's *current* shape, and FIX 4.3 replaced the inline instrument fields with
-the `Instrument` component — so cutting back to 4.2 removes that reference whole and produces messages missing
+the `Instrument` component, so cutting back to 4.2 removes that reference whole and produces messages missing
 fields they should have. The pre-4.3 layouts are not in the file to recover.
 
 ---
@@ -152,10 +152,143 @@ any QuickFIX-format dictionary:
 </plugin>
 ```
 
-`dictionaryId` is how a session selects it — set `FixSessionSettings.dictionaryId("counterparty-a")` and that
+`dictionaryId` is how a session selects it: set `FixSessionSettings.dictionaryId("counterparty-a")` and that
 session decodes with your dictionary while others keep the default. See the
 [plugin's own README](../fix-packages/fix-encoders-generator-maven-plugin/README.md) for the full option list.
 
-Two companion plugins are available for the same pipeline: the **dictionary sanitizer**, which strips fields nothing
-references, and the **Orchestra dictionary generator**, if you would rather cut your dictionary from an orchestration
-than maintain XML.
+Two companion plugins serve the same pipeline, and the rest of this guide covers them: the **Orchestra dictionary
+generator**, if you would rather cut your dictionary from an orchestration than maintain XML, and the **dictionary
+sanitizer**, which strips what nothing in a dictionary references.
+
+---
+
+## Cutting a dictionary from an orchestration
+
+A QuickFIX-format dictionary states one version of FIX and says nothing about how it got there. An Orchestra
+repository is the FIX Trading Community's machine-readable form of the standard, and it carries every version and
+every extension pack at once, with each element marked by the version that added, changed or deprecated it. Cutting a
+dictionary out of it is what lets Staffix say exactly which standard a package speaks, and it is the only source that
+knows what the standard has deprecated, which is what becomes `@Deprecated` in the generated API. This is how every
+shipped `fix-*` dictionary is produced, and the plugin is available for your own.
+
+The orchestration goes in as a zip, since that is how the repositories are published:
+
+```xml
+<plugin>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-fix-orchestra-dictionary-generator-maven-plugin</artifactId>
+    <version>${staffix.version}</version>
+    <configuration>
+        <orchestration>${project.basedir}/src/main/orchestra/fix-orchestra-latest.zip</orchestration>
+        <upToVersion>FIX.4.4</upToVersion>
+        <upToExtensionPack>0</upToExtensionPack>
+        <markDeprecated>true</markDeprecated>
+        <outputFile>${project.build.directory}/generated-resources/MYFIX44.xml</outputFile>
+    </configuration>
+    <executions>
+        <execution>
+            <phase>initialize</phase>
+            <goals><goal>generate</goal></goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+The two ceiling parameters are the cut, and together they name a standard precisely:
+
+- **`upToVersion`** is the last FIX version to keep, such as `FIX.4.4` or `FIX.5.0SP2`. Left out, every version in the
+  repository is kept. It also decides where the session layer goes: up to FIX 4.4 the standard header, trailer and
+  session messages belong in this dictionary, and from FIX 5.0 they belong to FIXT.1.1 and are left out.
+- **`upToExtensionPack`** is the last extension pack to keep. Left out, every extension pack of the kept versions is
+  kept, which is what "FIX.5.0SP2" means on its own: that release as amended. Set it to `0` for the release exactly as
+  published, which is the cut that reproduces the classic dictionaries.
+
+Three more are worth knowing:
+
+- **`markDeprecated`** writes `deprecated="true"` onto the elements the cut keeps that the standard has retired. Off
+  by default, because it makes the file no longer byte-for-byte what a QuickFIX toolchain would have written. On is
+  what makes the generated API carry `@Deprecated`, so it is what the shipped packages use.
+- **`includeDeprecated`** keeps what was already deprecated at the cut, and is on by default: deprecated means "do not
+  use this in new work", not withdrawn, and the field has to stay so that a peer still sending it can be decoded.
+  Turning it off is the deliberate act of not generating encoders for what the standard tells you not to use.
+- **`includeMessagesFile`** names a file listing the messages to keep, one per line by name (`NewOrderSingle`) or by
+  msgType (`D`), with `#` for comments. Left out, every message of the cut is kept. It earns its place on a wide cut
+  such as FIX Latest, where one message expands into hundreds of classes once its groups and components are expanded,
+  and an entry naming a message the cut does not hold fails the build rather than being ignored.
+
+Before cutting, ask the orchestration what it holds. The `versions` goal needs no project and lists every version
+with its extension-pack range, its element counts, and the exact arguments that select it:
+
+```bash
+mvn org.lolaf.staffix:staffix-fix-orchestra-dictionary-generator-maven-plugin:versions \
+    -Dorchestration=path/to/fix-orchestra-latest.zip -DoutputFile=target/fix-versions.txt
+```
+
+```
+version          EP range   elements       base  cut
+FIX.4.4              1-38       1844       1281  upToVersion=FIX.4.4 [upToExtensionPack=0 for the base release]
+FIX.5.0SP2         98-259       8033          2  upToVersion=FIX.5.0SP2 [upToExtensionPack=0 for the base release]
+```
+
+And `dryRun` on the `generate` goal reports what a cut would remove without writing anything.
+
+The cut is reproducible: the same orchestration with the same version and extension pack always produces the same
+dictionary. What the kept messages no longer reference is still written out, so the sanitizer below is the natural
+next step, which is exactly how [`fix-latest`](../fix-packages/fix-latest/pom.xml) is built.
+
+---
+
+## Sanitizing a dictionary
+
+A published dictionary is a catalogue, not a description of your traffic. The shipped FIX 4.4 dictionary defines 1,071
+fields and the FIX Latest one 5,704, and a counterparty's own XML is usually the standard's file with a handful of
+additions rather than a pruned copy. Generation does not know which of those you trade: every field definition becomes
+a field class, every component a group encoder, and every enumeration a set of constants. So the fields you will never
+send cost you build time, jar size, classes to load and entries in the registries that are consulted per message, and
+they crowd your IDE's completion with the entire standard when you are looking for the ten fields your counterparty
+actually sends.
+
+The sanitizer is the cut that needs no decisions from you, because it removes only what the dictionary itself never
+refers to: components no message uses, then fields nothing in the header, the trailer, a message, a component or a
+group refers to. It logs how many of each it removed, so you can see what the cut bought. It runs as a Maven plugin
+over one XML file, writing another, and belongs before generation in the same build:
+
+```xml
+<plugin>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-fix-dictionary-sanitizer-maven-plugin</artifactId>
+    <version>${staffix.version}</version>
+    <executions>
+        <execution>
+            <phase>generate-sources</phase>
+            <goals><goal>sanitize</goal></goals>
+            <configuration>
+                <inputFile>${project.basedir}/src/main/dictionaries/MYFIX44.xml</inputFile>
+                <outputFile>${project.build.directory}/dictionaries/MYFIX44-sanitized.xml</outputFile>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
+```
+
+Then point the encoders generator's `dictionaryFile` at the sanitized output rather than the original. Keeping the
+output under `target/` says which file is the source and which is derived; writing it next to the input is fine too,
+and is what [`benchmarks`](../benchmarks/pom.xml) does.
+
+Two options exist because "unreferenced" is not always the same as "unused":
+
+- **`keepFields`** lists field names to keep whatever happens. From FIX 5.0 the header and the trailer are empty,
+  since the session layer moved to FIXT.1.1, yet a 5.0+ dictionary still defines BeginString, BodyLength, MsgType,
+  MsgSeqNum, SenderCompID, TargetCompID, SendingTime, CheckSum and ApplVerID below them. Nothing references them
+  there, so without this they are all removed and the generated package quietly loses field classes its 4.4 sibling
+  has.
+- **`sanitizeMsgTypeField`** prunes MsgType(35)'s enumerated values to the messages this dictionary defines. It
+  defaults to true, and you want it false whenever the session layer lives in FIXT.1.1: the session message types are
+  legal on the wire but defined elsewhere, so pruning them here leaves the value list contradicting `fixt-11`.
+
+[`fix-latest`](../fix-packages/fix-latest/pom.xml) is the worked example of both, sanitizing its generated dictionary
+with `sanitizeMsgTypeField` off and the session fields named in `keepFields`.
+
+Sanitizing is the second of two cuts, and the smaller one. The first is choosing which messages to generate at all,
+which is the message list in [FIX Latest](#fix-latest) above. Cut the message list to what you trade, then sanitize
+what that leaves. [Tuning for latency](tuning-for-latency.md#the-sanitizer) covers both from the latency side.
