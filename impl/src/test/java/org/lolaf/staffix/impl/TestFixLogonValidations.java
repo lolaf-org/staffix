@@ -338,6 +338,9 @@ class TestFixLogonValidations extends AbstractFixTests {
      */
     @Test
     void testLogonWithMsgSeqNumTooLowIsLoggedOut() throws Exception {
+        // the acceptor closes once its Logout goes unanswered, which the default timeout 10s makes exactly as long as the
+        // wait for the close below
+        setupAcceptorSessionSettings(s -> s.logInOrOutResponseTimeout(Duration.ofSeconds(1)).build());
         startFixAcceptor();
         // an established session the peer has fallen behind: the acceptor expects 10 next
         acceptorMessagesStore.setCurrentIncomingSeqNum(10);
