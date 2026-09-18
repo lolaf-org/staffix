@@ -22,14 +22,20 @@ import org.lolaf.staffix.api.msg.CoreMessageType;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.fix44.fields.EncryptMethod;
+import org.lolaf.staffix.fix44.fields.HeartBtInt;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.tests.RawFixSocketClient;
 import org.mockito.Mockito;
 
+import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -55,6 +61,36 @@ class TestFixLogonLogouts extends AbstractFixTests {
                     argument.add(connectorType.select(MessageTypes.NewOrderSingle, MessageTypes.ExecutionReport));
                     return true;
                 }))).thenReturn(List.of(incomingAdditionalDecoder));
+    }
+
+    /**
+     * The logout timeout disconnects from the scheduler and waits for the IO thread to do it; the IO thread's
+     * disconnection used to cancel that very task with an interrupt, which cut the wait short and had the connection
+     * torn down a second time: two disconnections, then two connection attempts dialling at once.
+     */
+    @Test
+    void testUnansweredLogoutDisconnectsOnce() throws Exception {
+        setupInitiatorSessionSettings(s -> s.logInOrOutResponseTimeout(Duration.ofMillis(500)).build());
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+        try (ServerSocket rawAcceptor = new ServerSocket(acceptorPort)) {
+            fixInitiator.start();
+            trapCreatedFixSession(ConnectorType.INITIATOR);
+            fixInitiatorSession.logon();
+            try (RawFixSocketClient.Session peer = RawFixSocketClient.wrap(rawAcceptor.accept(), initiator.getFixVersion(),
+                    initiator.getTargetCompID().getValue(), initiator.getSenderCompID().getValue())) {
+                peer.readMessageOfType(MessageTypes.Logon, Duration.ofSeconds(10));
+                peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
+                await().untilAsserted(() -> assertThat(fixInitiatorSession.isLoggedIn()).isTrue());
+
+                fixInitiatorSession.disconnect("never answered");
+                peer.readMessageOfType(MessageTypes.Logout, Duration.ofSeconds(10));
+
+                assertThat(peer.isClosedByPeer(Duration.ofSeconds(10))).isTrue();
+            }
+        }
+        // longer than the gap between the two disconnections this used to produce
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(500));
+        verify(fixInitiatorApplication, times(1)).onDisconnected(any(FixSession.class));
     }
 
     @Test

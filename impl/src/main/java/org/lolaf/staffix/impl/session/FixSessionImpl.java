@@ -132,7 +132,8 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
     private final RttEstimator rttEstimator;
     private IntFunction<ByteBuffer> byteBufferBorrower;
     private FixMessageParser outOfSequenceMessagesParser;
-    private boolean holdingOutgoingMessages;
+    private final Object heldOutgoingMessagesLock = new Object();
+    private volatile boolean holdingOutgoingMessages;
     private ExecutorService resendExecutor;
     @Getter
     private Collection<Certificate> remoteCertificates;
@@ -213,12 +214,11 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
         this.fixMessageDecoderProvider = this::getTargetDecoder;
         this.nextExpectedIncomingSeqNumSupplier = fixSessionMessagesStore::getIncomingSeqNum;
 
-        RingBufferFactory.AccessType accessType = ioSettings.isMultiThreadedWriteAPICalls()
-                ? RingBufferFactory.AccessType.MULTI_CONSUMER_SINGLE_PRODUCER : RingBufferFactory.AccessType.SINGLE_CONSUMER_SINGLE_PRODUCER;
+        // taken by the application, the scheduler and the IO thread, and given back by whichever thread the send ends on
+        RingBufferFactory.AccessType accessType = RingBufferFactory.AccessType.MULTI_CONSUMER_MULTI_PRODUCER;
         this.messageSendingContexts = RingBufferFactory.build(accessType, ioSettings.getTasksRingBufferSize());
         while (!messageSendingContexts.isFull()) {
-            messageSendingContexts.offer(new FixSessionFixMessageContext(
-                    fixSessionMessagesStore::getNextOutgoingSeqNum, fixApplication, sendingTimeAccuracy, clock, this, fixSessionId, messageSendingContexts));
+            messageSendingContexts.offer(newMessageSendingContext());
         }
         this.bufferMessageSendingContexts = RingBufferFactory.build(accessType, ioSettings.getTasksRingBufferSize());
         while (!bufferMessageSendingContexts.isFull()) {
@@ -311,7 +311,7 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
     public void onLogonProcessed() {
         if (cancelOnDisconnectTask != null) {
             logEvent("Cancelling cancel on disconnect task");
-            cancelOnDisconnectTask.cancel(true);
+            cancelOnDisconnectTask.cancel(false);
             cancelOnDisconnectTask = null;
         }
         unscheduleTasksIfNeeded();
@@ -1065,11 +1065,11 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
 
     void unscheduleTasksIfNeeded() {
         if (heartBeatTask != null) {
-            heartBeatTask.cancel(true);
+            heartBeatTask.cancel(false);
             heartBeatTask = null;
         }
         if (rttMeasurementsTask != null) {
-            rttMeasurementsTask.cancel(true);
+            rttMeasurementsTask.cancel(false);
             rttMeasurementsTask = null;
             rttEstimator.reset();
         }
@@ -1078,7 +1078,9 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
 
     void cancelLogonOrLogoutTaskIfNeeded() {
         if (logonOrLogoutCheckTask != null && !logonOrLogoutCheckTask.isDone()) {
-            logonOrLogoutCheckTask.cancel(true);
+            // never interrupting, here and for every task of this session: they run on the connector's shared
+            // scheduler, and the logout timeout is the one disconnecting while this runs, waiting for it to finish
+            logonOrLogoutCheckTask.cancel(false);
             logonOrLogoutCheckTask = null;
         }
     }
@@ -1103,18 +1105,51 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
         FixSessionFixMessageContext ctx = messageSendingContexts.poll();
         if (ctx == null) {
             flush();
-            ctx = messageSendingContexts.pollBlocking(pollBlockingIdleStrategy);
+            ctx = takeMessageSendingContext();
         }
         synchronized (bufferedMessageSendingContexts) {
             bufferedMessageSendingContexts.add(ctx.setup(byteBufferBorrower, encoder, sendingTime, messageSendOperationCallback, param1, param2));
         }
     }
 
+    /**
+     * The IO thread never waits for a context: the ones in flight are given back by the IO thread itself, once it
+     * writes them, so waiting there would deadlock. It gets a new one instead, which the full pool then drops.
+     */
+    private FixSessionFixMessageContext takeMessageSendingContext() {
+        FixSessionFixMessageContext ctx = messageSendingContexts.poll();
+        if (ctx != null) {
+            return ctx;
+        }
+        IOSession connection = ioSession;
+        if (connection != null && connection.isWithinIOThread()) {
+            return newMessageSendingContext();
+        }
+        return messageSendingContexts.pollBlocking(pollBlockingIdleStrategy);
+    }
+
+    private FixSessionBufferedFixMessageContext takeBufferedMessageSendingContext() {
+        FixSessionBufferedFixMessageContext ctx = bufferMessageSendingContexts.poll();
+        if (ctx != null) {
+            return ctx;
+        }
+        IOSession connection = ioSession;
+        if (connection != null && connection.isWithinIOThread()) {
+            return new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts);
+        }
+        return bufferMessageSendingContexts.pollBlocking(pollBlockingIdleStrategy);
+    }
+
+    private FixSessionFixMessageContext newMessageSendingContext() {
+        return new FixSessionFixMessageContext(fixSessionMessagesStore::getNextOutgoingSeqNum, fixApplication,
+                sendingTimeAccuracy, clock, this, fixSessionId, messageSendingContexts);
+    }
+
     @Override
     public void flush() {
         synchronized (bufferedMessageSendingContexts) {
             if (!bufferedMessageSendingContexts.isEmpty()) {
-                FixSessionBufferedFixMessageContext ctx = bufferMessageSendingContexts.pollBlocking(pollBlockingIdleStrategy);
+                FixSessionBufferedFixMessageContext ctx = takeBufferedMessageSendingContext();
                 ioSession.send(ctx.setup(byteBufferBorrower, bufferedMessageSendingContexts), ctx, bufferedMessageSentCallback);
                 bufferedMessageSendingContexts.clear();
             }
@@ -1144,7 +1179,11 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
         if (holdingOutgoingMessages && holdWhileRecovering(encoder, sendingTime, messageSendOperationCallback, param1, param2)) {
             return;
         }
-        FixSessionFixMessageContext ctx = messageSendingContexts.pollBlocking(pollBlockingIdleStrategy);
+        sendWithoutHolding(encoder, sendingTime, messageSendOperationCallback, param1, param2);
+    }
+
+    <P1, P2> void sendWithoutHolding(FixMessageEncoder<?> encoder, UTCTime sendingTime, MessageSendOperationCallback<P1, P2> messageSendOperationCallback, P1 param1, P2 param2) {
+        FixSessionFixMessageContext ctx = takeMessageSendingContext();
         IOWriter.ByteBufferBuilder byteBufferBuilder = ctx.setup(byteBufferBorrower, encoder, sendingTime, messageSendOperationCallback, param1, param2);
         if (ioSession != null) {
             ioSession.send(byteBufferBuilder, ctx, messageSentCallback);
@@ -1175,39 +1214,53 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
         if (encoder.getMessageType().isAdmin()) {
             return false;
         }
-        List<HeldOutgoingMessage> heldMessages = fixSessionImplState.getHeldOutgoingMessages();
-        if (heldMessages.size() >= fixSessionSettings.getMaxOutgoingMessagesHeldDuringRecovery()) {
+        synchronized (heldOutgoingMessagesLock) {
+            // checked again under the lock: the release may have finished since send() last looked
+            if (!holdingOutgoingMessages) {
+                return false;
+            }
+            List<HeldOutgoingMessage> heldMessages = fixSessionImplState.getHeldOutgoingMessages();
+            if (heldMessages.size() < fixSessionSettings.getMaxOutgoingMessagesHeldDuringRecovery()) {
+                heldMessages.add(HeldOutgoingMessage.of(encoder, sendingTime, messageSendOperationCallback, param1, param2));
+                return true;
+            }
             logEvent("Refusing to send %s, already holding %s application messages while recovering",
                     encoder.getMessageType(), heldMessages.size());
-            // the same lifecycle a sent message's encoder gets from FixSessionFixMessageContext.release(), which
-            // this one never reaches
-            if (!encoder.isReusable()) {
-                encoder.destroy();
-            }
-            encoder.release();
-            callOnMessageCallbackIfNeeded(new IOException("Too many application messages held back while the session recovers missing messages"),
-                    messageSendOperationCallback, param1, param2);
-            return true;
         }
-        heldMessages.add(HeldOutgoingMessage.of(encoder, sendingTime, messageSendOperationCallback, param1, param2));
+        // the same lifecycle a sent message's encoder gets from FixSessionFixMessageContext.release(), which
+        // this one never reaches
+        if (!encoder.isReusable()) {
+            encoder.destroy();
+        }
+        encoder.release();
+        callOnMessageCallbackIfNeeded(new IOException("Too many application messages held back while the session recovers missing messages"),
+                messageSendOperationCallback, param1, param2);
         return true;
     }
 
     void startHoldingOutgoingMessagesIfNeeded() {
-        holdingOutgoingMessages = fixSessionSettings.getMaxOutgoingMessagesHeldDuringRecovery() > 0;
+        synchronized (heldOutgoingMessagesLock) {
+            holdingOutgoingMessages = fixSessionSettings.getMaxOutgoingMessagesHeldDuringRecovery() > 0;
+        }
     }
 
+    /**
+     * Holding stops only once nothing is left held: an application thread sending while this drains is queued behind
+     * what is already held, so the messages go out in the order they were handed over and none is left stranded.
+     */
     void releaseHeldOutgoingMessages() {
-        if (!holdingOutgoingMessages) {
-            return;
-        }
-        // cleared first: sending them goes back through send(), which must no longer hold anything
-        holdingOutgoingMessages = false;
-        List<HeldOutgoingMessage> heldMessages = fixSessionImplState.getHeldOutgoingMessages();
-        if (!heldMessages.isEmpty()) {
-            logEvent("Sending the %s application messages held back while recovering", heldMessages.size());
-            List<HeldOutgoingMessage> released = new ArrayList<>(heldMessages);
-            heldMessages.clear();
+        while (true) {
+            List<HeldOutgoingMessage> released;
+            synchronized (heldOutgoingMessagesLock) {
+                List<HeldOutgoingMessage> heldMessages = fixSessionImplState.getHeldOutgoingMessages();
+                if (heldMessages.isEmpty()) {
+                    holdingOutgoingMessages = false;
+                    return;
+                }
+                released = new ArrayList<>(heldMessages);
+                heldMessages.clear();
+            }
+            logEvent("Sending the %s application messages held back while recovering", released.size());
             released.forEach(held -> held.send(this));
         }
     }
@@ -1335,7 +1388,7 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
         fixSessionImplState.stop();
         unscheduleTasksIfNeeded();
         if (sessionTimeCheckTask != null) {
-            sessionTimeCheckTask.cancel(true);
+            sessionTimeCheckTask.cancel(false);
             sessionTimeCheckTask = null;
         }
         // before anything else touches the connection: a retransmission still running would otherwise carry on

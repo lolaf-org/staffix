@@ -50,6 +50,6 @@ class HeldOutgoingMessage {
     }
 
     void send(FixSessionImpl fixSession) {
-        fixSession.send(encoder, sendingTime, messageSendOperationCallback, param1, param2);
+        fixSession.sendWithoutHolding(encoder, sendingTime, messageSendOperationCallback, param1, param2);
     }
 }

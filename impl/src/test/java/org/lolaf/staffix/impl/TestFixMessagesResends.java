@@ -39,13 +39,17 @@ import org.lolaf.staffix.tests.TestingLogger;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.IntConsumer;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.toList;
@@ -1040,6 +1044,61 @@ class TestFixMessagesResends extends AbstractFixTests {
                 .isFalse();
 
         assertMessagesSendReceiveStillWorkAfterResync();
+    }
+
+    /**
+     * The IO thread ends the holding while the application keeps sending: a message handed over at that moment used
+     * to be added to the held list after it had been drained, and was never sent.
+     */
+    @ParameterizedTest
+    @MethodSource("initiatorOrAcceptorParams")
+    void testMessagesSentWhileTheHoldingEndsAreAllDelivered(ConnectorType connectorType) throws Exception {
+        logonClient();
+
+        FixApplication resendRequestSender = getFixApplication(connectorType);
+        FixApplication resendRequestReceiver = getFixApplication(connectorType.inverse());
+        FixSession targetFixSession = getFixSession(connectorType);
+        sendMessagesAndCutConnection(connectorType, i -> targetFixSession.send(encodeTestMessage(i), null));
+        assertMessageReceived(getDecodedFixMessages(connectorType.inverse()), EmailThreadID.get(), "test thread id 10");
+        clearApplicationsInvocations();
+        when(resendRequestSender.onResendRequest(any(), any(), any())).thenReturn(true);
+
+        FixSession recoveringSession = getFixSession(connectorType.inverse());
+        AtomicBoolean recoveryEnded = new AtomicBoolean();
+        doAnswer(invocation -> {
+            recoveryEnded.set(true);
+            return null;
+        }).when(resendRequestReceiver).onResendRequestTerminated(any(FixSession.class), anyLong(), anyLong());
+        CountDownLatch sendingStarted = new CountDownLatch(1);
+        AtomicInteger sentCount = new AtomicInteger();
+        Thread sender = new Thread(() -> {
+            awaitLatch(sendingStarted);
+            long stopAt = Long.MAX_VALUE;
+            while (System.nanoTime() < stopAt) {
+                recoveringSession.send(encodeTestMessage(1000 + sentCount.getAndIncrement()), null);
+                // well under maxOutgoingMessagesHeldDuringRecovery for the time a recovery takes
+                LockSupport.parkNanos(TimeUnit.MICROSECONDS.toNanos(200));
+                if (recoveryEnded.get() && stopAt == Long.MAX_VALUE) {
+                    stopAt = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(20);
+                }
+            }
+        }, "application-sender");
+        doAnswer(invocation -> {
+            sendingStarted.countDown();
+            return null;
+        }).when(resendRequestReceiver).onResendRequestInitiated(any(FixSession.class), anyLong(), anyLong());
+        sender.start();
+
+        reconnect(connectorType);
+        awaitResendRequestCompleted(resendRequestReceiver);
+        sender.join(TimeUnit.SECONDS.toMillis(30));
+
+        List<String> expected = IntStream.range(1000, 1000 + sentCount.get()).mapToObj(i -> "test thread id " + i).collect(toList());
+        await().untilAsserted(() -> assertThat(getDecodedFixMessages(connectorType).stream()
+                .map(message -> message.getString(EmailThreadID.get(), ""))
+                .filter(new HashSet<>(expected)::contains))
+                .as("every message handed over around the end of the recovery must arrive, in order")
+                .containsExactlyElementsOf(expected));
     }
 
     @ParameterizedTest
