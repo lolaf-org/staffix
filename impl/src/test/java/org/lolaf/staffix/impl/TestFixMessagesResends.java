@@ -686,6 +686,49 @@ class TestFixMessagesResends extends AbstractFixTests {
         }
     }
 
+    /**
+     * The replay runs on its own thread, so the connection it answers can close under it. It used to carry on and
+     * fail with a NullPointerException on the next message it sent.
+     */
+    @ParameterizedTest
+    @MethodSource("initiatorOrAcceptorParams")
+    void testRetransmissionIsAbandonedWhenItsConnectionCloses(ConnectorType connectorType) {
+        logonClient();
+
+        FixApplication resendRequestSender = getFixApplication(connectorType);
+        FixSession targetFixSession = getFixSession(connectorType);
+
+        sendMessagesAndCutConnection(connectorType, i -> targetFixSession.send(encodeTestMessage(i), null));
+        assertMessageReceived(getDecodedFixMessages(connectorType.inverse()), EmailThreadID.get(), "test thread id 10");
+        clearApplicationsInvocations();
+
+        CountDownLatch replayStarted = new CountDownLatch(1);
+        CountDownLatch releaseReplay = new CountDownLatch(1);
+        when(resendRequestSender.onResendRequest(any(), any(), any())).thenAnswer(invocation -> {
+            if (replayStarted.getCount() > 0) {
+                replayStarted.countDown();
+                awaitLatch(releaseReplay);
+            }
+            return true;
+        });
+
+        try {
+            reconnect(connectorType);
+            assertThat(awaitLatch(replayStarted)).as("the retransmission must have started").isTrue();
+            cutConnection(connectorType);
+        } finally {
+            releaseReplay.countDown();
+        }
+
+        await().untilAsserted(() -> assertThat(getLogger(connectorType).getEvents())
+                .anyMatch(event -> event.contains("Retransmission abandoned, the connection it answered has closed")));
+        verify(resendRequestSender, times(1)).onResendRequest(any(FixSession.class), any(), any(DecodedFixMessage.class));
+
+        reconnect(connectorType);
+        assertPossDupMessageReceived(getDecodedFixMessages(connectorType.inverse()), EmailThreadID.get(), "test thread id 19");
+        assertMessagesSendReceiveStillWorkAfterResync();
+    }
+
     @ParameterizedTest
     @MethodSource("initiatorOrAcceptorParams")
     void testResendRequestWithMessagesResentPerRequestLimitDisabled(ConnectorType connectorType) {

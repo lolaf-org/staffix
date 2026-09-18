@@ -1209,7 +1209,15 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
         }
     }
 
-    void executeResend(Runnable resend) {
+    /**
+     * Runs a retransmission off the IO thread, bound to the connection current when it was asked for. Called on the IO
+     * thread, where that connection can be read.
+     */
+    void executeResend(Consumer<IOSession> resend) {
+        IOSession connection = ioSession;
+        if (connection == null) {
+            return;
+        }
         if (resendExecutor == null) {
             resendExecutor = Executors.newSingleThreadExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "fix-resend-" + fixInstanceId + "-" + fixSessionId.getId());
@@ -1217,7 +1225,7 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
                 return thread;
             });
         }
-        resendExecutor.execute(resend);
+        resendExecutor.execute(() -> resend.accept(connection));
     }
 
     private void shutdownResendExecutorIfNeeded(Deadline deadline) {
@@ -1238,8 +1246,12 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
         }
     }
 
-    void sendWithSeqNum(FixMessageEncoder<?> encoder, long outgoingSequenceNumber) {
-        ioSession.send(encoder.encode(byteBufferBorrower, outgoingSequenceNumber, fixSessionId, fixApplication, sendingTimeAccuracy, clock.now(), this), encoder.getMessageType(),
+    /**
+     * Sends on the connection given rather than the current one: a retransmission answers the connection that asked
+     * for it, and must never reach the one that replaced it.
+     */
+    void sendWithSeqNum(IOSession connection, FixMessageEncoder<?> encoder, long outgoingSequenceNumber) {
+        connection.send(encoder.encode(connection::borrow, outgoingSequenceNumber, fixSessionId, fixApplication, sendingTimeAccuracy, clock.now(), this), encoder.getMessageType(),
                 (byteBuffer, e, messageType) -> logOutgoingFixMessageMessage(byteBuffer.position(0), messageType, e), true);
     }
 

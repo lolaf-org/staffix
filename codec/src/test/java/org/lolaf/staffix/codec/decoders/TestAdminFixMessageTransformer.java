@@ -144,13 +144,13 @@ class TestAdminFixMessageTransformer {
 
     /**
      * The parser resolves MsgType(35) and refuses one the dictionary does not define, with the words a peer would be
-     * given for the same message - there is no second opinion about it here.
+     * given for the same message, and nothing else: the group the message carries is not followed.
      */
     @Test
     void anUnknownMessageTypeIsRefused() {
         assertThatThrownBy(() -> transformer.transform(EMAIL_MESSAGE.replace("35=C", "35=ZZ"), '|', false))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("tag 35 Invalid MsgType", '|', false);
+                .hasMessageEndingWith(": tag 35 Invalid MsgType");
     }
 
     /**
@@ -161,7 +161,7 @@ class TestAdminFixMessageTransformer {
     void aUserDefinedMessageTypeTheDictionaryDoesNotCarryIsRefused() {
         assertThatThrownBy(() -> transformer.transform(EMAIL_MESSAGE.replace("35=C", "35=U1"), '|', false))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("tag 35 Message type not supported", '|', false);
+                .hasMessageEndingWith(": tag 35 Message type not supported");
     }
 
     @Test

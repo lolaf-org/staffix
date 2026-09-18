@@ -4,7 +4,7 @@
 
 # Staffix
 
-[![build](https://github.com/lolaf-org/ringos/actions/workflows/build.yml/badge.svg)](https://github.com/lolaf-org/staffix/actions/workflows/build.yml)
+[![build](https://github.com/lolaf-org/staffix/actions/workflows/build.yml/badge.svg)](https://github.com/lolaf-org/staffix/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.txt)
 
 **Streaming API for FIX**: a FIX engine for Java that treats latency as a correctness property.

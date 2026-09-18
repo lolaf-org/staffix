@@ -19,6 +19,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.lolaf.staffix.TestingClock;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -415,6 +417,25 @@ class TestFixMessageParser {
         assertThat(messageRejects).hasSize(1);
         assertThat(messageRejects.get(0).getMessage()).isEqualTo("NumInGroup value must be greater than zero");
         assertThat(messageRejects.get(0).getSessionRejectReasonCode()).isEqualTo(SessionRejectReasonCodes.INCORRECT_NUM_IN_GROUP_COUNT_FOR_REPEATING_GROUP);
+    }
+
+    /**
+     * A MsgType(35) the dictionary does not define has no field layout, so its groups are not followed: it used to
+     * fail the parser with a NullPointerException, adding a second reject.
+     */
+    @ParameterizedTest
+    @CsvSource({"ZZ, Invalid MsgType", "U1, Message type not supported"})
+    void testGroupInAMessageTypeTheDictionaryDoesNotDefineIsNotFollowed(String msgType, String expectedReject) throws DecodingException {
+        String message = fixMessage("35=" + msgType, "34=1", "49=TARGET_TEST", "52=20241013-19:07:17.861",
+                "56=SENDER_TEST", "33=2", "58=first line", "58=second line");
+
+        fixMessageParser.parseMessages(ByteBuffer.wrap(message.getBytes()), getFixMessageDecoderFunction(mock(FixMessageDecoder.class)));
+
+        assertThat(messageRejects).singleElement().satisfies(reject -> {
+            assertThat(reject.getMessage()).isEqualTo(expectedReject);
+            assertThat(reject.getRefTagId()).isEqualTo(CoreFields.MESSAGE_TYPE);
+            assertThat(reject.getSessionRejectReasonCode()).isEqualTo(SessionRejectReasonCodes.INVALID_MSGTYPE);
+        });
     }
 
     @Test

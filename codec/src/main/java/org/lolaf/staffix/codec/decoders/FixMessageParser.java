@@ -973,6 +973,10 @@ public class FixMessageParser {
         void enterGroup(FixField group, int entriesCount) {
             if (fixMessageFieldsOrder == null) {
                 fixMessageFieldsOrder = messageFieldsRegistry.getFixMessageFields(messageType);
+                if (fixMessageFieldsOrder == null) {
+                    // a MsgType(35) the dictionary does not define, already rejected: it has no groups to follow
+                    return;
+                }
             }
             fixMessageDecoder.onGroupStart(currentGroup, group, entriesCount);
             if (currentGroupIndex >= 0) {
