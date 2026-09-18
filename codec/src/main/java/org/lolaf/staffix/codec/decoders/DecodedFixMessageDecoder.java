@@ -27,7 +27,7 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.time.UTCTime;
-import org.lolaf.staffix.serde.ByteArraySerde;
+import org.lolaf.staffix.codec.serde.ByteArraySerde;
 
 import java.util.Arrays;
 

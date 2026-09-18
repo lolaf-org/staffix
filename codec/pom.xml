@@ -14,8 +14,8 @@
     <name>Staffix Message Codec</name>
     <description>
         The encoding and decoding engine: the base classes every generated encoder extends, the field setters that
-        bind a value to a tag, and the decoders that present a wire message as a DecodedFixMessage. Built on
-        staffix-serde and used by every generated FIX package.
+        bind a value to a tag, the decoders that present a wire message as a DecodedFixMessage, and the serdes that
+        read and write each wire type without allocating. Used by every generated FIX package.
     </description>
 
     <properties>
@@ -30,7 +30,7 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-serde</artifactId>
+            <artifactId>staffix-collections</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

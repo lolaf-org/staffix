@@ -38,7 +38,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.lolaf.staffix.serde.UtcDateTimeSerde;
+import org.lolaf.staffix.codec.serde.UtcDateTimeSerde;
 import org.lolaf.staffix.tests.fix44.encoders.NewOrderSingleEncoder;
 import org.lolaf.staffix.tests.fix44.encoders.QuoteCancelEncoder;
 import org.lolaf.staffix.tests.fix44.encoders.group.AdvertisementNoUnderlyingsEncoder;

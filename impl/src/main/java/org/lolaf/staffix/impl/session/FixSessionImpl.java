@@ -61,7 +61,7 @@ import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.executor.SessionMessageExecutors;
 import org.lolaf.staffix.impl.session.codec.*;
-import org.lolaf.staffix.serde.ByteArraySerde;
+import org.lolaf.staffix.codec.serde.ByteArraySerde;
 
 import javax.security.auth.Subject;
 import java.io.EOFException;
@@ -1154,6 +1154,9 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
             } catch (IOException e) {
                 // terminal state don't care if we do not return the eventually allocated ByteBuffer to the pool
                 messageSentCallback.onMessageWriteCallback(null, NO_CONNECTED_SESSION, ctx);
+            } finally {
+                // what the IO session does after the callback of every message it is handed
+                ctx.release();
             }
         }
     }

@@ -28,8 +28,8 @@ import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.codec.decoders.FixMessageResendTransformer;
 import org.lolaf.staffix.codec.encoders.GenericFixMessageEncoder;
 import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
-import org.lolaf.staffix.serde.ByteArraySerde;
-import org.lolaf.staffix.serde.LongSerde;
+import org.lolaf.staffix.codec.serde.ByteArraySerde;
+import org.lolaf.staffix.codec.serde.LongSerde;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;

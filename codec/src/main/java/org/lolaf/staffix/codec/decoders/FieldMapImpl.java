@@ -21,7 +21,7 @@ import org.lolaf.staffix.api.msg.FixFieldMap;
 import org.lolaf.staffix.api.serde.DecimalFloat;
 import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.time.UTCTime;
-import org.lolaf.staffix.serde.*;
+import org.lolaf.staffix.codec.serde.*;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;

@@ -17,9 +17,9 @@ package org.lolaf.staffix.benchmarks;
 
 import org.lolaf.staffix.api.serde.DecimalFloat;
 import org.lolaf.staffix.codec.decoders.DeserializationContextImpl;
-import org.lolaf.staffix.serde.BigDecimalSerde;
-import org.lolaf.staffix.serde.DecimalFloatTLSerde;
-import org.lolaf.staffix.serde.DoubleSerde;
+import org.lolaf.staffix.codec.serde.BigDecimalSerde;
+import org.lolaf.staffix.codec.serde.DecimalFloatTLSerde;
+import org.lolaf.staffix.codec.serde.DoubleSerde;
 import org.openjdk.jmh.annotations.*;
 
 import java.math.BigDecimal;

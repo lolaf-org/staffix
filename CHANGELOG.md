@@ -42,11 +42,11 @@ faster than QuickFIX/J's median, and under one byte allocated per message agains
   rather than materialising strings, decoding fields lazily, and building strings and exceptions only on the reject
   branch — and optional behaviour is a strategy chosen once at construction rather than a branch tested per field,
   so a disabled feature is absent from the parsing loop rather than cheap in it.
-- **A serde per wire type, both directions**, in `staffix-serde`: `int` and `long` with length-specialised and
-  signed and unsigned paths, `double`, `boolean`, `char`, byte arrays, `DecimalFloat` and `BigDecimal`, `String`,
-  `UUID`, and the six FIX temporal types. Object-valued serdes come in plain, cached and thread-local forms chosen
-  per field, so the cost of every value is stated rather than assumed; encoding writes into a buffer you already
-  own.
+- **A serde per wire type, both directions**, in `staffix-codec` (package `org.lolaf.staffix.codec.serde`): `int` and
+  `long` with length-specialised and signed and unsigned paths, `double`, `boolean`, `char`, byte arrays,
+  `DecimalFloat` and `BigDecimal`, `String`, `UUID`, and the six FIX temporal types. Object-valued serdes come in
+  plain, cached and thread-local forms chosen per field, so the cost of every value is stated rather than assumed;
+  encoding writes into a buffer you already own.
 - **Message stores** — `memory`, `file`, `jdbc`, and an `async` decorator that hands the write to a Chronicle Queue
   and returns, so a slow database costs queue depth rather than round-trip time. `staffix-messages-store-test-kit`
   is published, so a store written outside this repository is held to the contract the shipped ones are.

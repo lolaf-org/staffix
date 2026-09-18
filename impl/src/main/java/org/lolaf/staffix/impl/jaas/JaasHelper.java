@@ -22,7 +22,7 @@ import org.lolaf.staffix.api.fields.FieldType;
 import org.lolaf.staffix.api.fields.FixField;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSession;
-import org.lolaf.staffix.serde.StringSerde;
+import org.lolaf.staffix.codec.serde.StringSerde;
 
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;

@@ -18,7 +18,7 @@ package org.lolaf.staffix.codec.decoders.mappers;
 import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
 import org.lolaf.staffix.api.fields.FixField;
 import org.lolaf.staffix.api.serde.SerDe;
-import org.lolaf.staffix.serde.BooleanSerde;
+import org.lolaf.staffix.codec.serde.BooleanSerde;
 
 class BooleanSetterLambda extends SetterBase {
 

@@ -26,7 +26,7 @@ import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.collections.IndexableMap;
-import org.lolaf.staffix.serde.*;
+import org.lolaf.staffix.codec.serde.*;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;

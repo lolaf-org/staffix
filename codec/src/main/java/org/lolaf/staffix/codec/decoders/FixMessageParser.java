@@ -38,7 +38,7 @@ import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
-import org.lolaf.staffix.serde.*;
+import org.lolaf.staffix.codec.serde.*;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

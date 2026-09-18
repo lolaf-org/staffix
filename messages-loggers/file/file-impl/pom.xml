@@ -28,7 +28,7 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-serde</artifactId>
+            <artifactId>staffix-codec</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

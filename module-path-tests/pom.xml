@@ -379,12 +379,6 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-serde</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-sessions-settings-store-file-impl</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>

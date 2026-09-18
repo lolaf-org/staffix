@@ -26,8 +26,8 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.serde.CharSerde;
-import org.lolaf.staffix.serde.IntSerde;
+import org.lolaf.staffix.codec.serde.CharSerde;
+import org.lolaf.staffix.codec.serde.IntSerde;
 import org.lolaf.staffix.tests.RawFixSocketClient;
 import org.mockito.Mockito;
 

@@ -42,12 +42,14 @@ import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -137,6 +139,27 @@ class TestFixMessagesSending extends AbstractFixTests {
 
         List<TestingDecodedFixMessage> messagesReceiverList = getDecodedFixMessages(connectorType.inverse());
         assertPossDupMessageReceived(messagesReceiverList, Subject.get(), "offline-message");
+    }
+
+    /**
+     * Each message sent while disconnected used to keep its sending context, so the session's pool ran dry after a
+     * few dozen and the next send blocked forever, on the IO thread too.
+     */
+    @Test
+    void testSendingOffLineDoesNotExhaustTheSendingContexts() {
+        setupInitiatorSessionSettings(s -> s.desiredSessionState(FixSessionState.LOGGED_OUT).build());
+        Startable<?> sender = getConnector(ConnectorType.INITIATOR);
+        sender.start();
+        trapCreatedFixSession(ConnectorType.INITIATOR);
+        FixSession offLineSession = getFixSession(ConnectorType.INITIATOR);
+
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+            for (int i = 0; i < 1000; i++) {
+                EmailEncoder encoder = offLineSession.newEncoder(EmailEncoder.class);
+                encoder.begin().setSubject("offline-message-" + i);
+                offLineSession.send(encoder, null);
+            }
+        });
     }
 
     /**

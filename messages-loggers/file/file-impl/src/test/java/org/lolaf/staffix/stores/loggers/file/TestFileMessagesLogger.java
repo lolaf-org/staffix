@@ -26,7 +26,7 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.lolaf.staffix.serde.UtcDateTimeSerde;
+import org.lolaf.staffix.codec.serde.UtcDateTimeSerde;
 
 import java.io.File;
 import java.io.FileInputStream;

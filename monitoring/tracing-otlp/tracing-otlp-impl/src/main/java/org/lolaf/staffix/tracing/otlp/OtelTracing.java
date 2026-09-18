@@ -53,7 +53,7 @@ import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.PluginContext;
 import org.lolaf.staffix.api.time.UTCTime;
-import org.lolaf.staffix.serde.StringThreadLocalSerde;
+import org.lolaf.staffix.codec.serde.StringThreadLocalSerde;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;

@@ -49,7 +49,7 @@ import org.lolaf.staffix.fix44.encoders.group.NoLinesOfTextEncoder;
 import org.lolaf.staffix.fix44.fields.EmailType;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.serde.StringSerde;
+import org.lolaf.staffix.codec.serde.StringSerde;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.*;
 import org.mockito.ArgumentCaptor;

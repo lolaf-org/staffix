@@ -19,7 +19,7 @@ import org.lolaf.staffix.api.codec.SessionRejectReasonCodes;
 import org.lolaf.staffix.api.fields.FixField;
 import org.lolaf.staffix.api.serde.IllegalFieldValueException;
 import org.lolaf.staffix.api.serde.SerDe;
-import org.lolaf.staffix.serde.CharSerde;
+import org.lolaf.staffix.codec.serde.CharSerde;
 
 import java.util.function.Consumer;
 import java.util.function.Function;

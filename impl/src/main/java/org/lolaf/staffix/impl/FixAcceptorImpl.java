@@ -48,7 +48,7 @@ import org.lolaf.staffix.api.version.FixVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.serde.IntSerde;
+import org.lolaf.staffix.codec.serde.IntSerde;
 
 import javax.net.ssl.SSLHandshakeException;
 import java.net.SocketOption;

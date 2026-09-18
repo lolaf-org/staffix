@@ -15,7 +15,7 @@
  */
 package org.lolaf.staffix.benchmarks;
 
-import org.lolaf.staffix.serde.IntSerde;
+import org.lolaf.staffix.codec.serde.IntSerde;
 import org.openjdk.jmh.annotations.*;
 
 import java.nio.charset.StandardCharsets;

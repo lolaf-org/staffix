@@ -32,8 +32,8 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.time.UTCTime;
-import org.lolaf.staffix.serde.BooleanSerde;
-import org.lolaf.staffix.serde.UtcDateTimeSerde;
+import org.lolaf.staffix.codec.serde.BooleanSerde;
+import org.lolaf.staffix.codec.serde.UtcDateTimeSerde;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

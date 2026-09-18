@@ -33,7 +33,7 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.time.UTCTime;
-import org.lolaf.staffix.serde.*;
+import org.lolaf.staffix.codec.serde.*;
 
 import java.math.BigDecimal;
 import java.nio.BufferOverflowException;

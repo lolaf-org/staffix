@@ -17,7 +17,7 @@ package org.lolaf.staffix.codec.decoders.mappers;
 
 import org.lolaf.staffix.api.fields.FixField;
 import org.lolaf.staffix.api.serde.SerDe;
-import org.lolaf.staffix.serde.CharSerde;
+import org.lolaf.staffix.codec.serde.CharSerde;
 
 import java.lang.invoke.VarHandle;
 import java.util.function.Supplier;
