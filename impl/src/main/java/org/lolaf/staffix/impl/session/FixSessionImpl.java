@@ -1397,7 +1397,14 @@ public class FixSessionImpl implements FixSession, FixMessageParserEventsListene
         fixApplication.onSessionPreDestroy(this);
         if (isLoggedIn()) {
             logout(message);
-            if (!stopDeadline.fromRemainingTime(0.5).waitAsLongAs(this::isLoggedIn)) {
+            Deadline logoutAnswerDeadline = stopDeadline.fromRemainingTime(0.5);
+            Duration logoutResponseTimeout = fixSessionSettings.getLogInOrOutResponseTimeout();
+            if (logoutAnswerDeadline.getRemainingTime().compareTo(logoutResponseTimeout) > 0) {
+                // no longer than any other Logout gets: the timeout of one already in flight was cancelled above, and
+                // with an unlimited deadline a peer that never answers would otherwise be waited for forever
+                logoutAnswerDeadline = Deadline.of(logoutResponseTimeout);
+            }
+            if (!logoutAnswerDeadline.waitAsLongAs(this::isLoggedIn)) {
                 log.warn("Timed out to wait for complete logout on session {}", fixSessionId);
             }
         }

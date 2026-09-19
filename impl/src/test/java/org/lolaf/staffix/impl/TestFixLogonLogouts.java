@@ -16,6 +16,7 @@
 package org.lolaf.staffix.impl;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.msg.CoreMessageType;
@@ -39,6 +40,7 @@ import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.Mockito.*;
 
 class TestFixLogonLogouts extends AbstractFixTests {
@@ -91,6 +93,32 @@ class TestFixLogonLogouts extends AbstractFixTests {
         // longer than the gap between the two disconnections this used to produce
         LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(500));
         verify(fixInitiatorApplication, times(1)).onDisconnected(any(FixSession.class));
+    }
+
+    /**
+     * A stop while a Logout is already waiting for its answer cancels that Logout's timeout, then waits for the
+     * session to be logged out: with an unlimited deadline and a peer that never answers, it used to wait forever.
+     */
+    @Test
+    void testStopWithUnlimitedDeadlineDoesNotWaitForeverForAnUnansweredLogout() throws Exception {
+        setupInitiatorSessionSettings(s -> s.logInOrOutResponseTimeout(Duration.ofSeconds(2)).build());
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+        try (ServerSocket rawAcceptor = new ServerSocket(acceptorPort)) {
+            fixInitiator.start();
+            trapCreatedFixSession(ConnectorType.INITIATOR);
+            fixInitiatorSession.logon();
+            try (RawFixSocketClient.Session peer = RawFixSocketClient.wrap(rawAcceptor.accept(), initiator.getFixVersion(),
+                    initiator.getTargetCompID().getValue(), initiator.getSenderCompID().getValue())) {
+                peer.readMessageOfType(MessageTypes.Logon, Duration.ofSeconds(10));
+                peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
+                await().untilAsserted(() -> assertThat(fixInitiatorSession.isLoggedIn()).isTrue());
+
+                fixInitiatorSession.logoutPermanently("never answered");
+                peer.readMessageOfType(MessageTypes.Logout, Duration.ofSeconds(10));
+
+                assertTimeoutPreemptively(Duration.ofSeconds(10), () -> fixInitiator.stop(Deadline.unlimited()));
+            }
+        }
     }
 
     @Test
