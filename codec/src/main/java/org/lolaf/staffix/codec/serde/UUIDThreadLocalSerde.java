@@ -26,7 +26,7 @@ import java.util.UUID;
  * conversion are {@link UUIDSerde}'s; this class only replaces the {@link UUID} a decoded value lands in, parsing
  * into a reused instance instead of allocating one per message.
  *
- * <p>The reused instances belong to the {@code staffix-serde} {@link UUIDsGenerator}, so a decoded UUID never
+ * <p>The reused instances belong to the {@code staffix-codec} {@link UUIDsGenerator}, so a decoded UUID never
  * overwrites one handed out by {@link UUIDsGenerator#instance()}. As with every thread local UUID, the value
  * returned by {@link #deserialize(DeserializationContext)} is only valid until the next deserialization on the
  * same thread. Use {@link UUIDsGenerator} directly to generate UUIDs.
@@ -34,7 +34,7 @@ import java.util.UUID;
 public class UUIDThreadLocalSerde extends UUIDSerde {
 
     private static final UUIDThreadLocalSerde INSTANCE = new UUIDThreadLocalSerde();
-    private static final UUIDsGenerator UUIDS = UUIDsGenerator.instance("staffix-serde");
+    private static final UUIDsGenerator UUIDS = UUIDsGenerator.instance("staffix-codec");
 
     // scratch holder of the two halves of the value being decoded, so that parsing allocates nothing
     private final FastThreadLocal<MsbLsb> threadLocalMsbLsb = FastThreadLocal.withInitial(MsbLsb::new);
