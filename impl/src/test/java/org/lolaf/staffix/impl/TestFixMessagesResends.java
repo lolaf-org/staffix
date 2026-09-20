@@ -633,7 +633,7 @@ class TestFixMessagesResends extends AbstractFixTests {
         // off the map - but it is what a peer that has lost its store and cannot satisfy the request would reach for.
         //
         // What staffix does today is apply the reset and leave the request outstanding, because processHardReset -
-        // unlike processGapFill - never tells FixSessionImplState the range has been dealt with. This asserts the
+        // unlike processGapFill - never tells FixSessionStateComponent the range has been dealt with. This asserts the
         // other reading, that a reset carrying the sequence past everything asked for settles the request: the
         // application is told the recovery ended and the messages held back during it are let go.
         //

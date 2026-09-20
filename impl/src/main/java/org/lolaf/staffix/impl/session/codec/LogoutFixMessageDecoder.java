@@ -22,7 +22,7 @@ import org.lolaf.staffix.api.fields.FieldsRegistry;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.impl.session.FixSessionImplState;
+import org.lolaf.staffix.impl.session.FixSessionStateComponent;
 
 /**
  * Decodes a Logout(35=5), the orderly end of a session.
@@ -47,12 +47,11 @@ public class LogoutFixMessageDecoder extends AbstractAdminFixMessageDecoder {
 
     @Override
     public void onDecodedLocal(FixSession fixSession, boolean possDupFlag, boolean possResend) {
-        FixSessionImplState fixSessionImplState = getFixSessionImplState();
-        boolean isLogoutInitiatedRemotely = fixSessionImplState.isLogoutInitiatedRemotely();
-        fixSessionImplState.onLogoutReceived();
+        FixSessionStateComponent fixSessionStateComponent = getFixSessionStateComponent();
+        boolean isLogoutInitiatedRemotely = fixSessionStateComponent.isLogoutInitiatedRemotely();
+        String message = logoutMessage != null && !logoutMessage.isEmpty() ? logoutMessage : fixSessionStateComponent.getSentLogoutMessage();
+        getFixSessionLayerComponents().onLogoutReceived(message, getDecodedFixMessage());
         FixSessionImpl fixSessionImpl = getFixSession();
-        String message = logoutMessage != null && !logoutMessage.isEmpty() ? logoutMessage : fixSessionImplState.getSentLogoutMessage();
-        getFixApplication().onLogout(fixSession, message, getDecodedFixMessage());
         // whoever asked for the logout is the one that closes the connection, and either way the logout is only
         // finished with once it is gone - FixSessionImpl.onDisconnection() completes it for both branches
         if (isLogoutInitiatedRemotely) {
@@ -60,7 +59,7 @@ public class LogoutFixMessageDecoder extends AbstractAdminFixMessageDecoder {
             // the counterparty asked for it, so this side acknowledges and waits for it to close, forcing the
             // disconnection only if it never does (FIX Session Testcases scenario 13 case B step 2). Dropping the
             // socket here instead would close it under an acknowledgement the peer may not have read.
-            fixSessionImpl.awaitCounterpartyDisconnectAfterAcknowledgedLogout();
+            getLogonLogoutComponent().awaitCounterpartyDisconnectAfterAcknowledgedLogout();
         } else {
             // the Logout just received acknowledges the one this session sent: the handshake is over and the side
             // that initiated it closes, otherwise the socket is left open with a session that is logged out on both

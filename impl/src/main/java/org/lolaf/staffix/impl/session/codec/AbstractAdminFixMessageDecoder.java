@@ -28,8 +28,14 @@ import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.codec.decoders.DecodedFixMessageDecoder;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.impl.session.FixSessionImplState;
+import org.lolaf.staffix.impl.session.FixSessionStateComponent;
+import org.lolaf.staffix.impl.session.FixSessionLayerComponents;
+import org.lolaf.staffix.impl.session.CodecsComponent;
+import org.lolaf.staffix.impl.session.OutgoingMessagesComponent;
+import org.lolaf.staffix.impl.session.LogonLogoutComponent;
+import org.lolaf.staffix.impl.session.MessageRejectsComponent;
 import org.lolaf.staffix.impl.session.ResendRecovery;
+import org.lolaf.staffix.impl.session.RetransmissionComponent;
 
 import java.util.concurrent.Executor;
 
@@ -48,7 +54,8 @@ public abstract class AbstractAdminFixMessageDecoder extends DecodedFixMessageDe
     private final FieldsRegistry fieldsRegistry;
     private final FixApplication fixApplication;
     private final FixSessionImpl fixSession;
-    private final FixSessionImplState fixSessionImplState;
+    private final FixSessionStateComponent fixSessionStateComponent;
+    private final FixSessionLayerComponents fixSessionLayerComponents;
     private final MessageTypeRegistry messageTypeRegistry;
     private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
     private final FixSessionSettings fixSessionSettings;
@@ -62,7 +69,8 @@ public abstract class AbstractAdminFixMessageDecoder extends DecodedFixMessageDe
         this.fixAdminMessagesCodec = fixAdminMessagesCodec;
         this.fixApplication = adminMessageCodecContext.getFixApplication();
         this.fixSession = adminMessageCodecContext.getFixSession();
-        this.fixSessionImplState = adminMessageCodecContext.getFixSessionImplState();
+        this.fixSessionStateComponent = adminMessageCodecContext.getFixSessionStateComponent();
+        this.fixSessionLayerComponents = adminMessageCodecContext.getFixSessionLayerComponents();
         this.messageTypeRegistry = adminMessageCodecContext.getMessageTypeRegistry();
         this.fixSessionMessagesStore = adminMessageCodecContext.getFixSessionMessagesStore();
         this.fixSessionSettings = adminMessageCodecContext.getFixSessionSettings();
@@ -71,12 +79,50 @@ public abstract class AbstractAdminFixMessageDecoder extends DecodedFixMessageDe
     }
 
     /**
+     * The Logon(35=A) and Logout(35=5) exchanges, which several admin messages either answer or break off.
+     */
+    protected LogonLogoutComponent getLogonLogoutComponent() {
+        return fixSessionLayerComponents.get(LogonLogoutComponent.class);
+    }
+
+    /**
+     * What this session is missing and has asked for, which a Logon(35=A) or a ResendRequest(35=2) either opens or
+     * answers.
+     */
+    protected RetransmissionComponent getRetransmission() {
+        return fixSessionLayerComponents.get(RetransmissionComponent.class);
+    }
+
+    /**
+     * The decoders this session was set up with, whose message types a Logon(35=A) advertises to the peer.
+     */
+    protected CodecsComponent getCodecs() {
+        return fixSessionLayerComponents.get(CodecsComponent.class);
+    }
+
+    /**
+     * The sending pipeline, which a retransmission writes into directly: a replayed message carries the MsgSeqNum(34)
+     * it was stored under rather than the next one.
+     */
+    protected OutgoingMessagesComponent getOutgoingMessages() {
+        return fixSessionLayerComponents.get(OutgoingMessagesComponent.class);
+    }
+
+    /**
+     * Where a message the decoder refuses goes: the rejects are its answer to the peer, and what they cost the
+     * session is decided in one place rather than by each decoder.
+     */
+    protected MessageRejectsComponent getMessageRejects() {
+        return fixSessionLayerComponents.get(MessageRejectsComponent.class);
+    }
+
+    /**
      * The gap recovery this session is in the middle of, if any: what the peer still owes it, and what arrived on top
      * of that meanwhile. Several admin messages settle part of it - a SequenceReset(35=4) above all - so they reach
      * for it often enough to be worth naming here.
      */
     protected ResendRecovery getResendRecovery() {
-        return fixSessionImplState.getResendRecovery();
+        return fixSessionLayerComponents.get(RetransmissionComponent.class).getResendRecovery();
     }
 
     @Override

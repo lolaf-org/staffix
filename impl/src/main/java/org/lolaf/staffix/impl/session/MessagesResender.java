@@ -53,6 +53,8 @@ public class MessagesResender {
     private final MessageTypeRegistry messageTypeRegistry;
     private final FixAdminMessagesCodec fixAdminMessagesCodec;
     private final FixSessionImpl fixSessionImpl;
+    private final RetransmissionComponent retransmission;
+    private final OutgoingMessagesComponent outgoingMessages;
 
     /**
      * Retransmits {@code [beginSeqNo, endSeqNo]}, covering with a SequenceReset(35=4) gap fill whatever is not
@@ -65,7 +67,7 @@ public class MessagesResender {
         // off the IO thread, which would otherwise be held for the whole replay - see FixSessionImpl.executeResend.
         // The range is captured here, on the IO thread, because the decoder fields it comes from are reused by the
         // next message to arrive.
-        fixSessionImpl.executeResend(connection -> resendMessagesRange(connection, beginSeqNo, endSeqNo));
+        retransmission.executeResend(connection -> resendMessagesRange(connection, beginSeqNo, endSeqNo));
     }
 
     private void resendMessagesRange(IOSession connection, long beginSeqNo, long endSeqNo) {
@@ -151,7 +153,7 @@ public class MessagesResender {
         }
         GenericFixMessageEncoder encoder = resendState.encoders.computeIfAbsent(messageType, GenericFixMessageEncoder::new).begin();
         decodedFixMessage.foreach((f, v) -> encoder.addField(f, v, ByteArraySerde.instance()));
-        fixSessionImpl.sendWithSeqNum(resendState.connection, encoder, seqNum);
+        outgoingMessages.sendWithSeqNum(resendState.connection, encoder, seqNum);
         // sendWithSeqNum encodes into a buffer of its own and does not go through the sending context that normally
         // releases the encoder afterwards. These encoders being cached per message type, a range holding two messages
         // of the same type would otherwise fail the second begin() with "encoder not yet sent", aborting the resend
@@ -163,7 +165,7 @@ public class MessagesResender {
     private void sendSequenceResetWithGapFill(IOSession connection, long messageSequenceNumber, long newSeqNum) {
         fixSessionImpl.logEvent("Sending SequenceReset from SeqNum %s with gap fill to NewSeqNum %s", messageSequenceNumber, newSeqNum);
         FixMessageEncoder<?> gapFillEncoder = fixAdminMessagesCodec.generateSequenceReset(newSeqNum, true);
-        fixSessionImpl.sendWithSeqNum(connection, gapFillEncoder, messageSequenceNumber);
+        outgoingMessages.sendWithSeqNum(connection, gapFillEncoder, messageSequenceNumber);
         fixApplication.onSequenceReset(fixSessionImpl, newSeqNum, true);
     }
 

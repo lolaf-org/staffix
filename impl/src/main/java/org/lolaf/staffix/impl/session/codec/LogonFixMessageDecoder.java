@@ -35,7 +35,8 @@ import org.lolaf.staffix.api.version.ApplVerID;
 import org.lolaf.staffix.codec.decoders.FixMessageResendTransformer;
 import org.lolaf.staffix.codec.decoders.MessageReject;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.impl.session.FixSessionImplState;
+import org.lolaf.staffix.impl.session.FixSessionStateComponent;
+import org.lolaf.staffix.impl.session.FixSessionLayerComponent;
 import org.lolaf.staffix.impl.session.MessagesResender;
 
 import java.time.Duration;
@@ -68,7 +69,6 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
     private final FixField codWindowField;
     private final Map<Character, CancelOnDisconnectType> codFieldsMappings;
     private MessagesResender messagesResender;
-    private long msgSeqNum;
     private int heartbeatInterval;
     private int peerMaxMessageSize;
     private Boolean resetSeqNum;
@@ -91,8 +91,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
 
     @Override
     public void mapFieldsForDecoding(FixFieldsDecoderMapper fixFieldsDecoderMapper, FieldsRegistry fieldsRegistry) {
-        fixFieldsDecoderMapper.mapLongField(getFieldsRegistry().find(CoreFields.MESSAGE_SEQ_NUM), this::setMsgSeqNum, 0)
-                .mapIntField(getFieldsRegistry().find(CoreFields.HEARTBEAT_INTERVAL), this::setHeartbeatInterval, 0)
+        fixFieldsDecoderMapper.mapIntField(getFieldsRegistry().find(CoreFields.HEARTBEAT_INTERVAL), this::setHeartbeatInterval, 0)
                 .mapIntField(getFieldsRegistry().find(CoreFields.MAX_MESSAGE_SIZE), this::setPeerMaxMessageSize, 0)
                 .mapBooleanObjectField(getFieldsRegistry().find(CoreFields.RESET_NUM_FLAG), this::setResetSeqNum, null);
         super.mapFieldsForDecoding(fixFieldsDecoderMapper, fieldsRegistry);
@@ -116,7 +115,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
      * for good, so everything the peer sends afterwards arrives out of sequence into a session that has stopped
      * counting.
      *
-     * @see FixSessionImpl#onMessageDecoded
+     * @see org.lolaf.staffix.codec.decoders.FixMessageParserEventsListener#onMessageDecoded
      */
     private void countThisLogonAsFirstOfTheNewNumbering() {
         FixMessagesStore.FixSessionMessagesStore store = getFixSessionMessagesStore();
@@ -197,14 +196,14 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
                     fixSession.processTask(() -> {
                         log.error("Error when validating logon request", error);
                         fixSession.logEvent("Rejecting logon request due to failure: %s", error.getMessage());
-                        fixSessionImpl.sendLogoutRequest("Failed to validate logon request", true);
+                        getLogonLogoutComponent().sendLogoutRequest("Failed to validate logon request", true);
                         // cannot call session.logout() because need to be logged in to send message
                     });
                 } else {
                     logonRejectionMessageOptional.ifPresentOrElse(logonRejectionMessage ->
                                     fixSession.processTask(() -> {
                                         fixSession.logEvent(REJECTING_LOGON, logonRejectionMessage);
-                                        fixSessionImpl.sendLogoutRequest(logonRejectionMessage, true);
+                                        getLogonLogoutComponent().sendLogoutRequest(logonRejectionMessage, true);
                                     }),
                             () -> fixSession.processTask(() -> finishLogon(wrongSeqNumException, fixSessionImpl, heartbeatIntervalLocal, resetSeqNumFlagLocal, nextExpectedMsgSeqNum, nextExpectedIncomingSeqNum, logonMessageLocal)));
                 }
@@ -218,20 +217,20 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
                              Long nextExpectedMsgSeqNum, long nextExpectedIncomingSeqNum, DecodedFixMessage logonMessage) {
         FixSessionSettings fixSessionSettings = getFixSessionSettings();
         FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore = getFixSessionMessagesStore();
-        FixSessionImplState fixSessionImplState = getFixSessionImplState();
+        FixSessionStateComponent fixSessionStateComponent = getFixSessionStateComponent();
 
         // Section 4.4.2, a reset carried out over a session that is already up. Two Logons carrying
         // ResetSeqNumFlag(141)=Y cross on a live session - the proposal and its acknowledgement - and they have to be
         // told apart or each end answers the other's answer for ever. The flag below is set only by the side that
         // sent the proposal, and is consumed by the one message that answers it.
-        boolean acknowledgesOwnInSessionReset = fixSessionImplState.consumeInSessionResetPending();
+        boolean acknowledgesOwnInSessionReset = fixSessionStateComponent.consumeInSessionResetPending();
         boolean inSessionReset = Boolean.TRUE.equals(resetSeqNumFlag)
-                && fixSessionImplState.isLoggedIn()
+                && fixSessionStateComponent.isLoggedIn()
                 && !acknowledgesOwnInSessionReset;
 
         // canSendLoginResponse covers bringing a session up, and admits acceptors only; 4.4.2 lets either peer start
         // a reset, so an initiator has to be able to acknowledge one too
-        boolean canSendLoginResponse = fixSessionImplState.canSendLoginResponse() || inSessionReset;
+        boolean canSendLoginResponse = fixSessionStateComponent.canSendLoginResponse() || inSessionReset;
 
         // NextExpectedMsgSeqNum(789) synchronization, section 4.4.1. The range to put back on the wire is only worked
         // out here: it goes out after our own Logon(35=A) does, further down.
@@ -242,7 +241,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
             if (nextExpectedMsgSeqNum > currentOutgoingSeqNum) {
                 // the peer expects a message we have never sent: its view of the session is broken beyond recovery
                 String msg = String.format("NextExpectedMsgSeqNum is higher than expected: expected %d, received %d", currentOutgoingSeqNum, nextExpectedMsgSeqNum);
-                fixSession.sendLogoutRequest(msg, true);
+                getLogonLogoutComponent().sendLogoutRequest(msg, true);
                 return;
             }
             // "perform message recovery for messages starting with the message with MsgSeqNum(34) equal to the
@@ -263,7 +262,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
                 // the peer retransmits on its own, driven by the NextExpectedMsgSeqNum(789) our own Logon carries. The
                 // range is still tracked as pending so that the recovery terminates and the messages queued on top of
                 // the gap - this Logon among them - are replayed once it is filled.
-                fixSession.awaitPeerRetransmission(wrongSeqNumException.getExpectedMsgSeqNum(),
+                getRetransmission().awaitPeerRetransmission(wrongSeqNumException.getExpectedMsgSeqNum(),
                         wrongSeqNumException.getMsgSeqNum() - 1, "Received out of order Logon");
             }
         }
@@ -276,7 +275,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
             // the peer numbering from 1 while we carry on where we were, which just flaps the connection.
             String msg = "Resetting the sequence number is not supported by this session";
             fixSession.logEvent(msg);
-            fixSession.sendLogoutRequest(msg, true);
+            getLogonLogoutComponent().sendLogoutRequest(msg, true);
             return;
         }
 
@@ -287,7 +286,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
         settleInSessionResetNumbering(fixSession, resetSeqNumFlag, acknowledgesOwnInSessionReset, inSessionReset);
 
         if (!sequenceResetDone && wrongSeqNumException != null && !getResendRecovery().hasPendingResendRequest()) {
-            fixSession.requestRetransmission(wrongSeqNumException.getExpectedMsgSeqNum(),
+            getRetransmission().requestRetransmission(wrongSeqNumException.getExpectedMsgSeqNum(),
                     wrongSeqNumException.getMsgSeqNum() - 1, "Received out of order Logon");
         }
 
@@ -332,7 +331,8 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
                     : nextExpectedIncomingSeqNum;
         }
         fixSession.send(getFixAdminMessagesCodec().generateLogin(heartbeatInterval, sequenceResetDone,
-                fixSessionSettings, getFixApplication().getFixApiVersion(), nextExpectedMsgSeqNum, fixSession.getIncomingMessageTypes(), fixSession.getOutgoingMessageTypes()), null);
+                fixSessionSettings, getFixApplication().getFixApiVersion(), nextExpectedMsgSeqNum,
+                getCodecs().getIncomingMessageTypes(), getCodecs().getOutgoingMessageTypes()), null);
         if (sequenceResetDone) {
             // the Logon(35=A) just processed is message 1 of the new numbering, so what we expect next is 2 -
             // section 4.4.2: "upon completion of the session reset, both peers must have NextNumIn = 2 and
@@ -383,8 +383,8 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
         AtomicInteger codTimeoutWindowInMillis = new AtomicInteger();
         handleCancelOnDisconnectLogonInstructions(getFixSessionSettings(), fixSession, logonMessage,
                 getFixSessionMessagesStore(), codTypeEnum, codTimeoutWindowInMillis);
-        getFixSessionImplState().onLogon(heartbeatInterval, codTypeEnum.get(), codTimeoutWindowInMillis.get());
-        getFixApplication().onLogon(getFixSession(), logonMessage);
+        getFixSessionLayerComponents().onLogonCompleted(new FixSessionLayerComponent.LogonCompleted(heartbeatInterval,
+                codTypeEnum.get(), codTimeoutWindowInMillis.get(), logonMessage));
     }
 
     private MessagesResender getMessagesResender() {
@@ -397,7 +397,9 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
                     getFixApplication(),
                     getMessageTypeRegistry(),
                     getFixAdminMessagesCodec(),
-                    getFixSession());
+                    getFixSession(),
+                    getRetransmission(),
+                    getOutgoingMessages());
         }
         return messagesResender;
     }
@@ -418,7 +420,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
                             .refTagId(codTypeField.getCode())
                             .sessionRejectReasonCode(SessionRejectReasonCodes.VALUE_IS_INCORRECT)
                             .build();
-                    fixSession.onMessageRejects(getMessageType(), this, fixSessionMessagesStore.getIncomingSeqNum(), List.of(reject));
+                    getMessageRejects().onMessageRejects(getMessageType(), fixSessionMessagesStore.getIncomingSeqNum(), List.of(reject));
                 }
             }
             TimeUnit codWindowScale = getFixSessionSettings().getCancelOnDisconnectSettings().getCodTimeoutWindowScale();
@@ -434,7 +436,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
                         .refTagId(codWindowField.getCode())
                         .sessionRejectReasonCode(SessionRejectReasonCodes.VALUE_IS_INCORRECT)
                         .build();
-                fixSession.onMessageRejects(getMessageType(), this, fixSessionMessagesStore.getIncomingSeqNum(), List.of(reject));
+                getMessageRejects().onMessageRejects(getMessageType(), fixSessionMessagesStore.getIncomingSeqNum(), List.of(reject));
                 codTypeEnum.set(null);
                 codTimeoutWindowInMillis.set(0);
             } else {
@@ -450,17 +452,17 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
 
     private CompletableFuture<Optional<String>> validateOnLogon(FixSession fixSession, DecodedFixMessage logonMessage, boolean testMessageIndicator, int peerMaxMessageSize) {
         FixSessionSettings fixSessionSettings = getFixSessionSettings();
-        FixSessionImplState fixSessionImplState = getFixSessionImplState();
+        FixSessionStateComponent fixSessionStateComponent = getFixSessionStateComponent();
         if (testMessageIndicator && !fixSessionSettings.isTestingMode()) {
             return CompletableFuture.completedFuture(Optional.of("Session not configured for accepting login with TestMessageIndicator(464) enabled"));
         }
         if (fixSessionSettings.isTestingMode() && !testMessageIndicator) {
             return CompletableFuture.completedFuture(Optional.of("Session configured for only accepting login with TestMessageIndicator(464) enabled"));
         }
-        if (!fixSessionImplState.isInsideSessionTime()) {
+        if (!getFixSession().isWithinSessionTime()) {
             return CompletableFuture.completedFuture(Optional.of("Logon attempt outside of configured session time"));
         }
-        if (!fixSessionImplState.getDesiredState().equals(org.lolaf.staffix.api.session.FixSessionState.LOGGED_IN)) {
+        if (!fixSessionStateComponent.getDesiredState().equals(org.lolaf.staffix.api.session.FixSessionState.LOGGED_IN)) {
             return CompletableFuture.completedFuture(Optional.of("Logon rejected, session not setup to accept login requests for now"));
         }
         if (fixSessionSettings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR)) {
@@ -508,8 +510,8 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
                 .refTagId(CoreFields.DEFAULT_APPL_VER_ID)
                 .sessionRejectReasonCode(SessionRejectReasonCodes.INVALID_UNSUPPORTED_APPL_VER)
                 .build();
-        fixSession.onMessageRejects(getMessageType(), this, getFixSessionMessagesStore().getIncomingSeqNum(), List.of(reject));
-        fixSession.sendLogoutRequest(rejectText, true);
+        getMessageRejects().onMessageRejects(getMessageType(), getFixSessionMessagesStore().getIncomingSeqNum(), List.of(reject));
+        getLogonLogoutComponent().sendLogoutRequest(rejectText, true);
         return true;
     }
 
@@ -535,8 +537,8 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
                 .refTagId(CoreFields.ENCRYPT_METHOD)
                 .sessionRejectReasonCode(SessionRejectReasonCodes.DECRYPTION_PROBLEM)
                 .build();
-        fixSession.onMessageRejects(getMessageType(), this, getFixSessionMessagesStore().getIncomingSeqNum(), List.of(reject));
-        fixSession.sendLogoutRequest(rejectText, true);
+        getMessageRejects().onMessageRejects(getMessageType(), getFixSessionMessagesStore().getIncomingSeqNum(), List.of(reject));
+        getLogonLogoutComponent().sendLogoutRequest(rejectText, true);
         return true;
     }
 
@@ -550,7 +552,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
         String logoutText = String.format("MsgSeqNum too low, expecting %s but received %s",
                 wrongSeqNumException.getExpectedMsgSeqNum(), wrongSeqNumException.getMsgSeqNum());
         fixSession.logEvent(REJECTING_LOGON, logoutText);
-        fixSession.sendLogoutRequest(logoutText, true);
+        getLogonLogoutComponent().sendLogoutRequest(logoutText, true);
         return true;
     }
 

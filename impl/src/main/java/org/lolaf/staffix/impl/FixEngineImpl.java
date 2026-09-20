@@ -167,7 +167,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         return new FixSessionRuntimeDependencies(findMatchAmongstMessagesStores(fixSessionSettings),
                 findMatchAmongstMessagesLoggers(fixSessionSettings),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
-                findMatchAmongstFixSessionPlugins(fixSessionSettings),
+                findMatchAmongstPluginsComponent(fixSessionSettings),
                 fixSessionRegistry);
     }
 
@@ -321,7 +321,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 .orElseThrow(() -> new IllegalArgumentException("No initiator or acceptor manages session " + fixSessionId));
     }
 
-    private List<FixSessionsPlugin<?>> findMatchAmongstFixSessionPlugins(FixSessionSettings fixSessionSettings) {
+    private List<FixSessionsPlugin<?>> findMatchAmongstPluginsComponent(FixSessionSettings fixSessionSettings) {
         if (fixSessionsPlugins.isEmpty()) {
             // no plugins provided
             return Collections.emptyList();

@@ -24,8 +24,10 @@ import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
+import org.lolaf.staffix.api.codec.FixMessageEncodingListener;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.impl.session.FixSessionImplState;
+import org.lolaf.staffix.impl.session.FixSessionStateComponent;
+import org.lolaf.staffix.impl.session.FixSessionLayerComponents;
 
 import java.util.concurrent.Executor;
 
@@ -39,7 +41,9 @@ public class AdminMessageCodecContext {
 
     FixApplication fixApplication;
     FixSessionImpl fixSession;
-    FixSessionImplState fixSessionImplState;
+    FixMessageEncodingListener encodingListener;
+    FixSessionStateComponent fixSessionStateComponent;
+    FixSessionLayerComponents fixSessionLayerComponents;
     FieldsRegistry fieldsRegistry;
     MessageTypeRegistry messageTypeRegistry;
     MessageFieldsRegistry messageFieldsRegistry;

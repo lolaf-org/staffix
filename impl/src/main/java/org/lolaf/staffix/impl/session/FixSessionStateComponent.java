@@ -17,12 +17,10 @@ package org.lolaf.staffix.impl.session;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.lolaf.staffix.api.session.CancelOnDisconnectType;
+import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSessionState;
-import org.lolaf.staffix.api.time.UTCTime;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -31,30 +29,23 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Logon and logout are tracked as sent-flags separately from the state itself because both are exchanges
  * rather than moments: a session that has sent a Logout but not had one back is in neither condition.
+ *
+ * <p>It is the first component of {@link FixSessionLayerComponents}, so every other one reads a state that has
+ * already moved. It reacts and answers; what a transition sets off belongs to the components that follow it. The
+ * exception is the one-shot of {@link #runOnceLogoutProcessed(Runnable)}, which an administrative operation leaves
+ * for the next logout and which runs here, last of this state's own doing.
  */
-public class FixSessionImplState {
+public class FixSessionStateComponent implements FixSessionLayerComponent {
 
     private final boolean acceptorSession;
     private final AtomicBoolean logonSent;
     private final AtomicBoolean logoutSent;
     private final AtomicReference<FixSessionState> actualState;
-    private final FixSessionImpl fixSession;
     private final FixSessionScheduleManager fixSessionScheduleManager;
-    /**
-     * The gap recovery, which is a session state of its own and large enough to be kept as one: what the peer still
-     * owes this session, and what arrived on top of it meanwhile.
-     */
-    @Getter
-    private final ResendRecovery resendRecovery;
-    @Getter
-    private final List<HeldOutgoingMessage> heldOutgoingMessages;
     private final AtomicBoolean inSessionResetPending;
     private final AtomicBoolean sequenceResetOnNextLogon;
     private final AtomicBoolean logoutProcessed;
     private Runnable onLogoutProcessedTask;
-    @Getter
-    private boolean insideSessionTime;
-    private boolean preOutsideSessionTimeTriggered;
     @Setter
     @Getter
     private FixSessionState desiredState;
@@ -62,36 +53,26 @@ public class FixSessionImplState {
     private String sentLogoutMessage;
     @Getter
     private boolean adminOnlyMessagesAllowed;
-    private CancelOnDisconnectType cancelOnDisconnectType;
-    private int codTimeoutWindowInMillis;
-    private long lastMessageSentInEpochSeconds;
-    private long lastMessageReceivedInEpochSeconds;
-    private long pendingTestRequestSentInEpochSeconds;
-    @Getter
-    private int heartbeatInterval;
     @Getter
     private boolean started;
 
-    public FixSessionImplState(FixSessionImpl fixSession, boolean acceptorSession, FixSessionState desiredState,
-                               FixSessionScheduleManager fixSessionScheduleManager) {
-        this.fixSession = fixSession;
+    public FixSessionStateComponent(boolean acceptorSession, FixSessionState desiredState,
+                                    FixSessionScheduleManager fixSessionScheduleManager) {
         this.acceptorSession = acceptorSession;
         this.desiredState = desiredState;
         this.actualState = new AtomicReference<>(FixSessionState.DISCONNECTED);
         this.logonSent = new AtomicBoolean();
         this.logoutSent = new AtomicBoolean();
         this.fixSessionScheduleManager = fixSessionScheduleManager;
-        this.insideSessionTime = fixSessionScheduleManager.isWithinSessionTime();
         this.adminOnlyMessagesAllowed = true;
-        this.resendRecovery = new ResendRecovery(fixSession);
-        this.heldOutgoingMessages = new ArrayList<>();
         this.inSessionResetPending = new AtomicBoolean();
         this.sequenceResetOnNextLogon = new AtomicBoolean();
         this.logoutProcessed = new AtomicBoolean(true);
         this.started = true;
     }
 
-    public void stop() {
+    @Override
+    public void onSessionStopping(Deadline deadline) {
         started = false;
     }
 
@@ -140,22 +121,11 @@ public class FixSessionImplState {
         return logoutSent.get();
     }
 
-    public boolean onPreOutsideSessionTimeTrigger() {
-        if (!preOutsideSessionTimeTriggered) {
-            preOutsideSessionTimeTriggered = true;
-            return true;
-        }
-        return false;
-    }
-
-    public boolean onOutsideSessionTime() {
-        insideSessionTime = false;
-        return canSendLogoutRequest();
-    }
-
-    public boolean onInsideSessionTime() {
-        insideSessionTime = true;
-        preOutsideSessionTimeTriggered = false;
+    /**
+     * Whether a window reopening is this session's to act on: an initiator that wants to be logged in and has not
+     * asked yet.
+     */
+    public boolean canLogonForReopenedWindow() {
         return !acceptorSession
                 && !isLoggedIn()
                 && wantsToBeLoggedIn()
@@ -202,47 +172,37 @@ public class FixSessionImplState {
                 && !logonSent.get();
     }
 
-    public void onLogon(int heartbeatInterval, CancelOnDisconnectType cancelOnDisconnectType, int codTimeoutWindowInMillis) {
-        this.heartbeatInterval = heartbeatInterval;
-        this.cancelOnDisconnectType = cancelOnDisconnectType;
-        this.codTimeoutWindowInMillis = codTimeoutWindowInMillis;
+    @Override
+    public void onLogonCompleted(LogonCompleted logon) {
         adminOnlyMessagesAllowed = false;
         actualState.set(FixSessionState.LOGGED_IN);
         logonSent.set(false);
         logoutSent.set(false);
-        fixSession.onLogonProcessed();
     }
 
+    @Override
     public void onLogoutInitiated(String message) {
         sentLogoutMessage = message;
         logoutSent.set(true);
     }
 
-    public void onLogoutReceived() {
-        fixSession.unscheduleTasksIfNeeded();
+    @Override
+    public void onLogoutReceived(String message, DecodedFixMessage logoutMessage) {
         logoutProcessed.set(false);
         actualState.set(FixSessionState.LOGGED_OUT);
     }
 
+    @Override
     public void onLogoutProcessed(boolean cleanLogout) {
         logoutProcessed.set(true);
         adminOnlyMessagesAllowed = true;
         logoutSent.set(false);
         logonSent.set(false);
-        preOutsideSessionTimeTriggered = false;
-        resendRecovery.onSessionEnded();
-        // the outgoing ones are not dropped though: sending them now stores them, so they reach the peer on the
-        // next connection the way any other message sent while disconnected does
-        fixSession.releaseHeldOutgoingMessages();
         sentLogoutMessage = null;
-        lastMessageSentInEpochSeconds = 0;
-        lastMessageReceivedInEpochSeconds = 0;
-        pendingTestRequestSentInEpochSeconds = 0;
-        fixSession.onLogoutProcessed(cancelOnDisconnectType, codTimeoutWindowInMillis, cleanLogout);
-        cancelOnDisconnectType = null;
-        codTimeoutWindowInMillis = 0;
-        heartbeatInterval = 0;
-        // last, so that the task sees a session whose logout is done with rather than one half way through it
+        runPendingLogoutProcessedTask();
+    }
+
+    private void runPendingLogoutProcessedTask() {
         Runnable task = onLogoutProcessedTask;
         if (task != null) {
             onLogoutProcessedTask = null;
@@ -250,47 +210,18 @@ public class FixSessionImplState {
         }
     }
 
-    public void onDisconnection() {
+    @Override
+    public void onConnectionClosed() {
         actualState.set(FixSessionState.DISCONNECTED);
     }
 
-    public void onConnection() {
+    @Override
+    public void onConnected() {
         actualState.set(FixSessionState.CONNECTED);
         logoutSent.set(false);
         logonSent.set(false);
-        resendRecovery.onNewConnection();
         // same for a task waiting on a logout that never came: it belongs to the session that just ended
         onLogoutProcessedTask = null;
-    }
-
-    public boolean isTestRequestRequired(UTCTime now) {
-        return lastMessageReceivedInEpochSeconds + heartbeatInterval < now.getEpochSeconds();
-    }
-
-    public boolean isHeartBeatSendingRequired(UTCTime now) {
-        return lastMessageSentInEpochSeconds + heartbeatInterval <= now.getEpochSeconds();
-    }
-
-    public boolean isTestRequestResponseTimedOut(UTCTime now) {
-        return pendingTestRequestSentInEpochSeconds > 0
-                && lastMessageReceivedInEpochSeconds < pendingTestRequestSentInEpochSeconds
-                && pendingTestRequestSentInEpochSeconds + heartbeatInterval < now.getEpochSeconds();
-    }
-
-    public void markTestRequestSent(UTCTime sendingTime) {
-        pendingTestRequestSentInEpochSeconds = sendingTime.getEpochSeconds();
-    }
-
-    public void onTestRequestResponseReceived() {
-        pendingTestRequestSentInEpochSeconds = 0;
-    }
-
-    public void onMessageSent(UTCTime sendingTime) {
-        lastMessageSentInEpochSeconds = sendingTime.getEpochSeconds();
-    }
-
-    public void onMessageReceived(UTCTime receiveTime) {
-        lastMessageReceivedInEpochSeconds = receiveTime.getEpochSeconds();
     }
 
 }
