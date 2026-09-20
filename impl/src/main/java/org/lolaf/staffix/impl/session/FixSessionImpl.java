@@ -70,6 +70,12 @@ import java.util.function.LongSupplier;
 public class FixSessionImpl implements FixSession {
 
     static final IOException NO_CONNECTED_SESSION = new IOException("No connected session");
+    private static final BiConsumer<Runnable, Exception> LOG_ON_CALLER_IF_REFUSED = (task, error) -> {
+        if (error != null) {
+            task.run();
+        }
+    };
+
     private static final BiConsumer<Runnable, Exception> IGNORE_TASK_RESULT = (task, error) -> {
         if (error == NO_CONNECTED_SESSION || error instanceof EOFException) {
             log.debug("Skipped FIX session task {}, the connection is gone: {}", task.getClass().getName(), error.getMessage());
@@ -237,25 +243,46 @@ public class FixSessionImpl implements FixSession {
 
     @Override
     public void logEvent(String event) {
-        //WTF if not in io thread the logging must be done in an io thread task
-        if (fixMessagesLogger.isLoggingEvents()) {
-            try {
-                fixMessagesLogger.logEvent(clock.now(), event);
-            } catch (FixMessagesLogger.LoggingException ex) {
-                log.error("Failed to log event", ex);
-            }
+        if (!fixMessagesLogger.isLoggingEvents()) {
+            return;
         }
+        IOSession connection = ioSession;
+        if (connection == null || connection.isWithinIOThread()) {
+            writeEvent(clock.now(), event);
+            return;
+        }
+        UTCTime eventTime = clock.now().asImmutable();
+        connection.processTask(() -> writeEvent(eventTime, event), LOG_ON_CALLER_IF_REFUSED);
     }
 
     @Override
     public void logEvent(String event, Object... params) {
-        //WTF if not in io thread the logging must be done in an io thread task
-        if (fixMessagesLogger.isLoggingEvents()) {
-            try {
-                fixMessagesLogger.logEvent(clock.now(), event, params);
-            } catch (FixMessagesLogger.LoggingException ex) {
-                log.error("Failed to log event", ex);
-            }
+        if (!fixMessagesLogger.isLoggingEvents()) {
+            return;
+        }
+        IOSession connection = ioSession;
+        if (connection == null || connection.isWithinIOThread()) {
+            writeEvent(clock.now(), event, params);
+            return;
+        }
+        String formattedEvent = String.format(event, params);
+        UTCTime eventTime = clock.now().asImmutable();
+        connection.processTask(() -> writeEvent(eventTime, formattedEvent), LOG_ON_CALLER_IF_REFUSED);
+    }
+
+    private void writeEvent(UTCTime eventTime, String event) {
+        try {
+            fixMessagesLogger.logEvent(eventTime, event);
+        } catch (FixMessagesLogger.LoggingException ex) {
+            log.error("Failed to log event", ex);
+        }
+    }
+
+    private void writeEvent(UTCTime eventTime, String event, Object... params) {
+        try {
+            fixMessagesLogger.logEvent(eventTime, event, params);
+        } catch (FixMessagesLogger.LoggingException ex) {
+            log.error("Failed to log event", ex);
         }
     }
 
