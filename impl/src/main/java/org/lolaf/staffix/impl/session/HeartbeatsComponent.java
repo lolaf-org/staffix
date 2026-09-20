@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.session.RttMeasurement;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
+import org.lolaf.staffix.impl.threading.SchedulerThread;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -134,6 +135,7 @@ class HeartbeatsComponent implements FixSessionLayerComponent, FixSessionMessage
         }
     }
 
+    @SchedulerThread
     private void manageHeartbeats() {
         UTCTime now = clock.now();
         if (isTestRequestResponseTimedOut(now)) {
@@ -163,6 +165,7 @@ class HeartbeatsComponent implements FixSessionLayerComponent, FixSessionMessage
         fixSession.send(fixAdminMessagesCodec.generateTestRequest(testRequestId), null);
     }
 
+    @SchedulerThread
     private void sendRttMeasurementProbe() {
         if (!fixSessionStateComponent.isLoggedIn()) {
             return;

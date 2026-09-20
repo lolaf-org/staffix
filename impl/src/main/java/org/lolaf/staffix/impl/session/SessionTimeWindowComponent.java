@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.impl.threading.SchedulerThread;
 
 import java.io.EOFException;
 import java.time.Duration;
@@ -118,6 +119,7 @@ class SessionTimeWindowComponent implements FixSessionLayerComponent {
         }
     }
 
+    @SchedulerThread
     private void checkSessionTime() {
         log.debug("Checking session time");
         // some minor calculations and state change processed in scheduler thread for now

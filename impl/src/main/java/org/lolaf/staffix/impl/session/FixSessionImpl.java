@@ -40,6 +40,7 @@ import org.lolaf.staffix.codec.decoders.FixMessageParser;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.executor.SessionMessageExecutors;
+import org.lolaf.staffix.impl.threading.ExternalThread;
 
 import javax.security.auth.Subject;
 import java.io.EOFException;
@@ -149,6 +150,7 @@ public class FixSessionImpl implements FixSession {
         return fixSessionPlugins.requiresTimeMeasurement();
     }
 
+    @ExternalThread
     public void start(FixSessionRuntimeDependencies fixSessionRuntimeDependencies) {
         for (FixApplicationSessionSettingDescriptor d : fixApplication.getRequiredFixSessionSettings()) {
             if (!fixSessionSettings.getFixApplicationSessionSettings().containsKey(d)) {
@@ -165,6 +167,7 @@ public class FixSessionImpl implements FixSession {
         logEvent("Session %s created", fixSessionId);
     }
 
+    @ExternalThread
     public void onSessionRemoved() {
         Deadline stopDeadline = Deadline.of(fixSessionSettings.getDisconnectMessagesFlushDeadline());
         stop("FIX session has been removed", stopDeadline);
@@ -282,6 +285,7 @@ public class FixSessionImpl implements FixSession {
     }
 
     @Override
+    @ExternalThread
     public void sendBusinessMessageReject(String rejectText, int businessRejectReason, String businessRejectRefId, MessageType refMsgType) {
         messageRejects.sendBusinessMessageReject(rejectText, businessRejectReason, businessRejectRefId, refMsgType);
     }
@@ -297,11 +301,13 @@ public class FixSessionImpl implements FixSession {
     }
 
     @Override
+    @ExternalThread
     public void processTask(Runnable task) {
         processTask(task, IGNORE_TASK_RESULT);
     }
 
     @Override
+    @ExternalThread
     public void processTask(Runnable task, BiConsumer<Runnable, Exception> callback) {
         IOSession currentIOSession = ioSession;
         if (currentIOSession == null) {
@@ -315,7 +321,7 @@ public class FixSessionImpl implements FixSession {
         return ioSession;
     }
 
-    private LogonLogoutComponent negotiator() {
+    private LogonLogoutComponent logonLogoutComponent() {
         return fixSessionLayerComponents.get(LogonLogoutComponent.class);
     }
 
@@ -329,24 +335,27 @@ public class FixSessionImpl implements FixSession {
     }
 
     @Override
-    public void disconnect(String disconnectMessage) {
-        fixSessionStateComponent.setDesiredState(FixSessionState.DISCONNECTED);
-        runOnIOOrCurrentThread(() -> negotiator().sendLogoutRequest(disconnectMessage, false));
-    }
-
-    @Override
+    @ExternalThread
     public void logoutPermanently(String message) {
         fixSessionStateComponent.setDesiredState(FixSessionState.LOGGED_OUT);
-        runOnIOOrCurrentThread(() -> negotiator().sendLogoutRequest(message, false));
+        runOnIOOrCurrentThread(() -> logonLogoutComponent().sendLogoutRequest(message, false));
     }
 
     @Override
+    @ExternalThread
     public void logout(String message) {
-        runOnIOOrCurrentThread(() -> negotiator().sendLogoutRequest(message, false));
+        runOnIOOrCurrentThread(() -> logonLogoutComponent().sendLogoutRequest(message, false));
     }
 
     public void disconnect() {
         disconnect(Deadline.of(fixSessionSettings.getDisconnectMessagesFlushDeadline()));
+    }
+
+    @Override
+    @ExternalThread
+    public void disconnect(String disconnectMessage) {
+        fixSessionStateComponent.setDesiredState(FixSessionState.DISCONNECTED);
+        runOnIOOrCurrentThread(() -> logonLogoutComponent().sendLogoutRequest(disconnectMessage, false));
     }
 
     private void disconnect(Deadline deadline) {
@@ -356,9 +365,10 @@ public class FixSessionImpl implements FixSession {
     }
 
     @Override
+    @ExternalThread
     public void logon() {
         fixSessionStateComponent.setDesiredState(FixSessionState.LOGGED_IN);
-        runOnIOOrCurrentThread(() -> negotiator().sendLogonRequestIfNeeded());
+        runOnIOOrCurrentThread(() -> logonLogoutComponent().sendLogonRequestIfNeeded());
     }
 
     @Override
@@ -367,21 +377,25 @@ public class FixSessionImpl implements FixSession {
     }
 
     @Override
+    @ExternalThread
     public void bufferize(FixMessageEncoder<?> encoder, UTCTime sendingTime) {
         bufferize(encoder, sendingTime, null, null, null);
     }
 
     @Override
+    @ExternalThread
     public <P1, P2> void bufferize(FixMessageEncoder<?> encoder, UTCTime sendingTime, MessageSendOperationCallback<P1, P2> messageSendOperationCallback, P1 param1, P2 param2) {
         outgoingMessages.bufferize(encoder, sendingTime, messageSendOperationCallback, param1, param2);
     }
 
     @Override
+    @ExternalThread
     public void flush() {
         outgoingMessages.flush();
     }
 
     @Override
+    @ExternalThread
     public void send(FixMessageEncoder<?> encoder, UTCTime sendingTime) {
         send(encoder, sendingTime, null, null, null);
     }
@@ -391,6 +405,7 @@ public class FixSessionImpl implements FixSession {
     }
 
     @Override
+    @ExternalThread
     public <P1, P2> void send(FixMessageEncoder<?> encoder, UTCTime sendingTime, MessageSendOperationCallback<P1, P2> messageSendOperationCallback, P1 param1, P2 param2) {
         if (heldOutgoingMessages.holdIfRecovering(encoder, sendingTime, messageSendOperationCallback, param1, param2)) {
             return;
@@ -399,6 +414,7 @@ public class FixSessionImpl implements FixSession {
     }
 
     @Override
+    @ExternalThread
     public void testRequest(String testRequest) {
         fixSessionLayerComponents.get(HeartbeatsComponent.class).sendTestRequest(testRequest);
     }
@@ -444,10 +460,11 @@ public class FixSessionImpl implements FixSession {
         // important clean potential still in flight parsed message chunk
         fixMessageParser.reset();
         fixSessionLayerComponents.get(SessionTimeWindowComponent.class).catchUpOnSessionTimeCrossedWhileDisconnected();
-        negotiator().sendLogonRequestIfNeeded();
+        logonLogoutComponent().sendLogonRequestIfNeeded();
         return true;
     }
 
+    @ExternalThread
     public void stop(String message, Deadline stopDeadline) {
         fixSessionLayerComponents.onSessionStopping(stopDeadline);
         // before anything else touches the connection: a retransmission still running would otherwise carry on
@@ -512,7 +529,7 @@ public class FixSessionImpl implements FixSession {
         }
         resetSequence("In-session reset");
         fixSessionStateComponent.onInSessionResetSent();
-        negotiator().sendLoginMessage(fixSessionLayerComponents.get(HeartbeatsComponent.class).getHeartbeatInterval(), Boolean.TRUE);
+        logonLogoutComponent().sendLoginMessage(fixSessionLayerComponents.get(HeartbeatsComponent.class).getHeartbeatInterval(), Boolean.TRUE);
     }
 
     void resetSequence(String message) {

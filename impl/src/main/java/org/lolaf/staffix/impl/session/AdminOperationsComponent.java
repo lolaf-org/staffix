@@ -28,6 +28,7 @@ import org.lolaf.staffix.codec.decoders.AdminFixMessageTransformer;
 import org.lolaf.staffix.codec.encoders.GenericFixMessageEncoder;
 import org.lolaf.staffix.codec.serde.ByteArraySerde;
 import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
+import org.lolaf.staffix.impl.threading.ExternalThread;
 
 import java.util.concurrent.TimeUnit;
 
@@ -78,6 +79,7 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
      * @throws IllegalArgumentException if the string is not a message this session could send
      * @throws IllegalStateException    if the session is not logged in
      */
+    @ExternalThread
     void sendFixMessage(String fixMessage, char separator, boolean possDupFlag) {
         if (!fixSessionStateComponent.isLoggedIn()) {
             throw new IllegalStateException("Cannot send a FIX message on FIX session " + fixSessionId
@@ -90,26 +92,31 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
         fixSession.send(encoder, null);
     }
 
+    @ExternalThread
     long getIncomingSeqNum() {
         return fixSessionMessagesStore.getIncomingSeqNum();
     }
 
+    @ExternalThread
     void setIncomingSeqNum(long seqNum) {
         failIfStoreStopped("set incoming sequence number");
         fixSession.logEvent("Admin API set incoming sequence: %s", seqNum);
         fixSessionMessagesStore.storeNextIncomingSeqNum(seqNum);
     }
 
+    @ExternalThread
     long getOutgoingSeqNum() {
         return fixSessionMessagesStore.getOutgoingSeqNum();
     }
 
+    @ExternalThread
     void setOutgoingSeqNum(long seqNum) {
         failIfStoreStopped("set outgoing sequence number");
         fixSession.logEvent("Admin API set outgoing sequence: %s", seqNum);
         fixSessionMessagesStore.storeNextOutgoingSeqNum(seqNum);
     }
 
+    @ExternalThread
     void resetSequence(AdminApi.ResetFixSessionMode resetFixSessionMode) {
         fixSession.runOnIOOrCurrentThread(() -> {
             fixSession.logEvent("Admin API reset sequence: %s", resetFixSessionMode);

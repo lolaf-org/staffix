@@ -18,6 +18,7 @@ package org.lolaf.staffix.impl.session;
 import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.CancelOnDisconnectType;
+import org.lolaf.staffix.impl.threading.SchedulerThread;
 
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -76,15 +77,19 @@ class CancelOnDisconnectComponent implements FixSessionLayerComponent {
         codTimeoutWindowInMillis = 0;
     }
 
+    @SchedulerThread
+    private void triggerCancelOnDisconnect(CancelOnDisconnectType triggeredType) {
+        fixSession.logEvent("Triggered cancel on disconnect task");
+        fixApplication.onCancelOnDisconnectTriggered(fixSession, triggeredType);
+        cancelOnDisconnectTask = null;
+    }
+
     private void scheduleCodTask() {
         if (fixSessionStateComponent.isStarted()) {
             CancelOnDisconnectType triggeredType = cancelOnDisconnectType;
             fixSession.logEvent("Schedule cancel on disconnect task for type %s with timeout %s", triggeredType, codTimeoutWindowInMillis);
-            cancelOnDisconnectTask = scheduler.schedule(() -> {
-                fixSession.logEvent("Triggered cancel on disconnect task");
-                fixApplication.onCancelOnDisconnectTriggered(fixSession, triggeredType);
-                cancelOnDisconnectTask = null;
-            }, codTimeoutWindowInMillis, TimeUnit.MILLISECONDS);
+            cancelOnDisconnectTask = scheduler.schedule(() -> triggerCancelOnDisconnect(triggeredType),
+                    codTimeoutWindowInMillis, TimeUnit.MILLISECONDS);
         }
     }
 }

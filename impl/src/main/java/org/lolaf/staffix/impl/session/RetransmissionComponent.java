@@ -29,14 +29,11 @@ import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.codec.decoders.FixMessageParser;
 import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
+import org.lolaf.staffix.impl.threading.SchedulerThread;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 /**
@@ -62,15 +59,15 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
     private final MessageTypeRegistry messageTypeRegistry;
     private final FieldsRegistry fieldsRegistry;
     private final FixMessagesLogger.Logger fixMessagesLogger;
-    private CodecsComponent codecs;
-    private IncomingMessagesComponent incomingMessages;
-    private FixMessageParser outOfSequenceMessagesParser;
     /**
      * The gap recovery, which is a session state of its own and large enough to be kept as one: what the peer still
      * owes this session, and what arrived on top of it meanwhile.
      */
     @Getter
     private final ResendRecovery resendRecovery;
+    private CodecsComponent codecs;
+    private IncomingMessagesComponent incomingMessages;
+    private FixMessageParser outOfSequenceMessagesParser;
     private ExecutorService resendExecutor;
     private ScheduledFuture<?> stallCheckTask;
 
@@ -157,6 +154,7 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
      * Asks again for what is left of a request the peer has not answered, or gives up on a session that cannot be
      * recovered.
      */
+    @SchedulerThread
     private void manageStalledRetransmission() {
         Duration timeout = fixSessionSettings.getResendRequestResponseTimeout();
         if (timeout.isZero()) {

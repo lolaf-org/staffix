@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
+import org.lolaf.staffix.impl.threading.SchedulerThread;
 
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -91,13 +92,17 @@ public class LogonLogoutComponent implements FixSessionLayerComponent {
      * (FIX Session Testcases scenario 13 case B step 2).
      */
     public void awaitCounterpartyDisconnectAfterAcknowledgedLogout() {
-        logonOrLogoutCheckTask = scheduler.schedule(() -> {
-            if (fixSessionStateComponent.isLogoutPendingConnectionEnd()) {
-                fixSession.logEvent("Counterparty did not close the connection within %s of its logout being acknowledged, disconnecting",
-                        fixSessionSettings.getLogInOrOutResponseTimeout());
-                fixSession.runOnIOOrCurrentThread(fixSession::disconnect);
-            }
-        }, fixSessionSettings.getLogInOrOutResponseTimeout().toMillis(), TimeUnit.MILLISECONDS);
+        logonOrLogoutCheckTask = scheduler.schedule(this::checkCounterpartyClosedTheConnection,
+                fixSessionSettings.getLogInOrOutResponseTimeout().toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    @SchedulerThread
+    private void checkCounterpartyClosedTheConnection() {
+        if (fixSessionStateComponent.isLogoutPendingConnectionEnd()) {
+            fixSession.logEvent("Counterparty did not close the connection within %s of its logout being acknowledged, disconnecting",
+                    fixSessionSettings.getLogInOrOutResponseTimeout());
+            fixSession.runOnIOOrCurrentThread(fixSession::disconnect);
+        }
     }
 
     public void cancelLogonOrLogoutTaskIfNeeded() {
@@ -129,6 +134,7 @@ public class LogonLogoutComponent implements FixSessionLayerComponent {
         cancelLogonOrLogoutTaskIfNeeded();
     }
 
+    @SchedulerThread
     private void checkIsLoggedOnState() {
         if (!fixSessionStateComponent.getActualState().equals(FixSessionState.LOGGED_IN)) {
             fixSession.logEvent("Timeout receiving logon response, disconnecting");
@@ -136,6 +142,7 @@ public class LogonLogoutComponent implements FixSessionLayerComponent {
         }
     }
 
+    @SchedulerThread
     private void checkIsLoggedOutState() {
         if (!fixSessionStateComponent.getActualState().equals(FixSessionState.LOGGED_OUT)
                 && !fixSessionStateComponent.getActualState().equals(FixSessionState.DISCONNECTED)) {

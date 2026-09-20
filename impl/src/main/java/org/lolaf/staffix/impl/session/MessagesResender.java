@@ -30,6 +30,7 @@ import org.lolaf.staffix.codec.encoders.GenericFixMessageEncoder;
 import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
 import org.lolaf.staffix.codec.serde.ByteArraySerde;
 import org.lolaf.staffix.codec.serde.LongSerde;
+import org.lolaf.staffix.impl.threading.ResendThread;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -70,6 +71,7 @@ public class MessagesResender {
         retransmission.executeResend(connection -> resendMessagesRange(connection, beginSeqNo, endSeqNo));
     }
 
+    @ResendThread
     private void resendMessagesRange(IOSession connection, long beginSeqNo, long endSeqNo) {
         // whatever is chosen to be retransmitted inside it, the requested range must be covered up to its end and
         // no further: the peer has to end up expecting the message right after the range it asked for
