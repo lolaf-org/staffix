@@ -251,6 +251,7 @@ public class FixSessionImpl implements FixSession {
             writeEvent(clock.now(), event);
             return;
         }
+        // taken here, when the event happened, and made immutable: the clock hands out one reused instance
         UTCTime eventTime = clock.now().asImmutable();
         connection.processTask(() -> writeEvent(eventTime, event), LOG_ON_CALLER_IF_REFUSED);
     }
@@ -265,6 +266,8 @@ public class FixSessionImpl implements FixSession {
             writeEvent(clock.now(), event, params);
             return;
         }
+        // formatted here rather than by the logger: the parameters are the caller's and may have moved on by the
+        // time the IO thread gets to them
         String formattedEvent = String.format(event, params);
         UTCTime eventTime = clock.now().asImmutable();
         connection.processTask(() -> writeEvent(eventTime, formattedEvent), LOG_ON_CALLER_IF_REFUSED);

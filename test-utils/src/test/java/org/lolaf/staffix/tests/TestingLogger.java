@@ -27,7 +27,6 @@ import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -38,16 +37,10 @@ public class TestingLogger extends Startable.VoidStartable<FixMessagesLogger.Log
     private static final boolean LOG_MESSAGES = Boolean.parseBoolean(System.getProperty("staffix.tests.log.messages", "true"));
 
     private final String prefix;
-    /**
-     * The session's IO thread appends to these while test threads read them, typically inside an awaitility poll that
-     * re-reads until something shows up - so they must be safe to iterate while being written, which a plain
-     * {@link ArrayList} is not. Copy-on-write rather than a synchronized list because the getters hand the list
-     * itself out and callers hold on to it: iteration has to be safe in the caller, and it has to keep seeing what
-     * arrives afterwards. The volumes here are a test's worth of messages, so the copying costs nothing that matters.
-     */
     private final List<String> incomingMessages = new CopyOnWriteArrayList<>();
     private final List<String> outgoingMessages = new CopyOnWriteArrayList<>();
     private final List<String> events = new CopyOnWriteArrayList<>();
+    private final List<String> callingThreads = new CopyOnWriteArrayList<>();
 
     private static @NonNull LocalDateTime getLocalDateTime(UTCTime logTime) {
         return LocalDateTime.ofInstant(logTime.asInstant(), ZoneId.systemDefault()).truncatedTo(ChronoUnit.MILLIS);
@@ -79,6 +72,7 @@ public class TestingLogger extends Startable.VoidStartable<FixMessagesLogger.Log
         incomingMessages.clear();
         outgoingMessages.clear();
         events.clear();
+        callingThreads.clear();
     }
 
     @Override
@@ -99,6 +93,7 @@ public class TestingLogger extends Startable.VoidStartable<FixMessagesLogger.Log
     @Override
     public void logEvent(UTCTime eventTime, String event) {
         String msg = String.format(event);
+        callingThreads.add(Thread.currentThread().getName());
         events.add(msg);
         if (LOG_MESSAGES) {
             System.out.println(getLocalDateTime(eventTime) + " " + prefix + " EVENT: " + msg);
