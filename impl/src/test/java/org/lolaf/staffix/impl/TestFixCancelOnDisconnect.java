@@ -36,8 +36,11 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,6 +50,7 @@ import static org.mockito.Mockito.*;
 class TestFixCancelOnDisconnect extends AbstractFixTests {
 
     private static final String LOGOUT_MESSAGE = "end of day";
+    private static final String MESSAGE_EXECUTOR_THREAD_NAME = "Staffix-messages-executor-";
 
     FixSessionSettings.CancelOnDisconnectSettings initiatorCodSettings;
     FixSessionSettings.CancelOnDisconnectSettings acceptorCodSettings;
@@ -201,6 +205,81 @@ class TestFixCancelOnDisconnect extends AbstractFixTests {
         });
         await().untilAsserted(() -> verify(fixAcceptorApplication)
                 .onCancelOnDisconnectTriggered(any(), eq(CancelOnDisconnectType.CANCEL_ON_DISCONNECT_OR_LOGOUT)));
+    }
+
+    /**
+     * Cancelling a client's orders is the application's work and blocks, so the engine tells it on a message
+     * executor rather than on the scheduler that timed the window out or on the thread that owns the session.
+     */
+    @Test
+    void testCancelOnDisconnectIsTriggeredOnAMessageExecutor() {
+        setupInitiatorAndAcceptor(CancelOnDisconnectType.CANCEL_ON_DISCONNECT_OR_LOGOUT);
+        AtomicReference<Thread> triggeringThread = new AtomicReference<>();
+        doAnswer(invocation -> {
+            triggeringThread.set(Thread.currentThread());
+            return null;
+        }).when(fixAcceptorApplication).onCancelOnDisconnectTriggered(any(), any());
+
+        logonClient();
+        fixInitiator.stop();
+
+        await().untilAsserted(() -> assertThat(triggeringThread.get()).isNotNull());
+        assertThat(triggeringThread.get().getName()).startsWith(MESSAGE_EXECUTOR_THREAD_NAME);
+        // and the executor is given back rather than held for the session's life, which is what stops the thread
+        // it was the only one assigned to
+        await().untilAsserted(() -> assertThat(triggeringThread.get().isAlive()).isFalse());
+    }
+
+    /**
+     * A timer that has fired is done with, and the one a later logout schedules is its own: a reconnection inside
+     * that second window cancels it. The first notification is held so that the two overlap, which is what used to
+     * leave the second timer with nothing able to cancel it.
+     */
+    @Test
+    void testTimerThatFiredDoesNotCancelALaterOne() {
+        initiatorCodSettings = initiatorCodSettings.toBuilder().codTimeoutWindow(Duration.ofSeconds(1)).build();
+        acceptorCodSettings = acceptorCodSettings.toBuilder().codTimeoutWindow(Duration.ofSeconds(1)).build();
+        setupInitiatorAndAcceptor(CancelOnDisconnectType.CANCEL_ON_DISCONNECT_OR_LOGOUT);
+
+        AtomicInteger notifications = new AtomicInteger();
+        CountDownLatch releaseTheFirstNotification = new CountDownLatch(1);
+        Runnable holdTheNotification = () -> doAnswer(invocation -> {
+            notifications.incrementAndGet();
+            awaitQuietly(releaseTheFirstNotification);
+            return null;
+        }).when(fixAcceptorApplication).onCancelOnDisconnectTriggered(any(), any());
+
+        holdTheNotification.run();
+        logonClient();
+        fixInitiator.stop();
+        await().untilAsserted(() -> assertThat(notifications.get()).isEqualTo(1));
+
+        // the first notification is still running while the session comes back and goes again, which is what
+        // schedules the second timer
+        resetApplications(holdTheNotification);
+        logonClient();
+        fixInitiator.stop();
+        releaseTheFirstNotification.countDown();
+
+        resetApplications(holdTheNotification);
+        logonClient();
+
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(2 * acceptorCodSettings.getCodTimeoutWindow().toMillis()));
+        assertThat(notifications.get()).isEqualTo(1);
+    }
+
+    private void resetApplications(Runnable holdTheNotification) {
+        setupOrResetFixInitiatorApplication();
+        setupOrResetFixAcceptorApplication();
+        holdTheNotification.run();
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Test

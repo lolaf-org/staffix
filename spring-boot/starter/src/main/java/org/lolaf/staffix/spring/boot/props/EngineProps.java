@@ -29,4 +29,12 @@ public class EngineProps {
      */
     private String instanceId = "default";
 
+    /**
+     * Spring bean name of the {@link java.util.concurrent.ExecutorService} running the work of sessions that have
+     * no connection, which <b>must be single threaded</b>. Left unset, the engine makes a thread of its own and
+     * shuts it down with itself; naming a bean pools that work with the rest of the application's threads and
+     * leaves its lifecycle to the application.
+     */
+    private String disconnectedSessionsExecutorBean;
+
 }

@@ -36,8 +36,8 @@ import java.util.TreeMap;
  * it - {@link #onSequenceNumbersSettledUpTo(long)} - or take the session down, which is what
  * {@link #onResendRequestStallCheck(int)} is for.
  * <p>
- * Owned by the IO thread of the session, save for {@link #onResendRequestStallCheck(int)} which the heartbeat task
- * calls; see its javadoc for what that costs.
+ * Owned by the IO thread of the session, every method of it: the stall check of {@link RetransmissionComponent}
+ * is timed by the scheduler but runs here on the IO thread like everything else.
  */
 public class ResendRecovery {
 
@@ -49,6 +49,10 @@ public class ResendRecovery {
     private static final byte[] EMPTY_QUEUED_MESSAGE = new byte[0];
 
     private final FixSessionImpl fixSession;
+    private final RetransmissionComponent retransmission;
+    private final HeldOutgoingMessagesComponent heldOutgoingMessages;
+    private final LogonLogoutComponent logonLogout;
+    private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
     private final NavigableMap<Long, byte[]> outOfSequenceMessages = new TreeMap<>();
     @Getter
     private ResendRequest pendingResendRequest;
@@ -59,7 +63,7 @@ public class ResendRecovery {
      */
     private boolean retransmissionRequested;
     /**
-     * How long the answer to {@link #pendingResendRequest} has been making no progress, counted in heartbeat task
+     * How long the answer to {@link #pendingResendRequest} has been making no progress, counted in stall check
      * ticks. Incremented by that task and put back to zero by the IO thread as the answer comes in: a tick of slop
      * either way is of no consequence to a timeout counted in tens of seconds.
      */
@@ -73,8 +77,14 @@ public class ResendRecovery {
     @Getter
     private boolean outOfSequenceMessagesReplayRequested;
 
-    ResendRecovery(FixSessionImpl fixSession) {
+    ResendRecovery(FixSessionImpl fixSession, RetransmissionComponent retransmission,
+                   HeldOutgoingMessagesComponent heldOutgoingMessages, LogonLogoutComponent logonLogout,
+                   FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore) {
         this.fixSession = fixSession;
+        this.retransmission = retransmission;
+        this.heldOutgoingMessages = heldOutgoingMessages;
+        this.logonLogout = logonLogout;
+        this.fixSessionMessagesStore = fixSessionMessagesStore;
     }
 
     public boolean hasPendingResendRequest() {
@@ -100,7 +110,7 @@ public class ResendRecovery {
      * stays the protocol violation it is.
      * <p>
      * Such a tail is met twice, on either side of the queue held on top of the gap being replayed: before it, the gap
-     * fill is merely below what the session expects and is ignored by {@link FixSessionImpl#onMessageDecodingFailed}; after
+     * fill is merely below what the session expects and is ignored by {@link IncomingMessagesComponent#onMessageDecodingFailed}; after
      * it, the message is rolled back before the decoder ever processes it, which
      * {@link org.lolaf.staffix.impl.session.codec.SequenceResetFixMessageDecoder} answers by not taking the
      * connection down. Both ask here.
@@ -176,11 +186,10 @@ public class ResendRecovery {
     }
 
     private void drainOutOfSequenceMessages() {
-        FixMessagesStore.FixSessionMessagesStore store = fixSession.getFixSessionMessagesStore();
         Map.Entry<Long, byte[]> queued;
         while ((queued = outOfSequenceMessages.firstEntry()) != null) {
             long queuedSeqNum = queued.getKey();
-            long expectedSeqNum = store.getIncomingSeqNum();
+            long expectedSeqNum = fixSessionMessagesStore.getIncomingSeqNum();
             if (queuedSeqNum > expectedSeqNum) {
                 // a gap opens again before this one, and nothing else will come back to this queue: a replay is only
                 // ever asked for by a request completing, so leaving it here without asking for what stands in its
@@ -188,7 +197,7 @@ public class ResendRecovery {
                 // while the last request was outstanding was queued without one of its own being sent, see
                 // FixSessionImpl.onMessageDecodingFailed, so this is where it gets asked for.
                 if (pendingResendRequest == null) {
-                    fixSession.requestRetransmission(expectedSeqNum, queuedSeqNum - 1,
+                    retransmission.requestRetransmission(expectedSeqNum, queuedSeqNum - 1,
                             "Gap left before the messages held while recovering");
                 }
                 return;
@@ -209,11 +218,11 @@ public class ResendRecovery {
             if (queued.getValue() == EMPTY_QUEUED_MESSAGE) {
                 // processed when it arrived, a Logon: only its sequence number is still owed
                 fixSession.logEvent("Consuming MsgSeqNum %s of the out of order message that opened the gap", queuedSeqNum);
-                store.storeNextIncomingSeqNum(queuedSeqNum + 1);
+                fixSessionMessagesStore.storeNextIncomingSeqNum(queuedSeqNum + 1);
                 continue;
             }
             fixSession.logEvent("Replaying out of order message with MsgSeqNum %s", queuedSeqNum);
-            if (!fixSession.replayOutOfSequenceMessage(queuedSeqNum, queued.getValue())) {
+            if (!retransmission.replayOutOfSequenceMessage(queuedSeqNum, queued.getValue())) {
                 return;
             }
         }
@@ -222,12 +231,12 @@ public class ResendRecovery {
     public void onResendRequestSent(long beginSeqNo, long endSeqNo) {
         // we may take more time that the define logon timeout to process the resend request,
         // disable the task if needed
-        fixSession.cancelLogonOrLogoutTaskIfNeeded();
+        logonLogout.cancelLogonOrLogoutTaskIfNeeded();
         pendingResendRequest = new ResendRequest(beginSeqNo, endSeqNo);
         retransmissionRequested = true;
         resendRequestStalledSeconds = 0;
         // section 4.3.11: hold new application messages back until the session is synchronized again
-        fixSession.startHoldingOutgoingMessagesIfNeeded();
+        heldOutgoingMessages.startHoldingIfNeeded();
     }
 
     /**
@@ -257,8 +266,8 @@ public class ResendRecovery {
     }
 
     /**
-     * Called once a second by the heartbeat task while a ResendRequest(35=2) of this session's own is outstanding, to
-     * decide whether the answer has stopped coming.
+     * Called once a second while a ResendRequest(35=2) of this session's own is outstanding, to decide whether the
+     * answer has stopped coming.
      * <p>
      * The recovery is the session: until it completes nothing held on top of the gap is delivered, no new gap is
      * asked for and outgoing application messages stay held, all of it while heartbeats keep both ends believing the
@@ -296,7 +305,7 @@ public class ResendRecovery {
         fixSession.getApplication().onResendRequestTerminated(fixSession, finished.getFromSeqNum(), finished.getToSeqNum());
         // synchronized again: whatever the application handed over meanwhile can go out, numbered after the
         // retransmission rather than into the middle of it
-        fixSession.releaseHeldOutgoingMessages();
+        heldOutgoingMessages.releaseAll();
         // the gap is closed, so the messages that arrived on top of it - the one that revealed the gap first of all -
         // can now be processed in order. Only requested here: this runs inside the decoding of the message that
         // completed the resend, and replaying feeds whole messages back through a parser

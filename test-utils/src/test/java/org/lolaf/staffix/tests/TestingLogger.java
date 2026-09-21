@@ -27,9 +27,9 @@ import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Getter
 @RequiredArgsConstructor
@@ -38,23 +38,41 @@ public class TestingLogger extends Startable.VoidStartable<FixMessagesLogger.Log
     private static final boolean LOG_MESSAGES = Boolean.parseBoolean(System.getProperty("staffix.tests.log.messages", "true"));
 
     private final String prefix;
-    /**
-     * The session's IO thread appends to these while test threads read them, typically inside an awaitility poll that
-     * re-reads until something shows up - so they must be safe to iterate while being written, which a plain
-     * {@link ArrayList} is not. Copy-on-write rather than a synchronized list because the getters hand the list
-     * itself out and callers hold on to it: iteration has to be safe in the caller, and it has to keep seeing what
-     * arrives afterwards. The volumes here are a test's worth of messages, so the copying costs nothing that matters.
-     */
     private final List<String> incomingMessages = new CopyOnWriteArrayList<>();
     private final List<String> outgoingMessages = new CopyOnWriteArrayList<>();
     private final List<String> events = new CopyOnWriteArrayList<>();
+    private final List<String> callingThreads = new CopyOnWriteArrayList<>();
+    private final List<String> concurrentCalls = new CopyOnWriteArrayList<>();
+    private final AtomicReference<Thread> threadInside = new AtomicReference<>();
 
     private static @NonNull LocalDateTime getLocalDateTime(UTCTime logTime) {
         return LocalDateTime.ofInstant(logTime.asInstant(), ZoneId.systemDefault()).truncatedTo(ChronoUnit.MILLIS);
     }
 
+    /**
+     * Runs one logger call, recording it if another thread was inside this logger at the same moment. Only the
+     * thread that took the marker clears it, so a thread that found one already there leaves it alone.
+     */
+    private void recordingConcurrentCalls(String call, Runnable loggerCall) {
+        Thread current = Thread.currentThread();
+        Thread alreadyInside = threadInside.compareAndExchange(null, current);
+        if (alreadyInside != null) {
+            concurrentCalls.add(prefix + " " + call + " on " + current.getName()
+                    + " while " + alreadyInside.getName() + " was inside the logger");
+        }
+        try {
+            loggerCall.run();
+        } finally {
+            threadInside.compareAndSet(current, null);
+        }
+    }
+
     @Override
     public void logIncoming(UTCTime logTime, MessageType messageType, ByteBuffer message) {
+        recordingConcurrentCalls("IN", () -> logIncomingMessage(logTime, message));
+    }
+
+    private void logIncomingMessage(UTCTime logTime, ByteBuffer message) {
         byte[] messageContent = new byte[message.remaining()];
         message.get(messageContent);
         String msg = new String(messageContent);
@@ -66,6 +84,10 @@ public class TestingLogger extends Startable.VoidStartable<FixMessagesLogger.Log
 
     @Override
     public void logOutgoing(UTCTime logTime, MessageType messageType, ByteBuffer message) {
+        recordingConcurrentCalls("OUT", () -> logOutgoingMessage(logTime, message));
+    }
+
+    private void logOutgoingMessage(UTCTime logTime, ByteBuffer message) {
         byte[] messageContent = new byte[message.remaining()];
         message.get(messageContent);
         String msg = new String(messageContent);
@@ -79,6 +101,8 @@ public class TestingLogger extends Startable.VoidStartable<FixMessagesLogger.Log
         incomingMessages.clear();
         outgoingMessages.clear();
         events.clear();
+        callingThreads.clear();
+        concurrentCalls.clear();
     }
 
     @Override
@@ -98,7 +122,12 @@ public class TestingLogger extends Startable.VoidStartable<FixMessagesLogger.Log
 
     @Override
     public void logEvent(UTCTime eventTime, String event) {
+        recordingConcurrentCalls("EVENT", () -> logEventMessage(eventTime, event));
+    }
+
+    private void logEventMessage(UTCTime eventTime, String event) {
         String msg = String.format(event);
+        callingThreads.add(Thread.currentThread().getName());
         events.add(msg);
         if (LOG_MESSAGES) {
             System.out.println(getLocalDateTime(eventTime) + " " + prefix + " EVENT: " + msg);

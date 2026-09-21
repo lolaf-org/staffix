@@ -46,6 +46,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -143,7 +144,8 @@ class TestFixMessagesSending extends AbstractFixTests {
 
     /**
      * Each message sent while disconnected used to keep its sending context, so the session's pool ran dry after a
-     * few dozen and the next send blocked forever, on the IO thread too.
+     * few dozen and the next send blocked forever, on the IO thread too. The sends are queued on the session's
+     * owner now, so the store is what says they all went through: the caller no longer waits for them.
      */
     @Test
     void testSendingOffLineDoesNotExhaustTheSendingContexts() {
@@ -160,6 +162,30 @@ class TestFixMessagesSending extends AbstractFixTests {
                 offLineSession.send(encoder, null);
             }
         });
+
+        await().untilAsserted(() -> assertThat(getFixMessagesStore(ConnectorType.INITIATOR).getOutgoingSeqNum()).isEqualTo(1001));
+    }
+
+    /**
+     * A message sent while the session is down is numbered and stored by the thread that owns it then, the
+     * engine's offline one, rather than by whichever application thread called: two callers would otherwise
+     * renumber each other.
+     */
+    @Test
+    void testSendingOffLineRunsOnTheSessionOwner() {
+        setupInitiatorSessionSettings(s -> s.desiredSessionState(FixSessionState.LOGGED_OUT).build());
+        getConnector(ConnectorType.INITIATOR).start();
+        trapCreatedFixSession(ConnectorType.INITIATOR);
+        FixSession offLineSession = getFixSession(ConnectorType.INITIATOR);
+
+        AtomicReference<Thread> sendingThread = new AtomicReference<>();
+        EmailEncoder encoder = offLineSession.newEncoder(EmailEncoder.class);
+        encoder.begin().setSubject("offline-message");
+        offLineSession.send(encoder, null, (sendingError, param1, param2) -> sendingThread.set(Thread.currentThread()), null, null);
+
+        await().untilAsserted(() -> assertThat(sendingThread.get()).isNotNull());
+        assertThat(sendingThread.get()).isNotSameAs(Thread.currentThread());
+        assertThat(sendingThread.get().getName()).startsWith("staffix-offline-sessions-");
     }
 
     /**

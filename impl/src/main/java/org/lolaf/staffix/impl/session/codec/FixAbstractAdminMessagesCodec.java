@@ -74,7 +74,7 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
         this.acceptorSession = adminMessageCodecContext.getFixSessionSettings().getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR);
         this.messageTypeRegistry = adminMessageCodecContext.getMessageTypeRegistry();
         this.adminMessageDecoders = new IdentityHashMap<>();
-        this.encodingListener = adminMessageCodecContext.getFixSession();
+        this.encodingListener = adminMessageCodecContext.getEncodingListener();
         this.clock = adminMessageCodecContext.getClock();
         // for FIXT support
         this.fixAdminMessagesCodec = adminMessageCodecContext.getFixAdminMessagesCodec() != null ? adminMessageCodecContext.getFixAdminMessagesCodec() : this;

@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 
 import java.util.Collection;
+import java.util.concurrent.ExecutorService;
 
 /**
  * The store, logger, application factory and plugins one session resolved to, gathered once when the session is
@@ -42,5 +43,10 @@ public class FixSessionRuntimeDependencies {
      * The engine's registry, handed to the session so that {@code FixSession.getFixSessionRegistry()} can answer.
      */
     FixSessionRegistry fixSessionRegistry;
+    /**
+     * Runs the work of this session while it has no connection, standing in for the IO thread that owns it while it
+     * has one. Shared with every other session of the engine.
+     */
+    ExecutorService disconnectedSessionsExecutor;
 
 }

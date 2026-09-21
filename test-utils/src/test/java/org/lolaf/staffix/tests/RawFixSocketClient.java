@@ -160,6 +160,14 @@ public final class RawFixSocketClient {
     }
 
     /**
+     * Wraps a socket a test accepted itself, to play the acceptor end of a connection.
+     */
+    public static Session wrap(Socket socket, FixVersion version, String senderCompId, String targetCompId) {
+        String beginString = version != null ? new String(version.getBeginString(), StandardCharsets.US_ASCII) : null;
+        return new Session(socket, beginString, senderCompId, targetCompId);
+    }
+
+    /**
      * A stateful raw FIX connection. Not thread safe; intended to be driven by a single test thread.
      */
     public static final class Session implements AutoCloseable {

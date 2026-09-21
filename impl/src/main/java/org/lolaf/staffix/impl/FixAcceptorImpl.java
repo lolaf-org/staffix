@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.impl;
 
-import org.lolaf.staffix.api.serde.SerDe;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -40,15 +39,16 @@ import org.lolaf.staffix.api.admin.AdminApi.ResetFixSessionMode;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
 import org.lolaf.staffix.api.fields.CoreFields;
+import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.session.*;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.FixVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
+import org.lolaf.staffix.codec.serde.IntSerde;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.codec.serde.IntSerde;
 
 import javax.net.ssl.SSLHandshakeException;
 import java.net.SocketOption;
@@ -346,8 +346,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         }
         String poolIdFinal = poolId;
         if (fixSessionPredicate == null) {
-            targetSessions.forEach(s ->
-                    sendBroadcastedMessage(poolIdFinal, encoder, sendingTime, s));
+            targetSessions.forEach(s -> sendBroadcastedMessage(poolIdFinal, encoder, sendingTime, s));
         } else {
             targetSessions.forEach(s -> {
                 if (fixSessionPredicate.test(s)) {

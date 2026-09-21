@@ -12,6 +12,7 @@ that sentence twice: most of the rules below follow from it, and most bugs come 
 | **I/O worker** | per thread group, `ioThreadCount` (default 1) | the selector loop; reading, parsing, your decoders, your `FixApplication` callbacks, encoding, writing |
 | **message executor** | `executorsThreadsCount` (default 1) | only work you explicitly hand to a `MessageExecutor` |
 | **scheduler** | one `ScheduledExecutorService` | heartbeats, timeouts, session schedules, cancel-on-disconnect timers |
+| **disconnected sessions** | one per engine | the work of the sessions that have no connection, and so no I/O thread of their own |
 | **async store / logger consumer** | per async wrapper | the wrapped store's or logger's actual I/O |
 | **async plugin consumer** | `consumerThreadPoolSize` (default 1) | replayed monitoring callbacks |
 
@@ -70,6 +71,16 @@ again as soon as `send` returns, and the quickstart's acceptor relies on exactly
    instance across threads is a race. Use `newEncodersPool(id, multiThreadedBorrows = true, …)` instead.
 2. The queue is bounded, by `getWriteTasksQueueCapacity()`. When it is full, **your thread blocks** until the I/O
    thread drains it. That is backpressure, and it is deliberate, but it means a slow socket can stall your producer.
+
+**With no connection** there is no I/O thread to enqueue to, so the call is handed to the engine's
+disconnected-sessions thread instead. The message still takes its MsgSeqNum(34) and reaches the store, which is how
+the counterparty comes to ask for it on the next logon, but that now happens just after `send` returns rather than
+within it: read the store straight back and you may still see the old number. Your callback is told
+`NO_CONNECTED_SESSION`.
+
+One thread serves every disconnected session of the engine, that work being rare and small.
+`FixEngineBuilder.disconnectedSessionsExecutor` takes one of your own to pool it with the rest of the application's
+threads; it **must be single threaded**, since it stands in for the one I/O thread that owns a connected session.
 
 `send` and `bufferize`/`flush` are documented as safe to call from any thread; the encoder you hand them is what
 needs care.

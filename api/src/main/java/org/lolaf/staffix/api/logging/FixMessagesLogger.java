@@ -107,6 +107,22 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
         }
     }
 
+    /**
+     * A session's logger, called by that session alone.
+     *
+     * <p><b>Staffix owns the threading, so an implementation needs no locking</b>: a session calls its logger from
+     * one thread at a time, and never from two at once. That thread is the IO thread of the session's connection,
+     * which is where a message is read, written and logged, and where the engine hands an event raised anywhere
+     * else, a scheduled timeout or an application thread calling the session.
+     *
+     * <p>A session with no connection has no IO thread, and its logger is then written by the engine's thread for
+     * the sessions that are down, which the engine hands those events to exactly as it hands the others to an IO
+     * thread. The one exception is an engine that has stopped that thread, where what is left of a teardown is
+     * written by whoever raised it rather than lost.
+     *
+     * <p>A logger is per session, so two sessions log in parallel through two instances. Anything an implementation
+     * shares between them, a file, a buffer pool, a queue, is its own to protect.
+     */
     interface Logger extends Startable<Logger>, EventsLogger {
 
         /**

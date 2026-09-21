@@ -27,9 +27,10 @@ import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.codec.decoders.FixMessageResendTransformer;
 import org.lolaf.staffix.codec.encoders.GenericFixMessageEncoder;
-import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
 import org.lolaf.staffix.codec.serde.ByteArraySerde;
 import org.lolaf.staffix.codec.serde.LongSerde;
+import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
+import org.lolaf.staffix.impl.threading.ResendThread;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -53,6 +54,8 @@ public class MessagesResender {
     private final MessageTypeRegistry messageTypeRegistry;
     private final FixAdminMessagesCodec fixAdminMessagesCodec;
     private final FixSessionImpl fixSessionImpl;
+    private final RetransmissionComponent retransmission;
+    private final OutgoingMessagesComponent outgoingMessages;
 
     /**
      * Retransmits {@code [beginSeqNo, endSeqNo]}, covering with a SequenceReset(35=4) gap fill whatever is not
@@ -65,9 +68,10 @@ public class MessagesResender {
         // off the IO thread, which would otherwise be held for the whole replay - see FixSessionImpl.executeResend.
         // The range is captured here, on the IO thread, because the decoder fields it comes from are reused by the
         // next message to arrive.
-        fixSessionImpl.executeResend(connection -> resendMessagesRange(connection, beginSeqNo, endSeqNo));
+        retransmission.executeResend(connection -> resendMessagesRange(connection, beginSeqNo, endSeqNo));
     }
 
+    @ResendThread
     private void resendMessagesRange(IOSession connection, long beginSeqNo, long endSeqNo) {
         // whatever is chosen to be retransmitted inside it, the requested range must be covered up to its end and
         // no further: the peer has to end up expecting the message right after the range it asked for
@@ -85,10 +89,10 @@ public class MessagesResender {
         int maxMessagesResent = fixSessionImpl.getFixSessionSettings().getMaxMessagesResentPerRequest();
 
         fixSessionImpl.logEvent("Resending messages %s -> %s", beginSeqNo, endSeqNo);
-        ResendState resendState = new ResendState(connection, beginSeqNo);
+        ResendState resendState = new ResendState(beginSeqNo);
         try {
             fixSessionMessagesStore.find(beginSeqNo, endSeqNo, (seqNum, message) ->
-                    resendStoredMessage(resendState, message, maxMessagesResent));
+                    resendStoredMessage(connection, resendState, message, maxMessagesResent));
         } catch (FixMessagesStore.FixSessionMessagesStore.StoreException ex) {
             fixSessionImpl.logout("Unable to fetch FIX messages to resend, try again later");
             return;
@@ -108,8 +112,8 @@ public class MessagesResender {
     /**
      * @return whether the store should carry on reading the range
      */
-    private boolean resendStoredMessage(ResendState resendState, ByteBuffer messageContent, int maxMessagesResent) {
-        if (!resendState.connection.isStarted()) {
+    private boolean resendStoredMessage(IOSession connection, ResendState resendState, ByteBuffer messageContent, int maxMessagesResent) {
+        if (!connection.isStarted()) {
             return false;
         }
         // a store may hand over the very buffer it holds the message in, and both reads below drain what they are
@@ -124,7 +128,7 @@ public class MessagesResender {
         } else {
             resendState.transformedMessageBuffer = messageContent;
         }
-        resendState.expectedNextSeqNum = resendMessage(resendState);
+        resendState.expectedNextSeqNum = resendMessage(connection, resendState);
         messageContent.position(storedMessagePosition);
         resendState.messagesRead++;
         if (maxMessagesResent > 0 && resendState.messagesRead >= maxMessagesResent) {
@@ -135,7 +139,7 @@ public class MessagesResender {
         return true;
     }
 
-    private long resendMessage(ResendState resendState) {
+    private long resendMessage(IOSession connection, ResendState resendState) {
         DecodedFixMessage decodedFixMessage = transformer.transformForResend(resendState.transformedMessageBuffer);
         byte[] messageTypeArray = decodedFixMessage.remove(msgTypeField);
         MessageType messageType = messageTypeRegistry.find(Hashing.hash(messageTypeArray, 0, messageTypeArray.length));
@@ -147,11 +151,11 @@ public class MessagesResender {
         }
         if (expectedNextSeqNum != seqNum) {
             // manage gap fills
-            sendSequenceResetWithGapFill(resendState.connection, expectedNextSeqNum, seqNum);
+            sendSequenceResetWithGapFill(connection, expectedNextSeqNum, seqNum);
         }
         GenericFixMessageEncoder encoder = resendState.encoders.computeIfAbsent(messageType, GenericFixMessageEncoder::new).begin();
         decodedFixMessage.foreach((f, v) -> encoder.addField(f, v, ByteArraySerde.instance()));
-        fixSessionImpl.sendWithSeqNum(resendState.connection, encoder, seqNum);
+        outgoingMessages.sendWithSeqNum(connection, encoder, seqNum);
         // sendWithSeqNum encodes into a buffer of its own and does not go through the sending context that normally
         // releases the encoder afterwards. These encoders being cached per message type, a range holding two messages
         // of the same type would otherwise fail the second begin() with "encoder not yet sent", aborting the resend
@@ -163,7 +167,7 @@ public class MessagesResender {
     private void sendSequenceResetWithGapFill(IOSession connection, long messageSequenceNumber, long newSeqNum) {
         fixSessionImpl.logEvent("Sending SequenceReset from SeqNum %s with gap fill to NewSeqNum %s", messageSequenceNumber, newSeqNum);
         FixMessageEncoder<?> gapFillEncoder = fixAdminMessagesCodec.generateSequenceReset(newSeqNum, true);
-        fixSessionImpl.sendWithSeqNum(connection, gapFillEncoder, messageSequenceNumber);
+        outgoingMessages.sendWithSeqNum(connection, gapFillEncoder, messageSequenceNumber);
         fixApplication.onSequenceReset(fixSessionImpl, newSeqNum, true);
     }
 
@@ -173,15 +177,12 @@ public class MessagesResender {
      */
     private static class ResendState {
         private final Map<MessageType, GenericFixMessageEncoder> encoders = new HashMap<>();
-        private final IOSession connection;
         private ByteBuffer transformedMessageBuffer;
         private long expectedNextSeqNum;
         private int messagesRead;
 
-        ResendState(IOSession connection, long beginSeqNo) {
-            this.connection = connection;
+        ResendState(long beginSeqNo) {
             this.expectedNextSeqNum = beginSeqNo;
         }
     }
-
 }

@@ -19,6 +19,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.lolaf.betty.api.io.IOWriter;
+import org.lolaf.betty.api.io.ReleasableMessageSendingContext;
 import org.lolaf.ringos.rb.RingBuffer;
 
 import java.io.IOException;
@@ -29,9 +30,10 @@ import java.util.function.IntFunction;
 
 @RequiredArgsConstructor
 @Getter(AccessLevel.PACKAGE)
-class FixSessionBufferedFixMessageContext implements IOWriter.ByteBufferBuilder {
+class FixSessionBufferedFixMessageContext implements IOWriter.ByteBufferBuilder, ReleasableMessageSendingContext {
 
     private final RingBuffer<FixSessionBufferedFixMessageContext> ctxPool;
+    private final FixSessionImpl fixSession;
 
     private ByteBuffer[] encodedMessages = new ByteBuffer[8];
     private FixSessionFixMessageContext[] sendingContexts = new FixSessionFixMessageContext[8];
@@ -39,11 +41,16 @@ class FixSessionBufferedFixMessageContext implements IOWriter.ByteBufferBuilder 
     private IntFunction<ByteBuffer> allocator;
     private int approxMessageSize;
 
-    void release() {
+    @Override
+    public void release() {
         // not need to call release on the contexts it's done before calling this method
         approxMessageSize = 0;
         for (int i = 0; i < sendingContextsCount; i++) {
-            sendingContexts[i].release();
+            FixSessionFixMessageContext msc = sendingContexts[i];
+            ByteBuffer messageToReturnToPool = msc.getMessage();
+            msc.release();
+            // ByteBuffers in bufferedWritesContexts needs to be manually returned to the IOBuffers pool
+            fixSession.currentIOSession().unborrow(messageToReturnToPool);
         }
         Arrays.fill(sendingContexts, 0, sendingContextsCount, null);
         Arrays.fill(encodedMessages, 0, sendingContextsCount, null);

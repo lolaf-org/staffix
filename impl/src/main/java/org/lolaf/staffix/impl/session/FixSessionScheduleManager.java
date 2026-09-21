@@ -269,7 +269,9 @@ public class FixSessionScheduleManager {
         private UTCTime utcTime;
 
         @Override
-        public ZonedDateTime get() {
+        public synchronized ZonedDateTime get() {
+            // important need to be synchronized or multithreaded access could create a 'false' date
+            // ZonedDateTime.from() will call immediately isSupported and getLong to create its instance
             utcTime = clock.now();
             return ZonedDateTime.from(this);
         }

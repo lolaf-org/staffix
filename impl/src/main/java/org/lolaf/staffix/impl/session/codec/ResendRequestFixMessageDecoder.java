@@ -33,21 +33,31 @@ import org.lolaf.staffix.impl.session.MessagesResender;
 public class ResendRequestFixMessageDecoder extends AbstractAdminFixMessageDecoder {
     private static final int BEGIN_SEQ_NO_FIELD = 7;
     private static final int END_SEQ_NO_FIELD = 16;
-    private final MessagesResender messagesResender;
+    private MessagesResender messagesResender;
     private long beginSeqNo;
     private long endSeqNo;
 
     public ResendRequestFixMessageDecoder(MessageType messageType, AdminMessageCodecContext adminMessageCodecContext, FixAdminMessagesCodec fixAdminMessagesCodec) {
         super(messageType, adminMessageCodecContext, fixAdminMessagesCodec);
-        messagesResender = new MessagesResender(getFixSessionMessagesStore(),
-                getFieldsRegistry().find(CoreFields.MESSAGE_TYPE),
-                getFieldsRegistry().find(CoreFields.MESSAGE_SEQ_NUM),
-                new FixMessageResendTransformer(getFixSessionSettings().getSendingTimeAccuracy(),
-                        getClock(), getFixSession().getFixSessionId(), getMessageTypeRegistry(), getFieldsRegistry()),
-                getFixApplication(),
-                getMessageTypeRegistry(),
-                getFixAdminMessagesCodec(),
-                getFixSession());
+    }
+
+    // built on the first request rather than here: this decoder is constructed with the admin codec, before the
+    // components it needs are registered
+    private MessagesResender getMessagesResender() {
+        if (messagesResender == null) {
+            messagesResender = new MessagesResender(getFixSessionMessagesStore(),
+                    getFieldsRegistry().find(CoreFields.MESSAGE_TYPE),
+                    getFieldsRegistry().find(CoreFields.MESSAGE_SEQ_NUM),
+                    new FixMessageResendTransformer(getFixSessionSettings().getSendingTimeAccuracy(),
+                            getClock(), getFixSession().getFixSessionId(), getMessageTypeRegistry(), getFieldsRegistry()),
+                    getFixApplication(),
+                    getMessageTypeRegistry(),
+                    getFixAdminMessagesCodec(),
+                    getFixSession(),
+                    getRetransmission(),
+                    getOutgoingMessages());
+        }
+        return messagesResender;
     }
 
     @Override
@@ -118,6 +128,6 @@ public class ResendRequestFixMessageDecoder extends AbstractAdminFixMessageDecod
             // resender must retransmit what was requested and nothing more (section 4.8.5).
             endSeqNo = nextExpectedOutgoingSeqNum - 1;
         }
-        messagesResender.resendMessages(beginSeqNo, endSeqNo);
+        getMessagesResender().resendMessages(beginSeqNo, endSeqNo);
     }
 }

@@ -28,6 +28,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.spring.boot.spi.FixMessagesStoreSettingsContributor;
 import org.lolaf.staffix.spring.boot.spi.StaffixApplicationFactoryConstants;
+import org.lolaf.staffix.spring.boot.testfixtures.CountingSingleThreadExecutor;
 import org.lolaf.staffix.spring.boot.testfixtures.TestLoggerContributor;
 import org.lolaf.staffix.spring.boot.testfixtures.TestSessionsSettingsStoreContributor;
 import org.lolaf.staffix.spring.boot.testfixtures.TestStoreContributor;
@@ -55,6 +56,12 @@ class StaffixAutoConfigurationTest {
             FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_1");
     private static final FixSessionId INITIATOR_SESSION_ID =
             FixSessionId.of("test", FixRegularVersion.VERSION_44, "INITIATOR_1", "ACCEPTOR");
+    /**
+     * An acceptor session whose counterparty is never started, so the engine holds one session that stays down for
+     * the whole run.
+     */
+    private static final FixSessionId NEVER_CONNECTED_SESSION_ID =
+            FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_2");
 
     @Autowired
     private FixEngine fixEngine;
@@ -78,6 +85,9 @@ class StaffixAutoConfigurationTest {
     @Autowired
     private List<FixMessagesStoreSettingsContributor> storeContributors;
 
+    @Autowired
+    private CountingSingleThreadExecutor offlineSessionsExecutor;
+
     @Test
     void initiatorLogsOnToAcceptor() {
         assertThat(fixEngine).isNotNull();
@@ -90,6 +100,22 @@ class StaffixAutoConfigurationTest {
                         && acceptorApp.getLogonCount().get() >= 1);
 
         assertThat(acceptor.getConnectedSessions()).hasSize(1);
+    }
+
+    /**
+     * The engine runs the work of a session that has no connection on the executor the application named in
+     * {@code staffix.engine.disconnected-sessions-executor-bean}, rather than on a thread of its own.
+     */
+    @Test
+    void disconnectedSessionWorkRunsOnTheConfiguredExecutor() {
+        FixSession offLineSession = fixEngine.getFixSessionRegistry().find(NEVER_CONNECTED_SESSION_ID)
+                .orElseThrow(() -> new AssertionError(NEVER_CONNECTED_SESSION_ID + " is not in the FixSessionRegistry"));
+        assertThat(offLineSession.isConnected()).isFalse();
+
+        offLineSession.logout("a session with no connection logs out on its owner");
+
+        Awaitility.await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(offlineSessionsExecutor.getExecutedTasksCount()).isPositive());
     }
 
     @Test
@@ -120,6 +146,11 @@ class StaffixAutoConfigurationTest {
         @Bean
         FixApplication initiatorApp() {
             return new TestFixApplication();
+        }
+
+        @Bean
+        CountingSingleThreadExecutor offlineSessionsExecutor() {
+            return new CountingSingleThreadExecutor();
         }
 
         @Bean
@@ -185,7 +216,17 @@ class StaffixAutoConfigurationTest {
                     .fixApplicationInstanceId("initiatorApp")
                     .resetSeqNumOnLogon(true)
                     .build();
-            return new TestSessionsSettingsStoreContributor("ACCEPTOR", List.of(acceptorSession, initiatorSession));
+            FixSessionSettings neverConnectedSession = FixSessionSettings.builder()
+                    .fixSessionId(NEVER_CONNECTED_SESSION_ID)
+                    .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
+                    .fixMessageStoreInstanceId("ACCEPTOR")
+                    .fixMessageLoggerInstanceId("ACCEPTOR")
+                    .fixApplicationFactoryInstanceId(StaffixApplicationFactoryConstants.SPRING_FACTORY_INSTANCE_ID)
+                    .fixApplicationInstanceId("acceptorApp")
+                    .resetSeqNumOnLogon(true)
+                    .build();
+            return new TestSessionsSettingsStoreContributor("ACCEPTOR",
+                    List.of(acceptorSession, initiatorSession, neverConnectedSession));
         }
     }
 }

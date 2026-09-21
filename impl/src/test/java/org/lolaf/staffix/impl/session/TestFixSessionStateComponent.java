@@ -23,16 +23,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-class TestFixSessionImplState {
+class TestFixSessionStateComponent {
 
-    private FixSessionImplState newState() {
-        return new FixSessionImplState(mock(FixSessionImpl.class), false, FixSessionState.LOGGED_IN,
+    private FixSessionStateComponent newState() {
+        return new FixSessionStateComponent(false, FixSessionState.LOGGED_IN,
                 mock(FixSessionScheduleManager.class));
     }
 
     @Test
     void testTaskRegisteredForLogoutRunsOnceLogoutIsProcessed() {
-        FixSessionImplState state = newState();
+        FixSessionStateComponent state = newState();
         AtomicInteger runs = new AtomicInteger();
 
         state.runOnceLogoutProcessed(runs::incrementAndGet);
@@ -46,7 +46,7 @@ class TestFixSessionImplState {
     void testTaskRegisteredForLogoutRunsOnDroppedConnectionToo() {
         // a logout that ends with the connection going away rather than with the peer's acknowledgement leaves the
         // session just as logged out, so whatever was waiting on it still has to happen
-        FixSessionImplState state = newState();
+        FixSessionStateComponent state = newState();
         AtomicInteger runs = new AtomicInteger();
 
         state.runOnceLogoutProcessed(runs::incrementAndGet);
@@ -57,7 +57,7 @@ class TestFixSessionImplState {
 
     @Test
     void testTaskRegisteredForLogoutIsAOneShot() {
-        FixSessionImplState state = newState();
+        FixSessionStateComponent state = newState();
         AtomicInteger runs = new AtomicInteger();
 
         state.runOnceLogoutProcessed(runs::incrementAndGet);
@@ -71,11 +71,11 @@ class TestFixSessionImplState {
     void testTaskRegisteredForLogoutIsDroppedByANewConnection() {
         // the logout it was waiting for never completed: the task belongs to the session that ended, and running it
         // against the connection that follows would apply it to a session that never asked for it
-        FixSessionImplState state = newState();
+        FixSessionStateComponent state = newState();
         AtomicInteger runs = new AtomicInteger();
 
         state.runOnceLogoutProcessed(runs::incrementAndGet);
-        state.onConnection();
+        state.onConnected();
         state.onLogoutProcessed(true);
 
         assertThat(runs).hasValue(0);
@@ -83,7 +83,7 @@ class TestFixSessionImplState {
 
     @Test
     void testSequenceResetOnNextLogonIsConsumedOnce() {
-        FixSessionImplState state = newState();
+        FixSessionStateComponent state = newState();
 
         assertThat(state.consumeSequenceResetOnNextLogon()).isFalse();
 

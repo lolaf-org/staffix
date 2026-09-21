@@ -2,6 +2,7 @@ staffix:
   enabled: true
   engine:
     instance-id: default
+    disconnected-sessions-executor-bean: offlineSessionsExecutor
 
   acceptors:
     primary:
