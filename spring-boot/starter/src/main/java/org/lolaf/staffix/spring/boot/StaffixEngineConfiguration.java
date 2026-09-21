@@ -26,11 +26,13 @@ import org.lolaf.staffix.application.factories.spring.SpringApplicationFactorySe
 import org.lolaf.staffix.spring.boot.props.StaffixProperties;
 import org.lolaf.staffix.spring.boot.spi.*;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Assembles the engine itself, gathering the stores, loggers, plugins and admin APIs each integration module
@@ -44,6 +46,7 @@ public class StaffixEngineConfiguration {
 
     @Bean
     public ManagedFixEngine staffixManagedFixEngine(StaffixProperties props,
+                                                    ApplicationContext ctx,
                                                     SpringApplicationFactorySettings springApplicationFactorySettings,
                                                     ObjectProvider<FixSessionsSettingsStoreSettingsContributor> sessionsSettingsStoreContributors,
                                                     ObjectProvider<FixMessagesLoggerSettingsContributor> loggerContributors,
@@ -53,6 +56,10 @@ public class StaffixEngineConfiguration {
                                                     ObjectProvider<FixSessionSettingsPostProcessor> sessionSettingsPostProcessors) {
 
         FixEngineBuilder.FixEngineBuilderBuilder<?, ?> b = FixEngineBuilder.builder().instanceId(props.getEngine().getInstanceId());
+
+        BeanRef.<ExecutorService>resolveOptional(ctx, props.getEngine().getDisconnectedSessionsExecutorBean(),
+                        ExecutorService.class, "staffix.engine.disconnected-sessions-executor-bean")
+                .ifPresent(b::disconnectedSessionsExecutor);
 
         List<AdminApiExporterSettings> collectedAdmin = new ArrayList<>();
         adminContributors.orderedStream()

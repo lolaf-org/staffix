@@ -24,6 +24,10 @@ see [Configuring a session](configuring-sessions.md#wiring-the-session-to-the-en
 ```properties
 staffix.enabled=true
 
+# the executor for sessions that have no connection, a bean of yours rather than the engine's own thread;
+# it must be single threaded, see docs/threading-model.md
+staffix.engine.disconnected-sessions-executor-bean=offlineSessionsExecutor
+
 # stores and loggers, one instance each for the acceptor and the initiator
 staffix.messages-stores-memory.instances.ACCEPTOR.max-entries-in-memory=1024
 staffix.messages-stores-memory.instances.INITIATOR.max-entries-in-memory=1024
