@@ -80,6 +80,10 @@ abstract class AbstractFixTests {
      * Long enough to cover the initiator's 100ms connection retry twice over.
      */
     static final Duration REJECTION_SETTLE_TIME = Duration.ofMillis(200);
+    /**
+     * What an engine gets to stop in. Generous: a stop that reaches it is a hang, not a slow machine.
+     */
+    private static final Duration ENGINE_STOP_DEADLINE = Duration.ofSeconds(30);
     FixInitiator fixInitiator;
     FixAcceptor fixAcceptor;
     FixApplication fixInitiatorApplication;
@@ -198,7 +202,7 @@ abstract class AbstractFixTests {
     }
 
     void setupAcceptorSessionSettings(Function<FixSessionSettings.FixSessionSettingsBuilder<?, ?>, FixSessionSettings> settingsProvider) {
-        acceptorFixEngine.stop(Deadline.unlimited());
+        stopWithinDeadline(acceptorFixEngine, ConnectorType.ACCEPTOR);
         acceptorFixEngine = acceptorFixEngineBuilder.toBuilder()
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
@@ -210,7 +214,7 @@ abstract class AbstractFixTests {
     }
 
     void setupInitiatorSessionSettings(Function<FixSessionSettings.FixSessionSettingsBuilder<?, ?>, FixSessionSettings> settingsProvider) {
-        initiatorFixEngine.stop(Deadline.unlimited());
+        stopWithinDeadline(initiatorFixEngine, ConnectorType.INITIATOR);
         initiatorFixEngine = initiatorFixEngineBuilder.toBuilder()
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
@@ -258,13 +262,27 @@ abstract class AbstractFixTests {
             LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1000));
         }
 
-        initiatorFixEngine.stop(Deadline.unlimited());
-        acceptorFixEngine.stop(Deadline.unlimited());
+        stopWithinDeadline(initiatorFixEngine, ConnectorType.INITIATOR);
+        stopWithinDeadline(acceptorFixEngine, ConnectorType.ACCEPTOR);
 
         initiatorLogger.clear();
         acceptorLogger.clear();
         decodedAcceptorMessages.clear();
         decodedInitiatorMessages.clear();
+    }
+
+    /**
+     * Bounded, and checked. An engine that cannot stop is a product hang, and stopping it with
+     * {@link Deadline#unlimited()} made that a build which never finished and never failed: the retransmission
+     * hang this test base was written through took its whole run that way. A stop that reaches the deadline is
+     * now the test's failure, on the test that caused it.
+     */
+    private void stopWithinDeadline(FixEngine fixEngine, ConnectorType connectorType) {
+        long stoppingSinceNanos = System.nanoTime();
+        fixEngine.stop(Deadline.of(ENGINE_STOP_DEADLINE));
+        assertThat(Duration.ofNanos(System.nanoTime() - stoppingSinceNanos))
+                .as("the %s engine did not stop within %s", connectorType, ENGINE_STOP_DEADLINE)
+                .isLessThan(ENGINE_STOP_DEADLINE);
     }
 
     /**
