@@ -151,11 +151,15 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
     }
 
     /**
-     * Asks again for what is left of a request the peer has not answered, or gives up on a session that cannot be
-     * recovered.
+     * The scheduler only says when: a recovery is the session's state, so the check itself is the IO thread's, and
+     * a tick that finds no connection is dropped, the recovery having gone with it.
      */
     @SchedulerThread
     private void manageStalledRetransmission() {
+        fixSession.processTask(this::checkForStalledRetransmission);
+    }
+
+    private void checkForStalledRetransmission() {
         Duration timeout = fixSessionSettings.getResendRequestResponseTimeout();
         if (timeout.isZero()) {
             return;
@@ -167,10 +171,6 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
             return;
         }
         ResendRecovery.ResendRequest pending = resendRecovery.getPendingResendRequest();
-        if (pending == null) {
-            // the answer landed on the IO thread while this was deciding the session had given up on it
-            return;
-        }
         if (action.equals(ResendRecovery.StalledResendAction.GIVE_UP)) {
             fixSession.logout(String.format("No answer to the ResendRequest from %s to %s, the session cannot be recovered",
                     pending.getFromSeqNum(), pending.getToSeqNum()));
@@ -178,14 +178,9 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
         }
         // whatever is left of it: the part already answered is behind NextNumIn and asking for it again would have
         // the peer retransmit messages this session has processed
-        long fromSeqNum = fixSessionMessagesStore.getIncomingSeqNum();
-        if (fromSeqNum > pending.getToSeqNum()) {
-            // the same race as above, caught one step later: the range completed on the IO thread while this was
-            // reading it, so there is nothing left to ask for
-            return;
-        }
-        requestRetransmission(fromSeqNum, pending.getToSeqNum(), String.format("No answer to the ResendRequest from %s to %s for %ss",
-                pending.getFromSeqNum(), pending.getToSeqNum(), timeoutSeconds));
+        requestRetransmission(fixSessionMessagesStore.getIncomingSeqNum(), pending.getToSeqNum(),
+                String.format("No answer to the ResendRequest from %s to %s for %ss",
+                        pending.getFromSeqNum(), pending.getToSeqNum(), timeoutSeconds));
     }
 
     /**

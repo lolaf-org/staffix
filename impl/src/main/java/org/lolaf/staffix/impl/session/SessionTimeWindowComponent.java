@@ -48,8 +48,8 @@ class SessionTimeWindowComponent implements FixSessionLayerComponent {
     private boolean preOutsideSessionTimeTriggered;
 
     SessionTimeWindowComponent(FixSessionImpl fixSession, FixApplication fixApplication, FixSessionStateComponent fixSessionStateComponent,
-                            FixSessionScheduleManager fixSessionScheduleManager, FixSessionSettings fixSessionSettings,
-                            ScheduledExecutorService scheduler) {
+                               FixSessionScheduleManager fixSessionScheduleManager, FixSessionSettings fixSessionSettings,
+                               ScheduledExecutorService scheduler) {
         this.fixSession = fixSession;
         this.fixApplication = fixApplication;
         this.fixSessionStateComponent = fixSessionStateComponent;
@@ -121,7 +121,6 @@ class SessionTimeWindowComponent implements FixSessionLayerComponent {
 
     @SchedulerThread
     private void checkSessionTime() {
-        log.debug("Checking session time");
         // some minor calculations and state change processed in scheduler thread for now
         if (fixSessionStateComponent.isDisconnected()) {
             return;
@@ -143,8 +142,27 @@ class SessionTimeWindowComponent implements FixSessionLayerComponent {
         }
     }
 
+    private void checkSequenceResetDue() {
+        FixSessionSettings.SessionScheduleSettings.NonStopScheduleEntry dueReset = fixSessionScheduleManager.dueSequenceReset();
+        if (dueReset == null || !dueReset.getInitiatesReset()) {
+            return;
+        }
+        if (!fixSessionStateComponent.isLoggedIn()) {
+            // the crossing has been consumed above rather than held: a session that was down at the agreed time and
+            // comes back an hour later would otherwise reset an hour late, which is a reset the counterparties never
+            // agreed to. Losing the day's roll leaves the numbering running until tomorrow, which is the safer of the
+            // two - the end that awaits the reset acts on the Logon it receives, never on the clock
+            fixSession.logEvent("Scheduled sequence reset time reached while logged out, skipping this day's reset");
+            return;
+        }
+        fixSession.logEvent("Scheduled sequence reset time reached, resetting over the live session");
+        fixSession.processTask(fixSession::sendInSessionSequenceReset, this::onFailedCheckSessionTimeTask);
+    }
+
     private void onFailedCheckSessionTimeTask(Runnable task, Exception error) {
-        if (error != null && !(error instanceof EOFException)) {
+        // the connection going between the check and the handover is the expected end of a session time check,
+        // not a fault: what it was about to do goes with the connection
+        if (error != null && error != FixSessionImpl.NO_CONNECTED_SESSION && !(error instanceof EOFException)) {
             log.error("Failed to process Check session time task {}", task.getClass().getSimpleName(), error);
         }
     }
@@ -173,23 +191,5 @@ class SessionTimeWindowComponent implements FixSessionLayerComponent {
             preOutsideSessionTimeTriggered = true;
             fixApplication.onPreOutsideSessionTime(fixSession, Duration.ofMillis(fixSessionScheduleManager.getSessionTimeLeft()));
         }
-    }
-
-    private void checkSequenceResetDue() {
-        FixSessionSettings.SessionScheduleSettings.NonStopScheduleEntry dueReset =
-                fixSessionScheduleManager.dueSequenceReset();
-        if (dueReset == null || !dueReset.getInitiatesReset()) {
-            return;
-        }
-        if (!fixSessionStateComponent.isLoggedIn()) {
-            // the crossing has been consumed above rather than held: a session that was down at the agreed time and
-            // comes back an hour later would otherwise reset an hour late, which is a reset the counterparties never
-            // agreed to. Losing the day's roll leaves the numbering running until tomorrow, which is the safer of the
-            // two - the end that awaits the reset acts on the Logon it receives, never on the clock
-            fixSession.logEvent("Scheduled sequence reset time reached while logged out, skipping this day's reset");
-            return;
-        }
-        fixSession.logEvent("Scheduled sequence reset time reached, resetting over the live session");
-        fixSession.processTask(fixSession::sendInSessionSequenceReset, this::onFailedCheckSessionTimeTask);
     }
 }

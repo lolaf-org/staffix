@@ -36,8 +36,8 @@ import java.util.TreeMap;
  * it - {@link #onSequenceNumbersSettledUpTo(long)} - or take the session down, which is what
  * {@link #onResendRequestStallCheck(int)} is for.
  * <p>
- * Owned by the IO thread of the session, save for {@link #onResendRequestStallCheck(int)}, which the stall check
- * of {@link RetransmissionComponent} calls from the scheduler; see its javadoc for what that costs.
+ * Owned by the IO thread of the session, every method of it: the stall check of {@link RetransmissionComponent}
+ * is timed by the scheduler but runs here on the IO thread like everything else.
  */
 public class ResendRecovery {
 
