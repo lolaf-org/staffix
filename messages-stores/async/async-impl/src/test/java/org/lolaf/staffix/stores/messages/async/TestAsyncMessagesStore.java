@@ -130,7 +130,9 @@ class TestAsyncMessagesStore {
 
         await().untilAsserted(() -> verify(messageStore).storeMessageSent(2L, testMessage2));
 
-        assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isFalse();
+        // the watchdog is started from the catch around the failing storeMessageSent call, so seeing that call does
+        // not mean it is up yet
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isFalse());
         // awaited: the listener is told the resource is down after the write that discovered it, which is what the
         // await above waits for
         await().untilAsserted(() -> verify(storeUnderlyingResourceStateListener)
@@ -140,7 +142,9 @@ class TestAsyncMessagesStore {
         reset(storeUnderlyingResourceStateListener);
         when(messageStore.isUnderlyingStorageResourceAvailable()).thenReturn(true);
         await().untilAsserted(() -> verify(messageStore).storeMessageSent(2L, testMessage2));
-        assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue();
+        // and symmetrically it stops itself only after replaying, in UnderlyingResourceWatchContext
+        // .checkUnderlyingResourceState, so the replay just observed does not mean it is down yet
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
         // awaited, for the same reason as the down notification above
         await().untilAsserted(() -> verify(storeUnderlyingResourceStateListener)
                 .onStoreStateUp(fixSessionId, TEST_MESSAGE_STORE_DESCRIPTION));
@@ -181,11 +185,15 @@ class TestAsyncMessagesStore {
         asyncMessageStore.storeMessageSent(1L, testMessage2);
 
         assertBatchingMessageProcessed(1, 2, 1, batchingFixSessionMessagesStore, testMessage2);
-        assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isFalse();
+        // the watchdog is started from the catch around the failing storeSentFixMessages call, so seeing that call
+        // does not mean it is up yet
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isFalse());
 
         when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenReturn(true);
         assertBatchingMessageProcessed(2, 2, 1, batchingFixSessionMessagesStore, testMessage2);
-        assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue();
+        // and symmetrically it stops itself only after replaying, in UnderlyingResourceWatchContext
+        // .checkUnderlyingResourceState, so the replay just observed does not mean it is down yet
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
     }
 
     @Test
