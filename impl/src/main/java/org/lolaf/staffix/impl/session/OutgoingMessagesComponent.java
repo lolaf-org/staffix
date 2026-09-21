@@ -80,9 +80,9 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         this.fixSessionId = fixSessionId;
         this.clock = clock;
         this.sendingTimeAccuracy = sendingTimeAccuracy;
-        // taken by the application, the scheduler and the IO thread, and given back by whichever thread the send ends on
+        // taken by the application, the scheduler, the IO thread and the owner of a session that is down, and
+        // given back by whichever thread the send ends on
         RingBufferFactory.AccessType accessType = RingBufferFactory.AccessType.MULTI_CONSUMER_MULTI_PRODUCER;
-        // WTF should be MPSC see history
         this.messageSendingContexts = RingBufferFactory.build(accessType, ioSettings.getTasksRingBufferSize());
         while (!messageSendingContexts.isFull()) {
             messageSendingContexts.offer(newMessageSendingContext());
@@ -183,7 +183,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
     public void sendWithSeqNum(IOSession connection, FixMessageEncoder<?> encoder, long outgoingSequenceNumber) {
         connection.send(encoder.encode(connection::borrow, outgoingSequenceNumber, fixSessionId, fixApplication,
                         sendingTimeAccuracy, clock.now(), fixSession), encoder.getMessageType(),
-                (byteBuffer, e, messageType) -> logOutgoingFixMessageMessage(byteBuffer.position(0), messageType, e), true);
+                (byteBuffer, e, messageType) -> logOutgoingFixMessage(byteBuffer.position(0), messageType, e), true);
     }
 
     void callOnMessageCallbackIfNeeded(Exception sendingError, FixSession.MessageSendOperationCallback callback,
@@ -263,7 +263,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
             fixSessionMessagesStore.storeNextOutgoingSeqNum(outgoingSeqNum + 1);
         }
 
-        logOutgoingFixMessageMessage(message.position(0), sentMessageType, sendingError);
+        logOutgoingFixMessage(message.position(0), sentMessageType, sendingError);
 
         callOnMessageCallbackIfNeeded(sendingError, callback, messageSendOperationCallbackParam1, messageSendOperationCallbackParam2);
         fixSessionLayerComponents.onMessageSent(context.getSendingTime());
@@ -282,7 +282,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         bufferedMessagesSendingContext.release();
     }
 
-    private void logOutgoingFixMessageMessage(ByteBuffer message, MessageType messageType, Exception sendingError) {
+    private void logOutgoingFixMessage(ByteBuffer message, MessageType messageType, Exception sendingError) {
         if (fixMessagesLogger.isLoggingOutgoing()) {
             if (sendingError == null) {
                 try {

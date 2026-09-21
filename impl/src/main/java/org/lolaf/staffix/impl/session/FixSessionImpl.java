@@ -52,6 +52,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -71,12 +72,6 @@ import java.util.function.LongSupplier;
 public class FixSessionImpl implements FixSession {
 
     static final IOException NO_CONNECTED_SESSION = new IOException("No connected session");
-    private static final BiConsumer<Runnable, Exception> LOG_ON_CALLER_IF_REFUSED = (task, error) -> {
-        if (error != null) {
-            task.run();
-        }
-    };
-
     private static final BiConsumer<Runnable, Exception> IGNORE_TASK_RESULT = (task, error) -> {
         if (error == NO_CONNECTED_SESSION || error instanceof EOFException) {
             log.debug("Skipped FIX session task {}, the connection is gone: {}", task.getClass().getName(), error.getMessage());
@@ -255,13 +250,12 @@ public class FixSessionImpl implements FixSession {
             return;
         }
         IOSession connection = ioSession;
-        if (connection == null || connection.isWithinIOThread()) {
+        if (connection != null && connection.isWithinIOThread()) {
             writeEvent(clock.now(), event);
             return;
         }
         // taken here, when the event happened, and made immutable: the clock hands out one reused instance
-        UTCTime eventTime = clock.now().asImmutable();
-        connection.processTask(() -> writeEvent(eventTime, event), LOG_ON_CALLER_IF_REFUSED);
+        writeEventOnTheSessionOwner(clock.now().asImmutable(), event);
     }
 
     @Override
@@ -270,15 +264,26 @@ public class FixSessionImpl implements FixSession {
             return;
         }
         IOSession connection = ioSession;
-        if (connection == null || connection.isWithinIOThread()) {
+        if (connection != null && connection.isWithinIOThread()) {
             writeEvent(clock.now(), event, params);
             return;
         }
         // formatted here rather than by the logger: the parameters are the caller's and may have moved on by the
-        // time the IO thread gets to them
-        String formattedEvent = String.format(event, params);
-        UTCTime eventTime = clock.now().asImmutable();
-        connection.processTask(() -> writeEvent(eventTime, formattedEvent), LOG_ON_CALLER_IF_REFUSED);
+        // time the owner gets to them
+        writeEventOnTheSessionOwner(clock.now().asImmutable(), String.format(event, params));
+    }
+
+    /**
+     * The logger belongs to the session, so it is written by whichever thread owns it: the IO thread of its
+     * connection, or the engine's thread for the sessions that have none. Only a session whose engine has stopped
+     * has neither, and the lines that explain a teardown are worth keeping even written from here.
+     */
+    private void writeEventOnTheSessionOwner(UTCTime eventTime, String event) {
+        try {
+            runOnSessionOwnerThread(() -> writeEvent(eventTime, event));
+        } catch (RejectedExecutionException noOwnerLeft) {
+            writeEvent(eventTime, event);
+        }
     }
 
     private void writeEvent(UTCTime eventTime, String event) {

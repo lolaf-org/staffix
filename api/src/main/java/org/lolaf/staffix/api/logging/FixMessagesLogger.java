@@ -115,9 +115,10 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
      * which is where a message is read, written and logged, and where the engine hands an event raised anywhere
      * else, a scheduled timeout or an application thread calling the session.
      *
-     * <p>The one exception is a session with no connection, which has no IO thread to hand anything to: an event
-     * raised while it is down is written by whoever raised it. Nothing else is logging then, that being what having
-     * no connection means.
+     * <p>A session with no connection has no IO thread, and its logger is then written by the engine's thread for
+     * the sessions that are down, which the engine hands those events to exactly as it hands the others to an IO
+     * thread. The one exception is an engine that has stopped that thread, where what is left of a teardown is
+     * written by whoever raised it rather than lost.
      *
      * <p>A logger is per session, so two sessions log in parallel through two instances. Anything an implementation
      * shares between them, a file, a buffer pool, a queue, is its own to protect.
