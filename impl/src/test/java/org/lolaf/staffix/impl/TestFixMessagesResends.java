@@ -151,10 +151,12 @@ class TestFixMessagesResends extends AbstractFixTests {
                 firstMissedSeqNum = getFixMessagesStore(connectorToCut).getOutgoingSeqNum();
             }
         }
-        lastMissedSeqNum = getFixMessagesStore(connectorToCut).getOutgoingSeqNum() - 1;
-        assertThat(missedMessagesCount())
+        // a send on a session that is down is numbered by the thread that owns it then, so the store catches up
+        // just after the loop rather than within it
+        await().untilAsserted(() -> assertThat(getFixMessagesStore(connectorToCut).getOutgoingSeqNum() - firstMissedSeqNum)
                 .as("the messages sent while the connection was down must all have gone missing")
-                .isEqualTo(MESSAGES_TO_SEND - LAST_DELIVERED_MESSAGE_INDEX - 1);
+                .isEqualTo(MESSAGES_TO_SEND - LAST_DELIVERED_MESSAGE_INDEX - 1));
+        lastMissedSeqNum = getFixMessagesStore(connectorToCut).getOutgoingSeqNum() - 1;
         assertThat(sessionToCut.isConnected()).isFalse();
     }
 
@@ -353,6 +355,11 @@ class TestFixMessagesResends extends AbstractFixTests {
             fixInitiatorSession.send(encodeTestMessage(i), null);
             fixAcceptorSession.send(encodeTestMessage(100 + i), null);
         }
+        // both sides are down, so both number their backlog on the thread that owns them then
+        await().untilAsserted(() -> {
+            assertThat(initiatorMessagesStore.getOutgoingSeqNum() - initiatorFirstMissedSeqNum).isEqualTo(MESSAGES_TO_SEND - LAST_DELIVERED_MESSAGE_INDEX - 1);
+            assertThat(acceptorMessagesStore.getOutgoingSeqNum() - acceptorFirstMissedSeqNum).isEqualTo(MESSAGES_TO_SEND - LAST_DELIVERED_MESSAGE_INDEX - 1);
+        });
         long initiatorLastMissedSeqNum = initiatorMessagesStore.getOutgoingSeqNum() - 1;
         long acceptorLastMissedSeqNum = acceptorMessagesStore.getOutgoingSeqNum() - 1;
 
@@ -476,9 +483,12 @@ class TestFixMessagesResends extends AbstractFixTests {
         if (lastMessageIsAlsoFiltered) {
             // a declined message right at the end of the range, which has no retransmission after it to carry the
             // gap fill: the resender has to emit one of its own to cover the tail
+            long seqNumBeforeTheTrailingSend = getFixMessagesStore(connectorType).getOutgoingSeqNum();
             targetFixSession.send(targetFixSession.newEncoder(TradingSessionStatusRequestEncoder.class)
                     .begin().setTradSesReqID("trading-session-status-test-request-last")
                     .setSubscriptionRequestType(SubscriptionRequestType.SubscriptionRequestTypeValues.SNAPSHOT), null);
+            await().untilAsserted(() -> assertThat(getFixMessagesStore(connectorType).getOutgoingSeqNum())
+                    .isEqualTo(seqNumBeforeTheTrailingSend + 1));
             lastMissedSeqNum = getFixMessagesStore(connectorType).getOutgoingSeqNum() - 1;
         }
 

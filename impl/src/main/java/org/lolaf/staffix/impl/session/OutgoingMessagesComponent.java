@@ -103,40 +103,76 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         FixSessionFixMessageContext ctx = messageSendingContexts.poll();
         if (ctx == null) {
             flush();
-            ctx = takeMessageSendingContext();
+            ctx = takeMessageSendingContext(fixSession.currentIOSession());
         }
         synchronized (bufferedMessageSendingContexts) {
             bufferedMessageSendingContexts.add(ctx.setup(byteBufferBorrower, encoder, sendingTime, messageSendOperationCallback, param1, param2));
         }
     }
 
+    /**
+     * Writes what was bufferized, or completes it as unsent when the connection went while it waited: the messages
+     * hold sequence numbers the session owes its peer either way, so they are numbered and stored rather than
+     * dropped. Like {@link #send}, that is done on the thread that owns the session.
+     */
     void flush() {
+        IOSession currentIOSession = fixSession.currentIOSession();
+        if (currentIOSession == null && !fixSession.isWithinSessionOwnerThread(null)) {
+            fixSession.runOnSessionOwnerThread(this::flush, null);
+            return;
+        }
         synchronized (bufferedMessageSendingContexts) {
-            if (!bufferedMessageSendingContexts.isEmpty()) {
-                FixSessionBufferedFixMessageContext ctx = takeBufferedMessageSendingContext();
-                fixSession.currentConnection().send(ctx.setup(byteBufferBorrower, bufferedMessageSendingContexts), ctx, bufferedMessageSentCallback);
-                bufferedMessageSendingContexts.clear();
+            if (bufferedMessageSendingContexts.isEmpty()) {
+                return;
             }
+            if (currentIOSession == null) {
+                bufferedMessageSendingContexts.forEach(this::completeWithoutConnection);
+            } else {
+                FixSessionBufferedFixMessageContext ctx = takeBufferedMessageSendingContext(currentIOSession);
+                currentIOSession.send(ctx.setup(byteBufferBorrower, bufferedMessageSendingContexts), ctx, bufferedMessageSentCallback);
+            }
+            bufferedMessageSendingContexts.clear();
         }
     }
 
+    /**
+     * Ends a message that has no connection to go out on: it takes its MsgSeqNum(34) and reaches the store, so the
+     * peer asks for it once it logs on, and the sender is told with {@code NO_CONNECTED_SESSION}.
+     */
+    private void completeWithoutConnection(FixSessionFixMessageContext ctx) {
+        try {
+            messageSentCallback.onMessageWriteCallback(ctx.build().flip(), FixSessionImpl.NO_CONNECTED_SESSION, ctx); // very important do not forget to flip message
+        } catch (IOException e) {
+            // terminal state don't care if we do not return the eventually allocated ByteBuffer to the pool
+            messageSentCallback.onMessageWriteCallback(null, FixSessionImpl.NO_CONNECTED_SESSION, ctx);
+        } finally {
+            // what the IO session does after the callback of every message it is handed
+            ctx.release();
+        }
+    }
+
+    /**
+     * Sends while the session has no connection on the thread that owns it then, so that the sequence number this
+     * message takes and the store write that follows happen in one place: a send that cannot go on the wire still
+     * moves the session on, and two threads doing that at once would renumber each other.
+     * <p>
+     * The message is therefore numbered and stored in the order the owner picks the sends up, not before this
+     * method returns.
+     */
     <P1, P2> void send(FixMessageEncoder<?> encoder, UTCTime sendingTime,
                        FixSession.MessageSendOperationCallback<P1, P2> messageSendOperationCallback, P1 param1, P2 param2) {
-        FixSessionFixMessageContext ctx = takeMessageSendingContext();
+        IOSession ioSession = fixSession.currentIOSession();
+        // only a session with no connection hands the send over
+        if (ioSession == null && !fixSession.isWithinSessionOwnerThread(null)) {
+            fixSession.runOnSessionOwnerThread(() -> send(encoder, sendingTime, messageSendOperationCallback, param1, param2), null);
+            return;
+        }
+        FixSessionFixMessageContext ctx = takeMessageSendingContext(ioSession);
         IOWriter.ByteBufferBuilder byteBufferBuilder = ctx.setup(byteBufferBorrower, encoder, sendingTime, messageSendOperationCallback, param1, param2);
-        IOSession connection = fixSession.currentConnection();
-        if (connection != null) {
-            connection.send(byteBufferBuilder, ctx, messageSentCallback);
+        if (ioSession != null) {
+            ioSession.send(byteBufferBuilder, ctx, messageSentCallback);
         } else {
-            try {
-                messageSentCallback.onMessageWriteCallback(byteBufferBuilder.build().flip(), FixSessionImpl.NO_CONNECTED_SESSION, ctx); // very important do not forget to flip message
-            } catch (IOException e) {
-                // terminal state don't care if we do not return the eventually allocated ByteBuffer to the pool
-                messageSentCallback.onMessageWriteCallback(null, FixSessionImpl.NO_CONNECTED_SESSION, ctx);
-            } finally {
-                // what the IO session does after the callback of every message it is handed
-                ctx.release();
-            }
+            completeWithoutConnection(ctx);
         }
     }
 
@@ -167,7 +203,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
      */
     @Override
     public void onConnected() {
-        byteBufferBorrower = fixSession.currentConnection()::borrow;
+        byteBufferBorrower = fixSession.currentIOSession()::borrow;
     }
 
     @Override
@@ -177,28 +213,27 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
     }
 
     /**
-     * The IO thread never waits for a context: the ones in flight are given back by the IO thread itself, once it
-     * writes them, so waiting there would deadlock. It gets a new one instead, which the full pool then drops.
+     * The session's owner never waits for a context: the ones in flight are given back by the IO thread once it
+     * writes them, so an owner waiting here would deadlock, and the offline owner is shared with every other
+     * disconnected session of the engine. It gets a new one instead, which the full pool then drops.
      */
-    private FixSessionFixMessageContext takeMessageSendingContext() {
+    private FixSessionFixMessageContext takeMessageSendingContext(IOSession currentSession) {
         FixSessionFixMessageContext ctx = messageSendingContexts.poll();
         if (ctx != null) {
             return ctx;
         }
-        IOSession connection = fixSession.currentConnection();
-        if (connection != null && connection.isWithinIOThread()) {
+        if (fixSession.isWithinSessionOwnerThread(currentSession)) {
             return newMessageSendingContext();
         }
         return messageSendingContexts.pollBlocking(pollBlockingIdleStrategy);
     }
 
-    private FixSessionBufferedFixMessageContext takeBufferedMessageSendingContext() {
+    private FixSessionBufferedFixMessageContext takeBufferedMessageSendingContext(IOSession currentIOSession) {
         FixSessionBufferedFixMessageContext ctx = bufferMessageSendingContexts.poll();
         if (ctx != null) {
             return ctx;
         }
-        IOSession connection = fixSession.currentConnection();
-        if (connection != null && connection.isWithinIOThread()) {
+        if (fixSession.isWithinSessionOwnerThread(currentIOSession)) {
             return new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts);
         }
         return bufferMessageSendingContexts.pollBlocking(pollBlockingIdleStrategy);
@@ -242,7 +277,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
             ByteBuffer messageToReturnToPool = msc.getMessage();
             messageSentCallback.onMessageWriteCallback(messageToReturnToPool, sendingError, msc);
             // ByteBuffers in bufferedWritesContexts needs to be manually returned to the IOBuffers pool
-            fixSession.currentConnection().unborrow(messageToReturnToPool);
+            fixSession.currentIOSession().unborrow(messageToReturnToPool);
         }
         bufferedMessagesSendingContext.release();
     }

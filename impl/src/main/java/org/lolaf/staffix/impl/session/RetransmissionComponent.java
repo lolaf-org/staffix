@@ -193,8 +193,8 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
      * thread, where that connection can be read.
      */
     void executeResend(Consumer<IOSession> resend) {
-        IOSession connection = fixSession.currentConnection();
-        if (connection == null) {
+        IOSession ioSession = fixSession.currentIOSession();
+        if (ioSession == null) {
             return;
         }
         if (resendExecutor == null) {
@@ -204,7 +204,7 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
                 return thread;
             });
         }
-        resendExecutor.execute(() -> resend.accept(connection));
+        resendExecutor.execute(() -> resend.accept(ioSession));
     }
 
     @Override

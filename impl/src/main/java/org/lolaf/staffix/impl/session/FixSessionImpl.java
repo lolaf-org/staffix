@@ -51,12 +51,12 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
-import java.util.concurrent.ExecutorService;
 
 /**
  * A FIX session: the connection it runs over, the {@link FixSession} the application holds, and the points where
@@ -94,7 +94,7 @@ public class FixSessionImpl implements FixSession {
     private final FixSessionSettings fixSessionSettings;
     private final FixMessagesLogger.Logger fixMessagesLogger;
     private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
-    private final FixSessionStateComponent fixSessionStateComponent;
+    private final FixSessionStateComponent fixSessionState;
     private final FixSessionLayerComponents fixSessionLayerComponents;
     private final HeldOutgoingMessagesComponent heldOutgoingMessages;
     private final ResendRecovery resendRecovery;
@@ -112,7 +112,12 @@ public class FixSessionImpl implements FixSession {
     private final FixSessionRegistry fixSessionRegistry;
     private final SessionMessageExecutors messageExecutors;
     private final ExecutorService disconnectedSessionsExecutor;
-    private final PluginsComponent fixSessionPlugins;
+    private final PluginsComponent plugins;
+    /**
+     * The thread of {@link #disconnectedSessionsExecutor} currently running this session's work, so that a task
+     * already on the owner is recognised as such. Written and cleared by that thread, read by any.
+     */
+    private volatile Thread offlineOwnerThread;
     @Getter
     private Collection<Certificate> remoteCertificates;
     private IOSession ioSession;
@@ -143,20 +148,20 @@ public class FixSessionImpl implements FixSession {
         this.messageExecutors = wiring.messageExecutors;
         this.disconnectedSessionsExecutor = wiring.disconnectedSessionsExecutor;
         // the registry is where a component lives; the session keeps the ones it uses per message in a field
-        this.fixSessionStateComponent = fixSessionLayerComponents.get(FixSessionStateComponent.class);
+        this.fixSessionState = fixSessionLayerComponents.get(FixSessionStateComponent.class);
         this.outgoingMessages = fixSessionLayerComponents.get(OutgoingMessagesComponent.class);
         this.resendRecovery = fixSessionLayerComponents.get(RetransmissionComponent.class).getResendRecovery();
         this.heldOutgoingMessages = fixSessionLayerComponents.get(HeldOutgoingMessagesComponent.class);
         this.messageRejects = fixSessionLayerComponents.get(MessageRejectsComponent.class);
         this.codecs = fixSessionLayerComponents.get(CodecsComponent.class);
         this.adminOperations = fixSessionLayerComponents.get(AdminOperationsComponent.class);
-        this.fixSessionPlugins = fixSessionLayerComponents.get(PluginsComponent.class);
+        this.plugins = fixSessionLayerComponents.get(PluginsComponent.class);
         this.fixMessageDecoderProvider = codecs::getTargetDecoder;
         this.nextExpectedIncomingSeqNumSupplier = fixSessionMessagesStore::getIncomingSeqNum;
     }
 
     public boolean hasConfiguredPluginsWithTimeMeasurementRequired() {
-        return fixSessionPlugins.requiresTimeMeasurement();
+        return plugins.requiresTimeMeasurement();
     }
 
     @ExternalThread
@@ -185,7 +190,7 @@ public class FixSessionImpl implements FixSession {
 
     @Override
     public FixSessionState getDesiredState() {
-        return fixSessionStateComponent.getDesiredState();
+        return fixSessionState.getDesiredState();
     }
 
     @Override
@@ -194,8 +199,8 @@ public class FixSessionImpl implements FixSession {
     }
 
     public boolean isReadyToConnect() {
-        if (fixSessionStateComponent.isStarted()) {
-            if (fixSessionStateComponent.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
+        if (fixSessionState.isStarted()) {
+            if (fixSessionState.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
                 logConnectionHeldOnce("FIX session desired state is DISCONNECTED, holding off connecting");
                 return false;
             }
@@ -220,12 +225,12 @@ public class FixSessionImpl implements FixSession {
 
     @Override
     public <C extends PluginContext> Optional<C> getPluginContext(Class<C> pluginContextClass) {
-        return fixSessionPlugins.getPluginContext(pluginContextClass);
+        return plugins.getPluginContext(pluginContextClass);
     }
 
     public void onMessageSent(ByteBuffer sentMessage, Object messageSendingContext, long localSendingStartTimeInNanos) {
         FixSessionFixMessageContext ctx = (FixSessionFixMessageContext) messageSendingContext;
-        fixSessionPlugins.onMessageSent(ctx.getEncoder().getMessageType(), sentMessage.limit(),
+        plugins.onMessageSent(ctx.getEncoder().getMessageType(), sentMessage.limit(),
                 localSendingStartTimeInNanos, ctx.getSendingTime());
     }
 
@@ -350,7 +355,7 @@ public class FixSessionImpl implements FixSession {
         currentIOSession.processTask(task, callback);
     }
 
-    IOSession currentConnection() {
+    IOSession currentIOSession() {
         return ioSession;
     }
 
@@ -362,14 +367,29 @@ public class FixSessionImpl implements FixSession {
      * Hands a task to whichever thread owns this session: the IO thread of its connection, or the engine's
      * executor for sessions that have none. Session state is touched by its owner alone, and that is what makes
      * the rest of the session layer free of locks.
+     *
+     * <p>A caller that is already the owner runs the task itself: queueing it would split one piece of work in
+     * two and put the second half behind whatever else is waiting, when the point of handing it over has already
+     * been served.
      */
-    void runOnSessionOwner(Runnable task) {
-        IOSession currentIOSession = ioSession;
+    void runOnSessionOwnerThread(Runnable task, IOSession currentIOSession) {
         if (currentIOSession != null) {
             currentIOSession.processTask(task, this::forwardToTheOwnerIfRefused);
             return;
         }
+        if (offlineOwnerThread == Thread.currentThread()) {
+            task.run();
+            return;
+        }
         disconnectedSessionsExecutor.execute(() -> runIfStillDisconnected(task));
+    }
+
+    /**
+     * Whether the calling thread is the one allowed to touch this session's state: its connection's IO thread, or
+     * the thread running its work while it has none.
+     */
+    boolean isWithinSessionOwnerThread(IOSession currentIOSession) {
+        return currentIOSession != null ? currentIOSession.isWithinIOThread() : offlineOwnerThread == Thread.currentThread();
     }
 
     /**
@@ -391,7 +411,12 @@ public class FixSessionImpl implements FixSession {
     private void runIfStillDisconnected(Runnable task) {
         IOSession currentIOSession = ioSession;
         if (currentIOSession == null) {
-            task.run();
+            offlineOwnerThread = Thread.currentThread();
+            try {
+                task.run();
+            } finally {
+                offlineOwnerThread = null;
+            }
             return;
         }
         currentIOSession.processTask(task, this::forwardToTheOwnerIfRefused);
@@ -400,14 +425,14 @@ public class FixSessionImpl implements FixSession {
     @Override
     @ExternalThread
     public void logoutPermanently(String message) {
-        fixSessionStateComponent.setDesiredState(FixSessionState.LOGGED_OUT);
-        runOnSessionOwner(() -> logonLogoutComponent().sendLogoutRequest(message, false));
+        fixSessionState.setDesiredState(FixSessionState.LOGGED_OUT);
+        runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogoutRequest(message, false), ioSession);
     }
 
     @Override
     @ExternalThread
     public void logout(String message) {
-        runOnSessionOwner(() -> logonLogoutComponent().sendLogoutRequest(message, false));
+        runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogoutRequest(message, false), ioSession);
     }
 
     public void disconnect() {
@@ -417,8 +442,8 @@ public class FixSessionImpl implements FixSession {
     @Override
     @ExternalThread
     public void disconnect(String disconnectMessage) {
-        fixSessionStateComponent.setDesiredState(FixSessionState.DISCONNECTED);
-        runOnSessionOwner(() -> logonLogoutComponent().sendLogoutRequest(disconnectMessage, false));
+        fixSessionState.setDesiredState(FixSessionState.DISCONNECTED);
+        runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogoutRequest(disconnectMessage, false), ioSession);
     }
 
     private void disconnect(Deadline deadline) {
@@ -430,13 +455,13 @@ public class FixSessionImpl implements FixSession {
     @Override
     @ExternalThread
     public void logon() {
-        fixSessionStateComponent.setDesiredState(FixSessionState.LOGGED_IN);
-        runOnSessionOwner(() -> logonLogoutComponent().sendLogonRequestIfNeeded());
+        fixSessionState.setDesiredState(FixSessionState.LOGGED_IN);
+        runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogonRequestIfNeeded(), ioSession);
     }
 
     @Override
     public boolean isLoggedIn() {
-        return fixSessionStateComponent.isLoggedIn();
+        return fixSessionState.isLoggedIn();
     }
 
     @Override
@@ -488,7 +513,7 @@ public class FixSessionImpl implements FixSession {
     }
 
     public void onDisconnection() {
-        boolean wasLoggedIn = fixSessionStateComponent.isLoggedIn();
+        boolean wasLoggedIn = fixSessionState.isLoggedIn();
         fixSessionLayerComponents.onConnectionClosed();
         ioSession = null;
         logEvent("FIX session disconnected");
@@ -499,8 +524,8 @@ public class FixSessionImpl implements FixSession {
             // disconnection would cancel the orders of a client that asked to be logged out under
             // CANCEL_ON_DISCONNECT_ONLY, and leave them live under CANCEL_ON_LOGOUT_ONLY
             // nothing was ever sent, the connection simply went: a hard disconnection
-            fixSessionLayerComponents.onLogoutProcessed(fixSessionStateComponent.isLogoutSent());
-        } else if (fixSessionStateComponent.isLogoutPendingConnectionEnd()) {
+            fixSessionLayerComponents.onLogoutProcessed(fixSessionState.isLogoutSent());
+        } else if (fixSessionState.isLogoutPendingConnectionEnd()) {
             // a logout is finished with when the connection goes, and that is the whole rule: it holds for the side
             // that acknowledged one and waited for the peer to close, and for the side that asked for one and closed
             // itself once the acknowledgement came back
@@ -511,7 +536,7 @@ public class FixSessionImpl implements FixSession {
     }
 
     public boolean onConnection(IOSession ioSession, Collection<Certificate> remoteCertificates) {
-        if (fixSessionStateComponent.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
+        if (fixSessionState.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
             logEvent("FIX session desired state is DISCONNECTED, disconnecting immediately");
             return false;
         }
@@ -586,12 +611,12 @@ public class FixSessionImpl implements FixSession {
     }
 
     void sendInSessionSequenceReset() {
-        if (!fixSessionStateComponent.isLoggedIn()) {
+        if (!fixSessionState.isLoggedIn()) {
             logEvent("Ignoring in-session sequence reset: the session is not logged in");
             return;
         }
         resetSequence("In-session reset");
-        fixSessionStateComponent.onInSessionResetSent();
+        fixSessionState.onInSessionResetSent();
         logonLogoutComponent().sendLoginMessage(fixSessionLayerComponents.get(HeartbeatsComponent.class).getHeartbeatInterval(), Boolean.TRUE);
     }
 

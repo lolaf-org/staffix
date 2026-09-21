@@ -85,6 +85,10 @@ public class FixEngineBuilder implements InstanceProvider<FixEngine> {
      *
      * <p>Left unset, the engine creates a single daemon thread and shuts it down with itself. Supply one to pool it
      * with the rest of the application's threads; the engine then never shuts it down.
+     *
+     * <p>A supplied executor <b>must be single threaded</b>. It stands in for the one IO thread that owns a
+     * connected session, and two of its threads running a session's work at once would be exactly the concurrency
+     * this exists to remove: sequence numbers taken twice, state written from both sides.
      */
     private ExecutorService disconnectedSessionsExecutor;
 
