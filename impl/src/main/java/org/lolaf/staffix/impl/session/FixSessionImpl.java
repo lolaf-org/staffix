@@ -363,15 +363,10 @@ public class FixSessionImpl implements FixSession {
         return fixSessionLayerComponents.get(LogonLogoutComponent.class);
     }
 
-    /**
-     * Hands a task to whichever thread owns this session: the IO thread of its connection, or the engine's
-     * executor for sessions that have none. Session state is touched by its owner alone, and that is what makes
-     * the rest of the session layer free of locks.
-     *
-     * <p>A caller that is already the owner runs the task itself: queueing it would split one piece of work in
-     * two and put the second half behind whatever else is waiting, when the point of handing it over has already
-     * been served.
-     */
+    void runOnSessionOwnerThread(Runnable task) {
+        runOnSessionOwnerThread(task, ioSession);
+    }
+
     void runOnSessionOwnerThread(Runnable task, IOSession currentIOSession) {
         if (currentIOSession != null) {
             currentIOSession.processTask(task, this::forwardToTheOwnerIfRefused);

@@ -136,7 +136,7 @@ final class SessionWiring {
         // session's own concerns. The plugins and the application follow in start(), once they exist
         components.register(state);
         components.register(retransmission);
-        components.register(new CancelOnDisconnectComponent(fixSession, fixApplication, state, scheduler));
+        components.register(new CancelOnDisconnectComponent(fixSession, fixApplication, state, scheduler, messageExecutors));
         components.register(heldOutgoingMessages);
         components.register(incomingMessages);
         components.register(messageRejects);
