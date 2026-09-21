@@ -46,6 +46,7 @@ import org.lolaf.staffix.impl.session.codec.*;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntFunction;
@@ -77,13 +78,11 @@ final class SessionWiring {
     final FixAdminMessagesCodec adminMessagesCodec;
     final FixMessageParser messageParser;
     final SessionMessageExecutors messageExecutors;
-
-    private final String fixInstanceId;
+    final ExecutorService disconnectedSessionsExecutor;
 
     SessionWiring(FixSessionImpl fixSession, String fixInstanceId, FixSessionSettings settings,
                   FixSessionRuntimeDependencies runtimeDependencies, ScheduledExecutorService scheduler,
                   IOSettings ioSettings, MessageExecutorsRuntime messageExecutorsRuntime, Clock providedClock) {
-        this.fixInstanceId = fixInstanceId;
         this.fixSessionId = settings.getFixSessionId();
         this.fixApplication = new FailSafeFixApplication(runtimeDependencies.getFixApplicationFactory()
                 .getInstance(settings.getFixApplicationInstanceId()));
@@ -109,6 +108,7 @@ final class SessionWiring {
                 ? runtimeDependencies.getFixMessagesLogger().getLogger(fixInstanceId, fixSessionId, messageTypeRegistry)
                 : VoidMessageLogger.getInstance();
         this.messageExecutors = messageExecutorsRuntime.newSessionExecutors();
+        this.disconnectedSessionsExecutor = runtimeDependencies.getDisconnectedSessionsExecutor();
 
         OutgoingMessagesComponent outgoingMessages = new OutgoingMessagesComponent(fixSession, components, fixApplication, messagesStore,
                 messagesLogger, fixSessionId, clock, sendingTimeAccuracy, ioSettings);

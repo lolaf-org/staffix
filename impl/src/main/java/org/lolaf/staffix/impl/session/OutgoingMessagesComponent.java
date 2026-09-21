@@ -82,6 +82,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         this.sendingTimeAccuracy = sendingTimeAccuracy;
         // taken by the application, the scheduler and the IO thread, and given back by whichever thread the send ends on
         RingBufferFactory.AccessType accessType = RingBufferFactory.AccessType.MULTI_CONSUMER_MULTI_PRODUCER;
+        // WTF should be MPSC see history
         this.messageSendingContexts = RingBufferFactory.build(accessType, ioSettings.getTasksRingBufferSize());
         while (!messageSendingContexts.isFull()) {
             messageSendingContexts.offer(newMessageSendingContext());

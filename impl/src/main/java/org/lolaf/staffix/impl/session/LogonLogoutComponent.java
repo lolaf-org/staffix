@@ -101,7 +101,7 @@ public class LogonLogoutComponent implements FixSessionLayerComponent {
         if (fixSessionStateComponent.isLogoutPendingConnectionEnd()) {
             fixSession.logEvent("Counterparty did not close the connection within %s of its logout being acknowledged, disconnecting",
                     fixSessionSettings.getLogInOrOutResponseTimeout());
-            fixSession.runOnIOOrCurrentThread(fixSession::disconnect);
+            fixSession.runOnSessionOwner(fixSession::disconnect);
         }
     }
 

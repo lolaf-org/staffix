@@ -191,8 +191,10 @@ class TestFixSequenceResets extends AbstractFixTests {
         getFixSessionImpl(connectorType).adminResetSequence(AdminApi.ResetFixSessionMode.RESET_SEQUENCE);
         getFixSessionImpl(connectorType.inverse()).adminResetSequence(AdminApi.ResetFixSessionMode.RESET_SEQUENCE);
 
-        assertThat(getFixMessagesStore(connectorType).getOutgoingSeqNum()).isEqualTo(1);
-        assertThat(getFixMessagesStore(connectorType).getIncomingSeqNum()).isEqualTo(1);
+        // an admin operation runs on the session's owner, which for a disconnected session is the engine's
+        // executor, so the renumbering lands just after the call rather than within it
+        await().untilAsserted(() -> assertThat(getFixMessagesStore(connectorType).getOutgoingSeqNum()).isEqualTo(1));
+        await().untilAsserted(() -> assertThat(getFixMessagesStore(connectorType).getIncomingSeqNum()).isEqualTo(1));
 
         fixInitiatorSession.logon();
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isLoggedIn()).isTrue());

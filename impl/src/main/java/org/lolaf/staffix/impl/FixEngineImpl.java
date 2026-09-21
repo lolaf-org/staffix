@@ -16,6 +16,7 @@
 package org.lolaf.staffix.impl;
 
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi;
@@ -34,6 +35,8 @@ import org.lolaf.staffix.impl.session.FixSessionSettingsValidator;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -45,6 +48,7 @@ import java.util.stream.Stream;
  * <p>Shutdown order is the contract worth honouring - sessions first, then the resources they were using, so
  * nothing is torn down while a session is still draining into it.
  */
+@Slf4j
 public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implements FixEngine, AdminApi, FixSessionsObserver {
 
     private static final String PROVIDE_AT_LEAST_ONE = "Provide at least one ";
@@ -70,6 +74,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
      */
     @Getter
     private final FixSessionRegistryImpl fixSessionRegistry = new FixSessionRegistryImpl();
+    private ExecutorService selfManagedDisconnectedSessionsExecutor;
 
     FixEngineImpl(FixEngineBuilder fixEngineBuilder) {
         this.fixEngineBuilder = fixEngineBuilder;
@@ -142,10 +147,28 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             }
         });
         fixMessagesLoggers.forEach(s -> s.stop(stopDeadline));
+        // only what this engine created: a supplied one belongs to the application
+        if (selfManagedDisconnectedSessionsExecutor != null) {
+            selfManagedDisconnectedSessionsExecutor.shutdown();
+            selfManagedDisconnectedSessionsExecutor = null;
+        }
+    }
+
+    private ExecutorService disconnectedSessionsExecutor() {
+        return fixEngineBuilder.getDisconnectedSessionsExecutor() != null
+                ? fixEngineBuilder.getDisconnectedSessionsExecutor() : selfManagedDisconnectedSessionsExecutor;
     }
 
     @Override
     protected void startMe() throws StartStopException {
+        if (fixEngineBuilder.getDisconnectedSessionsExecutor() == null) {
+            selfManagedDisconnectedSessionsExecutor = Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "staffix-offline-sessions-" + getInstanceId());
+                thread.setDaemon(true);
+                thread.setUncaughtExceptionHandler((t, ex) -> log.error("Uncaught exception occurred in thread {}", t, ex));
+                return thread;
+            });
+        }
         fixSessionsSettingsStores.forEach(s -> {
             s.start();
             s.getSettings().forEach(FixSessionSettingsValidator::validate);
@@ -168,7 +191,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 findMatchAmongstMessagesLoggers(fixSessionSettings),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
                 findMatchAmongstPluginsComponent(fixSessionSettings),
-                fixSessionRegistry);
+                fixSessionRegistry, disconnectedSessionsExecutor());
     }
 
     @Override

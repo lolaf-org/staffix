@@ -118,7 +118,7 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
 
     @ExternalThread
     void resetSequence(AdminApi.ResetFixSessionMode resetFixSessionMode) {
-        fixSession.runOnIOOrCurrentThread(() -> {
+        fixSession.runOnSessionOwner(() -> {
             fixSession.logEvent("Admin API reset sequence: %s", resetFixSessionMode);
             applyResetSequence(resetFixSessionMode);
         });

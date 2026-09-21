@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Declares what a {@link FixEngine} owns before it is built: the session settings stores it reads sessions from,
@@ -74,6 +75,18 @@ public class FixEngineBuilder implements InstanceProvider<FixEngine> {
      */
     @Singular
     private List<FixSessionsPluginSettings<?>> fixSessionsPlugins;
+    /**
+     * Runs the work of sessions that are disconnected, for every initiator and acceptor of this engine.
+     *
+     * <p>A connected session is owned by the IO thread of its connection, which is what lets the engine touch a
+     * session's state without locking. A disconnected session has no such thread, so this one stands in for it:
+     * sending while down, a timer firing on a session that is already gone, an event to log. Sharing one thread
+     * across every session costs nothing, that work being rare and small, and keeps the guarantee whole.
+     *
+     * <p>Left unset, the engine creates a single daemon thread and shuts it down with itself. Supply one to pool it
+     * with the rest of the application's threads; the engine then never shuts it down.
+     */
+    private ExecutorService disconnectedSessionsExecutor;
 
     @Override
     public FixEngine instance() {
