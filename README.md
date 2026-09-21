@@ -139,9 +139,11 @@ is that program, and it is the one the command above runs.
 
 ### Where the rest of the documentation is
 
-**[`docs/`](docs/README.md) is the index**, and everything else is under it: eleven guides, each answering one question.
+**[`docs/`](docs/README.md) is the index**, and everything else is under it: twelve guides, each answering one question.
 [Threading model](docs/threading-model.md) and [configuring a session](docs/configuring-sessions.md) are the two to read
-first: which thread runs your code, and how to declare a session. [Tuning for latency](docs/tuning-for-latency.md) is
+first: which thread runs your code, and how to declare a session. [Decoding a message](docs/decoding-messages.md) is the
+idea the name is built on: only the fields you asked for are ever parsed.
+[Tuning for latency](docs/tuning-for-latency.md) is
 how you get from the stock numbers [below](#measured) to the busy-spin ones. The others cover
 [stores and loggers](docs/stores-and-loggers.md),
 [FIX versions and dictionaries](docs/fix-versions-and-dictionaries.md), [session plugins](docs/session-plugins.md),
