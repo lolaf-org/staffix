@@ -19,7 +19,7 @@ could mean.
 First public release. Staffix is a FIX engine for Java that treats latency as a correctness property: a full session
 layer and type-safe encoders for every FIX version from 4.2 to FIX Latest, as an ordinary library in your process
 rather than an infrastructure component to deploy. It runs on Java 11 or later, is compiled to Java 11 bytecode, and
-rests on [ringos](https://github.com/lolaf-org/ringos) and [betty](https://github.com/lolaf-org/betty) at `0.9.0`.
+rests on [ringos](https://github.com/lolaf-org/ringos) and [betty](https://github.com/lolaf-org/betty).
 
 Measured against QuickFIX/J 3.0.1 on the same harness and settings: a round trip in half the time, a 99th percentile
 faster than QuickFIX/J's median, and under one byte allocated per message against its sixteen kilobytes.

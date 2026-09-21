@@ -23,6 +23,7 @@ import org.lolaf.betty.api.io.ReleasableMessageSendingContext;
 import org.lolaf.ringos.rb.RingBuffer;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
+import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.Clock;
@@ -36,7 +37,7 @@ import java.util.function.LongSupplier;
 
 @RequiredArgsConstructor
 @Getter(AccessLevel.PACKAGE)
-class FixSessionFixMessageContext implements IOWriter.ByteBufferBuilder, ReleasableMessageSendingContext {
+class FixSessionFixMessageContext implements IOWriter.ByteBufferBuilder, ReleasableMessageSendingContext, FixSessionFixMessageSendingContext {
 
     private final LongSupplier nextOutgoingSeqNumSupplier;
     private final FixApplication fixApplication;
@@ -47,6 +48,7 @@ class FixSessionFixMessageContext implements IOWriter.ByteBufferBuilder, Releasa
     private final RingBuffer<FixSessionFixMessageContext> ctxPool;
 
     private IntFunction<ByteBuffer> allocator;
+    @Getter
     private UTCTime sendingTime;
     private FixMessageEncoder<?> encoder;
     private FixSession.MessageSendOperationCallback<?, ?> messageSendOperationCallback;
@@ -71,6 +73,11 @@ class FixSessionFixMessageContext implements IOWriter.ByteBufferBuilder, Releasa
         encoder.release();
         encoder = null;
         ctxPool.offer(this);
+    }
+
+    @Override
+    public MessageType getMessageType() {
+        return encoder.getMessageType();
     }
 
     public FixSessionFixMessageContext setup(IntFunction<ByteBuffer> allocator, FixMessageEncoder<?> encoder, UTCTime sendingTime,

@@ -88,7 +88,7 @@
         <maven.compiler.release>11</maven.compiler.release>
 
         <ringos.version>0.9.0</ringos.version>
-        <betty.version>1.0.0-SNAPSHOT</betty.version>
+        <betty.version>0.9.1</betty.version>
         <maven-plugin-api.version>3.9.16</maven-plugin-api.version>
         <maven-plugin-annotations.version>3.16.0</maven-plugin-annotations.version>
         <testcontainers.version>2.0.5</testcontainers.version>
@@ -120,7 +120,7 @@
         <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
         <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
         <!-- Appended to what maven-release-plugin passes to its forked builds -->
-        <release.extraArguments />
+        <release.extraArguments/>
         <lombok-maven-plugin.version>1.18.20.0</lombok-maven-plugin.version>
         <automatic.module.name>org.lolaf.staffix.MODULE.NAME.NOT.SET</automatic.module.name>
         <delombok.skip>false</delombok.skip>
@@ -281,7 +281,8 @@
                         <useReleaseProfile>false</useReleaseProfile>
                         <arguments>-T1C ${release.extraArguments}</arguments>
                         <scmReleaseCommitComment>release @{releaseLabel}</scmReleaseCommitComment>
-                        <scmDevelopmentCommitComment>resume development after @{releaseLabel}</scmDevelopmentCommitComment>
+                        <scmDevelopmentCommitComment>resume development after @{releaseLabel}
+                        </scmDevelopmentCommitComment>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -298,6 +299,7 @@
                             --add-opens java.base/java.lang.reflect=ALL-UNNAMED
                             --add-opens java.base/sun.nio.ch=ALL-UNNAMED
                             --add-opens java.base/java.nio=ALL-UNNAMED
+                            --add-opens java.base/java.nio.channels.spi=ALL-UNNAMED
                             -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
                             -Xshare:off
                         </argLine>
@@ -362,15 +364,22 @@
                             <rules>
                                 <requireMavenVersion>
                                     <version>[3.6.3,)</version>
-                                    <message>Maven 3.6.3 or newer is required: older versions ignore the child.*.inherit.append.path attributes the published poms rely on.</message>
+                                    <message>Maven 3.6.3 or newer is required: older versions ignore the
+                                        child.*.inherit.append.path attributes the published poms rely on.
+                                    </message>
                                 </requireMavenVersion>
                                 <requireJavaVersion>
                                     <version>[17,)</version>
-                                    <message>Building staffix needs JDK 17 or newer (JUnit 6 requires 17, and --enable-native-access is rejected by 16 and older). The library itself still runs on JDK 11.</message>
+                                    <message>Building staffix needs JDK 17 or newer (JUnit 6 requires 17, and
+                                        --enable-native-access is rejected by 16 and older). The library itself still
+                                        runs on JDK 11.
+                                    </message>
                                 </requireJavaVersion>
                                 <requireReleaseDeps>
                                     <onlyWhenRelease>true</onlyWhenRelease>
-                                    <message>A release may not depend on a SNAPSHOT: Central rejects the bundle, and the artifact would be unbuildable once that snapshot moved.</message>
+                                    <message>A release may not depend on a SNAPSHOT: Central rejects the bundle, and the
+                                        artifact would be unbuildable once that snapshot moved.
+                                    </message>
                                 </requireReleaseDeps>
                             </rules>
                         </configuration>

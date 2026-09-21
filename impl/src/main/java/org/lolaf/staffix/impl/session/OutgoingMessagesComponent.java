@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.impl.session;
 
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.io.IOWriter;
@@ -89,7 +90,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         }
         this.bufferMessageSendingContexts = RingBufferFactory.build(accessType, ioSettings.getTasksRingBufferSize());
         while (!bufferMessageSendingContexts.isFull()) {
-            bufferMessageSendingContexts.offer(new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts));
+            bufferMessageSendingContexts.offer(new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts, fixSession));
         }
         this.bufferedMessageSendingContexts = new ArrayList<>(messageSendingContexts.getSize());
     }
@@ -181,9 +182,10 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
      * for it, and must never reach the one that replaced it.
      */
     public void sendWithSeqNum(IOSession connection, FixMessageEncoder<?> encoder, long outgoingSequenceNumber) {
+        FixSessionFixMessageSendingContext ctx = new FixSessionFixMessageResendingContext(encoder.getMessageType(), clock.now().asImmutable());
         connection.send(encoder.encode(connection::borrow, outgoingSequenceNumber, fixSessionId, fixApplication,
-                        sendingTimeAccuracy, clock.now(), fixSession), encoder.getMessageType(),
-                (byteBuffer, e, messageType) -> logOutgoingFixMessage(byteBuffer.position(0), messageType, e), true);
+                        sendingTimeAccuracy, ctx.getSendingTime(), fixSession), ctx,
+                (byteBuffer, e, messageType) -> logOutgoingFixMessage(byteBuffer.position(0), ctx, e), true);
     }
 
     void callOnMessageCallbackIfNeeded(Exception sendingError, FixSession.MessageSendOperationCallback callback,
@@ -234,7 +236,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
             return ctx;
         }
         if (fixSession.isWithinSessionOwnerThread(currentIOSession)) {
-            return new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts);
+            return new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts, fixSession);
         }
         return bufferMessageSendingContexts.pollBlocking(pollBlockingIdleStrategy);
     }
@@ -263,7 +265,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
             fixSessionMessagesStore.storeNextOutgoingSeqNum(outgoingSeqNum + 1);
         }
 
-        logOutgoingFixMessage(message.position(0), sentMessageType, sendingError);
+        logOutgoingFixMessage(message.position(0), context, sendingError);
 
         callOnMessageCallbackIfNeeded(sendingError, callback, messageSendOperationCallbackParam1, messageSendOperationCallbackParam2);
         fixSessionLayerComponents.onMessageSent(context.getSendingTime());
@@ -274,19 +276,15 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         FixSessionFixMessageContext[] sendingContexts = bufferedMessagesSendingContext.getSendingContexts();
         for (int i = 0; i < sendingContextsCount; i++) {
             FixSessionFixMessageContext msc = sendingContexts[i];
-            ByteBuffer messageToReturnToPool = msc.getMessage();
-            messageSentCallback.onMessageWriteCallback(messageToReturnToPool, sendingError, msc);
-            // ByteBuffers in bufferedWritesContexts needs to be manually returned to the IOBuffers pool
-            fixSession.currentIOSession().unborrow(messageToReturnToPool);
+            messageSentCallback.onMessageWriteCallback(msc.getMessage(), sendingError, msc);
         }
-        bufferedMessagesSendingContext.release();
     }
 
-    private void logOutgoingFixMessage(ByteBuffer message, MessageType messageType, Exception sendingError) {
+    private void logOutgoingFixMessage(ByteBuffer message, FixSessionFixMessageSendingContext ctx, Exception sendingError) {
         if (fixMessagesLogger.isLoggingOutgoing()) {
             if (sendingError == null) {
                 try {
-                    fixMessagesLogger.logOutgoing(clock.now(), messageType, message);
+                    fixMessagesLogger.logOutgoing(clock.now(), ctx.getMessageType(), message);
                 } catch (Exception ex) {
                     log.warn("Failed to log message", ex);
                 }
@@ -297,5 +295,11 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
                         sendingError.getMessage(), new String(dst, SerDe.CHARSET));
             }
         }
+    }
+
+    @Value
+    private static class FixSessionFixMessageResendingContext implements FixSessionFixMessageSendingContext {
+        MessageType messageType;
+        UTCTime sendingTime;
     }
 }

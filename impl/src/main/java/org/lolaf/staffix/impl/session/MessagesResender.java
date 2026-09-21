@@ -27,9 +27,9 @@ import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.codec.decoders.FixMessageResendTransformer;
 import org.lolaf.staffix.codec.encoders.GenericFixMessageEncoder;
-import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
 import org.lolaf.staffix.codec.serde.ByteArraySerde;
 import org.lolaf.staffix.codec.serde.LongSerde;
+import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
 import org.lolaf.staffix.impl.threading.ResendThread;
 
 import java.nio.ByteBuffer;
@@ -89,10 +89,10 @@ public class MessagesResender {
         int maxMessagesResent = fixSessionImpl.getFixSessionSettings().getMaxMessagesResentPerRequest();
 
         fixSessionImpl.logEvent("Resending messages %s -> %s", beginSeqNo, endSeqNo);
-        ResendState resendState = new ResendState(connection, beginSeqNo);
+        ResendState resendState = new ResendState(beginSeqNo);
         try {
             fixSessionMessagesStore.find(beginSeqNo, endSeqNo, (seqNum, message) ->
-                    resendStoredMessage(resendState, message, maxMessagesResent));
+                    resendStoredMessage(connection, resendState, message, maxMessagesResent));
         } catch (FixMessagesStore.FixSessionMessagesStore.StoreException ex) {
             fixSessionImpl.logout("Unable to fetch FIX messages to resend, try again later");
             return;
@@ -112,8 +112,8 @@ public class MessagesResender {
     /**
      * @return whether the store should carry on reading the range
      */
-    private boolean resendStoredMessage(ResendState resendState, ByteBuffer messageContent, int maxMessagesResent) {
-        if (!resendState.connection.isStarted()) {
+    private boolean resendStoredMessage(IOSession connection, ResendState resendState, ByteBuffer messageContent, int maxMessagesResent) {
+        if (!connection.isStarted()) {
             return false;
         }
         // a store may hand over the very buffer it holds the message in, and both reads below drain what they are
@@ -128,7 +128,7 @@ public class MessagesResender {
         } else {
             resendState.transformedMessageBuffer = messageContent;
         }
-        resendState.expectedNextSeqNum = resendMessage(resendState);
+        resendState.expectedNextSeqNum = resendMessage(connection, resendState);
         messageContent.position(storedMessagePosition);
         resendState.messagesRead++;
         if (maxMessagesResent > 0 && resendState.messagesRead >= maxMessagesResent) {
@@ -139,7 +139,7 @@ public class MessagesResender {
         return true;
     }
 
-    private long resendMessage(ResendState resendState) {
+    private long resendMessage(IOSession connection, ResendState resendState) {
         DecodedFixMessage decodedFixMessage = transformer.transformForResend(resendState.transformedMessageBuffer);
         byte[] messageTypeArray = decodedFixMessage.remove(msgTypeField);
         MessageType messageType = messageTypeRegistry.find(Hashing.hash(messageTypeArray, 0, messageTypeArray.length));
@@ -151,11 +151,11 @@ public class MessagesResender {
         }
         if (expectedNextSeqNum != seqNum) {
             // manage gap fills
-            sendSequenceResetWithGapFill(resendState.connection, expectedNextSeqNum, seqNum);
+            sendSequenceResetWithGapFill(connection, expectedNextSeqNum, seqNum);
         }
         GenericFixMessageEncoder encoder = resendState.encoders.computeIfAbsent(messageType, GenericFixMessageEncoder::new).begin();
         decodedFixMessage.foreach((f, v) -> encoder.addField(f, v, ByteArraySerde.instance()));
-        outgoingMessages.sendWithSeqNum(resendState.connection, encoder, seqNum);
+        outgoingMessages.sendWithSeqNum(connection, encoder, seqNum);
         // sendWithSeqNum encodes into a buffer of its own and does not go through the sending context that normally
         // releases the encoder afterwards. These encoders being cached per message type, a range holding two messages
         // of the same type would otherwise fail the second begin() with "encoder not yet sent", aborting the resend
@@ -177,15 +177,12 @@ public class MessagesResender {
      */
     private static class ResendState {
         private final Map<MessageType, GenericFixMessageEncoder> encoders = new HashMap<>();
-        private final IOSession connection;
         private ByteBuffer transformedMessageBuffer;
         private long expectedNextSeqNum;
         private int messagesRead;
 
-        ResendState(IOSession connection, long beginSeqNo) {
-            this.connection = connection;
+        ResendState(long beginSeqNo) {
             this.expectedNextSeqNum = beginSeqNo;
         }
     }
-
 }

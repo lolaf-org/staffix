@@ -201,9 +201,6 @@ class PluginsComponent implements FixSessionLayerComponent, FixMessageEncodingLi
     }
 
     void onMessageSent(MessageType messageType, int size, long localSendingStartTimeInNanos, UTCTime sendingTime) {
-        if (isEmpty()) {
-            return;
-        }
         for (FixSessionPlugin<?, ?> plugin : plugins) {
             plugin.onMessageSent(messageType, size, localSendingStartTimeInNanos, sendingTime);
         }

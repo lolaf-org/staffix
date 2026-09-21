@@ -224,9 +224,21 @@ public class FixSessionImpl implements FixSession {
     }
 
     public void onMessageSent(ByteBuffer sentMessage, Object messageSendingContext, long localSendingStartTimeInNanos) {
-        FixSessionFixMessageContext ctx = (FixSessionFixMessageContext) messageSendingContext;
-        plugins.onMessageSent(ctx.getEncoder().getMessageType(), sentMessage.limit(),
-                localSendingStartTimeInNanos, ctx.getSendingTime());
+        if (plugins.isEmpty()) {
+            return;
+        }
+        if (messageSendingContext instanceof FixSessionFixMessageSendingContext) {
+            triggerPluginMessageSent(sentMessage, localSendingStartTimeInNanos, (FixSessionFixMessageSendingContext) messageSendingContext);
+        } else if (messageSendingContext instanceof FixSessionBufferedFixMessageContext) {
+            FixSessionBufferedFixMessageContext ctxBuffered = (FixSessionBufferedFixMessageContext) messageSendingContext;
+            for (int i = 0; i < ctxBuffered.getSendingContextsCount(); i++) {
+                triggerPluginMessageSent(sentMessage, localSendingStartTimeInNanos, ctxBuffered.getSendingContexts()[i]);
+            }
+        }
+    }
+
+    private void triggerPluginMessageSent(ByteBuffer sentMessage, long localSendingStartTimeInNanos, FixSessionFixMessageSendingContext ctx) {
+        plugins.onMessageSent(ctx.getMessageType(), sentMessage.limit(), localSendingStartTimeInNanos, ctx.getSendingTime());
     }
 
     public void onIOThreadTask(Runnable task, BiConsumer<Runnable, Exception> taskCallback) {
