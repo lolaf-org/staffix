@@ -98,7 +98,6 @@ public class FixMessageParser {
     private final CompIdValidator compIdValidator;
     private final GarbledMessageDetector garbledMessageDetector;
     private final int expectedBeginStringHash;
-    private ByteBuffer logFragmentBuffer;
 
     public FixMessageParser(FixSessionId fixSessionId,
                             MessageTypeRegistry messageTypeRegistry,
@@ -118,7 +117,6 @@ public class FixMessageParser {
         this.checksumCalculator = validationSettings.isValidateChecksum() ? ActiveChecksumCalculator.INSTANCE : VoidChecksumCalculator.INSTANCE;
         this.maxSendingTimeInNanos = validationSettings.getMaxSendingTime() != null ? validationSettings.getMaxSendingTime().toNanos() : 0;
         this.clock = clock;
-        this.logFragmentBuffer = ByteBuffer.allocate(128);
         this.validateFieldsHaveValues = validationSettings.isValidateFieldsHaveValues();
         this.validateFieldsOutOfOrder = validationSettings.isValidateFieldsOutOfOrder();
         // one validator for all four CompID checks, built as soon as any of them is configured, so that the parsing
@@ -170,24 +168,6 @@ public class FixMessageParser {
         messageParsingState.reset();
     }
 
-    private void resizeLogFragmentBufferIfNeeded(ByteBuffer message) {
-        if (logFragmentBuffer.remaining() < message.remaining()) {
-            ByteBuffer newFragment = ByteBuffer.allocate(logFragmentBuffer.capacity() + message.remaining());
-            newFragment.put(logFragmentBuffer.flip());
-            logFragmentBuffer = newFragment;
-        }
-    }
-
-    private void bufferLogFragment(ByteBuffer message, int limit) {
-        if (fixMessagesLogger.isLoggingIncoming()) {
-            resizeLogFragmentBufferIfNeeded(message);
-            int position = message.position();
-            int currentLimit = message.limit();
-            logFragmentBuffer.put(message.limit(limit));
-            message.limit(currentLimit).position(position);
-        }
-    }
-
     public void parseMessages(ByteBuffer message, Function<MessageType, FixMessageDecoder> fixMessageDecoderProvider) throws DecodingException {
         parseMessages(message, fixMessageDecoderProvider, DISABLED_CURRENT_SEQ_NUM_CHECK, 0);
     }
@@ -198,6 +178,9 @@ public class FixMessageParser {
         int limit = message.limit();
         byte[] messageContent = message.array();
         int currentPosition = message.position();
+        if (messageParsingState.isSplitAfterMsgSeqNum()) {
+            currentPosition = messageParsingState.resumeAfterCompaction(currentPosition);
+        }
         int nextEqualsPosition;
         int nextDelimiterPosition;
         int fieldTagLen;
@@ -474,7 +457,6 @@ public class FixMessageParser {
                 int maxDebugLength = Math.min(message.remaining(), 64);
                 throw new IllegalParsingStateException("Unable to find field value delimiter within " + MAX_FIELD_SIZE + " bytes: " + new String(message.array(), currentPosition, maxDebugLength, SerDe.CHARSET));
             }
-            bufferLogFragment(message, currentPosition);
             if (messageParsingState.isMsgSeqNumNotReceived()) {
                 // when seq num field is not processed unfortunately we must reprocess the beginning of the entire message since
                 // if we receive an out of sequence message, we must be able to re process it in fully to store all elements in memory
@@ -486,7 +468,8 @@ public class FixMessageParser {
                 }
                 messageParsingState.reset();
             } else {
-                message.position(currentPosition);
+                // the caller keeps what follows position(), and the offsets read at CheckSum point back to BeginString
+                messageParsingState.retainFromBeginString(message, currentPosition);
             }
             return true;
         }
@@ -495,13 +478,7 @@ public class FixMessageParser {
 
     private void logMessageIfNeeded(UTCTime localReceiveTime, MessageType msgType, ByteBuffer message, int bufferLogLimit) {
         if (fixMessagesLogger.isLoggingIncoming()) {
-            if (logFragmentBuffer.position() == 0) {
-                logIncoming(localReceiveTime, msgType, message, bufferLogLimit);
-            } else {
-                bufferLogFragment(message, bufferLogLimit);
-                logIncoming(localReceiveTime, msgType, logFragmentBuffer.flip(), logFragmentBuffer.limit());
-                logFragmentBuffer.clear();
-            }
+            logIncoming(localReceiveTime, msgType, message, bufferLogLimit);
         }
     }
 
@@ -519,7 +496,7 @@ public class FixMessageParser {
     private int getNextDelimiterPosition(byte[] messageContent, int nextEqualsPosition, int limit) {
         if (messageParsingState.dataFieldLength != MessageParsingState.NOT_SET) {
             int nextPosition = nextEqualsPosition + messageParsingState.dataFieldLength + 1;
-            if (nextPosition >= messageContent.length) {
+            if (nextPosition >= limit) {
                 // tricky case where we can receive a non full message in IO buffer
                 // with a datafield length bigger than remaining bytes in IO buffer
                 return -1;
@@ -788,6 +765,7 @@ public class FixMessageParser {
         private boolean possResend;
         private int sendingTimeOffset;
         private int sendingTimeLength;
+        private int resumeOffset = NOT_SET;
         private long origSendingTimeNanos = -1;
         private FixMessageDecoder fixMessageDecoder;
         private FixMessageDecoder failedDecoder;
@@ -832,6 +810,26 @@ public class FixMessageParser {
 
         boolean isMsgSeqNumNotReceived() {
             return msgSeqNum == NOT_SET_LONG;
+        }
+
+        boolean isSplitAfterMsgSeqNum() {
+            return resumeOffset != NOT_SET;
+        }
+
+        void retainFromBeginString(ByteBuffer message, int currentPosition) {
+            resumeOffset = currentPosition - beginStringPosition;
+            message.position(beginStringPosition);
+        }
+
+        int resumeAfterCompaction(int retainedStart) {
+            int shift = retainedStart - beginStringPosition;
+            beginStringPosition = retainedStart;
+            if (sendingTimeLength > 0) {
+                sendingTimeOffset += shift;
+            }
+            int resumePosition = retainedStart + resumeOffset;
+            resumeOffset = NOT_SET;
+            return resumePosition;
         }
 
         boolean isBeginStringReceived() {
@@ -935,7 +933,7 @@ public class FixMessageParser {
                     headerFieldIndex = sendingTimeOffset = sendingTimeLength = 0;
             fieldProcessor = ActiveFieldProcessor.INSTANCE;
             msgSeqNum = origSendingTimeNanos = NOT_SET_LONG;
-            beginStringPosition = currentGroupIndex = dataFieldLength = bodyLength = NOT_SET;
+            beginStringPosition = currentGroupIndex = dataFieldLength = bodyLength = resumeOffset = NOT_SET;
             garbledMessageException = null;
             fixMessageDecoder = null;
             localReceiveTime = null;
