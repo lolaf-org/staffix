@@ -20,7 +20,7 @@
         <automatic.module.name>org.lolaf.staffix.stores.sessions.file</automatic.module.name>
         <!-- Pinned to Java 11-compatible releases: hibernate-validator 9.x and jakarta-validation 3.1
              require Java 17, which would break this library's Java 11 runtime promise. -->
-        <jakarta-validation-api.version>3.0.2</jakarta-validation-api.version>
+        <jakarta-validation-api.version>3.1.1</jakarta-validation-api.version>
         <hibernate-validator.version>8.0.5.Final</hibernate-validator.version>
         <victools-jsonschema.version>4.38.0</victools-jsonschema.version>
         <jackson-dataformat-yaml.version>2.22.2</jackson-dataformat-yaml.version>
