@@ -138,14 +138,20 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
 
     /**
      * Ends a message that has no connection to go out on: it takes its MsgSeqNum(34) and reaches the store, so the
-     * peer asks for it once it logs on, and the sender is told with {@code NO_CONNECTED_SESSION}.
+     * peer asks for it once it logs on, and the sender is told with {@code NO_CONNECTED_SESSION}. One that could not
+     * be built or numbered, a stopped store refusing it, never reached the store, and its sender is told why instead.
      */
     private void completeWithoutConnection(FixSessionFixMessageContext ctx) {
         try {
-            messageSentCallback.onMessageWriteCallback(ctx.build().flip(), FixSessionImpl.NO_CONNECTED_SESSION, ctx); // very important do not forget to flip message
-        } catch (IOException e) {
-            // terminal state don't care if we do not return the eventually allocated ByteBuffer to the pool
-            messageSentCallback.onMessageWriteCallback(null, FixSessionImpl.NO_CONNECTED_SESSION, ctx);
+            ByteBuffer message;
+            try {
+                message = ctx.build().flip(); // very important do not forget to flip message
+            } catch (IOException | RuntimeException notStored) {
+                // terminal state don't care if we do not return the eventually allocated ByteBuffer to the pool
+                messageSentCallback.onMessageWriteCallback(null, notStored, ctx);
+                return;
+            }
+            messageSentCallback.onMessageWriteCallback(message, FixSessionImpl.NO_CONNECTED_SESSION, ctx);
         } finally {
             // what the IO session does after the callback of every message it is handed
             ctx.release();

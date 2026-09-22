@@ -15,7 +15,7 @@
  */
 package org.lolaf.staffix.tests;
 
-import org.lolaf.staffix.api.Startable;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 
@@ -25,11 +25,16 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 import java.util.function.IntFunction;
 
-public class TestingFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesStore.FixSessionMessagesStore> implements FixMessagesStore.FixSessionMessagesStore {
+/**
+ * Refuses writes once stopped, as a real store would, and records each one: the engine's fail-safe wrapper only logs
+ * the exception, so {@link #getWritesRefusedWhileStopped()} is how a test sees them.
+ */
+public class TestingFixSessionMessagesStore implements FixMessagesStore.FixSessionMessagesStore {
 
     private final AtomicLong outgoingSequenceNumber;
     private final AtomicLong incomingSequenceNumber;
@@ -37,6 +42,8 @@ public class TestingFixSessionMessagesStore extends Startable.VoidStartable<FixM
     private final IntFunction<ByteBuffer> allocator;
     private final int maxEntriesInMemory;
     private final BiPredicate<MessageType, ByteBuffer> messagesFilter;
+    private final List<String> writesRefusedWhileStopped = new CopyOnWriteArrayList<>();
+    private volatile boolean stopped;
 
     public TestingFixSessionMessagesStore(BiPredicate<MessageType, ByteBuffer> messagesFilter) {
         allocator = ByteBuffer::allocate;
@@ -52,12 +59,41 @@ public class TestingFixSessionMessagesStore extends Startable.VoidStartable<FixM
     }
 
     @Override
+    public FixMessagesStore.FixSessionMessagesStore start() {
+        stopped = false;
+        return this;
+    }
+
+    @Override
+    public FixMessagesStore.FixSessionMessagesStore stop(Deadline stopDeadline) {
+        stopped = true;
+        return this;
+    }
+
+    @Override
+    public boolean isStarted() {
+        return !stopped;
+    }
+
+    public List<String> getWritesRefusedWhileStopped() {
+        return writesRefusedWhileStopped;
+    }
+
+    private void refuseIfStopped(String write) {
+        if (stopped) {
+            writesRefusedWhileStopped.add(write);
+            throw new StoreException(write + " on a stopped store");
+        }
+    }
+
+    @Override
     public boolean filter(MessageType messageType, ByteBuffer message) {
         return messagesFilter.test(messageType, message);
     }
 
     @Override
     public void resetSequenceNumbers() {
+        refuseIfStopped("resetSequenceNumbers");
         outgoingSequenceNumber.set(1);
         incomingSequenceNumber.set(1);
         sentMessages.clear();
@@ -79,6 +115,7 @@ public class TestingFixSessionMessagesStore extends Startable.VoidStartable<FixM
 
     @Override
     public long getNextOutgoingSeqNum() throws StoreException {
+        refuseIfStopped("getNextOutgoingSeqNum");
         return outgoingSequenceNumber.getAndIncrement();
     }
 
@@ -92,16 +129,19 @@ public class TestingFixSessionMessagesStore extends Startable.VoidStartable<FixM
 
     @Override
     public void storeNextIncomingSeqNum(long nextIncomingSeqNum) {
+        refuseIfStopped("storeNextIncomingSeqNum " + nextIncomingSeqNum);
         incomingSequenceNumber.set(nextIncomingSeqNum);
     }
 
     @Override
     public void storeNextOutgoingSeqNum(long nextOutgoingSeqNum) {
+        refuseIfStopped("storeNextOutgoingSeqNum " + nextOutgoingSeqNum);
         outgoingSequenceNumber.set(nextOutgoingSeqNum);
     }
 
     @Override
     public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
+        refuseIfStopped("storeMessageSent " + outgoingSeqNum);
         ByteBuffer copy = allocator.apply(message.limit());
         sentMessages.put(outgoingSeqNum, copy.put(message).flip());
         if (sentMessages.size() > maxEntriesInMemory) {

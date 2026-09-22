@@ -34,17 +34,25 @@ import org.lolaf.staffix.api.fields.FixField;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.*;
+import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.encoders.MarketDataRequestRejectEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
+import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
@@ -186,6 +194,79 @@ class TestFixMessagesSending extends AbstractFixTests {
         await().untilAsserted(() -> assertThat(sendingThread.get()).isNotNull());
         assertThat(sendingThread.get()).isNotSameAs(Thread.currentThread());
         assertThat(sendingThread.get().getName()).startsWith("staffix-offline-sessions-");
+    }
+
+    /**
+     * An offline send still queued on the engine's offline thread when the engine stops: the stop waits for it, so
+     * it is numbered and stored before the store stops, and its sender is told it went nowhere but is kept.
+     */
+    @Test
+    void testOfflineSendQueuedWhenTheEngineStopsIsStoredBeforeTheStoreStops() throws Exception {
+        List<Throwable> offlineThreadFailures = new CopyOnWriteArrayList<>();
+        ExecutorService offlineExecutor = Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "staffix-offline-sessions-test");
+            thread.setDaemon(true);
+            thread.setUncaughtExceptionHandler((t, ex) -> offlineThreadFailures.add(ex));
+            return thread;
+        });
+        restartInitiatorEngineWith(offlineExecutor);
+        logonClient();
+
+        fixInitiatorSession.disconnect("queueing work while down");
+        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
+        CountDownLatch offlineThreadReleased = new CountDownLatch(1);
+        offlineExecutor.execute(() -> awaitUninterruptibly(offlineThreadReleased));
+
+        TestingFixSessionMessagesStore store = getFixMessagesStore(ConnectorType.INITIATOR);
+        long queuedSendSeqNum = store.getOutgoingSeqNum();
+        AtomicReference<Optional<Exception>> sendOutcome = new AtomicReference<>();
+        fixInitiatorSession.send(encodeTestMessage(1), null,
+                (sendingError, param1, param2) -> sendOutcome.set(Optional.ofNullable(sendingError)), null, null);
+
+        CompletableFuture<Void> stopping = CompletableFuture.runAsync(() -> initiatorFixEngine.stop(Deadline.of(ENGINE_STOP_DEADLINE)));
+        await().during(Duration.ofMillis(200)).untilAsserted(() -> assertThat(stopping).isNotDone());
+        offlineThreadReleased.countDown();
+        stopping.get(10, TimeUnit.SECONDS);
+
+        assertThat(sendOutcome.get()).as("kept for the peer to ask for once it logs on")
+                .hasValueSatisfying(error -> assertThat(error).hasMessage("No connected session"));
+        assertThat(store.getOutgoingSeqNum()).isEqualTo(queuedSendSeqNum + 1);
+        assertThat(store.getWritesRefusedWhileStopped()).isEmpty();
+        assertThat(offlineThreadFailures).isEmpty();
+        offlineExecutor.shutdown();
+    }
+
+    /**
+     * Once the engine has stopped no thread will own the session again, so a send is not queued for one: it meets
+     * the stopped store, and its sender is told the message was not kept rather than that it is waiting offline.
+     */
+    @Test
+    void testSendAfterTheEngineStoppedIsToldItWasNotStored() {
+        logonClient();
+        initiatorFixEngine.stop(Deadline.of(ENGINE_STOP_DEADLINE));
+
+        AtomicReference<Exception> sendingFailure = new AtomicReference<>();
+        fixInitiatorSession.send(encodeTestMessage(1), null,
+                (sendingError, param1, param2) -> sendingFailure.set(sendingError), null, null);
+
+        assertThat(sendingFailure.get()).isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class);
+    }
+
+    private void restartInitiatorEngineWith(ExecutorService offlineExecutor) {
+        initiatorFixEngine.stop(Deadline.of(ENGINE_STOP_DEADLINE));
+        initiatorFixEngine = initiatorFixEngineBuilder.toBuilder()
+                .disconnectedSessionsExecutor(offlineExecutor)
+                .build()
+                .instance().start();
+        fixInitiator = initiatorFixEngine.newInitiator(fixInitiatorBuilder);
+    }
+
+    private static void awaitUninterruptibly(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
