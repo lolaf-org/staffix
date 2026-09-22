@@ -19,7 +19,7 @@
 
     <properties>
         <automatic.module.name>org.lolaf.staffix.stores.sessions.file.spring</automatic.module.name>
-        <jackson-dataformat-yaml.version>2.22.1</jackson-dataformat-yaml.version>
+        <jackson-dataformat-yaml.version>2.22.2</jackson-dataformat-yaml.version>
     </properties>
 
     <dependencies>
