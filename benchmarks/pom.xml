@@ -24,7 +24,7 @@
         <javadoc.sourcepath>${javadoc.delomboked.sources}${path.separator}${project.build.directory}/generated-sources
         </javadoc.sourcepath>
         <quickfix.version>3.0.2</quickfix.version>
-        <artio.version>0.183</artio.version>
+        <artio.version>0.184</artio.version>
         <otel.version>1.66.0</otel.version>
     </properties>
 
