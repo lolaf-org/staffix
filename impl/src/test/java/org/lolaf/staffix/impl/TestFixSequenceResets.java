@@ -449,6 +449,11 @@ class TestFixSequenceResets extends AbstractFixTests {
         fixAcceptorSession.send(encodeTestMessage(100 + messageIndex), null);
         assertMessageReceived(decodedAcceptorMessages, EmailThreadID.get(), "test thread id " + messageIndex);
         assertMessageReceived(decodedInitiatorMessages, EmailThreadID.get(), "test thread id " + (100 + messageIndex));
+        // the application sees a message before NextNumIn is stored, so a test reading the store next could see it stale
+        for (ConnectorType side : List.of(ConnectorType.values())) {
+            await().untilAsserted(() -> assertThat(getFixMessagesStore(side).getIncomingSeqNum())
+                    .isEqualTo(getFixMessagesStore(side.inverse()).getOutgoingSeqNum()));
+        }
     }
 
 }

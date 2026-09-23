@@ -38,6 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -137,6 +138,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         initiators.clear();
         acceptors.values().forEach(acceptor -> acceptor.stop(stopDeadline));
         acceptors.clear();
+        stopSelfManagedDisconnectedSessionsExecutor(stopDeadline);
 
         fixSessionsSettingsStores.forEach(s -> s.stop(stopDeadline));
         fixApplicationFactories.forEach(s -> s.stop(stopDeadline));
@@ -147,11 +149,26 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             }
         });
         fixMessagesLoggers.forEach(s -> s.stop(stopDeadline));
-        // only what this engine created: a supplied one belongs to the application
-        if (selfManagedDisconnectedSessionsExecutor != null) {
-            selfManagedDisconnectedSessionsExecutor.shutdown();
-            selfManagedDisconnectedSessionsExecutor = null;
+    }
+
+    /**
+     * Before the stores and loggers, which its last tasks still write to. Only what this engine created: a supplied
+     * one belongs to the application.
+     */
+    private void stopSelfManagedDisconnectedSessionsExecutor(Deadline stopDeadline) {
+        if (selfManagedDisconnectedSessionsExecutor == null) {
+            return;
         }
+        selfManagedDisconnectedSessionsExecutor.shutdown();
+        try {
+            if (!selfManagedDisconnectedSessionsExecutor.awaitTermination(
+                    Math.max(1L, stopDeadline.getRemainingTime().toMillis()), TimeUnit.MILLISECONDS)) {
+                log.warn("Disconnected sessions executor of engine {} still busy at the stop deadline", getInstanceId());
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
+        selfManagedDisconnectedSessionsExecutor = null;
     }
 
     private ExecutorService disconnectedSessionsExecutor() {

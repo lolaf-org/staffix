@@ -83,7 +83,7 @@ abstract class AbstractFixTests {
     /**
      * What an engine gets to stop in. Generous: a stop that reaches it is a hang, not a slow machine.
      */
-    private static final Duration ENGINE_STOP_DEADLINE = Duration.ofSeconds(30);
+    static final Duration ENGINE_STOP_DEADLINE = Duration.ofSeconds(30);
     FixInitiator fixInitiator;
     FixAcceptor fixAcceptor;
     FixApplication fixInitiatorApplication;

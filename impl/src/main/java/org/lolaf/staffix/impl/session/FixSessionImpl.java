@@ -51,9 +51,12 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
@@ -287,15 +290,10 @@ public class FixSessionImpl implements FixSession {
 
     /**
      * The logger belongs to the session, so it is written by whichever thread owns it: the IO thread of its
-     * connection, or the engine's thread for the sessions that have none. Only a session whose engine has stopped
-     * has neither, and the lines that explain a teardown are worth keeping even written from here.
+     * connection, or the engine's thread for the sessions that have none.
      */
     private void writeEventOnTheSessionOwner(UTCTime eventTime, String event) {
-        try {
-            runOnSessionOwnerThread(() -> writeEvent(eventTime, event));
-        } catch (RejectedExecutionException noOwnerLeft) {
-            writeEvent(eventTime, event);
-        }
+        runOnSessionOwnerThread(() -> writeEvent(eventTime, event));
     }
 
     private void writeEvent(UTCTime eventTime, String event) {
@@ -393,7 +391,19 @@ public class FixSessionImpl implements FixSession {
             task.run();
             return;
         }
-        disconnectedSessionsExecutor.execute(() -> runIfStillDisconnected(task));
+        handToTheOfflineOwner(task);
+    }
+
+    /**
+     * A refusal means the engine has stopped and no thread will own this session again, so the task runs here
+     * rather than being dropped: a send then meets the stopped store and its sender is told.
+     */
+    private void handToTheOfflineOwner(Runnable task) {
+        try {
+            disconnectedSessionsExecutor.execute(() -> runIfStillDisconnected(task));
+        } catch (RejectedExecutionException engineStopped) {
+            runAsOfflineOwner(task);
+        }
     }
 
     /**
@@ -410,7 +420,7 @@ public class FixSessionImpl implements FixSession {
      */
     private void forwardToTheOwnerIfRefused(Runnable task, Exception error) {
         if (error == NO_CONNECTED_SESSION || error instanceof EOFException) {
-            disconnectedSessionsExecutor.execute(() -> runIfStillDisconnected(task));
+            handToTheOfflineOwner(task);
         } else if (error != null) {
             log.error("Failed to execute FIX session task {}", task.getClass().getName(), error);
         }
@@ -423,15 +433,40 @@ public class FixSessionImpl implements FixSession {
     private void runIfStillDisconnected(Runnable task) {
         IOSession currentIOSession = ioSession;
         if (currentIOSession == null) {
-            offlineOwnerThread = Thread.currentThread();
-            try {
-                task.run();
-            } finally {
-                offlineOwnerThread = null;
-            }
+            runAsOfflineOwner(task);
             return;
         }
         currentIOSession.processTask(task, this::forwardToTheOwnerIfRefused);
+    }
+
+    private void runAsOfflineOwner(Runnable task) {
+        offlineOwnerThread = Thread.currentThread();
+        try {
+            task.run();
+        } finally {
+            offlineOwnerThread = null;
+        }
+    }
+
+    /**
+     * Stopping the session stops its store and logger, so the work its offline owner already holds for it, an
+     * offline send above all, must be done first. The executor is shared and single threaded, so a task queued now
+     * runs after all of it.
+     */
+    private void awaitTheOfflineOwner(Deadline stopDeadline) {
+        if (offlineOwnerThread == Thread.currentThread()) {
+            return;
+        }
+        try {
+            disconnectedSessionsExecutor.submit(() -> {
+            }).get(Math.max(1L, stopDeadline.getRemainingTime().toMillis()), TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException engineStopped) {
+            // nothing is queued any more
+        } catch (TimeoutException | ExecutionException ex) {
+            log.warn("FIX session {} stopping before its offline work was done", fixSessionId, ex);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override
@@ -588,6 +623,7 @@ public class FixSessionImpl implements FixSession {
         logEvent("FIX Session destroyed");
         disconnect(stopDeadline);
         logEvent("FIX Session stopped");
+        awaitTheOfflineOwner(stopDeadline);
         releaseResources(stopDeadline);
     }
 

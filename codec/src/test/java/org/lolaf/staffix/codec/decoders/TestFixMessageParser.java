@@ -55,7 +55,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
@@ -319,15 +321,16 @@ class TestFixMessageParser {
         String messagePart2 = "355=encoded text\u000110=224";
 
         FixMessageDecoder decoder = mock(FixMessageDecoder.class);
-        ByteBuffer bb = ByteBuffer.wrap(messagePart1.getBytes());
+        ByteBuffer bb = ByteBuffer.allocate(1024).put(messagePart1.getBytes()).flip();
 
         fixMessageParser.parseMessages(bb, getFixMessageDecoderFunction(decoder));
 
-        assertThat(bb.position()).isEqualTo(160);
+        assertThat(bb.position()).isZero();
         assertThat(bb.limit()).isEqualTo(176);
         assertThat(loggedMessages).isEmpty();
 
-        fixMessageParser.parseMessages(ByteBuffer.wrap(messagePart2.getBytes()), msgType -> decoder);
+        bb.compact().put(messagePart2.substring("355=encoded text".length()).getBytes()).flip();
+        fixMessageParser.parseMessages(bb, msgType -> decoder);
 
         verify(decoder).onBegin(anyLong(), any());
         verify(decoder).onDecoded(any(FixSession.class), eq(false), eq(false));
@@ -385,7 +388,7 @@ class TestFixMessageParser {
         fixMessageParser.parseMessages(bb.put(messagePart1.getBytes()).flip(), getFixMessageDecoderFunction(decoder), () -> 1L, 0);
 
         assertThat(loggedMessages).isEmpty();
-        assertThat(bb.position()).isEqualTo(40);
+        assertThat(bb.position()).isZero();
         assertThat(bb.limit()).isEqualTo(43);
         bb.compact().put(messagePart2.getBytes()).flip();
 
@@ -1188,6 +1191,158 @@ class TestFixMessageParser {
     }
 
     @Test
+    void testWrongSequenceNumberDetectedWhenSplitAfterMsgSeqNumBehindAnotherMessage() throws DecodingException {
+        String firstMessage = fixMessage("35=A\u000134=1\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        String secondMessage = fixMessage("35=A\u000134=2\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+
+        parseSplitAfter(firstMessage, secondMessage, "52=", decoder, () -> 100);
+
+        assertThat(wrongSequenceExceptions).hasSize(2);
+        assertThat(wrongSequenceExceptions.get(1).getMsgSeqNum()).isEqualTo(2);
+        assertThat(rawMessageOf(1)).isEqualTo(secondMessage);
+        assertThat(loggedMessages).containsExactly(firstMessage, secondMessage);
+    }
+
+    @Test
+    void testBeginStringValidatedWhenSplitAfterMsgSeqNumBehindAnotherMessage() throws DecodingException {
+        String firstMessage = fixMessage("35=A\u000134=1\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        String secondMessage = fixMessage("35=A\u000134=2\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        fixMessageParser = parserWith(validationSettings.toBuilder().validateBeginString(true).build());
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+
+        parseSplitAfter(firstMessage, secondMessage, "52=", decoder, new AtomicLong()::incrementAndGet);
+
+        verify(decoder, never()).onDecodingFailed(any(FixSession.class), any(WrongBeginStringException.class));
+        verify(decoder, times(2)).onDecoded(any(FixSession.class), eq(false), eq(false));
+        assertThat(loggedMessages).containsExactly(firstMessage, secondMessage);
+    }
+
+    @Test
+    void testPossDupSendingTimeCheckedWhenSplitAfterSendingTimeBehindAnotherMessage() throws DecodingException {
+        String firstMessage = fixMessage("35=A\u000134=1\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        String secondMessage = fixMessage("35=A\u000134=2\u000143=Y\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u0001"
+                + "122=20241013-19:07:18.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+
+        parseSplitAfter(firstMessage, secondMessage, "122=", decoder, new AtomicLong()::incrementAndGet);
+
+        assertThat(messageRejects).singleElement().satisfies(reject -> {
+            assertThat(reject.getSessionRejectReasonCode()).isEqualTo(SessionRejectReasonCodes.SENDING_TIME_ACCURACY_PROBLEM);
+            assertThat(reject.getRefTagId()).isEqualTo(122);
+        });
+        assertThat(loggedMessages).containsExactly(firstMessage, secondMessage);
+    }
+
+    private void parseSplitAfter(String firstMessage, String secondMessage, String splitBeforeField, FixMessageDecoder decoder,
+                                 LongSupplier currentSequenceNumber) throws DecodingException {
+        parseSplitBefore(firstMessage, secondMessage, decoder, currentSequenceNumber, splitBeforeField);
+    }
+
+    private void parseSplitBefore(String firstMessage, String secondMessage, FixMessageDecoder decoder,
+                                  LongSupplier currentSequenceNumber, String... splitsBefore) throws DecodingException {
+        List<String> reads = new ArrayList<>();
+        String remaining = secondMessage;
+        String previousRead = firstMessage;
+        for (String splitBefore : splitsBefore) {
+            int split = remaining.indexOf(splitBefore, 1);
+            reads.add(previousRead + remaining.substring(0, split));
+            previousRead = "";
+            remaining = remaining.substring(split);
+        }
+        reads.add(remaining);
+
+        ByteBuffer bb = ByteBuffer.allocate(1024);
+        for (String read : reads) {
+            bb.put(read.getBytes()).flip();
+            // compact() leaves the old bytes past the limit, where a later socket read would have overwritten them
+            Arrays.fill(bb.array(), bb.limit(), bb.capacity(), (byte) 0);
+            fixMessageParser.parseMessages(bb, getFixMessageDecoderFunction(decoder), currentSequenceNumber, 0);
+            bb.compact();
+        }
+    }
+
+    private static String fixMessage(String body) {
+        return fixMessage("FIX.4.4", body);
+    }
+
+    private static String fixMessage(String beginString, String body) {
+        String headAndBody = "8=" + beginString + "\u00019=" + body.length() + "\u0001" + body;
+        int checksum = headAndBody.chars().sum() % 256;
+        return headAndBody + String.format("10=%03d\u0001", checksum);
+    }
+
+    @Test
+    void testWrongSequenceNumberDetectedWhenSplitAcrossThreeReadsBehindAnotherMessage() throws DecodingException {
+        String firstMessage = fixMessage("35=A\u000134=1\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        String secondMessage = fixMessage("35=A\u000134=2\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+
+        parseSplitBefore(firstMessage, secondMessage, decoder, () -> 100, "49=", "98=");
+
+        assertThat(wrongSequenceExceptions).hasSize(2);
+        assertThat(rawMessageOf(1)).isEqualTo(secondMessage);
+        assertThat(loggedMessages).containsExactly(firstMessage, secondMessage);
+    }
+
+    @Test
+    void testWrongSequenceNumberDetectedWhenSplitBeforeMsgSeqNumBehindAnotherMessage() throws DecodingException {
+        String firstMessage = fixMessage("35=A\u000134=1\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        String secondMessage = fixMessage("35=A\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000134=2\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+
+        parseSplitBefore(firstMessage, secondMessage, decoder, () -> 100, "52=");
+
+        assertThat(wrongSequenceExceptions).hasSize(2);
+        assertThat(rawMessageOf(1)).isEqualTo(secondMessage);
+        assertThat(loggedMessages).containsExactly(firstMessage, secondMessage);
+    }
+
+    @Test
+    void testWrongBeginStringDetectedWhenSplitAfterMsgSeqNumBehindAnotherMessage() throws DecodingException {
+        String firstMessage = fixMessage("35=A\u000134=1\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        String secondMessage = fixMessage("FIX.4.2", "35=A\u000134=2\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        fixMessageParser = parserWith(validationSettings.toBuilder().validateBeginString(true).build());
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+
+        parseSplitBefore(firstMessage, secondMessage, decoder, new AtomicLong()::incrementAndGet, "52=");
+
+        verify(decoder).onDecoded(any(FixSession.class), eq(false), eq(false));
+        verify(decoder).onDecodingFailed(any(FixSession.class), assertArg(ex ->
+                assertThat(((WrongBeginStringException) ex).getReceivedBeginString()).isEqualTo("FIX.4.2")));
+        assertThat(loggedMessages).containsExactly(firstMessage, secondMessage);
+    }
+
+    @Test
+    void testSizeOfMessageSplitAcrossReadsReportedWhole() throws DecodingException {
+        String firstMessage = fixMessage("35=A\u000134=1\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        String secondMessage = fixMessage("35=A\u000134=2\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+
+        parseSplitBefore(firstMessage, secondMessage, decoder, new AtomicLong()::incrementAndGet, "49=", "98=");
+
+        verify(fixMessageParserEventsListener, times(2))
+                .onMessageDecodingEnd(any(), eq(secondMessage.length()), anyLong(), any(UTCTime.class));
+        assertThat(loggedMessages).containsExactly(firstMessage, secondMessage);
+    }
+
+    @Test
+    void testDataFieldSplitInsideItsValueBehindAnotherMessage() throws DecodingException {
+        String firstMessage = fixMessage("35=A\u000134=1\u000149=TARGET_TEST\u000152=20241013-19:07:17.861\u000156=SENDER_TEST\u000198=0\u0001108=30\u0001");
+        // the value carries a SOH of its own: only the length in 354 says where it ends
+        String secondMessage = fixMessage("35=C\u000134=2\u000149=TARGET_TEST\u000152=20241113-20:52:16.571351\u000156=SENDER_TEST"
+                + "\u000194=0\u0001147=test subject 13\u0001164=test thread id 13\u000133=1\u000158=test text"
+                + "\u0001354=12\u0001355=encoded\u0001text\u0001");
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+
+        parseSplitBefore(firstMessage, secondMessage, decoder, new AtomicLong()::incrementAndGet, "ded\u0001text");
+
+        verify(decoder, times(2)).onDecoded(any(FixSession.class), eq(false), eq(false));
+        assertThat(messageRejects).isEmpty();
+        assertThat(loggedMessages).containsExactly(firstMessage, secondMessage);
+    }
+
+    @Test
     void testWrongSequenceNumberDetected() throws DecodingException {
         String firstMessage = "8=FIX.4.49=8335=A49=TARGET_TEST52=20241013-19:07:17.86156=SENDER_TEST34=198=0108=30141=Y10=249";
         String secondMessage = "8=FIX.4.49=8335=A34=249=TARGET_TEST52=20241013-19:07:17.86156=SENDER_TEST98=0108=30141=Y10=250";
@@ -1259,7 +1414,7 @@ class TestFixMessageParser {
         verify(decoder, times(2)).onDecoded(any(FixSession.class), eq(false), eq(false));
 
         assertThat(bb.hasRemaining()).isTrue();
-        assertThat(bb.position()).isEqualTo(firstMessage.length() - 3);
+        assertThat(bb.position()).isEqualTo(firstMessage.length() - messagePart1.length());
 
         fixMessageParser.parseMessages(bb.compact().put(secondMessage.getBytes()).flip(), msgType -> decoder);
 
