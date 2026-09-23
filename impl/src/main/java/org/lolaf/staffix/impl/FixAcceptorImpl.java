@@ -272,7 +272,8 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         configuredSessions.values().forEach(fixSessionsObserver::onSessionUnregistered);
 
         stopSessionsProtocol(stopDeadline);
-        ioServer.stop(stopDeadline);
+        ioServer.stop(stopDeadline.fromRemainingTime(0.8));
+        configuredSessions.values().forEach(fixSession -> fixSession.releaseResources(stopDeadline));
         scheduledExecutorService = stopOwnSchedulerIfNeeded(scheduledExecutorService, fixAcceptorBuilder.getInstanceId(),
                 stopDeadline.fromRemainingTime(0.3));
         messageExecutorsRuntime.stop(stopDeadline);
@@ -303,7 +304,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         configuredSessions.values().forEach(fixSession ->
                 sessionsStopService.submit(() -> {
                     try {
-                        fixSession.stop("FIX server stop", sessionStopDeadline);
+                        fixSession.stopProtocol("FIX server stop", sessionStopDeadline);
                     } finally {
                         countDownLatch.countDown();
                     }

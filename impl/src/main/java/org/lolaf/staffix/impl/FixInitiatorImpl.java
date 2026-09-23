@@ -190,8 +190,9 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         log.info("Stopping initiator for FIX session {}", fixSessionSettings.getFixSessionId());
         fixSessionsSettingsStores.forEach(s -> s.unregister(this));
         fixSessionsObserver.onSessionUnregistered(fixSession);
-        fixSession.stop("Fix initiator stop", stopDeadline.fromRemainingTime(0.7));
+        fixSession.stopProtocol("Fix initiator stop", stopDeadline.fromRemainingTime(0.7));
         ioClient.stop(stopDeadline.fromRemainingTime(0.8));
+        fixSession.releaseResources(stopDeadline);
         scheduledExecutorService = stopOwnSchedulerIfNeeded(scheduledExecutorService, fixInitiatorBuilder.getInstanceId(),
                 stopDeadline.fromRemainingTime(0.3));
         messageExecutorsRuntime.stop(stopDeadline);

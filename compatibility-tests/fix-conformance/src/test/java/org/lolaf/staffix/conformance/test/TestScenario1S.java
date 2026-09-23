@@ -32,6 +32,8 @@ import org.lolaf.staffix.fix44.fields.Text;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.RawFixSocketClient;
+import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
+import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -107,7 +109,12 @@ class TestScenario1S extends AbstractScenario {
         // A duplicate identity is another process dialling in, so it gets an engine of its own. Two initiators for one
         // FixSessionId inside a single engine is a configuration error its session registry refuses, and is not what
         // this scenario is about.
-        FixEngine duplicateIdentityEngine = fixInitiatorEngineBuilder.toBuilder().build().instance();
+        FixEngine duplicateIdentityEngine = fixInitiatorEngineBuilder.toBuilder()
+                .clearFixMessagesStores()
+                .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
+                        .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
+                        .build())
+                .build().instance();
         duplicateIdentityEngine.start();
         FixInitiator fixInitiator2 = duplicateIdentityEngine.newInitiator(fixInitiatorBuilder.toBuilder().instanceId("second").build());
         try {

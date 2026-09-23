@@ -20,6 +20,7 @@ import lombok.Setter;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixEngine;
@@ -40,9 +41,12 @@ import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.encoders.MarketDataRequestRejectEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
+import org.lolaf.staffix.impl.session.FixSessionImpl;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
+import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
+import java.io.EOFException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -55,6 +59,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -237,6 +242,35 @@ class TestFixMessagesSending extends AbstractFixTests {
     }
 
     /**
+     * A supplied executor is the application's to shut down, possibly before the engine stops: what it already holds
+     * still runs after its shutdown, so the session waits for it rather than taking the refusal as "nothing queued".
+     */
+    @Test
+    void testOfflineSendQueuedOnAnExecutorShutDownBeforeTheEngineIsStoredBeforeTheStoreStops() throws Exception {
+        ExecutorService offlineExecutor = Executors.newSingleThreadExecutor();
+        restartInitiatorEngineWith(offlineExecutor);
+        logonClient();
+
+        fixInitiatorSession.disconnect("queueing work while down");
+        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
+        CountDownLatch offlineThreadReleased = new CountDownLatch(1);
+        offlineExecutor.execute(() -> awaitUninterruptibly(offlineThreadReleased));
+
+        TestingFixSessionMessagesStore store = getFixMessagesStore(ConnectorType.INITIATOR);
+        long queuedSendSeqNum = store.getOutgoingSeqNum();
+        fixInitiatorSession.send(encodeTestMessage(1), null, null, null, null);
+        offlineExecutor.shutdown();
+
+        CompletableFuture<Void> stopping = CompletableFuture.runAsync(() -> initiatorFixEngine.stop(Deadline.of(ENGINE_STOP_DEADLINE)));
+        await().during(Duration.ofMillis(200)).untilAsserted(() -> assertThat(stopping).isNotDone());
+        offlineThreadReleased.countDown();
+        stopping.get(10, TimeUnit.SECONDS);
+
+        assertThat(store.getOutgoingSeqNum()).isEqualTo(queuedSendSeqNum + 1);
+        assertThat(store.getWritesRefusedWhileStopped()).isEmpty();
+    }
+
+    /**
      * Once the engine has stopped no thread will own the session again, so a send is not queued for one: it meets
      * the stopped store, and its sender is told the message was not kept rather than that it is waiting offline.
      */
@@ -250,6 +284,36 @@ class TestFixMessagesSending extends AbstractFixTests {
                 (sendingError, param1, param2) -> sendingFailure.set(sendingError), null, null);
 
         assertThat(sendingFailure.get()).isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class);
+        initiatorMessagesStore.getWritesRefusedWhileStopped().clear();
+    }
+
+    /**
+     * A connection gone before its onDisconnection ran still refuses tasks: the offline owner must run them itself
+     * rather than hand them straight back to it, which looped forever and filled that connection's task queue.
+     */
+    @Test
+    void testOfflineTaskRefusedByADeadConnectionIsNotHandedBackToIt() {
+        ExecutorService offlineExecutor = Executors.newSingleThreadExecutor();
+        restartInitiatorEngineWith(offlineExecutor);
+        fixInitiator.start();
+        trapCreatedFixSession(ConnectorType.INITIATOR);
+        CountDownLatch offlineThreadReleased = new CountDownLatch(1);
+        offlineExecutor.execute(() -> awaitUninterruptibly(offlineThreadReleased));
+        fixInitiatorSession.send(encodeTestMessage(1), null, null, null, null);
+
+        List<Runnable> refusedTasks = new CopyOnWriteArrayList<>();
+        IOSession deadConnection = mock(IOSession.class);
+        doAnswer(invocation -> {
+            refusedTasks.add(invocation.getArgument(0));
+            invocation.<BiConsumer<Runnable, Exception>>getArgument(1)
+                    .accept(invocation.getArgument(0), new EOFException("connection gone"));
+            return null;
+        }).when(deadConnection).processTask(any(), any());
+        assertThat(((FixSessionImpl) fixInitiator.getSession()).onConnection(deadConnection, List.of())).isTrue();
+        offlineThreadReleased.countDown();
+
+        await().during(Duration.ofMillis(500)).untilAsserted(() -> assertThat(refusedTasks).isNotEmpty().doesNotHaveDuplicates());
+        offlineExecutor.shutdown();
     }
 
     private void restartInitiatorEngineWith(ExecutorService offlineExecutor) {
@@ -307,6 +371,10 @@ class TestFixMessagesSending extends AbstractFixTests {
         // the second initiator needs an engine of its own: one engine may not hold two sessions with the same id, and
         // its settings store carries the second session alone
         FixEngine secondInitiatorEngine = initiatorFixEngineBuilder.toBuilder()
+                .clearFixMessagesStores()
+                .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
+                        .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
+                        .build())
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
                         .fixSessionSetting(getInitiatorFixSessionSettings().fixSessionId(secondInitiatorSessionId).build())

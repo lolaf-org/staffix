@@ -264,6 +264,8 @@ abstract class AbstractFixTests {
 
         stopWithinDeadline(initiatorFixEngine, ConnectorType.INITIATOR);
         stopWithinDeadline(acceptorFixEngine, ConnectorType.ACCEPTOR);
+        assertThat(initiatorMessagesStore.getWritesRefusedWhileStopped()).as("initiator writes after its store stopped").isEmpty();
+        assertThat(acceptorMessagesStore.getWritesRefusedWhileStopped()).as("acceptor writes after its store stopped").isEmpty();
 
         initiatorLogger.clear();
         acceptorLogger.clear();

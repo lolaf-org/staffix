@@ -16,6 +16,7 @@
 package org.lolaf.staffix.impl;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.fields.CoreFields;
@@ -28,6 +29,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.fix44.fields.EncryptMethod;
 import org.lolaf.staffix.fix44.fields.HeartBtInt;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
+import org.lolaf.staffix.impl.session.FixSessionImpl;
 import org.lolaf.staffix.tests.RawFixSocketClient;
 import org.mockito.Mockito;
 
@@ -314,4 +316,17 @@ class TestFixLogonLogouts extends AbstractFixTests {
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
     }
 
+    /**
+     * A connection completing while the initiator stops reaches a session whose store is about to be released: it must
+     * be refused, not logged on, or its Logon is numbered against that store.
+     */
+    @Test
+    void testConnectionToAStoppedSessionIsRefused() {
+        logonClient();
+        FixSessionImpl stoppedSession = (FixSessionImpl) fixInitiator.getSession();
+        initiatorFixEngine.stop(Deadline.of(ENGINE_STOP_DEADLINE));
+
+        assertThat(stoppedSession.onConnection(mock(IOSession.class), List.of())).isFalse();
+        assertThat(initiatorMessagesStore.getWritesRefusedWhileStopped()).isEmpty();
+    }
 }

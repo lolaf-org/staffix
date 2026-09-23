@@ -24,6 +24,8 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionRegistry;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
+import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -131,7 +133,12 @@ class TestFixAcceptor extends AbstractFixTests {
         // The second client gets an engine of its own, which is what it is in reality - another process dialling the
         // same session. Two initiators for one FixSessionId inside a single engine is a configuration error the
         // registry now refuses, and would leave FixEngineImpl.findControl with two controls to choose between.
-        FixEngine rogueEngine = initiatorFixEngineBuilder.toBuilder().build().instance();
+        FixEngine rogueEngine = initiatorFixEngineBuilder.toBuilder()
+                .clearFixMessagesStores()
+                .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
+                        .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
+                        .build())
+                .build().instance();
         rogueEngine.start();
         FixInitiator fixInitiator2 = rogueEngine.newInitiator(fixInitiatorBuilder.toBuilder()
                 .instanceId("clone")

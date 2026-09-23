@@ -54,7 +54,7 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
     @Getter
     private boolean adminOnlyMessagesAllowed;
     @Getter
-    private boolean started;
+    private volatile boolean started;
 
     public FixSessionStateComponent(boolean acceptorSession, FixSessionState desiredState,
                                     FixSessionScheduleManager fixSessionScheduleManager) {
