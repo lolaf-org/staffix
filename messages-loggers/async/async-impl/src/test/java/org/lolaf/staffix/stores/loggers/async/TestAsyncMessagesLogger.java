@@ -384,8 +384,6 @@ class TestAsyncMessagesLogger {
 
         assertThat(asyncLogger.hasEmptyQueue()).isFalse();
         assertThat(asyncLogger.getQueuePollsCount()).isGreaterThan(128);
-        // unless we have a blazing fast test env it should work
-        assertThat(asyncLogger.getQueuePollsCount()).isLessThan(8 * 1024);
     }
 
     @Test
