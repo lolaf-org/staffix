@@ -174,7 +174,7 @@ SessionRejectReason 9, *CompID problem*, without dropping the session.
 
 ---
 
-## Measuring the link
+## Measuring round-trip time and clock offset
 
 Set `rttMeasurementSettings.probeInterval` to a positive duration and the session continuously measures round-trip
 time and the peer's clock offset using TestRequest probes. It is off by default.
