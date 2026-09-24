@@ -12,6 +12,7 @@ one command and is the shortest path to a working session. Then come back here.
 | [Configuring a session](configuring-sessions.md) | How do I declare a session, wire it to the engine's parts, and make it behave the way my counterparty expects? |
 | [Session settings stores](session-settings-stores.md) | Where are my session settings kept, and how do I load them from YAML, the classpath or the environment? |
 | [Decoding a message](decoding-messages.md) | How do I read an inbound message, and why does Staffix only decode the fields I asked for? |
+| [Decoding in depth](decoding-messages-advanced.md) | Why decoding works this way, what a header field costs, and what do I use when typed bindings are not enough? |
 | [FIX versions and dictionaries](fix-versions-and-dictionaries.md) | Which package do I depend on, how do I run several FIX versions at once, and how do I generate one from a counterparty's dictionary? |
 | [Stores and loggers](stores-and-loggers.md) | Where do my messages get persisted and logged, and how do I keep that off the latency path? |
 | [Tuning for latency](tuning-for-latency.md) | What do I actually change to get the numbers in the README, and what does each one cost? |
