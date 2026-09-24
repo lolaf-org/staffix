@@ -511,8 +511,8 @@ behind it instead:
   show up, and none has.
 - **The API is settled**: it is the result of two years of development, and it is not expected to change materially.
   Any breaking change is listed in the [changelog](CHANGELOG.md).
-- **It is built by someone who has done it before**: an engineer with more than fifteen years of building FIX engines
-  and low-latency trading systems.
+- **It is built by someone who has done it before**: an engineer with more than fifteen years of building FIX applications
+and low-latency trading systems.
 
 Support is community only, on a best-effort basis: [issues](https://github.com/lolaf-org/staffix/issues) are read and
 answered, with no guaranteed response time.
