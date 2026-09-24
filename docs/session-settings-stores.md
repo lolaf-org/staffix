@@ -75,13 +75,6 @@ Boot](spring-boot.md#sessions)).
 
 The sessions are YAML files, one session per file:
 
-```java
-FileSessionsSettingsStoreSettings.builder()
-        .instanceId("ACCEPTOR")
-        .fixSessionSettingsDirectory(new File("/etc/myapp/sessions/acceptor"))
-        .build();
-```
-
 ```yaml
 # yaml-language-server: $schema=fix-session-settings.v1.schema.json
 fixSessionId:
@@ -94,8 +87,63 @@ fixMessageStoreInstanceId: "ACCEPTOR"
 resetSeqNumOnLogon: true
 ```
 
-The [`file-session-settings`](../examples/file-session-settings) example runs an acceptor from a directory and its
-initiators from the classpath, with placeholders in both.
+The store finds the files in one of two ways. Set exactly one of them: both, or neither, fails at construction.
+
+| builder setting | the store reads | changes made at runtime |
+|-----------------|-----------------|-------------------------|
+| `fixSessionSettingsDirectory` | every `*.yaml` file in a directory | written back to the files |
+| `fixSessionSettingsUri`, once per file | the files you list: classpath resources, URLs | kept in memory only |
+
+The [`file-session-settings`](../examples/file-session-settings) example uses both: its acceptor reads a directory,
+its initiators read the classpath.
+
+### Loading every file of a directory
+
+```java
+FileSessionsSettingsStoreSettings.builder()
+        .instanceId("ACCEPTOR")
+        .fixSessionSettingsDirectory(new File("/etc/myapp/sessions/acceptor"))
+        .build();
+```
+
+Every `*.yaml` file in the directory is a session, except `default.yaml` (see [below](#sharing-settings-with-defaultyaml)).
+A file added to the directory is picked up by the next [reload](#changing-settings-on-a-running-engine).
+
+The directory is also where changes go: `add` and `update` write the session's file, `remove` deletes it. On start,
+the store creates the directory if needed and copies the [JSON schema](#the-json-schema) into it. A read-only
+directory only costs the schema file, with a warning.
+
+### Loading files from the classpath or a URL
+
+Use this when the files ship inside your jar, or are served from a configuration server. List each file:
+
+```java
+FileSessionsSettingsStoreSettings.builder()
+        .instanceId("INITIATOR")
+        .fixSessionSettingsUri(MyApp.class.getResource("/sessions/default.yaml").toURI())
+        .fixSessionSettingsUri(MyApp.class.getResource("/sessions/initiator1.yaml").toURI())
+        .fixSessionSettingsUri(URI.create("https://config.example.com/sessions/initiator2.yaml"))
+        .build();
+```
+
+There is no `classpath:` prefix: resolve the resource yourself with `getResource(...).toURI()`, as above. Each URI is
+opened with `URI.toURL().openStream()`, so a resource inside a jar works as well as one on disk.
+
+A list cannot be scanned like a directory, so **each URI is one file**, and a new session needs a new entry. A URI
+ending in `default.yaml` provides the defaults; listing two is an error, as is the same session id in two files.
+
+**These files are read-only.** `add`, `update` and `remove` still change the sessions the engine runs, but nothing is
+written back, and the change is lost on restart. Each one is logged rather than failing.
+
+### Sharing settings with `default.yaml`
+
+Both ways support a `default.yaml` holding what the sessions have in common, so each session file only carries what
+is its own. Each session file is merged over it: a field the session leaves out is taken from the defaults, and nested
+groups such as `heartBeatInterval` are merged field by field. Lists are concatenated, and maps are merged key by key,
+the session's own entry winning.
+
+**Reading is strict.** An unknown field, an unknown enum value or trailing content fails the load and names the file,
+so a typo is an error rather than a silently missing setting. The merged result is then validated.
 
 ### The JSON schema
 
@@ -108,7 +156,7 @@ in the module's `etc` directory, and it can be reached in three other ways:
 |-------|-----|
 | in the jar | the resource `org/lolaf/staffix/stores/sessions/file/fix-session-settings.v1.schema.json` |
 | in the Maven repository | `staffix-sessions-settings-store-file-impl`, classifier `schema`, type `json` |
-| next to your files | a directory-backed store copies it into its directory on start |
+| next to your files | a store reading a directory copies it there on start |
 
 A file opts in with a comment read by editors built on the YAML language server. The path is relative to the file,
 or a URL:
@@ -117,45 +165,7 @@ or a URL:
 # yaml-language-server: $schema=fix-session-settings.v1.schema.json
 ```
 
-### A directory
-
-Every `*.yaml` file in the directory is a session, except `default.yaml`.
-
-**`default.yaml` holds what the sessions share.** Each session file is merged over it: a field the session leaves out
-is taken from the defaults, and nested groups such as `heartBeatInterval` are merged field by field. Lists are
-concatenated, and maps are merged key by key, the session's own entry winning.
-
-**Reading is strict.** An unknown field, an unknown enum value or trailing content fails the load and names the file,
-so a typo is an error rather than a silently missing setting. The merged result is then validated.
-
-**The directory is also where changes go.** `add` and `update` write the session's file, `remove` deletes it. On
-start, the store creates the directory if needed and copies the [JSON schema](#the-json-schema) into it. A
-read-only directory only costs the schema file, with a warning.
-
-### Somewhere other than a directory
-
-The store can instead be given a list of URIs: a network location, or a classpath resource the caller has resolved
-itself:
-
-```java
-FileSessionsSettingsStoreSettings.builder()
-        .fixSessionSettingsUri(URI.create("https://config.example.com/sessions/initiator1.yaml"))
-        .fixSessionSettingsUri(MyApp.class.getResource("/sessions/default.yaml").toURI())
-        .fixSessionSettingsUri(MyApp.class.getResource("/sessions/initiator1.yaml").toURI())
-        .build();
-```
-
-Each URI is opened with `URI.toURL().openStream()`, so a resource inside a jar works as well as one on disk.
-
-A URI list cannot be enumerated the way a directory can, so **each URI names one file**. One of them may end in
-`default.yaml`, and it provides the defaults merged into the others; a second one is an error, as is the same session
-id arriving from two URIs.
-
-**A store takes a directory or a list of URIs, never both**; providing both, or neither, fails at construction. And
-**settings read from a URI are never written back**: there is nowhere to write, so `add`, `update` and `remove` change
-the settings in memory and skip the write with a log rather than failing.
-
-### Externally configured values
+### Values from system properties and environment variables
 
 A value in a session file may be a `${...}` placeholder resolved when the file is loaded, so one file can be deployed
 unchanged across environments:
@@ -212,3 +222,91 @@ is how an edited YAML file reaches a running engine. A changed session may be re
 disconnected: [Runtime administration](runtime-administration.md#reloading-settings) covers the reload, and
 [Configuring a session](configuring-sessions.md#when-settings-change-under-a-running-session) the settings that decide
 how each session takes it.
+
+---
+
+## Writing your own store
+
+When sessions live somewhere neither store reads, such as a database or a configuration service, write a store. A
+store is plugged in like every other Staffix component: a settings class, a factory found through `ServiceLoader`,
+and an instance id.
+
+**1. A settings class** implementing `FixSessionsSettingsStoreSettings`, carrying what your store needs and the
+`instanceId` acceptors target it by:
+
+```java
+@Getter
+@Builder
+public class DbSessionsSettingsStoreSettings implements FixSessionsSettingsStoreSettings {
+
+    @Builder.Default
+    private final String instanceId = DEFAULT_INSTANCE_ID;
+    private final DataSource dataSource;
+}
+```
+
+**2. The store**, extending `FixSessionsSettingsStore.AbstractFixSessionSettingsStore`. The base class notifies the
+engine of every `add`, `remove` and `update`, so you only manage your storage:
+
+```java
+public class DbSessionsSettingsStore extends FixSessionsSettingsStore.AbstractFixSessionSettingsStore {
+
+    private final Set<FixSessionSettings> settings = ConcurrentHashMap.newKeySet();
+    // …
+
+    @Override
+    protected void startMe() {
+        settings.addAll(load());
+    }
+
+    @Override
+    public Set<FixSessionSettings> load() {
+        return readAllSessionsFromTheDatabase();
+    }
+
+    @Override
+    public void onAdd(FixSessionSettings added) {
+        insertIntoTheDatabase(added);
+        settings.add(added);
+    }
+    // getSettings, find, onRemove, onUpdate, stopMe, getInstanceId
+}
+```
+
+| method | contract |
+|--------|----------|
+| `startMe()` | fill what `getSettings()` returns: acceptors and initiators read it as soon as the store has started |
+| `getSettings()` | the sessions the store currently manages |
+| `find(id, type)` | match on the `FixSessionId` **and** the `FixSessionType`, since one id may exist on both sides |
+| `load()` | read the backing source and return what is there, **without** changing `getSettings()` or notifying anyone: on a reload, the engine compares the result with `getSettings()` and applies the difference through `add`, `remove` and `update` |
+| `onAdd`, `onRemove`, `onUpdate` | change the managed sessions, and the backing source if the store writes to it; `onUpdate` replaces the entry with the same `FixSessionId` |
+
+**3. A factory**, usually nested in the store, and a `ServiceLoader` declaration for it in
+`src/main/resources/META-INF/services/org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings$FixSessionsStoreFactory`:
+
+```java
+public static class DbStoreFactory
+        implements FixSessionsSettingsStoreSettings.FixSessionsStoreFactory<DbSessionsSettingsStoreSettings> {
+
+    @Override
+    public Class<DbSessionsSettingsStoreSettings> getSettingsClass() {
+        return DbSessionsSettingsStoreSettings.class;
+    }
+
+    @Override
+    public FixSessionsSettingsStore newInstance(DbSessionsSettingsStoreSettings settings) {
+        return new DbSessionsSettingsStore(settings);
+    }
+}
+```
+
+The engine picks the factory whose `getSettingsClass()` is **exactly** the class of the settings it was given, so a
+subclass of your settings needs a factory of its own. Miss the services file and the engine fails at startup with
+`Unable to find any SPI instance for target settings class`.
+
+**4. Register it** with `FixEngineBuilder.fixSessionsSettingsStore(...)` and target it from an acceptor, exactly as
+the two stores above. Under Spring Boot, a `FixSessionsSettingsStoreSettingsContributor` bean adds your settings to
+the stores the starter builds, keyed by instance id; the two shipped stores use one each.
+
+[`MemoryFixSessionsSettingsStore`](../sessions-settings-stores/memory/memory-impl/src/main/java/org/lolaf/staffix/stores/sessions/memory/MemoryFixSessionsSettingsStore.java)
+is the smallest complete store to start from.
