@@ -434,7 +434,7 @@ measure it, audit it or add a field on the way out) and an admin SPI, so the ope
 
 ### FIX protocol conformance
 
-Every build drives a real QuickFIX/J 3.0.1 engine against Staffix in-process, so if you are moving off QuickFIX/J, wire
+Every build drives a real QuickFIX/J 3.0.2 engine against Staffix in-process, so if you are moving off QuickFIX/J, wire
 compatibility with what your counterparties already speak is a test rather than a hope. Alongside it, **22** of the
 official FIX Session conformance scenarios from `FIX_Session_Testcases_June_2020` run as executable tests.
 
@@ -493,6 +493,33 @@ Three honest qualifications on the latency numbers:
 Choose Artio if you need durable replay in the transport, many sessions across processes, or the Aeron stack you are
 already running. Choose Staffix if you want a FIX engine that is a dependency rather than an infrastructure component,
 and the lowest round-trip latency of the three measured here.
+
+---
+
+## Is it production ready?
+
+Not yet proven in production: Staffix is **0.9.0**, and no one runs it on a live trading session today. What stands
+behind it instead:
+
+- **Correctness is tested at three levels on every build**: the engine's own suite, 22 of the official FIX session
+  conformance scenarios, and a real QuickFIX/J engine driven against Staffix in both roles, over FIX 4.x, FIXT/5.0 and
+  SSL. Gap fills, resend ranges, resend timeouts, garbled messages and sequence resets get the most attention, because
+  they are where FIX sessions fail in production.
+- **Staying correct over time is soak tested**: a Staffix and a QuickFIX/J engine trade against each other
+  continuously on a Kubernetes cluster, over a real network, with file stores and settings, and every order is
+  reconciled against exactly one execution report. That is where leaks, drifting sequence numbers and reconnect bugs
+  show up, and none has.
+- **The API is settled**: it is the result of two years of development, and it is not expected to change materially.
+  Any breaking change is listed in the [changelog](CHANGELOG.md).
+- **It is built by someone who has done it before**: an engineer with more than fifteen years of building FIX engines
+  and low-latency trading systems.
+
+Support is community only, on a best-effort basis: [issues](https://github.com/lolaf-org/staffix/issues) are read and
+answered, with no guaranteed response time.
+
+To adopt it, do what you would do for any new engine: run your counterparty's certification script against it in UAT,
+start with sessions that are not critical, use a durable [message store](docs/stores-and-loggers.md), alert on the
+`session.logon.state` metric, and watch the message log for rejects and resend requests.
 
 ---
 
