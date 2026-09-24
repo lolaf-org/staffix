@@ -117,6 +117,34 @@
                 </executions>
             </plugin>
 
+            <!-- Keep a committed copy in etc/ so the docs can link to it; declared after exec-maven-plugin so it
+                 runs after the generation bound to the same phase. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-fix-session-settings-json-schema</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.basedir}/etc</outputDirectory>
+                            <overwrite>true</overwrite>
+                            <resources>
+                                <resource>
+                                    <directory>${project.build.outputDirectory}/org/lolaf/staffix/stores/sessions/file</directory>
+                                    <includes>
+                                        <include>fix-session-settings.v1.schema.json</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- Also publish the schema as a standalone artifact, so tooling and CI can fetch it from the repository
                  (…-file-impl-<version>-schema.json) and reference it by URL from a `$schema=` declaration, without
                  unpacking the jar or booting the engine. -->

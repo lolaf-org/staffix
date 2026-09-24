@@ -97,6 +97,26 @@ resetSeqNumOnLogon: true
 The [`file-session-settings`](../examples/file-session-settings) example runs an acceptor from a directory and its
 initiators from the classpath, with placeholders in both.
 
+### The JSON schema
+
+The build generates a JSON schema from the YAML model, so an editor completes and validates a session file, including
+`${...}` placeholders in fields that are not strings. It is the
+[`fix-session-settings.v1.schema.json`](../sessions-settings-stores/file/file-impl/etc/fix-session-settings.v1.schema.json)
+in the module's `etc` directory, and it can be reached in three other ways:
+
+| where | how |
+|-------|-----|
+| in the jar | the resource `org/lolaf/staffix/stores/sessions/file/fix-session-settings.v1.schema.json` |
+| in the Maven repository | `staffix-sessions-settings-store-file-impl`, classifier `schema`, type `json` |
+| next to your files | a directory-backed store copies it into its directory on start |
+
+A file opts in with a comment read by editors built on the YAML language server. The path is relative to the file,
+or a URL:
+
+```yaml
+# yaml-language-server: $schema=fix-session-settings.v1.schema.json
+```
+
 ### A directory
 
 Every `*.yaml` file in the directory is a session, except `default.yaml`.
@@ -109,8 +129,8 @@ concatenated, and maps are merged key by key, the session's own entry winning.
 so a typo is an error rather than a silently missing setting. The merged result is then validated.
 
 **The directory is also where changes go.** `add` and `update` write the session's file, `remove` deletes it. On
-start, the store creates the directory if needed and copies the JSON schema into it, so an editor completes and
-validates a file that declares it as above. A read-only directory only costs the schema file, with a warning.
+start, the store creates the directory if needed and copies the [JSON schema](#the-json-schema) into it. A
+read-only directory only costs the schema file, with a warning.
 
 ### Somewhere other than a directory
 

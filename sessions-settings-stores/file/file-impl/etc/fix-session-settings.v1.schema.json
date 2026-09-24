@@ -1,0 +1,789 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "$defs" : {
+    "DayOfWeek" : {
+      "type" : "string",
+      "enum" : [ "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY" ]
+    },
+    "Map(String,String)" : {
+      "type" : "object"
+    },
+    "TimeUnit" : {
+      "type" : "string",
+      "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS" ]
+    }
+  },
+  "type" : "object",
+  "properties" : {
+    "advertiseApplicationOnLogon" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "advertiseEngineOnLogon" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "advertiseMsgTypeGrpOnLogon" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "allowedAddresses" : {
+      "type" : "array",
+      "items" : {
+        "type" : "object"
+      }
+    },
+    "allowedCertificates" : {
+      "type" : "array",
+      "items" : {
+        "type" : "object",
+        "properties" : {
+          "filePath" : {
+            "anyOf" : [ {
+              "type" : "string"
+            }, {
+              "type" : "string",
+              "pattern" : ".*\\$\\{[^}]+}.*",
+              "description" : "A ${...} placeholder, resolved when the file is loaded"
+            } ]
+          },
+          "type" : {
+            "anyOf" : [ {
+              "type" : "string"
+            }, {
+              "type" : "string",
+              "pattern" : ".*\\$\\{[^}]+}.*",
+              "description" : "A ${...} placeholder, resolved when the file is loaded"
+            } ]
+          }
+        }
+      }
+    },
+    "cancelOnDisconnectSettings" : {
+      "type" : "object",
+      "properties" : {
+        "cancelOnDisconnectType" : {
+          "type" : "string",
+          "enum" : [ "DO_NOT_CANCEL_ON_DISCONNECT_OR_LOGOUT", "CANCEL_ON_DISCONNECT_ONLY", "CANCEL_ON_LOGOUT_ONLY", "CANCEL_ON_DISCONNECT_OR_LOGOUT" ]
+        },
+        "cancelOnDisconnectTypeFieldCode" : {
+          "anyOf" : [ {
+            "type" : "integer"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "cancelOnDisconnectTypeFieldCodes" : {
+          "type" : "object"
+        },
+        "codTimeoutWindow" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "codTimeoutWindowFieldCode" : {
+          "anyOf" : [ {
+            "type" : "integer"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "codTimeoutWindowScale" : {
+          "$ref" : "#/$defs/TimeUnit"
+        },
+        "enabled" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        }
+      }
+    },
+    "desiredSessionState" : {
+      "type" : "string",
+      "enum" : [ "LOGGED_IN", "LOGGED_OUT", "CONNECTED", "DISCONNECTED" ]
+    },
+    "dictionaryId" : {
+      "anyOf" : [ {
+        "type" : "string"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "disconnectMessagesFlushDeadline" : {
+      "anyOf" : [ {
+        "type" : "string",
+        "format" : "duration",
+        "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+        "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "disconnectOnRemove" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "enabledLogonNextExpectedMsgSeqNum" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "fixApplicationFactoryInstanceId" : {
+      "anyOf" : [ {
+        "type" : "string"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "fixApplicationInstanceId" : {
+      "anyOf" : [ {
+        "type" : "string"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "fixApplicationSessionSettings" : {
+      "$ref" : "#/$defs/Map(String,String)"
+    },
+    "fixMessageLoggerInstanceId" : {
+      "anyOf" : [ {
+        "type" : "string"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "fixMessageStoreInstanceId" : {
+      "anyOf" : [ {
+        "type" : "string"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "fixSessionId" : {
+      "type" : "object",
+      "properties" : {
+        "fixTSession" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "fixVersion" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "minLength" : 1
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "group" : {
+          "anyOf" : [ {
+            "type" : "string"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "id" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "minLength" : 1
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "senderCompID" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "minLength" : 1
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "senderLocationID" : {
+          "anyOf" : [ {
+            "type" : "string"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "senderSubID" : {
+          "anyOf" : [ {
+            "type" : "string"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "targetCompID" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "minLength" : 1
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "targetLocationID" : {
+          "anyOf" : [ {
+            "type" : "string"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "targetSubID" : {
+          "anyOf" : [ {
+            "type" : "string"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        }
+      },
+      "required" : [ "fixVersion", "id", "senderCompID", "targetCompID" ]
+    },
+    "fixSessionPluginsInstanceIds" : {
+      "$ref" : "#/$defs/Map(String,String)"
+    },
+    "fixSessionType" : {
+      "type" : "string",
+      "enum" : [ "INITIATOR", "ACCEPTOR" ]
+    },
+    "heartBeatInterval" : {
+      "type" : "object",
+      "properties" : {
+        "acceptorLowerBoundInterval" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "acceptorUpperBoundInterval" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "initiatorInterval" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        }
+      }
+    },
+    "logInOrOutResponseTimeout" : {
+      "anyOf" : [ {
+        "type" : "string",
+        "format" : "duration",
+        "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+        "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "maxMessagesResentPerRequest" : {
+      "anyOf" : [ {
+        "type" : "integer"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "maxOutOfSequenceMessagesQueued" : {
+      "anyOf" : [ {
+        "type" : "integer"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "maxOutgoingMessagesHeldDuringRecovery" : {
+      "anyOf" : [ {
+        "type" : "integer"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "messageEncodersDirectByteBuffers" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "pooledMessageEncodersDirectByteBuffers" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "resendRequestRange" : {
+      "type" : "string",
+      "enum" : [ "CLOSED", "OPEN_ENDED" ]
+    },
+    "resendRequestResponseTimeout" : {
+      "anyOf" : [ {
+        "type" : "string",
+        "format" : "duration",
+        "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+        "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "resetSeqNumOnLogon" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "restartLiveSessionOnUpdate" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "rttMeasurementSettings" : {
+      "type" : "object",
+      "properties" : {
+        "emaTimeWindow" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "maxAcceptedRtt" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "probeInterval" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "probeTestReqIdPrefix" : {
+          "anyOf" : [ {
+            "type" : "string"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "sendingTimeToWireDelay" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        }
+      }
+    },
+    "sendingTimeAccuracy" : {
+      "$ref" : "#/$defs/TimeUnit"
+    },
+    "sessionScheduleSettings" : {
+      "type" : "object",
+      "properties" : {
+        "nonStopSchedules" : {
+          "type" : "array",
+          "items" : {
+            "type" : "object",
+            "properties" : {
+              "dayOfWeek" : {
+                "$ref" : "#/$defs/DayOfWeek"
+              },
+              "initiatesReset" : {
+                "anyOf" : [ {
+                  "type" : "boolean"
+                }, {
+                  "type" : "string",
+                  "pattern" : ".*\\$\\{[^}]+}.*",
+                  "description" : "A ${...} placeholder, resolved when the file is loaded"
+                } ]
+              },
+              "sequenceResetTime" : {
+                "anyOf" : [ {
+                  "type" : "string",
+                  "pattern" : "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$",
+                  "description" : "Local time of day (ISO-8601, no zone), e.g. 09:30, 10:10:11, 10:10:10.099999999"
+                }, {
+                  "type" : "string",
+                  "pattern" : ".*\\$\\{[^}]+}.*",
+                  "description" : "A ${...} placeholder, resolved when the file is loaded"
+                } ]
+              }
+            },
+            "required" : [ "dayOfWeek" ]
+          }
+        },
+        "outsideSessionTimePreTriggerDelay" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "sessionSchedules" : {
+          "type" : "array",
+          "items" : {
+            "type" : "object",
+            "properties" : {
+              "endDay" : {
+                "$ref" : "#/$defs/DayOfWeek"
+              },
+              "endTime" : {
+                "anyOf" : [ {
+                  "type" : "string",
+                  "pattern" : "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$",
+                  "description" : "Local time of day (ISO-8601, no zone), e.g. 09:30, 10:10:11, 10:10:10.099999999"
+                }, {
+                  "type" : "string",
+                  "pattern" : ".*\\$\\{[^}]+}.*",
+                  "description" : "A ${...} placeholder, resolved when the file is loaded"
+                } ]
+              },
+              "startDay" : {
+                "$ref" : "#/$defs/DayOfWeek"
+              },
+              "startTime" : {
+                "anyOf" : [ {
+                  "type" : "string",
+                  "pattern" : "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$",
+                  "description" : "Local time of day (ISO-8601, no zone), e.g. 09:30, 10:10:11, 10:10:10.099999999"
+                }, {
+                  "type" : "string",
+                  "pattern" : ".*\\$\\{[^}]+}.*",
+                  "description" : "A ${...} placeholder, resolved when the file is loaded"
+                } ]
+              }
+            },
+            "required" : [ "endDay", "endTime", "startDay", "startTime" ]
+          }
+        },
+        "timeZone" : {
+          "type" : "object"
+        },
+        "withinSessionCheckInterval" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        }
+      }
+    },
+    "testingMode" : {
+      "anyOf" : [ {
+        "type" : "boolean"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ]
+    },
+    "validationSettings" : {
+      "type" : "object",
+      "properties" : {
+        "allowUndefinedTagsForMessage" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "allowUnknownFields" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "allowUserDefinedFields" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "detectGarbledMessages" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "expectedDeliverToCompIds" : {
+          "type" : "array",
+          "items" : {
+            "anyOf" : [ {
+              "type" : "string"
+            }, {
+              "type" : "string",
+              "pattern" : ".*\\$\\{[^}]+}.*",
+              "description" : "A ${...} placeholder, resolved when the file is loaded"
+            } ]
+          }
+        },
+        "expectedOnBehalfOfCompIds" : {
+          "type" : "array",
+          "items" : {
+            "anyOf" : [ {
+              "type" : "string"
+            }, {
+              "type" : "string",
+              "pattern" : ".*\\$\\{[^}]+}.*",
+              "description" : "A ${...} placeholder, resolved when the file is loaded"
+            } ]
+          }
+        },
+        "maxMessageSize" : {
+          "anyOf" : [ {
+            "type" : "integer",
+            "exclusiveMinimum" : 0
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "maxSendingTime" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "requiredPeerMaxMessageSize" : {
+          "anyOf" : [ {
+            "type" : "integer",
+            "exclusiveMinimum" : 0
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "validateBeginString" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "validateChecksum" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "validateCompId" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "validateDuplicateTags" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "validateFieldsHaveValues" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "validateFieldsOutOfOrder" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        },
+        "validateRequiredFields" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ]
+        }
+      }
+    }
+  },
+  "required" : [ "fixSessionId", "fixSessionType" ]
+}
