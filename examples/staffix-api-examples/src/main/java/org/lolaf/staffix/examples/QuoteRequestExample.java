@@ -106,13 +106,9 @@ public class QuoteRequestExample extends FixExamplesBase implements Callable<Int
         }
 
         Profiling.startProfilingIfNeeded(profilingOptions, QuoteRequestExample.class);
-
+        registerShutdownHook(initiators, throttlingTimer, fixAcceptor);
         LockSupport.parkNanos(exampleDuration.toNanos());
-        log.info("Shutting down {} initiators and 1 acceptor", initiators.size());
-        stopThrottlingTimer(throttlingTimer);
-        shutdownInitiators(initiators);
-        LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(1));
-        fixAcceptor.stop();
+        shutdown(initiators, throttlingTimer, fixAcceptor);
         return 0;
     }
 

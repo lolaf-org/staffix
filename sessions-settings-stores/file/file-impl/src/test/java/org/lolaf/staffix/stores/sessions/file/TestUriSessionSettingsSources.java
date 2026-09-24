@@ -127,7 +127,7 @@ class TestUriSessionSettingsSources {
         // the assertion below.
         URI one = write("source.yaml", session("one"));
         File source = new File(tempDir, "source.yaml");
-        String before = new String(Files.readAllBytes(source.toPath()), StandardCharsets.UTF_8);
+        String before = Files.readString(source.toPath());
 
         FileFixSessionsSettingsStore store = store(List.of(one));
         FixSessionSettings loaded = store.load().iterator().next();
@@ -154,6 +154,15 @@ class TestUriSessionSettingsSources {
         URI onClasspath = getClass().getResource("/uri-sessions/classpath-session.yaml").toURI();
 
         assertThat(ids(load(onClasspath))).containsExactly("classpath-session");
+    }
+
+    @Test
+    void startsWithoutADirectory() throws IOException {
+        FileFixSessionsSettingsStore store = store(List.of(write("one.yaml", session("one"))));
+
+        store.start();
+
+        assertThat(ids(Set.copyOf(store.getSettings()))).containsExactly("one");
     }
 
     private Set<FixSessionSettings> load(URI... uris) {

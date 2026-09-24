@@ -41,6 +41,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
@@ -53,8 +56,8 @@ import java.util.concurrent.locks.LockSupport;
 
 /**
  * Programmatic example wiring a {@link FixEngine} whose acceptor and initiator sessions are loaded
- * from hand-authored YAML files on disk through the YAML file session settings store
- * ({@code staffix-sessions-settings-store-file}).
+ * from hand-authored YAML files through the YAML file session settings store
+ * ({@code staffix-sessions-settings-store-file}), showing both ways it can be pointed at them.
  *
  * <p>Each store points at a directory holding one YAML file per session plus a {@code default.yaml}
  * whose values are merged into every other file in the directory (so the per-session files only carry
@@ -67,8 +70,9 @@ import java.util.concurrent.locks.LockSupport;
  * without editing the file.
  *
  * <p>The bundled YAML files live on the classpath under {@code sessions/acceptor} and
- * {@code sessions/initiator}; at startup they are copied to {@code ./target/file-sessions/...} so the
- * file store has a real filesystem directory to read (works both from the shaded jar and the IDE).
+ * {@code sessions/initiator}. The acceptor store reads a directory, so its files are first copied to
+ * {@code ./target/file-sessions/acceptor}; a directory-backed store also writes changed settings back. The
+ * initiator store reads its files straight from the classpath as URIs, which needs no copy but is read-only.
  *
  * <p>Run with: {@code mvn -pl examples/file-session-settings -am install} then
  * {@code ./FileSessionSettingsExample.sh} (or run this main directly from your IDE). The acceptor binds
@@ -87,11 +91,8 @@ public final class FileSessionSettingsExample {
     public static void main(String[] args) throws IOException {
         log.info("File session settings example running with Java {}", Runtime.version());
 
-        // Materialize the bundled YAML session files onto disk so the file store has a directory to load.
         File acceptorSessionsDir = materializeSessionsDir("sessions/acceptor", "./target/file-sessions/acceptor",
                 "default.yaml", "acceptor-initiator1.yaml", "acceptor-initiator2.yaml");
-        File initiatorSessionsDir = materializeSessionsDir("sessions/initiator", "./target/file-sessions/initiator",
-                "default.yaml", "initiator1.yaml", "initiator2.yaml");
 
         FixEngine fixEngine = FixEngineBuilder.builder()
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder()
@@ -112,7 +113,9 @@ public final class FileSessionSettingsExample {
                         .build())
                 .fixSessionsSettingsStore(FileSessionsSettingsStoreSettings.builder()
                         .instanceId(INITIATOR)
-                        .fixSessionSettingsDirectory(initiatorSessionsDir)
+                        .fixSessionSettingsUri(classpathUri("sessions/initiator/default.yaml"))
+                        .fixSessionSettingsUri(classpathUri("sessions/initiator/initiator1.yaml"))
+                        .fixSessionSettingsUri(classpathUri("sessions/initiator/initiator2.yaml"))
                         .build())
                 .build()
                 .instance()
@@ -144,11 +147,8 @@ public final class FileSessionSettingsExample {
             initiators.add(initiator);
         }
 
-        log.info("Started: acceptor started={} bound to {}, {} initiators started",
-                acceptor.isStarted(), BIND_ADDRESS, initiators.size());
-
+        log.info("Started: acceptor started={} bound to {}, {} initiators started", acceptor.isStarted(), BIND_ADDRESS, initiators.size());
         LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(60));
-
         log.info("Shutting down {} initiators and 1 acceptor", initiators.size());
         initiators.forEach(FixInitiator::stop);
         acceptor.stop();
@@ -174,6 +174,18 @@ public final class FileSessionSettingsExample {
         }
         log.info("Materialized {} session files into {}", fileNames.length, dir.getAbsolutePath());
         return dir;
+    }
+
+    private static URI classpathUri(String resource) {
+        URL url = FileSessionSettingsExample.class.getResource("/" + resource);
+        if (url == null) {
+            throw new IllegalStateException("Missing bundled session resource " + resource);
+        }
+        try {
+            return url.toURI();
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("Invalid URI for session resource " + resource, e);
+        }
     }
 
     /**

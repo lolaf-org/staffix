@@ -328,72 +328,9 @@ Everything above builds settings in Java. Two other sources exist:
 - **Spring properties**, via the Spring Boot starter, where sessions are declared entirely in
   `application.properties`. See the [`spring-boot-starter-example`](../examples/spring-boot-starter-example).
 
-The settings model is the same in all three cases; only the transport differs.
+The settings model is the same in all three cases; only the transport differs. [Session settings
+stores](session-settings-stores.md) covers the stores that hold them: the memory store, and the file store with its
+`default.yaml` merge, classpath and URI sources, and `${...}` placeholders.
 
-### Reading session files from somewhere other than a directory
-
-A file store normally reads a directory. It can instead be given a list of URIs: a network location, or a
-classpath resource the caller has resolved itself:
-
-```java
-FileSessionsSettingsStoreSettings.builder()
-        .fixSessionSettingsUri(URI.create("https://config.example.com/sessions/initiator1.yaml"))
-        .fixSessionSettingsUri(MyApp.class.getResource("/sessions/default.yaml").toURI())
-        .build();
-```
-
-A URI list cannot be enumerated the way a directory can, so **each URI names one file**. One of them may
-end in `default.yaml`, and it provides the defaults merged into the others; a second one is an error, as
-is the same session id arriving from two URIs.
-
-**A store takes a directory or a list of URIs, never both**; providing both, or neither, fails at
-construction. And **settings read from a URI are never written back**: there is nowhere to write, so
-`add`, `update` and `remove` are skipped with a log rather than failing.
-
-Under Spring Boot the same choice is `staffix.sessions-settings-stores-file.instances.<name>.uris`,
-mutually exclusive with `.directory`.
-
-### Externally configured values in YAML files
-
-A value in a session file may be a `${...}` placeholder resolved when the file is loaded, so one file can
-be deployed unchanged across environments:
-
-```yaml
-fixSessionId:
-  id: "${sysprop:session.id:defaultIfAbsent}"
-  fixVersion: "FIX.4.4"
-logInOrOutResponseTimeout: "${env:LOGON_TIMEOUT:PT30S}"
-```
-
-Three forms are accepted: `${sysprop:key:default}`, `${env:KEY:default}`, and `${key:default}`, the last
-matching Spring's own syntax, asking every source in turn. The default is optional, may itself contain
-`:`, and is used only after every resolver has declined; with no default, the load fails naming the
-placeholder and the field. A value may be part placeholder, `prefix-${env:X}-suffix`, and may hold
-several. Nothing escapes an opening brace, so a value that merely looks like a placeholder is treated as
-one.
-
-Placeholders work in a field of **any** type, not only strings: resolution happens on the parsed file
-before it is bound, so `"${env:LOGON_TIMEOUT:PT30S}"` above is a valid `Duration`.
-
-**Writing a session back keeps the placeholder.** The store rebuilds the file from the runtime settings,
-so it remembers the file as it was read and puts each placeholder back. A value backed by a placeholder is
-owned by its source, so **changing one through the store is refused** rather than silently written as a
-literal. A placeholder in `default.yaml` is resolved but not remembered: that file is only ever read, and
-a value it contributes is written into a session file as the literal it resolved to.
-
-To resolve from somewhere else, implement `ConfigValueResolver` and hand it to the store:
-
-```java
-FileSessionsSettingsStoreSettings.builder()
-        .fixSessionSettingsDirectory(directory)
-        .configValueResolver(myResolver)
-        .build();
-```
-
-Resolvers are asked in order and the first non-empty answer wins. Supplying any **replaces** the built-in
-system-property and environment resolvers rather than joining them, so a deployment can say exactly where
-configuration comes from. `refresh()` is called once per load, for a resolver backed by something that changes. It
-is not called once per file, so every file in a load sees the same snapshot.
-
-Sessions declared in Spring properties need none of this: Spring resolves `${...}` in
+Sessions declared in Spring properties need no placeholders of their own: Spring resolves `${...}` in
 `application.properties` itself, from every property source it knows.

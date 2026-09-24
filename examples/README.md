@@ -58,23 +58,23 @@ first.
 
 They are [picocli](https://picocli.info) commands, so `--help` lists the options each one accepts.
 
-| example | what it shows | script |
-|---------|---------------|--------|
-| [`staffix-api-examples`](staffix-api-examples) → `SessionLifecycleExample` | every `FixApplication` callback a session goes through, driven by a schedule that opens and closes while you watch | [`SessionLifecycleExample.sh`](staffix-api-examples/SessionLifecycleExample.sh) |
-| [`staffix-api-examples`](staffix-api-examples) → `QuoteRequestExample` | quote request/response streaming, user-defined fields, cached and thread-local field decoding | [`QuoteRequests.sh`](staffix-api-examples/QuoteRequests.sh) |
-| [`staffix-api-examples`](staffix-api-examples) → `TradingExample` | NewOrderSingle / ExecutionReport, the order-lifecycle path | [`TradingExample.sh`](staffix-api-examples/TradingExample.sh) |
-| [`staffix-api-examples`](staffix-api-examples) → `MarketDataStreamerExample` | MarketDataSnapshotFullRefresh streaming, the highest-volume path | [`MarkedDataStreamer.sh`](staffix-api-examples/MarkedDataStreamer.sh) |
-| [`plugin-api`](plugin-api) | writing a session plugin: a user-defined field stamped onto every outbound Email, with both applications unaware of it | [`PluginApiExample.sh`](plugin-api/PluginApiExample.sh) |
-| [`file-session-settings`](file-session-settings) | sessions declared in YAML files instead of in code, with the generated JSON schema | [`FileSessionSettingsExample.sh`](file-session-settings/FileSessionSettingsExample.sh) |
-| [`spring-boot-starter-example`](spring-boot-starter-example) | acceptor and initiator declared entirely in `application.properties`; you supply only the `FixApplication` beans | [`SpringBootExample.sh`](spring-boot-starter-example/SpringBootExample.sh) |
-| [`advanced-monitoring`](advanced-monitoring) | metrics, logs and traces exported over OTLP; pair it with the [Grafana stack](../monitoring/grafana) | [`MetricsLogsTracesExample.sh`](advanced-monitoring/MetricsLogsTracesExample.sh) |
+| example                                                                      | what it shows                                                                                                          | script                                                                                 |
+|------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------|
+| [`staffix-api-examples`](staffix-api-examples) → `SessionLifecycleExample`   | every `FixApplication` callback a session goes through, driven by a schedule that opens and closes while you watch     | [`SessionLifecycleExample.sh`](staffix-api-examples/SessionLifecycleExample.sh)        |
+| [`staffix-api-examples`](staffix-api-examples) → `QuoteRequestExample`       | quote request/response streaming, user-defined fields, cached and thread-local field decoding                          | [`QuoteRequests.sh`](staffix-api-examples/QuoteRequests.sh)                            |
+| [`staffix-api-examples`](staffix-api-examples) → `TradingExample`            | NewOrderSingle / ExecutionReport, the order-lifecycle path                                                             | [`TradingExample.sh`](staffix-api-examples/TradingExample.sh)                          |
+| [`staffix-api-examples`](staffix-api-examples) → `MarketDataStreamerExample` | MarketDataSnapshotFullRefresh streaming, the highest-volume path                                                       | [`MarkedDataStreamer.sh`](staffix-api-examples/MarkedDataStreamer.sh)                  |
+| [`plugin-api`](plugin-api)                                                   | writing a session plugin: a user-defined field stamped onto every outbound Email, with both applications unaware of it | [`PluginApiExample.sh`](plugin-api/PluginApiExample.sh)                                |
+| [`file-session-settings`](file-session-settings)                             | sessions declared in YAML files instead of in code: the acceptor's read from a directory, the initiator's from the classpath                                     | [`FileSessionSettingsExample.sh`](file-session-settings/FileSessionSettingsExample.sh) |
+| [`spring-boot-starter-example`](spring-boot-starter-example)                 | acceptor and initiator declared entirely in `application.properties`; you supply only the `FixApplication` beans       | [`SpringBootExample.sh`](spring-boot-starter-example/SpringBootExample.sh)             |
+| [`advanced-monitoring`](advanced-monitoring)                                 | metrics, logs and traces exported over OTLP; pair it with the [Grafana stack](../monitoring/grafana)                   | [`MetricsLogsTracesExample.sh`](advanced-monitoring/MetricsLogsTracesExample.sh)       |
 
 `SessionLifecycleExample` is the one to run after `quickstart`, and the only one of these that is about the session
 rather than about messages: it sends no business message at all, implements every `FixApplication` callback with a
 single log line, and lets a schedule drive the session through its whole life in about fifteen seconds. The trick is
 that the schedule is not configured trading hours: it is **computed from the wall clock when the example starts**, a
-window opening two seconds from now and closing five seconds later, then a second one after a three-second gap
-(`-w`, `-g` and `-u` change those three numbers). Everything the log shows follows from it: the engine logs the
+window opening two seconds from now and closing five seconds later, then a second one after a three-second gap (`-w`,
+`-g` and `-u` change those three numbers). Everything the log shows follows from it: the engine logs the
 session on when the window opens, logs it out when it closes, brings it back when it reopens, and the run ends with
 the engine being stopped while the session is up, so the shutdown path is in the output too.
 
@@ -122,6 +122,19 @@ is a complete `FixSessionsPlugin`, registration and all, in about a hundred line
 `staffix-api-examples` also ships [`ToastMyCpuExample.sh`](staffix-api-examples/ToastMyCpuExample.sh): `TradingExample`
 with the message store and logger set to `VOID` and low-latency mode on, which is the configuration to run when you
 want the engine flat out rather than readable.
+
+Two more `TradingExample` launchers compare message stores. Both persist every message to PostgreSQL, started in a
+container through Testcontainers, so Docker must be running. Both also pace orders with `-w=250` (every 250 micros).
+
+| script                                                                                            | store                                                               | throughput          |
+|---------------------------------------------------------------------------------------------------|---------------------------------------------------------------------|---------------------|
+| [`TradingExampleWithSyncJDBCStore.sh`](staffix-api-examples/TradingExampleWithSyncJDBCStore.sh)   | JDBC, written synchronously on the session's IO thread (`-st=JDBC`) | the baseline        |
+| [`TradingExampleWithAsyncJDBCStore.sh`](staffix-api-examples/TradingExampleWithAsyncJDBCStore.sh) | the same JDBC store behind a Chronicle Queue (`-as -st=JDBC`)       | about twice as high |
+
+With the synchronous store, every message waits for its database round trip before the session can move on. The
+asynchronous store appends the message to a local Chronicle Queue and returns, and reader threads write it to the
+database in batches. The session no longer waits on the database, and that is where the doubled throughput comes
+from. Compare the `Received N execution reports/s` lines the two runs log.
 
 ### Running them
 
@@ -173,19 +186,20 @@ already passes:
 --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \
 --add-opens java.base/java.lang.reflect=ALL-UNNAMED \
 --add-opens java.base/sun.nio.ch=ALL-UNNAMED \
+--add-opens java.base/java.nio.channels.spi=ALL-UNNAMED \
 ```
 
-| flag | what it is for |
-|------|----------------|
-| `-XX:+UnlockDiagnosticVMOptions` | required to unlock `DebugNonSafepoints` |
-| `-XX:+DebugNonSafepoints` | makes the JIT keep debug info away from safepoints, so a sampling profiler (`-pe`) attributes samples to the frames that really ran rather than to the nearest safepoint |
-| `-XX:-RestrictContended` | lets `@Contended` apply outside the JDK's own classes; without it the annotation is silently ignored on the ringos and Staffix structures |
-| `-XX:ContendedPaddingWidth=64` | sizes that padding to one cache line, which is what keeps those structures off each other's lines |
-| `--enable-native-access=ALL-UNNAMED` | allows the native/`Unsafe` access the memory-access layer performs, instead of warning about it |
-| `--add-opens java.base/jdk.internal.ref` | direct-`ByteBuffer` cleaner access, used by the JDK 11–14 memory-access provider |
+| flag                                      | what it is for                                                                                                                                                           |
+|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-XX:+UnlockDiagnosticVMOptions`          | required to unlock `DebugNonSafepoints`                                                                                                                                  |
+| `-XX:+DebugNonSafepoints`                 | makes the JIT keep debug info away from safepoints, so a sampling profiler (`-pe`) attributes samples to the frames that really ran rather than to the nearest safepoint |
+| `-XX:-RestrictContended`                  | lets `@Contended` apply outside the JDK's own classes; without it the annotation is silently ignored on the ringos and Staffix structures                                |
+| `-XX:ContendedPaddingWidth=64`            | sizes that padding to one cache line, which is what keeps those structures off each other's lines                                                                        |
+| `--enable-native-access=ALL-UNNAMED`      | allows the native/`Unsafe` access the memory-access layer performs, instead of warning about it                                                                          |
+| `--add-opens java.base/jdk.internal.ref`  | direct-`ByteBuffer` cleaner access, used by the JDK 11–14 memory-access provider                                                                                         |
 | `--add-opens java.base/jdk.internal.misc` | `jdk.internal.misc.Unsafe`, behind the zero-allocation thread-local serdes; without it they still work, but allocate a fresh `String` per field and warn once at startup |
-| `--add-opens java.base/java.lang.reflect` | reflective setup of the method handles those providers bind at class-init |
-| `--add-opens java.base/sun.nio.ch` | betty's `SelectorOptimizer`, which replaces `SelectorImpl`'s selected-key `HashSet` with an array-backed set; without it the plain JDK selector is used |
+| `--add-opens java.base/java.lang.reflect` | reflective setup of the method handles those providers bind at class-init                                                                                                |
+| `--add-opens java.base/sun.nio.ch`        | betty's `SelectorOptimizer`, which replaces `SelectorImpl`'s selected-key `HashSet` with an array-backed set; without it the plain JDK selector is used                  |
 
 None of them is mandatory: each one missing costs a warning and a slower path, never a failure.
 

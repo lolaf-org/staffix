@@ -96,11 +96,11 @@ public class ObjectMerger {
                     }
                 }
             }
-            // If both are non-null and the field is a map merge collection data
+            // If both are non-null and the field is a map, add the default entries the target does not have
             else if (defaultValue != null && targetValue instanceof Map) {
                 Map mapTarget = (Map) targetValue;
-                Map mapDefault = (Map) defaultValue;
-                mapTarget.putAll(mapDefault);
+                Map<?, ?> mapDefault = (Map<?, ?>) defaultValue;
+                mapDefault.forEach(mapTarget::putIfAbsent);
             }
             // If both are non-null and the field is a collection merge collection data
             else if (defaultValue != null && targetValue instanceof Collection) {

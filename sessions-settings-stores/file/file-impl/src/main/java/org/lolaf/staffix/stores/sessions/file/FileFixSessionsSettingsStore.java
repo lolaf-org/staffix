@@ -137,8 +137,10 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
 
     @Override
     protected void startMe() throws StartStopException {
-        ensureDirectory();
-        writeSchemaFile();
+        if (savable) {
+            ensureDirectory();
+            writeSchemaFile();
+        }
         fixSessionSettings.addAll(loadFromSources());
     }
 

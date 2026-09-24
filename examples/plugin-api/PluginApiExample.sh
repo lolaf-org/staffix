@@ -30,4 +30,5 @@ $JAVA_CMD -cp target/staffix-examples.jar \
 --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \
 --add-opens java.base/java.lang.reflect=ALL-UNNAMED \
 --add-opens java.base/sun.nio.ch=ALL-UNNAMED \
+--add-opens java.base/java.nio.channels.spi=ALL-UNNAMED \
 org.lolaf.staffix.examples.PluginApiExample $@

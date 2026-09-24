@@ -49,7 +49,6 @@ import picocli.CommandLine;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Callable;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
 
@@ -139,12 +138,9 @@ public class PluginApiExample extends FixExamplesBase implements Callable<Intege
         }
 
         Profiling.startProfilingIfNeeded(profilingOptions, PluginApiExample.class);
-
+        registerShutdownHook(initiators, null, fixAcceptor);
         LockSupport.parkNanos(exampleDuration.toNanos());
-        log.info("Shutting down {} initiators and 1 acceptor", initiators.size());
-        shutdownInitiators(initiators);
-        LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(1));
-        fixAcceptor.stop();
+        shutdown(initiators, null, fixAcceptor);
         return 0;
     }
 

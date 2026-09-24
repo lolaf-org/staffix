@@ -21,11 +21,10 @@ import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
 import lombok.extern.slf4j.Slf4j;
 import net.openhft.affinity.Affinity;
 import net.openhft.chronicle.queue.RollCycles;
+import org.apache.logging.log4j.LogManager;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.ss.IdleStrategySelectStrategy;
 import org.lolaf.betty.api.ss.WakeupSelectStrategy;
-import org.lolaf.staffix.tracing.otlp.OtelTracing;
-import org.lolaf.staffix.tracing.otlp.OtelTracingSettings;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.BusySpinIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
@@ -54,8 +53,6 @@ import org.lolaf.staffix.http.jetty.JettyGrpcSender;
 import org.lolaf.staffix.http.jetty.JettyHttpSender;
 import org.lolaf.staffix.impl.FixEngineVersion;
 import org.lolaf.staffix.monitoring.micrometer.otlp.OtlpMicrometerMonitoringManagerSettings;
-import org.lolaf.staffix.tracing.otlp.sender.StaffixHttpSenderProvider;
-import org.lolaf.staffix.tracing.otlp.sender.grpc.StaffixGrpcSenderProvider;
 import org.lolaf.staffix.plugins.async.AsyncFixSessionsPluginSettings;
 import org.lolaf.staffix.plugins.throttling.ThrottlingFixSessionsPluginSettings;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
@@ -69,6 +66,10 @@ import org.lolaf.staffix.stores.messages.file.FileMessageStoreSettings;
 import org.lolaf.staffix.stores.messages.jdbc.JdbcMessageStoreSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
+import org.lolaf.staffix.tracing.otlp.OtelTracing;
+import org.lolaf.staffix.tracing.otlp.OtelTracingSettings;
+import org.lolaf.staffix.tracing.otlp.sender.StaffixHttpSenderProvider;
+import org.lolaf.staffix.tracing.otlp.sender.grpc.StaffixGrpcSenderProvider;
 import org.slf4j.Logger;
 import picocli.CommandLine;
 
@@ -108,10 +109,6 @@ class FixExamplesBase {
                 .group(group).build());
     }
 
-    /**
-     * What the OTLP senders bind beyond their endpoint: the collector's credentials, when the example was
-     * given any.
-     */
     private static HttpSenderSettings otlpHttpSenderSettings(ExampleOptions options) {
         HttpSenderSettings.HttpSenderSettingsBuilder settings = HttpSenderSettings.builder();
         if (options.getMonitoringAuthHeader() != null) {
@@ -120,35 +117,11 @@ class FixExamplesBase {
         return settings.build();
     }
 
-    /**
-     * The HTTP client the OTLP paths publish through, on the version the example was asked for.
-     *
-     * <p>Jetty on all of them, so one client serves logs, metrics and traces. The version is a
-     * constructor argument rather than something {@link HttpSenderSettings} carries, because each client
-     * asks for it differently - which is also why a factory, not a setting, is where an application
-     * chooses it.
-     *
-     * @param options the example's options
-     * @return a factory binding the chosen version
-     */
     private static Function<HttpSenderSettings, HttpSender> otlpHttpSenderFactory(ExampleOptions options) {
         HttpVersion version = options.getOtlpHttpVersion();
         return settings -> new JettyHttpSender(settings, null, version);
     }
 
-    /**
-     * Logs every command-line option the example was started with: the example's own options, then
-     * {@link ExampleOptions} and {@link Profiling.ProfilingOptions}, each under the class declaring them.
-     * <p>
-     * The list is read back from picocli's model of the already-populated instance, so an example gets its
-     * custom options printed without registering them anywhere — anything annotated with
-     * {@code @CommandLine.Option}, directly or through an {@code @CommandLine.ArgGroup}, shows up.
-     * Values left at their declared default are dimmed with a {@code -} marker and the ones actually passed
-     * on the command line with a {@code *}, so the configuration in effect is readable at a glance.
-     * <p>
-     * Purely diagnostic: any failure to build the report is swallowed, an example never fails to start
-     * because its configuration could not be printed.
-     */
     public static void logConfiguration(Logger log, Object example) {
         log.info("Example running with Java {}", Runtime.version());
         try {
@@ -191,10 +164,6 @@ class FixExamplesBase {
         return userObject instanceof Field ? ((Field) userObject).getName() : option.longestName();
     }
 
-    /**
-     * Renders an option's value, masking anything that looks like a credential — {@code -oa} carries an OTLP
-     * authorization header, which must not end up in the console or in a pasted log.
-     */
     private static String renderValue(CommandLine.Model.OptionSpec option) {
         Object value = option.getValue();
         if (value == null) {
@@ -232,15 +201,6 @@ class FixExamplesBase {
         }
     }
 
-    /**
-     * Builds and starts a shared {@link WheelTimer} sized for response-throttling in the examples.
-     * Returns {@code null} when {@code throttling} is zero so callers can short-circuit and skip
-     * the timer entirely.
-     * <p>
-     * Sizing rationale: tick is the throttling delay / 16 with a 1µs floor; wheel covers ~4× the
-     * delay so {@code remainingRounds} stays 0; submission queue holds {@code clientsCount * 4}
-     * in-flight schedules (one outstanding per session in a request/reply pattern, plus burst).
-     */
     public static WheelTimer createThrottlingTimer(Duration throttling, int clientsCount, ExampleOptions options) {
         if (throttling.isZero()) {
             return null;
@@ -294,6 +254,31 @@ class FixExamplesBase {
                 Thread.currentThread().interrupt();
             }
         });
+    }
+
+    protected static void registerShutdownHook(List<FixInitiator> initiators, WheelTimer throttlingTimer, FixAcceptor fixAcceptor) {
+        Thread shutdown = new Thread(() -> {
+            try {
+                shutdown(initiators, throttlingTimer, fixAcceptor);
+            } finally {
+                LogManager.shutdown();
+            }
+        });
+        shutdown.setUncaughtExceptionHandler((thread, t) -> t.printStackTrace());
+        shutdown.setDaemon(true);
+        Runtime.getRuntime().addShutdownHook(shutdown);
+    }
+
+    protected static void shutdown(List<FixInitiator> initiators, WheelTimer throttlingTimer, FixAcceptor fixAcceptor) {
+        if (fixAcceptor.isStarted()) {
+            log.info("Shutting down {} initiators and 1 acceptor", initiators.size());
+            shutdownInitiators(initiators);
+            log.info("{} initiators stopped", initiators.size());
+            fixAcceptor.stop();
+            log.info("Acceptor stopped");
+            stopThrottlingTimer(throttlingTimer);
+            log.info("Engine fully stopped");
+        }
     }
 
     public FixEngineBuilder.FixEngineBuilderBuilder fixEngineBuilder(ExampleOptions options, boolean resetSequenceOnLogon,

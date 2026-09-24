@@ -116,6 +116,19 @@ class TestFromYamlFixSessionSettingsTransformer {
     }
 
     @Test
+    void customSettingOfTheSessionWinsOverTheDefault() throws IOException {
+        defaultSettingsBuilder.fixApplicationSessionSettings(Map.of("shared", "fromDefault"));
+        settingsBuilder.fixApplicationSessionSettings(Map.of("shared", "fromSession"));
+
+        FixSessionSettings d = FromYamlFixSessionSettingsTransformer.toFixSessionSettings(
+                FromYamlFixSessionSettingsTransformer.mergeWithDefault(
+                        roundTrip(defaultSettingsBuilder.build()), roundTrip(settingsBuilder.build())));
+
+        assertThat(d.getFixApplicationSessionSettings())
+                .containsEntry(FixApplicationSessionSettingDescriptor.of("shared"), "fromSession");
+    }
+
+    @Test
     void testCertificateAreParsed() throws IOException {
         settingsBuilder
                 .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()

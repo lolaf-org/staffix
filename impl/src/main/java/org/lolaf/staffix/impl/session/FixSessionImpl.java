@@ -106,6 +106,10 @@ public class FixSessionImpl implements FixSession {
     private final SessionMessageExecutors messageExecutors;
     private final ExecutorService disconnectedSessionsExecutor;
     private final PluginsComponent plugins;
+    /**
+     * The thread of {@link #disconnectedSessionsExecutor} currently running this session's work, so that a task
+     * already on the owner is recognised as such. Written and cleared by that thread, read by any.
+     */
     private volatile Thread offlineOwnerThread;
     @Getter
     private Collection<Certificate> remoteCertificates;
@@ -587,6 +591,8 @@ public class FixSessionImpl implements FixSession {
     @ExternalThread
     public void stopProtocol(String message, Deadline stopDeadline) {
         fixSessionLayerComponents.onSessionStopping(stopDeadline);
+        // before anything else touches the connection: a retransmission still running would otherwise carry on
+        // writing into a session being torn down, and the logout below is what the peer should see next
         fixApplication.onSessionPreDestroy(this);
         if (isLoggedIn()) {
             logout(message);

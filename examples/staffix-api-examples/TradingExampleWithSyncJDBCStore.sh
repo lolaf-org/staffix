@@ -31,4 +31,4 @@ $JAVA_CMD -cp target/staffix-examples.jar -Xmx1g -Xms1g \
 --add-opens java.base/java.lang.reflect=ALL-UNNAMED \
 --add-opens java.base/sun.nio.ch=ALL-UNNAMED \
 --add-opens java.base/java.nio.channels.spi=ALL-UNNAMED \
-org.lolaf.staffix.examples.QuoteRequestExample $@
+org.lolaf.staffix.examples.TradingExample -st=JDBC -w=250 $@

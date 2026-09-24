@@ -10,6 +10,7 @@ one command and is the shortest path to a working session. Then come back here.
 | [Examples](../examples/README.md) | What does a working Staffix program look like, and which one do I copy from? |
 | [Threading model](threading-model.md) | Which thread runs my code, what may I share, and how do I get work off the message path? |
 | [Configuring a session](configuring-sessions.md) | How do I declare a session, wire it to the engine's parts, and make it behave the way my counterparty expects? |
+| [Session settings stores](session-settings-stores.md) | Where are my session settings kept, and how do I load them from YAML, the classpath or the environment? |
 | [Decoding a message](decoding-messages.md) | How do I read an inbound message, and why does Staffix only decode the fields I asked for? |
 | [FIX versions and dictionaries](fix-versions-and-dictionaries.md) | Which package do I depend on, how do I run several FIX versions at once, and how do I generate one from a counterparty's dictionary? |
 | [Stores and loggers](stores-and-loggers.md) | Where do my messages get persisted and logged, and how do I keep that off the latency path? |

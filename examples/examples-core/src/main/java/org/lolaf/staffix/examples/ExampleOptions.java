@@ -22,7 +22,7 @@ import picocli.CommandLine;
 @Data
 public class ExampleOptions {
 
-    @CommandLine.Option(names = "-d", description = "Duration in seconds of the example run", defaultValue = "60")
+    @CommandLine.Option(names = "-d", description = "Duration in seconds of the example run", defaultValue = "120")
     private long duration;
     @CommandLine.Option(names = "-c", description = "Number of fix clients running the example", defaultValue = "2")
     private int clientsCount;
