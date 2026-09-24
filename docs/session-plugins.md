@@ -125,8 +125,6 @@ each unaware of the others.
 
 ## Which thread you are on
 
-This is the part worth reading twice.
-
 **`getMessageEncodingToken` and `onMessageEncodingStarted` run on the thread that produced the message**, whichever
 application thread called `begin()`, and **may run concurrently for the same session**, because several threads may
 encode on one session at once. Their implementations must be thread-safe and cheap: this is the latency-critical

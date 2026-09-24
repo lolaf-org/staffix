@@ -1,11 +1,8 @@
 # Decoding a message
 
-Staffix is a **Streaming API for FIX**, and this guide is what the name means. A FIX message is a stream of
-`tag=value` fields, and Staffix treats it as one: the parser walks that stream once, and a field becomes a Java
-value only where your decoder asked for it. Everything else is stepped over.
-
-So decoding here is not "turn the message into an object, then read the object". It is "declare once which tags
-this application cares about, and be handed them as they go past". The message is never assembled into anything.
+Staffix is a **Streaming API for FIX**. The parser walks a message's `tag=value` fields once, and a field becomes a
+Java value only where your decoder asked for it; everything else is stepped over. You declare once which tags you
+care about and are handed them as they go past. The message is never assembled into an object.
 
 The runnable version of everything below is
 [`examples/quickstart`](../examples/quickstart/src/main/java/org/lolaf/staffix/examples/quickstart/QuickstartExample.java),
@@ -31,14 +28,8 @@ Staffix pays for six. Concretely, per field of an incoming message:
 Finding the boundaries is not optional: the byte count in `BodyLength(9)` and the `CheckSum(10)` have to be
 computed over the whole message whatever you read from it. Everything above that line is yours to decide.
 
-**The engine holds itself to the same rule**, which is the clearest illustration of it:
-
-- `SendingTime(52)` is not decoded on the message path. The parser records where the value sits and parses it only
-  if `ValidationSettings.maxSendingTime` asked for the accuracy check, or if an `OrigSendingTime(122)` on a
-  retransmission needs comparing to it.
-- A message type no application registered a decoder for is handed to a `VoidDecoder`, whose `onField` does
-  nothing. Not a null check on the parsing loop: doing nothing per field is cheaper than testing per field whether
-  to do something.
+The engine holds itself to the same rule: `SendingTime(52)` is only parsed if a validation needs it, and a message
+type nobody decodes goes to a `VoidDecoder` whose `onField` does nothing.
 
 ---
 
@@ -67,8 +58,7 @@ almost nothing: the work happened as the bytes went past.
 another system only from `onDecoded`, or from `onDecodingFailed` when the failure is what your business has to
 react to. Everything before that is the message still being read.
 
-This is not a style rule. A setter fires the moment its tag goes past, and the message is only known to be a
-message at all once the last field is in:
+A setter fires the moment its tag goes past, but the message is only known to be valid once the last field is in:
 
 - `CheckSum(10)` and the `BodyLength(9)` byte count are verified at the end. A message that fails either is
   **garbled**: it is disregarded as a whole, nothing is answered to the peer, `NextNumIn` is not advanced, and the
@@ -94,16 +84,10 @@ the wire and your decoder, which is where the latency numbers come from, and the
 do in `onDecoded` is inside your own round trip, inside your peer's, and in front of every other session sharing
 that thread.**
 
-So do the least that gets the message accepted: read your fields, build what the next stage needs, and answer the
-peer if answering is the whole job, as the quickstart's acceptor does. Anything that blocks, allocates heavily or
-waits on something else does not belong there: a database write, a lock another thread holds, an HTTP call, a
-`CompletableFuture` you join, a log of the message you already have logged for free.
-
-When the work is genuinely yours to do and too big for the thread, hand it over with
-`FixSession.getMessageExecutor`, which keeps per-key ordering and allocates nothing to enqueue. That is
-[Getting work off the I/O thread](threading-model.md#getting-work-off-the-io-thread-messageexecutor) in the
-threading model guide, and [What runs on the session's I/O thread](threading-model.md#what-runs-on-the-sessions-io-thread)
-is the full list of what shares the thread with you.
+So do the least that gets the message accepted: read your fields, and answer the peer if that is the whole job, as
+the quickstart's acceptor does. No database write, no lock another thread holds, no HTTP call, no future you join.
+Bigger work goes to `FixSession.getMessageExecutor`, which keeps per-key ordering and allocates nothing to enqueue: see
+[Getting work off the I/O thread](threading-model.md#getting-work-off-the-io-thread-messageexecutor).
 
 ---
 
@@ -382,10 +366,11 @@ is not delivered: `onDecodingFailed` is called instead and a `BusinessMessageRej
 An exception escaping a setter or `onDecoded` is caught too, and answered with a reject rather than taking the
 session down.
 
-The session layer can do part of this for you, each switch costing something on every message:
+The session layer can also reject for you (required fields, duplicate tags, field order, empty values), each check
+costing something on every message and most of them off by default: see
+[Configuring a session](configuring-sessions.md#validation).
 
-| setting | what it rejects | default |
-|---------|-----------------|---------|
+---------|-----------------|---------|
 | `validateRequiredFields` | a message missing a field the dictionary makes required | off |
 | `allowUndefinedTagsForMessage` | a valid tag that this message type does not define | on, so nothing is rejected |
 | `validateDuplicateTags` | the same tag twice at the same level | off |
@@ -399,16 +384,10 @@ The defaults are deliberate: they are the fast ones. Turn on what your counterpa
 
 ## The rules that come with the speed
 
-- **Only `onDecoded` and `onDecodingFailed` mean anything.** Every other callback is the message still being
-  read, and the message may yet turn out to be garbled, out of sequence or invalid. Accumulate there, act here.
-- **A decoder belongs to one session.** Its fields are mutable state reused across messages, with no lock, which
-  works only because the same thread drives it every time. Never share an instance between sessions.
-- **Everything happens on the session's I/O thread**, `onDecoded` included. What you do there is inside your own
-  round trip, and inside your peer's. Reusable encoders are safe there for the same reason, and the quickstart's
-  acceptor answers from inside `onDecoded`. Do the minimum, and move the rest with
+- **Accumulate in the field callbacks, act in `onDecoded` and `onDecodingFailed`.** Until then the message may still
+  turn out garbled, out of sequence or invalid.
+- **A decoder belongs to one session.** Its state is reused without a lock, safe only because one thread drives it.
+- **Everything runs on the session's I/O thread**, `onDecoded` included: do the minimum, move the rest with
   [`MessageExecutor`](threading-model.md#getting-work-off-the-io-thread-messageexecutor).
-- **Nothing you are handed outlives the callback** unless the strategy you chose says so: a `THREAD_LOCAL` value, a
-  `UTCTime`, a `DecodedFixMessage`. Copy what has to survive, and get real work off the thread with
-  `FixSession.getMessageExecutor`.
-
-[Threading model](threading-model.md) is the full account of which thread runs what.
+- **Nothing you are handed outlives the callback**: a `THREAD_LOCAL` value, a `UTCTime`, a `DecodedFixMessage`. Copy
+  what has to survive.

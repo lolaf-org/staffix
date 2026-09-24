@@ -164,12 +164,10 @@ sanitizer**, which strips what nothing in a dictionary references.
 
 ## Cutting a dictionary from an orchestration
 
-A QuickFIX-format dictionary states one version of FIX and says nothing about how it got there. An Orchestra
-repository is the FIX Trading Community's machine-readable form of the standard, and it carries every version and
-every extension pack at once, with each element marked by the version that added, changed or deprecated it. Cutting a
-dictionary out of it is what lets Staffix say exactly which standard a package speaks, and it is the only source that
-knows what the standard has deprecated, which is what becomes `@Deprecated` in the generated API. This is how every
-shipped `fix-*` dictionary is produced, and the plugin is available for your own.
+An Orchestra repository is the FIX Trading Community's machine-readable standard: every version and extension pack
+at once, each element marked with the version that added, changed or deprecated it. Cutting a dictionary from it
+states exactly which standard a package speaks, and is the only source of the deprecations that become `@Deprecated`.
+Every shipped `fix-*` dictionary is produced this way, and the plugin is available for your own.
 
 The orchestration goes in as a zip, since that is how the repositories are published:
 
@@ -232,26 +230,18 @@ FIX.5.0SP2         98-259       8033          2  upToVersion=FIX.5.0SP2 [upToExt
 
 And `dryRun` on the `generate` goal reports what a cut would remove without writing anything.
 
-The cut is reproducible: the same orchestration with the same version and extension pack always produces the same
-dictionary. What the kept messages no longer reference is still written out, so the sanitizer below is the natural
-next step, which is exactly how [`fix-latest`](../fix-packages/fix-latest/pom.xml) is built.
+What the kept messages no longer reference is still written out, so the sanitizer below is the natural next step,
+which is exactly how [`fix-latest`](../fix-packages/fix-latest/pom.xml) is built.
 
 ---
 
 ## Sanitizing a dictionary
 
-A published dictionary is a catalogue, not a description of your traffic. The shipped FIX 4.4 dictionary defines 1,071
-fields and the FIX Latest one 5,704, and a counterparty's own XML is usually the standard's file with a handful of
-additions rather than a pruned copy. Generation does not know which of those you trade: every field definition becomes
-a field class, every component a group encoder, and every enumeration a set of constants. So the fields you will never
-send cost you build time, jar size, classes to load and entries in the registries that are consulted per message, and
-they crowd your IDE's completion with the entire standard when you are looking for the ten fields your counterparty
-actually sends.
+A published dictionary is a catalogue, not your traffic: the shipped FIX 4.4 one defines 1,071 fields, FIX Latest
+5,704. Every field becomes a class and a registry entry consulted per message, and crowds your IDE's completion.
 
-The sanitizer is the cut that needs no decisions from you, because it removes only what the dictionary itself never
-refers to: components no message uses, then fields nothing in the header, the trailer, a message, a component or a
-group refers to. It logs how many of each it removed, so you can see what the cut bought. It runs as a Maven plugin
-over one XML file, writing another, and belongs before generation in the same build:
+The sanitizer removes only what the dictionary itself never refers to: components no message uses, then fields
+nothing references. It logs what it removed, and runs before generation in the same build:
 
 ```xml
 <plugin>
@@ -291,4 +281,4 @@ with `sanitizeMsgTypeField` off and the session fields named in `keepFields`.
 
 Sanitizing is the second of two cuts, and the smaller one. The first is choosing which messages to generate at all,
 which is the message list in [FIX Latest](#fix-latest) above. Cut the message list to what you trade, then sanitize
-what that leaves. [Tuning for latency](tuning-for-latency.md#the-sanitizer) covers both from the latency side.
+what that leaves. [Tuning for latency](tuning-for-latency.md#4-ship-a-dictionary-that-holds-only-what-you-use) explains why both matter at runtime.

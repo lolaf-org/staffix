@@ -62,21 +62,9 @@ there is no affinity thread factory in the library itself.
 
 ## 3. Do not turn on validation you do not need
 
-Staffix ships almost every validation **off**, and each one documents its own cost. This is the opposite of most
-engines and it is the single easiest way to give the performance back: enable a check and you pay for it on every
-message, forever.
-
-Off by default, each costing "a slight impact on performance" per its javadoc: `validateRequiredFields`,
-`validateFieldsOutOfOrder`, `validateDuplicateTags`, `validateCompId`, `validateBeginString`,
-`detectGarbledMessages`, `maxSendingTime`.
-
-On by default: `validateChecksum`, `validateFieldsHaveValues`, `allowUndefinedTagsForMessage`.
-
-`detectGarbledMessages` is the most expensive of them: it checks the position of every header field of every
-received message.
-
-Turn on what your counterparty relationship actually requires, and no more. See
-[Configuring a session](configuring-sessions.md#validation).
+Staffix ships almost every validation **off**, the opposite of most engines: each check you enable is paid on every
+message. `detectGarbledMessages` is the most expensive, checking the position of every header field. Turn on what your
+counterparty requires and no more; the list is in [Configuring a session](configuring-sessions.md#validation).
 
 ---
 
@@ -95,50 +83,15 @@ The consequence is direct: **a dictionary carrying 6,000 fields you never send m
 larger than it needs to be**: more memory, more cache lines touched, less of the hot set resident. FIX Latest defines
 over 6,000 fields; a real counterparty relationship uses a small fraction of them.
 
-### The sanitizer
+### Cutting it down
 
-The dictionary sanitizer is a Maven plugin that removes what nothing references: components no message uses, and
-fields no message, component or group refers to.
+Two cuts, in this order, both covered in
+[FIX versions and dictionaries](fix-versions-and-dictionaries.md):
 
-```xml
-<plugin>
-    <groupId>org.lolaf.staffix</groupId>
-    <artifactId>staffix-fix-dictionary-sanitizer-maven-plugin</artifactId>
-    <version>${staffix.version}</version>
-    <executions>
-        <execution>
-            <phase>generate-sources</phase>
-            <goals><goal>sanitize</goal></goals>
-            <configuration>
-                <inputFile>${project.basedir}/src/main/dictionaries/MYFIX44.xml</inputFile>
-                <outputFile>${project.basedir}/src/main/dictionaries/MYFIX44-sanitized.xml</outputFile>
-            </configuration>
-        </execution>
-    </executions>
-</plugin>
-```
-
-Point the [encoders generator](fix-versions-and-dictionaries.md#generating-a-package-from-your-own-dictionary) at the
-sanitized file. It reports what it removed, so you can see what the cut bought.
-
-Two options are worth knowing:
-
-- **`keepFields`**: field names to keep even when nothing references them. From FIX 5.0 the header and trailer are
-  empty (the session layer is FIXT.1.1's), so a 5.0+ dictionary references none of its own session fields and they
-  would all be removed. This is how you keep them.
-- **`sanitizeMsgTypeField`**: prunes MsgType(35)'s enumerated values down to the messages the dictionary actually
-  defines. Leave it off when the session layer lives in FIXT.1.1, or the value list stops agreeing with the session
-  messages that are still legal on the wire.
-
-### Better still: do not generate it in the first place
-
-Sanitizing removes what is unreferenced. Cutting the dictionary at the source removes what you are never going to
-trade. If you generate from an Orchestra repository, a message list does that. `fix-latest` ships 93 messages out of
-everything the standard defines for exactly this reason, and narrowing the list further is one text file and one
-command. See
-[FIX versions and dictionaries](fix-versions-and-dictionaries.md#fix-latest).
-
-The order to apply them in is: cut the message list to what you trade, then sanitize what that leaves.
+1. **Generate only the messages you trade.** With an Orchestra cut, a message list does this; `fix-latest` ships 93
+   messages out of the whole standard for exactly this reason. See [FIX Latest](fix-versions-and-dictionaries.md#fix-latest).
+2. **Sanitize what is left.** The [sanitizer](fix-versions-and-dictionaries.md#sanitizing-a-dictionary) plugin removes
+   components and fields nothing references, and reports what it removed.
 
 ---
 
@@ -152,29 +105,14 @@ fields "just in case".
 
 ## 6. Choose an object strategy per field
 
-For fields that must become objects, pick how each one is produced, with
-`FixFieldsDecoderMapper.ObjectInstanceStrategy`:
+For fields that must become objects, `ObjectInstanceStrategy` decides the allocation (table in
+[Decoding a message](decoding-messages.md#what-a-decoded-object-costs)):
 
-| strategy | allocation | constraint |
-|----------|-----------|------------|
-| `NEW_INSTANCE` | one object per decoded value | none; safe to retain and to hand to another thread |
-| `CACHED` | only on a value not seen before | **cache is unbounded**, so small value universes only |
-| `THREAD_LOCAL` | none | reference dies at the next `THREAD_LOCAL` field; never hand it to another thread |
-
-```java
-mapper.mapStringField(Symbol.get(), this::setSymbol, null, CACHED)
-      .mapStringField(QuoteReqID.get(), this::setQuoteReqId, null, THREAD_LOCAL);
-```
-
-`CACHED` suits symbols, currencies, exchanges and enumerations: values that repeat forever. **Using it on a
-high-cardinality field leaks memory**: the cache is bound to the session and never evicts, so an order id or a
-timestamp will grow it without limit.
-
-`THREAD_LOCAL` gives zero allocation with the tightest constraint: the value is valid inside the setter, and across
-the message only if it is the only `THREAD_LOCAL` field on that decoder. Read it, copy what you need, do not store
-the reference.
-
-`UUID` supports `NEW_INSTANCE` and `THREAD_LOCAL`; `CACHED` throws.
+- **`CACHED`** for values that repeat forever: symbols, currencies, exchanges, enumerations. **On a high-cardinality
+  field it leaks memory**: the cache belongs to the session and never evicts, so an order id grows it without limit.
+- **`THREAD_LOCAL`** for zero allocation, with the tightest constraint: valid inside the setter, and across the
+  message only if it is the decoder's only `THREAD_LOCAL` field. Copy what you need, never store the reference.
+- **`NEW_INSTANCE`**, the default, for anything kept or handed to another thread.
 
 ---
 

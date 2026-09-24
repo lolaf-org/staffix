@@ -51,9 +51,8 @@ engine-level MBean. Any JMX client (JConsole, VisualVM, your monitoring agent) c
 
 ## Writing your own exporter
 
-This is the point of the split. If JMX is not your operational protocol, implement `AdminApiExporter`, register it
-with a settings object the same way, and you keep the entire administrative surface over REST, gRPC, a control topic
-or your firm's own management bus, without touching the engine or reimplementing session control.
+If JMX is not your operational protocol, implement `AdminApiExporter` and register it with a settings object like
+any other part: the whole administrative surface is then available over REST, gRPC or your own management bus.
 
 ```java
 public class RestAdminApi implements AdminApiExporter {
@@ -70,23 +69,11 @@ worked example: it is a thin adapter, and yours should be too.
 
 ## Spring Boot
 
-The starter wires the JMX exporter from properties:
-
-```properties
-staffix.admin-api-jmx.domain=com.example.trading
-```
-
-and the actuator module adds a `fix-sessions` endpoint alongside it:
-
-```properties
-management.endpoints.web.exposure.include=fix-sessions,health,info
-staffix.actuator.enabled=true
-staffix.actuator.fix-session-state-contributes-to-heath-status=true
-```
-
-That last line is the one worth thinking about: it makes a session being down turn the application's health
-endpoint red, which is usually what you want a load balancer or an orchestrator to see, and occasionally exactly
-what you do not, if a session is scheduled to be down outside trading hours.
+The starter wires the JMX exporter from properties, and the actuator module adds a `fix-sessions` endpoint; the
+properties are in [Spring Boot](spring-boot.md#monitoring-and-admin). Think before setting
+`staffix.actuator.fix-session-state-contributes-to-heath-status=true`: a session being down then turns the health
+endpoint red, which a load balancer should usually see, but not for a session scheduled to be down outside trading
+hours.
 
 ---
 

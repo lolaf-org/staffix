@@ -111,8 +111,6 @@ The quickstart uses the SLF4J logger with both directions on, which is why you c
 
 ## Taking I/O off the session thread
 
-This is the setting that matters most in this guide.
-
 Both `AsyncMessagesStoreSettings` and `AsyncMessagesLoggerSettings` are **decorators**: they wrap another store or
 logger, and change when the work happens rather than what it does. The session thread hands the operation to a
 Chronicle Queue and returns; a background thread performs the database write, the file append or the network call.

@@ -148,54 +148,11 @@ The two compose: throttle to reduce the volume, then wrap that in async to get w
 
 ---
 
-## Everything here is a plugin
-
-Two interfaces, both in `staffix-api`, carry all of it. What follows is the short version, enough to read the
-monitoring configuration above; [Session plugins](session-plugins.md) is the guide to writing one, and
-[`examples/plugin-api`](../examples/plugin-api) is a working plugin to read.
-
-**`FixSessionsPlugin<C>`** is the engine-level component you register. Its one job is to be asked, per session,
-whether it wants to observe that session:
-
-```java
-Optional<? extends FixSessionPlugin<C, ?>> onSessionCreated(
-        String fixInstanceId, FixSession fixSession,
-        Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes);
-```
-
-Returning `Optional.empty()` means "not interested in this one", and costs nothing thereafter. When you do return a
-plugin it **must be a fresh instance for that session**; shared instances across sessions are not supported, which
-is what lets a per-session plugin keep mutable state without synchronising.
-
-**`FixSessionPlugin<C, T>`** is that per-session instance, and it is where the callbacks live. Every one is a
-`default` method, so you implement only what you care about:
-
-| callback | fires |
-|----------|-------|
-| `onLogon()` / `onLogout()` | session up, session down |
-| `onDecoderSetup(decoder, mapper)` | as a decoder is built, the hook for adding your own field mappings |
-| `onMessageDecodingStarted` / `onMessageDecodingFinished` | around parsing an inbound message |
-| `onMessageReceived(type, payloadSize, …)` | an inbound message is complete |
-| `getMessageEncodingToken` → `onMessageEncodingStarted` / `…Finished` / `onMessageEncodedBody` | around encoding an outbound message |
-| `onMessageSent(type, payloadSize, …)` | an outbound message has gone |
-| `onRttMeasurement(measurement)` | a round-trip sample, if RTT probing is on |
-| `onSessionDestroyed(…)` | teardown |
-
-The encoding callbacks pass a **token** you create in `getMessageEncodingToken` and get handed back, so you can
-carry state from the start of an encode to its end without allocating a map or a thread-local to find it again.
-
-`requiresTimeMeasurement()` deserves a mention of its own. It defaults to `false`, and the engine only takes the
-timestamps the timing callbacks need when some plugin has said it wants them. **A plugin that does not ask does not
-make the session pay for clock reads.** That is the same rule the rest of the engine follows, applied to
-observability.
-
----
-
 ## Writing your own
 
-Micrometer and OpenTelemetry are the implementations that ship. They are not the only ones you can have. The
-mechanics (settings class, SPI factory, threading, what each callback may do) are in
-[Session plugins](session-plugins.md); what follows is what is specific to replacing *these* two.
+Both shipped backends are ordinary session plugins, so replacing one is writing a plugin: the mechanics (settings
+class, SPI factory, threading, callbacks) are in [Session plugins](session-plugins.md). What follows is specific to
+these two.
 
 ### Your own metrics backend
 
@@ -207,36 +164,23 @@ public interface FixSessionsMonitoringManager
 }
 ```
 
-That is the whole of it: a session plugin that can be started and stopped. Implement it, publish a settings class
-alongside it as every other pluggable part does, and register it with `fixSessionsPlugin(…)`. Sessions then select it
-exactly as they select the shipped one:
+A session plugin that can be started and stopped. Implement it, register it with `fixSessionsPlugin(…)`, and sessions
+select it exactly as they select the shipped one, because `matchesPluginClass` answers for the interface:
 
 ```java
 .fixSessionPluginsInstanceId(FixSessionsMonitoringManager.class, "my-metrics")
 ```
 
-That selector works because a plugin declares which generic interface it satisfies through
-`matchesPluginClass(Class<? extends FixSessionsPlugin<?>>)`, so **your implementation is addressed by the same
-interface as the shipped one**, and swapping backends is a configuration change rather than a code change in the
-sessions.
-
-Reasons to do this are real: an in-house metrics system, a StatsD or Prometheus client you already run, or counters
-written straight into a shared-memory region for an out-of-band collector to read.
+Swapping backends is then a configuration change, not a change to the sessions.
 
 ### Your own tracing
 
-Tracing is a plugin like any other, but note the asymmetry: **there is no tracing interface in `staffix-api`.**
-`OtelTracing` and `FixTracer` live in `staffix-monitoring-tracing-otlp-impl`, so a different tracing system is not a
-matter of implementing an API-level contract: you write a `FixSessionsPlugin` of your own against the callbacks
-above, and use its own type as the selector key the way `OtelTracing.class` is used.
+**There is no tracing interface in `staffix-api`**: `OtelTracing` lives in the OTLP module. Write a `FixSessionsPlugin`
+and use its own class as the selector key, the way `OtelTracing.class` is used. `onDecoderSetup` is where a
+trace-context field gets mapped without the application knowing.
 
-`onDecoderSetup` is the callback that makes cross-firm tracing possible at all: it hands you the decoder and its
-field mapper as it is built, which is where a trace-context field gets mapped without the application knowing.
-
-### What you get for free
-
-Anything implementing `FixSessionsPlugin` composes with the two wrappers below, so a plugin of your own can be made
-asynchronous or sampled without you writing either mechanism.
+Either way, your plugin composes with the [async and throttling wrappers](#keeping-monitoring-off-the-message-path)
+for free.
 
 ---
 

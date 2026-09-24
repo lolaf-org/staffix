@@ -65,9 +65,8 @@ FixSessionSettings.builder()
 | `fixApplicationInstanceId` | `DEFAULT_INSTANCE_ID` | which application *within* that factory |
 | `dictionaryId` | `FixDictionaryId.DEFAULT_ID` | which FIX dictionary this session speaks |
 
-All four default to the same id, so a single-session engine can leave every one of them out. The moment you run an
-acceptor and an initiator in one process, set them: this is what keeps their sequence numbers, logs and applications
-apart.
+The four instance ids default to the same id, so a single-session engine can leave them out. Once an acceptor and an
+initiator share a process, set them: this is what keeps their sequence numbers, logs and applications apart.
 
 ---
 
@@ -86,14 +85,12 @@ apart.
 `resetSeqNumOnLogon(true)` is what the quickstart uses so it can be run repeatedly without state. Production sessions
 usually want persistence and real recovery instead; see [Stores and loggers](stores-and-loggers.md).
 
-A retransmission drives everything behind it: messages received on top of the gap are only delivered once the request
-completes, and your own application messages are held back meanwhile. `resendRequestResponseTimeout` is what keeps an
-answer that stops half way (a garbled message inside the range is the ordinary way there) from stalling the session
-for good while heartbeats keep both ends believing it is healthy. It is measured from the last message that advanced
-the recovery rather than from the request, so a long but progressing retransmission never trips it; on expiry the
-missing part of the range is asked for once more, and a second expiry logs the session out. Note that the second
-request means the application sees `onResendRequestInitiated` twice for one gap, against a single
-`onResendRequestTerminated`.
+While a resend is in flight, messages received beyond the gap wait for it, and so do your own outgoing messages.
+`resendRequestResponseTimeout` stops an answer that stalls half way (typically on a garbled message in the range) from
+blocking the session forever while heartbeats keep it looking healthy. It counts from the last message that advanced
+the recovery, so a slow but progressing resend never trips it. On expiry the missing range is requested once more; a
+second expiry logs the session out. The application then sees `onResendRequestInitiated` twice for one gap, and
+`onResendRequestTerminated` once.
 
 ---
 
@@ -119,8 +116,8 @@ Session schedules live in `sessionScheduleSettings` and decide when the session 
 
 ## Validation
 
-Validation is where Staffix's defaults will surprise you if you come from another engine: **almost everything is off**.
-That is deliberate: every check costs time on the message path, and the engine will not spend it unless you say so.
+Coming from another engine, this will surprise you: **almost every check is off**, because each one costs time on
+every message.
 
 Enabled by default:
 
@@ -176,23 +173,9 @@ SessionRejectReason 9, *CompID problem*, without dropping the session.
 
 ## Measuring round-trip time and clock offset
 
-Set `rttMeasurementSettings.probeInterval` to a positive duration and the session continuously measures round-trip
-time and the peer's clock offset using TestRequest probes. It is off by default.
-
-| setting | default |
-|---------|---------|
-| `probeInterval` | `null` (disabled) |
-| `emaTimeWindow` | 30 seconds; longer absorbs more jitter, converges slower |
-| `maxAcceptedRtt` | 2 seconds; samples above this are discarded as outliers |
-| `probeTestReqIdPrefix` | `"RTT-measurement-"`, so probes are distinguishable in logs |
-| `sendingTimeToWireDelay` | 1500 ns, the modelled delay between the peer stamping SendingTime and the bytes leaving its wire |
-
-That last one is worth understanding before you trust the offset: the NTP-style formula assumes the remote's
-timestamp is taken at transmission, and it is not; it is taken while encoding. `sendingTimeToWireDelay` is the
-empirical correction for the encode tail, write syscall, kernel queueing and NIC handoff.
-
-How the measurement works, how to calibrate that correction, what the numbers are worth and where they surface are
-all in [Network monitoring](network-monitoring.md).
+Set `rttMeasurementSettings.probeInterval` and the session continuously measures round-trip time and the peer's
+clock offset with TestRequest probes. Off by default. The settings, how to calibrate the offset and where the numbers
+surface are in [Network monitoring](network-monitoring.md#turning-it-on).
 
 ---
 
@@ -309,12 +292,10 @@ With `restartLiveSessionOnUpdate(false)` the new settings are managed immediatel
 ones it was created with: **nothing is applied in place**. That is one rule rather than a list of which settings can
 be changed live and which cannot.
 
-"Live" is the whole of the condition: a session that is not connected is never restarted, because it does not need
-to be: it picks the new settings up when it next connects.
+A session that is not connected is never restarted: it picks the new settings up when it next connects.
 
-Both flags are read from the settings the session is **running under**, not from the ones replacing them. The flag
-describes how *this* session may be treated, and this session is the one a restart would disturb; a new policy
-governs the update after it.
+Both flags are read from the settings the session is **running under**, not from the ones replacing them: a new
+policy only governs the update after it.
 
 ---
 

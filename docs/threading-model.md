@@ -1,7 +1,7 @@
 # Threading model
 
-Almost everything your application code sees happens on **one thread per session: the session's I/O thread**. Read
-that sentence twice: most of the rules below follow from it, and most bugs come from assuming otherwise.
+Almost everything your application code sees happens on **one thread per session: the session's I/O thread**. Most
+of the rules below follow from it, and most bugs come from assuming otherwise.
 
 ---
 

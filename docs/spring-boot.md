@@ -113,8 +113,8 @@ staffix.actuator.enabled=true
 staffix.actuator.fix-session-state-contributes-to-heath-status=true
 ```
 
-The actuator module adds a `fix-sessions` endpoint and, optionally, folds session state into the application's health
-status; see [Runtime administration](runtime-administration.md#spring-boot).
+The actuator module adds a `fix-sessions` endpoint and can fold session state into the health status; see
+[Runtime administration](runtime-administration.md#spring-boot) before turning that on.
 
 Plugin wrappers compose by referencing another instance's key:
 

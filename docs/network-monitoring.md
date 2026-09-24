@@ -1,11 +1,10 @@
 # Network monitoring
 
-A FIX session is a TCP connection to a host you do not control, and two things about it are operational questions
-rather than application ones: **how long the line takes**, and **whether the two clocks agree**. Staffix answers both
-from inside the session, continuously, with no external probe and nothing proprietary on the wire: it uses the
-protocol's own TestRequest/Heartbeat exchange as an NTP-style timing probe.
+Two operational questions about a FIX session: **how long the line takes**, and **whether the two clocks agree**.
+Staffix answers both from inside the session, using the protocol's own TestRequest/Heartbeat exchange as an NTP-style
+probe: nothing proprietary on the wire, nothing to agree with the counterparty.
 
-That gives you three numbers per session, updated as the session runs:
+Three numbers per session, updated as it runs:
 
 | measurement | what it is |
 |-------------|------------|
@@ -13,15 +12,12 @@ That gives you three numbers per session, updated as the session runs:
 | `clockOffset` | EMA-smoothed remote-vs-local wall-clock offset. **Positive means the remote clock is ahead of yours** |
 | `sampleTime` | local wall-clock instant of the most recent accepted sample |
 
-Both estimates are per session, because that is the unit that has a line and a peer.
-
 ---
 
 ## How it is measured
 
-Nothing here is an extension. The probe is a plain `TestRequest(35=1)`, and the answer is the `Heartbeat(35=0)` the
-standard obliges the peer to send back with the same `TestReqID(112)`, so this works against any conforming
-counterparty, QuickFIX/J, Artio or an exchange gateway alike, with nothing to agree bilaterally.
+The probe is a plain `TestRequest(35=1)`, answered by the `Heartbeat(35=0)` the standard obliges the peer to send
+with the same `TestReqID(112)`, so it works against any conforming counterparty.
 
 1. The session sends a TestRequest whose `TestReqID` carries `probeTestReqIdPrefix`. In the **send callback**, so
    only if the message actually went out, it records the local monotonic time and the local wall-clock time.
@@ -33,10 +29,9 @@ roundTripTime = recvMonotonic − sendMonotonic
 clockOffset   = R − (T1 + T2) / 2          ← the NTP formula, assuming symmetric one-way latency
 ```
 
-Both samples then feed a **time-based EMA**: the weight of a sample is derived from how long it has actually been
-since the previous accepted one (`tau = emaTimeWindow / 3`), so the estimator is sample-rate-invariant: continuous
-probing, occasional heartbeat-driven probes and dropped outliers all behave the same, and a long idle gap reseeds the
-estimate instead of averaging it with something stale.
+Both samples feed a **time-based EMA** weighted by the time since the previous accepted sample
+(`tau = emaTimeWindow / 3`), so regular probes, occasional ones and dropped outliers behave the same, and a long idle
+gap reseeds the estimate instead of averaging with something stale.
 
 **Heartbeat-driven TestRequests feed the same estimator**, whether or not probing is on. Those are the ones the
 session sends by itself when the peer has gone quiet for a heartbeat interval, so even a session with
@@ -90,10 +85,10 @@ and in Spring Boot properties, in kebab-case under `rtt-measurement`:
 staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].rtt-measurement.probe-interval=1s
 ```
 
-**Probing is not free on the wire.** Each interval costs one TestRequest out and one Heartbeat back, and both consume
-a sequence number like any other message: at `probeInterval` of one second that is 86,400 extra messages a day in
-each direction, all of them stored and logged as the session's settings dictate. Pick the interval from how fast you
-need to see the line change, not from how precise you would like the number to be; the EMA is doing the precision.
+**Probing is not free on the wire.** Each interval costs a TestRequest and a Heartbeat, each taking a sequence number
+and being stored and logged: at one second, 86,400 extra messages a day each way. Pick the interval from how fast you
+need to see the line change; the EMA provides the precision. Off the wire the cost is small: one scheduled task, a map
+insert and removal per probe, and two EMA updates per sample, on the session's I/O thread.
 
 ---
 
@@ -224,15 +219,3 @@ estimate is yours, while the rejection has to be defensible to the counterparty.
 
 `maxSendingTime` is `null` by default, and the check parses `SendingTime` on every inbound message, which the parser
 otherwise defers. See [Tuning for latency](tuning-for-latency.md).
-
----
-
-## What it costs
-
-Nothing, unless you turn it on. With `probeInterval` set, per session: one scheduled task, one TestRequest and one
-Heartbeat per interval on the wire, a map insert and removal per probe, and two long EMA updates per accepted
-sample. The estimator runs on the session's I/O thread, inside the message processing that was happening anyway.
-
-The metrics are a separate opt-in on top (`rttLatencyEnabled`, `clockOffsetEnabled`), and the plugin carrying them
-can be moved off the message path entirely; see
-[Monitoring](monitoring.md#keeping-monitoring-off-the-message-path).
