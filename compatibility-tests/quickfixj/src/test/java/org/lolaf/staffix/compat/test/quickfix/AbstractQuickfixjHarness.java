@@ -953,16 +953,22 @@ abstract class AbstractQuickfixjHarness {
      * Rewinds what the staffix side expects to receive next, so that it believes it missed the {@code count} messages
      * it in fact already has. The next message to arrive then looks like the far end of a gap, which is what makes a
      * session ask for a retransmission without having to take the connection down first.
+     * <p>
+     * Waits for the store to catch up first: the application sees a message before its MsgSeqNum(34) is stored, so a
+     * rewind made on seeing it would be overwritten.
      */
     void makeStaffixExpectMissedMessages(int count) {
+        awaitIncomingSequenceResynchronised();
         staffixMessagesStore.setCurrentIncomingSeqNum(staffixMessagesStore.getIncomingSeqNum() - count);
     }
 
     /**
-     * The QuickFIX/J counterpart of {@link #makeStaffixExpectMissedMessages(int)}.
+     * The QuickFIX/J counterpart of {@link #makeStaffixExpectMissedMessages(int)}, with the same wait: QuickFIX/J also
+     * advances its expected number after handing the message to the application.
      */
     @SneakyThrows
     void makeQuickfixExpectMissedMessages(int count) {
+        awaitSequencesResynchronised();
         quickfixSession().setNextTargetMsgSeqNum(quickfixSession().getExpectedTargetNum() - count);
     }
 
