@@ -32,6 +32,8 @@ import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 
@@ -291,6 +293,43 @@ class TestAsyncMessagesStore {
     }
 
     @Test
+    void testBatchingFindAndStopSeeEveryEventOfABatchWritten() {
+        asyncMessagesStore.stop(Deadline.immediate());
+
+        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = getBatchingFixSessionMessagesStoreMock();
+
+        asyncMessagesStoreSettings = asyncMessagesStoreSettings.toBuilder()
+                .asyncStoreSettings(asyncMessagesStoreSettings.getAsyncStoreSettings().toBuilder()
+                        .eventsBatching(10)
+                        .batchingFlushInterval(Duration.ofSeconds(1))
+                        .build())
+                .wrappedFixMessagesStoreSettings(TestingFixMessagesStoreSettings.builder()
+                        .testingFixSessionMessagesStore(batchingFixSessionMessagesStore)
+                        .build())
+                .build();
+
+        asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
+        asyncMessagesStore.start();
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+        asyncMessageStore.start();
+
+        for (int i = 1; i <= 5; i++) {
+            asyncMessageStore.storeMessageSent(i, testMessage);
+        }
+
+        asyncMessageStore.find(1, 5, (seqNum, message) -> true);
+        verify(batchingFixSessionMessagesStore).storeSentFixMessages(any(), eq(5));
+        verify(batchingFixSessionMessagesStore).find(eq(1L), eq(5L), any());
+
+        asyncMessageStore.storeMessageSent(6, testMessage);
+        long stopStart = System.nanoTime();
+        asyncMessageStore.stop(Deadline.of(Duration.ofSeconds(30)));
+
+        verify(batchingFixSessionMessagesStore).storeSentFixMessages(any(), eq(1));
+        assertThat(Duration.ofNanos(System.nanoTime() - stopStart)).isLessThan(Duration.ofSeconds(10));
+    }
+
+    @Test
     void testRestartWithPendingMessageWillReprocessThem() {
         asyncMessageStore.start();
         for (int i = 0; i < 32 * 1024; i++) {
@@ -351,6 +390,89 @@ class TestAsyncMessagesStore {
         assertThat(asyncMessageStore.getQueuePollsCount()).isGreaterThan(128);
         // unless we have a blazing fast test env it should work
         assertThat(asyncMessageStore.getQueuePollsCount()).isLessThan(8 * 1024);
+    }
+
+    @Test
+    void testFindFailsWhileTheUnderlyingStoreIsDown() {
+        asyncMessageStore.start();
+        when(messageStore.isUnderlyingStorageResourceAvailable()).thenReturn(false);
+        doThrow(new IllegalStateException("test exception")).when(messageStore).storeMessageSent(anyLong(), any());
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isFalse());
+
+        assertThatThrownBy(() -> asyncMessageStore.find(1L, 1L, (seqNum, message) -> true))
+                .isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class)
+                .hasMessageContaining("is down");
+        verify(messageStore, never()).find(anyLong(), anyLong(), any());
+
+        doNothing().when(messageStore).storeMessageSent(anyLong(), any());
+        when(messageStore.isUnderlyingStorageResourceAvailable()).thenReturn(true);
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
+
+        asyncMessageStore.find(1L, 1L, (seqNum, message) -> true);
+        verify(messageStore).find(eq(1L), eq(1L), any());
+    }
+
+    @Test
+    void testFindFailsWhenAWriteOutlastsTheTimeout() throws InterruptedException {
+        restartWithFindTimeout(Duration.ofMillis(200));
+        CountDownLatch writeReleased = new CountDownLatch(1);
+        CountDownLatch writeStarted = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            writeStarted.countDown();
+            writeReleased.await();
+            return null;
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        writeStarted.await();
+
+        try {
+            assertThatThrownBy(() -> asyncMessageStore.find(1L, 1L, (seqNum, message) -> true))
+                    .isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class)
+                    .hasMessageContaining("1 writes pending");
+            verify(messageStore, never()).find(anyLong(), anyLong(), any());
+        } finally {
+            writeReleased.countDown();
+        }
+    }
+
+    /**
+     * The event is already polled while it is being written, so the queue is empty: waiting on the queue alone would
+     * read the wrapped store before the write lands.
+     */
+    @Test
+    void testFindWaitsForAWriteInFlight() throws InterruptedException {
+        asyncMessageStore.start();
+        AtomicBoolean written = new AtomicBoolean();
+        CountDownLatch writeStarted = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            writeStarted.countDown();
+            Thread.sleep(300);
+            written.set(true);
+            return null;
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        AtomicBoolean writtenWhenRead = new AtomicBoolean();
+        doAnswer(invocation -> {
+            writtenWhenRead.set(written.get());
+            return null;
+        }).when(messageStore).find(anyLong(), anyLong(), any());
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        writeStarted.await();
+
+        asyncMessageStore.find(1L, 1L, (seqNum, message) -> true);
+
+        assertThat(writtenWhenRead).isTrue();
+    }
+
+    private void restartWithFindTimeout(Duration findTimeout) {
+        asyncMessagesStore.stop(Deadline.immediate());
+        asyncMessagesStoreSettings = asyncMessagesStoreSettings.toBuilder()
+                .findWaitForEmptyQueueTimeout(findTimeout)
+                .build();
+        asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
+        asyncMessagesStore.start();
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+        asyncMessageStore.start();
     }
 
     private void assertBatchingMessageProcessed(int times, int sentFixMessageArraySize, int sentFixMessageCount, FixMessagesStore.BatchingFixSessionMessagesStore batchingLogger, ByteBuffer message) {

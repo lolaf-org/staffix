@@ -133,14 +133,17 @@ process crash rather than dying with the buffer that held it.
 | `useDirectByteBuffer` | `true` | off-heap handover |
 | `underlyingStoreResourceWatchTaskCheckDelay` | 2 seconds | how often the watchdog re-checks a failed backend |
 | `flushPendingMessagesOnStartupDelay` | 60 seconds | how long to spend draining a queue left by a previous run |
-| `findWaitForEmptyQueueTimeout` | 5 seconds | how long a read waits for the queue to drain, so a lookup sees writes still in flight |
+| `findWaitForEmptyQueueTimeout` | 5 seconds | how long a resend waits for pending writes before failing |
 
 **The guarantee to understand:** wrapping a JDBC store in the async decorator means a slow database costs you queue
 depth, not round-trip time. A watchdog tracks the backing store's health and keeps queueing through an outage instead
 of pushing the failure back onto the session.
 
 **And the trade:** a store answers resend requests, so a message still in the queue is a message not yet in the
-database. `findWaitForEmptyQueueTimeout` is what stops a resend reading a store that has not caught up. If your
+database. A resend first waits, up to `findWaitForEmptyQueueTimeout`, for every pending write to land. If they have not
+landed by then, or the database is down, the read fails and the session logs out instead of answering: a resend from
+an incomplete store would gap fill the missing messages, and the peer would never see them. It asks again on its next
+logon. If your
 compliance position is that a message must be durably in the database before it goes on the wire, the async wrapper
 is not what you want: a queue that survives a crash is not the same guarantee as a committed transaction.
 

@@ -102,7 +102,8 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
 
 
         /**
-         * Indicates if the underlying resource to store the messages is currently available or not, this method should not throw an exception under any circumstances
+         * Indicates if the underlying resource to store the messages is currently available or not,
+         * this method should not throw an exception under any circumstances, can be called even if the store is not started
          */
         default boolean isUnderlyingStorageResourceAvailable() {
             return true;
