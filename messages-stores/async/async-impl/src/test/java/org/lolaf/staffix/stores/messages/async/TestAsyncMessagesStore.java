@@ -346,6 +346,47 @@ class TestAsyncMessagesStore {
     }
 
     @Test
+    void testStartFailsWhenThePreviousRunWritesCannotBeFlushedInTime() throws InterruptedException {
+        asyncMessagesStore.stop(Deadline.immediate());
+        asyncMessagesStoreSettings = asyncMessagesStoreSettings.toBuilder()
+                .flushPendingMessagesOnStartupDelay(Duration.ofMillis(200))
+                .build();
+        asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
+        asyncMessagesStore.start();
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+
+        AtomicBoolean blockWrites = new AtomicBoolean();
+        CountDownLatch writeReleased = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            if (blockWrites.get()) {
+                writeReleased.await();
+            }
+            return null;
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+
+        asyncMessageStore.start();
+        for (int i = 0; i < 32 * 1024; i++) {
+            asyncMessageStore.storeMessageSent(i, testMessage);
+        }
+        asyncMessageStore.stop(Deadline.immediate());
+        assertThat(asyncMessageStore.hasEmptyQueue()).isFalse();
+
+        blockWrites.set(true);
+        clearInvocations(messageStore);
+        try {
+            assertThatThrownBy(() -> asyncMessageStore.start())
+                    .isInstanceOf(Startable.StartStopException.class)
+                    .hasMessageContaining("writes pending from a previous run");
+            assertThat(asyncMessageStore.isStarted()).isFalse();
+            verify(messageStore, never()).getOutgoingSeqNum();
+            verify(messageStore, never()).getIncomingSeqNum();
+            verify(messageStore).stop(any());
+        } finally {
+            writeReleased.countDown();
+        }
+    }
+
+    @Test
     void testStopWithImmediateFlushDeadline() {
         asyncMessageStore.start();
         for (int i = 0; i < 32 * 1024; i++) {

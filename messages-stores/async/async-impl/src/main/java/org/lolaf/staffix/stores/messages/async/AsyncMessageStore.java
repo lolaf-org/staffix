@@ -178,10 +178,20 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
             if (asyncMessagesStoreSettings.getFlushPendingMessagesOnStartupDelay() != null) {
                 flushMessagesIfNeeded(Deadline.of(asyncMessagesStoreSettings.getFlushPendingMessagesOnStartupDelay()));
             }
+            failStartIfWritesArePending();
             incomingSequenceNumber.set(wrappedStore.getIncomingSeqNum());
             outgoingSequenceNumber.set(wrappedStore.getOutgoingSeqNum());
         } else {
             throw new StartStopException("Underlying messages storage resource '" + wrappedStore.getUnderlyingStorageResourceDescription() + "' is not available for FIX session " + fixSessionId);
+        }
+    }
+
+    private void failStartIfWritesArePending() throws StartStopException {
+        long pendingWrites = pendingWrites();
+        if (pendingWrites > 0) {
+            stopMe(Deadline.immediate());
+            throw new StartStopException("Async messages store for FIX session " + fixSessionId + " still has " + pendingWrites
+                    + " writes pending from a previous run, refusing to start with stale sequence numbers");
         }
     }
 

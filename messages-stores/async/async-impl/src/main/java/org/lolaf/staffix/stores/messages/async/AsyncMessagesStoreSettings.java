@@ -44,10 +44,11 @@ public class AsyncMessagesStoreSettings implements FixMessagesStoreSettings {
     @Builder.Default
     private Duration underlyingStoreResourceWatchTaskCheckDelay = Duration.ofSeconds(2);
     /**
-     * Max duration to flush all pending message on startup that for some reason have not been processed before last shutdown
+     * Max duration {@code start} waits for the writes a previous run left pending; past it, {@code start} fails rather
+     * than read stale sequence numbers. {@code null} does not wait, so any pending write fails the start.
      */
     @Builder.Default
-    private Duration flushPendingMessagesOnStartupDelay = Duration.ofSeconds(60);
+    private Duration flushPendingMessagesOnStartupDelay = Duration.ofSeconds(120);
     /**
      * Max duration a {@code find} call waits for every pending write to reach the wrapped store before reading, so a
      * resend sees messages stored just before; past it, {@code find} throws rather than read an incomplete store.

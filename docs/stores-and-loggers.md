@@ -27,16 +27,22 @@ verified against one shared contract test suite, including one you write yoursel
 
 ```java
 MemoryMessageStoreSettings.builder()
-        .instanceId("acceptor")
-        .maxEntriesInMemory(1024)
-        .build()
+        .
+
+instanceId("acceptor")
+        .
+
+maxEntriesInMemory(1024)
+        .
+
+build()
 ```
 
-| setting | default |
-|---------|---------|
-| `maxEntriesInMemory` | `1024` |
-| `useDirectMemory` | `true` |
-| `messageFilter` | keeps everything |
+| setting              | default          |
+|----------------------|------------------|
+| `maxEntriesInMemory` | `1024`           |
+| `useDirectMemory`    | `true`           |
+| `messageFilter`      | keeps everything |
 
 Fast and lossy: nothing survives a restart. `maxEntriesInMemory(0)` keeps nothing at all, which is what the
 benchmarks use to measure the protocol path alone. Right for development, tests and sessions that reset sequence
@@ -46,16 +52,22 @@ numbers on every logon.
 
 ```java
 FileMessageStoreSettings.builder()
-        .instanceId("acceptor")
-        .storageDirectoryPath("/var/lib/staffix/acceptor")
-        .build()
+        .
+
+instanceId("acceptor")
+        .
+
+storageDirectoryPath("/var/lib/staffix/acceptor")
+        .
+
+build()
 ```
 
-| setting | default |
-|---------|---------|
-| `storageDirectoryPath` | *required* |
+| setting                     | default                 |
+|-----------------------------|-------------------------|
+| `storageDirectoryPath`      | *required*              |
 | `blocksCount` / `blockSize` | implementation defaults |
-| `syncWrites` | `true` |
+| `syncWrites`                | `true`                  |
 
 `syncWrites(true)` is the durable setting and the reason a file store costs more than a memory one: it forces the
 write out before the session continues. Turn it off and you trade recovery guarantees for latency; better still, keep
@@ -65,18 +77,26 @@ it on and put the store behind the [async wrapper](#taking-io-off-the-session-th
 
 ```java
 JdbcMessageStoreSettings.builder()
-        .instanceId("acceptor")
-        .dataSource(myDataSource)
-        .maxMessagesPerSession(1_000_000)
-        .build()
+        .
+
+instanceId("acceptor")
+        .
+
+dataSource(myDataSource)
+        .
+
+maxMessagesPerSession(1_000_000)
+        .
+
+build()
 ```
 
-| setting | default |
-|---------|---------|
-| `dataSource` | *required* |
-| `tablePrefix` | `""` |
-| `maxMessagesPerSession` | `0` (unlimited) |
-| `pruningCheckInterval` | 5 minutes |
+| setting                    | default            |
+|----------------------------|--------------------|
+| `dataSource`               | *required*         |
+| `tablePrefix`              | `""`               |
+| `maxMessagesPerSession`    | `0` (unlimited)    |
+| `pruningCheckInterval`     | 5 minutes          |
 | `scheduledExecutorService` | supplied if absent |
 
 Schemas are generated rather than shipped as a fixed `.sql`: the DDL generator plugin produces them for several
@@ -97,13 +117,13 @@ persistence affordable.
 
 Registered the same way, selected per session by `fixMessageLoggerInstanceId`.
 
-| logger | use |
-|--------|-----|
+| logger                        | use                                                                                   |
+|-------------------------------|---------------------------------------------------------------------------------------|
 | `Slf4jMessagesLoggerSettings` | into your existing logging stack. `logIncoming` / `logOutgoing` toggle each direction |
-| `FileMessagesLoggerSettings` | straight to file, without going through a logging framework |
-| `OtlpMessagesLoggerSettings` | exports over OTLP, so messages land beside your metrics and traces |
-| `DemuxMessagesLoggerSettings` | fans out to several of the above |
-| `AsyncMessagesLoggerSettings` | wraps any of them, see below |
+| `FileMessagesLoggerSettings`  | straight to file, without going through a logging framework                           |
+| `OtlpMessagesLoggerSettings`  | exports over OTLP, so messages land beside your metrics and traces                    |
+| `DemuxMessagesLoggerSettings` | fans out to several of the above                                                      |
+| `AsyncMessagesLoggerSettings` | wraps any of them, see below                                                          |
 
 The quickstart uses the SLF4J logger with both directions on, which is why you can watch the session come up.
 
@@ -117,23 +137,33 @@ Chronicle Queue and returns; a background thread performs the database write, th
 
 ```java
 AsyncMessagesStoreSettings.builder()
-        .wrappedFixMessagesStoreSettings(JdbcMessageStoreSettings.builder()
-                .instanceId("acceptor")
-                .dataSource(myDataSource)
-                .build())
-        .build()
+        .
+
+wrappedFixMessagesStoreSettings(JdbcMessageStoreSettings.builder()
+                .
+
+instanceId("acceptor")
+                .
+
+dataSource(myDataSource)
+                .
+
+build())
+        .
+
+build()
 ```
 
 Chronicle's queue is off-heap and memory-mapped, so the handover allocates nothing, and queued work survives a
 process crash rather than dying with the buffer that held it.
 
-| setting | default | what it is for |
-|---------|---------|----------------|
-| `messageByteBufferSize` | `2048` | sized to your largest message |
-| `useDirectByteBuffer` | `true` | off-heap handover |
-| `underlyingStoreResourceWatchTaskCheckDelay` | 2 seconds | how often the watchdog re-checks a failed backend |
-| `flushPendingMessagesOnStartupDelay` | 60 seconds | how long to spend draining a queue left by a previous run |
-| `findWaitForEmptyQueueTimeout` | 5 seconds | how long a resend waits for pending writes before failing |
+| setting                                      | default    | what it is for                                                                 |
+|----------------------------------------------|------------|--------------------------------------------------------------------------------|
+| `messageByteBufferSize`                      | `2048`     | sized to your largest message                                                  |
+| `useDirectByteBuffer`                        | `true`     | off-heap handover                                                              |
+| `underlyingStoreResourceWatchTaskCheckDelay` | 2 seconds  | how often the watchdog re-checks a failed backend                              |
+| `flushPendingMessagesOnStartupDelay`         | 60 seconds | how long start waits for writes left by a previous run before failing to start |
+| `findWaitForEmptyQueueTimeout`               | 5 seconds  | how long a resend waits for pending writes before failing                      |
 
 **The guarantee to understand:** wrapping a JDBC store in the async decorator means a slow database costs you queue
 depth, not round-trip time. A watchdog tracks the backing store's health and keeps queueing through an outage instead
@@ -151,12 +181,12 @@ is not what you want: a queue that survives a crash is not the same guarantee as
 
 ## Choosing
 
-| situation | store |
-|-----------|-------|
-| development, tests, benchmarks | memory |
-| single process, sequence recovery matters | file, `syncWrites(true)` |
-| shared or queryable persistence | JDBC behind the async wrapper |
-| any of the above, latency-sensitive | wrap it in the async decorator |
+| situation                                 | store                          |
+|-------------------------------------------|--------------------------------|
+| development, tests, benchmarks            | memory                         |
+| single process, sequence recovery matters | file, `syncWrites(true)`       |
+| shared or queryable persistence           | JDBC behind the async wrapper  |
+| any of the above, latency-sensitive       | wrap it in the async decorator |
 
 For logging, start with SLF4J, add the async wrapper the moment logging appears in a latency profile, and use demux
 when one destination is not enough.
