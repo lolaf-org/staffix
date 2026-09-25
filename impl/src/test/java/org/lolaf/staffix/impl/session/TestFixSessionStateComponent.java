@@ -35,10 +35,10 @@ class TestFixSessionStateComponent {
         FixSessionStateComponent state = newState();
         AtomicInteger runs = new AtomicInteger();
 
-        state.runOnceLogoutProcessed(runs::incrementAndGet);
+        state.runOnceLoggedOutConnectionClosed(runs::incrementAndGet);
 
         assertThat(runs).hasValue(0);
-        state.onLogoutProcessed(true);
+        state.onLoggedOutConnectionClosed(true);
         assertThat(runs).hasValue(1);
     }
 
@@ -49,8 +49,8 @@ class TestFixSessionStateComponent {
         FixSessionStateComponent state = newState();
         AtomicInteger runs = new AtomicInteger();
 
-        state.runOnceLogoutProcessed(runs::incrementAndGet);
-        state.onLogoutProcessed(false);
+        state.runOnceLoggedOutConnectionClosed(runs::incrementAndGet);
+        state.onLoggedOutConnectionClosed(false);
 
         assertThat(runs).hasValue(1);
     }
@@ -60,9 +60,9 @@ class TestFixSessionStateComponent {
         FixSessionStateComponent state = newState();
         AtomicInteger runs = new AtomicInteger();
 
-        state.runOnceLogoutProcessed(runs::incrementAndGet);
-        state.onLogoutProcessed(true);
-        state.onLogoutProcessed(true);
+        state.runOnceLoggedOutConnectionClosed(runs::incrementAndGet);
+        state.onLoggedOutConnectionClosed(true);
+        state.onLoggedOutConnectionClosed(true);
 
         assertThat(runs).as("the next logout is not the one the task was registered for").hasValue(1);
     }
@@ -74,9 +74,9 @@ class TestFixSessionStateComponent {
         FixSessionStateComponent state = newState();
         AtomicInteger runs = new AtomicInteger();
 
-        state.runOnceLogoutProcessed(runs::incrementAndGet);
+        state.runOnceLoggedOutConnectionClosed(runs::incrementAndGet);
         state.onConnected();
-        state.onLogoutProcessed(true);
+        state.onLoggedOutConnectionClosed(true);
 
         assertThat(runs).hasValue(0);
     }

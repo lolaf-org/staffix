@@ -107,7 +107,7 @@ class SessionTimeWindowComponent implements FixSessionLayerComponent {
     }
 
     @Override
-    public void onLogoutProcessed(boolean cleanLogout) {
+    public void onLoggedOutConnectionClosed(boolean cleanLogout) {
         preOutsideSessionTimeTriggered = false;
     }
 

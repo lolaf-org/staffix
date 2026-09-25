@@ -112,7 +112,8 @@ class TestFixSequenceResets extends AbstractFixTests {
         fixInitiatorSession.logon();
 
         await().untilAsserted(() -> verify(getFixApplication(connectorType.inverse()))
-                .onLogoutInitiated(any(FixSession.class), eq("Resetting the sequence number is not supported by this session")));
+                .onPreLogout(any(FixSession.class), eq("Resetting the sequence number is not supported by this session"),
+                        eq(true)));
         await().untilAsserted(() -> assertThat(getFixSession(connectorType.inverse()).isLoggedIn()).isFalse());
     }
 
@@ -270,7 +271,8 @@ class TestFixSequenceResets extends AbstractFixTests {
         getFixSessionImpl(connectorType).adminResetSequence(AdminApi.ResetFixSessionMode.RESET_SEQUENCE_IN_SESSION);
 
         await().untilAsserted(() -> verify(getFixApplication(connectorType.inverse()))
-                .onLogoutInitiated(any(FixSession.class), startsWith("Resetting the sequence number is not supported")));
+                .onPreLogout(any(FixSession.class), startsWith("Resetting the sequence number is not supported"),
+                        eq(true)));
     }
 
     @Test
@@ -311,7 +313,7 @@ class TestFixSequenceResets extends AbstractFixTests {
         // and the peer went through the cycle without ever taking the numbering for a gap or for a rewind: either one
         // would show up as a recovery it asked for, or as a Logout it decided to send
         verify(fixAcceptorApplication, never()).onResendRequestInitiated(any(FixSession.class), anyLong(), anyLong());
-        verify(fixAcceptorApplication, never()).onLogoutInitiated(any(FixSession.class), any());
+        verify(fixAcceptorApplication, never()).onPreLogout(any(FixSession.class), any(), eq(true));
 
         exchangeAMessageEachWay(4);
     }
@@ -332,7 +334,7 @@ class TestFixSequenceResets extends AbstractFixTests {
                 .onLogon(any(FixSession.class), any(DecodedFixMessage.class));
         verify(getFixApplication(connectorType.inverse()), never())
                 .onLogon(any(FixSession.class), Mockito.argThat(messageFieldReceived(CoreFields.RESET_NUM_FLAG, "Y")));
-        verify(getFixApplication(connectorType), never()).onLogoutInitiated(any(FixSession.class), any());
+        verify(getFixApplication(connectorType), never()).onPreLogout(any(FixSession.class), any(), eq(true));
 
         // and it keeps working from where it was
         fixInitiatorSession.send(encodeTestMessage(1), null);

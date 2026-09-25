@@ -317,8 +317,9 @@ public class SessionLifecycleExample extends FixExamplesBase implements Callable
         }
 
         @Override
-        public void onLogoutInitiated(FixSession fixSession, String message) {
-            log("onLogoutInitiated: this end is sending a Logout - '" + message + "'");
+        public void onPreLogout(FixSession fixSession, String message, boolean logoutInitiated) {
+            log("onPreLogout: " + (logoutInitiated ? "this end is sending a Logout" : "the peer asked to log out, this end answers next")
+                    + ", a last message could go out here - '" + message + "'");
         }
 
         @Override

@@ -123,7 +123,7 @@ class PluginsComponent implements FixSessionLayerComponent, FixMessageEncodingLi
     }
 
     @Override
-    public void onLogoutProcessed(boolean cleanLogout) {
+    public void onLoggedOutConnectionClosed(boolean cleanLogout) {
         for (FixSessionPlugin<?, ?> plugin : plugins) {
             plugin.onLogout();
         }

@@ -112,7 +112,7 @@ class HeldOutgoingMessagesComponent implements FixSessionLayerComponent {
      * which stores them, so they reach the peer on the next connection.
      */
     @Override
-    public void onLogoutProcessed(boolean cleanLogout) {
+    public void onLoggedOutConnectionClosed(boolean cleanLogout) {
         releaseAll();
     }
 

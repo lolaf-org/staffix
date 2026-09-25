@@ -107,21 +107,27 @@ public class FixSessionLayerComponents {
         }
     }
 
-    public void onLogoutInitiated(String message) {
+    public void onLocalLogoutInitiated(String message) {
         for (FixSessionLayerComponent component : components) {
-            component.onLogoutInitiated(message);
+            component.onLocalLogoutInitiated(message);
         }
     }
 
-    public void onLogoutReceived(String message, DecodedFixMessage logoutMessage) {
+    public void onRemoteLogoutInitiated(String message) {
         for (FixSessionLayerComponent component : components) {
-            component.onLogoutReceived(message, logoutMessage);
+            component.onRemoteLogoutInitiated(message);
         }
     }
 
-    public void onLogoutProcessed(boolean cleanLogout) {
+    public void onLoggedOutConnectionOpen(String message, DecodedFixMessage logoutMessage) {
         for (FixSessionLayerComponent component : components) {
-            component.onLogoutProcessed(cleanLogout);
+            component.onLoggedOutConnectionOpen(message, logoutMessage);
+        }
+    }
+
+    public void onLoggedOutConnectionClosed(boolean cleanLogout) {
+        for (FixSessionLayerComponent component : components) {
+            component.onLoggedOutConnectionClosed(cleanLogout);
         }
     }
 

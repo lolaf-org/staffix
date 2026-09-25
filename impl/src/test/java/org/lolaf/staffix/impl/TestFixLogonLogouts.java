@@ -18,6 +18,7 @@ package org.lolaf.staffix.impl;
 import org.junit.jupiter.api.Test;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.msg.CoreMessageType;
@@ -31,13 +32,16 @@ import org.lolaf.staffix.fix44.fields.HeartBtInt;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
 import org.lolaf.staffix.tests.RawFixSocketClient;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -238,6 +242,80 @@ class TestFixLogonLogouts extends AbstractFixTests {
             assertThat(s).contains("35=" + CoreMessageType.LOGON, "383=8192");
             return true;
         });
+    }
+
+    @Test
+    void testLogoutInitiatorIsToldBeforeItsLogoutAndOnceDisconnected() {
+        logonClient();
+        sendAMessageOnPreLogout(fixInitiatorApplication);
+        List<Boolean> connectedOnLogout = recordConnectedOnLogout(fixInitiatorApplication);
+
+        fixInitiatorSession.logoutPermanently("test logout");
+
+        await().untilAsserted(() -> verify(fixInitiatorApplication).onDisconnected(any()));
+        InOrder inOrder = inOrder(fixInitiatorApplication);
+        inOrder.verify(fixInitiatorApplication).onPreLogout(any(), eq("test logout"), eq(true));
+        inOrder.verify(fixInitiatorApplication).onLogout(any(), eq("test logout"), any(DecodedFixMessage.class));
+        inOrder.verify(fixInitiatorApplication).onDisconnected(any());
+        assertThat(connectedOnLogout).as("connected on each onLogout").containsExactly(false);
+        assertSentBeforeLogout(acceptorLogger.getIncomingMessages());
+    }
+
+    @Test
+    void testLogoutReceiverIsToldBeforeProcessingItAndOnceDisconnected() {
+        logonClient();
+        AtomicBoolean loggedInOnPreLogout = new AtomicBoolean();
+        doAnswer(invocation -> {
+            FixSession fixSession = invocation.getArgument(0);
+            loggedInOnPreLogout.set(fixSession.isLoggedIn());
+            fixSession.send(encodeTestMessage(1), null);
+            return null;
+        }).when(fixAcceptorApplication).onPreLogout(any(), any(), anyBoolean());
+        List<Boolean> connectedOnLogout = recordConnectedOnLogout(fixAcceptorApplication);
+
+        fixInitiatorSession.logoutPermanently("test logout");
+
+        await().untilAsserted(() -> verify(fixAcceptorApplication).onDisconnected(any()));
+        InOrder inOrder = inOrder(fixAcceptorApplication);
+        inOrder.verify(fixAcceptorApplication).onPreLogout(any(), eq("test logout"), eq(false));
+        inOrder.verify(fixAcceptorApplication).onLogout(any(), eq("test logout"), any(DecodedFixMessage.class));
+        inOrder.verify(fixAcceptorApplication).onDisconnected(any());
+        assertThat(loggedInOnPreLogout).isTrue();
+        assertThat(connectedOnLogout).as("connected on each onLogout").containsExactly(false);
+        assertSentBeforeLogout(initiatorLogger.getIncomingMessages());
+    }
+
+    private void sendAMessageOnPreLogout(FixApplication fixApplication) {
+        doAnswer(invocation -> {
+            invocation.getArgument(0, FixSession.class).send(encodeTestMessage(1), null);
+            return null;
+        }).when(fixApplication).onPreLogout(any(), any(), anyBoolean());
+    }
+
+    private static List<Boolean> recordConnectedOnLogout(FixApplication fixApplication) {
+        List<Boolean> connectedOnLogout = new CopyOnWriteArrayList<>();
+        doAnswer(invocation -> {
+            connectedOnLogout.add(invocation.getArgument(0, FixSession.class).isConnected());
+            return null;
+        }).when(fixApplication).onLogout(any(), any(), any());
+        return connectedOnLogout;
+    }
+
+    private static void assertSentBeforeLogout(List<String> receivedMessages) {
+        int message = indexOfMessageType(receivedMessages, MessageTypes.Email.code());
+        int logout = indexOfMessageType(receivedMessages, CoreMessageType.LOGOUT);
+        assertThat(message).as("the message sent from onPreLogout was received").isNotNegative();
+        assertThat(logout).as("the Logout was received").isNotNegative();
+        assertThat(message).as("the message sent from onPreLogout precedes the Logout").isLessThan(logout);
+    }
+
+    private static int indexOfMessageType(List<String> messages, String messageType) {
+        for (int i = 0; i < messages.size(); i++) {
+            if (messages.get(i).contains("\u000135=" + messageType + "\u0001")) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     @Test

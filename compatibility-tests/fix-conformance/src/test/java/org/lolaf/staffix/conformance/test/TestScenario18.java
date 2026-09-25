@@ -36,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.lolaf.staffix.tests.FixMessageAssert.assertThatFixMessage;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -101,10 +102,10 @@ class TestScenario18 extends AbstractScenario {
         await().untilAsserted(() -> assertThat(acceptorMessageStore.getIncomingSeqNum()).isEqualTo(expectedNextNumIn));
 
         // unlike a wrong SenderCompID or TargetCompID, a routing error does not end the session. Asserted on
-        // onLogoutInitiated rather than on the socket: a logout sends its Logout and then waits out
+        // onPreLogout rather than on the socket: a logout sends its Logout and then waits out
         // logInOrOutResponseTimeout before disconnecting, so the connection and the session both still look healthy
         // for ten seconds after the engine has decided to drop them.
-        verify(fixAcceptorApplication, never()).onLogoutInitiated(any(FixSession.class), any());
+        verify(fixAcceptorApplication, never()).onPreLogout(any(FixSession.class), any(), eq(true));
         assertThat(session.isClosedByPeer(Duration.ofMillis(300))).isFalse();
         assertThat(fixAcceptorSession.isLoggedIn()).isTrue();
     }

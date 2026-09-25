@@ -36,9 +36,6 @@ permissions:
   contents: read
 
 jobs:
-  # Everything else - checkout with the release token, the changelog gate, signing, prepare, perform and the
-  # GitHub Release - is in the shared workflow. It needs CI_GITHUB_TOKEN, the three GPG_* secrets and the two
-  # CENTRAL_TOKEN_* secrets, all org secrets shared with this repository.
   release:
     uses: lolaf-org/workflows/.github/workflows/maven-release.yml@v1.0.2
     with:
@@ -47,10 +44,5 @@ jobs:
       dry-run: ${{ inputs.dryRun }}
       perform-only: ${{ inputs.performOnly }}
       tag: ${{ inputs.tag }}
-      # release:prepare runs a full build with tests and release:perform runs another one, on a reactor that
-      # measures 14:19 locally; add signing 94 artifacts and uploading 57.7 MB. build.yml's 60 is for one build.
-      #
-      # UNPROVEN on this repository: that CI_GITHUB_TOKEN can push past main's protection. Only a real push
-      # proves it (a dry run never pushes); remove this line in the commit that records the proof.
       timeout-minutes: 120
     secrets: inherit

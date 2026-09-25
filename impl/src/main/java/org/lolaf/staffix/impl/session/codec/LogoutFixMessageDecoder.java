@@ -50,7 +50,10 @@ public class LogoutFixMessageDecoder extends AbstractAdminFixMessageDecoder {
         FixSessionStateComponent fixSessionStateComponent = getFixSessionStateComponent();
         boolean isLogoutInitiatedRemotely = fixSessionStateComponent.isLogoutInitiatedRemotely();
         String message = logoutMessage != null && !logoutMessage.isEmpty() ? logoutMessage : fixSessionStateComponent.getSentLogoutMessage();
-        getFixSessionLayerComponents().onLogoutReceived(message, getDecodedFixMessage());
+        if (isLogoutInitiatedRemotely) {
+            getFixSessionLayerComponents().onRemoteLogoutInitiated(message);
+        }
+        getFixSessionLayerComponents().onLoggedOutConnectionOpen(message, getDecodedFixMessage());
         FixSessionImpl fixSessionImpl = getFixSession();
         // whoever asked for the logout is the one that closes the connection, and either way the logout is only
         // finished with once it is gone - FixSessionImpl.onDisconnection() completes it for both branches

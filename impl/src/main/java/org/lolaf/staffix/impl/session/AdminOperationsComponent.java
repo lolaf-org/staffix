@@ -179,7 +179,8 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
             fixSession.logEvent("Ignoring admin reset sequence through logout and logon: the session is not logged in");
             return;
         }
-        fixSessionStateComponent.runOnceLogoutProcessed(fixSessionStateComponent::armSequenceResetOnNextLogon);
+        fixSessionStateComponent.runOnceLoggedOutConnectionClosed(
+                fixSessionStateComponent::armSequenceResetOnNextLogon);
         logonLogout.sendLogoutRequest("Admin reset sequence", false);
     }
 

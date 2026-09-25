@@ -32,8 +32,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>It is the first component of {@link FixSessionLayerComponents}, so every other one reads a state that has
  * already moved. It reacts and answers; what a transition sets off belongs to the components that follow it. The
- * exception is the one-shot of {@link #runOnceLogoutProcessed(Runnable)}, which an administrative operation leaves
- * for the next logout and which runs here, last of this state's own doing.
+ * exception is the one-shot of {@link #runOnceLoggedOutConnectionClosed(Runnable)}, which an administrative operation
+ * leaves for the next logout and which runs here, last of this state's own doing.
  */
 public class FixSessionStateComponent implements FixSessionLayerComponent {
 
@@ -44,8 +44,8 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
     private final FixSessionScheduleManager fixSessionScheduleManager;
     private final AtomicBoolean inSessionResetPending;
     private final AtomicBoolean sequenceResetOnNextLogon;
-    private final AtomicBoolean logoutProcessed;
-    private Runnable onLogoutProcessedTask;
+    private final AtomicBoolean loggedOutConnectionOpen;
+    private Runnable onLoggedOutConnectionClosedTask;
     @Setter
     @Getter
     private FixSessionState desiredState;
@@ -67,7 +67,7 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
         this.adminOnlyMessagesAllowed = true;
         this.inSessionResetPending = new AtomicBoolean();
         this.sequenceResetOnNextLogon = new AtomicBoolean();
-        this.logoutProcessed = new AtomicBoolean(true);
+        this.loggedOutConnectionOpen = new AtomicBoolean(false);
         this.started = true;
     }
 
@@ -108,14 +108,14 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
         return isLoggedIn() && !logoutSent.get();
     }
 
-    public boolean isLogoutPendingConnectionEnd() {
-        return !logoutProcessed.get();
+    public boolean isLoggedOutConnectionOpen() {
+        return loggedOutConnectionOpen.get();
     }
 
     /**
-     * Whether this side asked for the logout that is under way. Set by {@link #onLogoutInitiated(String)} and cleared
-     * by {@link #onLogoutProcessed(boolean)}, so it still answers while a connection is ending and tells a session
-     * that logged itself out from one that lost its line.
+     * Whether this side asked for the logout that is under way. Set by {@link #onLocalLogoutInitiated(String)} and
+     * cleared by {@link #onLoggedOutConnectionClosed(boolean)}, so it still answers while a connection is ending and
+     * tells a session that logged itself out from one that lost its line.
      */
     public boolean isLogoutSent() {
         return logoutSent.get();
@@ -161,8 +161,8 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
         return sequenceResetOnNextLogon.getAndSet(false);
     }
 
-    public void runOnceLogoutProcessed(Runnable task) {
-        onLogoutProcessedTask = task;
+    public void runOnceLoggedOutConnectionClosed(Runnable task) {
+        onLoggedOutConnectionClosedTask = task;
     }
 
     public boolean canSendLoginResponse() {
@@ -181,31 +181,31 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
     }
 
     @Override
-    public void onLogoutInitiated(String message) {
+    public void onLocalLogoutInitiated(String message) {
         sentLogoutMessage = message;
         logoutSent.set(true);
     }
 
     @Override
-    public void onLogoutReceived(String message, DecodedFixMessage logoutMessage) {
-        logoutProcessed.set(false);
+    public void onLoggedOutConnectionOpen(String message, DecodedFixMessage logoutMessage) {
+        loggedOutConnectionOpen.set(true);
         actualState.set(FixSessionState.LOGGED_OUT);
     }
 
     @Override
-    public void onLogoutProcessed(boolean cleanLogout) {
-        logoutProcessed.set(true);
+    public void onLoggedOutConnectionClosed(boolean cleanLogout) {
+        loggedOutConnectionOpen.set(false);
         adminOnlyMessagesAllowed = true;
         logoutSent.set(false);
         logonSent.set(false);
         sentLogoutMessage = null;
-        runPendingLogoutProcessedTask();
+        runPendingLoggedOutConnectionClosedTask();
     }
 
-    private void runPendingLogoutProcessedTask() {
-        Runnable task = onLogoutProcessedTask;
+    private void runPendingLoggedOutConnectionClosedTask() {
+        Runnable task = onLoggedOutConnectionClosedTask;
         if (task != null) {
-            onLogoutProcessedTask = null;
+            onLoggedOutConnectionClosedTask = null;
             task.run();
         }
     }
@@ -221,7 +221,7 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
         logoutSent.set(false);
         logonSent.set(false);
         // same for a task waiting on a logout that never came: it belongs to the session that just ended
-        onLogoutProcessedTask = null;
+        onLoggedOutConnectionClosedTask = null;
     }
 
 }

@@ -38,7 +38,9 @@ class ApplicationNotifierComponent implements FixSessionLayerComponent {
     private final MessageTypeRegistry messageTypeRegistry;
     private final List<FixMessageDecoder> fixMessageDecoders;
     private String sentLogoutMessage;
-    private boolean logoutReported;
+    private String receivedLogoutText;
+    private DecodedFixMessage receivedLogout;
+    private boolean logoutPending;
 
     @Override
     public void onSessionStarted(FixSessionLayerComponents components) {
@@ -51,29 +53,46 @@ class ApplicationNotifierComponent implements FixSessionLayerComponent {
     }
 
     @Override
-    public void onLogoutInitiated(String message) {
+    public void onLocalLogoutInitiated(String message) {
         sentLogoutMessage = message;
-        fixApplication.onLogoutInitiated(fixSession, message);
+        logoutPending = true;
+        fixApplication.onPreLogout(fixSession, message, true);
     }
 
     @Override
-    public void onLogoutReceived(String message, DecodedFixMessage logoutMessage) {
-        fixApplication.onLogout(fixSession, message, logoutMessage);
-        logoutReported = true;
+    public void onRemoteLogoutInitiated(String message) {
+        logoutPending = true;
+        fixApplication.onPreLogout(fixSession, message, false);
     }
 
     /**
-     * The application hears about a logout once per session, and a Logout(35=5) that never arrived is why this is not
-     * simply the answer to one: a connection lost while the session was live ends it just as surely, and is reported
-     * as the logout this side asked for or as the line failure it was.
+     * Kept for {@link #onLoggedOutConnectionClosed}, as the application hears of the logout only once the connection
+     * is gone, and the received message does not outlive this callback.
      */
     @Override
-    public void onLogoutProcessed(boolean cleanLogout) {
-        if (!logoutReported) {
-            fixApplication.onLogout(fixSession, cleanLogout ? sentLogoutMessage : "Remote disconnection", null);
-        }
-        logoutReported = false;
+    public void onLoggedOutConnectionOpen(String message, DecodedFixMessage logoutMessage) {
+        receivedLogoutText = message;
+        receivedLogout = logoutMessage.copy();
+    }
+
+    /**
+     * A logout that never got its Logout(35=5) back is reported as the one this side asked for, or as the line failure
+     * it was.
+     */
+    @Override
+    public void onLoggedOutConnectionClosed(boolean cleanLogout) {
+        reportLogout(cleanLogout);
+    }
+
+    private void reportLogout(boolean cleanLogout) {
+        String logoutText = cleanLogout ? sentLogoutMessage : "Remote disconnection";
+        String message = receivedLogoutText != null ? receivedLogoutText : logoutText;
+        DecodedFixMessage logoutMessage = receivedLogout;
         sentLogoutMessage = null;
+        receivedLogoutText = null;
+        receivedLogout = null;
+        logoutPending = false;
+        fixApplication.onLogout(fixSession, message, logoutMessage);
     }
 
     @Override
@@ -82,8 +101,15 @@ class ApplicationNotifierComponent implements FixSessionLayerComponent {
         fixApplication.onTestRequestResponse(fixSession, testReqId, sendingTime);
     }
 
+    /**
+     * A Logout sent by a session that never logged on, refusing a Logon, ends with the connection without a logout
+     * being processed, and still owes the application the {@code onLogout} its {@code onPreLogout} promised.
+     */
     @Override
     public void onDisconnected() {
+        if (logoutPending) {
+            reportLogout(true);
+        }
         fixApplication.onDisconnected(fixSession);
     }
 

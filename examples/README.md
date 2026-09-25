@@ -92,16 +92,22 @@ the engine being stopped while the session is up, so the shutdown path is in the
         ... a heartbeat a second, each with the onAdminMessageEncoding hook that let fields be added to it ...
 12:00:22.506 [acceptor ] onPreOutsideSessionTime: the window closes in 773ms
 12:00:23.502 [initiator] onOutsideSessionTime: the window is closed, the session logs out and stays down until it reopens
-12:00:23.502 [initiator] onLogoutInitiated: this end is sending a Logout - 'Outside of session timeframe'
-12:00:23.506 [acceptor ] onLogout: logged out - 'Outside of session timeframe' (Logout received)
-12:00:23.511 [initiator] onDisconnected: the connection is gone
+12:00:23.503 [initiator] onPreLogout: this end is sending a Logout, a last message could go out here - 'Outside of session timeframe'
+12:00:23.503 [acceptor ] onPreLogout: this end is sending a Logout, a last message could go out here - 'Outside of session timeframe'
+12:00:23.506 [initiator] onLogout: logged out - 'Outside of session timeframe' (Logout received)
+12:00:23.506 [initiator] onDisconnected: the connection is gone
+12:00:23.508 [acceptor ] onLogout: logged out - 'Outside of session timeframe' (Logout received)
+12:00:23.508 [acceptor ] onDisconnected: the connection is gone
 12:00:26.522 [initiator] onInsideSessionTime: the schedule window is open, the session may come up
 12:00:26.525 [acceptor ] onLogon: the session is usable, sequence numbers are settled
         ... up again, until the engine is stopped ...
 12:00:31.325 [initiator] onSessionPreDestroy: the session is going away; it may still be logged in, so a last message could go out here
-12:00:31.325 [initiator] onLogoutInitiated: this end is sending a Logout - 'Fix initiator stop'
+12:00:31.326 [initiator] onPreLogout: this end is sending a Logout, a last message could go out here - 'Fix initiator stop'
+12:00:31.326 [acceptor ] onPreLogout: the peer asked to log out, this end answers next, a last message could go out here - 'Fix initiator stop'
 12:00:31.327 [initiator] onLogout: logged out - 'Fix initiator stop' (Logout received)
-12:00:31.328 [acceptor ] onDisconnected: the connection is gone
+12:00:31.327 [initiator] onDisconnected: the connection is gone
+12:00:31.327 [acceptor ] onLogout: logged out - 'Fix initiator stop' (Logout received)
+12:00:31.327 [acceptor ] onDisconnected: the connection is gone
 12:00:31.380 [acceptor ] onSessionDestroyed: logged out and past sending anything
 12:00:31.390 [acceptor ] destroy: the application itself is being discarded
 ```

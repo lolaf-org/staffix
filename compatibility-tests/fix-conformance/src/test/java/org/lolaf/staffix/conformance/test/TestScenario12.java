@@ -52,7 +52,7 @@ class TestScenario12 extends AbstractScenario {
             assertThatFixMessage(logout)
                     .hasMsgType(MessageTypes.Logout)
                     .containsFieldWithValue(Text.get(), "Scenario12");
-            verify(fixAcceptorApplication).onLogoutInitiated(any(FixSession.class), eq("Scenario12"));
+            verify(fixAcceptorApplication).onPreLogout(any(FixSession.class), eq("Scenario12"), eq(true));
 
             // 2. it then waits for the acknowledgement rather than dropping the connection straight away
             assertThat(session.isClosedByPeer(java.time.Duration.ofMillis(500))).isFalse();

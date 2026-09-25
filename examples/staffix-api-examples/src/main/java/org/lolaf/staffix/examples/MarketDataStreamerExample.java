@@ -388,8 +388,8 @@ public class MarketDataStreamerExample extends FixExamplesBase implements Callab
         }
 
         @Override
-        public void onLogoutInitiated(FixSession fixSession, String message) {
-            log.info("Logout initiated {} : {}", fixSession.getFixSessionId(), message);
+        public void onPreLogout(FixSession fixSession, String message, boolean logoutInitiated) {
+            log.info("Pre logout {} : {}", fixSession.getFixSessionId(), message);
             instruments.forEach(i ->
                     sendMarketDataRequest(fixSession, SubscriptionRequestType.SubscriptionRequestTypeValues.DISABLE_PREVIOUS_SNAPSHOT, i));
         }

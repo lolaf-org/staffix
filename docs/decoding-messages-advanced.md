@@ -158,4 +158,5 @@ The same type is what the session layer's own callbacks hand you: `FixApplicatio
 `onResendRequest` receive a `DecodedFixMessage` because an admin message is the engine's to decode, not yours.
 
 **It is valid only for the callback.** The engine reuses the instance for the next message. `copy()` makes one safe
-to keep, and is exactly the allocation the message path exists to avoid, so copy deliberately.
+to keep, and is exactly the allocation the message path exists to avoid, so copy deliberately. `onLogout` is the
+exception: it comes once the connection has closed, so the engine hands it a copy taken when the Logout arrived.

@@ -63,22 +63,29 @@ public interface FixSessionLayerComponent {
      * This side is sending a Logout(35=5), for the reason given. Announced before it goes out, so a component can
      * still act on a session that is logged in.
      */
-    default void onLogoutInitiated(String message) {
+    default void onLocalLogoutInitiated(String message) {
     }
 
     /**
-     * A Logout(35=5) has arrived, whether it asks for a logout or answers one this side asked for. Which of the two
-     * it is stays with the decoder, that being what decides the answer rather than a reaction.
+     * The counterparty asks for a logout, announced before its Logout(35=5) is processed, so a component can still
+     * act on a session that is logged in. Not fired for a Logout answering one this side sent.
      */
-    default void onLogoutReceived(String message, DecodedFixMessage logoutMessage) {
+    default void onRemoteLogoutInitiated(String message) {
     }
 
     /**
-     * The logout exchange is over, which only the connection ending settles.
+     * A Logout(35=5) has arrived, asking for a logout or answering this side's: the session is logged out but the
+     * connection is still open, for the acknowledgement to go out or the side that asked to close it.
+     */
+    default void onLoggedOutConnectionOpen(String message, DecodedFixMessage logoutMessage) {
+    }
+
+    /**
+     * The connection is closed and the logout is over. Also fired when a logged on session loses its connection.
      *
      * @param cleanLogout whether the session ended through a logout rather than losing its connection
      */
-    default void onLogoutProcessed(boolean cleanLogout) {
+    default void onLoggedOutConnectionClosed(boolean cleanLogout) {
     }
 
     /**

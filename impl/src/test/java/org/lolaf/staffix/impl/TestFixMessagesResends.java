@@ -260,8 +260,8 @@ class TestFixMessagesResends extends AbstractFixTests {
 
         // section 4.4.1: a NextExpectedMsgSeqNum(789) beyond what we have ever sent means the peer's view of the
         // session is broken, and the session is ended rather than recovered
-        await().untilAsserted(() -> verify(fixAcceptorApplication).onLogoutInitiated(any(FixSession.class),
-                eq("NextExpectedMsgSeqNum is higher than expected: expected 1, received 100")));
+        await().untilAsserted(() -> verify(fixAcceptorApplication).onPreLogout(any(FixSession.class),
+                eq("NextExpectedMsgSeqNum is higher than expected: expected 1, received 100"), eq(true)));
     }
 
     @ParameterizedTest
@@ -854,8 +854,8 @@ class TestFixMessagesResends extends AbstractFixTests {
 
         // the recovery runs to completion rather than the session being logged out over the queue bound
         awaitResendRequestCompleted(resendRequestReceiver);
-        verify(resendRequestReceiver, never()).onLogoutInitiated(any(FixSession.class),
-                eq("Too many messages received while awaiting the response to a ResendRequest"));
+        verify(resendRequestReceiver, never()).onPreLogout(any(FixSession.class),
+                eq("Too many messages received while awaiting the response to a ResendRequest"), eq(true));
 
         assertPossDupMessageReceived(messagesReceiverList, EmailThreadID.get(), "test thread id 19");
 

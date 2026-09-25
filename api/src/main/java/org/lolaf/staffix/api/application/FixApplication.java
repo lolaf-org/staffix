@@ -269,20 +269,24 @@ public interface FixApplication {
     }
 
     /**
-     * Indicates that the session is about the be logged out, you can still send a last messages in the method before the real logout message to be initiated
+     * Called before this side sends a Logout, or before it processes one the counterparty sent: the last point to send
+     * messages ahead of the Logout or its acknowledgement. Always followed by exactly one {@link #onLogout}.
      *
-     * @param fixSession the fix session
-     * @param message    the logout message
+     * @param fixSession      the fix session
+     * @param message         the logout text
+     * @param logoutInitiated true when this side asks for the logout, false when the counterparty does
      */
-    default void onLogoutInitiated(FixSession fixSession, String message) {
+    default void onPreLogout(FixSession fixSession, String message, boolean logoutInitiated) {
     }
 
     /**
-     * Indicates that the session is logged out, no message can be sent anymore at this stage
+     * Called once the logout is fully processed and the connection closed, so no message can be sent anymore. A
+     * logged on session that loses its connection gets this callback alone, without {@link #onPreLogout}.
      *
      * @param fixSession    the fix session
-     * @param message       the logout message
-     * @param logoutMessage the received logout message or null if we had a hard TCP disconnect without any logout request
+     * @param message       the logout text
+     * @param logoutMessage a copy of the Logout received, safe to keep, or null when none came: unacknowledged, or the
+     *                      connection was lost
      */
     default void onLogout(FixSession fixSession, String message, DecodedFixMessage logoutMessage) {
     }

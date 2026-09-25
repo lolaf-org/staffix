@@ -29,6 +29,7 @@ import static org.awaitility.Awaitility.await;
 import static org.lolaf.staffix.tests.FixMessageAssert.assertThatFixMessage;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -72,14 +73,17 @@ class TestScenario13 extends AbstractScenario {
             // 1. the unsolicited Logout is answered with a Logout acknowledgement
             assertThatFixMessage(session.readMessageOfType(MessageTypes.Logout, DEFAULT_TIMEOUT))
                     .hasMsgType(MessageTypes.Logout);
-            await().untilAsserted(() -> verify(fixAcceptorApplication)
-                    .onLogout(any(FixSession.class), eq("Scenario13B"), any(DecodedFixMessage.class)));
+            verify(fixAcceptorApplication).onPreLogout(any(FixSession.class), eq("Scenario13B"), eq(false));
 
-            // 2. the acceptor then leaves the disconnection to us rather than closing straight away
+            // 2. the acceptor then leaves the disconnection to us rather than closing straight away, and the logout
+            // is not over until the connection is gone
             assertThat(session.isClosedByPeer(Duration.ofMillis(500))).isFalse();
+            verify(fixAcceptorApplication, never()).onLogout(any(), any(), any());
         }
 
         // and it notices once we do disconnect
+        await().untilAsserted(() -> verify(fixAcceptorApplication)
+                .onLogout(any(FixSession.class), eq("Scenario13B"), any(DecodedFixMessage.class)));
         await().untilAsserted(() -> verify(fixAcceptorApplication).onDisconnected(any(FixSession.class)));
     }
 }

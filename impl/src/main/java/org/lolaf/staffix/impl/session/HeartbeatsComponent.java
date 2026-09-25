@@ -78,12 +78,12 @@ class HeartbeatsComponent implements FixSessionLayerComponent, FixSessionMessage
     }
 
     @Override
-    public void onLogoutReceived(String message, DecodedFixMessage logoutMessage) {
+    public void onLoggedOutConnectionOpen(String message, DecodedFixMessage logoutMessage) {
         unscheduleTasks();
     }
 
     @Override
-    public void onLogoutProcessed(boolean cleanLogout) {
+    public void onLoggedOutConnectionClosed(boolean cleanLogout) {
         lastMessageSentInEpochSeconds = 0;
         lastMessageReceivedInEpochSeconds = 0;
         pendingTestRequestSentInEpochSeconds = 0;

@@ -225,11 +225,11 @@ public class FailSafeFixApplication implements FixApplication {
     }
 
     @Override
-    public void onLogoutInitiated(FixSession fixSession, String message) {
+    public void onPreLogout(FixSession fixSession, String message, boolean logoutInitiated) {
         try {
-            fixApplication.onLogoutInitiated(fixSession, message);
+            fixApplication.onPreLogout(fixSession, message, logoutInitiated);
         } catch (Exception ex) {
-            log.error("Failed to call onLogoutInitiated on FIX session {}", fixSession);
+            log.error("Failed to call onPreLogout on FIX session {}", fixSession);
         }
     }
 

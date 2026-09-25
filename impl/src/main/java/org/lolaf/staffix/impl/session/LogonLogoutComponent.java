@@ -80,7 +80,7 @@ public class LogonLogoutComponent implements FixSessionLayerComponent {
      */
     public void sendLogoutRequest(String message, boolean forced) {
         if (forced || fixSessionStateComponent.canSendLogoutRequest()) {
-            fixSessionLayerComponents.onLogoutInitiated(message);
+            fixSessionLayerComponents.onLocalLogoutInitiated(message);
             fixSession.send(fixAdminMessagesCodec.generateLogout(message), null);
             logonOrLogoutCheckTask = scheduler.schedule(this::checkIsLoggedOutState,
                     fixSessionSettings.getLogInOrOutResponseTimeout().toMillis(), TimeUnit.MILLISECONDS);
@@ -98,7 +98,7 @@ public class LogonLogoutComponent implements FixSessionLayerComponent {
 
     @SchedulerThread
     private void checkCounterpartyClosedTheConnection() {
-        if (fixSessionStateComponent.isLogoutPendingConnectionEnd()) {
+        if (fixSessionStateComponent.isLoggedOutConnectionOpen()) {
             fixSession.logEvent("Counterparty did not close the connection within %s of its logout being acknowledged, disconnecting",
                     fixSessionSettings.getLogInOrOutResponseTimeout());
             fixSession.runOnSessionOwnerThread(fixSession::disconnect, fixSession.currentIOSession());
@@ -120,7 +120,7 @@ public class LogonLogoutComponent implements FixSessionLayerComponent {
     }
 
     @Override
-    public void onLogoutReceived(String message, DecodedFixMessage logoutMessage) {
+    public void onLoggedOutConnectionOpen(String message, DecodedFixMessage logoutMessage) {
         cancelLogonOrLogoutTaskIfNeeded();
     }
 

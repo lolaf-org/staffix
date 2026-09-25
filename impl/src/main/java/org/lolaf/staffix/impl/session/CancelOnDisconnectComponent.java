@@ -60,7 +60,7 @@ class CancelOnDisconnectComponent implements FixSessionLayerComponent {
     }
 
     @Override
-    public void onLogoutProcessed(boolean cleanLogout) {
+    public void onLoggedOutConnectionClosed(boolean cleanLogout) {
         if (cancelOnDisconnectType != null) {
             switch (cancelOnDisconnectType) {
                 case DO_NOT_CANCEL_ON_DISCONNECT_OR_LOGOUT:

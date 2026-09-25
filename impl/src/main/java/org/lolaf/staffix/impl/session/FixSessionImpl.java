@@ -552,12 +552,12 @@ public class FixSessionImpl implements FixSession {
             // disconnection would cancel the orders of a client that asked to be logged out under
             // CANCEL_ON_DISCONNECT_ONLY, and leave them live under CANCEL_ON_LOGOUT_ONLY
             // nothing was ever sent, the connection simply went: a hard disconnection
-            fixSessionLayerComponents.onLogoutProcessed(fixSessionState.isLogoutSent());
-        } else if (fixSessionState.isLogoutPendingConnectionEnd()) {
+            fixSessionLayerComponents.onLoggedOutConnectionClosed(fixSessionState.isLogoutSent());
+        } else if (fixSessionState.isLoggedOutConnectionOpen()) {
             // a logout is finished with when the connection goes, and that is the whole rule: it holds for the side
             // that acknowledged one and waited for the peer to close, and for the side that asked for one and closed
             // itself once the acknowledgement came back
-            fixSessionLayerComponents.onLogoutProcessed(true);
+            fixSessionLayerComponents.onLoggedOutConnectionClosed(true);
         }
         fixSessionLayerComponents.onDisconnected();
         authenticatedSubject = null;

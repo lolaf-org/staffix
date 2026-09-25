@@ -252,7 +252,7 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
     }
 
     @Override
-    public void onLogoutProcessed(boolean cleanLogout) {
+    public void onLoggedOutConnectionClosed(boolean cleanLogout) {
         resendRecovery.onSessionEnded();
     }
 

@@ -361,7 +361,7 @@ class TestFixLogonValidations extends AbstractFixTests {
                     .as("nothing may have been asked of the peer: the range would run backwards")
                     .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.RESEND_REQUEST));
         }
-        verify(fixAcceptorApplication).onLogoutInitiated(any(FixSession.class), startsWith("MsgSeqNum too low"));
+        verify(fixAcceptorApplication).onPreLogout(any(FixSession.class), startsWith("MsgSeqNum too low"), eq(true));
     }
 
     /**

@@ -155,7 +155,7 @@ class TestScenario2 extends AbstractScenario {
             assertThat(session.isClosedByPeer(DEFAULT_TIMEOUT)).isTrue();
         }
 
-        verify(fixAcceptorApplication).onLogoutInitiated(any(FixSession.class), startsWith("MsgSeqNum too low"));
+        verify(fixAcceptorApplication).onPreLogout(any(FixSession.class), startsWith("MsgSeqNum too low"), eq(true));
     }
 
     @Test
@@ -212,7 +212,7 @@ class TestScenario2 extends AbstractScenario {
         // The duplicate was ignored (never processed) and the session was never logged out.
         verify(fixAcceptorApplication).onTestRequest(any(FixSession.class), eq("Scenario2E-live"), any(UTCTime.class));
         verify(fixAcceptorApplication, never()).onTestRequest(any(FixSession.class), eq("Scenario2E-dup"), any(UTCTime.class));
-        verify(fixAcceptorApplication, never()).onLogoutInitiated(any(FixSession.class), startsWith("MsgSeqNum too low"));
+        verify(fixAcceptorApplication, never()).onPreLogout(any(FixSession.class), startsWith("MsgSeqNum too low"), eq(true));
     }
 
     @Test
