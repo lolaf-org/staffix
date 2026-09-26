@@ -87,8 +87,8 @@
         <project.build.outputTimestamp>2026-09-13T18:00:00Z</project.build.outputTimestamp>
         <maven.compiler.release>11</maven.compiler.release>
 
-        <ringos.version>0.9.0</ringos.version>
-        <betty.version>0.9.1</betty.version>
+        <ringos.version>0.9.1</ringos.version>
+        <betty.version>0.9.2-SNAPSHOT</betty.version>
         <maven-plugin-api.version>3.9.16</maven-plugin-api.version>
         <maven-plugin-annotations.version>3.16.0</maven-plugin-annotations.version>
         <testcontainers.version>2.0.5</testcontainers.version>

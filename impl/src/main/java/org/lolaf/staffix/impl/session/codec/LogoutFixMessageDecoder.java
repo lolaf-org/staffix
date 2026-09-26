@@ -67,7 +67,7 @@ public class LogoutFixMessageDecoder extends AbstractAdminFixMessageDecoder {
             // the Logout just received acknowledges the one this session sent: the handshake is over and the side
             // that initiated it closes, otherwise the socket is left open with a session that is logged out on both
             // ends (FIX Session Testcases scenario 12 step 3, and scenario 13 case A)
-            fixSessionImpl.processTask(fixSessionImpl::disconnect);
+            fixSessionImpl.disconnect();
         }
     }
 }

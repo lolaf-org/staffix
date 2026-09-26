@@ -28,15 +28,19 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.fix44.fields.EncryptMethod;
+import org.lolaf.staffix.fix44.fields.GapFillFlag;
 import org.lolaf.staffix.fix44.fields.HeartBtInt;
+import org.lolaf.staffix.fix44.fields.NewSeqNo;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
 import org.lolaf.staffix.tests.RawFixSocketClient;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
 
+import java.io.IOException;
 import java.net.ServerSocket;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -283,6 +287,96 @@ class TestFixLogonLogouts extends AbstractFixTests {
         assertThat(loggedInOnPreLogout).isTrue();
         assertThat(connectedOnLogout).as("connected on each onLogout").containsExactly(false);
         assertSentBeforeLogout(initiatorLogger.getIncomingMessages());
+    }
+
+    /**
+     * The side that asked for the logout closes on the acknowledgement: closing before that Logout's MsgSeqNum(34) is
+     * stored left a session removed at that moment writing into a store it had already stopped.
+     */
+    @Test
+    void testALogoutAcknowledgementIsStoredBeforeTheConnectionCloses() {
+        logonClient();
+        List<Long> nextIncomingSeqNumOnDisconnected = new CopyOnWriteArrayList<>();
+        List<Long> peerNextOutgoingSeqNumOnDisconnected = new CopyOnWriteArrayList<>();
+        doAnswer(invocation -> {
+            nextIncomingSeqNumOnDisconnected.add(getFixMessagesStore(ConnectorType.ACCEPTOR).getIncomingSeqNum());
+            peerNextOutgoingSeqNumOnDisconnected.add(getFixMessagesStore(ConnectorType.INITIATOR).getOutgoingSeqNum());
+            return null;
+        }).when(fixAcceptorApplication).onDisconnected(any());
+
+        fixAcceptorSession.logoutPermanently("test logout");
+
+        await().untilAsserted(() -> verify(fixAcceptorApplication).onDisconnected(any()));
+        assertThat(nextIncomingSeqNumOnDisconnected).isEqualTo(peerNextOutgoingSeqNumOnDisconnected);
+    }
+
+    /**
+     * A peer that sends more after acknowledging this side's Logout, in the same read: nothing of that read may be
+     * stored once the connection is closed, since a session removed on that disconnection stops its store.
+     */
+    @Test
+    void testMessagesReadWithTheLogoutAcknowledgementAreProcessedBeforeTheConnectionCloses() throws Exception {
+        startFixAcceptor();
+        List<Long> nextIncomingSeqNumOnDisconnected = recordAcceptorNextIncomingSeqNumOnDisconnected();
+
+        try (RawFixSocketClient.Session peer = connectRawInitiator()) {
+            fixAcceptorSession.logoutPermanently("test logout");
+            peer.readMessageOfType(MessageTypes.Logout, Duration.ofSeconds(10));
+
+            peer.send(concat(peer.message(MessageTypes.Logout, 2).build(), peer.message(MessageTypes.Heartbeat, 3).build()));
+
+            await().untilAsserted(() -> verify(fixAcceptorApplication).onDisconnected(any()));
+        }
+        assertThat(nextIncomingSeqNumOnDisconnected).containsExactly(acceptorMessagesStore.getIncomingSeqNum());
+    }
+
+    /**
+     * A Logout acknowledgement held behind a gap is processed by the replay once the gap is filled, with more held
+     * messages still to replay after it: none of them may be stored once the connection is closed.
+     */
+    @Test
+    void testALogoutAcknowledgementReplayedFromTheOutOfSequenceQueueClosesOnceTheReplayIsDone() throws Exception {
+        startFixAcceptor();
+        List<Long> nextIncomingSeqNumOnDisconnected = recordAcceptorNextIncomingSeqNumOnDisconnected();
+
+        try (RawFixSocketClient.Session peer = connectRawInitiator()) {
+            // NextNumIn is 2, so a message at 3 opens a gap over 2 and is held on top of it
+            peer.send(peer.message(MessageTypes.Heartbeat, 3));
+            peer.readMessageOfType(MessageTypes.ResendRequest, Duration.ofSeconds(10));
+            fixAcceptorSession.logoutPermanently("test logout");
+            peer.readMessageOfType(MessageTypes.Logout, Duration.ofSeconds(10));
+            peer.send(peer.message(MessageTypes.Logout, 4));
+            peer.send(peer.message(MessageTypes.Heartbeat, 5));
+
+            peer.send(peer.message(MessageTypes.SequenceReset, 2).set(GapFillFlag.get(), "Y").set(NewSeqNo.get(), "3"));
+
+            await().untilAsserted(() -> verify(fixAcceptorApplication).onDisconnected(any()));
+        }
+        assertThat(nextIncomingSeqNumOnDisconnected).containsExactly(acceptorMessagesStore.getIncomingSeqNum());
+    }
+
+    private List<Long> recordAcceptorNextIncomingSeqNumOnDisconnected() {
+        List<Long> nextIncomingSeqNumOnDisconnected = new CopyOnWriteArrayList<>();
+        doAnswer(invocation -> {
+            nextIncomingSeqNumOnDisconnected.add(acceptorMessagesStore.getIncomingSeqNum());
+            return null;
+        }).when(fixAcceptorApplication).onDisconnected(any());
+        return nextIncomingSeqNumOnDisconnected;
+    }
+
+    private RawFixSocketClient.Session connectRawInitiator() throws IOException {
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+        RawFixSocketClient.Session peer = RawFixSocketClient.connect(acceptorPort, initiator.getFixVersion(),
+                initiator.getSenderCompID().getValue(), initiator.getTargetCompID().getValue(), Duration.ofSeconds(10));
+        peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
+        peer.readMessageOfType(MessageTypes.Logon, Duration.ofSeconds(10));
+        return peer;
+    }
+
+    private static byte[] concat(byte[] first, byte[] second) {
+        byte[] both = Arrays.copyOf(first, first.length + second.length);
+        System.arraycopy(second, 0, both, first.length, second.length);
+        return both;
     }
 
     private void sendAMessageOnPreLogout(FixApplication fixApplication) {

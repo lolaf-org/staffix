@@ -148,7 +148,7 @@ public abstract class AbstractAdminFixMessageDecoder extends DecodedFixMessageDe
         FixSessionImpl fixSessionImpl = getFixSession();
         log.error("Failed to decode admin message type {} on session {}, disconnecting", getMessageType().code(), fixSession.getFixSessionId(), decodingException);
         fixSessionImpl.logEvent("Failed to decode admin message type %s with error: %s, abnormal situation disconnecting", getMessageType().code(), decodingException.getMessage());
-        fixSessionImpl.processTask(fixSessionImpl::disconnect);
+        fixSessionImpl.disconnect();
 
     }
 }
