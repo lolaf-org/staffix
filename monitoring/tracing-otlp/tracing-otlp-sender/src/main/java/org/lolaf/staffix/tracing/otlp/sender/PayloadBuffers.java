@@ -140,6 +140,7 @@ final class PayloadBuffers {
          * harmless and does not pool the buffer twice.
          */
         @Override
+        @SuppressWarnings("java:S899")
         public void close() {
             if (closed) {
                 return;

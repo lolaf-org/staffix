@@ -96,6 +96,7 @@ final class AsyncPluginConsumerPool {
         private final IdleStrategy idleStrategy;
         private final String threadName;
         private final AtomicBoolean running;
+        @SuppressWarnings("java:S3077")
         private volatile Binding[] bindings;
         private Thread thread;
 

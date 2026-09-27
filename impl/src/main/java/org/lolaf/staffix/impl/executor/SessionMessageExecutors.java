@@ -102,6 +102,7 @@ public class SessionMessageExecutors {
     private final class NamespaceExecutors {
 
         private final Class<?> namespace;
+        @SuppressWarnings("java:S3077")
         private volatile MessageExecutorImpl<?, ?, ?, ?>[] executors = NONE;
 
         private NamespaceExecutors(Class<?> namespace) {
