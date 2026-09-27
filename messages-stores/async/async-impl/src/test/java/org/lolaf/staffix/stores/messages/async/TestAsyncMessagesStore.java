@@ -34,6 +34,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 
@@ -399,7 +400,7 @@ class TestAsyncMessagesStore {
     }
 
     @Test
-    void testStopWithNonFlushDeadline() {
+    void testStopWithNonFlushDeadline() throws InterruptedException {
         asyncMessageStore.start();
         for (int i = 0; i < 32 * 1024; i++) {
             asyncMessageStore.storeMessageSent(i, testMessage);
@@ -420,17 +421,28 @@ class TestAsyncMessagesStore {
         assertThat(asyncMessageStore.hasEmptyQueue()).isTrue();
         assertThat(asyncMessageStore.getQueuePollsCount()).isEqualTo(32 * 1024);
 
+        AtomicInteger writes = new AtomicInteger();
+        CountDownLatch writeReleased = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            if (writes.incrementAndGet() > 128) {
+                writeReleased.await();
+            }
+            return null;
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+
         asyncMessageStore.start();
-        for (int i = 0; i < 32 * 1024; i++) {
-            asyncMessageStore.storeMessageSent(i, testMessage);
+        try {
+            for (int i = 0; i < 32 * 1024; i++) {
+                asyncMessageStore.storeMessageSent(i, testMessage);
+            }
+
+            asyncMessageStore.stop(Deadline.of(Duration.ofMillis(50)));
+
+            assertThat(asyncMessageStore.hasEmptyQueue()).isFalse();
+            assertThat(asyncMessageStore.getQueuePollsCount()).isGreaterThan(128).isLessThan(32 * 1024);
+        } finally {
+            writeReleased.countDown();
         }
-
-        asyncMessageStore.stop(Deadline.of(Duration.ofMillis(2)));
-
-        assertThat(asyncMessageStore.hasEmptyQueue()).isFalse();
-        assertThat(asyncMessageStore.getQueuePollsCount()).isGreaterThan(128);
-        // unless we have a blazing fast test env it should work
-        assertThat(asyncMessageStore.getQueuePollsCount()).isLessThan(8 * 1024);
     }
 
     @Test
