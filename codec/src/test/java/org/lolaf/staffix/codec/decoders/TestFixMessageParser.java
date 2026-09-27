@@ -1394,6 +1394,37 @@ class TestFixMessageParser {
     }
 
     @Test
+    void testEndingTheInputStopsAfterTheCurrentMessageAndDropsTheRest() throws DecodingException {
+        String heartbeat1 = fixMessage("35=0", "34=1", "49=TARGET_TEST", "52=20241013-19:07:17.861", "56=SENDER_TEST");
+        String heartbeat2 = fixMessage("35=0", "34=2", "49=TARGET_TEST", "52=20241013-19:07:17.861", "56=SENDER_TEST");
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+        doAnswer(invocation -> {
+            fixMessageParser.endInputAfterCurrentMessage();
+            return null;
+        }).when(decoder).onDecoded(any(FixSession.class), anyBoolean(), anyBoolean());
+        ByteBuffer read = ByteBuffer.wrap((heartbeat1 + heartbeat2).getBytes());
+
+        fixMessageParser.parseMessages(read, getFixMessageDecoderFunction(decoder));
+
+        verify(decoder, times(1)).onBegin(anyLong(), any());
+        verify(decoder, times(1)).onDecoded(any(FixSession.class), eq(false), eq(false));
+        verify(fixMessageParserEventsListener, times(1)).onMessageDecodingEnd(any(), anyInt(), anyLong(), any());
+        assertThat(read.hasRemaining()).isFalse();
+    }
+
+    @Test
+    void testAnEndedInputDoesNotReachTheNextRead() throws DecodingException {
+        String heartbeat1 = fixMessage("35=0", "34=1", "49=TARGET_TEST", "52=20241013-19:07:17.861", "56=SENDER_TEST");
+        String heartbeat2 = fixMessage("35=0", "34=2", "49=TARGET_TEST", "52=20241013-19:07:17.861", "56=SENDER_TEST");
+        FixMessageDecoder decoder = mock(FixMessageDecoder.class);
+        fixMessageParser.endInputAfterCurrentMessage();
+
+        fixMessageParser.parseMessages(ByteBuffer.wrap((heartbeat1 + heartbeat2).getBytes()), getFixMessageDecoderFunction(decoder));
+
+        verify(decoder, times(2)).onDecoded(any(FixSession.class), eq(false), eq(false));
+    }
+
+    @Test
     void test3MessagesAndAHalfInBufferParsing() throws DecodingException {
         String messagePart1 = "8=FIX.4.49=8335=A34=349=TARGET_TEST52=";
         String messagePart2 = "20241013-19:07:17.86156=SENDER_TEST98=0108=30141=Y10=251";

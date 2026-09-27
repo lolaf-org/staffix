@@ -476,8 +476,17 @@ public class FixSessionImpl implements FixSession {
 
     private void disconnect(Deadline deadline) {
         if (ioSession != null) {
+            if (ioSession.isWithinIOThread()) {
+                stopProcessingTheReadInProgress();
+            }
             ioSession.stop(deadline);
         }
+    }
+
+    private void stopProcessingTheReadInProgress() {
+        // avoid reading eventually remaining messages in the network buffer
+        fixMessageParser.endInputAfterCurrentMessage();
+        resendRecovery.onDisconnectingWithinARead();
     }
 
     @Override

@@ -98,6 +98,7 @@ public class FixMessageParser {
     private final CompIdValidator compIdValidator;
     private final GarbledMessageDetector garbledMessageDetector;
     private final int expectedBeginStringHash;
+    private int lastMessageEnd;
 
     public FixMessageParser(FixSessionId fixSessionId,
                             MessageTypeRegistry messageTypeRegistry,
@@ -168,6 +169,10 @@ public class FixMessageParser {
         messageParsingState.reset();
     }
 
+    public void endInputAfterCurrentMessage() {
+        lastMessageEnd = Integer.MIN_VALUE;
+    }
+
     public void parseMessages(ByteBuffer message, Function<MessageType, FixMessageDecoder> fixMessageDecoderProvider) throws DecodingException {
         parseMessages(message, fixMessageDecoderProvider, DISABLED_CURRENT_SEQ_NUM_CHECK, 0);
     }
@@ -176,6 +181,7 @@ public class FixMessageParser {
         UTCTime localReceiveTime = clock.now();
         ChecksumCalculator checksumCalculatorForParsing = checksumCalculator;
         int limit = message.limit();
+        lastMessageEnd = limit;
         byte[] messageContent = message.array();
         int currentPosition = message.position();
         if (messageParsingState.isSplitAfterMsgSeqNum()) {
@@ -242,8 +248,8 @@ public class FixMessageParser {
                     processRequiredHeaderFields(currentPosition, fixMessageDecoderProvider, fieldTag, fieldTagLen, localReceiveTimeInNanos, localReceiveTime);
                 } else if (fieldTag == CoreFields.CHECKSUM) {
                     finalizeMessageParsingOnChecksum(message, nextDelimiterPosition, checksumCalculatorForParsing, currentSequenceNumber);
-                    if (nextDelimiterPosition == limit) {
-                        // all bytes processed immediately return
+                    if (nextDelimiterPosition >= lastMessageEnd) {
+                        message.position(limit);
                         deserializationContext.clean();
                         return;
                     }

@@ -333,6 +333,14 @@ public class ResendRecovery {
         clearOutOfSequenceMessages();
     }
 
+    /**
+     * The messages held belong to the connection closing, as {@link #onNewConnection} would find them: dropping them
+     * now also ends a replay in progress after the message that disconnected.
+     */
+    void onDisconnectingWithinARead() {
+        clearOutOfSequenceMessages();
+    }
+
     private void clearOutOfSequenceMessages() {
         outOfSequenceMessages.clear();
         outOfSequenceMessagesReplayRequested = false;

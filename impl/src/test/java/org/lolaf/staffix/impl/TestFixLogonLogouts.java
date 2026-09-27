@@ -311,11 +311,11 @@ class TestFixLogonLogouts extends AbstractFixTests {
     }
 
     /**
-     * A peer that sends more after acknowledging this side's Logout, in the same read: nothing of that read may be
-     * stored once the connection is closed, since a session removed on that disconnection stops its store.
+     * A peer that sends more after acknowledging this side's Logout, in the same read: the session is closing, so
+     * nothing after the acknowledgement is processed, and nothing is stored once the connection is closed.
      */
     @Test
-    void testMessagesReadWithTheLogoutAcknowledgementAreProcessedBeforeTheConnectionCloses() throws Exception {
+    void testMessagesReadAfterTheLogoutAcknowledgementAreNotProcessed() throws Exception {
         startFixAcceptor();
         List<Long> nextIncomingSeqNumOnDisconnected = recordAcceptorNextIncomingSeqNumOnDisconnected();
 
@@ -327,15 +327,16 @@ class TestFixLogonLogouts extends AbstractFixTests {
 
             await().untilAsserted(() -> verify(fixAcceptorApplication).onDisconnected(any()));
         }
-        assertThat(nextIncomingSeqNumOnDisconnected).containsExactly(acceptorMessagesStore.getIncomingSeqNum());
+        assertThat(nextIncomingSeqNumOnDisconnected).containsExactly(3L);
+        assertThat(acceptorMessagesStore.getIncomingSeqNum()).isEqualTo(3L);
     }
 
     /**
      * A Logout acknowledgement held behind a gap is processed by the replay once the gap is filled, with more held
-     * messages still to replay after it: none of them may be stored once the connection is closed.
+     * messages after it: the replay stops at the acknowledgement, and nothing is stored once the connection is closed.
      */
     @Test
-    void testALogoutAcknowledgementReplayedFromTheOutOfSequenceQueueClosesOnceTheReplayIsDone() throws Exception {
+    void testMessagesHeldAfterAReplayedLogoutAcknowledgementAreNotProcessed() throws Exception {
         startFixAcceptor();
         List<Long> nextIncomingSeqNumOnDisconnected = recordAcceptorNextIncomingSeqNumOnDisconnected();
 
@@ -352,7 +353,26 @@ class TestFixLogonLogouts extends AbstractFixTests {
 
             await().untilAsserted(() -> verify(fixAcceptorApplication).onDisconnected(any()));
         }
-        assertThat(nextIncomingSeqNumOnDisconnected).containsExactly(acceptorMessagesStore.getIncomingSeqNum());
+        assertThat(nextIncomingSeqNumOnDisconnected).containsExactly(5L);
+        assertThat(acceptorMessagesStore.getIncomingSeqNum()).isEqualTo(5L);
+    }
+
+    /**
+     * An admin message with a MsgSeqNum too low and no PossDupFlag(43) disconnects while it is decoded: what follows it
+     * in the same read is not processed.
+     */
+    @Test
+    void testMessagesReadAfterAnAdminMessageThatDisconnectsAreNotProcessed() throws Exception {
+        startFixAcceptor();
+        List<Long> nextIncomingSeqNumOnDisconnected = recordAcceptorNextIncomingSeqNumOnDisconnected();
+
+        try (RawFixSocketClient.Session peer = connectRawInitiator()) {
+            peer.send(concat(peer.message(MessageTypes.Heartbeat, 1).build(), peer.message(MessageTypes.Heartbeat, 2).build()));
+
+            await().untilAsserted(() -> verify(fixAcceptorApplication).onDisconnected(any()));
+        }
+        assertThat(nextIncomingSeqNumOnDisconnected).containsExactly(2L);
+        assertThat(acceptorMessagesStore.getIncomingSeqNum()).isEqualTo(2L);
     }
 
     private List<Long> recordAcceptorNextIncomingSeqNumOnDisconnected() {
