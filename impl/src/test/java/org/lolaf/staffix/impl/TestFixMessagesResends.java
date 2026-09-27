@@ -47,6 +47,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.IntConsumer;
 import java.util.stream.IntStream;
@@ -1032,7 +1033,7 @@ class TestFixMessagesResends extends AbstractFixTests {
         // recorded the moment the recovery is declared over, before anything held is let go: the message must still
         // be waiting at that point, which is the whole of what section 4.3.11 asks for
         TestingLogger recoveringLogger = connectorType.inverse().select(initiatorLogger, acceptorLogger);
-        AtomicBoolean sentBeforeRecoveryEnded = new AtomicBoolean();
+        AtomicReference<Boolean> sentBeforeRecoveryEnded = new AtomicReference<>();
         doAnswer(invocation -> {
             sentBeforeRecoveryEnded.set(recoveringLogger.getOutgoingMessages().stream()
                     .anyMatch(message -> message.contains("test thread id 200")));
@@ -1049,7 +1050,9 @@ class TestFixMessagesResends extends AbstractFixTests {
         // it did go out, once the recovery was over
         assertMessageReceived(getDecodedFixMessages(connectorType), EmailThreadID.get(), "test thread id 200");
 
-        assertThat(sentBeforeRecoveryEnded)
+        // Mockito records onResendRequestTerminated before running its answer, so the verify above can pass first
+        await().until(() -> sentBeforeRecoveryEnded.get() != null);
+        assertThat(sentBeforeRecoveryEnded.get())
                 .as("the message handed over during the recovery must have been held until it finished")
                 .isFalse();
 
@@ -1140,7 +1143,7 @@ class TestFixMessagesResends extends AbstractFixTests {
         }).when(resendRequestReceiver).onResendRequestInitiated(any(FixSession.class), anyLong(), anyLong());
 
         TestingLogger recoveringLogger = connectorType.inverse().select(initiatorLogger, acceptorLogger);
-        AtomicBoolean sentBeforeRecoveryEnded = new AtomicBoolean();
+        AtomicReference<Boolean> sentBeforeRecoveryEnded = new AtomicReference<>();
         doAnswer(invocation -> {
             sentBeforeRecoveryEnded.set(recoveringLogger.getOutgoingMessages().stream()
                     .anyMatch(message -> message.contains("test thread id 400")));
@@ -1154,7 +1157,9 @@ class TestFixMessagesResends extends AbstractFixTests {
         awaitResendRequestCompleted(resendRequestReceiver);
 
         assertMessageReceived(getDecodedFixMessages(connectorType), EmailThreadID.get(), "test thread id 400");
-        assertThat(sentBeforeRecoveryEnded)
+        // Mockito records onResendRequestTerminated before running its answer, so the verify above can pass first
+        await().until(() -> sentBeforeRecoveryEnded.get() != null);
+        assertThat(sentBeforeRecoveryEnded.get())
                 .as("with holding disabled the message must have gone out during the recovery, not after it")
                 .isTrue();
 
