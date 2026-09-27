@@ -27,6 +27,10 @@
         <module>file-session-settings</module>
     </modules>
 
+    <properties>
+        <sonar.skip>true</sonar.skip>
+    </properties>
+
     <build>
         <plugins>
             <!-- no need to release the examples -->

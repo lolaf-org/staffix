@@ -238,7 +238,7 @@ class TestFixLogonValidations extends AbstractFixTests {
             peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
 
             String response = peer.readMessageOfType(MessageTypes.Logon, Duration.ofSeconds(10));
-            assertThat(FixMessageFields.hasFieldWithValue(response, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON))
+            assertThat(FixMessageFields.hasFieldWithValue(response, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON.code()))
                     .as("the logon is acknowledged rather than logged out, the refused connection having left the "
                             + "numbering where the peer thinks it is, but got: %s", response)
                     .isTrue();
@@ -359,7 +359,7 @@ class TestFixLogonValidations extends AbstractFixTests {
                     .isTrue();
             assertThat(acceptorLogger.getOutgoingMessages())
                     .as("nothing may have been asked of the peer: the range would run backwards")
-                    .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.RESEND_REQUEST));
+                    .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.RESEND_REQUEST.code()));
         }
         verify(fixAcceptorApplication).onPreLogout(any(FixSession.class), startsWith("MsgSeqNum too low"), eq(true));
     }

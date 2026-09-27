@@ -105,7 +105,7 @@ class TestFixMessagesValidation extends AbstractFixTests {
         // admin message should generate a reject and not a business message reject
         await().untilAsserted(() -> verify(fixAcceptorApplication).onMessageReject(any(),
                 Mockito.contains("Field not found in message"),
-                eq(SessionRejectReasonCodes.REQUIRED_TAG_MISSING.getCode()), anyLong(), eq(112), eq(CoreMessageType.TEST_REQUEST)));
+                eq(SessionRejectReasonCodes.REQUIRED_TAG_MISSING.getCode()), anyLong(), eq(112), eq(CoreMessageType.TEST_REQUEST.code())));
     }
 
     @Test
@@ -399,7 +399,7 @@ class TestFixMessagesValidation extends AbstractFixTests {
     private static class TestRequestEncoder extends FixMessageEncoderImpl<TestRequestEncoder> {
 
         public TestRequestEncoder() {
-            super(null, MessageType.of(CoreMessageType.TEST_REQUEST, true), null, null, null);
+            super(null, MessageType.of(CoreMessageType.TEST_REQUEST.code(), true), null, null, null);
         }
     }
 

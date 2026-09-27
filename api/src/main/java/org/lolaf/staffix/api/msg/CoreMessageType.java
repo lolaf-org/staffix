@@ -15,23 +15,37 @@
  */
 package org.lolaf.staffix.api.msg;
 
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.experimental.Accessors;
+
 /**
  * The MsgType(35) codes of the session-layer messages, which are the same in every FIX version.
  *
  * <p>Constants rather than a registry lookup because the session layer needs them before it knows which
  * dictionary a connection is using - a Logon has to be recognised to find that out.
  */
-public interface CoreMessageType {
+@Getter
+@Accessors(fluent = true)
+@RequiredArgsConstructor
+public enum CoreMessageType {
 
-    String LOGON = "A";
-    String LOGOUT = "5";
-    String HEARTBEAT = "0";
-    String REJECT = "3";
-    String BUSINESS_MESSAGE_REJECT = "j";
-    String TEST_REQUEST = "1";
-    String RESEND_REQUEST = "2";
-    String SEQUENCE_REQUEST = "4";
-    String XML_NON_FIX = "n";
+    LOGON("A"),
+    LOGOUT("5"),
+    HEARTBEAT("0"),
+    REJECT("3"),
+    BUSINESS_MESSAGE_REJECT("j"),
+    TEST_REQUEST("1"),
+    RESEND_REQUEST("2"),
+    SEQUENCE_REQUEST("4"),
+    XML_NON_FIX("n");
 
+    private final String code;
 
+    /**
+     * Compares by code, so a {@link MessageType} from any dictionary matches.
+     */
+    public boolean matches(MessageType messageType) {
+        return code.equals(messageType.code());
+    }
 }

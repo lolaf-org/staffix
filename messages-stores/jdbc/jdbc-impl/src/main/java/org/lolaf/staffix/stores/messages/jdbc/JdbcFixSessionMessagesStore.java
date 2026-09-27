@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 
 @Slf4j
+@SuppressWarnings("java:S2077")
 class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesStore.FixSessionMessagesStore>
         implements FixMessagesStore.BatchingFixSessionMessagesStore {
 

@@ -76,11 +76,11 @@ abstract class AbstractQuickfixjSmokeInterop extends AbstractQuickfixjHarness {
         logon();
 
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON))
+                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON.code()))
                 .as("the staffix Logon must carry BeginString(8)=%s", beginString())
                 .containsFieldWithValue(CoreFields.BEGIN_STRING, beginString()));
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON))
+                messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON.code()))
                 .as("the QuickFIX/J Logon must carry BeginString(8)=%s", beginString())
                 .containsFieldWithValue(CoreFields.BEGIN_STRING, beginString()));
     }

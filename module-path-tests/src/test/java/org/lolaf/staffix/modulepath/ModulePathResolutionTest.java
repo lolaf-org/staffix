@@ -23,11 +23,7 @@ import java.lang.module.ModuleReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -163,6 +159,7 @@ class ModulePathResolutionTest {
     void theModulePathHoldsTheStaffixJars() throws Exception {
         try (var entries = Files.list(MODULE_PATH)) {
             assertThat(entries.map(p -> p.getFileName().toString()))
+                    .isNotEmpty()
                     .allMatch(name -> name.startsWith("staffix-") && name.endsWith(".jar"));
         }
         assertThat(modules()).extracting(m -> m.descriptor().name())

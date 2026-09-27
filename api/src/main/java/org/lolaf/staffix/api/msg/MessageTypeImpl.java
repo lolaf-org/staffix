@@ -49,7 +49,7 @@ class MessageTypeImpl implements MessageType {
 
     @Override
     public boolean isStorable() {
-        return !admin || CoreMessageType.REJECT.equals(code);
+        return !admin || CoreMessageType.REJECT.code().equals(code);
     }
 
     @Override

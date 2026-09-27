@@ -86,11 +86,11 @@ abstract class AbstractQuickfixjFixtSmokeInterop extends AbstractQuickfixjSmokeI
         logon();
 
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON))
+                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON.code()))
                 .as("the staffix Logon must name %s as its DefaultApplVerID(1137)", applVerId())
                 .containsFieldWithValue(CoreFields.DEFAULT_APPL_VER_ID, applVerId().getCode()));
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON))
+                messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON.code()))
                 .as("the QuickFIX/J Logon must name %s as its DefaultApplVerID(1137)", applVerId())
                 .containsFieldWithValue(CoreFields.DEFAULT_APPL_VER_ID, applVerId().getCode()));
     }

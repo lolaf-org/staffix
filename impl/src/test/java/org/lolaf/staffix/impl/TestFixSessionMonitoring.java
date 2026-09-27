@@ -142,8 +142,8 @@ class TestFixSessionMonitoring extends AbstractFixTests {
             verify(acceptorFixSessionEventsListener).onLogon();
             verify(initiatorFixSessionEventsListener).onLogon();
         });
-        verify(initiatorFixSessionEventsListener).onMessageSent(eq(mtr.find(CoreMessageType.LOGON)), anyInt(), anyLong(), any());
-        verify(acceptorFixSessionEventsListener).onMessageReceived(eq(mtr.find(CoreMessageType.LOGON)), anyInt(), anyLong(), any());
+        verify(initiatorFixSessionEventsListener).onMessageSent(eq(mtr.find(CoreMessageType.LOGON.code())), anyInt(), anyLong(), any());
+        verify(acceptorFixSessionEventsListener).onMessageReceived(eq(mtr.find(CoreMessageType.LOGON.code())), anyInt(), anyLong(), any());
 
         fixInitiatorSession.logoutPermanently("test");
 
@@ -152,8 +152,8 @@ class TestFixSessionMonitoring extends AbstractFixTests {
             verify(initiatorFixSessionEventsListener).onLogout();
         });
 
-        verify(initiatorFixSessionEventsListener).onMessageSent(eq(mtr.find(CoreMessageType.LOGOUT)), anyInt(), anyLong(), any());
-        verify(acceptorFixSessionEventsListener).onMessageReceived(eq(mtr.find(CoreMessageType.LOGOUT)), anyInt(), anyLong(), any());
+        verify(initiatorFixSessionEventsListener).onMessageSent(eq(mtr.find(CoreMessageType.LOGOUT.code())), anyInt(), anyLong(), any());
+        verify(acceptorFixSessionEventsListener).onMessageReceived(eq(mtr.find(CoreMessageType.LOGOUT.code())), anyInt(), anyLong(), any());
     }
 
     @Test

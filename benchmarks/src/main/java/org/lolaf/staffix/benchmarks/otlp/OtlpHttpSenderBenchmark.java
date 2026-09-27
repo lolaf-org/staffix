@@ -26,17 +26,14 @@ import org.lolaf.staffix.api.http.HttpSenderSettings;
 import org.lolaf.staffix.api.http.HttpVersion;
 import org.lolaf.staffix.http.jdk.JdkHttpSender;
 import org.lolaf.staffix.http.jetty.JettyHttpSender;
+import org.lolaf.staffix.http.okhttp.NoDelaySocketFactory;
 import org.lolaf.staffix.monitoring.micrometer.otlp.MicrometerHttpSenderAdapter;
 import org.openjdk.jmh.annotations.*;
 
-import javax.net.SocketFactory;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.InetAddress;
-import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Random;
@@ -274,45 +271,6 @@ public class OtlpHttpSenderBenchmark {
 
         private HttpSender adapted(org.lolaf.staffix.api.http.HttpSender sender) {
             return new MicrometerHttpSenderAdapter(sender, address);
-        }
-
-        /**
-         * Hands OkHttp sockets with Nagle disabled; see this class's own documentation for why that is
-         * not optional here.
-         */
-        private static final class NoDelaySocketFactory extends SocketFactory {
-
-            private static Socket noDelay(Socket socket) throws IOException {
-                socket.setTcpNoDelay(true);
-                return socket;
-            }
-
-            @Override
-            public Socket createSocket() throws IOException {
-                return noDelay(new Socket());
-            }
-
-            @Override
-            public Socket createSocket(String host, int port) throws IOException {
-                return noDelay(new Socket(host, port));
-            }
-
-            @Override
-            public Socket createSocket(String host, int port, InetAddress localAddress, int localPort)
-                    throws IOException {
-                return noDelay(new Socket(host, port, localAddress, localPort));
-            }
-
-            @Override
-            public Socket createSocket(InetAddress host, int port) throws IOException {
-                return noDelay(new Socket(host, port));
-            }
-
-            @Override
-            public Socket createSocket(InetAddress host, int port, InetAddress localAddress, int localPort)
-                    throws IOException {
-                return noDelay(new Socket(host, port, localAddress, localPort));
-            }
         }
     }
 }

@@ -19,9 +19,11 @@
     </description>
 
     <properties>
+        <sonar.skip>true</sonar.skip>
         <!-- Hand-written sources here reference FIX encoders generated into target/generated-sources
              in this same module, so javadoc needs both on its source path. -->
-        <javadoc.sourcepath>${javadoc.delomboked.sources}${path.separator}${project.build.directory}/generated-sources
+        <javadoc.sourcepath>
+            ${javadoc.delomboked.sources}${path.separator}${project.build.directory}/generated-sources
         </javadoc.sourcepath>
         <quickfix.version>3.0.2</quickfix.version>
         <artio.version>0.184</artio.version>

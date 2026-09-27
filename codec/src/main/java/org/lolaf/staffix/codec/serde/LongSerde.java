@@ -94,16 +94,16 @@ public class LongSerde {
             case 1:
                 return getNum(numberBuffer[startIndex]);
             case 2:
-                return getNum(numberBuffer[startIndex]) * 10
+                return getNum(numberBuffer[startIndex]) * 10L
                         + getNum(numberBuffer[startIndex + 1]);
             case 3:
-                return getNum(numberBuffer[startIndex]) * 100
-                        + getNum(numberBuffer[startIndex + 1]) * 10
+                return getNum(numberBuffer[startIndex]) * 100L
+                        + getNum(numberBuffer[startIndex + 1]) * 10L
                         + getNum(numberBuffer[startIndex + 2]);
             case 4:
-                return getNum(numberBuffer[startIndex]) * 1000
-                        + getNum(numberBuffer[startIndex + 1]) * 100
-                        + getNum(numberBuffer[startIndex + 2]) * 10
+                return getNum(numberBuffer[startIndex]) * 1000L
+                        + getNum(numberBuffer[startIndex + 1]) * 100L
+                        + getNum(numberBuffer[startIndex + 2]) * 10L
                         + getNum(numberBuffer[startIndex + 3]);
             default:
                 long num = 0;
@@ -125,7 +125,8 @@ public class LongSerde {
             sign = '-';
             value = -value;
         }
-        long q, r;
+        long q;
+        long r;
         int charPos = dst.length;
         // Generate two digits per iteration
         while (value >= 65536) {
@@ -139,15 +140,12 @@ public class LongSerde {
         }
 
         // Fall thru to fast mode for smaller numbers
-        while (true) {
+        do {
             q = value * 52429 >>> 16 + 3;
             r = value - ((q << 3) + (q << 1)); // r = i-(q*10) ...
             dst[--charPos] = DIGITS[(int) r];
             value = q;
-            if (value == 0) {
-                break;
-            }
-        }
+        } while (value != 0);
         if (sign != 0) {
             dst[--charPos] = sign;
         }

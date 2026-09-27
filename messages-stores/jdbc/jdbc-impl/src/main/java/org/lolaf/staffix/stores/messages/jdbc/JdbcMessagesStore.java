@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * Persists messages and sequence numbers to a relational database, for state that must outlive the engine's
@@ -34,12 +35,21 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class JdbcMessagesStore extends Startable.SimpleStartable<FixMessagesStore> implements FixMessagesStore {
 
+    private static final Pattern TABLE_PREFIX = Pattern.compile("\\w*");
+
     private final JdbcMessageStoreSettings settings;
     private final Map<FixSessionId, FixSessionMessagesStore> sessionStores;
     private ScheduledExecutorService scheduledExecutorService;
     private boolean embeddedScheduledExecutorService;
 
+    /**
+     * @throws IllegalArgumentException if the table prefix is not made of letters, digits and underscores only
+     */
     public JdbcMessagesStore(JdbcMessageStoreSettings settings) {
+        if (!TABLE_PREFIX.matcher(settings.getTablePrefix()).matches()) {
+            throw new IllegalArgumentException("The table prefix is written into the SQL statements as it is, so it may only "
+                    + "hold letters, digits and underscores: '" + settings.getTablePrefix() + "'");
+        }
         this.settings = settings;
         this.sessionStores = new ConcurrentHashMap<>();
     }

@@ -246,10 +246,10 @@ class TestFixSequenceResets extends AbstractFixTests {
         // and neither end logged out to get there
         assertThat(sentMessageTypes(resettingSideLogger))
                 .as("the connection must survive the reset, so the end starting it may not have sent a Logout")
-                .doesNotContain(CoreMessageType.LOGOUT);
+                .doesNotContain(CoreMessageType.LOGOUT.code());
         assertThat(sentMessageTypes(peerLogger))
                 .as("the connection must survive the reset, so the peer may not have sent a Logout")
-                .doesNotContain(CoreMessageType.LOGOUT);
+                .doesNotContain(CoreMessageType.LOGOUT.code());
 
         assertThat(getFixSession(connectorType).isLoggedIn()).isTrue();
 
@@ -308,7 +308,7 @@ class TestFixSequenceResets extends AbstractFixTests {
         // the peer has never heard of.
         assertThat(sentMessageTypes(initiatorLogger))
                 .as("the Logout must go out before the Logon that announces the reset")
-                .containsSubsequence(CoreMessageType.LOGOUT, CoreMessageType.LOGON);
+                .containsSubsequence(CoreMessageType.LOGOUT.code(), CoreMessageType.LOGON.code());
 
         // and the peer went through the cycle without ever taking the numbering for a gap or for a rewind: either one
         // would show up as a recovery it asked for, or as a Logout it decided to send

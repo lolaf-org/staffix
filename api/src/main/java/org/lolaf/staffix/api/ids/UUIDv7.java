@@ -144,6 +144,7 @@ public final class UUIDv7 {
         return (0b10L << 62) | (randB & 0x3FFFFFFFFFFFFFFFL);
     }
 
+    @SuppressWarnings({"java:S2119", "java:S2245"})
     static LongSupplier resolveRandom(String prop) {
         if (prop == null || prop.isEmpty() || "threadLocal".equalsIgnoreCase(prop)) {
             return () -> ThreadLocalRandom.current().nextLong();

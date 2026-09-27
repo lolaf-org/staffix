@@ -153,8 +153,8 @@ public class OkHttpGrpcSender implements GrpcSender {
                 .headers(boundHeaders)
                 .post(body(data, offset, length));
         if (extraHeaders != null) {
-            for (int i = 0; i < extraHeaders.length; i++) {
-                builder.header(extraHeaders[i].getName(), extraHeaders[i].getValue());
+            for (Header extraHeader : extraHeaders) {
+                builder.header(extraHeader.getName(), extraHeader.getValue());
             }
         }
 
@@ -218,10 +218,6 @@ public class OkHttpGrpcSender implements GrpcSender {
      */
     private void readMessage(Response response, GrpcReply into) throws IOException {
         ResponseBody body = response.body();
-        if (body == null) {
-            into.messageLength(0);
-            return;
-        }
         BufferedSource source = body.source();
         byte[] header = new byte[GrpcFraming.HEADER_LENGTH];
         if (!readFully(source, header, header.length)) {

@@ -15,8 +15,8 @@
  */
 package org.lolaf.staffix.api.version;
 
-import org.lolaf.staffix.api.serde.SerDe;
 import lombok.Getter;
+import org.lolaf.staffix.api.serde.SerDe;
 
 import java.util.Optional;
 
@@ -103,6 +103,8 @@ public enum FixRegularVersion implements FixVersion {
                     return VERSION_50_SP2;
                 case "Latest":
                     return VERSION_LATEST;
+                default:
+                    // will throw an exception below
             }
         }
         throw new IllegalArgumentException("Unknown fix version for " + major + " " + minor);

@@ -64,33 +64,26 @@ import java.util.function.Supplier;
 final class StaffixHttpSender implements HttpSender {
 
     private final org.lolaf.staffix.api.http.HttpSender delegate;
-
     private final PayloadBuffers buffers;
-
     private final RetrySchedule schedule;
-
     private final Compressor compressor;
-
     private final Supplier<Map<String, List<String>>> headersSupplier;
-
     private final ExecutorService executor;
 
     /**
      * Whether the executor is ours to shut down. It is not, when the exporter supplied one.
      */
     private final boolean ownsExecutor;
-
     private final int maxResponseBodySize;
 
     /**
      * Present when a compressor is configured, and then always the first entry of the header array.
      */
     private final Header contentEncoding;
-
     private volatile boolean closed;
-
+    @SuppressWarnings("java:S3077")
     private volatile Header[] lastHeaders = new Header[0];
-
+    @SuppressWarnings("java:S3077")
     private volatile StaffixHttpResponse lastSuccess =
             new StaffixHttpResponse(200, "", StaffixHttpResponse.NO_BODY);
 

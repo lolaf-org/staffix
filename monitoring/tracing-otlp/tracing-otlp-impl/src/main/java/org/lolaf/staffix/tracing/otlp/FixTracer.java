@@ -32,6 +32,7 @@ public interface FixTracer extends Tracer, PluginContext {
 
     void disable();
 
+    @Override
     boolean isEnabled();
 
     Span currentSpan();

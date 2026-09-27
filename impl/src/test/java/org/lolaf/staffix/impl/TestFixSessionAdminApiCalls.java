@@ -65,7 +65,7 @@ class TestFixSessionAdminApiCalls extends AbstractFixTests {
         // whose frame did not add up would have been disregarded as garbled, or rejected
         assertThat(getLogger(ConnectorType.INITIATOR).getOutgoingMessages())
                 .as("the initiator rejected nothing")
-                .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.REJECT));
+                .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.REJECT.code()));
     }
 
     /**

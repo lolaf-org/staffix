@@ -142,7 +142,7 @@ class TestFixLogonLogouts extends AbstractFixTests {
         String reply = RawFixSocketClient.exchange(acceptorPort, logon, Duration.ofSeconds(5));
 
         assertThat(reply)
-                .contains(CoreFields.FIELD_SEPARATOR + "35=" + CoreMessageType.LOGOUT + CoreFields.FIELD_SEPARATOR)
+                .contains(CoreFields.FIELD_SEPARATOR + "35=" + CoreMessageType.LOGOUT.code() + CoreFields.FIELD_SEPARATOR)
                 .contains("Unknown fix session FIX.4.4:UNKNOWN_TARGET:UNKNOWN_SENDER");
     }
 
@@ -182,12 +182,12 @@ class TestFixLogonLogouts extends AbstractFixTests {
         logonClient();
 
         assertThat(initiatorLogger.getOutgoingMessages()).anyMatch(s -> {
-            assertThat(s).contains("35=" + CoreMessageType.LOGON, "384=2", "372=8", "385=R", "372=D", "385=S");
+            assertThat(s).contains("35=" + CoreMessageType.LOGON.code(), "384=2", "372=8", "385=R", "372=D", "385=S");
             return true;
         });
 
         assertThat(acceptorLogger.getOutgoingMessages()).anyMatch(s -> {
-            assertThat(s).contains("35=" + CoreMessageType.LOGON, "384=2", "372=8", "385=S", "372=D", "385=R");
+            assertThat(s).contains("35=" + CoreMessageType.LOGON.code(), "384=2", "372=8", "385=S", "372=D", "385=R");
             return true;
         });
     }
@@ -203,25 +203,25 @@ class TestFixLogonLogouts extends AbstractFixTests {
         logonClient();
 
         assertThat(initiatorLogger.getOutgoingMessages()).anyMatch(s -> {
-            assertThat(s).contains("35=" + CoreMessageType.LOGON, "1600=Staffix", "1601=" + FixEngineVersion.getInstance().getVersion(),
+            assertThat(s).contains("35=" + CoreMessageType.LOGON.code(), "1600=Staffix", "1601=" + FixEngineVersion.getInstance().getVersion(),
                     "1602=Lolaf", "1603=test initiator app", "1604=1.2.3", "1605=test initiator vendor");
             return true;
         });
 
         assertThat(initiatorLogger.getIncomingMessages()).anyMatch(s -> {
-            assertThat(s).contains("35=" + CoreMessageType.LOGON, "1600=Staffix", "1601=" + FixEngineVersion.getInstance().getVersion(),
+            assertThat(s).contains("35=" + CoreMessageType.LOGON.code(), "1600=Staffix", "1601=" + FixEngineVersion.getInstance().getVersion(),
                     "1602=Lolaf", "1603=test acceptor app", "1604=1.2.3", "1605=test acceptor vendor");
             return true;
         });
 
         assertThat(acceptorLogger.getOutgoingMessages()).anyMatch(s -> {
-            assertThat(s).contains("35=" + CoreMessageType.LOGON, "1600=Staffix", "1601=" + FixEngineVersion.getInstance().getVersion(),
+            assertThat(s).contains("35=" + CoreMessageType.LOGON.code(), "1600=Staffix", "1601=" + FixEngineVersion.getInstance().getVersion(),
                     "1602=Lolaf", "1603=test acceptor app", "1604=1.2.3", "1605=test acceptor vendor");
             return true;
         });
 
         assertThat(acceptorLogger.getIncomingMessages()).anyMatch(s -> {
-            assertThat(s).contains("35=" + CoreMessageType.LOGON, "1600=Staffix", "1601=" + FixEngineVersion.getInstance().getVersion(),
+            assertThat(s).contains("35=" + CoreMessageType.LOGON.code(), "1600=Staffix", "1601=" + FixEngineVersion.getInstance().getVersion(),
                     "1602=Lolaf", "1603=test initiator app", "1604=1.2.3", "1605=test initiator vendor");
             return true;
         });
@@ -238,12 +238,12 @@ class TestFixLogonLogouts extends AbstractFixTests {
         logonClient();
 
         assertThat(initiatorLogger.getOutgoingMessages()).anyMatch(s -> {
-            assertThat(s).contains("35=" + CoreMessageType.LOGON, "383=4096");
+            assertThat(s).contains("35=" + CoreMessageType.LOGON.code(), "383=4096");
             return true;
         });
 
         assertThat(acceptorLogger.getOutgoingMessages()).anyMatch(s -> {
-            assertThat(s).contains("35=" + CoreMessageType.LOGON, "383=8192");
+            assertThat(s).contains("35=" + CoreMessageType.LOGON.code(), "383=8192");
             return true;
         });
     }
@@ -417,7 +417,7 @@ class TestFixLogonLogouts extends AbstractFixTests {
 
     private static void assertSentBeforeLogout(List<String> receivedMessages) {
         int message = indexOfMessageType(receivedMessages, MessageTypes.Email.code());
-        int logout = indexOfMessageType(receivedMessages, CoreMessageType.LOGOUT);
+        int logout = indexOfMessageType(receivedMessages, CoreMessageType.LOGOUT.code());
         assertThat(message).as("the message sent from onPreLogout was received").isNotNegative();
         assertThat(logout).as("the Logout was received").isNotNegative();
         assertThat(message).as("the message sent from onPreLogout precedes the Logout").isLessThan(logout);

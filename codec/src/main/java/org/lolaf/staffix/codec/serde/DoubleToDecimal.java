@@ -15,9 +15,9 @@
  */
 package org.lolaf.staffix.codec.serde;
 
-import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.ringos.threading.FastThreadLocal;
 import org.lolaf.staffix.api.serde.IllegalFieldValueException;
+import org.lolaf.staffix.api.serde.SerDe;
 
 import static java.lang.Double.doubleToRawLongBits;
 import static java.lang.Long.numberOfLeadingZeros;
@@ -459,7 +459,7 @@ public class DoubleToDecimal {
         }
         for (int i = n; i > 0; i--) {
             int t = 10 * y;
-            str[pos++] = (byte) (NumberSerdeUtils.ASCII_ZERO + (t >>> 28));
+            str[pos++] = (byte) ('0' + (t >>> 28));
             y = t & MASK_28;
         }
         return pos;
@@ -476,7 +476,7 @@ public class DoubleToDecimal {
         for (int i = n; i > 0; i--) {
             if (pos == dotPos) pos++;
             int t = 10 * y;
-            str[pos++] = (byte) (NumberSerdeUtils.ASCII_ZERO + (t >>> 28));
+            str[pos++] = (byte) ('0' + (t >>> 28));
             y = t & MASK_28;
         }
         return pos;

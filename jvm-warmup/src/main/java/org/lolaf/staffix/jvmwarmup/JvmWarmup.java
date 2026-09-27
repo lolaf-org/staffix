@@ -127,6 +127,7 @@ public final class JvmWarmup {
 
         private final JvmWarmupOptions options;
         private final WarmupFuture future;
+        @SuppressWarnings("java:S3077")
         private volatile Thread runner;
         private volatile boolean cancelRequested;
 

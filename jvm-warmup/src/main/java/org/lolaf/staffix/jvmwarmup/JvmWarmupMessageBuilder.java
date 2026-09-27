@@ -52,7 +52,7 @@ final class JvmWarmupMessageBuilder {
     void populate() {
         long n = counter++;
         int i = (int) (n & 0x3);
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
         UTCTime nowUtc = UTCTime.of(System.currentTimeMillis() * 1_000_000L);
         encoder.begin()
                 .setWarmupString(STRINGS[i])

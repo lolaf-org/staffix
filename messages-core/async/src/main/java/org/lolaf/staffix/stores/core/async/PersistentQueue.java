@@ -70,6 +70,7 @@ public class PersistentQueue<T extends AsyncEvent> {
      * that the polling thread can complete the deletions Chronicle notified too early. Reading this single reference
      * is all {@link #poll(AsyncEventSerde, AsyncEvent)} does for the cleanup when there is nothing pending.
      */
+    @SuppressWarnings("java:S3077")
     private volatile StoreFilesCleaner pendingDeletions;
 
     public PersistentQueue(FixSessionId fixSessionId) {

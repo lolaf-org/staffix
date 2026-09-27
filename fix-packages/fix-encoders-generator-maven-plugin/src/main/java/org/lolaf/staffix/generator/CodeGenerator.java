@@ -349,8 +349,8 @@ public class CodeGenerator {
             // Resolve the storability rule at generation time so the hot-path isStorable() is a constant per type:
             // all business messages are storable; among admin messages only Reject(3) is storable.
             boolean storable = !admin
-                    || message.getAttribute("msgtype").equals(CoreMessageType.REJECT)
-                    || message.getAttribute("msgtype").equals(CoreMessageType.XML_NON_FIX);
+                    || message.getAttribute("msgtype").equals(CoreMessageType.REJECT.code())
+                    || message.getAttribute("msgtype").equals(CoreMessageType.XML_NON_FIX.code());
             String enumValue = message.getAttribute("name")
                     + "(\"" + message.getAttribute("msgtype") + "\")"
                     + " { @Override public boolean isAdmin() { return " + admin + "; }"

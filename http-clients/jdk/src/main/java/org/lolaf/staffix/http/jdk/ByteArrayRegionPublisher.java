@@ -76,6 +76,7 @@ final class ByteArrayRegionPublisher implements HttpRequest.BodyPublisher {
          * The body, cleared once delivered or cancelled. Volatile because the client may request from a
          * different thread than the one it subscribed on.
          */
+        @SuppressWarnings("java:S3077")
         private volatile ByteBuffer buffer;
 
         SingleBufferSubscription(Flow.Subscriber<? super ByteBuffer> subscriber, ByteBuffer buffer) {

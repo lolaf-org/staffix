@@ -47,7 +47,7 @@ class TestMemoryFixSessionMessagesStore extends AbstractFixSessionMessagesStoreT
     }
 
     @Test
-    protected void shouldIncrementOutgoingSequenceNumberWhenDisabled() {
+    void shouldIncrementOutgoingSequenceNumberWhenDisabled() {
         setupDisabledStore(0);
         messageStore.start();
 
@@ -69,7 +69,7 @@ class TestMemoryFixSessionMessagesStore extends AbstractFixSessionMessagesStoreT
     }
 
     @Test
-    protected void shouldOnlyTrackSequenceNumbersWhenDisabled() {
+    void shouldOnlyTrackSequenceNumbersWhenDisabled() {
         setupDisabledStore(0);
         messageStore.start();
 
@@ -95,7 +95,7 @@ class TestMemoryFixSessionMessagesStore extends AbstractFixSessionMessagesStoreT
     }
 
     @Test
-    protected void shouldReuseBufferWhenRollingMessages() {
+    void shouldReuseBufferWhenRollingMessages() {
         setupDisabledStore(4);
         messageStore.start();
 

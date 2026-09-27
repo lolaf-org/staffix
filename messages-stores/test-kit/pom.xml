@@ -18,6 +18,7 @@
     </description>
 
     <properties>
+        <sonar.coverage.exclusions>**/*</sonar.coverage.exclusions>
         <automatic.module.name>org.lolaf.staffix.stores.messages.testkit</automatic.module.name>
     </properties>
 

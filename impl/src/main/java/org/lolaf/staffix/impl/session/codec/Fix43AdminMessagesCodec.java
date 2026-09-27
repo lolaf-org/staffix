@@ -35,7 +35,7 @@ public class Fix43AdminMessagesCodec extends Fix42AdminMessagesCodec {
 
     public Fix43AdminMessagesCodec(AdminMessageCodecContext adminMessageCodecContext) {
         super(adminMessageCodecContext);
-        registerAdminDecoder(new Fix43LogonFixMessageDecoder(getMessageTypeRegistry().find(CoreMessageType.LOGON), adminMessageCodecContext, getFixAdminMessagesCodec()),
+        registerAdminDecoder(new Fix43LogonFixMessageDecoder(getMessageTypeRegistry().find(CoreMessageType.LOGON.code()), adminMessageCodecContext, getFixAdminMessagesCodec()),
                 adminMessageCodecContext.getMessageFieldsRegistry(), adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
     }
 

@@ -83,7 +83,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
      */
     private static long resetLogonsSentBy(TestingLogger logger) {
         return logger.getOutgoingMessages().stream()
-                .filter(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON))
+                .filter(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON.code()))
                 .filter(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.RESET_NUM_FLAG, "Y"))
                 .count();
     }

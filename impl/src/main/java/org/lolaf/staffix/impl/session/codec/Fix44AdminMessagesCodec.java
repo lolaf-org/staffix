@@ -39,7 +39,7 @@ public class Fix44AdminMessagesCodec extends Fix43AdminMessagesCodec {
     public Fix44AdminMessagesCodec(AdminMessageCodecContext adminMessageCodecContext) {
         super(adminMessageCodecContext);
         this.nextExpectedMsgSeqNumField = getFieldsRegistry().find(CoreFields.NEXT_EXPECTED_MSG_SEQ_NUM);
-        registerAdminDecoder(new Fix44LogonFixMessageDecoder(getMessageTypeRegistry().find(CoreMessageType.LOGON), adminMessageCodecContext, getFixAdminMessagesCodec()),
+        registerAdminDecoder(new Fix44LogonFixMessageDecoder(getMessageTypeRegistry().find(CoreMessageType.LOGON.code()), adminMessageCodecContext, getFixAdminMessagesCodec()),
                 adminMessageCodecContext.getMessageFieldsRegistry(), adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
     }
 

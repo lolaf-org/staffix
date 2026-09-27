@@ -79,19 +79,19 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
         // for FIXT support
         this.fixAdminMessagesCodec = adminMessageCodecContext.getFixAdminMessagesCodec() != null ? adminMessageCodecContext.getFixAdminMessagesCodec() : this;
         MessageFieldsRegistry messageFieldsRegistry = adminMessageCodecContext.getMessageFieldsRegistry();
-        registerAdminDecoder(new LogonFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.LOGON), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new LogonFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.LOGON.code()), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new LogoutFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.LOGOUT), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new LogoutFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.LOGOUT.code()), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new HeartbeatFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.HEARTBEAT), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new HeartbeatFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.HEARTBEAT.code()), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new TestRequestFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.TEST_REQUEST), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new TestRequestFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.TEST_REQUEST.code()), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new RejectFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.REJECT), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new RejectFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.REJECT.code()), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new ResendRequestFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.RESEND_REQUEST), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new ResendRequestFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.RESEND_REQUEST.code()), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new SequenceResetFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.SEQUENCE_REQUEST), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new SequenceResetFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.SEQUENCE_REQUEST.code()), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
     }
 
@@ -102,7 +102,7 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
 
     @Override
     public FixMessageEncoder<?> generateResendRequest(long fromSeqNum, long toSeqNum) {
-        return new ResendRequestEncoder(messageTypeRegistry.find(CoreMessageType.RESEND_REQUEST), encodingListener, clock)
+        return new ResendRequestEncoder(messageTypeRegistry.find(CoreMessageType.RESEND_REQUEST.code()), encodingListener, clock)
                 .begin()
                 .addLong(fieldsRegistry.find(CoreFields.BEGIN_SEQ_NO), fromSeqNum)
                 .addLong(fieldsRegistry.find(CoreFields.END_SEQ_NO), resendRequestRange.endSeqNo(toSeqNum));
@@ -110,7 +110,7 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
 
     @Override
     public FixMessageEncoder<?> generateReject(String rejectText, int sessionRejectReasonCode, long refSeqNum, int refTagId, MessageType refMsgType) {
-        RejectEncoder rejectEncoder = new RejectEncoder(messageTypeRegistry.find(CoreMessageType.REJECT), encodingListener, clock);
+        RejectEncoder rejectEncoder = new RejectEncoder(messageTypeRegistry.find(CoreMessageType.REJECT.code()), encodingListener, clock);
         rejectEncoder.begin().addLong(fieldsRegistry.find(45), refSeqNum);
         if (refTagId > 0) {
             rejectEncoder.addLong(fieldsRegistry.find(371), refTagId);
@@ -132,7 +132,7 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
     @Override
     public FixMessageEncoder<?> generateLogin(int heartbeatInterval, Boolean resetNumFlag, FixSessionSettings fixSessionSettings, FixApiVersion applicationFixApiVersion, Long nextExpectedSeqNum,
                                               Set<MessageType> incomingMessageTypes, Set<MessageType> outgoingMessageTypes) {
-        LogonEncoder logonEncoder = new LogonEncoder(messageTypeRegistry.find(CoreMessageType.LOGON), encodingListener, clock);
+        LogonEncoder logonEncoder = new LogonEncoder(messageTypeRegistry.find(CoreMessageType.LOGON.code()), encodingListener, clock);
         logonEncoder.begin()
                 .addInt(fieldsRegistry.find(98), 0) // unencrypted
                 .addInt(fieldsRegistry.find(CoreFields.HEARTBEAT_INTERVAL), heartbeatInterval);
@@ -189,7 +189,7 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
 
     @Override
     public FixMessageEncoder<?> generateLogout(String logoutMessage) {
-        LogoutEncoder logoutEncoder = new LogoutEncoder(messageTypeRegistry.find(CoreMessageType.LOGOUT), encodingListener, clock);
+        LogoutEncoder logoutEncoder = new LogoutEncoder(messageTypeRegistry.find(CoreMessageType.LOGOUT.code()), encodingListener, clock);
         logoutEncoder.begin();
         if (logoutMessage != null && !logoutMessage.isEmpty()) {
             logoutEncoder.addString(fieldsRegistry.find(CoreFields.TEXT), logoutMessage);
@@ -200,7 +200,7 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
     @Override
     public FixMessageEncoder<?> generateSequenceReset(long newSequenceNumber, boolean gapFill) {
         SequenceResetEncoder sequenceResetEncoder =
-                new SequenceResetEncoder(messageTypeRegistry.find(CoreMessageType.SEQUENCE_REQUEST), encodingListener, clock).begin();
+                new SequenceResetEncoder(messageTypeRegistry.find(CoreMessageType.SEQUENCE_REQUEST.code()), encodingListener, clock).begin();
         if (gapFill) {
             sequenceResetEncoder
                     .addBoolean(fieldsRegistry.find(CoreFields.POSS_DUP_FLAG), true)
@@ -213,7 +213,7 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
 
     @Override
     public FixMessageEncoder<?> generateHeartbeat(String testRequestId) {
-        HeartbeatEncoder hb = new HeartbeatEncoder(messageTypeRegistry.find(CoreMessageType.HEARTBEAT), encodingListener, clock).begin();
+        HeartbeatEncoder hb = new HeartbeatEncoder(messageTypeRegistry.find(CoreMessageType.HEARTBEAT.code()), encodingListener, clock).begin();
         if (testRequestId != null) {
             hb.addString(fieldsRegistry.find(CoreFields.TEST_REQUEST_ID), testRequestId);
         }
@@ -222,7 +222,7 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
 
     @Override
     public FixMessageEncoder<?> generateTestRequest(String testRequestId) {
-        return new TestRequestEncoder(messageTypeRegistry.find(CoreMessageType.TEST_REQUEST), encodingListener, clock)
+        return new TestRequestEncoder(messageTypeRegistry.find(CoreMessageType.TEST_REQUEST.code()), encodingListener, clock)
                 .begin().addString(fieldsRegistry.find(CoreFields.TEST_REQUEST_ID), testRequestId);
     }
 

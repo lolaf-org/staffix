@@ -19,6 +19,7 @@
     </description>
 
     <properties>
+        <sonar.coverage.exclusions>**/*</sonar.coverage.exclusions>
         <automatic.module.name>org.lolaf.staffix.tests</automatic.module.name>
         <!-- Internal scaffolding, not part of the published surface: staffix is meant to be extended, but
              through the test kits, which carry the contracts an implementation must satisfy. Nothing here

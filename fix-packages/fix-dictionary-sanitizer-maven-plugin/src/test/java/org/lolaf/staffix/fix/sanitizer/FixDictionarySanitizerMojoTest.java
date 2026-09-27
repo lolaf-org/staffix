@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.fix.sanitizer;
 
+import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.testing.MojoRule;
 import org.junit.Before;
 import org.junit.Rule;
@@ -27,6 +28,7 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.File;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -34,6 +36,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class FixDictionarySanitizerMojoTest {
 
@@ -204,6 +207,21 @@ public class FixDictionarySanitizerMojoTest {
             }
         }
         return names;
+    }
+
+    @Test
+    public void testExternalEntitiesAreNotResolved() throws Exception {
+        File secret = new File(inputFile.getParentFile(), "secret.txt");
+        Files.write(secret.toPath(), "SECRET".getBytes(StandardCharsets.US_ASCII));
+        FixDictionarySanitizerMojo mojo = setupFixSanitizerMojo("/test-fix.xml");
+        String dictionaryReadingAFile = "<?xml version=\"1.0\"?>\n"
+                + "<!DOCTYPE fix [<!ENTITY secret SYSTEM \"" + secret.toURI() + "\">]>\n"
+                + "<fix major=\"4\" minor=\"4\"><header/><trailer/><messages/><components/>"
+                + "<fields>&secret;</fields></fix>";
+        Files.write(inputFile.toPath(), dictionaryReadingAFile.getBytes(StandardCharsets.US_ASCII));
+
+        assertThatThrownBy(mojo::execute).isInstanceOf(MojoExecutionException.class);
+        assertThat(outputFile).doesNotExist();
     }
 
     private FixDictionarySanitizerMojo setupFixSanitizerMojo(String inputTestFixFileName) throws Exception {

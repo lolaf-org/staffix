@@ -169,12 +169,12 @@ abstract class AbstractQuickfixjFixtInterop extends AbstractQuickfixjInterop {
         logon();
 
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON))
+                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON.code()))
                 .as("the staffix Logon must be a FIXT.1.1 one naming FIX 5.0 SP2 as its DefaultApplVerID(1137)")
                 .containsFieldWithValue(CoreFields.BEGIN_STRING, FIXT_11_BEGIN_STRING)
                 .containsFieldWithValue(CoreFields.DEFAULT_APPL_VER_ID, FixApplVerID.FIX50SP2.getCode()));
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON))
+                messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON.code()))
                 .as("the QuickFIX/J Logon must be a FIXT.1.1 one naming FIX 5.0 SP2 as its DefaultApplVerID(1137)")
                 .containsFieldWithValue(CoreFields.BEGIN_STRING, FIXT_11_BEGIN_STRING)
                 .containsFieldWithValue(CoreFields.DEFAULT_APPL_VER_ID, FixApplVerID.FIX50SP2.getCode()));

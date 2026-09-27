@@ -129,9 +129,9 @@ public class CodecsComponent implements FixSessionLayerComponent {
     FixMessageDecoder getTargetDecoder(MessageType messageType) {
         if (!firstMessageIsLogonOrLogoutCheck) {
             if (!messageType.isAdmin()
-                    || (!messageType.code().equals(CoreMessageType.LOGON)
-                    && !messageType.code().equals(CoreMessageType.LOGOUT)
-                    && !messageType.code().equals(CoreMessageType.RESEND_REQUEST))) {
+                    || (!CoreMessageType.LOGON.matches(messageType)
+                    && !CoreMessageType.LOGOUT.matches(messageType)
+                    && !CoreMessageType.RESEND_REQUEST.matches(messageType))) {
                 fixSession.logEvent("First message received is not logon or logout: %s, disconnecting", messageType.code());
                 fixSession.send(fixAdminMessagesCodec.generateReject("First received message is not logon or logout",
                         SessionRejectReasonCodes.INVALID_MSGTYPE.getCode(), 1, 0, messageType), null);

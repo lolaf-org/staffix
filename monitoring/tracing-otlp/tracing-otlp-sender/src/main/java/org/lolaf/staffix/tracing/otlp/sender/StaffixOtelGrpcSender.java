@@ -59,23 +59,16 @@ import java.util.function.Supplier;
 public final class StaffixOtelGrpcSender implements GrpcSender {
 
     private final org.lolaf.staffix.api.grpc.GrpcSender delegate;
-
     private final PayloadBuffers buffers;
-
     private final RetrySchedule schedule;
-
     private final Supplier<Map<String, List<String>>> headersSupplier;
-
     private final ExecutorService executor;
-
     private final boolean ownsExecutor;
-
     private final int maxResponseBodySize;
-
     private volatile boolean closed;
-
+    @SuppressWarnings("java:S3077")
     private volatile Header[] lastHeaders = new Header[0];
-
+    @SuppressWarnings("java:S3077")
     private volatile StaffixGrpcResponse lastSuccess =
             new StaffixGrpcResponse(GrpcStatus.OK, "", StaffixGrpcResponse.NO_MESSAGE);
 
@@ -258,8 +251,8 @@ public final class StaffixOtelGrpcSender implements GrpcSender {
         if (cached.length != size) {
             return false;
         }
-        for (int i = 0; i < cached.length; i++) {
-            if (!cached[i].getValue().equals(join(headers.get(cached[i].getName())))) {
+        for (Header header : cached) {
+            if (!header.getValue().equals(join(headers.get(header.getName())))) {
                 return false;
             }
         }

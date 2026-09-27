@@ -27,6 +27,7 @@ import java.time.*;
 import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 class TestFixSessionScheduleManager {
@@ -288,6 +289,44 @@ class TestFixSessionScheduleManager {
         FixSessionScheduleManager schedule6 = new FixSessionScheduleManager(settings, clock6);
         long timeLeft6 = schedule6.getSessionTimeLeft();
         assertThat(timeLeft6).isZero();
+    }
+
+    @Test
+    void testValidation_EveryViolationIsReportedOnItsOwnLine() {
+        FixSessionSettings.SessionScheduleSettings.ScheduleEntry zeroDurationMonday =
+                FixSessionSettings.SessionScheduleSettings.ScheduleEntry.builder()
+                        .startDay(DayOfWeek.MONDAY)
+                        .endDay(DayOfWeek.MONDAY)
+                        .startTime(LocalTime.of(9, 0))
+                        .endTime(LocalTime.of(9, 0))
+                        .build();
+        FixSessionSettings.SessionScheduleSettings.ScheduleEntry zeroDurationTuesday =
+                FixSessionSettings.SessionScheduleSettings.ScheduleEntry.builder()
+                        .startDay(DayOfWeek.TUESDAY)
+                        .endDay(DayOfWeek.TUESDAY)
+                        .startTime(LocalTime.of(9, 0))
+                        .endTime(LocalTime.of(9, 0))
+                        .build();
+        FixSessionSettings settings = FixSessionSettings.builder()
+                .fixSessionId(fixSessionId)
+                .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
+                .sessionScheduleSettings(FixSessionSettings.SessionScheduleSettings.builder()
+                        .timeZone(TimeZone.getTimeZone("UTC"))
+                        .sessionSchedule(zeroDurationMonday)
+                        .sessionSchedule(zeroDurationTuesday)
+                        .build())
+                .build();
+
+        Clock clock = getTestClock(9, 12, 0);
+        assertThatThrownBy(() -> new FixSessionScheduleManager(settings, clock))
+                .isInstanceOf(IllegalArgumentException.class)
+                .satisfies(e -> assertThat(e.getMessage().split("\n"))
+                        .hasSize(3)
+                        .satisfies(lines -> {
+                            assertThat(lines[0]).isEqualTo("Invalid schedule:");
+                            assertThat(lines[1]).startsWith("sessionScheduleSettings.sessionSchedules[0] ").contains("MONDAY");
+                            assertThat(lines[2]).startsWith("sessionScheduleSettings.sessionSchedules[1] ").contains("TUESDAY");
+                        }));
     }
 
     @Test

@@ -59,23 +59,21 @@ import java.util.Map;
 public class MicrometerHttpSenderAdapter implements HttpSender, AutoCloseable {
 
     private final org.lolaf.staffix.api.http.HttpSender delegate;
-
     private final String endpointUrl;
-
     private final String protocol;
-
     private final String authority;
-
     private final String file;
 
     /**
      * The last successful response handed back, reused while the status keeps repeating.
      */
+    @SuppressWarnings("java:S3077")
     private volatile Response lastSuccess = new Response(200, null);
 
     /**
      * The header array built from the last request's headers, reused while they keep repeating.
      */
+    @SuppressWarnings("java:S3077")
     private volatile Header[] lastHeaders = new Header[0];
 
     /**
@@ -111,8 +109,8 @@ public class MicrometerHttpSenderAdapter implements HttpSender, AutoCloseable {
         if (cached.length != headers.size()) {
             return false;
         }
-        for (int i = 0; i < cached.length; i++) {
-            if (!cached[i].getValue().equals(headers.get(cached[i].getName()))) {
+        for (Header header : cached) {
+            if (!header.getValue().equals(headers.get(header.getName()))) {
                 return false;
             }
         }

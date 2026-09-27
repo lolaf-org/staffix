@@ -32,7 +32,7 @@ import java.net.Socket;
  * <p>Applies to TLS too: OkHttp builds the raw socket through this factory and then wraps it, so the
  * option is already set by the time the handshake starts.
  */
-final class NoDelaySocketFactory extends SocketFactory {
+public final class NoDelaySocketFactory extends SocketFactory {
 
     private static Socket noDelay(Socket socket) throws IOException {
         socket.setTcpNoDelay(true);

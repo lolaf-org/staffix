@@ -18,6 +18,7 @@
     </description>
 
     <properties>
+        <sonar.coverage.exclusions>**/*</sonar.coverage.exclusions>
         <automatic.module.name>org.lolaf.staffix.fix50sp2</automatic.module.name>
         <!-- FIX.5.0SP2 holds EP98-259 -->
         <orchestration.ep>98</orchestration.ep>

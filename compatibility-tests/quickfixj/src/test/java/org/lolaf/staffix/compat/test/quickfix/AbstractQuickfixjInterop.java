@@ -148,7 +148,7 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
         staffixClock.advance(Duration.ofSeconds(WINDOW_SECONDS + 5));
 
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGOUT))
+                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGOUT.code()))
                 .as("staffix must log out of its own accord when its window closes, saying why in Text(58)")
                 .containsFieldWithValueContaining(CoreFields.TEXT, "Outside of session timeframe"));
 
@@ -209,7 +209,7 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
             assertThat(staffixLogger.getIncomingMessages())
                     .as("QuickFIX/J must have retried on its ReconnectInterval, or this asserts nothing below")
                     .isNotEmpty();
-            assertThatFixMessage(messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGOUT))
+            assertThatFixMessage(messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGOUT.code()))
                     .as("staffix accepting must refuse each attempt with a Logout naming the reason")
                     .containsFieldWithValueContaining(CoreFields.TEXT, "Logon attempt outside of configured session time");
         }
@@ -227,7 +227,7 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
      */
     private long logonsReceivedByStaffix() {
         return staffixLogger.getIncomingMessages().stream()
-                .filter(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON))
+                .filter(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON.code()))
                 .count();
     }
 
@@ -270,7 +270,7 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
 
         // staffix announces the roll on the schedule's own timer
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON))
+                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON.code()))
                 .as("staffix must announce the scheduled roll with ResetSeqNumFlag(141)=Y")
                 .containsFieldWithValue(CoreFields.RESET_NUM_FLAG, "Y"));
 
@@ -285,17 +285,17 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
         await().untilAsserted(() -> assertThat(quickfixConnector.isLoggedOn()).isTrue());
         assertThat(staffixLogger.getOutgoingMessages())
                 .as("the connection must survive the roll, so staffix may not have sent a Logout")
-                .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGOUT));
+                .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGOUT.code()));
         assertThat(staffixLogger.getIncomingMessages())
                 .as("nor may QuickFIX/J have answered the reset with one, which is how 4.4.2 says a peer refuses it")
-                .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGOUT));
+                .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGOUT.code()));
 
         if (staffixIsInitiator()) {
             // QuickFIX/J accepts here, and an acceptor answers a Logon with a Logon: 4.4.2's confirmation arrives
             await().untilAsserted(() -> assertThat(logonsReceivedByStaffix())
                     .as("QuickFIX/J accepting must confirm the reset with a Logon of its own")
                     .isEqualTo(logonsBeforeTheRoll + 1));
-            assertThatFixMessage(messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON))
+            assertThatFixMessage(messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON.code()))
                     .as("and that Logon must carry ResetSeqNumFlag(141)=Y")
                     .containsFieldWithValue(CoreFields.RESET_NUM_FLAG, "Y");
         } else {
@@ -484,7 +484,7 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
 
         // the whole point of the setting: the request names no end at all
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.RESEND_REQUEST))
+                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.RESEND_REQUEST.code()))
                 .as("an open ended range is EndSeqNo(16)=0 from FIX.4.2 on")
                 .containsFieldWithValue(CoreFields.END_SEQ_NO, "0"));
 
@@ -524,7 +524,7 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
         // agreeing again on the next number rather than any message arriving
         awaitIncomingSequenceResynchronised();
 
-        assertThatFixMessage(messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.SEQUENCE_REQUEST))
+        assertThatFixMessage(messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.SEQUENCE_REQUEST.code()))
                 .as("the peer must have covered the withheld messages with a gap fill, not a hard reset")
                 .containsFieldWithValue(CoreFields.GAP_FILL, "Y");
 
@@ -588,14 +588,14 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
 
         // the tail really was gap filled rather than retransmitted: a SequenceReset went out carrying
         // GapFillFlag(123)=Y, and the last message of the range never arrived as a message
-        assertThatFixMessage(messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.SEQUENCE_REQUEST))
+        assertThatFixMessage(messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.SEQUENCE_REQUEST.code()))
                 .as("the withheld tail must have been covered by a gap fill")
                 .containsFieldWithValue(CoreFields.GAP_FILL, "Y");
         // and the peer got it marked as part of the retransmission it is. This peer asks open ended - QuickFIX/J's
         // default - so the answer runs past the gap it was recovering, and a gap fill reaching it after it has moved
         // on is one it must log out over unless PossDupFlag(43)=Y says it is a duplicate. That QuickFIX/J accepted
         // the message at all is the other half of the assertion: it wants an OrigSendingTime(122) alongside the flag.
-        assertThatFixMessage(messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.SEQUENCE_REQUEST))
+        assertThatFixMessage(messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.SEQUENCE_REQUEST.code()))
                 .as("a gap fill must be marked as the retransmission it is part of")
                 .containsFieldWithValue(CoreFields.POSS_DUP_FLAG, "Y");
         assertThat(quickfixReceivedEmails)
@@ -754,7 +754,7 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
         List<String> logonSentBy = staffixIsInitiator()
                 ? staffixLogger.getOutgoingMessages()   // staffix is the initiator and sends it
                 : staffixLogger.getIncomingMessages();  // QuickFIX/J is the initiator and sends it
-        await().untilAsserted(() -> assertThatFixMessage(messagesOfType(logonSentBy, CoreMessageType.LOGON))
+        await().untilAsserted(() -> assertThatFixMessage(messagesOfType(logonSentBy, CoreMessageType.LOGON.code()))
                 .as("the initiator must advertise NextExpectedMsgSeqNum(789)=%s", impossibleNextExpected)
                 .containsFieldWithValue(CoreFields.NEXT_EXPECTED_MSG_SEQ_NUM, String.valueOf(impossibleNextExpected)));
 
@@ -765,7 +765,7 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
         // the two engines word it differently - "NextExpectedMsgSeqNum is higher than expected: expected 3, received
         // 103" against "Tag 789 (NextExpectedMsgSeqNum) is higher than expected. Expected 3, Received 103" - so what
         // is asserted is the substance they share
-        await().untilAsserted(() -> assertThatFixMessage(messagesOfType(logoutSeenBy, CoreMessageType.LOGOUT))
+        await().untilAsserted(() -> assertThatFixMessage(messagesOfType(logoutSeenBy, CoreMessageType.LOGOUT.code()))
                 .as("the acceptor must answer a NextExpectedMsgSeqNum(789) it cannot satisfy with a Logout")
                 .containsFieldWithValueContaining(CoreFields.TEXT, "higher than expected"));
         assertThat(staffixSession.isLoggedIn())
@@ -974,10 +974,10 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
             // QuickFIX/J is accepting, so its Logon is a response and carries no ResetSeqNumFlag(141): the restart is
             // never announced and staffix has nothing to go on but a sequence number that went backwards
             await().untilAsserted(() -> assertThatFixMessage(
-                    messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGOUT))
+                    messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGOUT.code()))
                     .as("an unannounced restart must be answered with a Logout naming the reason")
                     .containsFieldWithValueContaining(CoreFields.TEXT, "MsgSeqNum too low"));
-            assertThatFixMessage(messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON))
+            assertThatFixMessage(messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON.code()))
                     .as("the peer's Logon must be the unannounced restart this scenario is about")
                     .doesNotContainField(CoreFields.RESET_NUM_FLAG);
             // deliberately no assertion on isLoggedIn(): the pair flaps from here, QuickFIX/J reconnecting and
@@ -987,7 +987,7 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
         }
         // QuickFIX/J is initiating, so it announces the restart and the session comes back on the announcement
         awaitLoggedBackOn();
-        assertThatFixMessage(messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON))
+        assertThatFixMessage(messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON.code()))
                 .as("an initiating peer must announce its restart with ResetSeqNumFlag(141)=Y")
                 .containsFieldWithValue(CoreFields.RESET_NUM_FLAG, "Y");
         // section 4.4.2, the same end state a negotiated reset produces

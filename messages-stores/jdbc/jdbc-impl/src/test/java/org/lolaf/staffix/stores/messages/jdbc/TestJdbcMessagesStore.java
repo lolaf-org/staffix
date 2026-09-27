@@ -15,11 +15,14 @@
  */
 package org.lolaf.staffix.stores.messages.jdbc;
 
+import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.stores.messages.testkit.AbstractMessagesStoreTest;
 import org.mockito.Mockito;
 
 import javax.sql.DataSource;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TestJdbcMessagesStore extends AbstractMessagesStoreTest {
 
@@ -34,5 +37,15 @@ class TestJdbcMessagesStore extends AbstractMessagesStoreTest {
                 .build();
 
         return new JdbcMessagesStore(settings);
+    }
+
+    @Test
+    void aTablePrefixThatIsNotAPlainIdentifierIsRefused() {
+        JdbcMessageStoreSettings settings = JdbcMessageStoreSettings.builder()
+                .dataSource(Mockito.mock(DataSource.class))
+                .tablePrefix("fix; DROP TABLE accounts; --")
+                .build();
+
+        assertThatThrownBy(() -> new JdbcMessagesStore(settings)).isInstanceOf(IllegalArgumentException.class);
     }
 }

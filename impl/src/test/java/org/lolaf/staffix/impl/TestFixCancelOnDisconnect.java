@@ -408,7 +408,7 @@ class TestFixCancelOnDisconnect extends AbstractFixTests {
 
         try (RawFixSocketClient.Session peer = RawFixSocketClient.connect(acceptorPort, FixRegularVersion.VERSION_44,
                 "SENDER44_TEST", "TARGET44_TEST", Duration.ofSeconds(5))) {
-            peer.send(peer.message(CoreMessageType.LOGON, 1)
+            peer.send(peer.message(CoreMessageType.LOGON.code(), 1)
                     .set(CoreFields.HEARTBEAT_INTERVAL, "10")
                     .set(CoreFields.ENCRYPT_METHOD, "0")
                     .set(acceptorCodSettings.getCancelOnDisconnectTypeFieldCode(),
@@ -417,14 +417,14 @@ class TestFixCancelOnDisconnect extends AbstractFixTests {
                     .set(acceptorCodSettings.getCodTimeoutWindowFieldCode(),
                             String.valueOf(acceptorCodSettings.getCodTimeoutWindow().toMillis())));
 
-            assertThat(peer.readMessage(Duration.ofSeconds(5))).contains(msgTypeField(CoreMessageType.LOGON));
+            assertThat(peer.readMessage(Duration.ofSeconds(5))).contains(msgTypeField(CoreMessageType.LOGON.code()));
             await().untilAsserted(() -> verify(fixAcceptorApplication).onLogon(any(FixSession.class), any(DecodedFixMessage.class)));
 
             fixAcceptorSession.logout(LOGOUT_MESSAGE);
 
             // read it so the peer provably saw it, then go away without answering
             assertThat(peer.readMessage(Duration.ofSeconds(5)))
-                    .contains(msgTypeField(CoreMessageType.LOGOUT))
+                    .contains(msgTypeField(CoreMessageType.LOGOUT.code()))
                     .contains(LOGOUT_MESSAGE);
         }
 

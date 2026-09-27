@@ -53,6 +53,7 @@ public class SessionMessageExecutors {
      * goes through the map: a pair of plain fields could be seen half updated and hand out another namespace's
      * executor. Republished rather than allocated on a miss, so alternating namespaces costs nothing per message.
      */
+    @SuppressWarnings("java:S3077")
     private volatile NamespaceExecutors lastResolved;
 
     SessionMessageExecutors(MessageExecutorsRuntime runtime) {

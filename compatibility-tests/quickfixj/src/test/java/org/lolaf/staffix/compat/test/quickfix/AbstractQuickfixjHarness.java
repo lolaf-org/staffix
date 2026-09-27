@@ -242,7 +242,7 @@ abstract class AbstractQuickfixjHarness {
     }
 
     private static boolean isResendRequest(String message) {
-        return isOfType(message, CoreMessageType.RESEND_REQUEST);
+        return isOfType(message, CoreMessageType.RESEND_REQUEST.code());
     }
 
     /**
@@ -250,7 +250,7 @@ abstract class AbstractQuickfixjHarness {
      * engines answer a hard reset that would lower the sequence number with.
      */
     private static boolean isRejectForIncorrectValue(String message) {
-        return isOfType(message, CoreMessageType.REJECT)
+        return isOfType(message, CoreMessageType.REJECT.code())
                 && FixMessageFields.hasFieldWithValue(message, SESSION_REJECT_REASON, INCORRECT_VALUE_FOR_TAG);
     }
 
@@ -692,11 +692,11 @@ abstract class AbstractQuickfixjHarness {
      */
     void assertLogonExchangeCarriedNextExpectedMsgSeqNum() {
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON))
+                messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGON.code()))
                 .as("the staffix Logon must carry NextExpectedMsgSeqNum(789)")
                 .containsField(CoreFields.NEXT_EXPECTED_MSG_SEQ_NUM));
         await().untilAsserted(() -> assertThatFixMessage(
-                messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON))
+                messagesOfType(staffixLogger.getIncomingMessages(), CoreMessageType.LOGON.code()))
                 .as("the QuickFIX/J Logon must carry NextExpectedMsgSeqNum(789)")
                 .containsField(CoreFields.NEXT_EXPECTED_MSG_SEQ_NUM));
     }
@@ -764,7 +764,7 @@ abstract class AbstractQuickfixjHarness {
      * ResendRequest(35=2). Asserting none ever appears passes or fails on whether that heartbeat beats the assertion.
      */
     void assertRefusedWithoutAskingForARetransmission(List<String> sentMessages) {
-        await().untilAsserted(() -> assertThatFixMessage(messagesOfType(sentMessages, CoreMessageType.REJECT))
+        await().untilAsserted(() -> assertThatFixMessage(messagesOfType(sentMessages, CoreMessageType.REJECT.code()))
                 .as("a hard reset that would lower the sequence number must be answered with a Reject(35=3) "
                         + "naming SessionRejectReason(373)=5")
                 .containsFieldWithValue(SESSION_REJECT_REASON, INCORRECT_VALUE_FOR_TAG));

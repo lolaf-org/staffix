@@ -36,7 +36,7 @@ public class Fix42AdminMessagesCodec extends FixAbstractAdminMessagesCodec {
 
     public Fix42AdminMessagesCodec(AdminMessageCodecContext adminMessageCodecContext) {
         super(adminMessageCodecContext);
-        this.businessMessageReject = getMessageTypeRegistry().find(CoreMessageType.BUSINESS_MESSAGE_REJECT);
+        this.businessMessageReject = getMessageTypeRegistry().find(CoreMessageType.BUSINESS_MESSAGE_REJECT.code());
         this.clock = adminMessageCodecContext.getClock();
         registerAdminDecoder(new BusinessMessageRejectFixMessageDecoder(businessMessageReject, adminMessageCodecContext, getFixAdminMessagesCodec()),
                 adminMessageCodecContext.getMessageFieldsRegistry(), adminMessageCodecContext.getFixSessionSettings().getFixSessionId());

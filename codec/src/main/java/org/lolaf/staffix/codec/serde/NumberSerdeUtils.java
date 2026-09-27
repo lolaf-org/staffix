@@ -66,7 +66,6 @@ public class NumberSerdeUtils {
     protected static final byte POSITIVE_CHAR = '+';
     protected static final byte NEGATIVE_CHAR = '-';
     protected static final byte POINT_CHAR = '.';
-    protected static final int POINT_CHAR_INT = '.';
     protected static final byte ASCII_ZERO = '0';
     protected static final byte EXPONENT_CHAR = 'e';
     protected static final byte EXPONENT_UPPER_CHAR = 'E';
@@ -81,18 +80,6 @@ public class NumberSerdeUtils {
             throw new IllegalFieldValueException((char) num + " is not a number");
         }
         return numAsInt;
-    }
-
-    public static int getNumOrSign(byte num) {
-        int numAsInt = num - ASCII_ZERO;
-        if (numAsInt >= 0 && numAsInt <= 9) {
-            return numAsInt;
-        } else if (num == POSITIVE_CHAR) {
-            return POSITIVE;
-        } else if (num == NEGATIVE_CHAR) {
-            return NEGATIVE;
-        }
-        throw new IllegalFieldValueException((char) num + " is not a number or a sign");
     }
 
     public static int getNumOrSignOrPoint(byte num) {

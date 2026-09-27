@@ -137,7 +137,7 @@ public class FixSessionScheduleManager {
     private static long entryLength(FixSessionSettings.SessionScheduleSettings.ScheduleEntry entry) {
         long startOfDay = entry.getStartTime().toNanoOfDay() / 1_000_000;
         long endOfDay = entry.getEndTime().toNanoOfDay() / 1_000_000;
-        if (entry.getStartDay() == entry.getEndDay()) {
+        if (entry.getStartDay().equals(entry.getEndDay())) {
             return startOfDay < endOfDay ? endOfDay - startOfDay : DAY_MILLIS - startOfDay + endOfDay;
         }
         long start = millisOfWeek(entry.getStartDay(), entry.getStartTime());
@@ -222,8 +222,9 @@ public class FixSessionScheduleManager {
     }
 
     private void validateScheduleSettings(FixSessionSettings.SessionScheduleSettings scheduleSettings) {
-        for (String violation : FixSessionSettingsValidator.scheduleViolations(scheduleSettings)) {
-            throw new IllegalArgumentException("Invalid schedule: " + violation);
+        List<String> violations = FixSessionSettingsValidator.scheduleViolations(scheduleSettings);
+        if (!violations.isEmpty()) {
+            throw new IllegalArgumentException("Invalid schedule:\n" + String.join("\n", violations));
         }
     }
 

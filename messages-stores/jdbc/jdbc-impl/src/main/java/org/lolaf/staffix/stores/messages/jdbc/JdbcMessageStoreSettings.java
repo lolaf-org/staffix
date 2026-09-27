@@ -46,7 +46,7 @@ public class JdbcMessageStoreSettings implements FixMessagesStoreSettings {
     private final DataSource dataSource;
 
     /**
-     * Optional table name prefix for multi-tenant scenarios.
+     * Optional table name prefix for multi-tenant scenarios, letters, digits and underscores only.
      * If not specified, default table name "fix_messages" will be used.
      */
     @Builder.Default

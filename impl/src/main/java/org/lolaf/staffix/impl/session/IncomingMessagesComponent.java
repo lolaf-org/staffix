@@ -194,10 +194,10 @@ class IncomingMessagesComponent implements FixSessionLayerComponent, FixMessageP
      */
     private void onMsgSeqNumTooHigh(MessageType messageType, WrongSeqNumException wrongSeqNumException) {
         long receivedSeqNum = wrongSeqNumException.getMsgSeqNum();
-        boolean logon = messageType.code().equals(CoreMessageType.LOGON);
+        boolean logon = CoreMessageType.LOGON.matches(messageType);
         // a ResendRequest is answered on arrival too, by its own decoder and for its own reason: holding it
         // back would deadlock two peers that each reconnect with a gap. Only its MsgSeqNum is left owed.
-        boolean answeredOnArrival = logon || messageType.code().equals(CoreMessageType.RESEND_REQUEST);
+        boolean answeredOnArrival = logon || CoreMessageType.RESEND_REQUEST.matches(messageType);
         retransmission.getResendRecovery().queueOutOfSequenceMessage(answeredOnArrival, receivedSeqNum, wrongSeqNumException.getRawMessage());
         if (!logon && !retransmission.getResendRecovery().hasPendingResendRequest()) {
             retransmission.requestRetransmission(wrongSeqNumException.getExpectedMsgSeqNum(), receivedSeqNum - 1, "MsgSeqNum too high");
@@ -239,7 +239,7 @@ class IncomingMessagesComponent implements FixSessionLayerComponent, FixMessageP
      * @see ResendRecovery#isAnsweringOwnOpenEndedRequest()
      */
     private boolean isOverrunGapFillOfOurOwnOpenEndedRequest(MessageType messageType) {
-        return messageType.code().equals(CoreMessageType.SEQUENCE_REQUEST)
+        return CoreMessageType.SEQUENCE_REQUEST.matches(messageType)
                 && retransmission.getResendRecovery().isAnsweringOwnOpenEndedRequest();
     }
 

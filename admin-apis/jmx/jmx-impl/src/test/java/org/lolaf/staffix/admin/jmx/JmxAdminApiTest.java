@@ -139,14 +139,17 @@ class JmxAdminApiTest {
 
         @Override
         public void logoutSession(FixSessionId fixSessionId) {
+            // nothing to do
         }
 
         @Override
         public void resetSession(FixSessionId fixSessionId, ResetFixSessionMode resetFixSessionMode) {
+            // nothing to do
         }
 
         @Override
         public void setIncomingSeqNum(FixSessionId fixSessionId, long incomingSeqNum) {
+            // nothing to do
         }
 
         @Override
@@ -181,6 +184,7 @@ class JmxAdminApiTest {
 
         @Override
         public void reloadFixSessionsSettingsStore(String instanceId) {
+            // nothing to do
         }
 
         @Override

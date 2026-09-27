@@ -25,6 +25,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
 
 /**
  * A stub OTLP receiver that drains each request and answers a fixed {@code 200} with no body.
@@ -120,13 +123,6 @@ public final class StubOtlpServer {
         }
     }
 
-    /**
-     * An SSL context holding the checked-in self-signed certificate, as both key material for the
-     * server and the only trust anchor a client needs.
-     *
-     * @return the context
-     * @throws Exception if the keystore cannot be read or the context cannot be built
-     */
     public static SSLContext sslContext() throws Exception {
         KeyStore keyStore = keyStore();
         KeyManagerFactory keyManagers = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
@@ -136,14 +132,7 @@ public final class StubOtlpServer {
         return context;
     }
 
-    /**
-     * The trust manager over that same certificate, for clients that need it handed to them separately
-     * from the context.
-     *
-     * @return the trust manager
-     * @throws Exception if the keystore cannot be read
-     */
-    public static X509TrustManager trustManager() throws Exception {
+    public static X509TrustManager trustManager() throws CertificateException, KeyStoreException, IOException, NoSuchAlgorithmException {
         for (TrustManager trustManager : trustManagers(keyStore())) {
             if (trustManager instanceof X509TrustManager) {
                 return (X509TrustManager) trustManager;
@@ -152,13 +141,13 @@ public final class StubOtlpServer {
         throw new IllegalStateException("No X509TrustManager for " + KEYSTORE_RESOURCE);
     }
 
-    private static TrustManager[] trustManagers(KeyStore keyStore) throws Exception {
+    private static TrustManager[] trustManagers(KeyStore keyStore) throws NoSuchAlgorithmException, KeyStoreException {
         TrustManagerFactory trustManagers = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         trustManagers.init(keyStore);
         return trustManagers.getTrustManagers();
     }
 
-    private static KeyStore keyStore() throws Exception {
+    private static KeyStore keyStore() throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException {
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         try (InputStream in = StubOtlpServer.class.getResourceAsStream(KEYSTORE_RESOURCE)) {
             if (in == null) {

@@ -22,6 +22,7 @@ import mockwebserver3.RecordedRequest;
 import okhttp3.Headers;
 import okhttp3.Protocol;
 import okio.Buffer;
+import org.jspecify.annotations.NonNull;
 import org.lolaf.staffix.api.grpc.GrpcFraming;
 import org.lolaf.staffix.api.grpc.GrpcStatus;
 
@@ -42,9 +43,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * is the only protocol offered here.
  *
  * <p>By default every call is answered {@link GrpcStatus#OK} with an empty message. A test that cares
- * about a failure says so with {@link #respondWith(int, String)}, and one about retrying queues a
- * sequence with {@link #respondWithSequence(int...)} - the same shape the HTTP stub uses, so the two
- * kits read alike.
+ * about a failure says so with {@link #respondWith(int, String)}
  */
 public class StubGrpcServer implements AutoCloseable {
 
@@ -73,7 +72,7 @@ public class StubGrpcServer implements AutoCloseable {
         this.server.setProtocols(Collections.singletonList(Protocol.H2_PRIOR_KNOWLEDGE));
         this.server.setDispatcher(new Dispatcher() {
             @Override
-            public MockResponse dispatch(RecordedRequest request) {
+            public @NonNull MockResponse dispatch(@NonNull RecordedRequest request) {
                 received.add(request);
                 return respond();
             }
@@ -120,17 +119,6 @@ public class StubGrpcServer implements AutoCloseable {
      */
     public void respondWithMessage(byte[] message) {
         this.responseMessage = message;
-    }
-
-    /**
-     * Queues statuses to answer the next calls with, one each, ahead of the standing answer.
-     *
-     * @param statusCodes the statuses to hand out, in order
-     */
-    public void respondWithSequence(int... statusCodes) {
-        for (int statusCode : statusCodes) {
-            scriptedStatuses.add(statusCode);
-        }
     }
 
     /**
