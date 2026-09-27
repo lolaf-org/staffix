@@ -224,7 +224,10 @@ it measures one cold invocation and is dominated by one-time setup for every eng
 `jmh-result-FixEngineRTTBenchmark-2026-08-13.json`](benchmarks/results/jmh-result-FixEngineRTTBenchmark-2026-08-13.json).
 This is a benchmark, not a production measurement: one message type, one session, no contention, no network. Run it
 yourself:
-`mvn clean install -pl benchmarks -am && java -jar benchmarks/target/benchmarks.jar`.</sub>
+`mvn clean install -pl benchmarks -am && java -jar benchmarks/target/benchmarks.jar`. For numbers that compare from one
+run to the next, use [`benchmarks/run.sh`](benchmarks/run.sh), which pins each benchmark with `taskset`: set
+`BENCHMARK_CPUS` and `BENCHMARK_RTT_CPUS` to the cores of one die on your machine, since its defaults describe ours, and
+leave the round trip enough of them for Artio's threads.</sub>
 
 **Every run is kept.** [`benchmarks/results/`](benchmarks/results) holds the raw JMH JSON for each benchmark and each
 date it was run (the round trips above, the id generators, the serdes, the clock), so a number quoted anywhere in this
@@ -240,6 +243,7 @@ a field can take, because that choice is yours to make per field and the cost of
 | [`IntSerDeBenchmark`](benchmarks/src/main/java/org/lolaf/staffix/benchmarks/IntSerDeBenchmark.java)     | serializing into a caller's buffer against allocating a fresh array, and against the per-session cache, over integer widths from one digit to `Integer.MIN_VALUE` |
 | [`LongSerDeBenchmark`](benchmarks/src/main/java/org/lolaf/staffix/benchmarks/LongSerDeBenchmark.java)   | decoding 64-bit values, signed against unsigned, up to `Long.MAX_VALUE`                                                                                           |
 | [`FloatSerDeBenchmark`](benchmarks/src/main/java/org/lolaf/staffix/benchmarks/FloatSerDeBenchmark.java) | `DecimalFloat` against `double` and against `BigDecimal`, both directions, the decimal question every FIX price field asks                                       |
+| [`FixMessageParserBenchmark`](benchmarks/src/main/java/org/lolaf/staffix/benchmarks/FixMessageParserBenchmark.java) | the parser alone on a heartbeat, a quote and sixteen quotes arriving in one read, on default validation settings: the parsing loop without the round trip around it |
 
 What they show is the shape of the argument this README makes: decoding an int is a few nanoseconds and no garbage,
 `DecimalFloat` costs a fraction of `BigDecimal` and allocates nothing where `BigDecimal` allocates on every value, and

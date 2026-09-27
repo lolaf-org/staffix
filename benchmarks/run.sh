@@ -4,8 +4,8 @@ if [ -n "$JAVA_HOME" ]; then
 else
   JAVA="java"
 fi
-# pinned to the performance cores: on a hybrid CPU an unpinned run lands on slow or fast cores from one run to the next
-CPUS="${BENCHMARK_CPUS:-0-3}"
+CPUS="${BENCHMARK_CPUS:-6-11}"
+RTT_CPUS="${BENCHMARK_RTT_CPUS:-6-11,18-23}"
 taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc FloatSerDeBenchmark
 mv jmh-result.json "jmh-result-FloatSerDeBenchmark-${DATE}.json"
 mv "jmh-result-FloatSerDeBenchmark-${DATE}.json" results
@@ -24,7 +24,7 @@ mv "jmh-result-IdGenerationBenchmark-${DATE}.json" results
 taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc FixMessageParserBenchmark
 mv jmh-result.json "jmh-result-FixMessageParserBenchmark-${DATE}.json"
 mv "jmh-result-FixMessageParserBenchmark-${DATE}.json" results
-taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc FixEngineRTTBenchmark
+taskset -c "$RTT_CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc FixEngineRTTBenchmark
 mv jmh-result.json "jmh-result-FixEngineRTTBenchmark-${DATE}.json"
 mv "jmh-result-FixEngineRTTBenchmark-${DATE}.json" results
 taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc OtlpHttpSenderBenchmark
