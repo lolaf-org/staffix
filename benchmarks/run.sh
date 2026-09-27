@@ -19,6 +19,9 @@ mv "jmh-result-ClockBenchmark-${DATE}.json" results
 "$JAVA" -jar target/benchmarks.jar -rf json -prof gc IdGenerationBenchmark
 mv jmh-result.json "jmh-result-IdGenerationBenchmark-${DATE}.json"
 mv "jmh-result-IdGenerationBenchmark-${DATE}.json" results
+"$JAVA" -jar target/benchmarks.jar -rf json -prof gc FixMessageParserBenchmark
+mv jmh-result.json "jmh-result-FixMessageParserBenchmark-${DATE}.json"
+mv "jmh-result-FixMessageParserBenchmark-${DATE}.json" results
 "$JAVA" -jar target/benchmarks.jar -rf json -prof gc FixEngineRTTBenchmark
 mv jmh-result.json "jmh-result-FixEngineRTTBenchmark-${DATE}.json"
 mv "jmh-result-FixEngineRTTBenchmark-${DATE}.json" results
