@@ -63,7 +63,6 @@ public final class UUIDsGenerator {
     // one SecureRandom per thread rather than the shared one UUID.randomUUID() draws from, so senders never contend
     private static final FastThreadLocal<SecureRandom> SECURE_RANDOMS = FastThreadLocal.withInitial(SecureRandom::new);
     private static final RandomBytesSource DEFAULT_V4_RANDOM = dst -> SECURE_RANDOMS.get().nextBytes(dst);
-
     private static final UUIDsGenerator INSTANCE = new UUIDsGenerator(UUIDv7.instance(), DEFAULT_V4_RANDOM);
     private static final ConcurrentMap<String, UUIDsGenerator> NAMED_INSTANCES = new ConcurrentHashMap<>();
 

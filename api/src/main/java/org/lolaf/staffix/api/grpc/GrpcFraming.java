@@ -15,6 +15,8 @@
  */
 package org.lolaf.staffix.api.grpc;
 
+import lombok.experimental.UtilityClass;
+
 /**
  * The five-byte header gRPC puts in front of every message: one byte saying whether the message that
  * follows is compressed, then its length as a big-endian unsigned 32-bit integer.
@@ -27,15 +29,13 @@ package org.lolaf.staffix.api.grpc;
  * a Java array can hold; a reader that quietly took the low 31 bits would turn a corrupt frame into a
  * plausible one, so {@link #messageLength(byte[], int)} refuses instead.
  */
+@UtilityClass
 public final class GrpcFraming {
 
     /**
      * Bytes a frame header occupies, in front of the message itself.
      */
     public static final int HEADER_LENGTH = 5;
-
-    private GrpcFraming() {
-    }
 
     /**
      * Writes a frame header into {@code buffer} at {@code offset}.

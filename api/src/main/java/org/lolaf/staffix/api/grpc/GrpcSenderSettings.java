@@ -48,9 +48,6 @@ public class GrpcSenderSettings {
      * The server to call, as a URL: scheme, host and port. Any path on it is ignored - the path a gRPC
      * call uses is {@link #fullMethodName}.
      */
-    /**
-     * The collector's address.
-     */
     private final String endpointUrl;
 
     /**
@@ -62,9 +59,6 @@ public class GrpcSenderSettings {
      * OpenTelemetry's {@code GrpcSenderConfig.getFullMethodName()} omits it, while gRPC's own wire
      * format requires it. Normalising once here spares every implementation from getting it right
      * separately - and from the failure being a rejected path rather than a misrouted call.
-     */
-    /**
-     * The gRPC method to call, as {@code package.Service/Method}.
      */
     private final String fullMethodName;
 
@@ -90,9 +84,6 @@ public class GrpcSenderSettings {
 
     /**
      * Deadline for one call, sent to the server as {@code grpc-timeout} as well as applied locally.
-     */
-    /**
-     * How long to wait for a response once connected.
      */
     @Builder.Default
     private final Duration requestTimeout = Duration.ofSeconds(10);
@@ -129,6 +120,7 @@ public class GrpcSenderSettings {
     /**
      * How a message is compressed, which is the value of {@code grpc-encoding} on the wire.
      */
+    @Getter
     public enum GrpcCompression {
 
         /**
@@ -150,11 +142,5 @@ public class GrpcSenderSettings {
             this.encoding = encoding;
         }
 
-        /**
-         * @return the name this compression carries in {@code grpc-encoding}
-         */
-        public String getEncoding() {
-            return encoding;
-        }
     }
 }
