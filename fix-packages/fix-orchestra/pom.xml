@@ -21,24 +21,6 @@
         <automatic.module.name>org.lolaf.staffix.fix.orchestra.repository</automatic.module.name>
     </properties>
 
-    <!--
-      The FIX Orchestra repository, and nothing else: the zip the FIX Trading Community publishes, kept whole and
-      unmodified so the 8 MB of XML inside it never has to live in the source tree.
-
-      Renamed on the way in, dropping the extension pack the published name carries - fix-latest-ep307.zip became
-      fix-orchestra-latest.zip - so that taking a newer pack is replacing this file and nothing more. Run the
-      generator's versions goal on it to see which pack it actually holds, and what cuts it can serve.
-
-      It sits in a module of its own because it is an input to several of them - every dictionary cut from the
-      standard reads this same file, through the ${orchestration.file} property the fix-packages pom names - and
-      belonged to none of them. It used to live in fix-latest, which is not even in the reactor, so the file the
-      other modules read was one no build produced.
-
-      Read from the working tree by path rather than resolved as a dependency, so the cut keeps working whichever
-      modules are being built. The jar this module publishes carries the same file for anyone regenerating the
-      dictionaries from outside the reactor.
-    -->
-
     <build>
         <plugins>
             <!-- This module has no hand-written source: its encoders, fields and message types are generated
