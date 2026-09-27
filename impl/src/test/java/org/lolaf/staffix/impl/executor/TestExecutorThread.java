@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.impl.executor;
 
-import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,7 +23,6 @@ import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.api.executor.MessageExecutor;
 import org.lolaf.staffix.api.executor.MessageExecutorSettings;
 import org.lolaf.staffix.api.executor.MessageProcessor;
-import org.mockito.Mockito;
 
 import java.time.Duration;
 import java.util.List;
@@ -33,6 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
+import static org.mockito.Mockito.*;
 
 class TestExecutorThread {
 
@@ -46,8 +46,8 @@ class TestExecutorThread {
     void setup() {
         executorThread = new ExecutorThread(MessageExecutorSettings.builder().build(), "test", 0);
         executorThread.start();
-        exec = Mockito.mock(MessageExecutor.class);
-        processor = Mockito.mock(MessageProcessor.class);
+        exec = mock(MessageExecutor.class);
+        processor = mock(MessageProcessor.class);
     }
 
     @AfterEach
@@ -61,7 +61,7 @@ class TestExecutorThread {
 
         executorThread.execute(processor, "test", "p1", "p2", "p3");
 
-        Awaitility.await().untilAsserted(() -> Mockito.verify(processor).process("test", "p1", "p2", "p3"));
+        await().untilAsserted(() -> verify(processor).process("test", "p1", "p2", "p3"));
     }
 
     @Test
@@ -71,7 +71,7 @@ class TestExecutorThread {
         boolean enqueued = executorThread.execute(processor, "test", "p1", "p2", "p3");
 
         assertThat(enqueued).isTrue();
-        Awaitility.await().untilAsserted(() -> Mockito.verify(processor).process("test", "p1", "p2", "p3"));
+        await().untilAsserted(() -> verify(processor).process("test", "p1", "p2", "p3"));
     }
 
     @Test
@@ -80,7 +80,7 @@ class TestExecutorThread {
 
         executorThread.execute(processor, "test", "p1", "p2", "p3", new BackoffIdleStrategy());
 
-        Awaitility.await().untilAsserted(() -> Mockito.verify(processor).process("test", "p1", "p2", "p3"));
+        await().untilAsserted(() -> verify(processor).process("test", "p1", "p2", "p3"));
     }
 
     @Test
@@ -89,12 +89,12 @@ class TestExecutorThread {
         assertThat(aliveWorkerThreads()).isEqualTo(1);
 
         executorThread.onMessageExecutorReleased(exec, Deadline.immediate());
-        Awaitility.await().untilAsserted(() -> assertThat(aliveWorkerThreads()).isZero());
+        await().untilAsserted(() -> assertThat(aliveWorkerThreads()).isZero());
     }
 
     @Test
     void testMultipleExecutorsShareASingleWorkerThread() {
-        MessageExecutor otherExec = Mockito.mock(MessageExecutor.class);
+        MessageExecutor otherExec = mock(MessageExecutor.class);
 
         executorThread.onMessageExecutorAssigned(exec);
         executorThread.onMessageExecutorAssigned(otherExec);
@@ -104,19 +104,19 @@ class TestExecutorThread {
 
     @Test
     void testThreadStaysAliveUntilLastExecutorReleased() {
-        MessageExecutor otherExec = Mockito.mock(MessageExecutor.class);
+        MessageExecutor otherExec = mock(MessageExecutor.class);
         executorThread.onMessageExecutorAssigned(exec);
         executorThread.onMessageExecutorAssigned(otherExec);
 
         // releasing one of two executors must keep the worker thread running and processing
         executorThread.onMessageExecutorReleased(exec, Deadline.immediate());
         executorThread.execute(processor, "alive", null, null, null);
-        Awaitility.await().untilAsserted(() -> Mockito.verify(processor).process("alive", null, null, null));
+        await().untilAsserted(() -> verify(processor).process("alive", null, null, null));
         assertThat(aliveWorkerThreads()).isEqualTo(1);
 
         // releasing the last executor stops the worker thread
         executorThread.onMessageExecutorReleased(otherExec, Deadline.immediate());
-        Awaitility.await().untilAsserted(() -> assertThat(aliveWorkerThreads()).isZero());
+        await().untilAsserted(() -> assertThat(aliveWorkerThreads()).isZero());
     }
 
     @Test
@@ -127,14 +127,14 @@ class TestExecutorThread {
     @Test
     void testProcessorExceptionDoesNotKillWorkerThread() {
         executorThread.onMessageExecutorAssigned(exec);
-        MessageProcessor failing = Mockito.mock(MessageProcessor.class);
-        Mockito.doThrow(new RuntimeException("boom")).when(failing).process("boom", null, null, null);
+        MessageProcessor failing = mock(MessageProcessor.class);
+        doThrow(new RuntimeException("boom")).when(failing).process("boom", null, null, null);
 
         executorThread.execute(failing, "boom", null, null, null);
         executorThread.execute(processor, "survivor", null, null, null);
 
         // the thread must have swallowed the exception and processed the following task
-        Awaitility.await().untilAsserted(() -> Mockito.verify(processor).process("survivor", null, null, null));
+        await().untilAsserted(() -> verify(processor).process("survivor", null, null, null));
     }
 
     @Test
@@ -151,7 +151,7 @@ class TestExecutorThread {
             executorThread.execute(collector, "msg-" + i, null, null, null);
         }
 
-        Awaitility.await().untilAtomic(count, org.hamcrest.Matchers.equalTo(10));
+        await().untilAtomic(count, org.hamcrest.Matchers.equalTo(10));
         assertThat(processed).containsExactly("msg-0", "msg-1", "msg-2", "msg-3", "msg-4", "msg-5", "msg-6", "msg-7", "msg-8", "msg-9");
     }
 

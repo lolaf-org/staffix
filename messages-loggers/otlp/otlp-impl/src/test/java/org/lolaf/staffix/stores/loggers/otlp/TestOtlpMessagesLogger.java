@@ -25,7 +25,6 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.mockito.Mockito;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.LogMessageWaitStrategy;
 import org.testcontainers.utility.DockerImageName;
@@ -43,6 +42,7 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @Slf4j
@@ -129,7 +129,7 @@ class TestOtlpMessagesLogger {
                 .build());
         otlpMessagesLogger.start();
 
-        FixtMessageTypeRegistry registry = Mockito.mock(FixtMessageTypeRegistry.class);
+        FixtMessageTypeRegistry registry = mock(FixtMessageTypeRegistry.class);
         messageTypeOut = mockMsgType("OUT_MSG", 0);
         messageTypeIn = mockMsgType("IN_MSG", 1);
 
@@ -143,7 +143,7 @@ class TestOtlpMessagesLogger {
     }
 
     private MessageType mockMsgType(String code, int t) {
-        MessageType messageType = Mockito.mock(MessageType.class);
+        MessageType messageType = mock(MessageType.class);
         when(messageType.code()).thenReturn(code);
         when(messageType.getAsInt()).thenReturn(t);
         return messageType;

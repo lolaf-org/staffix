@@ -18,17 +18,17 @@ package org.lolaf.staffix.stores.messages.jdbc;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.stores.messages.testkit.AbstractMessagesStoreTest;
-import org.mockito.Mockito;
 
 import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 class TestJdbcMessagesStore extends AbstractMessagesStoreTest {
 
     @Override
     protected FixMessagesStore createStore() {
-        DataSource dataSource = Mockito.mock(DataSource.class);
+        DataSource dataSource = mock(DataSource.class);
 
         JdbcMessageStoreSettings settings = JdbcMessageStoreSettings.builder()
                 .instanceId("test-instance")
@@ -42,7 +42,7 @@ class TestJdbcMessagesStore extends AbstractMessagesStoreTest {
     @Test
     void aTablePrefixThatIsNotAPlainIdentifierIsRefused() {
         JdbcMessageStoreSettings settings = JdbcMessageStoreSettings.builder()
-                .dataSource(Mockito.mock(DataSource.class))
+                .dataSource(mock(DataSource.class))
                 .tablePrefix("fix; DROP TABLE accounts; --")
                 .build();
 

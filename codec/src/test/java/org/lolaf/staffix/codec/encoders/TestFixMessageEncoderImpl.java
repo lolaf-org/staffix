@@ -30,7 +30,6 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -38,6 +37,8 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+
+import static org.mockito.Mockito.mock;
 
 class TestFixMessageEncoderImpl {
 
@@ -71,7 +72,7 @@ class TestFixMessageEncoderImpl {
 
         encoder.begin().copy(encoderToCopy);
 
-        ByteBuffer encoded = encoder.encode(ByteBuffer::allocate, 1, getFixSessionId("sender1", "target1"), Mockito.mock(FixApplication.class),
+        ByteBuffer encoded = encoder.encode(ByteBuffer::allocate, 1, getFixSessionId("sender1", "target1"), mock(FixApplication.class),
                 TimeUnit.MICROSECONDS, TestingClock.get().now(), null);
 
 
@@ -109,7 +110,7 @@ class TestFixMessageEncoderImpl {
             }
         };
 
-        FixSession fixSession = Mockito.mock(FixSession.class);
+        FixSession fixSession = mock(FixSession.class);
 
         ByteBuffer encoded = encoder.encode(ByteBuffer::allocate, 1, getFixSessionId("sender", "target"), app, TimeUnit.MICROSECONDS, TestingClock.get().now(), fixSession);
 

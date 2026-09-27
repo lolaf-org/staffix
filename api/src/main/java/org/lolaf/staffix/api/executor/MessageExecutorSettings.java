@@ -46,10 +46,6 @@ public class MessageExecutorSettings implements InstanceIdSupplier {
     /**
      * Thread factory for the executors thread, if you provide one please try to return a {@link FastThreadLocalThread} to improve perfs
      */
-    /**
-     * Builds the worker threads. The default produces threads that support ringos' fast thread locals, which the
-     * serdes rely on for their zero-allocation paths.
-     */
     @Builder.Default
     private final ThreadFactory threadFactory = FastThreadLocalThread::new;
     /**
@@ -62,10 +58,6 @@ public class MessageExecutorSettings implements InstanceIdSupplier {
      * Size of the ring buffer queue allocated per executor thread. Must be a power of two.
      * Larger values reduce the risk of back-pressure under burst load at the cost of additional memory.
      */
-    /**
-     * The depth of each thread's queue, and so how much a slow consumer may buffer before the session thread is made
-     * to wait.
-     */
     @Builder.Default
     private int queueSizePerThread = 64;
 
@@ -73,10 +65,6 @@ public class MessageExecutorSettings implements InstanceIdSupplier {
      * Idle strategy to use when the thread is waiting for new tasks to process,
      * look at {@link org.lolaf.ringos.idling.BusySpinIdleStrategy} and {@link org.lolaf.ringos.idling.YieldingIdleStrategy} for lowest latency possible
      * or to {@link org.lolaf.ringos.idling.BackoffIdleStrategy} for a compromise with the default {@link org.lolaf.ringos.idling.WaitNotifyIdleStrategy} setting
-     */
-    /**
-     * What a worker does with an empty queue. The default parks; a spinning strategy trades a core for latency and is
-     * only worth it on a pinned thread.
      */
     @Builder.Default
     private Supplier<IdleStrategy> idleStrategy = WaitNotifyIdleStrategy::new;

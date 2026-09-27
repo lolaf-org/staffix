@@ -17,9 +17,9 @@ package org.lolaf.staffix.tracing.otlp;
 
 import io.opentelemetry.api.trace.*;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class TestTraceContextPropagator {
@@ -39,8 +39,8 @@ class TestTraceContextPropagator {
 
     @Test
     void testToW3CTrace() {
-        Span toExport = Mockito.mock(Span.class);
-        SpanContext spanContext = Mockito.mock(SpanContext.class);
+        Span toExport = mock(Span.class);
+        SpanContext spanContext = mock(SpanContext.class);
 
         String traceId = TraceId.fromLongs(123456789L, 987654321L);
         String spanId = SpanId.fromLong(111222333L);

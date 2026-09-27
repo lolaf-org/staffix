@@ -27,12 +27,13 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.grpc.testkit.StubGrpcServer;
 import org.lolaf.staffix.http.okhttp.OkHttpGrpcSender;
 import org.lolaf.staffix.stores.loggers.otlp.OtlpMessagesLoggerSettings.OtlpTransport;
-import org.mockito.Mockito;
 
 import java.io.IOException;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 /**
  * The logger over OTLP/gRPC, against a stub collector.
@@ -56,7 +57,7 @@ class OtlpMessagesLoggerGrpcTest {
         factory.start();
         return factory.instanciateLogger("test",
                 FixSessionId.of("grpcSid", FixRegularVersion.VERSION_44, "SENDER", "TARGET"),
-                Mockito.mock(MessageTypeRegistry.class));
+                mock(MessageTypeRegistry.class));
     }
 
     @BeforeEach
@@ -85,10 +86,11 @@ class OtlpMessagesLoggerGrpcTest {
      */
     @Test
     void refusesToBuildAGrpcLoggerWithNoClientToCallThrough() {
-        assertThatThrownBy(() -> startLogger(OtlpMessagesLoggerSettings.builder()
+        OtlpMessagesLoggerSettings loggerSettings = OtlpMessagesLoggerSettings.builder()
                 .otlpEndpointUrl(server.url())
                 .transport(OtlpTransport.GRPC)
-                .build()))
+                .build();
+        assertThatThrownBy(() -> startLogger(loggerSettings))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("grpcSenderFactory")
                 .hasMessageContaining("staffix-http-client-okhttp")
@@ -106,7 +108,7 @@ class OtlpMessagesLoggerGrpcTest {
                 .isEqualTo("/opentelemetry.proto.collector.logs.v1.LogsService/Export");
         assertThat(server.lastReceived().getHeaders().get("content-type")).startsWith("application/grpc");
 
-        byte[] framed = server.lastReceived().getBody().toByteArray();
+        byte[] framed = Objects.requireNonNull(server.lastReceived().getBody()).toByteArray();
         assertThat(GrpcFraming.messageLength(framed, 0))
                 .as("a marshalled LogsData, framed as gRPC requires")
                 .isEqualTo(framed.length - GrpcFraming.HEADER_LENGTH);

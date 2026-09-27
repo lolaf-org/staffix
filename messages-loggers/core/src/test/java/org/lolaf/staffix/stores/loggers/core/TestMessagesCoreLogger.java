@@ -26,11 +26,12 @@ import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.BiPredicate;
+
+import static org.mockito.Mockito.*;
 
 class TestMessagesCoreLogger {
 
@@ -64,10 +65,10 @@ class TestMessagesCoreLogger {
                 return this;
             }
         };
-        testLogger = Mockito.mock(FixMessagesLogger.Logger.class);
-        testFilter = Mockito.mock(BiPredicate.class);
-        Mockito.when(testFilter.test(messageType, FixMessagesLogger.LogEventType.INCOMING_MSG)).thenReturn(false);
-        Mockito.when(testFilter.test(messageType, FixMessagesLogger.LogEventType.OUTGOING_MSG)).thenReturn(false);
+        testLogger = mock(FixMessagesLogger.Logger.class);
+        testFilter = mock(BiPredicate.class);
+        when(testFilter.test(messageType, FixMessagesLogger.LogEventType.INCOMING_MSG)).thenReturn(false);
+        when(testFilter.test(messageType, FixMessagesLogger.LogEventType.OUTGOING_MSG)).thenReturn(false);
         FixMessagesLoggerSettings settings = new FixMessagesLoggerSettings() {
 
             @Override
@@ -103,7 +104,7 @@ class TestMessagesCoreLogger {
         };
 
         FixSessionId sessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
-        coreLogger = logger.getLogger("test", sessionId, Mockito.mock(MessageTypeRegistry.class));
+        coreLogger = logger.getLogger("test", sessionId, mock(MessageTypeRegistry.class));
     }
 
     @Test
@@ -113,11 +114,11 @@ class TestMessagesCoreLogger {
 
         coreLogger.logIncoming(time, messageType, ByteBuffer.wrap(message.getBytes()));
 
-        Mockito.verify(testLogger).logIncoming(time, messageType, ByteBuffer.wrap(messageExpected.getBytes()));
+        verify(testLogger).logIncoming(time, messageType, ByteBuffer.wrap(messageExpected.getBytes()));
 
         coreLogger.logOutgoing(time, messageType, ByteBuffer.wrap(message.getBytes()));
 
-        Mockito.verify(testLogger).logOutgoing(time, messageType, ByteBuffer.wrap(messageExpected.getBytes()));
+        verify(testLogger).logOutgoing(time, messageType, ByteBuffer.wrap(messageExpected.getBytes()));
     }
 
     @Test
@@ -125,24 +126,24 @@ class TestMessagesCoreLogger {
         String message = "8=FIX.4.49=8335=A34=198=0108=30141=Y554=PASSWORD553=USERNAME10=249";
 
         MessageType rejected = MessageType.of("A", true);
-        Mockito.when(testFilter.test(rejected, FixMessagesLogger.LogEventType.INCOMING_MSG)).thenReturn(true);
-        Mockito.when(testFilter.test(rejected, FixMessagesLogger.LogEventType.OUTGOING_MSG)).thenReturn(true);
+        when(testFilter.test(rejected, FixMessagesLogger.LogEventType.INCOMING_MSG)).thenReturn(true);
+        when(testFilter.test(rejected, FixMessagesLogger.LogEventType.OUTGOING_MSG)).thenReturn(true);
 
         coreLogger.logIncoming(time, rejected, ByteBuffer.wrap(message.getBytes()));
 
-        Mockito.verify(testLogger, Mockito.never()).logIncoming(Mockito.any(), Mockito.any(), Mockito.any());
+        verify(testLogger, never()).logIncoming(any(), any(), any());
 
         coreLogger.logOutgoing(time, rejected, ByteBuffer.wrap(message.getBytes()));
 
-        Mockito.verify(testLogger, Mockito.never()).logOutgoing(Mockito.any(), Mockito.any(), Mockito.any());
+        verify(testLogger, never()).logOutgoing(any(), any(), any());
 
         MessageType nonRejected = MessageType.of("B", true);
 
         coreLogger.logIncoming(time, nonRejected, ByteBuffer.wrap(message.getBytes()));
-        Mockito.verify(testLogger).logIncoming(Mockito.any(), Mockito.any(), Mockito.any());
+        verify(testLogger).logIncoming(any(), any(), any());
 
         coreLogger.logOutgoing(time, nonRejected, ByteBuffer.wrap(message.getBytes()));
-        Mockito.verify(testLogger).logOutgoing(Mockito.any(), Mockito.any(), Mockito.any());
+        verify(testLogger).logOutgoing(any(), any(), any());
     }
 
 }

@@ -26,10 +26,11 @@ import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
+
+import static org.mockito.Mockito.mock;
 
 class TestFixMessageResendTransformer {
     FixDictionaryId fixDictionaryId;
@@ -41,7 +42,7 @@ class TestFixMessageResendTransformer {
         fixDictionaryId = FixDictionaryId.of("tests", FixRegularVersion.VERSION_44);
         MessageTypeRegistry messageTypeRegistry = MessageTypeRegistry.Registry.getInstance(fixDictionaryId);
         fieldsRegistry = FieldsRegistry.Registry.getInstance(fixDictionaryId);
-        transformer = new FixMessageResendTransformer(TimeUnit.MICROSECONDS, TestingClock.get(), Mockito.mock(FixSessionId.class), messageTypeRegistry, fieldsRegistry);
+        transformer = new FixMessageResendTransformer(TimeUnit.MICROSECONDS, TestingClock.get(), mock(FixSessionId.class), messageTypeRegistry, fieldsRegistry);
     }
 
     @Test

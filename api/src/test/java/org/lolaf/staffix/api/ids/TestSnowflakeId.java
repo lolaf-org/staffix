@@ -162,7 +162,8 @@ class TestSnowflakeId {
         assertThatThrownBy(() -> new SnowflakeId(-1)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new SnowflakeId(SnowflakeId.MAX_NODE_ID + 1))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new SnowflakeId(0, System.currentTimeMillis() + 60_000))
+        long time = System.currentTimeMillis() + 60_000;
+        assertThatThrownBy(() -> new SnowflakeId(0, time))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new SnowflakeId(0, -1L)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new SnowflakeId(0, 0L, null)).isInstanceOf(NullPointerException.class);
@@ -196,9 +197,9 @@ class TestSnowflakeId {
 
         // the range is not this method's business: a parseable but impossible node id is the constructor's to reject
         assertThat(SnowflakeId.resolveNodeId("1024")).isEqualTo(1024);
-        assertThatThrownBy(() -> new SnowflakeId(SnowflakeId.resolveNodeId("1024")))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new SnowflakeId(SnowflakeId.resolveNodeId("-1")))
-                .isInstanceOf(IllegalArgumentException.class);
+        int nodeId = SnowflakeId.resolveNodeId("1024");
+        assertThatThrownBy(() -> new SnowflakeId(nodeId)).isInstanceOf(IllegalArgumentException.class);
+        int nodeId2 = SnowflakeId.resolveNodeId("-1");
+        assertThatThrownBy(() -> new SnowflakeId(nodeId2)).isInstanceOf(IllegalArgumentException.class);
     }
 }
