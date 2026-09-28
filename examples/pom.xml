@@ -46,6 +46,30 @@
         <pluginManagement>
             <plugins>
                 <plugin>
+                    <groupId>org.lolaf.staffix</groupId>
+                    <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+                    <version>${project.version}</version>
+                    <configuration>
+                        <dictionaryFile>classpath:FIX44.xml</dictionaryFile>
+                        <sourcesOutputDirectory>${project.build.directory}/generated-sources/fix</sourcesOutputDirectory>
+                        <packageName>org.lolaf.staffix.fix44</packageName>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>code-generator</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <dependencies>
+                        <dependency>
+                            <groupId>org.lolaf.staffix</groupId>
+                            <artifactId>staffix-fix-44</artifactId>
+                            <version>${project.version}</version>
+                        </dependency>
+                    </dependencies>
+                </plugin>
+                <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-shade-plugin</artifactId>
                     <version>3.6.2</version>

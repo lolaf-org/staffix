@@ -17,10 +17,9 @@ package org.lolaf.staffix.fix.orchestra;
 
 import org.w3c.dom.Element;
 
-import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.*;
 
 /**
@@ -55,11 +54,11 @@ public final class MessageSelection {
     }
 
     /**
-     * Reads a selection from a file, dropping comments, blank lines and duplicates.
+     * Reads a selection, dropping comments, blank lines and duplicates.
      */
-    public static MessageSelection read(File file) throws IOException {
+    public static MessageSelection read(InputStream in) throws IOException {
         Set<String> entries = new LinkedHashSet<>();
-        for (String line : Files.readAllLines(file.toPath(), StandardCharsets.UTF_8)) {
+        for (String line : new String(in.readAllBytes(), StandardCharsets.UTF_8).split("\\R")) {
             int comment = line.indexOf(COMMENT);
             String entry = (comment < 0 ? line : line.substring(0, comment)).trim();
             if (!entry.isEmpty()) {

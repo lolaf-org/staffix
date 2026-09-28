@@ -15,13 +15,11 @@
  */
 package org.lolaf.staffix.fix.orchestra;
 
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
 
-import java.io.File;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -32,18 +30,13 @@ import static org.junit.Assert.*;
  */
 public class MessageSelectionTest {
 
-    @Rule
-    public TemporaryFolder folder = new TemporaryFolder();
-
-    private File fileHolding(String content) throws Exception {
-        File file = folder.newFile("messages.txt");
-        Files.write(file.toPath(), content.getBytes(StandardCharsets.UTF_8));
-        return file;
+    private static InputStream holding(String content) {
+        return new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
     }
 
     @Test
     public void testCommentsBlankLinesAndDuplicatesAreDropped() throws Exception {
-        MessageSelection selection = MessageSelection.read(fileHolding(String.join("\n",
+        MessageSelection selection = MessageSelection.read(holding(String.join("\n",
                 "# what this module is about",
                 "",
                 "NewOrderSingle   # the bread and butter",
@@ -58,7 +51,7 @@ public class MessageSelectionTest {
 
     @Test
     public void testAFileOfNothingButCommentsIsEmpty() throws Exception {
-        MessageSelection selection = MessageSelection.read(fileHolding("# nothing here\n\n   \n"));
+        MessageSelection selection = MessageSelection.read(holding("# nothing here\n\n   \n"));
 
         assertTrue(selection.isEmpty());
         assertEquals(0, selection.size());

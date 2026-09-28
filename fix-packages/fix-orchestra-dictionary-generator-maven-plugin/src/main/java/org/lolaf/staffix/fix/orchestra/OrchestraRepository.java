@@ -23,14 +23,15 @@ import org.w3c.dom.NodeList;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
 
 /**
  * A FIX Orchestra repository loaded as a DOM, and the handful of things the cut needs to ask of it.
@@ -62,41 +63,49 @@ public final class OrchestraRepository {
      * @param file the orchestration, either the XML or a zip holding exactly one XML entry
      */
     public static OrchestraRepository load(File file) throws IOException, ParserConfigurationException, org.xml.sax.SAXException {
+        try (InputStream in = new FileInputStream(file)) {
+            return load(in, file.getPath());
+        }
+    }
+
+    /**
+     * @param name where the stream comes from, for messages; one ending in {@code .zip} is read as a zip holding
+     *             exactly one XML entry
+     */
+    public static OrchestraRepository load(InputStream in, String name) throws IOException, ParserConfigurationException, org.xml.sax.SAXException {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         // the repositories carry no doctype and are not fetched over a network, and a build must not be made to
         // depend on either being true of a file it is handed
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
         factory.setNamespaceAware(false);
         DocumentBuilder builder = factory.newDocumentBuilder();
-        if (isZip(file)) {
-            try (ZipFile zip = new ZipFile(file); InputStream entry = openSingleXmlEntry(zip, file)) {
-                return new OrchestraRepository(builder.parse(entry));
-            }
+        if (isZip(name)) {
+            return new OrchestraRepository(builder.parse(new ByteArrayInputStream(readSingleXmlEntry(new ZipInputStream(in), name))));
         }
-        return new OrchestraRepository(builder.parse(file));
+        return new OrchestraRepository(builder.parse(in));
     }
 
-    private static boolean isZip(File file) {
-        return file.getName().toLowerCase().endsWith(".zip");
+    private static boolean isZip(String name) {
+        return name.toLowerCase().endsWith(".zip");
     }
 
-    private static InputStream openSingleXmlEntry(ZipFile zip, File file) throws IOException {
-        ZipEntry found = null;
-        Enumeration<? extends ZipEntry> entries = zip.entries();
-        while (entries.hasMoreElements()) {
-            ZipEntry candidate = entries.nextElement();
+    private static byte[] readSingleXmlEntry(ZipInputStream zip, String name) throws IOException {
+        String foundName = null;
+        byte[] found = null;
+        for (ZipEntry candidate = zip.getNextEntry(); candidate != null; candidate = zip.getNextEntry()) {
             if (!candidate.isDirectory() && candidate.getName().toLowerCase().endsWith(".xml")) {
                 if (found != null) {
-                    throw new IOException("Orchestration " + file + " holds more than one XML entry, "
-                            + found.getName() + " and " + candidate.getName() + ", so which one to read is ambiguous");
+                    throw new IOException("Orchestration " + name + " holds more than one XML entry, "
+                            + foundName + " and " + candidate.getName() + ", so which one to read is ambiguous");
                 }
-                found = candidate;
+                foundName = candidate.getName();
+                found = zip.readAllBytes();
             }
         }
         if (found == null) {
-            throw new IOException("Orchestration " + file + " holds no XML entry");
+            throw new IOException("Orchestration " + name + " holds no XML entry");
         }
-        return zip.getInputStream(found);
+        return found;
     }
 
     /**

@@ -16,6 +16,7 @@
 package org.lolaf.staffix.generator;
 
 import org.apache.maven.plugin.logging.Log;
+import org.apache.maven.shared.utils.io.FileUtils;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -207,5 +208,21 @@ class TestCodeGenerator {
                         "encoders/MarketDataSnapshotFullRefreshEncoder.java"))
                 .as("nothing to suppress, so nothing is said")
                 .doesNotContain("@SuppressWarnings(\"deprecation\")");
+    }
+
+    @Test
+    void testDictionariesGeneratedIntoOneModuleEachKeepTheirServiceRegistration() throws Exception {
+        File target = new File("./target");
+        File dict = new File(target.getParentFile(), "src/test/resources/FIX44-test.xml");
+        File sources = new File(target, "gen-shared-spi-sources");
+        File resources = new File(target, "gen-shared-spi-resources");
+        FileUtils.deleteDirectory(resources);
+
+        CodeGenerator.process("test.first", dict, sources, resources, "first", mock(Log.class), false);
+        CodeGenerator.process("test.second", dict, sources, resources, "second", mock(Log.class), false);
+        CodeGenerator.process("test.second", dict, sources, resources, "second", mock(Log.class), false);
+
+        Assertions.assertThat(new File(resources, "META-INF/services/org.lolaf.staffix.api.codec.FixMessageEncoderFactory"))
+                .hasContent("test.first.encoders.FixMessageEncoderFactoryImpl\ntest.second.encoders.FixMessageEncoderFactoryImpl\n");
     }
 }

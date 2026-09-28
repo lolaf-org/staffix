@@ -46,9 +46,14 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -59,6 +64,13 @@ import java.util.stream.Collectors;
 public class CodeGenerator {
 
     public static void process(String packageName, File dictionary, File sourcesOutputDirectory, File resourcesOutputDirectory,
+                               String dictionaryId, Log log, boolean addFIXEngineAndAppInfoFields) throws IOException, SAXException, ParserConfigurationException {
+        try (InputStream in = new FileInputStream(dictionary)) {
+            process(packageName, in, sourcesOutputDirectory, resourcesOutputDirectory, dictionaryId, log, addFIXEngineAndAppInfoFields);
+        }
+    }
+
+    public static void process(String packageName, InputStream dictionary, File sourcesOutputDirectory, File resourcesOutputDirectory,
                                String dictionaryId, Log log, boolean addFIXEngineAndAppInfoFields) throws IOException, SAXException, ParserConfigurationException {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
@@ -498,23 +510,26 @@ public class CodeGenerator {
         return enumType;
     }
 
+    /**
+     * Adds to the file rather than replacing it, so that several dictionaries generated into one module each keep
+     * their registration.
+     */
     private static void writeSPIFile(File outputDir, Class<?> spiClass, String spiImpl) {
-        File metaInf = new File(outputDir, "META-INF");
-        if (!metaInf.exists() && !metaInf.mkdirs()) {
-            throw new IllegalStateException(metaInf + " could not be created");
-        }
-        File servicesDir = new File(metaInf, "services");
+        File servicesDir = new File(outputDir, "META-INF/services");
         if (!servicesDir.exists() && !servicesDir.mkdirs()) {
             throw new IllegalStateException(servicesDir + " could not be created");
         }
-        File spi = new File(servicesDir, spiClass.getName());
+        Path spi = new File(servicesDir, spiClass.getName()).toPath();
         try {
-            FileOutputStream fos = new FileOutputStream(spi);
-            fos.write(spiImpl.getBytes(StandardCharsets.UTF_8));
-            fos.flush();
-            fos.close();
-        } catch (Exception ex) {
-            throw new IllegalStateException(ex);
+            Set<String> implementations = new LinkedHashSet<>();
+            if (Files.exists(spi)) {
+                Files.readAllLines(spi, StandardCharsets.UTF_8).stream().map(String::trim).filter(l -> !l.isEmpty())
+                        .forEach(implementations::add);
+            }
+            implementations.add(spiImpl);
+            Files.write(spi, implementations, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw new UncheckedIOException(ex);
         }
     }
 

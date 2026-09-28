@@ -23,13 +23,8 @@
 
     <build>
         <plugins>
-            <!-- This module has no hand-written source: its encoders, fields and message types are generated
-                 from the dictionary in src/main/dictionaries, so javadoc reads nothing and produces nothing.
-                 Keeping it that way is deliberate - fix-latest alone generates some 20,000 classes.
-                 Central requires a -javadoc.jar (and a -sources.jar) for every artifact whose packaging is
-                 not pom, and sanctions a placeholder where neither can be produced: "if you cannot provide
-                 sources or documentation, we allow uploading placeholder .jar files in order to pass
-                 validation". src/placeholder/README.md says so and points at where to look instead. -->
+            <!-- A repository and nothing to document. Central requires a -javadoc.jar for every artifact whose
+                 packaging is not pom, and accepts a placeholder where none can be produced. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>

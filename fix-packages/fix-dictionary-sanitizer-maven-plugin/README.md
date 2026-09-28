@@ -61,5 +61,6 @@ The plugin:
 
 ## Configuration Parameters
 
-- **inputFile** (required): The input FIX XML file to sanitize
+- **inputFile** (required): The FIX XML dictionary to sanitize, a file path or `classpath:<resource>` from the
+  plugin's dependencies (e.g. `classpath:FIX44.xml` with `staffix-fix-44`)
 - **outputFile** (required): The output sanitized FIX XML file

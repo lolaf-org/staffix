@@ -96,19 +96,13 @@ up with full monitoring.
 
 ### In your own project
 
-The dependencies for a first application are the engine, the FIX version you speak, and an implementation of each
-pluggable part:
+The dependencies for a first application are the engine and an implementation of each pluggable part:
 
 ```xml
 
 <dependency>
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-impl</artifactId>
-    <version>${staffix.version}</version>
-</dependency>
-<dependency>
-    <groupId>org.lolaf.staffix</groupId>
-    <artifactId>staffix-fix-44</artifactId>
     <version>${staffix.version}</version>
 </dependency>
 <dependency>
@@ -132,6 +126,36 @@ pluggable part:
     <version>${staffix.version}</version>
 </dependency>
 ```
+
+The encoders for the FIX version you speak are generated into your build, from the dictionary the matching
+`staffix-fix-*` artifact carries:
+
+```xml
+<plugin>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+    <version>${staffix.version}</version>
+    <configuration>
+        <dictionaryFile>classpath:FIX44.xml</dictionaryFile>
+        <sourcesOutputDirectory>${project.build.directory}/generated-sources/fix</sourcesOutputDirectory>
+        <packageName>org.lolaf.staffix.fix44</packageName>
+    </configuration>
+    <executions>
+        <execution>
+            <goals><goal>code-generator</goal></goals>
+        </execution>
+    </executions>
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-fix-44</artifactId>
+            <version>${staffix.version}</version>
+        </dependency>
+    </dependencies>
+</plugin>
+```
+
+[FIX versions and dictionaries](docs/fix-versions-and-dictionaries.md) lists the versions and explains the options.
 
 Then build an engine, hand it an application per session, and start an acceptor or an initiator from it.
 [`QuickstartExample`](examples/quickstart/src/main/java/org/lolaf/staffix/examples/quickstart/QuickstartExample.java)

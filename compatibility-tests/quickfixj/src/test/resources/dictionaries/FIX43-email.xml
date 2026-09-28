@@ -1,0 +1,439 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fix major="4" minor="3">
+    <header>
+        <field name="BeginString" required="Y"/>
+        <field name="BodyLength" required="Y"/>
+        <field name="MsgType" required="Y"/>
+        <field name="SenderCompID" required="Y"/>
+        <field name="TargetCompID" required="Y"/>
+        <field name="OnBehalfOfCompID" required="N"/>
+        <field name="DeliverToCompID" required="N"/>
+        <field name="SecureDataLen" required="N"/>
+        <field name="SecureData" required="N"/>
+        <field name="MsgSeqNum" required="Y"/>
+        <field name="SenderSubID" required="N"/>
+        <field name="SenderLocationID" required="N"/>
+        <field name="TargetSubID" required="N"/>
+        <field name="TargetLocationID" required="N"/>
+        <field name="OnBehalfOfSubID" required="N"/>
+        <field name="OnBehalfOfLocationID" required="N"/>
+        <field name="DeliverToSubID" required="N"/>
+        <field name="DeliverToLocationID" required="N"/>
+        <field name="PossDupFlag" required="N"/>
+        <field name="PossResend" required="N"/>
+        <field name="SendingTime" required="Y"/>
+        <field name="OrigSendingTime" required="N"/>
+        <field name="XmlDataLen" required="N"/>
+        <field name="XmlData" required="N"/>
+        <field name="MessageEncoding" required="N"/>
+        <field name="LastMsgSeqNumProcessed" required="N"/>
+        <field name="OnBehalfOfSendingTime" required="N"/>
+        <group name="NoHops" required="N">
+            <field name="HopCompID" required="N"/>
+            <field name="HopSendingTime" required="N"/>
+            <field name="HopRefID" required="N"/>
+        </group>
+    </header>
+    <trailer>
+        <field name="SignatureLength" required="N"/>
+        <field name="Signature" required="N"/>
+        <field name="CheckSum" required="Y"/>
+    </trailer>
+    <messages>
+        <message msgcat="admin" msgtype="0" name="Heartbeat">
+            <field name="TestReqID" required="N"/>
+        </message>
+        <message msgcat="admin" msgtype="A" name="Logon">
+            <field name="EncryptMethod" required="Y"/>
+            <field name="HeartBtInt" required="Y"/>
+            <field name="RawDataLength" required="N"/>
+            <field name="RawData" required="N"/>
+            <field name="ResetSeqNumFlag" required="N"/>
+            <field name="MaxMessageSize" required="N"/>
+            <group name="NoMsgTypes" required="N">
+                <field name="RefMsgType" required="N"/>
+                <field name="MsgDirection" required="N"/>
+            </group>
+            <field name="TestMessageIndicator" required="N"/>
+            <field name="Username" required="N"/>
+            <field name="Password" required="N"/>
+        </message>
+        <message msgcat="admin" msgtype="1" name="TestRequest">
+            <field name="TestReqID" required="Y"/>
+        </message>
+        <message msgcat="admin" msgtype="2" name="ResendRequest">
+            <field name="BeginSeqNo" required="Y"/>
+            <field name="EndSeqNo" required="Y"/>
+        </message>
+        <message msgcat="admin" msgtype="3" name="Reject">
+            <field name="RefSeqNum" required="Y"/>
+            <field name="RefTagID" required="N"/>
+            <field name="RefMsgType" required="N"/>
+            <field name="SessionRejectReason" required="N"/>
+            <field name="Text" required="N"/>
+            <field name="EncodedTextLen" required="N"/>
+            <field name="EncodedText" required="N"/>
+        </message>
+        <message msgcat="admin" msgtype="4" name="SequenceReset">
+            <field name="GapFillFlag" required="N"/>
+            <field name="NewSeqNo" required="Y"/>
+        </message>
+        <message msgcat="admin" msgtype="5" name="Logout">
+            <field name="Text" required="N"/>
+            <field name="EncodedTextLen" required="N"/>
+            <field name="EncodedText" required="N"/>
+        </message>
+        <message msgcat="admin" msgtype="j" name="BusinessMessageReject">
+            <field name="RefSeqNum" required="N"/>
+            <field name="RefMsgType" required="Y"/>
+            <field name="BusinessRejectRefID" required="N"/>
+            <field name="BusinessRejectReason" required="Y"/>
+            <field name="Text" required="N"/>
+            <field name="EncodedTextLen" required="N"/>
+            <field name="EncodedText" required="N"/>
+        </message>
+        <message msgcat="app" msgtype="C" name="Email">
+            <field name="EmailThreadID" required="Y"/>
+            <field name="EmailType" required="Y"/>
+            <field name="OrigTime" required="N"/>
+            <field name="Subject" required="Y"/>
+            <field name="EncodedSubjectLen" required="N"/>
+            <field name="EncodedSubject" required="N"/>
+            <group name="NoRoutingIDs" required="N">
+                <field name="RoutingType" required="N"/>
+                <field name="RoutingID" required="N"/>
+            </group>
+            <group name="NoRelatedSym" required="N">
+                <component name="Instrument" required="N"/>
+            </group>
+            <field name="OrderID" required="N"/>
+            <field name="ClOrdID" required="N"/>
+            <group name="LinesOfText" required="Y">
+                <field name="Text" required="Y"/>
+                <field name="EncodedTextLen" required="N"/>
+                <field name="EncodedText" required="N"/>
+            </group>
+            <field name="RawDataLength" required="N"/>
+            <field name="RawData" required="N"/>
+        </message>
+    </messages>
+    <components>
+        <component name="Instrument">
+            <field name="Symbol" required="Y"/>
+            <field name="SymbolSfx" required="N"/>
+            <field name="SecurityID" required="N"/>
+            <field name="SecurityIDSource" required="N"/>
+            <group name="NoSecurityAltID" required="N">
+                <field name="SecurityAltID" required="N"/>
+                <field name="SecurityAltIDSource" required="N"/>
+            </group>
+            <field name="Product" required="N"/>
+            <field name="CFICode" required="N"/>
+            <field name="SecurityType" required="N"/>
+            <field name="MaturityMonthYear" required="N"/>
+            <field name="MaturityDate" required="N"/>
+            <field name="CouponPaymentDate" required="N"/>
+            <field name="IssueDate" required="N"/>
+            <field name="RepoCollateralSecurityType" required="N"/>
+            <field name="RepurchaseTerm" required="N"/>
+            <field name="RepurchaseRate" required="N"/>
+            <field name="Factor" required="N"/>
+            <field name="CreditRating" required="N"/>
+            <field name="InstrRegistry" required="N"/>
+            <field name="CountryOfIssue" required="N"/>
+            <field name="StateOrProvinceOfIssue" required="N"/>
+            <field name="LocaleOfIssue" required="N"/>
+            <field name="RedemptionDate" required="N"/>
+            <field name="StrikePrice" required="N"/>
+            <field name="OptAttribute" required="N"/>
+            <field name="ContractMultiplier" required="N"/>
+            <field name="CouponRate" required="N"/>
+            <field name="SecurityExchange" required="N"/>
+            <field name="Issuer" required="N"/>
+            <field name="EncodedIssuerLen" required="N"/>
+            <field name="EncodedIssuer" required="N"/>
+            <field name="SecurityDesc" required="N"/>
+            <field name="EncodedSecurityDescLen" required="N"/>
+            <field name="EncodedSecurityDesc" required="N"/>
+        </component>
+    </components>
+    <fields>
+        <field name="BeginSeqNo" number="7" type="SEQNUM"/>
+        <field name="BeginString" number="8" type="STRING"/>
+        <field name="BodyLength" number="9" type="LENGTH"/>
+        <field name="CheckSum" number="10" type="STRING"/>
+        <field name="ClOrdID" number="11" type="STRING"/>
+        <field name="EndSeqNo" number="16" type="SEQNUM"/>
+        <field name="SecurityIDSource" number="22" type="STRING">
+            <value description="CUSIP" enum="1"/>
+            <value description="SEDOL" enum="2"/>
+            <value description="QUIK" enum="3"/>
+            <value description="ISIN_NUMBER" enum="4"/>
+            <value description="RIC_CODE" enum="5"/>
+            <value description="ISO_CURRENCY_CODE" enum="6"/>
+            <value description="ISO_COUNTRY_CODE" enum="7"/>
+            <value description="EXCHANGE_SYMBOL" enum="8"/>
+            <value description="CONSOLIDATED_TAPE_ASSOCIATION" enum="9"/>
+            <value description="BLOOMBERG_SYMBOL" enum="A"/>
+            <value description="WERTPAPIER" enum="B"/>
+            <value description="DUTCH" enum="C"/>
+            <value description="VALOREN" enum="D"/>
+            <value description="SICOVAM" enum="E"/>
+            <value description="BELGIAN" enum="F"/>
+            <value description="COMMON" enum="G"/>
+        </field>
+        <field name="LinesOfText" number="33" type="NUMINGROUP"/>
+        <field name="MsgSeqNum" number="34" type="SEQNUM"/>
+        <field name="MsgType" number="35" type="STRING">
+            <value description="HEARTBEAT" enum="0"/>
+            <value description="TEST_REQUEST" enum="1"/>
+            <value description="RESEND_REQUEST" enum="2"/>
+            <value description="REJECT" enum="3"/>
+            <value description="SEQUENCE_RESET" enum="4"/>
+            <value description="LOGOUT" enum="5"/>
+            <value description="LOGON" enum="A"/>
+            <value description="EMAIL" enum="C"/>
+            <value description="BUSINESS_MESSAGE_REJECT" enum="j"/>
+        </field>
+        <field name="NewSeqNo" number="36" type="SEQNUM"/>
+        <field name="OrderID" number="37" type="STRING"/>
+        <field name="OrigTime" number="42" type="UTCTIMESTAMP"/>
+        <field name="PossDupFlag" number="43" type="BOOLEAN"/>
+        <field name="RefSeqNum" number="45" type="SEQNUM"/>
+        <field name="SecurityID" number="48" type="STRING"/>
+        <field name="SenderCompID" number="49" type="STRING"/>
+        <field name="SenderSubID" number="50" type="STRING"/>
+        <field name="SendingTime" number="52" type="UTCTIMESTAMP"/>
+        <field name="Symbol" number="55" type="STRING"/>
+        <field name="TargetCompID" number="56" type="STRING"/>
+        <field name="TargetSubID" number="57" type="STRING"/>
+        <field name="Text" number="58" type="STRING"/>
+        <field name="SymbolSfx" number="65" type="STRING"/>
+        <field name="Signature" number="89" type="DATA"/>
+        <field name="SecureDataLen" number="90" type="LENGTH"/>
+        <field name="SecureData" number="91" type="DATA"/>
+        <field name="SignatureLength" number="93" type="LENGTH"/>
+        <field name="EmailType" number="94" type="CHAR">
+            <value description="NEW" enum="0"/>
+            <value description="REPLY" enum="1"/>
+            <value description="ADMIN_REPLY" enum="2"/>
+        </field>
+        <field name="RawDataLength" number="95" type="LENGTH"/>
+        <field name="RawData" number="96" type="DATA"/>
+        <field name="PossResend" number="97" type="BOOLEAN"/>
+        <field name="EncryptMethod" number="98" type="INT">
+            <value description="NONE" enum="0"/>
+            <value description="PKCS_PROPRIETARY" enum="1"/>
+            <value description="DES" enum="2"/>
+            <value description="PKCS_DES" enum="3"/>
+            <value description="PGP_DES" enum="4"/>
+            <value description="PGP_DES_MD5" enum="5"/>
+            <value description="PEM" enum="6"/>
+        </field>
+        <field name="Issuer" number="106" type="STRING"/>
+        <field name="SecurityDesc" number="107" type="STRING"/>
+        <field name="HeartBtInt" number="108" type="INT"/>
+        <field name="TestReqID" number="112" type="STRING"/>
+        <field name="OnBehalfOfCompID" number="115" type="STRING"/>
+        <field name="OnBehalfOfSubID" number="116" type="STRING"/>
+        <field name="OrigSendingTime" number="122" type="UTCTIMESTAMP"/>
+        <field name="GapFillFlag" number="123" type="BOOLEAN"/>
+        <field name="DeliverToCompID" number="128" type="STRING"/>
+        <field name="DeliverToSubID" number="129" type="STRING"/>
+        <field name="ResetSeqNumFlag" number="141" type="BOOLEAN"/>
+        <field name="SenderLocationID" number="142" type="STRING"/>
+        <field name="TargetLocationID" number="143" type="STRING"/>
+        <field name="OnBehalfOfLocationID" number="144" type="STRING"/>
+        <field name="DeliverToLocationID" number="145" type="STRING"/>
+        <field name="NoRelatedSym" number="146" type="NUMINGROUP"/>
+        <field name="Subject" number="147" type="STRING"/>
+        <field name="EmailThreadID" number="164" type="STRING"/>
+        <field name="SecurityType" number="167" type="STRING">
+            <value description="CORPORATE_BOND" enum="CORP"/>
+            <value description="CORPORATE_PRIVATE_PLACEMENT" enum="CPP"/>
+            <value description="CONVERTABLE_BOND" enum="CB"/>
+            <value description="DUAL_CURRENCY" enum="DUAL"/>
+            <value description="INDEX_LINKED" enum="XLINKD"/>
+            <value description="STRUCTURED_NOTES" enum="STRUCT"/>
+            <value description="YANKEE_CORPORATE_BOND" enum="YANK"/>
+            <value description="FOREIGN_EXCHANGE_CONTRACT" enum="FOR"/>
+            <value description="COMMON_STOCK" enum="CS"/>
+            <value description="PREFERED_STOCK" enum="PS"/>
+            <value description="BRADY_BOND" enum="BRADY"/>
+            <value description="US_TREASURY_BOND" enum="TBOND"/>
+            <value description="INTEREST_STRIP_FROM_ANY_BOND_OR_NOTE" enum="TINT"/>
+            <value description="TREASURY_INFLATION_PROTECTED_SECURITIES" enum="TIPS"/>
+            <value description="PRINCIPAL_STRIP_OF_A_CALLABLE_BOND_OR_NOTE" enum="TCAL"/>
+            <value description="PRINCIPAL_STRIP_FROM_A_NON_CALLABLE_BOND_OR_NOTE" enum="TPRN"/>
+            <value description="US_TREASURY_NOTE_BOND" enum="UST"/>
+            <value description="US_TREASURY_BILL" enum="USTB"/>
+            <value description="TERM_LOAN" enum="TERM"/>
+            <value description="REVOLVER_LOAN" enum="RVLV"/>
+            <value description="REVOLVER_TERM_LOAN" enum="RVLVTRM"/>
+            <value description="BRIDGE_LOAN" enum="BRIDGE"/>
+            <value description="LETTER_OF_CREDIT" enum="LOFC"/>
+            <value description="SWING_LINE_FACILITY" enum="SWING"/>
+            <value description="DEBTOR_IN_POSSESSION" enum="DINP"/>
+            <value description="DEFAULTED" enum="DEFLTED"/>
+            <value description="WITHDRAWN" enum="WITHDRN"/>
+            <value description="REPLACED" enum="REPLACD"/>
+            <value description="MATURED" enum="MATURED"/>
+            <value description="AMENDED_AND_RESTATED" enum="AMENDED"/>
+            <value description="RETIRED" enum="RETIRED"/>
+            <value description="BANKERS_ACCEPTANCE" enum="BA"/>
+            <value description="BANK_NOTES" enum="BN"/>
+            <value description="BILL_OF_EXCHANGES" enum="BOX"/>
+            <value description="CERTIFICATE_OF_DEPOSIT" enum="CD"/>
+            <value description="CALL_LOANS" enum="CL"/>
+            <value description="COMMERCIAL_PAPER" enum="CP"/>
+            <value description="DEPOSIT_NOTES" enum="DP"/>
+            <value description="LIQUIDITY_NOTES" enum="LQN"/>
+            <value description="MEDIUM_TERM_NOTES" enum="MTN"/>
+            <value description="OVERNITE" enum="ONITE"/>
+            <value description="PROMISSORY_NOTES" enum="PN"/>
+            <value description="PLAZOS_FIJOS" enum="PZFJ"/>
+            <value description="REPURCHASE_AGREEMENT" enum="RP"/>
+            <value description="REVERSE_REPURCHASE_AGREEMENT" enum="RVRP"/>
+            <value description="SHORT_TERM_LOAN_NOTE" enum="STN"/>
+            <value description="TIME_DEPOSIT" enum="TD"/>
+            <value description="EXTENDED_COMM_NOTE" enum="XCN"/>
+            <value description="AGENCY_POOLS" enum="POOL"/>
+            <value description="ASSET_BACKED_SECURITIES" enum="ABS"/>
+            <value description="CORP_MORTGAGE_BACKED_SECURITIES" enum="CMBS"/>
+            <value description="COLLATERALIZED_MORTGAGE_OBLIGATION" enum="CMO"/>
+            <value description="IOETTE_MORTGAGE" enum="IET"/>
+            <value description="MORTGAGE_BACKED_SECURITIES" enum="MBS"/>
+            <value description="MORTGAGE_INTEREST_ONLY" enum="MIO"/>
+            <value description="MORTGAGE_PRINCIPAL_ONLY" enum="MPO"/>
+            <value description="MORTGAGE_PRIVATE_PLACEMENT" enum="MPP"/>
+            <value description="MISCELLANEOUS_PASS_THROUGH" enum="MPT"/>
+            <value description="OTHER_ANTICIPATION_NOTES" enum="AN"/>
+            <value description="CERTIFICATE_OF_OBLIGATION" enum="COFO"/>
+            <value description="CERTIFICATE_OF_PARTICIPATION" enum="COFP"/>
+            <value description="GENERAL_OBLIGATION_BONDS" enum="GO"/>
+            <value description="MANDATORY_TENDER" enum="MT"/>
+            <value description="REVENUE_ANTICIPATION_NOTE" enum="RAN"/>
+            <value description="REVENUE_BONDS" enum="REV"/>
+            <value description="SPECIAL_ASSESSMENT" enum="SPCLA"/>
+            <value description="SPECIAL_OBLIGATION" enum="SPCLO"/>
+            <value description="SPECIAL_TAX" enum="SPCLT"/>
+            <value description="TAX_ANTICIPATION_NOTE" enum="TAN"/>
+            <value description="TAX_ALLOCATION" enum="TAXA"/>
+            <value description="TAX_EXEMPT_COMMERCIAL_PAPER" enum="TECP"/>
+            <value description="TAX_AND_REVENUE_ANTICIPATION_NOTE" enum="TRAN"/>
+            <value description="VARIABLE_RATE_DEMAND_NOTE" enum="VRDN"/>
+            <value description="WARRANT" enum="WAR"/>
+            <value description="MUTUAL_FUND" enum="MF"/>
+            <value description="MULTI_LEG_INSTRUMENT" enum="MLEG"/>
+            <value description="NO_SECURITY_TYPE" enum="NONE"/>
+            <value description="WILDCARD" enum="?"/>
+        </field>
+        <field name="MaturityMonthYear" number="200" type="MONTHYEAR"/>
+        <field name="StrikePrice" number="202" type="PRICE"/>
+        <field name="OptAttribute" number="206" type="CHAR"/>
+        <field name="SecurityExchange" number="207" type="EXCHANGE"/>
+        <field name="XmlDataLen" number="212" type="LENGTH"/>
+        <field name="XmlData" number="213" type="DATA"/>
+        <field name="NoRoutingIDs" number="215" type="NUMINGROUP"/>
+        <field name="RoutingType" number="216" type="INT">
+            <value description="TARGET_FIRM" enum="1"/>
+            <value description="TARGET_LIST" enum="2"/>
+            <value description="BLOCK_FIRM" enum="3"/>
+            <value description="BLOCK_LIST" enum="4"/>
+        </field>
+        <field name="RoutingID" number="217" type="STRING"/>
+        <field name="CouponRate" number="223" type="PERCENTAGE"/>
+        <field name="CouponPaymentDate" number="224" type="UTCDATE"/>
+        <field name="IssueDate" number="225" type="UTCDATE"/>
+        <field name="RepurchaseTerm" number="226" type="INT"/>
+        <field name="RepurchaseRate" number="227" type="PERCENTAGE"/>
+        <field name="Factor" number="228" type="FLOAT"/>
+        <field name="ContractMultiplier" number="231" type="FLOAT"/>
+        <field name="RepoCollateralSecurityType" number="239" type="STRING"/>
+        <field name="RedemptionDate" number="240" type="UTCDATE"/>
+        <field name="CreditRating" number="255" type="STRING"/>
+        <field name="MessageEncoding" number="347" type="STRING"/>
+        <field name="EncodedIssuerLen" number="348" type="LENGTH"/>
+        <field name="EncodedIssuer" number="349" type="DATA"/>
+        <field name="EncodedSecurityDescLen" number="350" type="LENGTH"/>
+        <field name="EncodedSecurityDesc" number="351" type="DATA"/>
+        <field name="EncodedTextLen" number="354" type="LENGTH"/>
+        <field name="EncodedText" number="355" type="DATA"/>
+        <field name="EncodedSubjectLen" number="356" type="LENGTH"/>
+        <field name="EncodedSubject" number="357" type="DATA"/>
+        <field name="LastMsgSeqNumProcessed" number="369" type="SEQNUM"/>
+        <field name="OnBehalfOfSendingTime" number="370" type="UTCTIMESTAMP"/>
+        <field name="RefTagID" number="371" type="INT"/>
+        <field name="RefMsgType" number="372" type="STRING"/>
+        <field name="SessionRejectReason" number="373" type="INT">
+            <value description="INVALID_TAG_NUMBER" enum="0"/>
+            <value description="REQUIRED_TAG_MISSING" enum="1"/>
+            <value description="TAG_NOT_DEFINED_FOR_THIS_MESSAGE_TYPE" enum="2"/>
+            <value description="UNDEFINED_TAG" enum="3"/>
+            <value description="TAG_SPECIFIED_WITHOUT_A_VALUE" enum="4"/>
+            <value description="VALUE_IS_INCORRECT" enum="5"/>
+            <value description="INCORRECT_DATA_FORMAT_FOR_VALUE" enum="6"/>
+            <value description="DECRYPTION_PROBLEM" enum="7"/>
+            <value description="SIGNATURE_PROBLEM" enum="8"/>
+            <value description="COMPID_PROBLEM" enum="9"/>
+            <value description="SENDINGTIME_ACCURACY_PROBLEM" enum="10"/>
+            <value description="INVALID_MSGTYPE" enum="11"/>
+            <value description="XML_VALIDATION_ERROR" enum="12"/>
+            <value description="TAG_APPEARS_MORE_THAN_ONCE" enum="13"/>
+            <value description="TAG_SPECIFIED_OUT_OF_REQUIRED_ORDER" enum="14"/>
+            <value description="REPEATING_GROUP_FIELDS_OUT_OF_ORDER" enum="15"/>
+            <value description="INCORRECT_NUMINGROUP_COUNT_FOR_REPEATING_GROUP" enum="16"/>
+            <value description="NON_DATA_VALUE_INCLUDES_FIELD_DELIMITER" enum="17"/>
+        </field>
+        <field name="BusinessRejectRefID" number="379" type="STRING"/>
+        <field name="BusinessRejectReason" number="380" type="INT">
+            <value description="OTHER" enum="0"/>
+            <value description="UNKOWN_ID" enum="1"/>
+            <value description="UNKNOWN_SECURITY" enum="2"/>
+            <value description="UNSUPPORTED_MESSAGE_TYPE" enum="3"/>
+            <value description="APPLICATION_NOT_AVAILABLE" enum="4"/>
+            <value description="CONDITIONALLY_REQUIRED_FIELD_MISSING" enum="5"/>
+            <value description="NOT_AUTHORIZED" enum="6"/>
+            <value description="DELIVERTO_FIRM_NOT_AVAILABLE_AT_THIS_TIME" enum="7"/>
+        </field>
+        <field name="MaxMessageSize" number="383" type="LENGTH"/>
+        <field name="NoMsgTypes" number="384" type="NUMINGROUP"/>
+        <field name="MsgDirection" number="385" type="CHAR">
+            <value description="SEND" enum="S"/>
+            <value description="RECEIVE" enum="R"/>
+        </field>
+        <field name="NoSecurityAltID" number="454" type="NUMINGROUP"/>
+        <field name="SecurityAltID" number="455" type="STRING"/>
+        <field name="SecurityAltIDSource" number="456" type="STRING"/>
+        <field name="Product" number="460" type="INT">
+            <value description="AGENCY" enum="1"/>
+            <value description="COMMODITY" enum="2"/>
+            <value description="CORPORATE" enum="3"/>
+            <value description="CURRENCY" enum="4"/>
+            <value description="EQUITY" enum="5"/>
+            <value description="GOVERNMENT" enum="6"/>
+            <value description="INDEX" enum="7"/>
+            <value description="LOAN" enum="8"/>
+            <value description="MONEYMARKET" enum="9"/>
+            <value description="MORTGAGE" enum="10"/>
+            <value description="MUNICIPAL" enum="11"/>
+            <value description="OTHER" enum="12"/>
+        </field>
+        <field name="CFICode" number="461" type="STRING"/>
+        <field name="TestMessageIndicator" number="464" type="BOOLEAN"/>
+        <field name="CountryOfIssue" number="470" type="COUNTRY"/>
+        <field name="StateOrProvinceOfIssue" number="471" type="STRING"/>
+        <field name="LocaleOfIssue" number="472" type="STRING"/>
+        <field name="MaturityDate" number="541" type="LOCALMKTDATE"/>
+        <field name="InstrRegistry" number="543" type="STRING">
+            <value description="COUNTRY_IN_WHICH_REGISTRY_IS_KEPT" enum="Code"/>
+            <value description="PHYSICAL_OR_BEARER" enum="ZZ"/>
+        </field>
+        <field name="Username" number="553" type="STRING"/>
+        <field name="Password" number="554" type="STRING"/>
+        <field name="NoHops" number="627" type="NUMINGROUP"/>
+        <field name="HopCompID" number="628" type="STRING"/>
+        <field name="HopSendingTime" number="629" type="UTCTIMESTAMP"/>
+        <field name="HopRefID" number="630" type="SEQNUM"/>
+    </fields>
+</fix>

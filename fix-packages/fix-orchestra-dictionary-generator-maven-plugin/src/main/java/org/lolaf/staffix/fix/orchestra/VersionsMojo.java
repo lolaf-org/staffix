@@ -19,9 +19,11 @@ import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.lolaf.staffix.api.utils.ResourceLocation;
 import org.w3c.dom.Element;
 
 import java.io.File;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -38,20 +40,20 @@ import java.util.TreeMap;
  * also shows the property the cut semantics rest on - that extension pack ranges are contiguous and do not overlap
  * between versions - rather than leaving it as folklore.
  * <p>
- * Reads a file and prints, so it wants no project:
+ * Wants no project, and reads the bundled orchestration unless {@code -Dorchestration} names another:
  * <pre>
- * mvn staffix-fix-orchestra-dictionary-generator:versions \
- *     -Dorchestration=fix-packages/fix-orchestra/src/main/resources/fix-orchestra-latest.zip
+ * mvn org.lolaf.staffix:staffix-fix-orchestra-dictionary-generator-maven-plugin:versions
  * </pre>
  */
 @Mojo(name = "versions", requiresProject = false)
 public class VersionsMojo extends AbstractMojo {
 
     /**
-     * The orchestration to inspect, either the XML or a zip holding it.
+     * The orchestration to inspect, either the XML or a zip holding it, as a file path or
+     * {@code classpath:<resource>}.
      */
-    @Parameter(property = "orchestration", required = true)
-    private File orchestration;
+    @Parameter(property = "orchestration", defaultValue = ResourceLocation.CLASSPATH_PREFIX + "fix-orchestra-latest.zip")
+    private String orchestration;
 
     /**
      * Where to write the listing. Left out, it goes to the build log.
@@ -59,10 +61,16 @@ public class VersionsMojo extends AbstractMojo {
     @Parameter(property = "outputFile", defaultValue = "${project.build.directory}/generated-resources/fix-versions.txt")
     private File outputFile;
 
+    @Parameter(defaultValue = "${project.basedir}", readonly = true)
+    private File basedir;
+
     @Override
     public void execute() throws MojoExecutionException {
         try {
-            OrchestraRepository repository = OrchestraRepository.load(orchestration);
+            OrchestraRepository repository;
+            try (InputStream in = ResourceLocation.open(orchestration, basedir, getClass().getClassLoader())) {
+                repository = OrchestraRepository.load(in, orchestration);
+            }
             List<String> lines = describe(repository);
             if (outputFile != null) {
                 Files.createDirectories(outputFile.toPath().toAbsolutePath().getParent());

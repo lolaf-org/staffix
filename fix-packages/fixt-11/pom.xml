@@ -69,7 +69,6 @@
                     <dictionaryFile>${project.basedir}/src/main/dictionaries/FIXT11.xml</dictionaryFile>
                     <sourcesOutputDirectory>${project.build.directory}/generated-sources/</sourcesOutputDirectory>
                     <packageName>org.lolaf.staffix.fixt11</packageName>
-                    <dictionaryId>default</dictionaryId>
                 </configuration>
                 <executions>
                     <execution>

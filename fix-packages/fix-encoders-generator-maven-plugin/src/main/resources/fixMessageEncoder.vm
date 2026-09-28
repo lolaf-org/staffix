@@ -66,14 +66,6 @@ public class ${className} extends FixMessageEncoderImpl<${className}> {
 
     private final Map<Class<? extends FixFieldsEncoder>,FixFieldsEncoder> groupEncodersInstances;
 
-    /**
-     * One group encoder per group, per message encoder instance, created on first use and reused afterwards - the
-     * group encoders hold no per-entry state, so the same instance serves every entry of the group.
-     * <p>
-     * The factory is a method reference from the call site rather than a reflective lookup: a group encoder is a
-     * top-level class shared across messages, so there is no synthetic outer instance to pass and nothing left for
-     * reflection to do.
-     */
     private <T extends FixFieldsEncoder> T getGroupEncoderInstance(Class<T> groupEncoderClass,
             Function<FixMessageEncoderImpl<?>,T> factory) {
         T encoder = (T)groupEncodersInstances.get(groupEncoderClass);
@@ -84,9 +76,6 @@ public class ${className} extends FixMessageEncoderImpl<${className}> {
         return encoder;
     }
 
-    /**
-     * Constructor for FixMessageEncoderFactory
-     */
     protected ${className}(Consumer<FixMessageEncoder<?>> releaser, IntFunction<ByteBuffer> allocator, FixMessageEncodingListener encodingListener, Clock clock) {
         super(releaser, ${messageName}, allocator, encodingListener, clock);
         groupEncodersInstances = new IdentityHashMap<>();

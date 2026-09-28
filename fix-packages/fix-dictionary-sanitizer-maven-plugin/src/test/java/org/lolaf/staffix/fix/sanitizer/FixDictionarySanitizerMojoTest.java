@@ -144,7 +144,7 @@ public class FixDictionarySanitizerMojoTest {
     public void testEmptyFieldsSection() throws Exception {
         FixDictionarySanitizerMojo mojo = setupFixSanitizerMojo("/test-fix-empty-fields.xml");
 
-        rule.setVariableValueToObject(mojo, "inputFile", inputFile);
+        rule.setVariableValueToObject(mojo, "inputFile", inputFile.getAbsolutePath());
         rule.setVariableValueToObject(mojo, "outputFile", outputFile);
 
         // Should not throw exception
@@ -224,6 +224,16 @@ public class FixDictionarySanitizerMojoTest {
         assertThat(outputFile).doesNotExist();
     }
 
+    @Test
+    public void testClasspathInput() throws Exception {
+        FixDictionarySanitizerMojo mojo = setupFixSanitizerMojo("/test-fix.xml");
+        rule.setVariableValueToObject(mojo, "inputFile", "classpath:test-fix.xml");
+
+        mojo.execute();
+
+        assertThat(fieldNamesOf(outputFile)).doesNotContain("UnusedField1", "UnusedField2", "UnusedField3");
+    }
+
     private FixDictionarySanitizerMojo setupFixSanitizerMojo(String inputTestFixFileName) throws Exception {
         try (InputStream is = getClass().getResourceAsStream(inputTestFixFileName)) {
             Files.copy(is, inputFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
@@ -235,7 +245,7 @@ public class FixDictionarySanitizerMojoTest {
         FixDictionarySanitizerMojo mojo = rule.lookupConfiguredMojo(pom, "sanitize");
         assertThat(mojo).isNotNull();
 
-        rule.setVariableValueToObject(mojo, "inputFile", inputFile);
+        rule.setVariableValueToObject(mojo, "inputFile", inputFile.getAbsolutePath());
         rule.setVariableValueToObject(mojo, "outputFile", outputFile);
         return mojo;
     }

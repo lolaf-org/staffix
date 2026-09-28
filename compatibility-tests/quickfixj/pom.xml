@@ -26,40 +26,6 @@
             <artifactId>staffix-impl</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- every dictionary staffix ships gets a logon and an Email each way against QuickFIX/J; the field and
-             message registries are looked up per dictionary, so they coexist on one classpath -->
-        <dependency>
-            <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-fix-42</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-fix-43</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-fix-50</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-fix-50sp1</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-fix-44</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <!-- pulls staffix-fixt-11, the transport dictionary the FIXT scenarios run over -->
-        <dependency>
-            <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-fix-50sp2</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-application-factory-simple</artifactId>
@@ -78,6 +44,12 @@
             <artifactId>staffix-test-utils</artifactId>
             <version>${project.version}</version>
             <classifier>tests</classifier>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-fixt-11</artifactId>
+            <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -124,4 +96,69 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!-- every dictionary staffix ships gets a logon and an Email each way against QuickFIX/J. FIX 4.4 and 5.0 SP2
+                 come from test-utils and FIXT.1.1 from staffix-fixt-11; the others are generated from the shipped dictionaries cut to the
+                 session messages, BusinessMessageReject (the engine registers a decoder for it) and Email, then
+                 sanitized, so as not to generate thousands of unused classes -->
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <configuration>
+                    <sourcesOutputDirectory>${project.build.directory}/generated-test-sources/fix</sourcesOutputDirectory>
+                    <resourcesOutputDirectory>${project.build.testOutputDirectory}</resourcesOutputDirectory>
+                    <testSources>true</testSources>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>fix42</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                        <configuration>
+                            <dictionaryFile>src/test/resources/dictionaries/FIX42-email.xml</dictionaryFile>
+                            <packageName>org.lolaf.staffix.fix42</packageName>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>fix43</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                        <configuration>
+                            <dictionaryFile>src/test/resources/dictionaries/FIX43-email.xml</dictionaryFile>
+                            <packageName>org.lolaf.staffix.fix43</packageName>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>fix50</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                        <configuration>
+                            <dictionaryFile>src/test/resources/dictionaries/FIX50-email.xml</dictionaryFile>
+                            <packageName>org.lolaf.staffix.fix50</packageName>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>fix50sp1</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                        <configuration>
+                            <dictionaryFile>src/test/resources/dictionaries/FIX50SP1-email.xml</dictionaryFile>
+                            <packageName>org.lolaf.staffix.fix50sp1</packageName>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

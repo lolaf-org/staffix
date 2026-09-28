@@ -17,6 +17,11 @@
         FixApplication beans.
     </description>
 
+    <properties>
+        <!-- the generated FIX 4.4 encoders are thousands of classes and these examples are not released -->
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
@@ -48,11 +53,6 @@
             <version>${project.version}</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-fix-44</artifactId>
-            <version>${project.version}</version>
-        </dependency>
 
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
@@ -129,6 +129,10 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

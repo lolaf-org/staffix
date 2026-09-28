@@ -36,6 +36,11 @@
             <version>${maven-plugin-annotations.version}</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>org.apache.maven.plugin-testing</groupId>

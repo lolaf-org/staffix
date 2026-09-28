@@ -35,10 +35,66 @@
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-codec</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <!-- The FIX versions most tests need, generated once here for every module using test-utils; FIX 5.0 SP2
+                 runs over staffix-fixt-11, which a module using it adds. The resources go to test-classes with the
+                 sources, or the service registrations would land in the main jar and not in the test-jar. -->
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <configuration>
+                    <sourcesOutputDirectory>${project.build.directory}/generated-test-sources/fix</sourcesOutputDirectory>
+                    <resourcesOutputDirectory>${project.build.testOutputDirectory}</resourcesOutputDirectory>
+                    <testSources>true</testSources>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>fix44</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                        <configuration>
+                            <dictionaryFile>classpath:FIX44.xml</dictionaryFile>
+                            <packageName>org.lolaf.staffix.fix44</packageName>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>fix50sp2</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                        <configuration>
+                            <dictionaryFile>classpath:FIX50SP2.xml</dictionaryFile>
+                            <packageName>org.lolaf.staffix.fix50sp2</packageName>
+                        </configuration>
+                    </execution>
+                </executions>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.lolaf.staffix</groupId>
+                        <artifactId>staffix-fix-44</artifactId>
+                        <version>${project.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.lolaf.staffix</groupId>
+                        <artifactId>staffix-fix-50sp2</artifactId>
+                        <version>${project.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
             <!-- This module is test-only code with no src/main/java, so neither javadoc nor the source plugin
                  produces anything.
                  Central requires a -javadoc.jar (and a -sources.jar) for every artifact whose packaging is

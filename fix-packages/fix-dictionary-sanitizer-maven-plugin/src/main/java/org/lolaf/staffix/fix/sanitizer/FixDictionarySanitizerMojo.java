@@ -20,6 +20,7 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.lolaf.staffix.api.utils.ResourceLocation;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -35,6 +36,7 @@ import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -50,10 +52,10 @@ import java.util.Set;
 public class FixDictionarySanitizerMojo extends AbstractMojo {
 
     /**
-     * The input FIX XML file to sanitize.
+     * The dictionary to sanitize, as a file path or {@code classpath:<resource>} from the plugin's dependencies.
      */
     @Parameter(property = "inputFile", required = true)
-    private File inputFile;
+    private String inputFile;
 
     /**
      * The output sanitized FIX XML file.
@@ -80,10 +82,13 @@ public class FixDictionarySanitizerMojo extends AbstractMojo {
     @Parameter(property = "keepFields")
     private List<String> keepFields;
 
+    @Parameter(defaultValue = "${project.basedir}", readonly = true)
+    private File basedir;
+
     @Override
     public void execute() throws MojoExecutionException {
         try {
-            getLog().info("Sanitizing FIX XML file: " + inputFile.getAbsolutePath());
+            getLog().info("Sanitizing FIX XML file: " + inputFile);
 
             // Parse the XML file
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -92,7 +97,10 @@ public class FixDictionarySanitizerMojo extends AbstractMojo {
             factory.setIgnoringComments(false);
             factory.setIgnoringElementContentWhitespace(false);
             DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(inputFile);
+            Document doc;
+            try (InputStream in = ResourceLocation.open(inputFile, basedir, getClass().getClassLoader())) {
+                doc = builder.parse(in);
+            }
 
             // Collect all referenced component names and remove unreferenced components first
             Set<String> referencedComponents = collectReferencedComponents(doc);

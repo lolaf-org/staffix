@@ -1,8 +1,7 @@
 # FIX Encoders Generator Maven Plugin
 
 A Maven plugin that parses FIX XML dictionary files and generates type-safe Java encoders, message types, field
-definitions,
-and registries compatible with the Staffix API.
+definitions and registries compatible with the Staffix API.
 
 ## Overview
 
@@ -49,58 +48,58 @@ The plugin processes a FIX XML dictionary file (e.g., `FIX44.xml`, `FIX50.xml`) 
 
 ### Basic Configuration
 
-Add the plugin to your `pom.xml`:
+Staffix ships the standard dictionaries as artifacts (`staffix-fix-44` carries `FIX44.xml`, and so on). List the one
+you need among the plugin's dependencies and read it from the classpath:
 
 ```xml
-
 <build>
     <plugins>
         <plugin>
             <groupId>org.lolaf.staffix</groupId>
-            <artifactId>fix-encoders-generator-maven-plugin</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+            <version>${staffix.version}</version>
             <configuration>
-                <dictionaryFile>${project.basedir}/src/main/resources/FIX44.xml</dictionaryFile>
-                <sourcesOutputDirectory>${project.build.directory}/generated-sources/</sourcesOutputDirectory>
-                <packageName>org.lolaf.staffix.fix44</packageName>
-                <dictionaryId>default</dictionaryId>
+                <dictionaryFile>classpath:FIX44.xml</dictionaryFile>
+                <sourcesOutputDirectory>${project.build.directory}/generated-sources/fix</sourcesOutputDirectory>
+                <packageName>com.example.fix44</packageName>
             </configuration>
             <executions>
                 <execution>
-                    <phase>generate-sources</phase>
                     <goals>
                         <goal>code-generator</goal>
                     </goals>
                 </execution>
             </executions>
+            <dependencies>
+                <dependency>
+                    <groupId>org.lolaf.staffix</groupId>
+                    <artifactId>staffix-fix-44</artifactId>
+                    <version>${staffix.version}</version>
+                </dependency>
+            </dependencies>
         </plugin>
     </plugins>
 </build>
 ```
 
+A dictionary of your own is a file path instead, relative to the project:
+`<dictionaryFile>src/main/dictionaries/MYFIX44.xml</dictionaryFile>`.
+
+Several dictionaries can be generated into one module, one execution each with its own `packageName`. From FIX 5.0
+the session layer is FIXT.1.1, which is not generated: add `staffix-fixt-11`, which ships its encoders, as a
+dependency of your project.
+
 ### Configuration Parameters
 
-| Parameter                      | Required | Default                              | Description                                                                           |
-|--------------------------------|----------|--------------------------------------|---------------------------------------------------------------------------------------|
-| `dictionaryFile`               | Yes      | -                                    | Path to the FIX XML dictionary file                                                   |
-| `sourcesOutputDirectory`       | Yes      | -                                    | Directory where Java source files will be generated                                   |
-| `resourcesOutputDirectory`     | No       | `${project.build.directory}/classes` | Directory where resource files (field validation info) will be generated              |
-| `packageName`                  | Yes      | -                                    | Base package name for generated classes                                               |
-| `dictionaryId`                 | Yes      | -                                    | Identifier for this dictionary (e.g., "default", "custom")                            |
-| `addFIXEngineAndAppInfoFields` | No       | `true`                               | Whether to add FIX engine and application info fields (1600-1605) into generated code |
-
-### Example Configuration for FIX 4.4
-
-```xml
-
-<configuration>
-    <dictionaryFile>${project.basedir}/src/main/resources/FIX44.xml</dictionaryFile>
-    <sourcesOutputDirectory>${project.build.directory}/generated-sources/</sourcesOutputDirectory>
-    <packageName>org.lolaf.staffix.fix44</packageName>
-    <dictionaryId>default</dictionaryId>
-    <addFIXEngineAndAppInfoFields>true</addFIXEngineAndAppInfoFields>
-</configuration>
-```
+| Parameter                      | Required | Default                              | Description                                                                                  |
+|--------------------------------|----------|--------------------------------------|----------------------------------------------------------------------------------------------|
+| `dictionaryFile`               | Yes      | -                                    | The dictionary: `classpath:<resource>` from the plugin's dependencies, or a file path        |
+| `sourcesOutputDirectory`       | Yes      | -                                    | Directory where Java source files will be generated                                          |
+| `resourcesOutputDirectory`     | No       | `${project.build.directory}/classes` | Directory for the field validation info and the SPI registrations                            |
+| `packageName`                  | Yes      | -                                    | Base package name for generated classes                                                      |
+| `dictionaryId`                 | No       | `default`                            | The id a session names to use this dictionary; `default` is the one sessions use unless set |
+| `addFIXEngineAndAppInfoFields` | No       | `true`                               | Whether to add FIX engine and application info fields (1600-1605) into generated code        |
+| `testSources`                  | No       | `false`                              | Adds the sources to the test compilation; set `resourcesOutputDirectory` to test output too |
 
 ## Generated Code Structure
 
@@ -151,40 +150,20 @@ org.lolaf.staffix.fix44/
 ## Example Generated Encoder Usage
 
 ```java
-// Generated encoder provides fluent API
-NewOrderSingleEncoder encoder = new NewOrderSingleEncoder();
-encoder.
-
-setClOrdID("ORDER123")
-       .
-
-setSymbol("AAPL")
-       .
-
-setSide(Side.BUY)
-       .
-
-setOrderQty(100)
-       .
-
-setOrdType(OrdType.LIMIT)
-       .
-
-setPrice(150.50);
+NewOrderSingleEncoder encoder = session.newEncoder(NewOrderSingleEncoder.class).begin()
+        .setSymbol("AAPL")
+        .setSide(Side.SideValues.BUY)
+        .setOrdType(OrdType.OrdTypeValues.LIMIT)
+        .setPrice(150.50);
+session.send(encoder, null);
 ```
 
 ## Running the Plugin
 
-The plugin runs automatically during the Maven build lifecycle:
+The goal binds to `generate-sources` by default, so it runs with the build:
 
 ```bash
 mvn clean compile
-```
-
-Or run it directly:
-
-```bash
-mvn fix-encoders-generator:code-generator
 ```
 
 ## Notes
@@ -192,11 +171,9 @@ mvn fix-encoders-generator:code-generator
 - Admin messages (e.g., Logon, Heartbeat) do not have encoders generated - they use standard implementations
 - Repeating groups are fully supported with nested field generation
 - Components are expanded inline into messages and groups
-- Have a look at the [staffix-fix-dictionary-sanitizer-maven-plugin](../fix-encoders-generator-maven-plugin) if you work
-  with
-  FIX
-  dictionaries tailored for your
-  own FIX API and want to have a clean dictionary file for the generator input and minimize generation of useless code.
+- Have a look at the [staffix-fix-dictionary-sanitizer-maven-plugin](../fix-dictionary-sanitizer-maven-plugin) if you
+  work with FIX dictionaries tailored for your own FIX API and want a clean dictionary file for the generator input,
+  minimizing the generation of useless code.
 
 ## Support for FIXT
 

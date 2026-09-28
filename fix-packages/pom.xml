@@ -18,9 +18,6 @@
     <artifactId>staffix-fix-packages-parent</artifactId>
 
     <properties>
-        <orchestration.file>
-            ${project.basedir}/../fix-orchestra/src/main/resources/fix-orchestra-latest.zip
-        </orchestration.file>
         <orchestration.markDeprecated>true</orchestration.markDeprecated>
     </properties>
 

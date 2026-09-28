@@ -1,25 +1,96 @@
 # FIX versions and dictionaries
 
-Staffix does not parse FIX generically. For each FIX version it generates a package of type-safe encoders, decoders,
-field classes and registries from a dictionary, at build time. This guide covers choosing a version, running more
-than one, and generating a package from a dictionary of your own.
+Staffix does not parse FIX generically. For each FIX version you speak, a Maven plugin generates a package of
+type-safe encoders, field classes and registries from a dictionary, into your own build. Staffix ships the
+dictionaries; you generate the code. This guide covers choosing a version, generating its encoders, running more than
+one, and bringing a dictionary of your own.
 
 ---
 
-## The packages
+## The dictionaries
 
-| dependency | speaks | generated package |
-|------------|--------|-------------------|
-| `staffix-fix-42` | FIX 4.2 | `org.lolaf.staffix.fix42` |
-| `staffix-fix-43` | FIX 4.3 | `org.lolaf.staffix.fix43` |
-| `staffix-fix-44` | FIX 4.4 | `org.lolaf.staffix.fix44` |
-| `staffix-fix-50` | FIX 5.0 | `org.lolaf.staffix.fix50` |
-| `staffix-fix-50sp1` | FIX 5.0 SP1 | `org.lolaf.staffix.fix50sp1` |
-| `staffix-fix-50sp2` | FIX 5.0 SP2 | `org.lolaf.staffix.fix50sp2` |
-| `staffix-fix-latest` | FIX Latest | `org.lolaf.staffix.fixlatest` |
-| `staffix-fixt-11` | FIXT.1.1 session layer | `org.lolaf.staffix.fixt11` |
+Each application-layer artifact holds one dictionary, as a resource at the root of the jar, and no code:
 
-Add the one you speak, and name it on the session id:
+| artifact | speaks | dictionary resource |
+|----------|--------|---------------------|
+| `staffix-fix-42` | FIX 4.2 | `FIX42.xml` |
+| `staffix-fix-43` | FIX 4.3 | `FIX43.xml` |
+| `staffix-fix-44` | FIX 4.4 | `FIX44.xml` |
+| `staffix-fix-50` | FIX 5.0 | `FIX50.xml` |
+| `staffix-fix-50sp1` | FIX 5.0 SP1 | `FIX50SP1.xml` |
+| `staffix-fix-50sp2` | FIX 5.0 SP2 | `FIX50SP2.xml` |
+| `staffix-fix-latest` | FIX Latest | `fix-latest-minimal.xml` |
+
+The FIXT.1.1 session layer is the exception: `staffix-fixt-11` ships its encoders and registries already generated,
+in `org.lolaf.staffix.fixt11`, since every FIX 5.0+ session needs the same ones.
+
+### Why the encoders are not shipped
+
+- **Size.** Maven Central strictly limits artifact size, and a full FIX package is large: the complete FIX
+  Latest alone generates some 20,000 classes.
+- **You rarely need all of it.** Most applications use a handful of messages. A dictionary of your own, stripped of
+  the messages you do not use, generates less code, builds faster and keeps your API to what you actually speak.
+  See [Cutting a dictionary from an orchestration](#cutting-a-dictionary-from-an-orchestration) and
+  [Generating a package from your own dictionary](#generating-a-package-from-your-own-dictionary).
+
+---
+
+## Generating the encoders
+
+Add `staffix-fix-encoders-generator-maven-plugin` to your build, with the dictionary's artifact as a dependency **of
+the plugin**, and point `dictionaryFile` at the resource with a `classpath:` prefix:
+
+```xml
+<plugin>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+    <version>${staffix.version}</version>
+    <configuration>
+        <dictionaryFile>classpath:FIX44.xml</dictionaryFile>
+        <sourcesOutputDirectory>${project.build.directory}/generated-sources/fix</sourcesOutputDirectory>
+        <packageName>com.example.fix44</packageName>
+    </configuration>
+    <executions>
+        <execution>
+            <goals><goal>code-generator</goal></goals>
+        </execution>
+    </executions>
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-fix-44</artifactId>
+            <version>${staffix.version}</version>
+        </dependency>
+    </dependencies>
+</plugin>
+```
+
+The goal runs at `generate-sources` and adds the generated sources to the compilation, so `mvn compile` is enough.
+The dictionary is only read at build time: the artifact is not a dependency of your project and does not reach your
+runtime classpath.
+
+- **`packageName`** is yours to choose. The examples in these guides use `org.lolaf.staffix.fix44`.
+- **`dictionaryId`** names the dictionary to the engine. It defaults to `default`, which is what a session uses
+  unless its settings name another, see [your own dictionary](#generating-a-package-from-your-own-dictionary).
+- **`dictionaryFile`** also takes a file path, relative to the project, for a dictionary you keep yourself.
+- **`testSources`** set to `true` generates into the test sources instead, for encoders only your tests use. Set
+  `resourcesOutputDirectory` to `${project.build.testOutputDirectory}` with it, or the registrations the generator
+  writes land in the main output.
+
+**From FIX 5.0 onwards add `staffix-fixt-11` as well**, as an ordinary dependency of your project. The session
+layer moved to FIXT.1.1 in FIX 5.0: the header, the trailer and the session messages belong to the transport
+dictionary, and the application dictionary carries only business messages. A FIX 5.0+ application dictionary has an
+empty `<header>` for exactly this reason.
+
+```xml
+<dependency>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-fixt-11</artifactId>
+    <version>${staffix.version}</version>
+</dependency>
+```
+
+Then name the version on the session id:
 
 ```java
 FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
@@ -31,10 +102,6 @@ FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.b
 
 `FixRegularVersion` has `VERSION_42`, `VERSION_43`, `VERSION_44`, `VERSION_50`, `VERSION_50_SP1`, `VERSION_50_SP2`
 and `VERSION_LATEST`.
-
-**From FIX 5.0 onwards you also need `staffix-fixt-11`.** The session layer moved to FIXT.1.1 in FIX 5.0: the header,
-the trailer and the session messages belong to the transport dictionary, and the application dictionary carries only
-business messages. A FIX 5.0+ application dictionary has an empty `<header>` for exactly this reason.
 
 ---
 
@@ -75,8 +142,8 @@ dictionary carries deprecated elements with nothing to distinguish them, so noth
 
 ## Running more than one version in one engine
 
-Nothing stops an engine hosting FIX 4.2 and FIX 4.4 sessions at once: add both packages, and give each session the
-matching `FixSessionId`. The registries are per-version and resolved through the SPI, so the right metadata follows
+Nothing stops an engine hosting FIX 4.2 and FIX 4.4 sessions at once: generate both, one execution each with its own
+`packageName`, and give each session the matching `FixSessionId`. The registries are per-version and resolved through the SPI, so the right metadata follows
 the session.
 
 What each session must not share is its *instance ids* if it needs its own store, logger or application, see
@@ -86,19 +153,23 @@ What each session must not share is its *instance ids* if it needs its own store
 
 ## FIX Latest
 
-`staffix-fix-latest` ships **93 application messages**, every application message that existed in FIX 4.4, described
+`staffix-fix-latest` holds **93 application messages**, every application message that existed in FIX 4.4, described
 as FIX Latest describes it today.
 
 That is a deliberate cut: FIX Latest defines far more messages than an application is ever likely to encode, and
-generating all of them produces more classes than a dependency should carry. The message list is a checked-in text
-file, and the whole standard is one flag away:
+generating all of them produces some 35,000 classes. The message list is a checked-in text file, shipped in the jar
+beside the dictionary as `fix-latest-messages.txt`. To cut your own list, run the
+[Orchestra dictionary generator](#cutting-a-dictionary-from-an-orchestration) with your file as
+`includeMessagesFile`.
+
+In this repository, the whole standard is one flag away, which is how a new extension pack is proven to generate:
 
 ```bash
-mvn -Pfull-fix-latest install -pl fix-packages/fix-latest
+mvn -Pfull-fix-latest compile -pl fix-packages/fix-latest
 ```
 
-To change which messages are included, edit
-[`fix-latest-messages.txt`](../fix-packages/fix-latest/src/main/dictionaries/fix-latest-messages.txt) and regenerate
+To change which messages the shipped dictionary includes, edit
+[`fix-latest-messages.txt`](../fix-packages/fix-latest/src/main/resources/fix-latest-messages.txt) and regenerate
 the dictionary beside it:
 
 ```bash
@@ -109,8 +180,8 @@ mvn -Porchestra-dictionary initialize -pl fix-packages/fix-latest
 
 ## Where the dictionaries come from
 
-Every `fix-*` module keeps its dictionary in its own `src/main/dictionaries/`, checked into the repository, and
-generates from that file at build time. The dictionary itself is regenerated on demand, never during a normal build:
+Every `fix-*` module keeps its dictionary in its own `src/main/resources/`, checked into the repository, and ships
+that file. The dictionary is regenerated on demand, never during a normal build:
 
 ```bash
 mvn -Porchestra-dictionary initialize -pl fix-packages/fix-44
@@ -129,8 +200,8 @@ fields they should have. The pre-4.3 layouts are not in the file to recover.
 
 ## Generating a package from your own dictionary
 
-Counterparty-specific dictionaries are common in FIX, and the encoders generator is a Maven plugin you can point at
-any QuickFIX-format dictionary:
+Counterparty-specific dictionaries are common in FIX, and the encoders generator takes any QuickFIX-format dictionary,
+from a file in your project as well as from the classpath:
 
 ```xml
 <plugin>
@@ -138,14 +209,13 @@ any QuickFIX-format dictionary:
     <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
     <version>${staffix.version}</version>
     <configuration>
-        <dictionaryFile>${project.basedir}/src/main/dictionaries/MYFIX44.xml</dictionaryFile>
-        <sourcesOutputDirectory>${project.build.directory}/generated-sources/</sourcesOutputDirectory>
+        <dictionaryFile>src/main/dictionaries/MYFIX44.xml</dictionaryFile>
+        <sourcesOutputDirectory>${project.build.directory}/generated-sources/fix</sourcesOutputDirectory>
         <packageName>com.example.fix</packageName>
         <dictionaryId>counterparty-a</dictionaryId>
     </configuration>
     <executions>
         <execution>
-            <phase>generate-sources</phase>
             <goals><goal>code-generator</goal></goals>
         </execution>
     </executions>
@@ -169,7 +239,8 @@ at once, each element marked with the version that added, changed or deprecated 
 states exactly which standard a package speaks, and is the only source of the deprecations that become `@Deprecated`.
 Every shipped `fix-*` dictionary is produced this way, and the plugin is available for your own.
 
-The orchestration goes in as a zip, since that is how the repositories are published:
+The plugin depends on `staffix-fix-orchestra`, which carries the latest published repository, and reads it unless told
+otherwise. So a cut needs no orchestration of your own:
 
 ```xml
 <plugin>
@@ -177,7 +248,6 @@ The orchestration goes in as a zip, since that is how the repositories are publi
     <artifactId>staffix-fix-orchestra-dictionary-generator-maven-plugin</artifactId>
     <version>${staffix.version}</version>
     <configuration>
-        <orchestration>${project.basedir}/src/main/orchestra/fix-orchestra-latest.zip</orchestration>
         <upToVersion>FIX.4.4</upToVersion>
         <upToExtensionPack>0</upToExtensionPack>
         <markDeprecated>true</markDeprecated>
@@ -191,6 +261,9 @@ The orchestration goes in as a zip, since that is how the repositories are publi
     </executions>
 </plugin>
 ```
+
+To read another repository, set `orchestration` to a file path or a `classpath:` resource, either the XML or the zip
+it is published as. The output is ready for the encoders generator, whose `dictionaryFile` takes the same path.
 
 The two ceiling parameters are the cut, and together they name a standard precisely:
 
@@ -209,7 +282,7 @@ Three more are worth knowing:
 - **`includeDeprecated`** keeps what was already deprecated at the cut, and is on by default: deprecated means "do not
   use this in new work", not withdrawn, and the field has to stay so that a peer still sending it can be decoded.
   Turning it off is the deliberate act of not generating encoders for what the standard tells you not to use.
-- **`includeMessagesFile`** names a file listing the messages to keep, one per line by name (`NewOrderSingle`) or by
+- **`includeMessagesFile`** names a file, or a `classpath:` resource, listing the messages to keep, one per line by name (`NewOrderSingle`) or by
   msgType (`D`), with `#` for comments. Left out, every message of the cut is kept. It earns its place on a wide cut
   such as FIX Latest, where one message expands into hundreds of classes once its groups and components are expanded,
   and an entry naming a message the cut does not hold fails the build rather than being ignored.
@@ -219,7 +292,7 @@ with its extension-pack range, its element counts, and the exact arguments that 
 
 ```bash
 mvn org.lolaf.staffix:staffix-fix-orchestra-dictionary-generator-maven-plugin:versions \
-    -Dorchestration=path/to/fix-orchestra-latest.zip -DoutputFile=target/fix-versions.txt
+    -DoutputFile=target/fix-versions.txt
 ```
 
 ```
@@ -260,6 +333,9 @@ nothing references. It logs what it removed, and runs before generation in the s
     </executions>
 </plugin>
 ```
+
+`inputFile` also takes a `classpath:` resource, so a shipped dictionary can be sanitized without copying it into
+your project: `classpath:FIX44.xml`, with `staffix-fix-44` among the plugin's dependencies.
 
 Then point the encoders generator's `dictionaryFile` at the sanitized output rather than the original. Keeping the
 output under `target/` says which file is the source and which is derived; writing it next to the input is fine too,

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<fix extensionpack="307" major="5" minor="0" servicepack="Latest">
+<fix extensionpack="309" major="5" minor="0" servicepack="Latest">
   <header/>
   <trailer/>
   <messages>
@@ -269,6 +269,7 @@
       <field name="CashMargin" required="N"/>
       <field name="ClearingFeeIndicator" required="N"/>
       <component name="Instrument" required="Y"/>
+      <component name="InstrumentExtension" required="N"/>
       <component name="FinancingDetails" required="N"/>
       <field name="DividendPayoutRatio" required="N"/>
       <group name="NoUnderlyings" required="N">
@@ -1017,6 +1018,7 @@
       </group>
       <field name="ProcessCode" required="N"/>
       <component name="Instrument" required="Y"/>
+      <component name="InstrumentExtension" required="N"/>
       <component name="FinancingDetails" required="N"/>
       <field name="DividendPayoutRatio" required="N"/>
       <group name="NoUnderlyings" required="N">
@@ -1512,6 +1514,7 @@
         <field name="TradingSessionSubID" required="N"/>
       </group>
       <component name="Instrument" required="Y"/>
+      <component name="InstrumentExtension" required="N"/>
       <component name="FinancingDetails" required="N"/>
       <field name="DividendPayoutRatio" required="N"/>
       <group name="NoUnderlyings" required="N">
@@ -21251,6 +21254,8 @@
       <value description="FIRST_EXERCISE_DATE" enum="25"/>
       <value description="REDEMPTION_DATE" enum="26"/>
       <value description="TRD_CNTNTN_EFCTV_DT" enum="27"/>
+      <value description="FRONT_MONTH" enum="28"/>
+      <value description="LEAD_MONTH" enum="29"/>
       <value description="OTHER" enum="99"/>
     </field>
     <field name="EventDate" number="866" type="LOCALMKTDATE"/>
@@ -21300,6 +21305,8 @@
       <value description="ADMITTED_TO_TRADING_ON_TRADING_VENUE" enum="39"/>
       <value description="AVERAGE_DAILY_NOTIONAL_AMOUNT" enum="40"/>
       <value description="AVERAGE_DAILY_NUMBER_TRADES" enum="41"/>
+      <value description="PRIMARY_ISSUANCE" enum="42"/>
+      <value description="SECONDARY_ISSUANCE" enum="43"/>
       <value description="TEXT" enum="99"/>
     </field>
     <field name="InstrAttribValue" number="872" type="STRING"/>
@@ -23978,6 +23985,8 @@
       <value description="ADMITTED_TO_TRADING_ON_TRADING_VENUE" enum="39"/>
       <value description="AVERAGE_DAILY_NOTIONAL_AMOUNT" enum="40"/>
       <value description="AVERAGE_DAILY_NUMBER_TRADES" enum="41"/>
+      <value description="PRIMARY_ISSUANCE" enum="42"/>
+      <value description="SECONDARY_ISSUANCE" enum="43"/>
       <value description="TEXT" enum="99"/>
     </field>
     <field name="NestedInstrAttribValue" number="1211" type="STRING"/>
@@ -24540,6 +24549,8 @@
       <value description="FIRST_EXERCISE_DATE" enum="25"/>
       <value description="REDEMPTION_DATE" enum="26"/>
       <value description="TRD_CNTNTN_EFCTV_DT" enum="27"/>
+      <value description="FRONT_MONTH" enum="28"/>
+      <value description="LEAD_MONTH" enum="29"/>
       <value description="OTHER" enum="99"/>
     </field>
     <field name="DerivativeEventDate" number="1288" type="LOCALMKTDATE"/>
@@ -24950,6 +24961,8 @@
       <value description="ADMITTED_TO_TRADING_ON_TRADING_VENUE" enum="39"/>
       <value description="AVERAGE_DAILY_NOTIONAL_AMOUNT" enum="40"/>
       <value description="AVERAGE_DAILY_NUMBER_TRADES" enum="41"/>
+      <value description="PRIMARY_ISSUANCE" enum="42"/>
+      <value description="SECONDARY_ISSUANCE" enum="43"/>
       <value description="TEXT" enum="99"/>
     </field>
     <field name="DerivativeInstrAttribValue" number="1314" type="STRING"/>
@@ -29097,6 +29110,8 @@
       <value description="FIRST_EXERCISE_DATE" enum="25"/>
       <value description="REDEMPTION_DATE" enum="26"/>
       <value description="TRD_CNTNTN_EFCTV_DT" enum="27"/>
+      <value description="FRONT_MONTH" enum="28"/>
+      <value description="LEAD_MONTH" enum="29"/>
       <value description="OTHER" enum="99"/>
     </field>
     <field name="UnderlyingEventDate" number="1983" type="LOCALMKTDATE"/>
@@ -29502,6 +29517,8 @@
       <value description="FIRST_EXERCISE_DATE" enum="25"/>
       <value description="REDEMPTION_DATE" enum="26"/>
       <value description="TRD_CNTNTN_EFCTV_DT" enum="27"/>
+      <value description="FRONT_MONTH" enum="28"/>
+      <value description="LEAD_MONTH" enum="29"/>
       <value description="OTHER" enum="99"/>
     </field>
     <field name="LegEventDate" number="2061" type="LOCALMKTDATE"/>

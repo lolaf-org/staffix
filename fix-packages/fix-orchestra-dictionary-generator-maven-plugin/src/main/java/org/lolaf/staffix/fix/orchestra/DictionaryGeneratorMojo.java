@@ -20,10 +20,13 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.lolaf.staffix.api.utils.ResourceLocation;
 
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -47,11 +50,11 @@ import java.nio.file.Files;
 public class DictionaryGeneratorMojo extends AbstractMojo {
 
     /**
-     * The orchestration to read, either the XML or a zip holding it - the repositories are published zipped, and
-     * there is no reason to keep an unpacked copy of them in a source tree.
+     * The orchestration to read, either the XML or a zip holding it, as a file path or {@code classpath:<resource>}.
+     * The default is the repository {@code staffix-fix-orchestra} carries, which the plugin depends on.
      */
-    @Parameter(property = "orchestration", required = true)
-    private File orchestration;
+    @Parameter(property = "orchestration", defaultValue = ResourceLocation.CLASSPATH_PREFIX + "fix-orchestra-latest.zip")
+    private String orchestration;
 
     /**
      * Where to write the dictionary. Named rather than derived from the repository so that it can be handed straight
@@ -112,8 +115,8 @@ public class DictionaryGeneratorMojo extends AbstractMojo {
     private boolean markDeprecated;
 
     /**
-     * A file listing the messages to keep, one per line, by name ({@code NewOrderSingle}) or by msgType ({@code D});
-     * {@code #} starts a comment and blank lines are ignored. Left out, every message of the cut is kept, which is
+     * A file or {@code classpath:<resource>} listing the messages to keep, one per line, by name
+     * ({@code NewOrderSingle}) or by msgType ({@code D}); {@code #} starts a comment and blank lines are ignored. Left out, every message of the cut is kept, which is
      * what a version of the standard means on its own.
      * <p>
      * Worth setting only where the cut is wide: the encoders generated from a message are hundreds of classes once
@@ -127,13 +130,16 @@ public class DictionaryGeneratorMojo extends AbstractMojo {
      * to take those out, as the fix-latest module does.
      */
     @Parameter(property = "includeMessagesFile")
-    private File includeMessagesFile;
+    private String includeMessagesFile;
 
     /**
      * Reports what the cut would remove and stops there, without writing anything.
      */
     @Parameter(property = "dryRun", defaultValue = "false")
     private boolean dryRun;
+
+    @Parameter(defaultValue = "${project.basedir}", readonly = true)
+    private File basedir;
 
     /**
      * The version a dictionary claims to be when no ceiling was named: the newest one the repository still holds
@@ -156,10 +162,12 @@ public class DictionaryGeneratorMojo extends AbstractMojo {
         if (includeMessagesFile == null) {
             return null;
         }
-        if (!includeMessagesFile.isFile()) {
-            throw new MojoExecutionException("includeMessagesFile " + includeMessagesFile + " does not exist");
+        MessageSelection selection;
+        try (InputStream in = ResourceLocation.open(includeMessagesFile, basedir, getClass().getClassLoader())) {
+            selection = MessageSelection.read(in);
+        } catch (FileNotFoundException ex) {
+            throw new MojoExecutionException("includeMessagesFile " + includeMessagesFile + " does not exist", ex);
         }
-        MessageSelection selection = MessageSelection.read(includeMessagesFile);
         if (selection.isEmpty()) {
             // a dictionary of no messages at all is never what was meant, and it would be written without complaint
             throw new MojoExecutionException("includeMessagesFile " + includeMessagesFile + " names no message. "
@@ -175,7 +183,7 @@ public class DictionaryGeneratorMojo extends AbstractMojo {
             // was never opened
             MessageSelection selection = readMessageSelection();
 
-            OrchestraRepository repository = OrchestraRepository.load(orchestration);
+            OrchestraRepository repository = loadOrchestration();
             OrchestraVersion maxVersion = upToVersion == null ? null : OrchestraVersion.of(upToVersion);
             if (maxVersion != null && !maxVersion.isKnown()) {
                 throw new MojoExecutionException("upToVersion " + upToVersion + " is not a version this plugin can "
@@ -215,7 +223,7 @@ public class DictionaryGeneratorMojo extends AbstractMojo {
                 int kept = repository.elementsByTagName("fixr:message").size();
                 int dropped = report.count(PruneReport.Reason.NOT_SELECTED, "fixr:message");
                 getLog().info("Kept " + kept + " of the " + (kept + dropped) + " messages of this cut, from "
-                        + includeMessagesFile.getName() + " - session messages are kept whatever it says, and "
+                        + includeMessagesFile + " - session messages are kept whatever it says, and "
                         + "written to the dictionary only where the session layer belongs to it");
             }
             getLog().info("Removed " + report.total() + " elements");
@@ -243,6 +251,12 @@ public class DictionaryGeneratorMojo extends AbstractMojo {
             throw alreadyExplained;
         } catch (Exception ex) {
             throw new MojoExecutionException("Failed to generate a dictionary from " + orchestration, ex);
+        }
+    }
+
+    private OrchestraRepository loadOrchestration() throws Exception {
+        try (InputStream in = ResourceLocation.open(orchestration, basedir, getClass().getClassLoader())) {
+            return OrchestraRepository.load(in, orchestration);
         }
     }
 

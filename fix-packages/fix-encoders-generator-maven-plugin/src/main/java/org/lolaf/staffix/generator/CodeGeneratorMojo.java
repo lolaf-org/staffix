@@ -20,20 +20,25 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.*;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.shared.utils.io.FileUtils;
+import org.lolaf.staffix.api.utils.ResourceLocation;
 
 
 import java.io.File;
+import java.io.InputStream;
 
 
 /**
  * The Maven goal that runs {@link CodeGenerator} over a dictionary.
  */
-@Mojo(name = "code-generator")
-@Execute(goal = "code-generator", phase = LifecyclePhase.GENERATE_SOURCES)
+@Mojo(name = "code-generator", defaultPhase = LifecyclePhase.GENERATE_SOURCES)
 public class CodeGeneratorMojo extends AbstractMojo {
 
+    /**
+     * The dictionary, as a file path or as {@code classpath:<resource>}, e.g. {@code classpath:FIX44.xml} with
+     * {@code staffix-fix-44} among the plugin's dependencies.
+     */
     @Parameter(name = "dictionaryFile", required = true)
-    private File dictionaryFile;
+    private String dictionaryFile;
 
     @Parameter(property = "sourcesOutputDirectory", required = true)
     private File sourcesOutputDirectory;
@@ -44,7 +49,11 @@ public class CodeGeneratorMojo extends AbstractMojo {
     @Parameter(property = "packageName", required = true)
     private String packageName;
 
-    @Parameter(property = "dictionaryId", required = true)
+    /**
+     * The id a session names in its settings to use this dictionary; {@code default} is the id a session uses when
+     * it names none.
+     */
+    @Parameter(property = "dictionaryId", defaultValue = "default")
     private String dictionaryId;
 
     @Parameter(property = "addFIXEngineAndAppInfoFields", defaultValue = "true")
@@ -70,7 +79,9 @@ public class CodeGeneratorMojo extends AbstractMojo {
         }
         try {
             getLog().info("Processing " + dictionaryFile);
-            CodeGenerator.process(packageName, dictionaryFile, sourcesOutputDirectory, resourcesOutputDirectory, dictionaryId, getLog(), addFIXEngineAndAppInfoFields);
+            try (InputStream dictionary = ResourceLocation.open(dictionaryFile, project == null ? null : project.getBasedir(), getClass().getClassLoader())) {
+                CodeGenerator.process(packageName, dictionary, sourcesOutputDirectory, resourcesOutputDirectory, dictionaryId, getLog(), addFIXEngineAndAppInfoFields);
+            }
 
         } catch (Throwable t) {
             throw new MojoExecutionException("Code generator execution failed", t);
