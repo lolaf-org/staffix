@@ -17,6 +17,7 @@ package org.lolaf.staffix.fix.orchestra;
 
 import org.apache.maven.plugin.logging.SystemStreamLog;
 import org.junit.Assume;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -40,6 +41,16 @@ public class GoldenDictionaryTest {
 
     private static final File ORCHESTRATION =
             new File("../fix-orchestra/src/main/resources/fix-orchestra-latest.zip");
+
+    /**
+     * Loading the orchestration costs about 10s, so each dictionary is cut once per class and shared by the tests.
+     */
+    @ClassRule
+    public static final TemporaryFolder dictionaries = new TemporaryFolder();
+
+    private static File fix44;
+    private static File fix44Marked;
+    private static File fix50Sp2;
 
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -77,19 +88,35 @@ public class GoldenDictionaryTest {
         return count;
     }
 
-    private File generateFix44AsPublished() throws Exception {
-        return generateFix44AsPublished(false, "FIX44.xml");
+    private static synchronized File fix44AsPublished(boolean markDeprecated) throws Exception {
+        if (fix44 == null) {
+            OrchestraRepository repository = OrchestraRepository.load(ORCHESTRATION);
+            OrchestraVersion version = OrchestraVersion.of("FIX.4.4");
+            // as published: the base release, with the deprecated elements a published dictionary keeps
+            VersionCut cut = VersionCut.of(version, 0);
+            new OrchestraPruner(repository, cut, true).prune();
+            fix44 = emit(new FixDictionaryEmitter(repository, version, null, null), "FIX44.xml");
+            fix44Marked = emit(new FixDictionaryEmitter(repository, version, null, cut), "FIX44-marked.xml");
+        }
+        return markDeprecated ? fix44Marked : fix44;
     }
 
-    private File generateFix44AsPublished(boolean markDeprecated, String fileName) throws Exception {
-        OrchestraRepository repository = OrchestraRepository.load(ORCHESTRATION);
-        OrchestraVersion fix44 = OrchestraVersion.of("FIX.4.4");
-        // as published: the base release, with the deprecated elements a published dictionary keeps
-        VersionCut cut = VersionCut.of(fix44, 0);
-        new OrchestraPruner(repository, cut, true).prune();
-        File dictionary = new File(temporaryFolder.getRoot(), fileName);
+    private static synchronized File fix50Sp2AsPublished() throws Exception {
+        if (fix50Sp2 == null) {
+            OrchestraRepository repository = OrchestraRepository.load(ORCHESTRATION);
+            OrchestraVersion version = OrchestraVersion.of("FIX.5.0SP2");
+            // EP98 is where FIX.5.0SP2 ends, the cut the fix-50sp2 module is built at
+            VersionCut cut = VersionCut.of(version, 98);
+            new OrchestraPruner(repository, cut, true).prune();
+            fix50Sp2 = emit(new FixDictionaryEmitter(repository, version, 98, null), "FIX50SP2-golden.xml");
+        }
+        return fix50Sp2;
+    }
+
+    private static File emit(FixDictionaryEmitter emitter, String fileName) throws Exception {
+        File dictionary = new File(dictionaries.getRoot(), fileName);
         try (Writer out = new BufferedWriter(Files.newBufferedWriter(dictionary.toPath(), StandardCharsets.UTF_8))) {
-            new FixDictionaryEmitter(repository, fix44, null, markDeprecated ? cut : null).emit(out);
+            emitter.emit(out);
         }
         return dictionary;
     }
@@ -107,7 +134,7 @@ public class GoldenDictionaryTest {
     public void testAFix50DictionaryKeepsTheHeaderFieldsAndLeavesTheSessionOnesToFixt() throws Exception {
         Assume.assumeTrue("the FIX Latest orchestration is not in the sibling module", ORCHESTRATION.isFile());
 
-        String dictionary = Files.readString(generateFix50Sp2AsPublished().toPath());
+        String dictionary = Files.readString(fix50Sp2AsPublished().toPath());
 
         for (String onTheWireOfEveryMessage : List.of("BeginString", "BodyLength", "MsgType", "MsgSeqNum",
                 "SenderCompID", "TargetCompID", "SendingTime", "CheckSum", "ApplVerID")) {
@@ -131,24 +158,11 @@ public class GoldenDictionaryTest {
     public void testAFix44DictionaryKeepsTheWholeSessionLayer() throws Exception {
         Assume.assumeTrue("the FIX Latest orchestration is not in the sibling module", ORCHESTRATION.isFile());
 
-        String dictionary = Files.readString(generateFix44AsPublished().toPath());
+        String dictionary = Files.readString(fix44AsPublished(false).toPath());
 
         assertTrue(dictionary.contains("name=\"EncryptMethod\""));
         assertTrue(dictionary.contains("name=\"TestReqID\""));
         assertTrue("and its Logon is still a message of this dictionary", dictionary.contains("name=\"Logon\""));
-    }
-
-    private File generateFix50Sp2AsPublished() throws Exception {
-        OrchestraRepository repository = OrchestraRepository.load(ORCHESTRATION);
-        OrchestraVersion fix50sp2 = OrchestraVersion.of("FIX.5.0SP2");
-        // EP98 is where FIX.5.0SP2 ends, the cut the fix-50sp2 module is built at
-        VersionCut cut = VersionCut.of(fix50sp2, 98);
-        new OrchestraPruner(repository, cut, true).prune();
-        File dictionary = new File(temporaryFolder.getRoot(), "FIX50SP2-golden.xml");
-        try (Writer out = new BufferedWriter(Files.newBufferedWriter(dictionary.toPath(), StandardCharsets.UTF_8))) {
-            new FixDictionaryEmitter(repository, fix50sp2, 98, null).emit(out);
-        }
-        return dictionary;
     }
 
     /**
@@ -167,8 +181,8 @@ public class GoldenDictionaryTest {
     public void testAMarkedCutMarksTheDeprecatedFieldsAndOnlyThose() throws Exception {
         Assume.assumeTrue("the FIX Latest orchestration is not in the sibling module", ORCHESTRATION.isFile());
 
-        String marked = Files.readString(generateFix44AsPublished(true, "FIX44-marked.xml").toPath());
-        String plain = Files.readString(generateFix44AsPublished(false, "FIX44-plain.xml").toPath());
+        String marked = Files.readString(fix44AsPublished(true).toPath());
+        String plain = Files.readString(fix44AsPublished(false).toPath());
 
         assertEquals("the repurchase and redemption fields 4.4 deprecated and kept",
                 13, countMatching(marked, "<field number=\"\\d+\"[^>]* deprecated=\""));
@@ -196,7 +210,7 @@ public class GoldenDictionaryTest {
     public void testTheEncodersGeneratorReadsWhatThisPluginWrites() throws Exception {
         Assume.assumeTrue("the FIX Latest orchestration is not in the sibling module", ORCHESTRATION.isFile());
 
-        File dictionary = generateFix44AsPublished();
+        File dictionary = fix44AsPublished(false);
         File sources = temporaryFolder.newFolder("sources");
         File resources = temporaryFolder.newFolder("resources");
 

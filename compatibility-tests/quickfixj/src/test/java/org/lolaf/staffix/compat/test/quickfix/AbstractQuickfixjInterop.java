@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -196,9 +197,10 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
 
         // everything from here is what the closed window does, so the establishment traffic is out of the way
         staffixLogger.clear();
-        LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(8));
 
         if (staffixIsInitiator()) {
+            // three of its one second connection retries, any of which would have dialled
+            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(3));
             assertThat(staffixSession.isConnected())
                     .as("staffix initiating knows its own schedule and must not dial again while it is closed")
                     .isFalse();
@@ -206,12 +208,13 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
                     .as("and so must have nothing to say either")
                     .isEmpty();
         } else {
-            assertThat(staffixLogger.getIncomingMessages())
-                    .as("QuickFIX/J must have retried on its ReconnectInterval, or this asserts nothing below")
-                    .isNotEmpty();
-            assertThatFixMessage(messagesOfType(staffixLogger.getOutgoingMessages(), CoreMessageType.LOGOUT.code()))
+            await().untilAsserted(() -> assertThat(logoutsSentByStaffix())
+                    .as("QuickFIX/J must have retried on its ReconnectInterval and been refused more than once")
+                    .hasSizeGreaterThanOrEqualTo(2));
+            assertThat(logoutsSentByStaffix())
                     .as("staffix accepting must refuse each attempt with a Logout naming the reason")
-                    .containsFieldWithValueContaining(CoreFields.TEXT, "Logon attempt outside of configured session time");
+                    .allSatisfy(logout -> assertThatFixMessage(logout)
+                            .containsFieldWithValueContaining(CoreFields.TEXT, "Logon attempt outside of configured session time"));
         }
 
         assertThat(staffixSession.isLoggedIn())
@@ -220,6 +223,12 @@ abstract class AbstractQuickfixjInterop extends AbstractQuickfixjSmokeInterop {
         assertThat(quickfixSession().isLoggedOn())
                 .as("and the peer must not believe otherwise")
                 .isFalse();
+    }
+
+    private List<String> logoutsSentByStaffix() {
+        return staffixLogger.getOutgoingMessages().stream()
+                .filter(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGOUT.code()))
+                .collect(Collectors.toList());
     }
 
     /**
