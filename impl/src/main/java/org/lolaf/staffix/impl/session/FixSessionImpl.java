@@ -52,6 +52,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
@@ -106,6 +107,7 @@ public class FixSessionImpl implements FixSession {
     private final SessionMessageExecutors messageExecutors;
     private final ExecutorService disconnectedSessionsExecutor;
     private final PluginsComponent plugins;
+    private final ReentrantLock ownershipHandover;
     @SuppressWarnings("java:S3077")
     private volatile Thread offlineOwnerThread;
     @Getter
@@ -127,6 +129,7 @@ public class FixSessionImpl implements FixSession {
         this.fixSessionRegistry = fixSessionRuntimeDependencies.getFixSessionRegistry();
         this.wiring = new SessionWiring(this, fixInstanceId, fixSessionSettings, fixSessionRuntimeDependencies,
                 scheduledExecutorService, ioSettings, messageExecutorsRuntime, providedClock);
+        this.ownershipHandover = new ReentrantLock();
         this.fixSessionId = wiring.fixSessionId;
         this.fixApplication = wiring.fixApplication;
         this.fieldsRegistry = wiring.fieldsRegistry;
@@ -402,20 +405,28 @@ public class FixSessionImpl implements FixSession {
     }
 
     private void runIfStillDisconnected(Runnable task, IOSession refusedBy) {
-        IOSession currentIOSession = ioSession;
-        if (currentIOSession == null || currentIOSession == refusedBy) {
-            runAsOfflineOwner(task);
-            return;
+        IOSession currentIOSession;
+        ownershipHandover.lock();
+        try {
+            currentIOSession = ioSession;
+            if (currentIOSession == null || currentIOSession == refusedBy) {
+                runAsOfflineOwner(task);
+                return;
+            }
+        } finally {
+            ownershipHandover.unlock();
         }
         currentIOSession.processTask(task, (refused, error) -> forwardToTheOwnerIfRefused(refused, error, currentIOSession));
     }
 
     private void runAsOfflineOwner(Runnable task) {
+        ownershipHandover.lock();
         offlineOwnerThread = Thread.currentThread();
         try {
             task.run();
         } finally {
             offlineOwnerThread = null;
+            ownershipHandover.unlock();
         }
     }
 
@@ -548,8 +559,13 @@ public class FixSessionImpl implements FixSession {
 
     public void onDisconnection() {
         boolean wasLoggedIn = fixSessionState.isLoggedIn();
-        fixSessionLayerComponents.onConnectionClosed();
-        ioSession = null;
+        ownershipHandover.lock();
+        try {
+            fixSessionLayerComponents.onConnectionClosed();
+            ioSession = null;
+        } finally {
+            ownershipHandover.unlock();
+        }
         logEvent("FIX session disconnected");
         if (wasLoggedIn) {
             // the Logout this session sent was never acknowledged - the counterparty dropped the connection
@@ -578,8 +594,13 @@ public class FixSessionImpl implements FixSession {
             logEvent("FIX session desired state is DISCONNECTED, disconnecting immediately");
             return false;
         }
-        this.ioSession = ioSession;
-        this.ioSession.setId(getFixSessionId().getId());
+        ioSession.setId(getFixSessionId().getId());
+        ownershipHandover.lock();
+        try {
+            this.ioSession = ioSession;
+        } finally {
+            ownershipHandover.unlock();
+        }
         logEvent("FIX session connected");
         this.remoteCertificates = remoteCertificates;
         fixSessionLayerComponents.onConnected();
