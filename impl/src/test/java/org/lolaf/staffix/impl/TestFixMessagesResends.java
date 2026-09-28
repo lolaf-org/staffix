@@ -618,7 +618,7 @@ class TestFixMessagesResends extends AbstractFixTests {
         doAnswer(invocation -> {
             messageReceivedWhileReplaying.countDown();
             return null;
-        }).when(resendRequestSender).onHeartbeat(any(FixSession.class), any(UTCTime.class));
+        }).when(resendRequestSender).onTestRequest(any(FixSession.class), eq("resend-not-blocking-io"), any(UTCTime.class));
 
         reconnect(connectorType);
 
@@ -708,6 +708,9 @@ class TestFixMessagesResends extends AbstractFixTests {
     @ParameterizedTest
     @MethodSource("initiatorOrAcceptorParams")
     void testRetransmissionIsAbandonedWhenItsConnectionCloses(ConnectorType connectorType) {
+        // the Logout that cuts the connection queues behind the stalled replay, so the link only drops once its answer
+        // times out
+        setupSessionSettings(connectorType, s -> s.logInOrOutResponseTimeout(Duration.ofSeconds(2)).build());
         logonClient();
 
         FixApplication resendRequestSender = getFixApplication(connectorType);
@@ -1630,9 +1633,12 @@ class TestFixMessagesResends extends AbstractFixTests {
         assertMessageReceived(decodedAcceptorMessages, EmailThreadID.get(), "test thread id 100");
         assertMessageReceived(decodedInitiatorMessages, EmailThreadID.get(), "test thread id 101");
 
-        clearApplicationsInvocations();
+        fixInitiatorSession.testRequest("initiator-after-resync");
+        fixAcceptorSession.testRequest("acceptor-after-resync");
 
-        await().untilAsserted(() -> verify(fixInitiatorApplication).onHeartbeat(any(FixSession.class), any(UTCTime.class)));
-        await().untilAsserted(() -> verify(fixAcceptorApplication).onHeartbeat(any(FixSession.class), any(UTCTime.class)));
+        await().untilAsserted(() -> verify(fixInitiatorApplication)
+                .onTestRequestResponse(any(FixSession.class), eq("initiator-after-resync"), any(UTCTime.class)));
+        await().untilAsserted(() -> verify(fixAcceptorApplication)
+                .onTestRequestResponse(any(FixSession.class), eq("acceptor-after-resync"), any(UTCTime.class)));
     }
 }

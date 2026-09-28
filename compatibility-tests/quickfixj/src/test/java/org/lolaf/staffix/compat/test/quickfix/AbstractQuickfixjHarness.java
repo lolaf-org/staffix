@@ -19,6 +19,7 @@ import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.ToString;
 import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,7 +72,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -654,7 +654,7 @@ abstract class AbstractQuickfixjHarness {
     void shutdown() {
         if (staffixSession != null && staffixSession.isLoggedIn()) {
             staffixSession.logoutPermanently("finished test");
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1000));
+            awaitBothLoggedOut();
         }
         if (staffixEngine != null) {
             staffixEngine.stop(Deadline.unlimited());
@@ -664,6 +664,17 @@ abstract class AbstractQuickfixjHarness {
         }
         if (staffixLogger != null) {
             staffixLogger.clear();
+        }
+    }
+
+    private void awaitBothLoggedOut() {
+        try {
+            await().atMost(Duration.ofSeconds(5)).until(() -> {
+                Session quickfix = quickfixSession();
+                return !staffixSession.isLoggedIn() && (quickfix == null || !quickfix.isLoggedOn());
+            });
+        } catch (ConditionTimeoutException logoutNeverCompleted) {
+            // the engines are stopped regardless; a test that left the session wedged fails on its own assertions
         }
     }
 
