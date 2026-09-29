@@ -18,7 +18,9 @@ package org.lolaf.staffix.admin.jmx;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -28,11 +30,13 @@ import javax.management.JMX;
 import javax.management.MBeanServer;
 import javax.management.MBeanServerFactory;
 import javax.management.ObjectName;
+import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -40,6 +44,7 @@ class JmxAdminApiTest {
 
     private static final String DOMAIN = "org.lolaf.staffix.test";
     private static final FixSessionId INITIATOR_SESSION = FixSessionId.of("init1", FixRegularVersion.VERSION_44, "S1", "T1");
+    private static final FixSessionId BACKUP_SESSION = FixSessionId.of("backup1", FixRegularVersion.VERSION_44, "S1_DR", "T1_DR");
     private static final FixSessionId ACCEPTOR_SESSION = FixSessionId.of("acc1", FixRegularVersion.VERSION_44, "S2", "T2");
     private MBeanServer mBeanServer;
     private RecordingAdminApi adminApi;
@@ -110,6 +115,44 @@ class JmxAdminApiTest {
         assertThat(adminApi.lifecycleListener).isNull();
     }
 
+    @Test
+    void initiatorsTargetsAreReadableAsSessionIdStrings() throws Exception {
+        adminApi.initiatorsTargets.add(initiatorTargets());
+        exporter.export(adminApi);
+
+        FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
+
+        assertThat(proxy.getInitiatorsTargets()).singleElement().satisfies(targets -> {
+            assertThat(targets.getInstanceId()).isEqualTo("initiator");
+            assertThat(targets.getActiveFixSessionId()).isEqualTo(INITIATOR_SESSION.toString());
+            assertThat(targets.getFixSessionIds()).containsExactly(INITIATOR_SESSION.toString(), BACKUP_SESSION.toString());
+        });
+    }
+
+    @Test
+    void switchResolvesTheSessionFromItsStringForm() throws Exception {
+        adminApi.initiatorsTargets.add(initiatorTargets());
+        exporter.export(adminApi);
+        FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
+
+        proxy.switchInitiatorSession(BACKUP_SESSION.toString());
+
+        assertThat(adminApi.switchedTo).containsExactly(BACKUP_SESSION);
+        assertThatThrownBy(() -> proxy.switchInitiatorSession(BACKUP_SESSION.getId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(BACKUP_SESSION.toString());
+    }
+
+    private static FixInitiatorTargets initiatorTargets() {
+        InetSocketAddress address = new InetSocketAddress("localhost", 1);
+        return FixInitiatorTargets.builder()
+                .instanceId("initiator")
+                .activeFixSessionId(INITIATOR_SESSION)
+                .target(FixInitiatorTarget.builder().fixSessionId(INITIATOR_SESSION).connectAddress(address).build())
+                .target(FixInitiatorTarget.builder().fixSessionId(BACKUP_SESSION).connectAddress(address).build())
+                .build();
+    }
+
     private ObjectName adminName() throws Exception {
         return new ObjectName(DOMAIN + ":type=FixAdmin,instance=" + ObjectName.quote(adminApi.getInstanceId()));
     }
@@ -125,6 +168,8 @@ class JmxAdminApiTest {
         private final List<FixSessionId> loggedOn = new ArrayList<>();
         private final List<Long> outgoingSeqNums = new ArrayList<>();
         private final List<String> sentFixMessages = new ArrayList<>();
+        private final List<FixInitiatorTargets> initiatorsTargets = new ArrayList<>();
+        private final List<FixSessionId> switchedTo = new ArrayList<>();
         private SessionLifecycleListener lifecycleListener;
 
         @Override
@@ -190,6 +235,16 @@ class JmxAdminApiTest {
         @Override
         public List<FixSession> getManagedFixSessions() {
             return new ArrayList<>(managed);
+        }
+
+        @Override
+        public void switchInitiatorSession(FixSessionId fixSessionId) {
+            switchedTo.add(fixSessionId);
+        }
+
+        @Override
+        public List<FixInitiatorTargets> getInitiatorsTargets() {
+            return new ArrayList<>(initiatorsTargets);
         }
 
         @Override

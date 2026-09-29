@@ -128,8 +128,10 @@ public class StaffixEngine extends AbstractBenchmark {
     void setupInitiator(FixEngineSettings fixEngineSettings) throws Exception {
         FixInitiatorBuilder fixInitiatorBuilder = FixInitiatorBuilder.builder()
                 .ioWorkersGroup(getIOWorkersGroup(fixEngineSettings))
-                .connectAddress(new InetSocketAddress("localhost", 7001))
-                .fixSessionId(getInitiatorFixSessionId())
+                .mainTarget(FixInitiatorTarget.builder()
+                        .fixSessionId(getInitiatorFixSessionId())
+                        .connectAddress(new InetSocketAddress("localhost", 7001))
+                        .build())
                 .build();
         fixInitiator = engine.newInitiator(fixInitiatorBuilder);
         super.setupInitiator(fixEngineSettings);

@@ -384,7 +384,7 @@ class TestFixMessagesSending extends AbstractFixTests {
             secondInitiatorEngine.start();
             FixInitiator secondInitiator = secondInitiatorEngine.newInitiator(fixInitiatorBuilder.toBuilder()
                     .instanceId("second-initiator")
-                    .fixSessionId(secondInitiatorSessionId)
+                    .mainTarget(fixInitiatorBuilder.getMainTarget().toBuilder().fixSessionId(secondInitiatorSessionId).build())
                     .build());
             secondInitiator.start();
             await().untilAsserted(() -> assertThat(secondInitiator.getSession().isConnected()).isTrue());

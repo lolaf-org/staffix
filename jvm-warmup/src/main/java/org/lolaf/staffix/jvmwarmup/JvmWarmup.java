@@ -29,6 +29,7 @@ import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.FixInitiatorBuilder;
+import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.executor.MessageExecutorSettings;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSession;
@@ -299,9 +300,11 @@ public final class JvmWarmup {
                 for (int i = 0; i < pairsCount; i++) {
                     engine.newInitiator(FixInitiatorBuilder.builder()
                             .instanceId(options.getInitiatorInstanceId() + "-" + i)
-                            .connectAddress(new InetSocketAddress("localhost", options.getPort()))
+                            .mainTarget(FixInitiatorTarget.builder()
+                                    .fixSessionId(initiatorSids.get(i))
+                                    .connectAddress(new InetSocketAddress("localhost", options.getPort()))
+                                    .build())
                             .connectionRetry(Duration.ofSeconds(1))
-                            .fixSessionId(initiatorSids.get(i))
                             .messageExecutorSettings(MessageExecutorSettings.builder()
                                     .executorsThreadsCount(2)
                                     .idleStrategy(idle).build())

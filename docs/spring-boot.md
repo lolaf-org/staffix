@@ -84,13 +84,23 @@ staffix.acceptors.primary.message-executor.executors-threads-count=1
 staffix.acceptors.primary.message-executor.idle-strategy=WAIT_NOTIFY
 
 staffix.initiators.primary.instance-id=INITIATOR_1
-staffix.initiators.primary.fix-session-id.id=initiator-session-1
-staffix.initiators.primary.fix-session-id.fix-version=VERSION_44
-staffix.initiators.primary.fix-session-id.sender-comp-id=INITIATOR_1
-staffix.initiators.primary.fix-session-id.target-comp-id=ACCEPTOR
-staffix.initiators.primary.connect-addresses[0]=localhost:17001
+staffix.initiators.primary.main-target.fix-session-id.id=initiator-session-1
+staffix.initiators.primary.main-target.fix-session-id.fix-version=VERSION_44
+staffix.initiators.primary.main-target.fix-session-id.sender-comp-id=INITIATOR_1
+staffix.initiators.primary.main-target.fix-session-id.target-comp-id=ACCEPTOR
+staffix.initiators.primary.main-target.connect-addresses[0]=localhost:17001
 staffix.initiators.primary.connection-retry=PT1S
+staffix.initiators.primary.backup-targets[0].fix-session-id.id=initiator-session-1-dr
+staffix.initiators.primary.backup-targets[0].fix-session-id.fix-version=VERSION_44
+staffix.initiators.primary.backup-targets[0].fix-session-id.sender-comp-id=INITIATOR_1
+staffix.initiators.primary.backup-targets[0].fix-session-id.target-comp-id=ACCEPTOR_DR
+staffix.initiators.primary.backup-targets[0].connect-addresses[0]=dr-host:17001
 ```
+
+`main-target` is the session the initiator runs when it starts. `backup-targets` are sessions it can be
+[switched to through the Admin API](runtime-administration.md#switching-an-initiator-to-a-backup); it never switches
+on its own. Every target needs its own session settings in a sessions settings store, and its own session id: the same
+session on another host is one more entry in its `connect-addresses`.
 
 `select-strategy` and `idle-strategy` are the latency knobs from
 [Tuning for latency](tuning-for-latency.md#2-choose-where-the-cpu-goes), as enum names rather than constructed

@@ -165,9 +165,11 @@ abstract class AbstractFixTests {
         fixInitiatorClock = new TestingClock();
         fixInitiatorBuilder = FixInitiatorBuilder.builder()
                 .instanceId("test-initiator")
-                .connectAddress(new InetSocketAddress("localhost", acceptorPort))
+                .mainTarget(FixInitiatorTarget.builder()
+                        .fixSessionId(getInitiatorFixSessionSettings().build().getFixSessionId())
+                        .connectAddress(new InetSocketAddress("localhost", acceptorPort))
+                        .build())
                 .connectionRetry(Duration.ofMillis(100))
-                .fixSessionId(getInitiatorFixSessionSettings().build().getFixSessionId())
                 .clock(fixInitiatorClock)
                 .build();
         fixInitiator = initiatorFixEngine.newInitiator(fixInitiatorBuilder);
@@ -202,11 +204,15 @@ abstract class AbstractFixTests {
     }
 
     void setupAcceptorSessionSettings(Function<FixSessionSettings.FixSessionSettingsBuilder<?, ?>, FixSessionSettings> settingsProvider) {
+        setupAcceptorSessionsSettings(settingsProvider.apply(getAcceptorFixSessionSettings()));
+    }
+
+    void setupAcceptorSessionsSettings(FixSessionSettings... settings) {
         stopWithinDeadline(acceptorFixEngine, ConnectorType.ACCEPTOR);
         acceptorFixEngine = acceptorFixEngineBuilder.toBuilder()
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
-                        .fixSessionSetting(settingsProvider.apply(getAcceptorFixSessionSettings()))
+                        .fixSessionSettings(List.of(settings))
                         .build())
                 .build()
                 .instance().start();
@@ -214,11 +220,15 @@ abstract class AbstractFixTests {
     }
 
     void setupInitiatorSessionSettings(Function<FixSessionSettings.FixSessionSettingsBuilder<?, ?>, FixSessionSettings> settingsProvider) {
+        setupInitiatorSessionsSettings(settingsProvider.apply(getInitiatorFixSessionSettings()));
+    }
+
+    void setupInitiatorSessionsSettings(FixSessionSettings... settings) {
         stopWithinDeadline(initiatorFixEngine, ConnectorType.INITIATOR);
         initiatorFixEngine = initiatorFixEngineBuilder.toBuilder()
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
-                        .fixSessionSetting(settingsProvider.apply(getInitiatorFixSessionSettings()))
+                        .fixSessionSettings(List.of(settings))
                         .build())
                 .build()
                 .instance().start();

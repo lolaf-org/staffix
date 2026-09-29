@@ -21,6 +21,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.AdminApiExporter;
+import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
@@ -216,8 +217,36 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         if (!isStarted()) {
             throw new IllegalStateException("Start the FIX engine first");
         }
-        return initiators.computeIfAbsent(fixInitiatorBuilder.getInstanceId(),
-                instanceId -> new FixInitiatorImpl(fixInitiatorBuilder, this::getDependencies, fixSessionsSettingsStores, this));
+        return initiators.computeIfAbsent(fixInitiatorBuilder.getInstanceId(), instanceId -> {
+            FixInitiatorImpl initiator = new FixInitiatorImpl(fixInitiatorBuilder, this::getDependencies, fixSessionsSettingsStores, this);
+            checkNoBackupManagedElsewhere(fixInitiatorBuilder);
+            return initiator;
+        });
+    }
+
+    // initiators sharing a main target predate backup targets and stay allowed; a backup target must be unambiguous
+    private void checkNoBackupManagedElsewhere(FixInitiatorBuilder fixInitiatorBuilder) {
+        for (FixInitiatorTarget backup : fixInitiatorBuilder.getBackupTargets()) {
+            initiators.entrySet().stream()
+                    .filter(initiator -> initiator.getValue().getFixSessionIds().contains(backup.getFixSessionId()))
+                    .findFirst()
+                    .ifPresent(initiator -> {
+                        throw new IllegalStateException("Backup FIX session " + backup.getFixSessionId()
+                                + " is already a target of initiator '" + initiator.getKey() + "'");
+                    });
+            if (acceptors.values().stream().anyMatch(acceptor -> acceptor.getManagedFixSessionsSettings().stream()
+                    .anyMatch(settings -> settings.getFixSessionId().equals(backup.getFixSessionId())))) {
+                throw new IllegalStateException("Backup FIX session " + backup.getFixSessionId() + " is already managed by an acceptor");
+            }
+        }
+        initiators.entrySet().stream()
+                .filter(initiator -> initiator.getValue().getFixSessionIds().stream().skip(1)
+                        .anyMatch(fixInitiatorBuilder.getMainTarget().getFixSessionId()::equals))
+                .findFirst()
+                .ifPresent(initiator -> {
+                    throw new IllegalStateException("FIX session " + fixInitiatorBuilder.getMainTarget().getFixSessionId()
+                            + " is already a backup of initiator '" + initiator.getKey() + "'");
+                });
     }
 
     @Override
@@ -318,6 +347,24 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         currentBySessionId.values().stream()
                 .filter(current -> !loadedSessionIds.contains(current.getFixSessionId()))
                 .forEach(store::remove);
+    }
+
+    @Override
+    public void switchInitiatorSession(FixSessionId fixSessionId) {
+        List<FixInitiatorImpl> targeting = initiators.values().stream()
+                .filter(initiator -> initiator.getFixSessionIds().contains(fixSessionId))
+                .collect(Collectors.toList());
+        if (targeting.isEmpty()) {
+            throw new IllegalArgumentException("No initiator has FIX session " + fixSessionId + " as a target");
+        }
+        targeting.forEach(initiator -> initiator.switchTo(fixSessionId));
+    }
+
+    @Override
+    public List<FixInitiatorTargets> getInitiatorsTargets() {
+        return initiators.values().stream()
+                .map(FixInitiatorImpl::getFixInitiatorTargets)
+                .collect(Collectors.toList());
     }
 
     @Override

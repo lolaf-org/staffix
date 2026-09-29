@@ -115,8 +115,10 @@ public final class QuickstartExample {
 
         FixInitiator initiator = engine.newInitiator(FixInitiatorBuilder.builder()
                 .instanceId(INITIATOR)
-                .fixSessionId(initiatorSessionId)
-                .connectAddress(new InetSocketAddress("localhost", PORT))
+                .mainTarget(FixInitiatorTarget.builder()
+                        .fixSessionId(initiatorSessionId)
+                        .connectAddress(new InetSocketAddress("localhost", PORT))
+                        .build())
                 .build()).start();
 
         // 4. Logon, QuoteRequest and Quote all happen on the engine's threads; wait for the round trip.

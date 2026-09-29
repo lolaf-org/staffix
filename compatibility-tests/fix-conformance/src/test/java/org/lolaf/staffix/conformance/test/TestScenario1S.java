@@ -154,7 +154,9 @@ class TestScenario1S extends AbstractScenario {
                                 .build()).build())
                 .build()
                 .instance().start();
-        fixInitiatorBuilder = fixInitiatorBuilder.toBuilder().fixSessionId(unknownSessionID).build();
+        fixInitiatorBuilder = fixInitiatorBuilder.toBuilder()
+                .mainTarget(fixInitiatorBuilder.getMainTarget().toBuilder().fixSessionId(unknownSessionID).build())
+                .build();
         fixInitiator = fixInitiatorEngine.newInitiator(fixInitiatorBuilder);
 
         fixInitiator.start();

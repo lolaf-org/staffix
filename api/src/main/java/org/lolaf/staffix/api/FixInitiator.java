@@ -16,13 +16,17 @@
 package org.lolaf.staffix.api;
 
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionId;
+
+import java.util.List;
 
 /**
- * The outbound half of a FIX connection: one session, dialled out to a configured address and re-dialled on its
- * own after a drop.
+ * The outbound half of a FIX connection: one session at a time, dialled out to its target's addresses and re-dialled
+ * on its own after a drop.
  *
- * <p>One initiator is one session, which is why {@link #getSession()} takes no argument - a process talking to
- * several counterparties builds an initiator for each. {@link FixAcceptor} is the other side, and holds many.
+ * <p>An initiator runs one session at a time, which is why {@link #getSession()} takes no argument; a process talking
+ * to several counterparties builds an initiator for each. Its other targets are the same counterparty reached another
+ * way, and are only run once {@link #switchTo switched} to. {@link FixAcceptor} is the other side, and holds many.
  */
 public interface FixInitiator extends Startable<FixInitiator> {
 
@@ -30,6 +34,27 @@ public interface FixInitiator extends Startable<FixInitiator> {
 
     boolean isConnected();
 
+    /**
+     * The active session; another instance after a {@link #switchTo switch}, so it must not be held across one.
+     */
     FixSession getSession();
+
+    /**
+     * The sessions this initiator can run: the {@link FixInitiatorBuilder#getMainTarget() main target} first, then the
+     * {@link FixInitiatorBuilder#getBackupTargets() backup targets}.
+     */
+    List<FixSessionId> getFixSessionIds();
+
+    /**
+     * Makes the given session the active one. A logged on session is logged out first, waiting up to
+     * {@link FixInitiatorBuilder#getShutdownMaxDelay()}, then the target's addresses are dialled. Each session keeps
+     * its own sequence numbers. Switching to the active session does nothing; on a stopped initiator it only picks
+     * the session the next {@link #start()} runs. If the new session fails to start, the initiator is stopped and the
+     * failure rethrown, with that session still picked, so a {@link #start()} retries it.
+     *
+     * @throws IllegalArgumentException if the session is not one of {@link #getFixSessionIds()}
+     * @throws IllegalStateException    if the session's settings were removed from its store
+     */
+    void switchTo(FixSessionId fixSessionId);
 
 }

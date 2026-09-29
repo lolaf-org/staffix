@@ -17,14 +17,14 @@ package org.lolaf.staffix.spring.boot.props;
 
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import lombok.Data;
-import org.lolaf.staffix.spring.boot.spi.FixSessionIdProps;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One initiator in configuration: the session to run, the addresses to dial, and the transport settings.
+ * One initiator in configuration: the sessions it can run with the addresses to dial for each, and the transport
+ * settings.
  */
 @Data
 public class InitiatorProps {
@@ -40,16 +40,16 @@ public class InitiatorProps {
     private String schedulerBean;
 
     /**
-     * The session to run - FIX version and CompIDs.
+     * The session the initiator runs when it starts, and the addresses to dial for it.
      */
     @NestedConfigurationProperty
-    private FixSessionIdProps fixSessionId;
+    private InitiatorTargetProps mainTarget;
 
     /**
-     * Addresses to dial, as host:port. Several are tried in turn, which is how a counterparty's failover endpoints
-     * are given.
+     * Sessions this initiator can be switched to through the Admin API, each with its own addresses. It never
+     * switches on its own.
      */
-    private List<String> connectAddresses = new ArrayList<>();
+    private List<InitiatorTargetProps> backupTargets = new ArrayList<>();
 
     /**
      * TLS for the outbound connection. Omit to connect in clear.

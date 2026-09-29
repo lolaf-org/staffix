@@ -121,9 +121,11 @@ abstract class AbstractScenario {
         fixInitiatorEngine.start();
 
         fixInitiatorBuilder = FixInitiatorBuilder.builder()
-                .fixSessionId(getInitiatorFixSessionSettings().build().getFixSessionId())
+                .mainTarget(FixInitiatorTarget.builder()
+                        .fixSessionId(getInitiatorFixSessionSettings().build().getFixSessionId())
+                        .connectAddress(new InetSocketAddress("localhost", acceptorPort))
+                        .build())
                 .connectionRetry(Duration.ofSeconds(1))
-                .connectAddress(new InetSocketAddress("localhost", acceptorPort))
                 .build();
         fixInitiator = fixInitiatorEngine.newInitiator(fixInitiatorBuilder);
 

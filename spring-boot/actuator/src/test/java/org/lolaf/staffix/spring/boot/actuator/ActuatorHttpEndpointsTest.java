@@ -51,7 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "management.endpoints.access.default=unrestricted",
                 "management.endpoint.health.show-details=always",
                 "staffix.acceptors.primary.bind-address=localhost:17022",
-                "staffix.initiators.primary.connect-addresses[0]=localhost:17022"
+                "staffix.initiators.primary.main-target.connect-addresses[0]=localhost:17022"
         })
 class ActuatorHttpEndpointsTest {
 

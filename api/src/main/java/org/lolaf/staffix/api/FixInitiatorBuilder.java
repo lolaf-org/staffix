@@ -23,19 +23,16 @@ import org.lolaf.betty.api.io.IOWorkersGroup;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.betty.api.settings.SSLSettings;
 import org.lolaf.staffix.api.executor.MessageExecutorSettings;
-import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.Clock;
 
-import java.net.InetSocketAddress;
 import java.time.Duration;
-import java.util.Collection;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 
 /**
- * Builds a {@link FixInitiator}: the session to run, the addresses to dial, and the transport settings underneath.
- *
- * <p>{@code connectAddresses} is a collection because a counterparty commonly publishes more than one endpoint;
- * they are tried in turn, {@code connectionRetry} apart, until one accepts.
+ * Builds a {@link FixInitiator}: the session to run and the addresses to dial for it, the sessions it can be
+ * {@link FixInitiator#switchTo switched} to, and the transport settings underneath.
  */
 @Getter
 @SuperBuilder(toBuilder = true)
@@ -47,15 +44,17 @@ public class FixInitiatorBuilder {
     private final String instanceId = InstanceProvider.DEFAULT_INSTANCE_ID;
 
     /**
-     * Target FixSessionId defined in one of the {@link org.lolaf.staffix.api.FixEngineBuilder} configured {@link org.lolaf.staffix.api.session.FixSessionsSettingsStore}
+     * The session the initiator runs when it starts, which must have initiator settings in one of the engine's
+     * {@link org.lolaf.staffix.api.session.FixSessionsSettingsStore}s.
      */
-    private final FixSessionId fixSessionId;
+    private final FixInitiatorTarget mainTarget;
 
     /**
-     * A list to addresses to try to connect to
+     * Sessions this initiator can be switched to; it never moves to one on its own. Session ids must differ from
+     * each other and from the main target's: the same session on another IP is another address, not another target.
      */
     @Singular
-    private final Collection<InetSocketAddress> connectAddresses;
+    private final List<FixInitiatorTarget> backupTargets;
     /**
      * Scheduler for session heartbeat scheduling, scheduled management and logon validations tasks, if none provided an embedded scheduler will be used
      */
@@ -97,4 +96,13 @@ public class FixInitiatorBuilder {
      */
     private Clock clock;
 
+    /**
+     * The main target followed by the backup targets.
+     */
+    public List<FixInitiatorTarget> getTargets() {
+        List<FixInitiatorTarget> targets = new ArrayList<>(backupTargets.size() + 1);
+        targets.add(mainTarget);
+        targets.addAll(backupTargets);
+        return targets;
+    }
 }

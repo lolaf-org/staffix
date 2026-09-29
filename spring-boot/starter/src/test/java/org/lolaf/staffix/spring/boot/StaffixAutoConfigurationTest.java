@@ -56,6 +56,8 @@ class StaffixAutoConfigurationTest {
             FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_1");
     private static final FixSessionId INITIATOR_SESSION_ID =
             FixSessionId.of("test", FixRegularVersion.VERSION_44, "INITIATOR_1", "ACCEPTOR");
+    private static final FixSessionId BACKUP_SESSION_ID =
+            FixSessionId.of("backup", FixRegularVersion.VERSION_44, "INITIATOR_1_DR", "ACCEPTOR_DR");
     /**
      * An acceptor session whose counterparty is never started, so the engine holds one session that stays down for
      * the whole run.
@@ -100,6 +102,11 @@ class StaffixAutoConfigurationTest {
                         && acceptorApp.getLogonCount().get() >= 1);
 
         assertThat(acceptor.getConnectedSessions()).hasSize(1);
+    }
+
+    @Test
+    void initiatorHasTheTargetsFromItsProperties() {
+        assertThat(initiator.getFixSessionIds()).containsExactly(INITIATOR_SESSION_ID, BACKUP_SESSION_ID);
     }
 
     /**
@@ -216,6 +223,9 @@ class StaffixAutoConfigurationTest {
                     .fixApplicationInstanceId("initiatorApp")
                     .resetSeqNumOnLogon(true)
                     .build();
+            FixSessionSettings backupSession = initiatorSession.toBuilder()
+                    .fixSessionId(BACKUP_SESSION_ID)
+                    .build();
             FixSessionSettings neverConnectedSession = FixSessionSettings.builder()
                     .fixSessionId(NEVER_CONNECTED_SESSION_ID)
                     .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
@@ -226,7 +236,7 @@ class StaffixAutoConfigurationTest {
                     .resetSeqNumOnLogon(true)
                     .build();
             return new TestSessionsSettingsStoreContributor("ACCEPTOR",
-                    List.of(acceptorSession, initiatorSession, neverConnectedSession));
+                    List.of(acceptorSession, initiatorSession, backupSession, neverConnectedSession));
         }
     }
 }

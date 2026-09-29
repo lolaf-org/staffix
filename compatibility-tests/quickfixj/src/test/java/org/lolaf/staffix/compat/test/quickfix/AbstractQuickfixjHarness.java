@@ -474,9 +474,11 @@ abstract class AbstractQuickfixjHarness {
 
         if (staffixIsInitiator()) {
             var initiator = FixInitiatorBuilder.builder()
-                    .fixSessionId(staffixSessionSettings().getFixSessionId())
+                    .mainTarget(FixInitiatorTarget.builder()
+                            .fixSessionId(staffixSessionSettings().getFixSessionId())
+                            .connectAddress(new InetSocketAddress("localhost", port))
+                            .build())
                     .connectionRetry(Duration.ofSeconds(1))
-                    .connectAddress(new InetSocketAddress("localhost", port))
                     .clock(staffixClock);
             if (useSsl()) {
                 initiator.sslSettings(SSLSettings.builder().sslContext(SSLUtils.getClientSSLContext()).build());

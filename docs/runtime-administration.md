@@ -20,6 +20,8 @@ forced onto a management protocol you do not use.
 | `getManagedFixSessionsSettings()` | their settings |
 | `getFixSessionsSettingsStoresInstanceIds()` | which settings stores exist |
 | `reloadFixSessionsSettingsStore(String)` | re-read one, picking up changes without a restart |
+| `switchInitiatorSession(FixSessionId)` | move an initiator to another of its [targets](#switching-an-initiator-to-a-backup) |
+| `getInitiatorsTargets()` | each initiator's sessions, and the one it runs |
 | `registerSessionLifecycleListener` / `unregister…` | be told as sessions come and go |
 
 **`AdminApiExporter`** is the SPI that publishes that contract over a transport. `JmxAdminApi` is one implementation
@@ -46,6 +48,10 @@ FixEngineBuilder.builder()
 You get an MBean per session exposing `logon()`, `logout()`, `reset(String resetMode)`, `getIncomingSeqNum()`,
 `setIncomingSeqNum(long)`, `getOutgoingSeqNum()`, `setOutgoingSeqNum(long)` and `getFixSessionId()`, plus an
 engine-level MBean. Any JMX client (JConsole, VisualVM, your monitoring agent) can drive them.
+
+The engine-level MBean names a session by its full `toString()` form, `test:FIX.4.4:SENDER->TARGET`, in both
+`getInitiatorsTargets()` and `switchInitiatorSession(String)`: the short id is a label and several sessions may share
+it. Copy the string from the first into the second.
 
 ---
 
@@ -74,6 +80,48 @@ properties are in [Spring Boot](spring-boot.md#monitoring-and-admin). Think befo
 `staffix.actuator.fix-session-state-contributes-to-heath-status=true`: a session being down then turns the health
 endpoint red, which a load balancer should usually see, but not for a session scheduled to be down outside trading
 hours.
+
+---
+
+## Switching an initiator to a backup
+
+A counterparty's backup site does not always take the same session: it may use another session id, another host, or
+both. Every session an initiator can run is a `FixInitiatorTarget`, a session id with its own addresses: the main
+target it starts on, and backup targets it can be switched to:
+
+```java
+FixInitiatorBuilder.builder()
+        .mainTarget(FixInitiatorTarget.builder()
+                .fixSessionId(mainSessionId)
+                .connectAddress(new InetSocketAddress("fix.broker.com", 9876))
+                .build())
+        .backupTarget(FixInitiatorTarget.builder()
+                .fixSessionId(backupSessionId)
+                .connectAddress(new InetSocketAddress("dr.broker.com", 9876))
+                .build())
+        .build();
+```
+
+The same session on another host is not a backup target: it is one more `connectAddress` of its target, and the
+addresses are tried in turn. Every target needs its own initiator settings in a settings store; `newInitiator` fails if
+one is missing, if a session id appears twice, or if a backup target is already used by another initiator or an
+acceptor.
+
+The initiator **never switches on its own**: moving to a backup usually comes with a decision about sequence numbers
+that only the operator can make. Switch with `FixInitiator.switchTo`, `AdminApi.switchInitiatorSession` or the JMX
+engine-level MBean. A switch:
+
+- logs the current session out and waits for the counterparty's answer, up to the initiator's `shutdownMaxDelay`,
+  before dialling the backup;
+- replaces the session: `FixInitiator.getSession()` returns another object, and the per-session MBean follows;
+- keeps each session's own sequence numbers, so switching back resumes where the main target stopped;
+- on a stopped initiator, only picks the session the next `start()` runs. A restarted initiator starts on its main
+  target;
+- if the new session fails to start, stops the initiator and rethrows the failure. That session stays picked, so
+  once the cause is fixed, `start()` retries it.
+
+The other admin operations address the session an initiator runs now. Settings changes for a backup are held until
+it is switched to, and a backup whose settings were removed cannot be switched to until they are added back.
 
 ---
 

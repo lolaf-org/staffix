@@ -17,10 +17,13 @@ package org.lolaf.staffix.spring.boot.mapper;
 
 import lombok.experimental.UtilityClass;
 import org.lolaf.staffix.api.FixInitiatorBuilder;
+import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.spring.boot.props.InitiatorProps;
+import org.lolaf.staffix.spring.boot.props.InitiatorTargetProps;
 import org.springframework.context.ApplicationContext;
 
-import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 
 /**
@@ -33,27 +36,41 @@ import java.util.concurrent.ScheduledExecutorService;
 public class InitiatorPropsMapper {
 
     public static FixInitiatorBuilder build(String mapKey, InitiatorProps p, ScheduledExecutorService scheduler, ApplicationContext ctx) {
-        if (p.getFixSessionId() == null) {
-            throw new IllegalArgumentException("staffix.initiators." + mapKey + ".fix-session-id is required");
+        String prefix = "staffix.initiators." + mapKey;
+        if (p.getMainTarget() == null) {
+            throw new IllegalArgumentException(prefix + ".main-target is required");
         }
-        if (p.getConnectAddresses() == null || p.getConnectAddresses().isEmpty()) {
-            throw new IllegalArgumentException("staffix.initiators." + mapKey + ".connect-addresses is required");
+        FixInitiatorTarget mainTarget = toTarget(prefix + ".main-target", p.getMainTarget());
+        List<FixInitiatorTarget> backupTargets = new ArrayList<>();
+        for (int i = 0; i < p.getBackupTargets().size(); i++) {
+            backupTargets.add(toTarget(prefix + ".backup-targets[" + i + "]", p.getBackupTargets().get(i)));
         }
         String instanceId = p.getInstanceId() == null ? mapKey : p.getInstanceId();
         FixInitiatorBuilder.FixInitiatorBuilderBuilder<?, ?> b = FixInitiatorBuilder.builder()
                 .instanceId(instanceId)
-                .fixSessionId(p.getFixSessionId().toFixSessionId())
+                .mainTarget(mainTarget)
+                .backupTargets(backupTargets)
                 .scheduledExecutorService(scheduler)
                 .ioWorkersGroup(IoWorkersGroupPropsMapper.newInstance(p.getIoWorkers(), instanceId, ctx))
                 .messageExecutorSettings(MessageExecutorPropsMapper.toSettings(p.getMessageExecutor(), instanceId))
                 .connectionRetry(p.getConnectionRetry())
                 .shutdownMaxDelay(p.getShutdownMaxDelay());
-        for (InetSocketAddress addr : AddressUtils.parseAll(p.getConnectAddresses())) {
-            b.connectAddress(addr);
-        }
         if (p.getSsl() != null) {
             b.sslSettings(SslPropsMapper.toSSLSettings(p.getSsl(), ctx));
         }
         return b.build();
+    }
+
+    private static FixInitiatorTarget toTarget(String prefix, InitiatorTargetProps p) {
+        if (p.getFixSessionId() == null) {
+            throw new IllegalArgumentException(prefix + ".fix-session-id is required");
+        }
+        if (p.getConnectAddresses() == null || p.getConnectAddresses().isEmpty()) {
+            throw new IllegalArgumentException(prefix + ".connect-addresses is required");
+        }
+        return FixInitiatorTarget.builder()
+                .fixSessionId(p.getFixSessionId().toFixSessionId())
+                .connectAddresses(AddressUtils.parseAll(p.getConnectAddresses()))
+                .build();
     }
 }

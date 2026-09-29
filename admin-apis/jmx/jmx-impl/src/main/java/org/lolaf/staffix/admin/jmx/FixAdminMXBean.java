@@ -26,4 +26,26 @@ public interface FixAdminMXBean {
     List<String> getFixSessionsSettingsStoresInstanceIds();
 
     void reloadFixSessionsSettingsStore(String instanceId);
+
+    List<InitiatorTargets> getInitiatorsTargets();
+
+    /**
+     * See {@link org.lolaf.staffix.api.admin.AdminApi#switchInitiatorSession}.
+     *
+     * @param fixSessionId the session's {@code toString()} form, as {@link InitiatorTargets#getFixSessionIds()} lists
+     *                     it: its short id alone does not tell sessions apart
+     */
+    void switchInitiatorSession(String fixSessionId);
+
+    /**
+     * An initiator's sessions, each in its {@code toString()} form, main target first.
+     */
+    interface InitiatorTargets {
+
+        String getInstanceId();
+
+        String getActiveFixSessionId();
+
+        List<String> getFixSessionIds();
+    }
 }

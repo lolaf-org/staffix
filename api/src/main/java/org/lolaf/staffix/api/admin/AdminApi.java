@@ -160,6 +160,23 @@ public interface AdminApi extends InstanceIdSupplier {
     List<FixSession> getManagedFixSessions();
 
     /**
+     * Makes the given session the active one on every initiator that has it as a target, as
+     * {@link org.lolaf.staffix.api.FixInitiator#switchTo} does. Every one, because two initiators may share a main target.
+     *
+     * @param fixSessionId the session to switch to
+     * @throws IllegalArgumentException if no initiator has the session as a target
+     * @throws IllegalStateException    if the session's settings were removed from its store
+     */
+    void switchInitiatorSession(FixSessionId fixSessionId);
+
+    /**
+     * Returns each initiator's targets and the one it runs.
+     *
+     * @return one entry per initiator; empty if the engine has none
+     */
+    List<FixInitiatorTargets> getInitiatorsTargets();
+
+    /**
      * Registers a listener notified whenever a session is added to or removed from the set of managed sessions, so that
      * {@link AdminApiExporter exporters} (JMX, HTTP, ...) can publish/unpublish a per-session management endpoint as
      * sessions appear and disappear.

@@ -21,13 +21,14 @@ staffix:
   initiators:
     primary:
       instance-id: INITIATOR_1
-      fix-session-id:
-        id: test
-        fix-version: VERSION_44
-        sender-comp-id: INITIATOR_1
-        target-comp-id: ACCEPTOR
-      connect-addresses:
-        - "localhost:17021"
+      main-target:
+        fix-session-id:
+          id: test
+          fix-version: VERSION_44
+          sender-comp-id: INITIATOR_1
+          target-comp-id: ACCEPTOR
+        connect-addresses:
+          - "localhost:17021"
       connection-retry: PT1S
       io-workers:
         thread-groups:

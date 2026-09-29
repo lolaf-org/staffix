@@ -14,7 +14,7 @@ between releases. A section is written when the version it belongs to is being c
 carries the right number and date the first time and the workflow's check has exactly one heading it
 could mean.
 
-## [0.9.0] - 2026-09-27
+## [0.9.0] - 2026-09-29
 
 First public release. Staffix is a FIX engine for Java that treats latency as a correctness property: a full session
 layer and type-safe encoders for every FIX version from 4.2 to FIX Latest, as an ordinary library in your process
@@ -56,6 +56,12 @@ faster than QuickFIX/J's median, and under one byte allocated per message agains
 - **Administration.** `AdminApi` is the whole operational surface — log a session on or off, reset sequence state,
   read and set either side's sequence numbers, reload a settings store without a restart — and is deliberately
   independent of how it reaches the engine. `AdminApiExporter` is the SPI; JMX is the exporter that ships.
+- **Backup targets for an initiator**, for a counterparty whose backup site uses another session id, another host,
+  or both. An initiator is given a main target, a session id with the addresses to dial for it, and any number of
+  backup targets of the same shape. It never moves to a backup on its own: you switch it with `FixInitiator.switchTo`,
+  `AdminApi.switchInitiatorSession` or the JMX `FixAdmin` bean. A switch logs the current session out cleanly
+  before dialling the other one, and each session keeps its own sequence numbers. In Spring Boot they are
+  `staffix.initiators.<name>.main-target` and `backup-targets`.
 - **Monitoring.** Micrometer metrics with configurable latency timers, and OpenTelemetry tracing with W3C trace
   propagation, both exportable over OTLP, with provisioned Grafana dashboards. Both are session plugins rather than
   engine internals, and either can be wrapped to run its callbacks on their own threads or to sample them.

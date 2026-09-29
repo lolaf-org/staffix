@@ -15,9 +15,13 @@
  */
 package org.lolaf.staffix.admin.jmx;
 
+import lombok.Value;
+import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * The engine-level MBean: the sessions it holds, and engine-wide operations.
@@ -38,5 +42,34 @@ public class FixAdminMBeanImpl implements FixAdminMXBean {
     @Override
     public void reloadFixSessionsSettingsStore(String instanceId) {
         delegate.reloadFixSessionsSettingsStore(instanceId);
+    }
+
+    @Override
+    public List<InitiatorTargets> getInitiatorsTargets() {
+        return delegate.getInitiatorsTargets().stream()
+                .map(targets -> new InitiatorTargetsImpl(targets.getInstanceId(), targets.getActiveFixSessionId().toString(),
+                        targets.getTargets().stream().map(target -> target.getFixSessionId().toString()).collect(Collectors.toList())))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public void switchInitiatorSession(String fixSessionId) {
+        List<FixSessionId> targetIds = delegate.getInitiatorsTargets().stream()
+                .flatMap(targets -> targets.getTargets().stream())
+                .map(FixInitiatorTarget::getFixSessionId)
+                .distinct()
+                .collect(Collectors.toList());
+        delegate.switchInitiatorSession(targetIds.stream()
+                .filter(id -> id.toString().equals(fixSessionId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("No initiator has FIX session " + fixSessionId
+                        + " as a target, targets are: " + targetIds)));
+    }
+
+    @Value
+    private static class InitiatorTargetsImpl implements InitiatorTargets {
+        String instanceId;
+        String activeFixSessionId;
+        List<String> fixSessionIds;
     }
 }

@@ -37,9 +37,11 @@ fixEngine.newAcceptor(FixAcceptorBuilder.builder()
         .build()).start();
 ```
 
-**An initiator owns one session**, named by its `fixSessionId`. The engine looks for an `INITIATOR` session with that id
-in every registered store and takes the first match; if none has it, building the initiator fails and lists the ids it
-did find.
+**An initiator runs one session at a time**: its main target, or a backup target it was
+[switched to](runtime-administration.md#switching-an-initiator-to-a-backup). For each target's session id the engine
+looks for an `INITIATOR` session in every registered store and takes the first match; if one is missing, building the
+initiator fails and lists the ids it did find. A target's settings changing in a store are picked up, but only the
+session it runs now is restarted or disconnected by them.
 
 A store is looked up by `FixSessionId` **and** `FixSessionType`, so one store may hold the acceptor and the initiator
 side of the same id.
