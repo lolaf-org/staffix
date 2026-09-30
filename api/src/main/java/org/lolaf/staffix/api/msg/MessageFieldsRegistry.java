@@ -20,7 +20,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.fields.FixField;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.ServiceLoader;
@@ -115,7 +114,6 @@ public interface MessageFieldsRegistry {
          * @throws IllegalArgumentException if no FIX package on the classpath provides it
          */
         public static MessageFieldsRegistry getInstance(FixDictionaryId fixDictionaryId) {
-            new ArrayList<>();
             return SPI_INSTANCES.stream().filter(r -> r.getTargetDictionary().equals(fixDictionaryId)).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("Unable to find any MessageFieldsRegistry SPI instance for dictionary " + fixDictionaryId + ", please add required fix package jar to your classpath"));
         }

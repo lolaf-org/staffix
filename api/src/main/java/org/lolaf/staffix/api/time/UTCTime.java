@@ -56,7 +56,7 @@ public interface UTCTime extends Comparable<UTCTime> {
      * Whole days since the epoch, the date part of the time.
      */
     default int getEpochDays() {
-        return (int) getEpochSeconds() / SECONDS_PER_DAY;
+        return (int) (getEpochSeconds() / SECONDS_PER_DAY);
     }
 
     /**
