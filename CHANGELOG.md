@@ -14,7 +14,7 @@ between releases. A section is written when the version it belongs to is being c
 carries the right number and date the first time and the workflow's check has exactly one heading it
 could mean.
 
-## [0.9.0] - 2026-09-29
+## [0.9.0] - 2026-09-30
 
 First public release. Staffix is a FIX engine for Java that treats latency as a correctness property: a full session
 layer and type-safe encoders for every FIX version from 4.2 to FIX Latest, as an ordinary library in your process
