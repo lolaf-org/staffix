@@ -51,8 +51,8 @@ public class IoWorkersGroupPropsMapper {
         if (props.getOptimizedSelector() != null) {
             builder.optimizedSelector(props.getOptimizedSelector());
         }
-        if (props.getWorkersLoadEMATimeWindow() != null) {
-            builder.workersLoadEMATimeWindow(props.getWorkersLoadEMATimeWindow());
+        if (props.getWorkersLoadEmaTimeWindow() != null) {
+            builder.workersLoadEMATimeWindow(props.getWorkersLoadEmaTimeWindow());
         }
         if (props.getIoWorkersRebalanceInterval() != null) {
             builder.ioWorkersRebalanceInterval(props.getIoWorkersRebalanceInterval());

@@ -69,7 +69,7 @@ public class FixSessionsHealthIndicator implements HealthIndicator {
     }
 
     private boolean isUp(ActuatorSessionStats stats) {
-        if (!props.isFixSessionStateContributesToHeathStatus()) {
+        if (!props.isFixSessionStateContributesToHealthStatus()) {
             return true;
         }
         FixSession fixSession = stats.getFixSession();

@@ -47,7 +47,7 @@ public class IoWorkersGroupProps {
     /**
      * The window load is averaged over when deciding to rebalance.
      */
-    private Duration workersLoadEMATimeWindow;
+    private Duration workersLoadEmaTimeWindow;
     /**
      * How sessions are spread across workers.
      */

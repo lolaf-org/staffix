@@ -92,7 +92,7 @@ public class OtelTracingSettings implements FixSessionsPluginSettings<OtelTracin
     private final ExecutorService executorService;
 
     /**
-     * Additional headers to provide to the
+     * Headers sent with every export request to the collector, such as an authorization token.
      */
     @Singular
     private final Map<String, String> headers;

@@ -67,12 +67,12 @@ public class FileMessagesLoggerSettings extends AbstractFixMessageLoggerSettings
     @Builder.Default
     private TimeUnit logTimePrecision = TimeUnit.MICROSECONDS;
     /**
-     * TimeUnit to compress file,
+     * Unit of the compression period, compressFileValue.
      */
     @Builder.Default
     private TimeUnit compressFileTimeUnit = TimeUnit.HOURS;
     /**
-     * Value to trigger a file compression, I.E compressFileUnit = TimeUnit.HOURS and compressFileValue = 2 will compress file every 2 hours
+     * Compression period, counted in compressFileTimeUnit: HOURS and 2 compress the log every two hours.
      */
     @Builder.Default
     private int compressFileValue = 1;

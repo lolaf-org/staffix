@@ -342,8 +342,8 @@ public class FixSessionSettingsProps {
          */
         private Boolean validateRequiredFields;
         /**
-         * Automatically reject message that contains valid tags, but not defined for the given message in the
-         * used data dictionary, disabling it has slight impact on performance
+         * Accepts tags the data dictionary defines but not for the received message type. Turning it off rejects them
+         * with TAG_NOT_DEFINED_FOR_THIS_MESSAGE_TYPE, at a slight cost in performance.
          */
         private Boolean allowUndefinedTagsForMessage;
         /**

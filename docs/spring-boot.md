@@ -120,7 +120,7 @@ staffix.admin-api-jmx.domain=com.example.trading
 
 management.endpoints.web.exposure.include=fix-sessions,health,info
 staffix.actuator.enabled=true
-staffix.actuator.fix-session-state-contributes-to-heath-status=true
+staffix.actuator.fix-session-state-contributes-to-health-status=true
 ```
 
 The actuator module adds a `fix-sessions` endpoint and can fold session state into the health status; see

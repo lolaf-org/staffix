@@ -53,6 +53,7 @@ public class InitiatorPropsMapper {
                 .scheduledExecutorService(scheduler)
                 .ioWorkersGroup(IoWorkersGroupPropsMapper.newInstance(p.getIoWorkers(), instanceId, ctx))
                 .messageExecutorSettings(MessageExecutorPropsMapper.toSettings(p.getMessageExecutor(), instanceId))
+                .ioSettings(IoSettingsPropsMapper.toSettings(p.getIoSettings()))
                 .connectionRetry(p.getConnectionRetry())
                 .shutdownMaxDelay(p.getShutdownMaxDelay());
         if (p.getSsl() != null) {

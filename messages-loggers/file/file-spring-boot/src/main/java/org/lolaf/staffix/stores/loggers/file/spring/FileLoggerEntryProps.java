@@ -65,12 +65,11 @@ public class FileLoggerEntryProps {
      */
     private TimeUnit logTimePrecision;
     /**
-     * TimeUnit to compress file,
+     * Unit of the compression period, compressFileValue.
      */
     private TimeUnit compressFileTimeUnit;
     /**
-     * Value to trigger a file compression, I.E compressFileUnit = TimeUnit.HOURS and compressFileValue = 2
-     * will compress file every 2 hours
+     * Compression period, counted in compressFileTimeUnit: HOURS and 2 compress the log every two hours.
      */
     private Integer compressFileValue;
     /**

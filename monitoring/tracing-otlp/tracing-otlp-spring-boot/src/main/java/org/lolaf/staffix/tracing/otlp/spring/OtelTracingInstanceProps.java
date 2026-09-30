@@ -37,7 +37,7 @@ public class OtelTracingInstanceProps {
      */
     private OtlpEndpointType otlpEndpointType;
     /**
-     * Additional headers to provide to the
+     * Headers sent with every export request to the collector, such as an authorization token.
      */
     private Map<String, String> headers = new LinkedHashMap<>();
     /**

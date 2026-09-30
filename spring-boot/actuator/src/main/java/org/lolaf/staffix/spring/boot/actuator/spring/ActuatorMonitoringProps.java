@@ -39,5 +39,5 @@ public class ActuatorMonitoringProps {
     /**
      * When true, an abnormal (inside scheduled fix session time) logged off FIX session state will contribute to a negative health status
      */
-    private boolean fixSessionStateContributesToHeathStatus = true;
+    private boolean fixSessionStateContributesToHealthStatus = true;
 }

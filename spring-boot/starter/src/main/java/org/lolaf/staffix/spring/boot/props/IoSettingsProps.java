@@ -40,7 +40,7 @@ public class IoSettingsProps {
      * Whether more than one thread may send on a session. False is cheaper and correct when only the session
      * thread sends.
      */
-    private Boolean multiThreadedWriteAPICalls;
+    private Boolean multiThreadedWriteApiCalls;
     /**
      * How much may be written in one turn, which bounds how long one busy session can hold an IO thread.
      */

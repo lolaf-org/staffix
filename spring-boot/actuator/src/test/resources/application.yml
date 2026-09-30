@@ -41,4 +41,4 @@ staffix:
 
   actuator:
     enabled: true
-    fixSessionStateContributesToHeathStatus: true
+    fixSessionStateContributesToHealthStatus: true
