@@ -30,8 +30,8 @@ import java.util.Map;
 /**
  * Reports the engine's health from its sessions.
  *
- * <p>A session that is configured but not logged on is the interesting case: whether that is unhealthy depends
- * on the venue's schedule, which is why it is reported rather than judged.
+ * <p>Only a session that should be logged in and is not counts as DOWN: one outside its schedule, or logged out
+ * on purpose, is UP. The details carry the schedule and the intent so that a DOWN can be told apart.
  */
 public class FixSessionsHealthIndicator implements HealthIndicator {
 
@@ -47,6 +47,8 @@ public class FixSessionsHealthIndicator implements HealthIndicator {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("status", up ? "UP" : "DOWN");
         d.put("state", stats.getState().name());
+        d.put("desiredState", stats.getFixSession().getDesiredState().name());
+        d.put("withinSessionTime", stats.getFixSession().isWithinSessionTime());
         d.put("messagesReceived", stats.getMessagesReceived());
         d.put("messagesSent", stats.getMessagesSent());
         d.put("lastEventEpochMillis", stats.getLastEventEpochMillis());
@@ -73,8 +75,8 @@ public class FixSessionsHealthIndicator implements HealthIndicator {
             return true;
         }
         FixSession fixSession = stats.getFixSession();
-        return fixSession.isWithinSessionTime()
-                && fixSession.getDesiredState().equals(FixSessionState.LOGGED_IN)
-                && FixSessionState.LOGGED_IN.equals(stats.getState());
+        boolean shouldBeLoggedIn = fixSession.isWithinSessionTime()
+                && fixSession.getDesiredState() == FixSessionState.LOGGED_IN;
+        return !shouldBeLoggedIn || stats.getState() == FixSessionState.LOGGED_IN;
     }
 }

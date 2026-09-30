@@ -60,7 +60,7 @@ class ActuatorMonitoringManagerTest {
         assertThat(plugin).isPresent();
         assertThat(registry.find(SESSION_ID)).isPresent();
         ActuatorSessionStats stats = registry.find(SESSION_ID).orElseThrow();
-        assertThat(stats.getState()).isNull();
+        assertThat(stats.getState()).isEqualTo(FixSessionState.DISCONNECTED);
         assertThat(stats.getMessagesReceived()).isZero();
 
         FixSessionPlugin<?, ?> p = plugin.get();

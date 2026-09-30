@@ -76,10 +76,14 @@ worked example: it is a thin adapter, and yours should be too.
 ## Spring Boot
 
 The starter wires the JMX exporter from properties, and the actuator module adds a `fix-sessions` endpoint; the
-properties are in [Spring Boot](spring-boot.md#monitoring-and-admin). Think before setting
-`staffix.actuator.fix-session-state-contributes-to-health-status=true`: a session being down then turns the health
-endpoint red, which a load balancer should usually see, but not for a session scheduled to be down outside trading
-hours.
+properties are in [Spring Boot](spring-boot.md#monitoring-and-admin).
+
+`staffix.actuator.fix-session-state-contributes-to-health-status=true` turns the health endpoint DOWN when a session
+that should be logged in is not: it is inside its schedule, nobody logged it out on purpose, and it is not logged in.
+A session outside its trading hours, or logged out through the admin API, stays UP. The health details show each
+session's `state`, `desiredState` and `withinSessionTime`, so a DOWN can be traced to its session. It is off by
+default: a load balancer should usually see a counterparty outage, but a liveness probe should not restart the
+application over it, so feed it to a readiness check, not a liveness one.
 
 ---
 

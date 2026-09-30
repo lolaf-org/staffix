@@ -35,9 +35,10 @@ public class ActuatorMonitoringProps {
      */
     private String instanceId = "actuator-monitoring";
 
-
     /**
-     * When true, an abnormal (inside scheduled fix session time) logged off FIX session state will contribute to a negative health status
+     * Whether a FIX session that should be logged in and is not turns the health status DOWN. A session outside its
+     * schedule or logged out on purpose never does. Off by default, since a counterparty outage is not a reason for a
+     * liveness probe to restart the application.
      */
-    private boolean fixSessionStateContributesToHealthStatus = true;
+    private boolean fixSessionStateContributesToHealthStatus;
 }

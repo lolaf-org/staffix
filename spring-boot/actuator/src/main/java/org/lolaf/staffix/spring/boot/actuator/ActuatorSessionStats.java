@@ -34,7 +34,7 @@ public final class ActuatorSessionStats {
     private long bytesReceived;
     private long bytesSent;
 
-    private FixSessionState state;
+    private FixSessionState state = FixSessionState.DISCONNECTED;
     private volatile long lastEventEpochMillis = System.currentTimeMillis();
     private volatile long lastLogonEpochMillis;
     private volatile long lastLogoutEpochMillis;
