@@ -28,8 +28,8 @@ import java.time.Duration;
 public class AsyncLoggerEntryProps {
     /**
      * Key into any other logger contributor (e.g. an entry under
-     * {@code staffix.messages-loggers-slf4j.instances}). The async wrapper replaces the
-     * wrapped entry in the registry; the wrapped logger's {@code instance-id} stays in effect
+     * staffix.messages-loggers-slf4j.instances). The async wrapper replaces the
+     * wrapped entry in the registry; the wrapped logger's instance-id stays in effect
      * (the wrapper itself has no separate instance id).
      */
     private String wraps;

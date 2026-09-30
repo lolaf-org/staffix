@@ -62,7 +62,7 @@ public class Slf4jLoggerEntryProps {
     private Character messageFieldsDelimiter;
 
     /**
-     * Spring bean name of {@code Function<FixSessionId, String>} that derives the SLF4J logger name per session.
+     * Spring bean name of Function from FixSessionId to String that derives the SLF4J logger name per session.
      */
     private String loggerNameForFixSessionBean;
 }

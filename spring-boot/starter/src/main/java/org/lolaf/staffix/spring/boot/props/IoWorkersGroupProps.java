@@ -53,20 +53,20 @@ public class IoWorkersGroupProps {
      */
     private IoWorkerLoadBalancer ioWorkerLoadBalancer;
     /**
-     * Bean name of a custom {@code io.betty.api.io.IOWorkerLoadBalancer}. Takes precedence over {@link #ioWorkerLoadBalancer} when set.
+     * Bean name of a custom IOWorkerLoadBalancer. Takes precedence over io-worker-load-balancer when set.
      */
     private String ioWorkerLoadBalancerBean;
     /**
-     * Interval at which the configured {@link IOWorkerLoadBalancer#rebalance(IOWorker[])} is invoked
-     * to redistribute existing sessions across IO workers (transparent migration). When null/zero, no rebalancing scheduler is created.
+     * Interval at which the configured load balancer moves existing sessions between IO workers, without
+     * dropping them. Unset or zero, sessions are never moved.
      */
     private Duration ioWorkersRebalanceInterval;
     /**
-     * Bean name of a custom {@code java.nio.channels.spi.SelectorProvider}.
+     * Bean name of a custom java.nio.channels.spi.SelectorProvider.
      */
     private String selectorProviderBean;
     /**
-     * Bean name of a custom {@code io.betty.api.stats.IOWorkerStats.IOWorkerStatsProvider}.
+     * Bean name of a custom IOWorkerStatsProvider.
      */
     private String ioWorkerStatisticsProviderBean;
 
@@ -108,7 +108,7 @@ public class IoWorkersGroupProps {
          */
         private SelectStrategy selectStrategy = SelectStrategy.WAKEUP;
         /**
-         * With {@code WAKEUP}, the longest an idle thread blocks on the selector, in milliseconds. It bounds how late
+         * With WAKEUP, the longest an idle thread blocks on the selector, in milliseconds. It bounds how late
          * a missed wakeup is noticed, not the latency of ordinary traffic.
          */
         private int selectTimeoutMillis = 10;

@@ -53,7 +53,7 @@ public class FileLoggerEntryProps {
      */
     private String logInPrefix;
     /**
-     * The mode the log file is opened with, as {@link java.io.RandomAccessFile} spells it.
+     * The mode the log file is opened with, as RandomAccessFile spells it.
      */
     private String writeMode;
     /**
@@ -78,7 +78,7 @@ public class FileLoggerEntryProps {
     private Integer maxCompressedFiles;
 
     /**
-     * Spring bean name of {@code BiFunction<FixSessionId, File, File>} that derives the per-session log file name.
+     * Spring bean name of BiFunction from FixSessionId and File to File that derives the per-session log file name.
      */
     private String logFileNameBean;
 }

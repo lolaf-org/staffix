@@ -36,14 +36,14 @@ public class FixSessionIdProps {
     private String id;
 
     /**
-     * FIX version, as a {@code FixRegularVersion} name such as VERSION_44 or in FIX.4.4 notation, or FIXT_11 for a
+     * FIX version, as a FixRegularVersion name such as VERSION_44 or in FIX.4.4 notation, or FIXT_11 for a
      * FIXT 1.1 session.
      */
     private String fixVersion;
 
     /**
-     * Required when {@code fixVersion} is FIXT_11. Must match a {@link org.lolaf.staffix.api.version.FixRegularVersion}
-     * to derive the FIX appl version id.
+     * Required when fix-version is FIXT_11. Takes the same values as fix-version, and
+     * gives the session's default ApplVerID.
      */
     private String defaultApplVerId;
 

@@ -52,16 +52,16 @@ public class OtlpLoggerEntryProps {
      */
     private Map<String, String> resourceAttributes = new LinkedHashMap<>();
     /**
-     * Interval to flush the logs in the logs records buffer {@link #logsBufferSize} to the OTLP endpoint. You
-     * can tune this flush delay to increase the theoretical non blocking logs sending throughput/s ({@link
-     * #logsBufferSize} * 1000 / {@link #logsFlushDelay})
+     * Interval to flush the logs in the logs records buffer logs-buffer-size to the OTLP endpoint. You
+     * can tune this flush delay to increase the theoretical non blocking logs sending throughput/s (logs-buffer-size
+     * * 1000 / logs-flush-delay in milliseconds)
      */
     private Duration logsFlushDelay;
     /**
      * Defines how many logs can be buffered before being sent to the OTLP endpoint. This should match your FIX
      * session maximum messages throughput. When the buffer is full, a task to flush the log to the OTLP
      * endpoint will be launched and the current thread will enter a busy loop wait state that will use the
-     * {@link #logsRecordsFullIdleStrategyBean} strategy. Must be a power of 2 value.
+     * logs-records-full-idle-strategy-bean strategy. Must be a power of 2 value.
      */
     private Integer logsBufferSize;
     /**
@@ -90,27 +90,27 @@ public class OtlpLoggerEntryProps {
     private Character fixMessageFieldsDelimiter;
 
     /**
-     * Spring bean name of {@code Supplier<org.lolaf.ringos.idling.IdleStrategy>} used when the logs records buffer is full.
+     * Spring bean name of Supplier of IdleStrategy used when the logs records buffer is full.
      */
     private String logsRecordsFullIdleStrategyBean;
     /**
-     * Spring bean name of {@link java.util.concurrent.ScheduledExecutorService} for flushing buffered logs.
+     * Spring bean name of ScheduledExecutorService for flushing buffered logs.
      */
     private String logsFlushingExecutorServiceBean;
     /**
-     * Spring bean name of {@link java.net.ProxySelector} for the OTLP HTTP client.
+     * Spring bean name of ProxySelector for the OTLP HTTP client.
      */
     private String proxySelectorBean;
     /**
-     * Spring bean name of {@link java.net.Authenticator} for the OTLP HTTP client.
+     * Spring bean name of Authenticator for the OTLP HTTP client.
      */
     private String authenticatorBean;
     /**
-     * Spring bean name of a {@code Function<HttpSenderSettings, HttpSender>} building the HTTP sender.
+     * Spring bean name of a Function from HttpSenderSettings to HttpSender building the HTTP sender.
      * Defaults to the JDK client, which needs no dependency but is the most expensive of them over TLS;
-     * point this at {@code OkHttpSender::new} for an HTTPS collector.
+     * point this at OkHttpSender::new for an HTTPS collector.
      *
-     * <p>Also where the {@code HttpVersion} is chosen, there being no property for it: it is a
+     * Also where the HttpVersion is chosen, there being no property for it: it is a
      * constructor argument on each sender rather than a settings field.
      */
     private String httpSenderFactoryBean;
@@ -121,10 +121,10 @@ public class OtlpLoggerEntryProps {
     private OtlpMessagesLoggerSettings.OtlpTransport transport;
 
     /**
-     * Name of the bean holding the {@code Function<GrpcSenderSettings, GrpcSender>} building the gRPC sender. Required
-     * when {@link #transport} is {@code GRPC} and meaningless otherwise: gRPC needs a client that can
-     * read HTTP/2 trailers, so one backed by {@code staffix-http-client-okhttp} or
-     * {@code staffix-http-client-jetty}. There is no default, because the JDK client cannot serve gRPC.
+     * Name of the bean holding the Function from GrpcSenderSettings to GrpcSender building the gRPC sender. Required
+     * when transport is GRPC and meaningless otherwise: gRPC needs a client that can
+     * read HTTP/2 trailers, so one backed by staffix-http-client-okhttp or
+     * staffix-http-client-jetty. There is no default, because the JDK client cannot serve gRPC.
      */
     private String grpcSenderFactoryBean;
 }

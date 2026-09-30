@@ -45,48 +45,45 @@ public class OtelTracingInstanceProps {
      */
     private Map<String, String> resourceAttributes = new LinkedHashMap<>();
     /**
-     * Whether to propagate <a href="https://www.w3.org/TR/trace-context/">W3C Trace Context</a> in outbound
-     * FIX messages. Defaults to {@code false}.
+     * Whether to propagate W3C Trace Context in outbound
+     * FIX messages. Defaults to false.
      */
     private Boolean w3cTracePropagationEnabled;
     /**
-     * The FIX field code used to carry the W3C trace context value in outbound messages. Only used when {@link
-     * #w3cTracePropagationEnabled} is {@code true}. Defaults to {@code 7777}. <p>Note: {@link
-     * org.lolaf.staffix.api.session.FixSessionSettings.ValidationSettings#isAllowUserDefinedFields()} must be
-     * enabled on the session for user-defined fields to be accepted.
+     * The FIX field code used to carry the W3C trace context value in outbound messages. Only used when
+     * w3c-trace-propagation-enabled is true. Defaults to 7777. The receiving session must allow user defined
+     * fields for it to be accepted.
      */
     private Integer w3cTraceFieldCode;
 
     /**
-     * Spring bean name of {@code Consumer<OtlpGrpcSpanExporterBuilder>}.
-     *
-     * <p>Also the way in for a container-built gRPC client: {@code setComponentLoader} on the builder,
-     * with a loader returning {@code new StaffixGrpcSenderProvider(myFactory)}. Otherwise the client is
-     * whatever {@code org.lolaf.staffix.otlp.grpcSenderFactory} names, which is mandatory.
+     * Spring bean name of a Consumer of OtlpGrpcSpanExporterBuilder.
+     * Also the way in for a container-built gRPC client: setComponentLoader on the builder, with a loader
+     * returning a StaffixGrpcSenderProvider over your factory. Otherwise the client is
+     * whatever org.lolaf.staffix.otlp.grpcSenderFactory names, which is mandatory.
      */
     private String grpcSpanExporterCustomizerBean;
     /**
-     * Spring bean name of {@code Consumer<OtlpHttpSpanExporterBuilder>}.
-     *
-     * <p>Also the way in for a container-built HTTP client and its {@code HttpVersion}:
-     * {@code setComponentLoader} with a loader returning {@code new StaffixHttpSenderProvider(myFactory)}.
-     * Otherwise the client is whatever {@code org.lolaf.staffix.otlp.httpSenderFactory} names.
+     * Spring bean name of a Consumer of OtlpHttpSpanExporterBuilder.
+     * Also the way in for a container-built HTTP client and its HttpVersion: setComponentLoader with a loader
+     * returning a StaffixHttpSenderProvider over your factory.
+     * Otherwise the client is whatever org.lolaf.staffix.otlp.httpSenderFactory names.
      */
     private String httpSpanExporterCustomizerBean;
     /**
-     * Spring bean name of {@code Consumer<BatchSpanProcessorBuilder>}.
+     * Spring bean name of Consumer of BatchSpanProcessorBuilder.
      */
     private String batchSpanProcessorCustomizerBean;
     /**
-     * Spring bean name of {@code Consumer<SdkTracerProviderBuilder>}.
+     * Spring bean name of Consumer of SdkTracerProviderBuilder.
      */
     private String sdkTracerProviderCustomizerBean;
     /**
-     * Spring bean name of {@code Supplier<Sampler>}.
+     * Spring bean name of Supplier of Sampler.
      */
     private String otleSamplerSupplierBean;
     /**
-     * Spring bean name of {@link java.util.concurrent.ExecutorService}.
+     * Spring bean name of ExecutorService.
      */
     private String executorServiceBean;
 }

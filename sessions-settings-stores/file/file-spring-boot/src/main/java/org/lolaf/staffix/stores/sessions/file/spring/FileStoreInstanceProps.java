@@ -29,22 +29,21 @@ import java.util.List;
 @ConfigurationPropertiesSource
 public class FileStoreInstanceProps {
     /**
-     * Path to a directory containing one YAML file per
-     * {@link org.lolaf.staffix.stores.sessions.file.YamlFixSessionSettings} session. An optional {@code default.yaml}
+     * Path to a directory holding one YAML file per session. An optional default.yaml
      * in the same directory provides defaults merged into every other session file.
      */
     private String directory;
 
     /**
      * Session files to read from somewhere other than a local directory. Mutually exclusive with
-     * {@link #directory}; settings loaded this way are never written back.
+     * directory; settings loaded this way are never written back.
      */
     private List<URI> uris = new ArrayList<>();
 
     /**
-     * Bean names of extra {@link org.lolaf.staffix.api.session.ConfigValueResolver}s for the
-     * {@code ${...}} placeholders in a session file, asked after the system property and environment
-     * resolvers and before Spring's own {@code Environment}.
+     * Bean names of extra ConfigValueResolver beans for the
+     * ${...} placeholders in a session file, asked after the system property and environment
+     * resolvers and before Spring's own Environment.
      */
     private List<String> configValueResolverBeans = new ArrayList<>();
 }

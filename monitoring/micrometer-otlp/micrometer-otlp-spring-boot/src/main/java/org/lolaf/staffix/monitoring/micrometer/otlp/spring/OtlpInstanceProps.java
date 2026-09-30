@@ -64,7 +64,7 @@ public class OtlpInstanceProps extends MicrometerInstanceProps {
     private Map<String, String> resourceAttributes = new LinkedHashMap<>();
 
     /**
-     * Spring bean name of an {@code io.micrometer.registry.otlp.OtlpConfig} that overrides the generated config.
+     * Spring bean name of an io.micrometer.registry.otlp.OtlpConfig that overrides the generated config.
      */
     private String otlpConfigBean;
     /**
@@ -77,17 +77,17 @@ public class OtlpInstanceProps extends MicrometerInstanceProps {
     private Duration requestTimeout;
 
     /**
-     * Spring bean name of a {@code Function<HttpSenderSettings, HttpSender>} building the HTTP sender.
+     * Spring bean name of a Function from HttpSenderSettings to HttpSender building the HTTP sender.
      * Defaults to the JDK client, which needs no dependency but is the most expensive of them over TLS;
-     * point this at {@code OkHttpSender::new} for an HTTPS collector.
+     * point this at OkHttpSender::new for an HTTPS collector.
      */
     private String httpSenderFactoryBean;
     /**
-     * Spring bean name of {@link java.net.ProxySelector} for the OTLP HTTP client.
+     * Spring bean name of ProxySelector for the OTLP HTTP client.
      */
     private String proxySelectorBean;
     /**
-     * Spring bean name of {@link java.net.Authenticator} for the OTLP HTTP client.
+     * Spring bean name of Authenticator for the OTLP HTTP client.
      */
     private String authenticatorBean;
 }

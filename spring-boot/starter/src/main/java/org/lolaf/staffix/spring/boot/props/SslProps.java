@@ -25,7 +25,7 @@ import lombok.EqualsAndHashCode;
 public class SslProps {
 
     /**
-     * Spring bean name of a pre-built {@link javax.net.ssl.SSLContext}. When set, it overrides
+     * Spring bean name of a pre-built SSLContext. When set, it overrides
      * the keystore/truststore properties below.
      */
     private String sslContextBean;

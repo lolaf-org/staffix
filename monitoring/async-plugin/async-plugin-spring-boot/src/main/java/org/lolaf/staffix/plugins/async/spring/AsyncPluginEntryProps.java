@@ -27,8 +27,8 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesSource
 public class AsyncPluginEntryProps {
     /**
      * Key into any other sessions-plugin contributor (e.g. an entry under
-     * {@code staffix.monitoring-micrometer.instances} or {@code staffix.tracing.otel.instances}). The
-     * async wrapper replaces the wrapped entry in the registry; the wrapped plugin's {@code instance-id}
+     * staffix.monitoring-micrometer.instances or staffix.tracing.otel.instances). The
+     * async wrapper replaces the wrapped entry in the registry; the wrapped plugin's instance-id
      * stays in effect, so existing session references keep matching through the wrapper.
      */
     private String wraps;
@@ -49,12 +49,12 @@ public class AsyncPluginEntryProps {
     private BackpressurePolicy backpressurePolicy;
 
     /**
-     * Spring bean name of a {@code Supplier<IdleStrategy>} used by the consumer threads.
+     * Spring bean name of a Supplier of IdleStrategy used by the consumer threads.
      */
     private String consumerIdleStrategySupplierBean;
 
     /**
-     * Spring bean name of a {@code Supplier<IdleStrategy>} used by producers waiting for a free slot.
+     * Spring bean name of a Supplier of IdleStrategy used by producers waiting for a free slot.
      */
     private String producerIdleStrategySupplierBean;
 }

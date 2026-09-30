@@ -33,9 +33,9 @@ public class MemoryStoreInstanceProps {
      */
     private List<FixSessionSettingsProps> sessions = new ArrayList<>();
     /**
-     * Default values applied to every session in this instance — both the ones declared under {@code sessions} and any
-     * added at runtime. Each non-null field here is set on a session unless it was explicitly set by the user (or by a
-     * {@code FixSessionSettingsPostProcessor} in the spring stack).
+     * Default values applied to every session in this instance, both the ones declared under sessions and any added
+     * at runtime. Each value set here applies to a session unless the session sets its own, or a
+     * FixSessionSettingsPostProcessor bean does.
      */
     @NestedConfigurationProperty
     private FixSessionSettingsProps defaults;

@@ -43,28 +43,28 @@ public class MicrometerInstanceProps {
      */
     private Map<String, TimerSettingsProps> timerSettings = new LinkedHashMap<>();
     /**
-     * Whether to enable the {@code messages.read.latency} timer. Defaults to {@code true}.
+     * Whether to enable the messages.read.latency timer. Defaults to true.
      */
     private boolean readLatencyEnabled = true;
     /**
-     * Whether to enable the {@code messages.write.latency} timer. Defaults to {@code true}.
+     * Whether to enable the messages.write.latency timer. Defaults to true.
      */
     private boolean writeLatencyEnabled = true;
     /**
-     * Whether to enable the {@code messages.decoding.latency} timer. Defaults to {@code false}.
+     * Whether to enable the messages.decoding.latency timer. Defaults to false.
      */
     private boolean decodingLatencyEnabled = false;
     /**
-     * Whether to enable the {@code messages.encoding.latency} timer. Defaults to {@code false}.
+     * Whether to enable the messages.encoding.latency timer. Defaults to false.
      */
     private boolean encodingLatencyEnabled = false;
 
     /**
-     * Spring bean name of {@code Consumer<MeterRegistry>} invoked when the registry stops.
+     * Spring bean name of Consumer of MeterRegistry invoked when the registry stops.
      */
     private String stoppingMeterRegistryConsumerBean;
     /**
-     * Spring bean name of {@code Consumer<MeterRegistry>} invoked when the registry has started.
+     * Spring bean name of Consumer of MeterRegistry invoked when the registry has started.
      */
     private String startedMeterRegistryConsumerBean;
 }

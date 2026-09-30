@@ -27,8 +27,8 @@ import java.time.Duration;
 @ConfigurationPropertiesSource
 public class JdbcStoreEntryProps {
     /**
-     * Spring bean name of the {@link javax.sql.DataSource} to use. Resolved via
-     * {@code ApplicationContext.getBean(name, DataSource.class)} at startup.
+     * Spring bean name of the DataSource to use. Resolved via
+     * ApplicationContext.getBean(name, DataSource.class) at startup.
      */
     private String dataSourceBean;
     /**

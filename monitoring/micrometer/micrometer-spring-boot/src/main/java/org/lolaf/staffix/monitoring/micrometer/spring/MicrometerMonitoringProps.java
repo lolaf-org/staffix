@@ -29,8 +29,8 @@ import java.util.Map;
 public class MicrometerMonitoringProps {
 
     /**
-     * Optional Spring bean name of a {@link io.micrometer.core.instrument.MeterRegistry}.
-     * If unset, the unique {@code MeterRegistry} bean in the context is used.
+     * Optional Spring bean name of a MeterRegistry.
+     * If unset, the unique MeterRegistry bean in the context is used.
      */
     private String meterRegistryBean;
 

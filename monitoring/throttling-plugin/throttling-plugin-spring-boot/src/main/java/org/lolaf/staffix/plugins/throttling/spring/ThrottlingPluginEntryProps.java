@@ -28,19 +28,19 @@ import java.time.Duration;
 public class ThrottlingPluginEntryProps {
     /**
      * Key into any other sessions-plugin contributor (e.g. an entry under
-     * {@code staffix.monitoring-micrometer.instances} or {@code staffix.tracing.otel.instances}). The
+     * staffix.monitoring-micrometer.instances or staffix.tracing.otel.instances). The
      * throttling wrapper replaces the wrapped entry in the registry; the wrapped plugin's
-     * {@code instance-id} stays in effect, so existing session references keep matching through the wrapper.
+     * instance-id stays in effect, so existing session references keep matching through the wrapper.
      */
     private String wraps;
 
     /**
-     * Max inbound messages forwarded to the delegate per {@link #window}. {@code 0} disables inbound throttling.
+     * Max inbound messages forwarded to the delegate per window. 0 disables inbound throttling.
      */
     private Integer maxReceivedMessages;
 
     /**
-     * Max outbound messages forwarded to the delegate per {@link #window}. {@code 0} disables outbound throttling.
+     * Max outbound messages forwarded to the delegate per window. 0 disables outbound throttling.
      */
     private Integer maxSentMessages;
 

@@ -28,7 +28,7 @@ import java.time.Duration;
 public class AsyncStoreEntryProps {
     /**
      * Key into any other store contributor (e.g. an entry under
-     * {@code staffix.messages-stores-memory.instances}).
+     * staffix.messages-stores-memory.instances).
      */
     private String wraps;
     /**
@@ -45,9 +45,9 @@ public class AsyncStoreEntryProps {
      */
     private Duration flushPendingMessagesOnStartupDelay;
     /**
-     * Max duration a {@code find} call waits for the async queue to drain (all pending writes applied to the
-     * wrapped store) before reading, so a resend sees messages that were stored just before. Set to {@code
-     * null} to read immediately without waiting.
+     * Max duration a find call waits for the async queue to drain (all pending writes applied to the wrapped store)
+     * before reading, so a resend sees messages that were stored just before. Set to null to read immediately without
+     * waiting.
      */
     private Duration findWaitForEmptyQueueTimeout;
     /**
