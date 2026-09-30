@@ -28,15 +28,15 @@ import java.util.concurrent.TimeUnit;
 public class FileLoggerEntryProps {
 
     /**
-     * Log incoming messages
+     * Whether received messages are logged.
      */
     private Boolean logIncoming;
     /**
-     * Log outgoing messages
+     * Whether sent messages are logged.
      */
     private Boolean logOutgoing;
     /**
-     * Log events
+     * Whether session events, such as logons and disconnections, are logged.
      */
     private Boolean logEvents;
 
@@ -53,7 +53,7 @@ public class FileLoggerEntryProps {
      */
     private String logInPrefix;
     /**
-     * The mode the log file is opened with, as RandomAccessFile spells it.
+     * The mode the log file is opened with, as RandomAccessFile spells it: rw by default.
      */
     private String writeMode;
     /**
@@ -61,24 +61,25 @@ public class FileLoggerEntryProps {
      */
     private String logDirectory;
     /**
-     * Log time precision
+     * Precision of the timestamp on each line. Microseconds by default.
      */
     private TimeUnit logTimePrecision;
     /**
-     * Unit of the compression period, compressFileValue.
+     * Unit of the compression period, compress-file-value. Hours by default.
      */
     private TimeUnit compressFileTimeUnit;
     /**
-     * Compression period, counted in compressFileTimeUnit: HOURS and 2 compress the log every two hours.
+     * Compression period, counted in compress-file-time-unit: HOURS and 2 compress the log every two hours.
      */
     private Integer compressFileValue;
     /**
-     * Maximum number of compressed logs files to keep, 0 for unlimited count
+     * How many compressed log files are kept. 0, the default, keeps them all.
      */
     private Integer maxCompressedFiles;
 
     /**
-     * Spring bean name of BiFunction from FixSessionId and File to File that derives the per-session log file name.
+     * Spring bean name of a BiFunction from FixSessionId and the log directory to the session's log File. The
+     * default names the file after the session id.
      */
     private String logFileNameBean;
 }

@@ -27,12 +27,13 @@ import java.time.Duration;
 @ConfigurationPropertiesSource
 public class AsyncStoreEntryProps {
     /**
-     * Key into any other store contributor (e.g. an entry under
-     * staffix.messages-stores-memory.instances).
+     * Instance id of the store to wrap, from any store module, for example an entry under
+     * staffix.messages-stores-memory.instances. The wrapper takes that store's place under the same instance id,
+     * so sessions naming it go through the wrapper.
      */
     private String wraps;
     /**
-     * Directory where the async chronicle queues for FIX sessions are stored.
+     * Directory holding the on-disk queues that buffer each session's writes.
      */
     private String asyncQueueDirectory;
     /**
@@ -40,22 +41,22 @@ public class AsyncStoreEntryProps {
      */
     private Duration underlyingStoreResourceWatchTaskCheckDelay;
     /**
-     * Max duration to flush all pending message on startup that for some reason have not been processed before
-     * last shutdown
+     * How long a session start waits for writes left pending by the previous run to reach the wrapped store. Past it
+     * the start fails rather than read stale sequence numbers. 2 minutes by default.
      */
     private Duration flushPendingMessagesOnStartupDelay;
     /**
-     * Max duration a find call waits for the async queue to drain (all pending writes applied to the wrapped store)
-     * before reading, so a resend sees messages that were stored just before. Set to null to read immediately without
-     * waiting.
+     * How long a read waits for queued writes to reach the wrapped store, so a resend sees the messages stored just
+     * before it. Past it the read fails rather than return an incomplete store. 5 seconds by default.
      */
     private Duration findWaitForEmptyQueueTimeout;
     /**
-     * Default byte buffer size for reading FIX messages from chronicle and passing them to the wrapped store
+     * Size of the buffer a queued message is read into before it is passed on. A bigger message allocates a buffer
+     * of its own, so size this above the usual message.
      */
     private Integer messageByteBufferSize;
     /**
-     * Configure to use a heap or direct bytebuffer to transferred logs from the async queue
+     * Whether the buffers entries are read into are off-heap. True by default.
      */
     private Boolean useDirectByteBuffer;
 }

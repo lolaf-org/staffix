@@ -27,14 +27,13 @@ import java.time.Duration;
 @ConfigurationPropertiesSource
 public class AsyncLoggerEntryProps {
     /**
-     * Key into any other logger contributor (e.g. an entry under
-     * staffix.messages-loggers-slf4j.instances). The async wrapper replaces the
-     * wrapped entry in the registry; the wrapped logger's instance-id stays in effect
-     * (the wrapper itself has no separate instance id).
+     * Instance id of the logger to wrap, from any logger module, for example an entry under
+     * staffix.messages-loggers-slf4j.instances. The wrapper takes that logger's place under the same instance id,
+     * so sessions naming it go through the wrapper.
      */
     private String wraps;
     /**
-     * Directory where the async chronicle queues for FIX sessions are stored.
+     * Directory holding the on-disk queues that buffer each session's writes.
      */
     private String asyncQueueDirectory;
     /**
@@ -42,16 +41,17 @@ public class AsyncLoggerEntryProps {
      */
     private Duration underlyingLoggerResourceWatchTaskCheckDelay;
     /**
-     * Max duration to flush all pending message on startup that for some reason have not been processed before
-     * last shutdown
+     * How long a session start waits for entries left in the queue by the previous run to be written through. The
+     * session starts either way. 60 seconds by default.
      */
     private Duration flushPendingMessagesOnStartupDelay;
     /**
-     * Default byte buffer size for reading logs from chronicle and passing them to the wrapped logger
+     * Size of the buffer a queued entry is read into before it is passed on. A bigger entry allocates a buffer of its
+     * own, so size this above the usual message.
      */
     private Integer logByteBufferSize;
     /**
-     * Configure to use a heap or direct bytebuffer to transferred logs from the async queue
+     * Whether the buffers entries are read into are off-heap. True by default.
      */
     private Boolean useDirectByteBuffer;
 }

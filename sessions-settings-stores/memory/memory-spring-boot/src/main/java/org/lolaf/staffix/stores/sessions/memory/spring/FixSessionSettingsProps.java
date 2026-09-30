@@ -30,14 +30,14 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
- * The {@code staffix.*} properties for the in-memory session settings store.
+ * One session's settings as properties. Anything left unset takes the store instance's defaults, then the engine's.
  */
 @Data
 @ConfigurationPropertiesSource
 public class FixSessionSettingsProps {
 
     /**
-     * The session's identity on the wire - FIX version and CompIDs. Required, and what an inbound Logon is
+     * The session's identity on the wire: FIX version and CompIDs. Required, and what an inbound Logon is
      * matched against.
      */
     @NestedConfigurationProperty
@@ -77,7 +77,7 @@ public class FixSessionSettingsProps {
      */
     private boolean advertiseMsgTypeGrpOnLogon;
     /**
-     * Whether the Logon names this engine and its version. Off by default - some venues record it, most ignore
+     * Whether the Logon names this engine and its version. Off by default: some venues record it, most ignore
      * it.
      */
     private boolean advertiseEngineOnLogon;
@@ -86,9 +86,9 @@ public class FixSessionSettingsProps {
      */
     private boolean advertiseApplicationOnLogon;
     /**
-     * Whether the Logon carries NextExpectedMsgSeqNum(789), telling the peer what we expect next so a gap is
-     * resolved by the Logon exchange itself rather than by a ResendRequest afterwards (section 4.4.1). On
-     * by default. A counterparty that does not support it will reject the field, in which case turn it off.
+     * Whether the Logon carries NextExpectedMsgSeqNum(789), so a sequence gap is settled by the Logon exchange itself
+     * rather than by a ResendRequest afterwards (section 4.4.1). On by default; turn it off for a counterparty that
+     * rejects the field.
      */
     private Boolean enabledLogonNextExpectedMsgSeqNum;
 
@@ -99,90 +99,50 @@ public class FixSessionSettingsProps {
     private List<String> allowedAddresses = new ArrayList<>();
 
     /**
-     * Flag to reset sequence number on logon, if not specified, the counterparty manages the sequence reset
-     * flag on session establishment
+     * Whether sequence numbers restart at 1 on logon. True resets on every logon, false refuses a counterparty's reset
+     * with a Logout (section 4.4.3), and unset, the default, follows whatever the counterparty asks for.
      */
     private Boolean resetSeqNumOnLogon;
 
     /**
-     * The state the session should hold itself in. LOGGED_IN by default, so it logs on
-     * and stays on. Set it to LOGGED_OUT to keep a configured session from
-     * connecting - which is how a session is taken out of service without removing its configuration.
+     * The state the session holds itself in. LOGGED_IN by default, so it logs on and stays on; LOGGED_OUT takes a
+     * session out of service without removing its configuration.
      */
     private FixSessionState desiredSessionState;
 
     /**
-     * Login or logout response timeout, follows FIX specs and should probably not be changed
+     * How long a Logon or Logout may go unanswered before the connection is dropped. 10 seconds by default.
      */
     private Duration logInOrOutResponseTimeout;
     /**
-     * How long a ResendRequest(35=2) this session sent may go without making progress before it is asked for
-     * again, and then given up on. A retransmission drives everything that follows it: the messages
-     * received on top of the gap are only delivered once the request completes, new gaps found meanwhile are
-     * queued without a request of their own, and outgoing application messages are held back (see
-     * max-outgoing-messages-held-during-recovery). A request that can never complete therefore stops the session
-     * dead while heartbeats keep flowing on both sides - which is what an answer that goes missing leaves
-     * behind, a garbled message inside the range being the ordinary way there: it is disregarded as section
-     * 4.8 requires, and nothing after it can close the range. The delay is measured from the last message
-     * that advanced the recovery, not from the request, so a long but progressing retransmission never trips
-     * it. On expiry the missing part of the range is asked for once more; if that goes unanswered too, the
-     * session is logged out rather than left silently stalled. Set to 0 to wait
-     * forever, which is how the engine behaved before this existed. Costs nothing on a healthy session: it
-     * is looked at once a second by the heartbeat task, and only while a retransmission this session asked for
-     * is outstanding.
+     * How long a ResendRequest(35=2) this session sent may go without progress before it is repeated, then given up
+     * on with a logout. Without it, an answer lost to a garbled message stalls the session forever while heartbeats
+     * keep flowing. Measured from the last message that advanced the recovery, so a slow but progressing resend never
+     * trips it. 30 seconds by default; 0 waits forever.
      */
     private Duration resendRequestResponseTimeout;
     /**
-     * How many messages received with a MsgSeqNum(34) higher than expected the session holds on to while it
-     * waits for the gap ahead of them to be filled. Section 4.5 of the FIX Session Layer specification
-     * (state table rows 11 and 12) requires those messages to be queued rather than dropped, so that they can
-     * be processed in order once the ResendRequest(35=2) has been answered. This bounds that queue: a peer
-     * that keeps sending while never answering the ResendRequest would otherwise grow it without end, so the
-     * session is logged out instead once the limit is reached. Set to 0 for no limit, queueing whatever
-     * arrives for as long as the gap stays open. As with max-messages-resent-per-request, 0 turns the
-     * restriction off rather than the queueing, which is required behaviour and cannot be disabled.
-     * Costs nothing on a healthy session - the queue only ever receives messages on the out of sequence
-     * branch.
+     * How many messages received ahead of a sequence gap are kept until the gap is filled, as section 4.5 requires.
+     * Past it the session logs out, rather than grow the queue for a peer that never answers the ResendRequest.
+     * 10000 by default; 0 removes the limit, not the queueing.
      */
     private Integer maxOutOfSequenceMessagesQueued;
     /**
-     * How many application messages the session holds back while a retransmission it asked for is still under
-     * way. Section 4.3.11 of the FIX Session Layer specification recommends waiting "a short period of
-     * time following receipt of the Logon(35=A) message from the counterparty before transmitting queued or
-     * new application messages to permit both sides to synchronize the FIX session". Holding them means their
-     * MsgSeqNum(34) is spent once the recovery is over rather than in the middle of it. Past this many, a
-     * message is refused rather than held: its send callback is called with
-     * the failure and nothing is sent, leaving the application to decide what to do with a message the session
-     * could not take. Sending it on regardless would defeat the synchronization the holding is for, and
-     * dropping it silently would lose it. Set to 0 to never hold anything, which sends application
-     * messages straight through as this engine did before the holding existed. Costs nothing when no
-     * retransmission is under way, which is when the holding list does not exist at all.
+     * How many application messages are held back while a resend this session asked for is under way, so both sides
+     * are in sync before new traffic (section 4.3.11). Past it, a send fails through its callback rather than being
+     * held. 1000 by default; 0 holds nothing and sends straight through.
      */
     private Integer maxOutgoingMessagesHeldDuringRecovery;
     /**
-     * How many messages at most are actually put back on the wire in answer to a single peer
-     * ResendRequest(35=2). The requested range is chosen by the peer, so without a bound it decides how
-     * much work this engine does and how long its IO thread spends doing it. Past this many, the rest of the
-     * range is covered by a SequenceReset(35=4) gap fill instead of being replayed, which section 4.8.5
-     * explicitly allows - "the resender may choose to gap fill rather than retransmit" - so the peer still
-     * ends up correctly synchronized, just without the messages the session declined to send. It also stops
-     * the store being read past that point at all. Set to 0 for no limit, retransmitting whatever the peer
-     * asks for however wide the range. Note this is the opposite sense to
-     * max-outgoing-messages-held-during-recovery, where 0 turns the holding off: here 0 turns the
-     * restriction off, since a resend with no cap is the unrestricted behaviour. Only ever
-     * consulted while answering a ResendRequest.
+     * How many messages at most are replayed for one ResendRequest(35=2) from the peer, which otherwise decides how
+     * much work this engine does. The rest of the range is gap filled, which section 4.8.5 allows, so the peer still
+     * ends up in sync. 10000 by default; 0 removes the limit.
      */
     private Integer maxMessagesResentPerRequest;
     /**
-     * How EndSeqNo(16) is filled in on a ResendRequest(35=2) this session sends: with the last message of the
-     * gap, or with the "infinity" form that asks for everything from BeginSeqNo(7) onwards. Section 4.8.2
-     * allows a request to name "a single message, a range of messages or all messages", so both are correct
-     * and the choice is the counterparty's to drive: some peers only answer one of the two forms. This engine
-     * defaults to CLOSED, which asks for exactly the messages that are missing;
-     * QuickFIX/J's ClosedResendInterval=N - its default - is OPEN_ENDED
-     * here. Only affects requests this session sends. What it accepts is not configurable: an incoming
-     * EndSeqNo(16) of 0 or 999999 is answered as open ended whatever this says, since the peer chose that
-     * form.
+     * How EndSeqNo(16) is filled in on the ResendRequests this session sends: CLOSED, the default, asks for exactly
+     * the missing messages, OPEN_ENDED for everything from BeginSeqNo(7) on. Both are valid (section 4.8.2); some
+     * peers only answer one. QuickFIX/J's default, ClosedResendInterval=N, is OPEN_ENDED.
      */
     private ResendRequestRange resendRequestRange;
 
@@ -204,38 +164,30 @@ public class FixSessionSettingsProps {
     private String fixMessageLoggerInstanceId;
 
     /**
-     * Map of FIX session plugin instance ids keyed by the plugin class FQCN
-     * (e.g. org.lolaf.staffix.tracing.otlp.OtelTracing).
+     * The plugin instance each plugin type uses for this session, keyed by the plugin's class name, for example
+     * org.lolaf.staffix.tracing.otlp.OtelTracing.
      */
     private Map<String, String> fixSessionPluginsInstanceIds = new LinkedHashMap<>();
 
     /**
-     * Use direct byte buffer when encode a message
+     * Whether the session's own encoders encode into direct byte buffers. True by default.
      */
     private Boolean messageEncodersDirectByteBuffers;
     /**
-     * Whether encoders borrowed from a FixMessageEncodersPool encode into direct byte buffers.
+     * Whether encoders borrowed from a FixMessageEncodersPool encode into direct byte buffers. True by default.
      */
     private Boolean pooledMessageEncodersDirectByteBuffers;
     /**
-     * Whether removing these settings from their store disconnects the session when it is live. On by default, which is
-     * what removing a session usually means: the engine stops managing it and the session goes down. Turn it off to
-     * make the removal a configuration change only - the settings stop being managed and the live session is left
-     * running until it drops for a reason of its own, which is what a venue asking you to stop reconnecting a session
-     * after the trading day needs. Read from the settings being removed, i.e. the ones the running session was started
-     * under.
+     * Whether removing these settings from their store disconnects the live session. On by default. Off makes the
+     * removal a configuration change only: the session keeps running until it drops on its own, which is what a venue
+     * asking you to stop reconnecting after the trading day needs.
      */
     private Boolean disconnectOnRemove;
     /**
-     * Whether updating these settings in their store restarts the session when it is live, so that the new settings
-     * take effect immediately. On by default: an update that does not reach the running session is an update that
-     * silently did not happen, and that is the worse surprise of the two. Turn it off when the session matters more
-     * than the promptness of the change - the new settings are managed straight away and take effect the next time the
-     * session is created, rather than now. "When it is live" is the whole of the condition: a session that is not
-     * connected needs no restart, and its new settings are simply picked up when it next connects. Read from the
-     * settings the session is currently running under - the old ones - not from the ones replacing them. The flag
-     * describes how this session may be treated, and it is this session that a restart would disturb; a new policy
-     * governs the update after it.
+     * Whether updating these settings in their store restarts the live session, so the change takes effect now. On by
+     * default, since an update that never reaches the running session is the worse surprise. Off, the new settings
+     * apply the next time the session connects. Read from the settings the session is running under, not the new
+     * ones.
      */
     private Boolean restartLiveSessionOnUpdate;
 
@@ -247,12 +199,13 @@ public class FixSessionSettingsProps {
     private ValidationProps validation;
 
     /**
-     * Setting to enable testing mode on the session (Logon TestMessageIndicator field)
+     * Whether the Logon sets TestMessageIndicator(464), for FIX 4.3 and later. Off by default.
      */
     private Boolean testingMode;
 
     /**
-     * Deadline for flushing messages when an established FIX session must disconnect
+     * How long a disconnect waits for messages already queued to be sent before the socket is closed. 2 seconds by
+     * default.
      */
     private Duration disconnectMessagesFlushDeadline;
 
@@ -293,12 +246,11 @@ public class FixSessionSettingsProps {
     @Data
     public static class ValidationProps {
         /**
-         * Validate received messages checksums, enabling it has slight impact on performance
+         * Whether the CheckSum(10) of each received message is verified. On by default.
          */
         private Boolean validateChecksum;
         /**
-         * Ensure fields have always a value set, disabling it lets a message with an empty field
-         * through rather than rejecting it
+         * Whether a received message with an empty field is rejected. On by default.
          */
         private Boolean validateFieldsHaveValues;
         /**
@@ -316,21 +268,18 @@ public class FixSessionSettingsProps {
          */
         private Boolean validateDuplicateTags;
         /**
-         * Allows user defined fields not defined in the data dictionary, a user defined tag being one the
-         * standard does not own
+         * Accepts user defined tags, the ones the standard does not own, that the data dictionary does not define. Off
+         * by default.
          */
         private Boolean allowUserDefinedFields;
         /**
-         * Allows message fields outside the user defined range - tags the standard owns, which this dictionary
-         * does not define. A peer
-         * speaking a later FIX version reaches here: the tags the Global Technical Committee has allocated
-         * from 40000 up are standard ones, so a session on an older dictionary takes them through this setting
-         * rather than through allow-user-defined-fields
+         * Accepts standard tags the data dictionary does not define. That is how a session on an older dictionary takes
+         * tags a later FIX version has allocated, from 40000 up. Off by default.
          */
         private Boolean allowUnknownFields;
         /**
-         * Automatically reject message that are missing required fields defined in the used data dictionary,
-         * enabling it has slight impact on performance
+         * Whether a received message missing a field the data dictionary requires is rejected. Off by default, since it
+         * costs a little on every message.
          */
         private Boolean validateRequiredFields;
         /**
@@ -339,66 +288,45 @@ public class FixSessionSettingsProps {
          */
         private Boolean allowUndefinedTagsForMessage;
         /**
-         * Validates that received message TARGET_COMP_ID and SENDER_COMP_ID fields match configured values for
-         * session, enabling it has slight impact on performance
+         * Whether SenderCompID(49) and TargetCompID(56) of each received message must match the session's. Off by
+         * default, since it costs a little on every message.
          */
         private Boolean validateCompId;
         /**
-         * CompIDs this session accepts in the OnBehalfOfCompID(115) field of received messages, i.e. the firms
-         * the peer is allowed to send on behalf of when the session carries third party routing (section 6.2
-         * of the FIX Session Layer specification). A message carrying a value outside the set is rejected with
-         * SessionRejectReason(373) 9, CompID problem, and RefTagID(371) 115; the session itself is left up, a
-         * routing error being about one message rather than about who the peer is. Null or empty, the
-         * default, leaves the field unchecked and costs nothing. Note that only the value is checked: the
-         * specification also asks that a session using third party routing use it on every application message
-         * it sends, which is not enforced here.
+         * CompIDs the peer may send on behalf of, in OnBehalfOfCompID(115), for third party routing (section 6.2). A
+         * message with another value is rejected, and the session stays up. Unset, the default, the field is not
+         * checked.
          */
         private Set<String> expectedOnBehalfOfCompIds;
         /**
-         * CompIDs this session accepts in the DeliverToCompID(128) field of received messages, i.e. the firms
-         * the peer is allowed to address through it. Behaves exactly as expected-on-behalf-of-comp-ids,
-         * RefTagID(371) being 128 on the reject, and is likewise unchecked by default.
+         * CompIDs the peer may deliver to, in DeliverToCompID(128). Works as expected-on-behalf-of-comp-ids.
          */
         private Set<String> expectedDeliverToCompIds;
         /**
-         * Validate that the BeginString(8) of each received message matches the session's FIX version,
-         * disconnecting with a Logout referencing the offending value otherwise. Disabled by default: enabling
-         * it has a slight impact on latency
+         * Whether a received message whose BeginString(8) does not match the session's FIX version ends the session
+         * with a Logout. Off by default, since it costs a little on every message.
          */
         private Boolean validateBeginString;
         /**
-         * Detect the garbled message conditions of section 4.5.2 of the FIX Session Layer specification that
-         * need dedicated checks: BeginString(8), BodyLength(9) and MsgType(35) not being the first three
-         * fields of the message, and a BeginString(8) that is not a defined FIX session profile identifier.
-         * Disabled by default: enabling it checks the position of every header field of every received message
-         * and hashes their BeginString(8), which has a slight impact on latency. Note that the remaining
-         * condition, an incorrect BodyLength(9) byte count, is always detected whatever this setting: it comes
-         * for free from a comparison the parser makes anyway. A garbled message is disregarded: it is not
-         * answered, it does not increment NextNumIn and it does not reset the heartbeat interval timer, so the
-         * peer's next message surfaces as a sequence gap and drives the usual message recovery.
+         * Whether the garbled message checks of section 4.5.2 that cost extra are run: BeginString(8), BodyLength(9)
+         * and MsgType(35) out of place, or an unknown BeginString(8). A wrong BodyLength(9) is always caught. A garbled
+         * message is ignored, so the next one shows as a sequence gap and drives the usual recovery. Off by default.
          */
         private Boolean detectGarbledMessages;
         /**
-         * Tolerance allowed between a received message's SendingTime(52) and this session's own clock, in
-         * either direction: the SendingTimeThreshold of section 4.2.3 of the FIX Session Layer specification.
-         * A message whose SendingTime(52) is older than now minus max-sending-time, or dated later than
-         * now plus max-sending-time, is rejected with SessionRejectReason(373) 10, SendingTime accuracy
-         * problem, and the session is then logged out, as the specification prescribes. Null, the default,
-         * disables the check and leaves SendingTime(52) unparsed on the message path, which is the faster
-         * path: enabling it decodes tag 52 of every received message.
+         * How far a received SendingTime(52) may be from this session's clock, either way, before the message is
+         * rejected and the session logged out (section 4.2.3). Unset, the default, the check is off and SendingTime is
+         * not even parsed.
          */
         private Duration maxSendingTime;
         /**
-         * Maximum message length in octets this session is able to receive. When set, it is advertised to the
-         * peer in the MaxMessageSize(383) field of the Logon(35=A) message and is used to reject oversized
-         * inbound messages. Set to null to disable it.
+         * The largest message, in bytes, this session accepts. When set it is advertised in the Logon's
+         * MaxMessageSize(383) and larger inbound messages are rejected. Unset by default.
          */
         private Integer maxMessageSize;
         /**
-         * Minimum MaxMessageSize(383) this session requires the peer to advertise on its Logon(35=A), i.e. the largest
-         * message we may need to send it. If the peer advertises a smaller value the FIX session is terminated with a
-         * Logout(35=5) carrying a Text(58) that gives both sizes, as described in the FIX session layer specification.
-         * Applies to both acceptor and initiator sessions. Set to null (the default) to require no minimum.
+         * The smallest MaxMessageSize(383) the peer must advertise on its Logon, i.e. the largest message this session
+         * may need to send it. A peer advertising less is logged out. Unset by default.
          */
         private Integer requiredPeerMaxMessageSize;
     }
