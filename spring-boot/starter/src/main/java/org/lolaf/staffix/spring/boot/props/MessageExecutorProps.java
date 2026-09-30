@@ -18,15 +18,16 @@ package org.lolaf.staffix.spring.boot.props;
 import lombok.Data;
 
 /**
- * A message executor as properties: how many threads, how deep the queues, and which field routes a message to
- * one of them.
+ * A message executor as properties: how many threads, how deep their queues, and how they wait. Which thread a
+ * message goes to is the application's choice, through the routing key it passes to
+ * {@code FixSession.getMessageExecutor}.
  */
 @Data
 public class MessageExecutorProps {
 
     /**
-     * How many threads process messages. One keeps ordering trivial; more helps only if the routing field spreads
-     * work across them.
+     * How many threads process messages. One keeps ordering trivial; more helps only if the application's routing
+     * keys spread work across them.
      */
     private int executorsThreadsCount = 1;
     /**
@@ -38,5 +39,23 @@ public class MessageExecutorProps {
      */
     private IdleStrategy idleStrategy = IdleStrategy.WAIT_NOTIFY;
 
-    public enum IdleStrategy {WAIT_NOTIFY, BUSY_SPIN, YIELDING, BACKOFF}
+    public enum IdleStrategy {
+        /**
+         * Parks until work arrives. Costs no CPU while idle, at the price of a wakeup per message.
+         */
+        WAIT_NOTIFY,
+        /**
+         * Spins without ever giving the core up: the lowest latency, and a whole core burnt whether or not there is
+         * work.
+         */
+        BUSY_SPIN,
+        /**
+         * Yields the core to other runnable threads but never parks, so it still burns CPU on an idle machine.
+         */
+        YIELDING,
+        /**
+         * Spins, then yields, then parks for longer and longer: quick on a burst, almost free once quiet.
+         */
+        BACKOFF
+    }
 }

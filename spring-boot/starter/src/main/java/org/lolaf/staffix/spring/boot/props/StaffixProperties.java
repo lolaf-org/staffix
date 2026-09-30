@@ -23,7 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The root of the {@code staffix.*} configuration tree - the engine, its initiators and its acceptors.
+ * The root of the {@code staffix.*} configuration tree: the engine, its initiators and its acceptors.
  */
 @Data
 @ConfigurationProperties(prefix = "staffix")
@@ -35,7 +35,7 @@ public class StaffixProperties {
     private boolean enabled = true;
 
     /**
-     * The engine itself - the stores, loggers, plugins and factories its sessions may name.
+     * Engine-level settings, shared by every initiator and acceptor.
      */
     @NestedConfigurationProperty
     private EngineProps engine = new EngineProps();

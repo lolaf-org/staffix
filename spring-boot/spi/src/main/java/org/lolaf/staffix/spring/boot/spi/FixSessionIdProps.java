@@ -23,7 +23,7 @@ import org.lolaf.staffix.api.version.FixtVersion;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
 
 /**
- * A session's identity as properties - the CompIDs and FIX version - so a session can be declared entirely in
+ * A session's identity as properties, its CompIDs and FIX version, so a session can be declared entirely in
  * configuration.
  */
 @Data
@@ -36,8 +36,8 @@ public class FixSessionIdProps {
     private String id;
 
     /**
-     * Fix version, must match a {@link org.lolaf.staffix.api.version.FixRegularVersion} value
-     * (e.g. VERSION_42, VERSION_44, VERSION_50_SP2) or "FIXT_11" for FIXT 1.1 sessions.
+     * FIX version, as a {@code FixRegularVersion} name such as VERSION_44 or in FIX.4.4 notation, or FIXT_11 for a
+     * FIXT 1.1 session.
      */
     private String fixVersion;
 

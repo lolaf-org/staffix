@@ -33,7 +33,7 @@ import java.util.List;
 public class IoWorkersGroupProps {
 
     /**
-     * Names this worker group, so a session can select it.
+     * Names this worker group, and so its threads in logs and thread dumps.
      */
     private String id = "default";
     /**
@@ -70,8 +70,28 @@ public class IoWorkersGroupProps {
      */
     private String ioWorkerStatisticsProviderBean;
 
-    public enum IoWorkerLoadBalancer {MIN_REGISTERED_SESSIONS, MIN_IO_THREAD_LOAD, NAPI_ID}
+    public enum IoWorkerLoadBalancer {
+        /**
+         * Places a session on the worker with the fewest sessions. The default: cheap, and right when sessions cost
+         * roughly the same.
+         */
+        MIN_REGISTERED_SESSIONS,
+        /**
+         * Places a session on the least busy worker, by measured IO time. For skewed workloads; measuring costs a
+         * clock read per IO operation.
+         */
+        MIN_IO_THREAD_LOAD,
+        /**
+         * Groups the sessions fed by the same NIC receive queue on one worker. Linux only, JDK 15 or later, and
+         * useful only with the workers pinned to the queues' CPUs.
+         */
+        NAPI_ID
+    }
 
+    /**
+     * A set of IO threads sharing one select strategy. Several let one group mix, say, a busy-spinning thread for the
+     * sessions that matter with sleeping ones for the rest.
+     */
     @Data
     public static class IoThreadGroupProps {
 
@@ -88,10 +108,29 @@ public class IoWorkersGroupProps {
          */
         private SelectStrategy selectStrategy = SelectStrategy.WAKEUP;
         /**
-         * Wakeup count when {@code selectStrategy=WAKEUP}.
+         * With {@code WAKEUP}, the longest an idle thread blocks on the selector, in milliseconds. It bounds how late
+         * a missed wakeup is noticed, not the latency of ordinary traffic.
          */
-        private int wakeupCount = 10;
+        private int selectTimeoutMillis = 10;
 
-        public enum SelectStrategy {WAKEUP, BUSY_SPIN, YIELDING, BACKOFF}
+        public enum SelectStrategy {
+            /**
+             * Blocks on the selector and gives the core back while idle. The default, and the right choice unless a
+             * core can be spent on one IO thread.
+             */
+            WAKEUP,
+            /**
+             * Polls the selector and spins in between: the lowest latency, and a whole core burnt.
+             */
+            BUSY_SPIN,
+            /**
+             * Polls the selector and yields in between. Still burns CPU on an idle machine.
+             */
+            YIELDING,
+            /**
+             * Polls the selector, then spins, yields and parks for longer and longer while nothing happens.
+             */
+            BACKOFF
+        }
     }
 }

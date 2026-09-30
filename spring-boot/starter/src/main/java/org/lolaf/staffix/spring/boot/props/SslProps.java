@@ -19,7 +19,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
- * TLS configuration as properties - keystore, truststore, protocols and ciphers.
+ * TLS configuration as properties: keystore, truststore and protocol.
  */
 @Data
 public class SslProps {
@@ -61,6 +61,9 @@ public class SslProps {
      */
     private String protocol = "TLSv1.3";
 
+    /**
+     * TLS for an acceptor, which can also ask the connecting side for a certificate.
+     */
     @Data
     @EqualsAndHashCode(callSuper = true)
     public static class ServerSslProps extends SslProps {

@@ -72,7 +72,7 @@ public class IoWorkersGroupPropsMapper {
             builder.ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder()
                     .name(tg.getName())
                     .ioThreadCount(tg.getIoThreadCount())
-                    .selectStrategy(toSelectStrategy(tg.getSelectStrategy(), tg.getWakeupCount()))
+                    .selectStrategy(toSelectStrategy(tg.getSelectStrategy(), tg.getSelectTimeoutMillis()))
                     .build());
         }
         return builder.build().newInstance();
@@ -95,15 +95,15 @@ public class IoWorkersGroupPropsMapper {
         };
     }
 
-    private static SelectStrategy toSelectStrategy(IoWorkersGroupProps.IoThreadGroupProps.SelectStrategy s, int wakeupCount) {
+    private static SelectStrategy toSelectStrategy(IoWorkersGroupProps.IoThreadGroupProps.SelectStrategy s, int selectTimeoutMillis) {
         if (s == null) {
-            return new WakeupSelectStrategy(wakeupCount);
+            return new WakeupSelectStrategy(selectTimeoutMillis);
         }
         return switch (s) {
             case BUSY_SPIN -> new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance());
             case YIELDING -> new IdleStrategySelectStrategy(YieldingIdleStrategy.getInstance());
             case BACKOFF -> new IdleStrategySelectStrategy(new BackoffIdleStrategy());
-            default -> new WakeupSelectStrategy(wakeupCount);
+            default -> new WakeupSelectStrategy(selectTimeoutMillis);
         };
     }
 }

@@ -18,8 +18,8 @@ package org.lolaf.staffix.spring.boot.props;
 import lombok.Data;
 
 /**
- * Engine-level configuration: which stores, loggers, plugins and application factories exist, and the instance
- * ids a session names them by.
+ * Engine-level settings, shared by every initiator and acceptor. Stores, loggers and plugins are configured by their
+ * own modules, under their own prefixes.
  */
 @Data
 public class EngineProps {

@@ -18,7 +18,8 @@ package org.lolaf.staffix.spring.boot.props;
 import lombok.Data;
 
 /**
- * Socket-level settings for a connection - buffer sizes, TCP options - as properties.
+ * Socket-level settings for a connection: read buffer, write queue and watermarks. Left unset, a property keeps the
+ * engine's default.
  */
 @Data
 public class IoSettingsProps {
