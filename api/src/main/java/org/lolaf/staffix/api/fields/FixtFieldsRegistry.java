@@ -29,8 +29,14 @@ import java.util.stream.Collectors;
  */
 public interface FixtFieldsRegistry extends FieldsRegistry {
 
+    /**
+     * The FIXT version these fields belong to.
+     */
     FixtVersion getFixtVersion();
 
+    /**
+     * Looks up a FIXT fields registry through {@link java.util.ServiceLoader}, loaded once.
+     */
     @Slf4j
     class Registry {
 
@@ -40,6 +46,11 @@ public interface FixtFieldsRegistry extends FieldsRegistry {
 
         }
 
+        /**
+         * The fields registry for this FIXT version.
+         *
+         * @throws IllegalArgumentException if no FIX package on the classpath provides it
+         */
         public static FixtFieldsRegistry getInstance(FixtVersion fixtVersion) {
             return SPI_INSTANCES.stream().filter(r -> r.getFixtVersion().equals(fixtVersion)).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("Unable to find any FieldsRegistry FIXT SPI instance for " + fixtVersion));

@@ -24,6 +24,9 @@ package org.lolaf.staffix.api;
  */
 public interface InstanceIdSupplier {
 
+    /**
+     * The id a session's settings name this instance by.
+     */
     String getInstanceId();
 
 }

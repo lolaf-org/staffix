@@ -34,22 +34,50 @@ import java.util.stream.Collectors;
  */
 public interface MessageFieldsRegistry {
 
+    /**
+     * The dictionary these definitions belong to.
+     */
     FixDictionaryId getTargetDictionary();
 
+    /**
+     * The message types this registry defines fields for.
+     */
     Collection<MessageType> getManagedMessageTypes();
 
+    /**
+     * The field definitions of one message type.
+     */
     FixMessageFields getFixMessageFields(MessageType messageType);
 
+    /**
+     * The fields one message type admits, with its repeating groups and the fields each requires.
+     */
     interface FixMessageFields {
 
+        /**
+         * The NumInGroup fields of the message's repeating groups.
+         */
         Collection<FixField> getGroupFields();
 
+        /**
+         * Every field the message defines, in a collection fast to test membership against.
+         */
         Collection<FixField> getFields();
 
+        /**
+         * Every field the message defines, in dictionary order.
+         */
         Collection<FixField> getOrderedFields();
 
+        /**
+         * The required fields of the message that are not among {@code receivedFields}; empty when none is missing.
+         */
         Collection<FixField> getMissingRequiredFields(Collection<FixField> receivedFields);
 
+        /**
+         * The fields of a repeating group, in dictionary order, or null if {@code groupField} is not a group of this
+         * message.
+         */
         Collection<FixField> getGroupOrderedFields(FixField groupField);
 
         /**
@@ -60,17 +88,32 @@ public interface MessageFieldsRegistry {
          */
         int getGroupFieldOrder(FixField groupField, FixField field);
 
+        /**
+         * The fields of a repeating group, in a collection fast to test membership against, or null if
+         * {@code groupField} is not a group of this message.
+         */
         Collection<FixField> getGroupFields(FixField groupField);
 
+        /**
+         * The required fields of one group entry that are not among {@code receivedFields}; empty when none is missing.
+         */
         Collection<FixField> getGroupMissingRequiredFields(FixField groupField, Collection<FixField> receivedFields);
     }
 
+    /**
+     * Looks up a message fields registry through {@link java.util.ServiceLoader}, loaded once.
+     */
     @Slf4j
     @UtilityClass
     class Registry {
 
         private static final Collection<MessageFieldsRegistry> SPI_INSTANCES = loadInstances();
 
+        /**
+         * The message fields registry for this dictionary.
+         *
+         * @throws IllegalArgumentException if no FIX package on the classpath provides it
+         */
         public static MessageFieldsRegistry getInstance(FixDictionaryId fixDictionaryId) {
             new ArrayList<>();
             return SPI_INSTANCES.stream().filter(r -> r.getTargetDictionary().equals(fixDictionaryId)).findFirst()

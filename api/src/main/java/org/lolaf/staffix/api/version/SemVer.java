@@ -31,6 +31,9 @@ import java.util.regex.Pattern;
 @Builder
 public class SemVer {
 
+    /**
+     * 1.0.0, the version given when there is no other.
+     */
     public static final SemVer SEM_VER_V1 = new SemVer(1, 0, 0, null);
 
     private static final Pattern SEMVER_PATTERN = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)(?:[+\\-]([\\w.]+))?$");
@@ -44,6 +47,11 @@ public class SemVer {
         return SemVer.builder().major(major).minor(minor).patch(patch).build();
     }
 
+    /**
+     * Parses major.minor.patch, optionally followed by {@code -} or {@code +} and metadata.
+     *
+     * @throws IllegalArgumentException if the string is not in that form
+     */
     public static SemVer from(String version) {
         Matcher matcher = SEMVER_PATTERN.matcher(version.trim());
         if (!matcher.matches()) {

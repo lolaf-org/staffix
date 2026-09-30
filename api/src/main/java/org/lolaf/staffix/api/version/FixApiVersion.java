@@ -37,6 +37,9 @@ public class FixApiVersion {
     SemVer version;
     String vendor;
 
+    /**
+     * Versions the application by the FIX version it speaks: 4.4.0 for FIX.4.4.
+     */
     public static FixApiVersion of(String name, FixVersion fixVersion, String apiVendor) {
         return FixApiVersion.builder()
                 .name(name)
@@ -55,6 +58,9 @@ public class FixApiVersion {
         return of(name, version, null);
     }
 
+    /**
+     * As {@link #of(String, FixVersion, String)}, named "default-fix-api" and with no vendor.
+     */
     public static FixApiVersion of(FixVersion fixVersion) {
         return of("default-fix-api", fixVersion, null);
     }

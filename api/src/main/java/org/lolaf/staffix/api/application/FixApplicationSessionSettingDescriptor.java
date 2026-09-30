@@ -38,10 +38,16 @@ public class FixApplicationSessionSettingDescriptor {
     private final String id;
     private String description;
 
+    /**
+     * The descriptor registered under this id, registering one without a description on first use.
+     */
     public static FixApplicationSessionSettingDescriptor of(String id) {
         return SETTINGS.computeIfAbsent(id, i -> new FixApplicationSessionSettingDescriptor(id, null));
     }
 
+    /**
+     * As {@link #of(String)}, setting the description if the descriptor has none yet.
+     */
     public static FixApplicationSessionSettingDescriptor of(String id, String description) {
         FixApplicationSessionSettingDescriptor setting = of(id);
         if (setting.description == null) {

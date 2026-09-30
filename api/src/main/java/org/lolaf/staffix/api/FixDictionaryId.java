@@ -29,11 +29,17 @@ import org.lolaf.staffix.api.version.FixVersion;
 @Value
 public class FixDictionaryId {
 
+    /**
+     * The name of the dictionary each generated FIX package registers for its version.
+     */
     public static final String DEFAULT_ID = "default";
 
     String id;
     FixVersion targetFixVersion;
 
+    /**
+     * The dictionary called {@code id} for this version.
+     */
     public static FixDictionaryId of(String id, FixRegularVersion version) {
         return new FixDictionaryId(id + "-" + version, version);
     }

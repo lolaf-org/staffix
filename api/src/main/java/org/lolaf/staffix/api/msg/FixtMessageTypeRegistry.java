@@ -32,14 +32,25 @@ import java.util.stream.Collectors;
  */
 public interface FixtMessageTypeRegistry extends MessageTypeRegistry {
 
+    /**
+     * The FIXT version these definitions belong to.
+     */
     FixtVersion getFixtVersion();
 
+    /**
+     * Looks up a FIXT message type registry through {@link java.util.ServiceLoader}, loaded once.
+     */
     @Slf4j
     @UtilityClass
     class Registry {
 
         private static final Collection<FixtMessageTypeRegistry> SPI_INSTANCES = loadInstances();
 
+        /**
+         * The message type registry for this FIXT version.
+         *
+         * @throws IllegalArgumentException if no FIX package on the classpath provides it
+         */
         public static FixtMessageTypeRegistry getInstance(FixtVersion fixtVersion) {
             return SPI_INSTANCES.stream().filter(r -> r.getFixtVersion().equals(fixtVersion)).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("Unable to find any MessageTypeRegistry FIXT SPI instance for " + fixtVersion));

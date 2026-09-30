@@ -69,6 +69,9 @@ public interface FixField extends IntSupplier {
         return isUserDefined(getCode());
     }
 
+    /**
+     * The field's tag number.
+     */
     int getCode();
 
     /**
@@ -81,41 +84,82 @@ public interface FixField extends IntSupplier {
      */
     int checksum();
 
+    /**
+     * The field's data type in the dictionary, which decides how its value is encoded.
+     */
     FieldType getType();
 
+    /**
+     * Where in a message the field may appear.
+     */
     FieldLocation getLocation();
 
+    /**
+     * Whether the dictionary restricts the field to a list of values, which {@link #getValues()} returns.
+     */
     default boolean hasValues() {
         return false;
     }
 
+    /**
+     * The generated enum constants of the field's allowed values, or null when {@link #hasValues()} is false.
+     */
     default Enum<? extends ValuesEnum>[] getValues() {
         return null;
     }
 
-
+    /**
+     * An allowed value of a field, as generated from the dictionary.
+     */
     interface ValuesEnum {
 
+        /**
+         * The value's name in the dictionary.
+         */
         String description();
     }
 
+    /**
+     * An allowed value of an int field.
+     */
     interface IntValuesEnum extends ValuesEnum {
 
+        /**
+         * The value as sent on the wire.
+         */
         int code();
 
+        /**
+         * The value's wire bytes, precomputed so encoding does not convert it.
+         */
         byte[] serialized();
 
     }
 
+    /**
+     * An allowed value of a string field.
+     */
     interface StringValuesEnum extends ValuesEnum {
 
+        /**
+         * The value as sent on the wire.
+         */
         String code();
 
+        /**
+         * The value's wire bytes, precomputed so encoding does not convert it.
+         */
         byte[] serialized();
     }
 
+    /**
+     * An allowed value of a char field.
+     */
     interface CharValuesEnum extends ValuesEnum {
 
+        /**
+         * The value as sent on the wire.
+         */
         char code();
 
     }

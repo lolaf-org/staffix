@@ -27,8 +27,16 @@ import java.util.function.Consumer;
  */
 public interface InstanceProvider<T> extends InstanceIdSupplier {
 
+    /**
+     * The instance id a component gets when its configuration names none.
+     */
     String DEFAULT_INSTANCE_ID = "default";
 
+    /**
+     * Builds the component the settings describe, through the first factory of the SPI whose settings class matches.
+     *
+     * @throws IllegalStateException if no implementation on the classpath serves these settings
+     */
     static <I, F extends Factory<I, S>, S> I getSpiInstance(S settings, Class<F> spiClass) {
         for (F instance : ServiceLoader.load(spiClass)) {
             if (instance.getSettingsClass().equals(settings.getClass())) {
@@ -38,11 +46,17 @@ public interface InstanceProvider<T> extends InstanceIdSupplier {
         throw new IllegalStateException("Unable to find any SPI instance for target settings class " + settings.getClass());
     }
 
+    /**
+     * A consumer that does nothing, the default for an optional callback.
+     */
     static <C> Consumer<C> emptyConsumer() {
         return t -> {
             // nothing to do
         };
     }
 
+    /**
+     * Builds the component these settings describe.
+     */
     T instance();
 }

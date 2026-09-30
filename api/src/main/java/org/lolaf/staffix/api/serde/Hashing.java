@@ -37,10 +37,16 @@ public class Hashing {
         return hash(toHashBytes, 0, toHashBytes.length);
     }
 
+    /**
+     * The hash of the value a deserialization context points at.
+     */
     public static int hash(SerDe.DeserializationContext deserializationContext) {
         return hash(deserializationContext.getDeserializationBuffer(), deserializationContext.getStartOffset(), deserializationContext.getLength());
     }
 
+    /**
+     * The hash of a byte range, equal to {@link #hash(String)} of the same characters.
+     */
     public static int hash(byte[] toHash, int offset, int len) {
         int hash = 0;
         int multiplier = 1;
@@ -52,6 +58,9 @@ public class Hashing {
         return avalanche(hash);
     }
 
+    /**
+     * As {@link #hash(byte[], int, int)}, over a buffer range read by absolute index.
+     */
     public static int hash(ByteBuffer toHash, int offset, int len) {
         int hash = 0;
         int multiplier = 1;

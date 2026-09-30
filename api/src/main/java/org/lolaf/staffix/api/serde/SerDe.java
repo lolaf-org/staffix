@@ -63,6 +63,9 @@ public interface SerDe<T> {
      */
     T deserialize(DeserializationContext serdeContext);
 
+    /**
+     * A window onto the bytes of one field value, reused from field to field so reading allocates nothing.
+     */
     interface DeserializationContext {
 
         /**
@@ -80,12 +83,24 @@ public interface SerDe<T> {
          */
         int getLength();
 
+        /**
+         * Points the context at a value inside a larger buffer and returns it.
+         */
         DeserializationContext setup(byte[] serdeBuffer, int startOffset, int length);
 
+        /**
+         * Points the context at the whole buffer and returns it.
+         */
         DeserializationContext setup(byte[] serdeBuffer);
 
+        /**
+         * Drops the buffer reference, so the context does not keep a message alive.
+         */
         void clean();
 
+        /**
+         * The value as a String, which allocates; for logs and error messages.
+         */
         String contentToString();
     }
 

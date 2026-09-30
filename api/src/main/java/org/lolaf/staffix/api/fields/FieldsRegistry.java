@@ -27,11 +27,14 @@ import java.util.stream.Collectors;
  * Every field a dictionary defines, by tag.
  *
  * <p>{@link #addUserDefinedField} exists because a counterparty's custom tags are not in any dictionary and
- * would otherwise be unparseable; registering one at startup is how an application says what a tag above 5000
+ * would otherwise be unparseable; registering one at startup is how an application says what a user defined tag
  * means. Instances come from the generated FIX packages through {@link java.util.ServiceLoader}.
  */
 public interface FieldsRegistry {
 
+    /**
+     * The dictionary these fields belong to.
+     */
     FixDictionaryId getTargetDictionary();
 
     /**
@@ -42,6 +45,9 @@ public interface FieldsRegistry {
      */
     FixField find(int code);
 
+    /**
+     * Every field of the dictionary, user defined ones added at runtime included.
+     */
     Collection<FixField> getFields();
 
     /**
@@ -56,6 +62,9 @@ public interface FieldsRegistry {
      */
     FixField addUserDefinedField(int code, FieldType fieldType, FieldLocation location);
 
+    /**
+     * Looks up a fields registry through {@link java.util.ServiceLoader}, loaded once.
+     */
     @Slf4j
     class Registry {
 
@@ -65,6 +74,11 @@ public interface FieldsRegistry {
 
         }
 
+        /**
+         * The fields registry for this dictionary.
+         *
+         * @throws IllegalArgumentException if no FIX package on the classpath provides it
+         */
         public static FieldsRegistry getInstance(FixDictionaryId fixDictionaryId) {
             return SPI_INSTANCES.stream().filter(r -> r.getTargetDictionary().equals(fixDictionaryId)).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("Unable to find any FieldsRegistry SPI instance for dictionary " + fixDictionaryId));

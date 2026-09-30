@@ -43,10 +43,16 @@ public enum FixtVersion implements FixVersion {
         this.beginString = toString.getBytes(SerDe.CHARSET);
     }
 
+    /**
+     * The version a BeginString(8) such as FIXT.1.1 names, or empty for any other string.
+     */
     public static Optional<FixtVersion> fromString(String fixtVersion) {
         return "FIXT.1.1".equals(fixtVersion) ? Optional.of(FIXT_11) : Optional.empty();
     }
 
+    /**
+     * @throws IllegalArgumentException for a version other than 1.1
+     */
     public static FixtVersion fromVersion(int major, int minor) {
         if (major == 1 && minor == 1) {
             return FIXT_11;

@@ -23,6 +23,9 @@ package org.lolaf.staffix.api.version;
  */
 public interface ApplVerID {
 
+    /**
+     * The ApplVerID(1128) value as sent on the wire, such as 9 for FIX.5.0SP2.
+     */
     String getCode();
 
 }

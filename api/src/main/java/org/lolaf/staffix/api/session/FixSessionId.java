@@ -44,6 +44,9 @@ import java.util.function.IntSupplier;
  */
 public class FixSessionId implements IntSupplier {
 
+    /**
+     * The group a session belongs to when none is given.
+     */
     public static final String DEFAULT_GROUP = "default";
 
     private static final Map<String, FixSessionId> SESSIONS_IDS = new HashMap<>();
@@ -114,6 +117,11 @@ public class FixSessionId implements IntSupplier {
         this.toString = createToString();
     }
 
+    /**
+     * A session id with only the CompIDs set, for a pre FIX.5.0 version.
+     *
+     * @param id names the session in logs, metrics and file names
+     */
     public static FixSessionId of(String id, FixVersion fixVersion, String senderCompID, String targetCompID) {
         return getFromCache(new FixSessionId(fixVersion, null, FixSessionIdBuilder.builder()
                 .id(id)
@@ -122,14 +130,27 @@ public class FixSessionId implements IntSupplier {
                 .build()));
     }
 
+    /**
+     * A session id with sub and location IDs, for a pre FIX.5.0 version.
+     *
+     * @throws IllegalArgumentException if the version is FIXT, which needs a default ApplVerID
+     */
     public static FixSessionId of(FixVersion fixVersion, FixSessionIdBuilder fixSessionIdBuilder) {
         return getFromCache(new FixSessionId(fixVersion, null, fixSessionIdBuilder));
     }
 
+    /**
+     * The general form. {@code defaultApplVerID} is required for FIXT and refused otherwise.
+     *
+     * @throws IllegalArgumentException if the ApplVerID does not suit the version
+     */
     public static FixSessionId of(FixVersion fixVersion, ApplVerID defaultApplVerID, FixSessionIdBuilder fixSessionIdBuilder) {
         return getFromCache(new FixSessionId(fixVersion, defaultApplVerID, fixSessionIdBuilder));
     }
 
+    /**
+     * A FIXT.1.1 session id with only the CompIDs set, {@code fixVersion} being its default ApplVerID.
+     */
     public static FixSessionId ofFIXT11(String id, FixApplVerID fixVersion, String senderCompID, String targetCompID) {
         return getFromCache(new FixSessionId(FixtVersion.FIXT_11, fixVersion, FixSessionIdBuilder.builder()
                 .id(id)
@@ -138,6 +159,9 @@ public class FixSessionId implements IntSupplier {
                 .build()));
     }
 
+    /**
+     * A FIXT.1.1 session id with sub and location IDs, {@code fixVersion} being its default ApplVerID.
+     */
     public static FixSessionId ofFIXT11(FixApplVerID fixVersion, FixSessionIdBuilder fixSessionIdBuilder) {
         return getFromCache(new FixSessionId(FixtVersion.FIXT_11, fixVersion, fixSessionIdBuilder));
     }
@@ -248,6 +272,9 @@ public class FixSessionId implements IntSupplier {
         return 0;
     }
 
+    /**
+     * Writes the CompIDs, and the sub and location IDs that are set, into a message's header.
+     */
     public void serialize(FixFieldsEncoder<?> encoder) {
         encoder.addBytes(senderCompID.getField(), senderCompID.getSerializedValue());
         if (senderSubID != null) {
@@ -288,6 +315,9 @@ public class FixSessionId implements IntSupplier {
         String targetLocationID;
     }
 
+    /**
+     * One identifying header field with its value, kept in wire form too so it is not re-encoded per message.
+     */
     @Getter
     public static class FieldAndValuePair {
         private final FixField field;

@@ -26,6 +26,9 @@ public interface DecodedFixMessage extends FixFieldMap {
 
     MessageType getMessageType();
 
+    /**
+     * A copy safe to keep past the callback.
+     */
     DecodedFixMessage copy();
 
 }

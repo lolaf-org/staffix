@@ -45,6 +45,9 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
      */
     Logger getLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
 
+    /**
+     * What a log entry records: a message in, a message out, or a session event.
+     */
     @Getter
     enum LogEventType {
         INCOMING_MSG(true, (byte) 0),
@@ -60,6 +63,9 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
             this.code = code;
         }
 
+        /**
+         * @throws IllegalStateException for a byte that is not one of the codes
+         */
         public static LogEventType from(byte code) {
             // keep it like that, using Enum.values[] creates an array instance each call
             if (code == INCOMING_MSG.getCode()) {
@@ -83,8 +89,8 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
         /**
          * Logs multiple log events to enable batch processing and increase throughput,
          * note that only {@link LogEventType#INCOMING_MSG} and {@link LogEventType#OUTGOING_MSG} will be provided in the logEvents list.
-         * Other {@link LogEventType#INCOMING_MSG} and {@link LogEventType#INCOMING_MSG} will be called normally using {@link EventsLogger#logEvent(UTCTime, String, Object...)}
-         * and {@link EventsLogger#logEvent(UTCTime, String)} methods calls
+         * {@link LogEventType#EVENT} and {@link LogEventType#EVENT_WITH_PARAMS} still come through
+         * {@link EventsLogger#logEvent(UTCTime, String, Object...)} and {@link EventsLogger#logEvent(UTCTime, String)}.
          *
          * @param logEvents the collection of log events as an array for optimal memory allocation, and the eventsCount to process as the array will contain null references
          *                  starting from eventsCount+1
@@ -93,16 +99,31 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
          */
         void logEvents(LogEvent[] logEvents, int eventsCount) throws LoggingException;
 
+        /**
+         * One logged message of a batch. Reused once the call returns; see {@link #asImmutable()}.
+         */
         interface LogEvent {
 
+            /**
+             * When the message was received or sent.
+             */
             UTCTime getLogTime();
 
             MessageType getMessageType();
 
+            /**
+             * The raw message.
+             */
             ByteBuffer getMessage();
 
+            /**
+             * Whether the message was received or sent.
+             */
             LogEventType getLogEventType();
 
+            /**
+             * A copy safe to keep or hand to another thread.
+             */
             LogEvent asImmutable();
         }
     }
@@ -171,6 +192,9 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
 
     }
 
+    /**
+     * The session events half of a logger.
+     */
     interface EventsLogger {
         /**
          * Logs an event happening on the session, call to this method is always done in the FIX session IO thread thus not requiring to have a tread safe implementation
@@ -199,6 +223,9 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
         boolean isLoggingEvents();
     }
 
+    /**
+     * A failure to write to the log. The session logs it and carries on.
+     */
     class LoggingException extends Exception {
 
     }

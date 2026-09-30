@@ -33,6 +33,9 @@ import java.util.stream.Collectors;
  */
 public interface MessageTypeRegistry {
 
+    /**
+     * The dictionary these message types belong to.
+     */
     FixDictionaryId getTargetDictionary();
 
     /**
@@ -48,14 +51,25 @@ public interface MessageTypeRegistry {
      */
     MessageType find(int messageTypeHash);
 
+    /**
+     * Every message type of the dictionary.
+     */
     Collection<MessageType> getMessageTypes();
 
+    /**
+     * Looks up a message type registry through {@link java.util.ServiceLoader}, loaded once.
+     */
     @Slf4j
     @UtilityClass
     class Registry {
 
         private static final Collection<MessageTypeRegistry> SPI_INSTANCES = loadInstances();
 
+        /**
+         * The message type registry for this dictionary.
+         *
+         * @throws IllegalArgumentException if no FIX package on the classpath provides it
+         */
         public static MessageTypeRegistry getInstance(FixDictionaryId fixDictionaryId) {
             return SPI_INSTANCES.stream().filter(r -> r.getTargetDictionary().equals(fixDictionaryId)).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("Unable to find any MessageTypeRegistry SPI instance for dictionary " + fixDictionaryId));

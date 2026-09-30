@@ -22,10 +22,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 
 /**
- * Resolves the session-schedule times a configuration gives in a named zone.
- *
- * <p>A session's start and end are local times in a venue's zone, so the instant they mean moves with that
- * zone's daylight saving - the arithmetic cannot be done once at startup.
+ * The UTC offset of the clock's zone, cached for an hour so the lookup costs nothing on a hot path.
  */
 @UtilityClass
 public class TimeZoneUtils {
@@ -35,6 +32,9 @@ public class TimeZoneUtils {
     private static volatile long lastUpdate;
     private static Clock clock = Clock.systemUTC();
 
+    /**
+     * The offset at the given time, refreshed at most once per hour of that time.
+     */
     public static ZoneOffset getZoneOffset(long nowInMillis) {
         // Refresh every hour
         long nowInMillisStripedToHours = getNowInMillisStripedToHours(nowInMillis);
@@ -45,6 +45,9 @@ public class TimeZoneUtils {
         return cachedZoneOffset;
     }
 
+    /**
+     * As {@link #getZoneOffset(long)}, in seconds.
+     */
     public static int getOffsetSeconds(long nowInMillis) {
         return getZoneOffset(nowInMillis).getTotalSeconds();
     }

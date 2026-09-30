@@ -24,11 +24,23 @@ package org.lolaf.staffix.api.version;
  */
 public interface FixVersion {
 
+    /**
+     * The minor number, 4 for FIX.4.4.
+     */
     int getMinor();
 
+    /**
+     * The major number, 4 for FIX.4.4.
+     */
     int getMajor();
 
+    /**
+     * The BeginString(8) value as written on the wire, such as FIX.4.4 or FIXT.1.1.
+     */
     byte[] getBeginString();
 
+    /**
+     * The version's enum name, such as VERSION_44 or FIXT_11, used in session ids and logs.
+     */
     String getId();
 }

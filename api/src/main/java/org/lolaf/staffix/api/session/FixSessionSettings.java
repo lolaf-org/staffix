@@ -560,6 +560,9 @@ public class FixSessionSettings {
         private Duration sendingTimeToWireDelay = Duration.ofNanos(1500L);
     }
 
+    /**
+     * When a session is expected to be up: trading windows or non-stop days, in the venue's time zone.
+     */
     @Getter
     @Builder(toBuilder = true)
     @EqualsAndHashCode
@@ -615,16 +618,32 @@ public class FixSessionSettings {
         @Singular
         private List<NonStopScheduleEntry> nonStopSchedules;
 
+        /**
+         * One trading window, from a day and time to a later day and time in the schedule's zone. It may span midnight,
+         * or the weekend.
+         */
         @Value
         @Builder
         public static class ScheduleEntry {
 
+            /**
+             * The day the window opens on.
+             */
             @NonNull
             DayOfWeek startDay;
+            /**
+             * The day it closes on.
+             */
             @NonNull
             DayOfWeek endDay;
+            /**
+             * The open.
+             */
             @NonNull
             LocalTime startTime;
+            /**
+             * The close.
+             */
             @NonNull
             LocalTime endTime;
 

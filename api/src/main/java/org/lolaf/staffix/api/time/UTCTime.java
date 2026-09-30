@@ -36,39 +36,63 @@ public interface UTCTime extends Comparable<UTCTime> {
     int NANOS_IN_A_MILLIS = 1000_000;
     long NANOS_IN_A_SEC = 1_000_000_000L;
 
+    /**
+     * An immutable time, safe to keep.
+     */
     static UTCTime of(Instant instant) {
         return new ImmutableTimeImpl(instant.getEpochSecond(), instant.getNano());
     }
 
+    /**
+     * An immutable time from nanoseconds since the epoch.
+     */
     static UTCTime of(long epochNanoTime) {
         long epochSeconds = epochNanoTime / NANOS_IN_A_SEC;
         int nanos = (int) (epochNanoTime - epochSeconds * NANOS_IN_A_SEC);
         return new ImmutableTimeImpl(epochSeconds, nanos);
     }
 
+    /**
+     * Whole days since the epoch, the date part of the time.
+     */
     default int getEpochDays() {
         return (int) getEpochSeconds() / SECONDS_PER_DAY;
     }
 
+    /**
+     * Whole seconds since the epoch.
+     */
     long getEpochSeconds();
 
+    /**
+     * The fraction of the second, in nanoseconds.
+     */
     int getNanosOfSecond();
 
+    /**
+     * The same time as an {@link Instant}, which allocates; keep it off the message path.
+     */
     default Instant asInstant() {
         return Instant.ofEpochSecond(getEpochSeconds(), getNanosOfSecond());
     }
 
+    /**
+     * Nanoseconds since midnight UTC, the time part of the time.
+     */
     default long toNanoOfDay() {
         long secondsOfDay = getEpochSeconds() % SECONDS_PER_DAY;
         return secondsOfDay * NANOS_IN_A_SEC + getNanosOfSecond();
     }
 
     /**
-     * Indicates is the object is immutable or not. If not immutable, the object cannot be assigned to any vars outside
-     * of its current API call or passed to any other threads as the time provider implementation that returned you this object instance may be reusing it
+     * Whether this instance is immutable. A mutable one may be reused by whoever handed it over, so it must not be
+     * kept past the current call nor passed to another thread.
      */
     boolean isImmutable();
 
+    /**
+     * An immutable copy, or this instance if it already is one.
+     */
     UTCTime asImmutable();
 
     default long toEpochMillis() {
@@ -89,6 +113,9 @@ public interface UTCTime extends Comparable<UTCTime> {
         return timeCompare;
     }
 
+    /**
+     * The mutable time, reused through {@code from} so the message path allocates nothing.
+     */
     @ToString
     @Getter
     @EqualsAndHashCode
@@ -97,12 +124,18 @@ public interface UTCTime extends Comparable<UTCTime> {
         private long epochSeconds;
         private int nanosOfSecond;
 
+        /**
+         * Sets this instance to the given time and returns it.
+         */
         public UTCTime from(long epochSeconds, int nanosOfSecond) {
             this.epochSeconds = epochSeconds;
             this.nanosOfSecond = nanosOfSecond;
             return this;
         }
 
+        /**
+         * Sets this instance to the given time and returns it.
+         */
         public UTCTime from(Instant now) {
             return from(now.getEpochSecond(), now.getNano());
         }
@@ -119,6 +152,9 @@ public interface UTCTime extends Comparable<UTCTime> {
 
     }
 
+    /**
+     * The immutable time, safe to keep and share.
+     */
     @Value
     class ImmutableTimeImpl implements UTCTime {
 

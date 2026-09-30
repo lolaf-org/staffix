@@ -56,8 +56,14 @@ public interface FixMessageEncoder<T extends FixMessageEncoder<?>> extends FixFi
      */
     T copy(FixMessageEncoder<?> other);
 
+    /**
+     * The body fields written so far, before any header or trailer.
+     */
     ByteBuffer getEncodedBody();
 
+    /**
+     * The running byte sum of {@link #getEncodedBody()}, from which the CheckSum(10) is finished.
+     */
     int getEncodedBodyChecksum();
 
     /**
@@ -76,6 +82,9 @@ public interface FixMessageEncoder<T extends FixMessageEncoder<?>> extends FixFi
     ByteBuffer encode(IntFunction<ByteBuffer> allocator, long sequenceNumber, FixSessionId fixSessionId,
                       FixApplication fixApplication, TimeUnit sendingTimeAccuracy, UTCTime sendingTime, FixSession fixSession);
 
+    /**
+     * An upper estimate of the encoded message's size on this session, used to size the buffer it is encoded into.
+     */
     int getApproximateEncodedMessageLength(FixSessionId fixSessionId);
 
     /**
