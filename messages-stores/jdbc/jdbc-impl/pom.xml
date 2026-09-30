@@ -4,7 +4,7 @@
     <parent>
         <groupId>org.lolaf.staffix</groupId>
         <artifactId>staffix-messages-store-jdbc-parent</artifactId>
-        <version>0.9.0</version>
+        <version>0.9.1-SNAPSHOT</version>
     </parent>
     <artifactId>staffix-messages-store-jdbc-impl</artifactId>
 

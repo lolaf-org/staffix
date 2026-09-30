@@ -4,7 +4,7 @@
     <parent>
         <groupId>org.lolaf.staffix</groupId>
         <artifactId>staffix-http-client-parent</artifactId>
-        <version>0.9.0</version>
+        <version>0.9.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>staffix-http-client-grpc-test-kit</artifactId>

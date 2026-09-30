@@ -4,7 +4,7 @@
     <parent>
         <groupId>org.lolaf.staffix</groupId>
         <artifactId>staffix-spring-boot-parent</artifactId>
-        <version>0.9.0</version>
+        <version>0.9.1-SNAPSHOT</version>
         <relativePath>../../../spring-boot/pom.xml</relativePath>
     </parent>
     <artifactId>staffix-messages-store-async-spring-boot</artifactId>
