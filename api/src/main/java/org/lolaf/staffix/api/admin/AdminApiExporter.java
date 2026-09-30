@@ -28,10 +28,22 @@ import org.lolaf.staffix.api.Factory;
  */
 public interface AdminApiExporter {
 
+    /**
+     * Publishes the engine's admin API, called once the engine has started.
+     */
     void export(AdminApi adminApi);
 
+    /**
+     * Withdraws what {@link #export(AdminApi)} published, finishing by the deadline. Called first when the engine
+     * stops, so no admin operation reaches a session being torn down.
+     */
     void shutdown(Deadline deadline);
 
+    /**
+     * The service provider that builds an admin API exporter from its settings class; see {@link Factory}.
+     *
+     * @param <S> the settings class it serves
+     */
     interface AdminApiExporterFactory<S> extends Factory<AdminApiExporter, S> {
     }
 }

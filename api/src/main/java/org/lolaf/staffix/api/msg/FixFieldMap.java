@@ -33,20 +33,53 @@ import java.util.function.BiConsumer;
  */
 public interface FixFieldMap {
 
+    /**
+     * Removes every field and group, so the map can be reused.
+     */
     void clear();
 
+    /**
+     * Visits every field in the order it was added, with its raw value. A group is visited as on the wire: its
+     * NumInGroup field with the entry count, then each entry's fields.
+     */
     void foreach(BiConsumer<FixField, byte[]> consumer);
 
+    /**
+     * Sets a field's raw value, replacing any value the field already had.
+     */
     void add(FixField field, byte[] value);
 
+    /**
+     * Adds a repeating group, to be filled with {@link GroupFixFieldMap#addEntry()}.
+     *
+     * @param groupField   the group's NumInGroup field
+     * @param entriesCount how many entries are expected, which sizes the group up front
+     * @throws IllegalStateException if the map already holds that group
+     */
     GroupFixFieldMap addGroup(FixField groupField, int entriesCount);
 
+    /**
+     * The group, or null if the map does not hold it.
+     */
     GroupFixFieldMap getGroup(FixField groupField);
 
+    /**
+     * Removes a field or a group and returns what it held: the raw {@code byte[]} value, or the
+     * {@link GroupFixFieldMap}. Null if absent.
+     */
     <T> T remove(FixField field);
 
+    /**
+     * As {@link #getValue(FixField, SerDe, Object)}, looked up by tag number. It scans every field, so prefer the
+     * {@link FixField} overload on a hot path.
+     */
     <T> T getValue(int fieldCode, SerDe<T> deserializer, T defaultValue);
 
+    /**
+     * Reads the field with the given deserializer, for a type the typed getters do not cover.
+     *
+     * @return the value, or {@code defaultValue} if the field is absent
+     */
     <T> T getValue(FixField field, SerDe<T> deserializer, T defaultValue);
 
     UTCTime getUTCDateTime(FixField field, UTCTime defaultValue);
@@ -69,14 +102,29 @@ public interface FixFieldMap {
 
     boolean containsField(FixField field);
 
+    /**
+     * A repeating group: its NumInGroup field and its entries, each a {@link FixFieldMap} of its own.
+     */
     interface GroupFixFieldMap {
 
+        /**
+         * The NumInGroup field that counts the entries.
+         */
         FixField getGroupField();
 
+        /**
+         * Appends an empty entry and returns it for filling.
+         */
         FixFieldMap addEntry();
 
+        /**
+         * The entries, in the order they were added.
+         */
         Collection<FixFieldMap> getEntries();
 
+        /**
+         * The map holding this group, for walking back up out of a nested one.
+         */
         FixFieldMap getParent();
     }
 }

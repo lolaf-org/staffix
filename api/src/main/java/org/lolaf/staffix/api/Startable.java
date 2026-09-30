@@ -34,12 +34,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public interface Startable<T> {
 
+    /**
+     * Stops, finishing by the deadline, and returns this.
+     */
     T stop(Deadline stopDeadline) throws StartStopException;
 
+    /**
+     * Starts and returns this, so a component can be built and started in one expression.
+     */
     T start() throws StartStopException;
 
+    /**
+     * Whether {@link #start()} has succeeded and no {@link #stop(Deadline)} has followed.
+     */
     boolean isStarted();
 
+    /**
+     * A start or stop that failed. Unchecked, since a caller can rarely do more than report it.
+     */
     class StartStopException extends RuntimeException {
         public StartStopException(String message) {
             super(message);
@@ -54,6 +66,11 @@ public interface Startable<T> {
         }
     }
 
+    /**
+     * For a component with nothing to start or stop: it only records the flag.
+     *
+     * @param <T> the component type, returned by start and stop
+     */
     @Getter
     abstract class VoidStartable<T> implements Startable<T> {
 
@@ -72,6 +89,12 @@ public interface Startable<T> {
         }
     }
 
+    /**
+     * Runs {@link #startMe()} and {@link #stopMe(Deadline)} at most once each per start and stop, however many
+     * threads call them. A {@code startMe} that throws leaves the component stopped, so a start can be retried.
+     *
+     * @param <T> the component type, returned by start and stop
+     */
     @Getter
     abstract class SimpleStartable<T> implements Startable<T> {
 
@@ -90,6 +113,9 @@ public interface Startable<T> {
             return (T) this;
         }
 
+        /**
+         * The actual stop, called only on a started component.
+         */
         protected abstract void stopMe(Deadline stopDeadline) throws StartStopException;
 
         @Override
@@ -105,6 +131,9 @@ public interface Startable<T> {
             return (T) this;
         }
 
+        /**
+         * The actual start, called only on a stopped component.
+         */
         protected abstract void startMe() throws StartStopException;
     }
 

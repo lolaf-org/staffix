@@ -186,10 +186,17 @@ public class FixSessionId implements IntSupplier {
         return value != null;
     }
 
+    /**
+     * A file name for this session's files: its id followed by the extension, which includes its dot.
+     */
     public String forFileName(String extension) {
         return id + extension;
     }
 
+    /**
+     * The same session seen from the counterparty: sender and target swapped. Cached, so it costs nothing after the
+     * first call.
+     */
     public FixSessionId invert() {
         if (inverted == null) {
             inverted = getFromCache(new FixSessionId(fixVersion, id, group, defaultApplVerID, targetCompID, targetSubID, targetLocationID, senderCompID, senderSubID, senderLocationID));
@@ -197,6 +204,10 @@ public class FixSessionId implements IntSupplier {
         return inverted;
     }
 
+    /**
+     * Whether this id has these values. A null sub or location ID matches only an unset one, and the ApplVerID is
+     * compared only when this id has a default one.
+     */
     public boolean matches(FixVersion fixVersion, ApplVerID fixApplVerId, String senderCompID, String senderSubID, String senderLocationId, String targetCompID, String targetSubID, String targetLocationID) {
         if (this.defaultApplVerID != null && !defaultApplVerID.equals(fixApplVerId)) {
             return false;

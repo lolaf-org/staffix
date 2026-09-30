@@ -20,18 +20,33 @@ import org.lolaf.staffix.api.msg.MessageType;
 import java.nio.ByteBuffer;
 
 /**
- * Interface to obfuscate logs content
+ * Masks sensitive field values, such as a Logon's Password(554), before a message reaches the log.
  */
 public interface LogObfuscator {
 
     byte EQUALS_CHAR = '=';
     byte FIELD_SEPARATOR_CHAR = '\001';
+    /**
+     * What each masked character is replaced with.
+     */
     byte OBFUSCATED_CHAR = '*';
 
+    /**
+     * Whether messages of this type are passed to {@link #obfuscate(ByteBuffer)}, so other types cost nothing.
+     */
     boolean isForMessageType(MessageType messageType);
 
+    /**
+     * Masks the message and returns the buffer to log. It may overwrite values in place, keeping the message length.
+     *
+     * @param fixMessageToObfuscate the raw message, between its position and limit
+     */
     ByteBuffer obfuscate(ByteBuffer fixMessageToObfuscate);
 
+    /**
+     * Masks the value of the first field a subclass recognises, character for character, so the message keeps its
+     * length.
+     */
     abstract class AbstractLogObfuscator implements LogObfuscator {
 
         @Override
@@ -59,6 +74,9 @@ public interface LogObfuscator {
             return false;
         }
 
+        /**
+         * How many characters the field's tag number has, to skip it and the {@code =} to reach the value.
+         */
         protected abstract int getFieldNumberCharsLen();
 
         /**
@@ -66,7 +84,7 @@ public interface LogObfuscator {
          *
          * @param fixMessageToObfuscate the message to obfuscate
          * @param position              the current position in the buffer
-         * @return true oif the current position is the start position of the target FIX field
+         * @return true if the current position is the start position of the target FIX field
          */
         protected abstract boolean positionMatchesFieldStart(ByteBuffer fixMessageToObfuscate, int position);
     }

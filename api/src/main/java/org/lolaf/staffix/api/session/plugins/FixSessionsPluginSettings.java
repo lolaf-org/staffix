@@ -32,6 +32,11 @@ public interface FixSessionsPluginSettings<T extends FixSessionsPlugin<?>> exten
         return (T) InstanceProvider.getSpiInstance(this, FixSessionsPluginFactory.class);
     }
 
+    /**
+     * The service provider that builds a sessions plugin from its settings class; see {@link Factory}.
+     *
+     * @param <S> the settings class it serves
+     */
     interface FixSessionsPluginFactory<S> extends Factory<FixSessionsPlugin<?>, S> {
 
     }

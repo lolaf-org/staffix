@@ -32,6 +32,11 @@ public interface FixSessionsSettingsStoreSettings extends InstanceProvider<FixSe
     }
 
 
+    /**
+     * The service provider that builds a session settings store from its settings class; see {@link Factory}.
+     *
+     * @param <S> the settings class it serves
+     */
     interface FixSessionsStoreFactory<S> extends Factory<FixSessionsSettingsStore, S> {
 
     }

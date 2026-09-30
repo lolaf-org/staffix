@@ -40,15 +40,24 @@ import java.util.stream.Collectors;
  * worth not writing out by hand.
  *
  * <p>{@link #getSessions()} is every session configured on this acceptor, {@link #getConnectedSessions()} only
- * those currently logged on. A counterparty that has never connected still has a session; the distinction is
- * what most callers actually want.
+ * those with a connection whose Logon was matched to them. A counterparty that has never connected still has a
+ * session; the distinction is what most callers actually want.
  */
 public interface FixAcceptor extends Startable<FixAcceptor> {
 
+    /**
+     * Stops, giving sessions up to {@link FixAcceptorBuilder#getShutdownMaxDelay()} to log out.
+     */
     FixAcceptor stop();
 
+    /**
+     * The sessions with a connection up, logged on or still completing the Logon exchange.
+     */
     Set<FixSession> getConnectedSessions();
 
+    /**
+     * Every session configured on this acceptor, connected or not.
+     */
     Set<FixSession> getSessions();
 
     /**
@@ -62,12 +71,20 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
     void broadcast(FixMessageEncoder<?> encoder, UTCTime sendingTime, Predicate<FixSession> fixSessionPredicate, boolean connectedSessionsOnly);
 
     /**
-     * List of configured sessions
+     * The settings of every session configured on this acceptor.
      */
     Set<FixSessionSettings> getConfiguredSessionsSettings();
 
+    /**
+     * Told what happens to incoming connections, for auditing who connects. Every method logs by default. Runs on the
+     * IO thread, so it must not block.
+     */
     interface FixSessionEventsListener {
 
+        /**
+         * Called when a connection's first message has been matched to a configured session, before its Logon is
+         * processed.
+         */
         default void onFixSessionAccepted(FixSessionId fixSession) {
             LoggerFactory.getLogger(FixSessionEventsListener.class).info("Fix session {} accepted", fixSession);
         }
@@ -82,22 +99,35 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
             LoggerFactory.getLogger(FixSessionEventsListener.class).info("Fix session {} rejected: {}", fixSession, rejectionException.getMessage());
         }
 
+        /**
+         * Called when a connection fails its TLS handshake, so before any session can be named.
+         */
         default void onFailedSSLHandshake(InetSocketAddress remoteAddress, SSLHandshakeException exception) {
             LoggerFactory.getLogger(FixSessionEventsListener.class).info("Failed SSL handshake from remote ip {}:{}", remoteAddress, exception);
         }
     }
 
+    /**
+     * Why an incoming connection was refused. The subclasses name the reasons.
+     */
     class RejectedSessionException extends Exception {
 
         public RejectedSessionException(String s) {
             super(s);
         }
 
+        /**
+         * Whether the peer is told why with a Logout before the connection closes. False where answering would tell
+         * an unauthorised peer more than it should know.
+         */
         public boolean shouldSendLogout() {
             return true;
         }
     }
 
+    /**
+     * The Logon's BeginString(8) names a FIX version this acceptor has no dictionary for.
+     */
     class UnsupportedFixVersionException extends RejectedSessionException {
 
         public UnsupportedFixVersionException(String version) {
@@ -105,6 +135,9 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
         }
     }
 
+    /**
+     * The Logon's CompIDs match no session configured on this acceptor, or could not be read at all.
+     */
     class UnknownFixSessionException extends RejectedSessionException {
 
         public UnknownFixSessionException(String fixSessionId) {
@@ -116,6 +149,9 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
         }
     }
 
+    /**
+     * The connection comes from an address outside the session's allowed addresses. No Logout is sent.
+     */
     class RejectedIpException extends RejectedSessionException {
 
         public RejectedIpException(InetAddress provided, Collection<InetAddress> allowed) {
@@ -128,6 +164,9 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
         }
     }
 
+    /**
+     * The peer's TLS certificate is not one the session allows. No Logout is sent.
+     */
     class RejectedCertificateException extends RejectedSessionException {
 
         public RejectedCertificateException(Collection<Certificate> provided, Collection<Certificate> allowed) {
@@ -150,6 +189,9 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
         }
     }
 
+    /**
+     * The session already has a connection, and a second Logon for it is refused.
+     */
     class MultipleLogonException extends RejectedSessionException {
 
         public MultipleLogonException() {

@@ -28,7 +28,14 @@ package org.lolaf.staffix.api;
  */
 public interface Factory<T, S> {
 
+    /**
+     * The settings class this factory builds from. The lookup matches it exactly, so a subclass of it needs a factory
+     * of its own.
+     */
     Class<S> getSettingsClass();
 
+    /**
+     * Builds a new instance from the settings.
+     */
     T newInstance(S settings);
 }

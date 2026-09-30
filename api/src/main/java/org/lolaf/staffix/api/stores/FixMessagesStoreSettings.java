@@ -26,11 +26,15 @@ import java.util.function.BiPredicate;
  * Settings for a message store, implemented by each store module and resolved through the
  * {@link org.lolaf.staffix.api.Factory} SPI.
  *
- * <p>{@link #getMessageFilter()} decides what is worth keeping: a store only has to hold what could be asked
+ * <p>{@link #getMessageFilter()} decides what is not worth keeping: a store only has to hold what could be asked
  * for again, so filtering out what will never be resent is the cheapest way to bound it.
  */
 public interface FixMessagesStoreSettings extends InstanceProvider<FixMessagesStore> {
 
+    /**
+     * Returns true for an outgoing message that is not stored, such as market data that will never be resent. Such a
+     * message cannot be replayed on a ResendRequest.
+     */
     BiPredicate<MessageType, ByteBuffer> getMessageFilter();
 
     @Override
@@ -38,6 +42,11 @@ public interface FixMessagesStoreSettings extends InstanceProvider<FixMessagesSt
         return (FixMessagesStore) InstanceProvider.getSpiInstance(this, FixMessagesStoreFactory.class);
     }
 
+    /**
+     * The service provider that builds a message store from its settings class; see {@link Factory}.
+     *
+     * @param <S> the settings class it serves
+     */
     interface FixMessagesStoreFactory<S> extends Factory<FixMessagesStore, S> {
 
     }

@@ -41,12 +41,30 @@ import java.util.List;
  */
 public interface FixEngine extends Startable<FixEngine> {
 
+    /**
+     * Creates an initiator the engine will stop with itself. It is not started: call {@link FixInitiator#start()}.
+     * The same instance id returns the initiator already created.
+     *
+     * @throws IllegalStateException if the engine is not started
+     */
     FixInitiator newInitiator(FixInitiatorBuilder fixInitiatorBuilder);
 
+    /**
+     * Creates an acceptor the engine will stop with itself. It is not started: call {@link FixAcceptor#start()}.
+     * The same instance id returns the acceptor already created.
+     *
+     * @throws IllegalStateException if the engine is not started
+     */
     FixAcceptor newAcceptor(FixAcceptorBuilder fixAcceptorBuilder);
 
+    /**
+     * The builder the engine was created from, and so the stores, loggers and plugins it owns.
+     */
     FixEngineBuilder getFixEngineBuilder();
 
+    /**
+     * The session settings stores the engine's initiators and acceptors take their sessions from.
+     */
     List<FixSessionsSettingsStore> getFixSessionsSettingsStores();
 
     /**
@@ -56,6 +74,9 @@ public interface FixEngine extends Startable<FixEngine> {
      */
     FixSessionRegistry getFixSessionRegistry();
 
+    /**
+     * The service provider that builds the engine implementation, found through {@link java.util.ServiceLoader}.
+     */
     interface FixEngineFactory extends Factory<FixEngine, FixEngineBuilder> {
 
     }

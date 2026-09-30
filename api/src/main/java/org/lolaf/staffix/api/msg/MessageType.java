@@ -41,8 +41,14 @@ public interface MessageType extends IntSupplier {
         return new MessageTypeImpl(code, admin);
     }
 
+    /**
+     * The MsgType(35) value.
+     */
     String code();
 
+    /**
+     * Whether this is a session level message, such as a Logon or a Heartbeat, which the engine handles itself.
+     */
     boolean isAdmin();
 
     /**
@@ -62,5 +68,8 @@ public interface MessageType extends IntSupplier {
      */
     boolean isStorable();
 
+    /**
+     * The code as the bytes written on the wire, so encoding does not convert it each time.
+     */
     byte[] serialized();
 }

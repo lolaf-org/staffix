@@ -53,21 +53,19 @@ import java.util.function.IntSupplier;
 public interface FixSession {
 
     /**
-     * Created an encoders pool, the pool size will be the same as {@link #getWriteTasksQueueCapacity()}
-     * It does not need to be bigger than the IO thread writing tasks queue size.
-     * The allocated encoder will be automatically destroyed if needed when the fix session
-     * is stopped due to a client or server shutdown.
-     * Disconnections or logout will keep the FixMessageEncodersPool in memory
+     * Creates a pool sized to {@link #getWriteTasksQueueCapacity()}, which is as many encoders as can be in flight at
+     * once. The pool lives as long as the session, across disconnections and logouts.
      *
-     * @param id                   id of the encoder instance, calling this method 2 times with the same id will return the same FixMessageEncodersPool instance
-     * @param multiThreadedBorrows indicates of the {@link FixMessageEncodersPool#borrow()} methods will be called from a single thread or multiple threads
+     * @param id                   names the pool; the same id returns the same pool
+     * @param multiThreadedBorrows whether {@link FixMessageEncodersPool#borrow()} is called from more than one thread
      * @param encoderClass         the FixMessageEncoder class to pool
      * @return a pool of FixMessageEncoders
      */
     <T extends FixMessageEncoder<?>> FixMessageEncodersPool<T> newEncodersPool(String id, boolean multiThreadedBorrows, Class<T> encoderClass);
 
     /**
-     * Created an encoders pool for a given size
+     * As {@link #newEncodersPool(String, boolean, Class)}, with an explicit size for a pool that must hold more
+     * encoders than the write queue.
      */
     <T extends FixMessageEncoder<?>> FixMessageEncodersPool<T> newEncodersPool(String id, int size, boolean multiThreadedBorrows, Class<T> encoderClass);
 
@@ -90,8 +88,14 @@ public interface FixSession {
 
     FixSessionId getFixSessionId();
 
+    /**
+     * The fields of the dictionary this session speaks, for looking a field up by its code.
+     */
     FieldsRegistry getFieldsRegistry();
 
+    /**
+     * The settings the session is currently running under. An update from its settings store replaces them.
+     */
     FixSessionSettings getFixSessionSettings();
 
     /**
@@ -118,10 +122,20 @@ public interface FixSession {
      */
     void logout(String message);
 
+    /**
+     * Makes {@code LOGGED_IN} the desired state again, after a {@link #logoutPermanently(String)} or a
+     * {@link #disconnect(String)}, and sends a Logon if the session is connected.
+     */
     void logon();
 
+    /**
+     * Whether the Logon exchange has completed, which is what application traffic needs.
+     */
     boolean isLoggedIn();
 
+    /**
+     * Whether a connection is up. A connected session may not have logged on yet; see {@link #isLoggedIn()}.
+     */
     boolean isConnected();
 
     /**
@@ -130,8 +144,8 @@ public interface FixSession {
     FixSessionState getDesiredState();
 
     /**
-     * Indicates if the current session is withing is schedules session time or not (EOD or weekend pause)
-     * See {@link FixSessionSettings.SessionScheduleSettings} for session schedule configuration
+     * Whether the session is inside its configured schedule, as opposed to an end of day or weekend pause. See
+     * {@link FixSessionSettings.SessionScheduleSettings}.
      */
     boolean isWithinSessionTime();
 
@@ -221,6 +235,15 @@ public interface FixSession {
      */
     <P1, P2> void send(FixMessageEncoder<?> encoder, UTCTime sendingTime, MessageSendOperationCallback<P1, P2> messageSendOperationCallback, P1 param1, P2 param2);
 
+    /**
+     * Sends a BusinessMessageReject(35=j) for the last message received, whose MsgSeqNum(34) it references, so call it
+     * while handling that message.
+     *
+     * @param rejectText           Text(58)
+     * @param businessRejectReason BusinessRejectReason(380), see {@link org.lolaf.staffix.api.codec.BusinessRejectReasonCodes}
+     * @param businessRejectRefId  BusinessRejectRefID(379), the id of the rejected message, or null
+     * @param refMsgType           RefMsgType(372), the type of the rejected message
+     */
     void sendBusinessMessageReject(String rejectText, int businessRejectReason, String businessRejectRefId, MessageType refMsgType);
 
     /**
@@ -269,6 +292,11 @@ public interface FixSession {
      */
     <M, P1, P2, P3> MessageExecutor<M, P1, P2, P3> getMessageExecutor(Class<?> routingNamespace, IntSupplier index);
 
+    /**
+     * Sends a TestRequest(35=1), which the peer must answer with a Heartbeat carrying the same TestReqID(112).
+     *
+     * @param testRequest the TestReqID(112)
+     */
     void testRequest(String testRequest);
 
     /**
@@ -282,6 +310,9 @@ public interface FixSession {
      */
     Optional<RttMeasurement> getRttMeasurement();
 
+    /**
+     * The certificates the peer presented on the latest TLS connection, or null over a clear-text one.
+     */
     Collection<Certificate> getRemoteCertificates();
 
     /**
@@ -300,10 +331,20 @@ public interface FixSession {
      */
     FixSessionRegistry getFixSessionRegistry();
 
+    /**
+     * The application bound to this session, cast to the caller's type.
+     */
     <T extends FixApplication> T getApplication();
 
+    /**
+     * Writes an event line to the session's message logger, if it logs events. Safe from any thread.
+     */
     void logEvent(String event);
 
+    /**
+     * As {@link #logEvent(String)}, with {@link String#format(String, Object...)} placeholders. Nothing is formatted
+     * when the logger does not log events.
+     */
     void logEvent(String event, Object... params);
 
     /**
@@ -316,14 +357,20 @@ public interface FixSession {
         ACCEPTOR
     }
 
+    /**
+     * Told the outcome of a send. It runs on the IO thread, so it must be quick and never block.
+     *
+     * @param <P1> the first parameter passed through from the send
+     * @param <P2> the second parameter passed through from the send
+     */
     interface MessageSendOperationCallback<P1, P2> {
 
         /**
-         * Callback when the message has been sent or an error occurred when trying to send it
+         * Called once the message has been written to the socket, or has failed to be.
          *
-         * @param sendingError   and exception in case of a sending error or null if the message has been written correctly to the remote socket
-         * @param callbackParam1 the first provided callback
-         * @param callbackParam2 the second provided callback
+         * @param sendingError   the failure, or null once the message is written to the socket
+         * @param callbackParam1 the first parameter given to the send
+         * @param callbackParam2 the second parameter given to the send
          */
         void onMessageCallback(Exception sendingError, P1 callbackParam1, P2 callbackParam2);
     }

@@ -41,6 +41,9 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
      */
     FixSessionMessagesStore getStore(FixSessionId fixSessionId);
 
+    /**
+     * What an entry in an asynchronous store's queue records, with the byte it is written as.
+     */
     @Getter
     enum StoreEventType {
 
@@ -55,6 +58,9 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
             this.code = code;
         }
 
+        /**
+         * @throws IllegalStateException for a byte that is not one of the codes
+         */
         public static StoreEventType from(byte code) {
             // keep it like that, using Enum.values[] creates an array instance each call
             if (code == STORE_MESSAGE.getCode()) {
@@ -86,10 +92,19 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
          */
         void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) throws StoreException;
 
+        /**
+         * One message of a batch, valid only for the duration of the call.
+         */
         interface SentFixMessage {
 
+            /**
+             * The MsgSeqNum(34) the message was sent with.
+             */
             long getSequenceNumber();
 
+            /**
+             * The message as it was sent.
+             */
             ByteBuffer getMessage();
 
         }
@@ -211,12 +226,18 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
             boolean onMessage(long seqNum, ByteBuffer message);
         }
 
+        /**
+         * A message read back by {@link #find(long, long)}, with the MsgSeqNum(34) it was stored under.
+         */
         @Value
         class StoreMessage {
             long seqNum;
             ByteBuffer message;
         }
 
+        /**
+         * A store operation that failed, such as a write to a store whose storage is down.
+         */
         class StoreException extends RuntimeException {
 
             public StoreException(String message) {

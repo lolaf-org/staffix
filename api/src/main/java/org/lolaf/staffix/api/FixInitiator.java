@@ -30,8 +30,14 @@ import java.util.List;
  */
 public interface FixInitiator extends Startable<FixInitiator> {
 
+    /**
+     * Stops, giving the session up to {@link FixInitiatorBuilder#getShutdownMaxDelay()} to log out.
+     */
     FixInitiator stop();
 
+    /**
+     * Whether the active session has a connection, logged on or not.
+     */
     boolean isConnected();
 
     /**

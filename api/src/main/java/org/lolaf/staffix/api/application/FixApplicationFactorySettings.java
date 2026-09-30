@@ -29,6 +29,11 @@ public interface FixApplicationFactorySettings extends InstanceProvider<FixAppli
         return (FixApplicationFactory) InstanceProvider.getSpiInstance(this, FixApplicationFactoryFactory.class);
     }
 
+    /**
+     * The service provider that builds an application factory from its settings class; see {@link Factory}.
+     *
+     * @param <S> the settings class it serves
+     */
     interface FixApplicationFactoryFactory<S> extends Factory<FixApplicationFactory, S> {
 
     }

@@ -31,23 +31,33 @@ import java.util.function.BiPredicate;
 public interface FixMessagesLoggerSettings extends InstanceProvider<FixMessagesLogger> {
 
     /**
-     * List of log obfuscators to use with the logger, watch out as this has an impact on performance if not using an asynchronous logger
+     * The obfuscators applied to each logged message. They run on the session's thread unless the logger is
+     * asynchronous, so each one adds to the message path.
      */
     List<LogObfuscator> getLogObfuscators();
 
     /**
-     * Predicate to filter messages that does not needs to be logging
+     * Returns true for a message that is not logged.
      */
     BiPredicate<MessageType, FixMessagesLogger.LogEventType> getMessageFilter();
 
+    /**
+     * Whether received messages are logged.
+     */
     default boolean isLogIncoming() {
         return true;
     }
 
+    /**
+     * Whether sent messages are logged.
+     */
     default boolean isLogOutgoing() {
         return true;
     }
 
+    /**
+     * Whether session events, such as logons and disconnections, are logged.
+     */
     default boolean isLogEvents() {
         return true;
     }
@@ -58,6 +68,11 @@ public interface FixMessagesLoggerSettings extends InstanceProvider<FixMessagesL
         return (FixMessagesLogger) InstanceProvider.getSpiInstance(this, FixMessagesLoggerFactory.class);
     }
 
+    /**
+     * The service provider that builds a message logger from its settings class; see {@link Factory}.
+     *
+     * @param <S> the settings class it serves
+     */
     interface FixMessagesLoggerFactory<S> extends Factory<FixMessagesLogger, S> {
 
     }

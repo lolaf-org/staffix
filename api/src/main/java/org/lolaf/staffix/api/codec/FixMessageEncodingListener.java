@@ -31,12 +31,24 @@ import java.nio.ByteBuffer;
  */
 public interface FixMessageEncodingListener {
 
+    /**
+     * Called when {@code begin()} starts a message, before any field is written.
+     */
     void onEncodingStart(MessageType messageType, FixMessageEncoder<?> encoder, long encodingStartTimeInNanos);
 
+    /**
+     * Called once the body is written, before the header, trailer and checksum are added.
+     */
     void onEncodedBody(MessageType messageType, ByteBuffer encodedBody, FixMessageEncoder<?> encoder, long encodingStartTimeInNanos);
 
+    /**
+     * Called with the complete message, as it will be written to the socket.
+     */
     void onEncodingEnd(MessageType messageType, ByteBuffer encodedMessage, FixMessageEncoder<?> encoder, long encodingStartTimeInNanos);
 
+    /**
+     * The listener that does nothing, used when nothing observes the encoding.
+     */
     class VoidFixMessageEncodingListener implements FixMessageEncodingListener {
 
         private static final VoidFixMessageEncodingListener INSTANCE = new VoidFixMessageEncodingListener();

@@ -31,6 +31,11 @@ public interface FixSessionMonitoringManagerSettings extends FixSessionsPluginSe
     }
 
 
+    /**
+     * The service provider that builds a monitoring manager from its settings class; see {@link Factory}.
+     *
+     * @param <S> the settings class it serves
+     */
     interface FixSessionMonitoringManagerFactory<S> extends Factory<FixSessionsMonitoringManager, S> {
 
     }
