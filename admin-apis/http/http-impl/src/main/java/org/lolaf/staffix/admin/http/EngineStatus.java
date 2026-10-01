@@ -22,11 +22,13 @@ import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Every session of an engine with its state, in one response the console polls.
@@ -46,7 +48,8 @@ public class EngineStatus {
                 addIfStillManaged(sessions, () -> {
                     SessionStatus.SessionStatusBuilder status = status(adminApi, session, initiator.getInstanceId())
                             .name(initiator.getTargets().get(0).getFixSessionId().getName());
-                    initiator.getTargets().forEach(target -> status.config(target.getFixSessionId().getName()));
+                    initiator.getTargets().forEach(target -> status.config(new ConfigStatus(target.getFixSessionId().getName(),
+                            target.getConnectAddresses().stream().map(EngineStatus::hostAndPort).collect(Collectors.toList()))));
                     return status.build();
                 });
             }
@@ -57,12 +60,16 @@ public class EngineStatus {
                 if (session != null) {
                     addIfStillManaged(sessions, () -> status(adminApi, session, acceptor.getInstanceId())
                             .name(fixSessionId.getName())
-                            .config(fixSessionId.getName())
+                            .config(new ConfigStatus(fixSessionId.getName(), List.of()))
                             .build());
                 }
             }
         }
         return new EngineStatus(adminApi.getInstanceId(), sessions);
+    }
+
+    private static String hostAndPort(InetSocketAddress address) {
+        return address.getHostString() + ":" + address.getPort();
     }
 
     private static void addIfStillManaged(List<SessionStatus> sessions, Supplier<SessionStatus> status) {

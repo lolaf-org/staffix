@@ -30,6 +30,7 @@ import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
+import java.net.InetSocketAddress;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -70,7 +71,8 @@ class EngineStatusTest {
         when(adminApi.getInitiatorsTargets()).thenReturn(List.of(FixInitiatorTargets.builder()
                 .instanceId("alpha-initiator")
                 .activeFixSessionId(TRADING_DRP)
-                .target(FixInitiatorTarget.builder().fixSessionId(TRADING).build())
+                .target(FixInitiatorTarget.builder().fixSessionId(TRADING)
+                        .connectAddress(InetSocketAddress.createUnresolved("alpha.example.com", 9001)).build())
                 .target(FixInitiatorTarget.builder().fixSessionId(TRADING_DRP).build())
                 .build()));
         when(adminApi.getAcceptorsSessions()).thenReturn(List.of(FixAcceptorSessions.builder()
@@ -90,7 +92,8 @@ class EngineStatusTest {
         assertThat(trading.get("name").asText()).isEqualTo("trading");
         assertThat(trading.get("type").asText()).isEqualTo("INITIATOR");
         assertThat(trading.get("instanceId").asText()).isEqualTo("alpha-initiator");
-        assertThat(trading.get("configs")).extracting(JsonNode::asText).containsExactly("trading", "trading-drp");
+        assertThat(trading.get("configs").toString()).isEqualTo("[{\"name\":\"trading\",\"connectAddresses\":[\"alpha.example.com:9001\"]},"
+                + "{\"name\":\"trading-drp\",\"connectAddresses\":[]}]");
         assertThat(trading.get("selectedConfig").asText()).isEqualTo("trading-drp");
         assertThat(trading.get("loggedIn").asBoolean()).isTrue();
         assertThat(trading.get("desiredState").asText()).isEqualTo("LOGGED_IN");
@@ -107,7 +110,7 @@ class EngineStatusTest {
         assertThat(dropCopy.get("group").asText()).isEqualTo("beta");
         assertThat(dropCopy.get("type").asText()).isEqualTo("ACCEPTOR");
         assertThat(dropCopy.get("instanceId").asText()).isEqualTo("main-acceptor");
-        assertThat(dropCopy.get("configs")).extracting(JsonNode::asText).containsExactly("drop-copy");
+        assertThat(dropCopy.get("configs").toString()).isEqualTo("[{\"name\":\"drop-copy\",\"connectAddresses\":[]}]");
         assertThat(dropCopy.get("desiredState").asText()).isEqualTo("LOGGED_OUT");
         assertThat(dropCopy.get("identity").toString())
                 .isEqualTo("{\"fixVersion\":\"FIXT.1.1\",\"defaultApplVerId\":\"9\",\"sender\":{\"compId\":\"US\"},\"target\":{\"compId\":\"BETA\",\"locationId\":\"LDN\"}}");

@@ -41,7 +41,7 @@ public class SessionStatus {
      */
     String instanceId;
     @Singular
-    List<String> configs;
+    List<ConfigStatus> configs;
     String selectedConfig;
     /**
      * The selected config's FIX session id.
