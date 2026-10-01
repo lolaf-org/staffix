@@ -15,28 +15,27 @@
  */
 package org.lolaf.staffix.admin.http;
 
-import com.sun.net.httpserver.HttpServer;
-import com.sun.net.httpserver.HttpsConfigurator;
-import com.sun.net.httpserver.HttpsServer;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.AdminApiExporter;
 
-import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.security.SecureRandom;
+import java.util.Base64;
 
 /**
- * Serves the engine's admin API over HTTP, for the staffix admin console.
+ * Serves the engine's admin API over HTTP under {@code /engines/{instanceId}/}, for the staffix admin console.
  */
 @Slf4j
 public class HttpAdminApi implements AdminApiExporter {
 
+    private static final SecureRandom RANDOM = new SecureRandom();
+
     private final HttpAdminApiSettings settings;
-    private HttpServer server;
-    private ExecutorService executor;
+    private HttpAdminServer server;
+    private String mountedInstanceId;
+    private String apiToken;
 
     HttpAdminApi(HttpAdminApiSettings settings) {
         this.settings = settings;
@@ -46,47 +45,45 @@ public class HttpAdminApi implements AdminApiExporter {
     public synchronized void export(AdminApi adminApi) {
         String instanceId = adminApi.getInstanceId();
         InetSocketAddress address = new InetSocketAddress(settings.getBindAddress(), settings.getPort());
+        apiToken = settings.getApiToken() != null ? settings.getApiToken() : randomToken();
         try {
-            server = createServer(address);
-            executor = Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "staffix-admin-http-" + instanceId);
-                thread.setDaemon(true);
-                return thread;
-            });
-            server.setExecutor(executor);
-            server.start();
-            log.info("Serving the admin API of instance {} on {}", instanceId, server.getAddress());
-        } catch (IOException e) {
+            server = HttpAdminServer.acquire(address, settings.getSslContext());
+            server.mount(instanceId, new AdminApiHandler(adminApi, apiToken));
+            mountedInstanceId = instanceId;
+            log.info("Serving the admin API of instance {} on {}{}", instanceId, server.getAddress(), HttpAdminServer.basePath(instanceId));
+        } catch (Exception e) {
             log.error("Failed to serve the admin API of instance {} on {}", instanceId, address, e);
-            server = null;
+            releaseServer();
         }
     }
 
-    private HttpServer createServer(InetSocketAddress address) throws IOException {
-        if (settings.getSslContext() == null) {
-            return HttpServer.create(address, 0);
-        }
-        HttpsServer httpsServer = HttpsServer.create(address, 0);
-        httpsServer.setHttpsConfigurator(new HttpsConfigurator(settings.getSslContext()));
-        return httpsServer;
+    private static String randomToken() {
+        byte[] token = new byte[32];
+        RANDOM.nextBytes(token);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(token);
     }
 
     /**
      * The address the server is bound to, or null when it is not serving.
      */
     public synchronized InetSocketAddress getAddress() {
-        return server != null ? server.getAddress() : null;
+        return mountedInstanceId != null ? server.getAddress() : null;
+    }
+
+    synchronized String getApiToken() {
+        return apiToken;
     }
 
     @Override
     public synchronized void shutdown(Deadline deadline) {
+        releaseServer();
+    }
+
+    private void releaseServer() {
         if (server != null) {
-            server.stop(0);
+            server.release(mountedInstanceId);
             server = null;
-        }
-        if (executor != null) {
-            executor.shutdownNow();
-            executor = null;
+            mountedInstanceId = null;
         }
     }
 
