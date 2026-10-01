@@ -132,7 +132,7 @@ class MicrometerMonitoringManagerTest {
 
         // Verify session state gauge is registered
         Gauge gauge = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .gauge();
         assertThat(gauge).isNotNull();
         assertThat(gauge.value()).isEqualTo(0.0); // Not logged on initially
@@ -177,13 +177,13 @@ class MicrometerMonitoringManagerTest {
 
         // Verify metrics exist
         assertThat(meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .gauge()).isNotNull();
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNotNull();
         assertThat(meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNotNull();
 
         // When
@@ -191,11 +191,11 @@ class MicrometerMonitoringManagerTest {
 
         // Then - metrics should be removed
         assertThat(meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId()).gauge()).isNull();
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()).gauge()).isNull();
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId()).timer()).isNull();
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()).timer()).isNull();
         assertThat(meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId()).timer()).isNull();
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()).timer()).isNull();
     }
 
     @Test
@@ -221,7 +221,7 @@ class MicrometerMonitoringManagerTest {
         // Verify timer is registered with all tags
         Timer micrometerTimer = meterRegistry.find("custom.timer")
                 .tag(FixMonitoringAttributes.FIX_INSTANCE_ID, "fix-instance-1")
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .tag("custom.tag1", "value1")
                 .tag("custom.tag2", "value2")
                 .timer();
@@ -331,7 +331,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer micrometerTimer = meterRegistry.find("test.timer")
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer();
         assertThat(micrometerTimer).isNotNull();
         assertThat(micrometerTimer.count()).isEqualTo(1);
@@ -349,7 +349,7 @@ class MicrometerMonitoringManagerTest {
                 monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
 
         Gauge gauge = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .gauge();
         assertThat(gauge.value()).isEqualTo(0.0);
 
@@ -370,7 +370,7 @@ class MicrometerMonitoringManagerTest {
 
         listener.onLogon();
         Gauge gauge = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .gauge();
         assertThat(gauge.value()).isEqualTo(1.0);
 
@@ -396,7 +396,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer timer = meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer();
         assertThat(timer).isNotNull();
         assertThat(timer.count()).isEqualTo(1);
@@ -418,7 +418,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer timer = meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer();
         assertThat(timer).isNotNull();
         assertThat(timer.count()).isEqualTo(1);
@@ -464,7 +464,7 @@ class MicrometerMonitoringManagerTest {
 
         // Verify timer exists
         assertThat(meterRegistry.find("custom.timer")
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNotNull();
 
         // When
@@ -472,7 +472,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then - custom timer should be removed
         assertThat(meterRegistry.find("custom.timer")
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNull();
     }
 
@@ -497,10 +497,10 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Gauge gauge1 = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .gauge();
         Gauge gauge2 = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId2.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId2.getName())
                 .gauge();
 
         assertThat(gauge1.value()).isEqualTo(1.0);
@@ -554,11 +554,11 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNull();
         // Write timer should still be registered (enabled by default)
         assertThat(meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNotNull();
 
         manager.stop(Deadline.unlimited());
@@ -578,11 +578,11 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         assertThat(meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNull();
         // Read timer should still be registered (enabled by default)
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNotNull();
 
         manager.stop(Deadline.unlimited());
@@ -599,7 +599,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         assertThat(meterRegistry.find(MESSAGES_DECODING_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNull();
     }
 
@@ -614,7 +614,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         assertThat(meterRegistry.find(MESSAGES_ENCODING_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNull();
     }
 
@@ -636,7 +636,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer timer = meterRegistry.find(MESSAGES_DECODING_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer();
         assertThat(timer).isNotNull();
         assertThat(timer.count()).isEqualTo(1);
@@ -663,7 +663,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer timer = meterRegistry.find(MESSAGES_ENCODING_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer();
         assertThat(timer).isNotNull();
         assertThat(timer.count()).isEqualTo(1);
@@ -679,10 +679,10 @@ class MicrometerMonitoringManagerTest {
         monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of());
 
         assertThat(meterRegistry.find(SESSION_RTT)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNull();
         assertThat(meterRegistry.find(SESSION_CLOCK_OFFSET)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .gauge()).isNull();
     }
 
@@ -704,14 +704,14 @@ class MicrometerMonitoringManagerTest {
         listener.onRttMeasurement(new RttMeasurement(rtt, clockOffset, UTCTime.of(1_700_000_000_000_000_000L)));
 
         Timer rttTimer = meterRegistry.find(SESSION_RTT)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer();
         assertThat(rttTimer).isNotNull();
         assertThat(rttTimer.count()).isEqualTo(1);
         assertThat(rttTimer.totalTime(TimeUnit.MILLISECONDS)).isGreaterThanOrEqualTo(7.0);
 
         Gauge offsetGauge = meterRegistry.find(SESSION_CLOCK_OFFSET)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .gauge();
         assertThat(offsetGauge).isNotNull();
         assertThat(offsetGauge.value()).isEqualTo((double) clockOffset.toNanos());
@@ -736,19 +736,19 @@ class MicrometerMonitoringManagerTest {
                 manager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
 
         assertThat(meterRegistry.find(SESSION_RTT)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNotNull();
         assertThat(meterRegistry.find(SESSION_CLOCK_OFFSET)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .gauge()).isNotNull();
 
         listener.onSessionDestroyed("fix-instance-1", fixSessionId);
 
         assertThat(meterRegistry.find(SESSION_RTT)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .timer()).isNull();
         assertThat(meterRegistry.find(SESSION_CLOCK_OFFSET)
-                .tag(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
                 .gauge()).isNull();
 
         manager.stop(Deadline.unlimited());

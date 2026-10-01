@@ -145,7 +145,7 @@ public class FromYamlFixSessionSettingsTransformer {
     private static void mergeFixSessionId(YamlFixSessionSettings settings, FixSessionSettings.FixSessionSettingsBuilder<?, ?> builder) {
         FixRegularVersion fixRegularVersion = FixRegularVersion.fromString(settings.getFixSessionId().getFixVersion()).orElseThrow();
         FixSessionId.FixSessionIdBuilder b = FixSessionId.FixSessionIdBuilder.builder()
-                .id(settings.getFixSessionId().getId())
+                .name(settings.getFixSessionId().getName())
                 .group(settings.getFixSessionId().getGroup())
                 .senderCompID(settings.getFixSessionId().getSenderCompID())
                 .senderSubID(settings.getFixSessionId().getSenderSubID())

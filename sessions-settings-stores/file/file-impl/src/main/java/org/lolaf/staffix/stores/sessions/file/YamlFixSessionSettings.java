@@ -103,7 +103,7 @@ public class YamlFixSessionSettings {
     public static class FixSessionId {
 
         @NotBlank
-        private String id;
+        private String name;
         @NotBlank
         private String fixVersion;
         private boolean fixTSession;

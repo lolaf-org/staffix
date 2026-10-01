@@ -27,8 +27,8 @@ import lombok.experimental.UtilityClass;
 public class FixMonitoringAttributes {
 
     public static final String FIX_INSTANCE_ID = "fix.iid";
-    public static final String FIX_SESSION_ID = "fix.sid";
-    public static final String FIX_SESSION_GROUP_ID = "fix.sgid";
+    public static final String FIX_SESSION_NAME = "fix.sn";
+    public static final String FIX_SESSION_GROUP = "fix.sg";
     public static final String FIX_MESSAGE_TYPE = "fix.msg.type";
     public static final String FIX_MESSAGE_DIRECTION = "fix.msg.dir";
 

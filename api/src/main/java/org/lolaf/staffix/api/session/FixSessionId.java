@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.fields.FieldType;
 import org.lolaf.staffix.api.fields.FixField;
 import org.lolaf.staffix.api.version.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.IntSupplier;
@@ -51,8 +52,12 @@ public class FixSessionId implements IntSupplier {
 
     private static final Map<String, FixSessionId> SESSIONS_IDS = new HashMap<>();
 
+    /**
+     * Names the session within its {@link #getGroup() group}, e.g. {@code trading}: two groups may each have a
+     * session of the same name, so it identifies nothing on its own; {@link #getQualifiedName()} does.
+     */
     @Getter
-    private final String id;
+    private final String name;
     @Getter
     private final int serializedLen;
     @Getter
@@ -71,16 +76,27 @@ public class FixSessionId implements IntSupplier {
     private final FieldAndValuePair targetLocationID;
     @Getter
     private final ApplVerID defaultApplVerID;
+    /**
+     * The group the session belongs to, typically one per counterparty, {@value #DEFAULT_GROUP} when none is given.
+     * With the {@link #getName() name} it identifies the session; see {@link #getQualifiedName()}.
+     */
     @Getter
     private final String group;
     private final String toString;
+    /**
+     * {@code group.name}, e.g. {@code alpha.trading}: unique within an engine, and what the session's stored state,
+     * files and keys are named after. Characters outside {@code [A-Za-z0-9_-]} are percent-encoded, so it is a safe
+     * file name and the dot joining group and name appears in neither.
+     */
+    @Getter
+    private final String qualifiedName;
     private int index;
     private FixSessionId inverted;
 
-    private FixSessionId(FixVersion fixVersion, String id, String group, ApplVerID defaultApplVerID, FieldAndValuePair senderCompID, FieldAndValuePair senderSubID,
+    private FixSessionId(FixVersion fixVersion, String name, String group, ApplVerID defaultApplVerID, FieldAndValuePair senderCompID, FieldAndValuePair senderSubID,
                          FieldAndValuePair senderLocationID, FieldAndValuePair targetCompID, FieldAndValuePair targetSubID, FieldAndValuePair targetLocationID) {
         this.fixVersion = fixVersion;
-        this.id = id;
+        this.name = name;
         this.group = group;
         this.defaultApplVerID = defaultApplVerID;
         this.senderCompID = senderCompID;
@@ -90,6 +106,7 @@ public class FixSessionId implements IntSupplier {
         this.targetSubID = targetSubID;
         this.targetLocationID = targetLocationID;
         this.serializedLen = calculateSerializedLen();
+        this.qualifiedName = escapeForQualifiedName(this.group) + "." + escapeForQualifiedName(this.name);
         this.toString = createToString();
     }
 
@@ -97,9 +114,9 @@ public class FixSessionId implements IntSupplier {
         if (fixVersion == null) {
             throw new IllegalArgumentException("Missing fix version");
         }
-        this.id = fixSessionIdBuilder.getId();
+        this.name = fixSessionIdBuilder.getName();
         this.fixVersion = fixVersion;
-        this.group = fixSessionIdBuilder.getGroup();
+        this.group = fixSessionIdBuilder.getGroup() == null ? DEFAULT_GROUP : fixSessionIdBuilder.getGroup();
         if (fixVersion instanceof FixtVersion && defaultApplVerID == null) {
             throw new IllegalArgumentException("FIXT sessions must provide a defaultApplVerID value");
         }
@@ -114,17 +131,18 @@ public class FixSessionId implements IntSupplier {
         this.targetSubID = value(CoreFields.TARGET_SUB_ID, fixSessionIdBuilder.getTargetSubID());
         this.targetLocationID = value(CoreFields.TARGET_LOCATION_ID, fixSessionIdBuilder.getTargetLocationID());
         this.serializedLen = calculateSerializedLen();
+        this.qualifiedName = escapeForQualifiedName(this.group) + "." + escapeForQualifiedName(this.name);
         this.toString = createToString();
     }
 
     /**
      * A session id with only the CompIDs set, for a pre FIX.5.0 version.
      *
-     * @param id names the session in logs, metrics and file names
+     * @param name names the session within the default group
      */
-    public static FixSessionId of(String id, FixVersion fixVersion, String senderCompID, String targetCompID) {
+    public static FixSessionId of(String name, FixVersion fixVersion, String senderCompID, String targetCompID) {
         return getFromCache(new FixSessionId(fixVersion, null, FixSessionIdBuilder.builder()
-                .id(id)
+                .name(name)
                 .senderCompID(senderCompID)
                 .targetCompID(targetCompID)
                 .build()));
@@ -151,9 +169,9 @@ public class FixSessionId implements IntSupplier {
     /**
      * A FIXT.1.1 session id with only the CompIDs set, {@code fixVersion} being its default ApplVerID.
      */
-    public static FixSessionId ofFIXT11(String id, FixApplVerID fixVersion, String senderCompID, String targetCompID) {
+    public static FixSessionId ofFIXT11(String name, FixApplVerID fixVersion, String senderCompID, String targetCompID) {
         return getFromCache(new FixSessionId(FixtVersion.FIXT_11, fixVersion, FixSessionIdBuilder.builder()
-                .id(id)
+                .name(name)
                 .senderCompID(senderCompID)
                 .targetCompID(targetCompID)
                 .build()));
@@ -194,7 +212,7 @@ public class FixSessionId implements IntSupplier {
 
     private String createToString() {
         String applVerID = defaultApplVerID != null ? "(" + defaultApplVerID.getCode() + ")" : "";
-        return id + ":" + fixVersion.getId()
+        return qualifiedName + ":" + fixVersion.getId()
                 + applVerID
                 + ":"
                 + senderCompID.getValue()
@@ -211,10 +229,25 @@ public class FixSessionId implements IntSupplier {
     }
 
     /**
-     * A file name for this session's files: its id followed by the extension, which includes its dot.
+     * A file name for this session's files: its {@link #getQualifiedName() qualified name} followed by the
+     * extension, which includes its dot.
      */
     public String forFileName(String extension) {
-        return id + extension;
+        return qualifiedName + extension;
+    }
+
+    private static String escapeForQualifiedName(String value) {
+        StringBuilder escaped = new StringBuilder(value.length());
+        for (byte b : value.getBytes(StandardCharsets.UTF_8)) {
+            char c = (char) (b & 0xff);
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+                escaped.append(c);
+            } else {
+                escaped.append('%').append(Character.toUpperCase(Character.forDigit((b >> 4) & 0xf, 16)))
+                        .append(Character.toUpperCase(Character.forDigit(b & 0xf, 16)));
+            }
+        }
+        return escaped.toString();
     }
 
     /**
@@ -223,7 +256,7 @@ public class FixSessionId implements IntSupplier {
      */
     public FixSessionId invert() {
         if (inverted == null) {
-            inverted = getFromCache(new FixSessionId(fixVersion, id, group, defaultApplVerID, targetCompID, targetSubID, targetLocationID, senderCompID, senderSubID, senderLocationID));
+            inverted = getFromCache(new FixSessionId(fixVersion, name, group, defaultApplVerID, targetCompID, targetSubID, targetLocationID, senderCompID, senderSubID, senderLocationID));
         }
         return inverted;
     }
@@ -302,7 +335,7 @@ public class FixSessionId implements IntSupplier {
     public static final class FixSessionIdBuilder {
 
         @NonNull
-        String id;
+        String name;
         @Builder.Default
         String group = DEFAULT_GROUP;
         @NonNull

@@ -51,8 +51,8 @@ public class Slf4jLoggerEntryProps {
      */
     private String logInTemplate;
     /**
-     * Whether the session id is put in the MDC, which is what lets a log pattern carry it without it being in
-     * every message.
+     * Whether the session's group and name are put in the MDC ({@code fixSessionGroup}, {@code fixSessionName}), which
+     * is what lets a log pattern carry them without them being in every message.
      */
     private Boolean useMDC;
     /**

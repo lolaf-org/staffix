@@ -39,7 +39,7 @@ class TestFixSessionSettingsMapper {
 
     private static FixSessionSettings.SessionScheduleSettings mapSchedule(FixSessionSettingsProps.ScheduleProps schedule) {
         FixSessionIdProps sessionId = new FixSessionIdProps();
-        sessionId.setId("SENDER-TARGET");
+        sessionId.setName("SENDER-TARGET");
         sessionId.setSenderCompId("SENDER");
         sessionId.setTargetCompId("TARGET");
         sessionId.setFixVersion("FIX.4.4");

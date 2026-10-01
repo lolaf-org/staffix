@@ -781,7 +781,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         private FixSessionId buildReplySessionId(ReceivedFixSessionId received, FixSessionImpl donor) {
             // the parser already stored comp ids inverted (sender = us, target = peer), exactly what an outgoing header needs
             FixSessionId.FixSessionIdBuilder builder = FixSessionId.FixSessionIdBuilder.builder()
-                    .id("rejection-reply")
+                    .name("rejection-reply")
                     .senderCompID(received.getSenderCompID())
                     .senderSubID(received.getSenderSubID())
                     .senderLocationID(received.getSenderLocationID())

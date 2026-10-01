@@ -1,6 +1,6 @@
 ---
 fixSessionId:
-  id: "testMinimalFixSessionSettingsWorks"
+  name: "testMinimalFixSessionSettingsWorks"
   fixVersion: "FIX.4.4"
   fixTSession: false
   group: "test-group"

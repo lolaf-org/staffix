@@ -188,8 +188,8 @@ class TestOtlpMessagesLogger {
             assertLogMessageReceived("fix.log.type: Str(out)");
             assertLogMessageReceived("fix.msg.type: Str(OUT_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
-            assertLogMessageReceived("fix.sid: Str(testSid)");
-            assertLogMessageReceived("fix.sgid: Str(default)");
+            assertLogMessageReceived("fix.sn: Str(testSid)");
+            assertLogMessageReceived("fix.sg: Str(default)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
         Awaitility.await().untilAsserted(() -> {
@@ -197,24 +197,24 @@ class TestOtlpMessagesLogger {
             assertLogMessageReceived("fix.log.type: Str(in)");
             assertLogMessageReceived("fix.msg.type: Str(IN_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
-            assertLogMessageReceived("fix.sid: Str(testSid)");
-            assertLogMessageReceived("fix.sgid: Str(default)");
+            assertLogMessageReceived("fix.sn: Str(testSid)");
+            assertLogMessageReceived("fix.sg: Str(default)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test event)");
             assertLogMessageReceived("fix.log.type: Str(event)");
             assertLogMessageReceived("service.name: Str(test)");
-            assertLogMessageReceived("fix.sid: Str(testSid)");
-            assertLogMessageReceived("fix.sgid: Str(default)");
+            assertLogMessageReceived("fix.sn: Str(testSid)");
+            assertLogMessageReceived("fix.sg: Str(default)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test event with params)");
             assertLogMessageReceived("fix.log.type: Str(event)");
             assertLogMessageReceived("service.name: Str(test)");
-            assertLogMessageReceived("fix.sid: Str(testSid)");
-            assertLogMessageReceived("fix.sgid: Str(default)");
+            assertLogMessageReceived("fix.sn: Str(testSid)");
+            assertLogMessageReceived("fix.sg: Str(default)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
     }
@@ -269,8 +269,8 @@ class TestOtlpMessagesLogger {
             assertLogMessageReceived("fix.log.type: Str(in)");
             assertLogMessageReceived("fix.msg.type: Str(IN_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
-            assertLogMessageReceived("fix.sid: Str(testSid)");
-            assertLogMessageReceived("fix.sgid: Str(default)");
+            assertLogMessageReceived("fix.sn: Str(testSid)");
+            assertLogMessageReceived("fix.sg: Str(default)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
 
@@ -280,8 +280,8 @@ class TestOtlpMessagesLogger {
             assertLogMessageReceived("fix.log.type: Str(in)");
             assertLogMessageReceived("fix.msg.type: Str(IN_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
-            assertLogMessageReceived("fix.sid: Str(testSid)");
-            assertLogMessageReceived("fix.sgid: Str(default)");
+            assertLogMessageReceived("fix.sn: Str(testSid)");
+            assertLogMessageReceived("fix.sg: Str(default)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40.001 +0000 UTC");
         });
     }
@@ -295,8 +295,8 @@ class TestOtlpMessagesLogger {
             assertLogMessageReceived("fix.log.type: Str(out)");
             assertLogMessageReceived("fix.msg.type: Str(OUT_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
-            assertLogMessageReceived("fix.sid: Str(testSid)");
-            assertLogMessageReceived("fix.sgid: Str(default)");
+            assertLogMessageReceived("fix.sn: Str(testSid)");
+            assertLogMessageReceived("fix.sg: Str(default)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
     }
@@ -336,8 +336,8 @@ class TestOtlpMessagesLogger {
             assertLogMessageReceived("Body: Str(test event param1 param2)");
             assertLogMessageReceived("fix.log.type: Str(event)");
             assertLogMessageReceived("service.name: Str(test)");
-            assertLogMessageReceived("fix.sid: Str(testSid)");
-            assertLogMessageReceived("fix.sgid: Str(default)");
+            assertLogMessageReceived("fix.sn: Str(testSid)");
+            assertLogMessageReceived("fix.sg: Str(default)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
     }

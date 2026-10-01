@@ -241,7 +241,7 @@
             "description" : "A ${...} placeholder, resolved when the file is loaded"
           } ]
         },
-        "id" : {
+        "name" : {
           "anyOf" : [ {
             "type" : "string",
             "minLength" : 1
@@ -308,7 +308,7 @@
           } ]
         }
       },
-      "required" : [ "fixVersion", "id", "senderCompID", "targetCompID" ]
+      "required" : [ "fixVersion", "name", "senderCompID", "targetCompID" ]
     },
     "fixSessionPluginsInstanceIds" : {
       "$ref" : "#/$defs/Map(String,String)"

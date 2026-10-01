@@ -91,7 +91,8 @@ public class JmxAdminApi implements AdminApiExporter, AdminApi.SessionLifecycleL
     private ObjectName sessionObjectName(FixSession session) throws Exception {
         return new ObjectName(settings.getJmxDomain() + ":type=FixSession"
                 + ",instance=" + ObjectName.quote(adminApi.getInstanceId())
-                + ",session=" + ObjectName.quote(session.getFixSessionId().getId())
+                + ",group=" + ObjectName.quote(session.getFixSessionId().getGroup())
+                + ",session=" + ObjectName.quote(session.getFixSessionId().getName())
                 + ",role=" + (session.getFixSessionSettings().getFixSessionType().equals(FixSession.FixSessionType.INITIATOR) ? "Initiator" : "Acceptor"));
     }
 

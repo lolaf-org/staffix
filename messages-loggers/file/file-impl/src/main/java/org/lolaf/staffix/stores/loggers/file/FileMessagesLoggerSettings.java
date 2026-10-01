@@ -57,7 +57,8 @@ public class FileMessagesLoggerSettings extends AbstractFixMessageLoggerSettings
      */
     private String logDirectory;
     /**
-     * Names a session's log file. The default is derived from the session id, which keeps one file per session.
+     * Names a session's log file. The default is the session's qualified name, {@code group.name}, which keeps one
+     * file per session.
      */
     @Builder.Default
     private BiFunction<FixSessionId, File, File> logFileName = getLogFileNameFunction();

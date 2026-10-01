@@ -87,7 +87,7 @@ class IoSettingsPropsMapperTest {
     @Test
     void theInitiatorGetsItsIoSettings() {
         FixSessionIdProps sessionId = new FixSessionIdProps();
-        sessionId.setId("test");
+        sessionId.setName("test");
         sessionId.setFixVersion("VERSION_44");
         sessionId.setSenderCompId("INITIATOR");
         sessionId.setTargetCompId("ACCEPTOR");

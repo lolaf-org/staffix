@@ -60,7 +60,7 @@ class TestFileFixSessionsSettingsStore {
     private FixSessionSettings session(String senderCompID, String targetCompID) {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                        .id(senderCompID)
+                        .name(senderCompID)
                         .senderCompID(senderCompID)
                         .targetCompID(targetCompID)
                         .build()))
@@ -127,7 +127,7 @@ class TestFileFixSessionsSettingsStore {
                 .build();
         YamlFixSessionSettings sessionYaml = YamlFixSessionSettings.builder()
                 .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
-                        .id("session1")
+                        .name("session1")
                         .fixVersion(FixRegularVersion.VERSION_44.toString())
                         .senderCompID("SENDER")
                         .targetCompID("TARGET")

@@ -14,6 +14,6 @@
  * limitations under the License.
  */
 /**
- * The {@code /actuator/fixsessions} endpoint.
+ * The {@code /actuator/fix-sessions} endpoint.
  */
 package org.lolaf.staffix.spring.boot.actuator.endpoint;

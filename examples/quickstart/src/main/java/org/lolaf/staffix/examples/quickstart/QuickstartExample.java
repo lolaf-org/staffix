@@ -90,11 +90,11 @@ public final class QuickstartExample {
                 .fixMessagesLogger(Slf4jMessagesLoggerSettings.builder().instanceId(INITIATOR).build())
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder()
                         .instanceId(ACCEPTOR)
-                        .application(acceptorSessionId.getId(), new AcceptorApplication())
+                        .application(acceptorSessionId.getQualifiedName(), new AcceptorApplication())
                         .build())
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder()
                         .instanceId(INITIATOR)
-                        .application(initiatorSessionId.getId(), new InitiatorApplication())
+                        .application(initiatorSessionId.getQualifiedName(), new InitiatorApplication())
                         .build())
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
                         .instanceId(ACCEPTOR)
@@ -133,7 +133,7 @@ public final class QuickstartExample {
 
     private static FixSessionId sessionId(String id, String senderCompId, String targetCompId) {
         return FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                .id(id)
+                .name(id)
                 .senderCompID(senderCompId)
                 .targetCompID(targetCompId)
                 .build());
@@ -151,7 +151,7 @@ public final class QuickstartExample {
                 .fixMessageStoreInstanceId(instanceId)
                 .fixMessageLoggerInstanceId(instanceId)
                 .fixApplicationFactoryInstanceId(instanceId)
-                .fixApplicationInstanceId(sessionId.getId())
+                .fixApplicationInstanceId(sessionId.getQualifiedName())
                 .resetSeqNumOnLogon(true)
                 .build();
     }

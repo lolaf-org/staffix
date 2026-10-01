@@ -70,7 +70,7 @@ masked.
 
 ## Reading the dashboard
 
-Three variables scope every panel: **group** (`fix_sgid`, i.e. `acceptor` or `initiators`), **sid** (the FIX session id)
+Three variables scope every panel: **group** (`fix_sg`, i.e. `acceptor` or `initiators`), **name** (`fix_sn`, the session's name within its group)
 and **serviceName** (the Loki service, used by the log panel). The dashboard auto-refreshes every 10s over a 15-minute
 window.
 

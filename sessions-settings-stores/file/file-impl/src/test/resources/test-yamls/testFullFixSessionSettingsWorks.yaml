@@ -1,6 +1,6 @@
 ---
 fixSessionId:
-  id: "testFullFixSessionSettingsWorks"
+  name: "testFullFixSessionSettingsWorks"
   fixVersion: "FIX.4.4"
   fixTSession: false
   group: "test-group"

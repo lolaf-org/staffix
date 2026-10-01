@@ -373,11 +373,11 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
                     .setValue(AnyValue.newBuilder().setStringValue(fixInstanceId)
                             .build()).build());
             attributes.add(KeyValue.newBuilder()
-                    .setKey(FixMonitoringAttributes.FIX_SESSION_ID)
-                    .setValue(AnyValue.newBuilder().setStringValue(getFixSessionId().getId())
+                    .setKey(FixMonitoringAttributes.FIX_SESSION_NAME)
+                    .setValue(AnyValue.newBuilder().setStringValue(getFixSessionId().getName())
                             .build()).build());
             attributes.add(KeyValue.newBuilder()
-                    .setKey(FixMonitoringAttributes.FIX_SESSION_GROUP_ID)
+                    .setKey(FixMonitoringAttributes.FIX_SESSION_GROUP)
                     .setValue(AnyValue.newBuilder().setStringValue(getFixSessionId().getGroup())
                             .build()).build());
             return attributes;

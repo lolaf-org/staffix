@@ -59,7 +59,7 @@ class TestAdminFixMessageTransformer {
         MessageTypeRegistry messageTypeRegistry = MessageTypeRegistry.Registry.getInstance(fixDictionaryId);
         fieldsRegistry = FieldsRegistry.Registry.getInstance(fixDictionaryId);
         FixSessionId fixSessionId = FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                .id("admin-send-test")
+                .name("admin-send-test")
                 .senderCompID("SENDER44_TEST")
                 .targetCompID("TARGET44_TEST")
                 .build());

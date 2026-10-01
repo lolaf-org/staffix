@@ -80,7 +80,7 @@ The sessions are YAML files, one session per file:
 ```yaml
 # yaml-language-server: $schema=fix-session-settings.v1.schema.json
 fixSessionId:
-  id: "acceptor-initiator1"
+  name: "acceptor-initiator1"
   fixVersion: "FIX.4.4"
   senderCompID: "ACCEPTOR"
   targetCompID: "INITIATOR_1"
@@ -174,7 +174,7 @@ unchanged across environments:
 
 ```yaml
 fixSessionId:
-  id: "${sysprop:session.id:defaultIfAbsent}"
+  name: "${sysprop:session.id:defaultIfAbsent}"
   fixVersion: "FIX.4.4"
 logInOrOutResponseTimeout: "${env:LOGON_TIMEOUT:PT30S}"
 ```

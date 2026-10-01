@@ -64,7 +64,7 @@ public class FixSessionsHealthIndicator implements HealthIndicator {
             if (!up) {
                 anyUnhealthy = true;
             }
-            details.put(stats.getFixSession().getFixSessionId().getId(), describe(stats, up));
+            details.put(stats.getFixSession().getFixSessionId().getQualifiedName(), describe(stats, up));
         }
         Status overall = anyUnhealthy ? Status.DOWN : Status.UP;
         return Health.status(overall).withDetails(details).build();

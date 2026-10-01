@@ -1,5 +1,5 @@
 fixSessionId:
-  id: "${sysprop:staffix.test.uri.prefix:}classpath-session"
+  name: "${sysprop:staffix.test.uri.prefix:}classpath-session"
   senderCompID: "SENDER"
   targetCompID: "TARGET"
   fixVersion: "FIX.4.4"

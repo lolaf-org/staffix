@@ -74,7 +74,7 @@ public class StampingFixSessionsPlugin implements FixSessionsPlugin<PluginContex
             Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
         if (!outgoingMessageTypes.contains(settings.getStampedMessageType())) {
             log.info("stamping plugin: session {} does not send {}, declining it",
-                    fixSession.getFixSessionId().getId(), settings.getStampedMessageType().code());
+                    fixSession.getFixSessionId().getName(), settings.getStampedMessageType().code());
             return Optional.empty();
         }
         // The field has to exist in the session's registry before it can be encoded. Registering it here, rather
@@ -154,7 +154,7 @@ public class StampingFixSessionsPlugin implements FixSessionsPlugin<PluginContex
         @Override
         public void onSessionDestroyed(String fixInstanceId, FixSessionId fixSessionId) {
             log.info("stamping plugin: stamped {} {} message(s) on session {}", stamped,
-                    stampedMessageType.code(), fixSessionId.getId());
+                    stampedMessageType.code(), fixSessionId.getName());
         }
 
         /**

@@ -214,13 +214,13 @@ public final class JvmWarmup {
                     FixSessionId acceptorSid;
                     FixSessionId initiatorSid;
                     FixSessionId.FixSessionIdBuilder acceptorBuilder = FixSessionId.FixSessionIdBuilder.builder()
-                            .id("jvm-warmup-acceptor" + suffix)
+                            .name("jvm-warmup-acceptor" + suffix)
                             .targetCompID(options.getSender() + suffix)
                             .senderCompID(options.getTarget() + suffix)
                             .group("jvm-warmup-acceptor")
                             .build();
                     FixSessionId.FixSessionIdBuilder initiatorBuilder = FixSessionId.FixSessionIdBuilder.builder()
-                            .id("jvm-warmup-initiator" + suffix)
+                            .name("jvm-warmup-initiator" + suffix)
                             .targetCompID(options.getTarget() + suffix)
                             .senderCompID(options.getSender() + suffix)
                             .group("jvm-warmup-initiator")
@@ -240,15 +240,15 @@ public final class JvmWarmup {
                             new JvmWarmupInitiatorApplication(options.getThrottling(), throttlingTimer);
                     initiatorApps.add(initiatorApp);
 
-                    appFactoryBuilder.application(acceptorSid.getId(), acceptorApp);
-                    appFactoryBuilder.application(initiatorSid.getId(), initiatorApp);
+                    appFactoryBuilder.application(acceptorSid.getQualifiedName(), acceptorApp);
+                    appFactoryBuilder.application(initiatorSid.getQualifiedName(), initiatorApp);
 
                     String storeInstanceId = storeSettings.get(i % storeSettings.size()).getInstanceId();
                     FixSessionSettings.FixSessionSettingsBuilder<?, ?> acceptorSettings = FixSessionSettings.builder()
                             .fixSessionId(acceptorSid)
                             .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                             .dictionaryId("jvm-warmup")
-                            .fixApplicationInstanceId(acceptorSid.getId())
+                            .fixApplicationInstanceId(acceptorSid.getQualifiedName())
                             .fixMessageStoreInstanceId(storeInstanceId)
                             .rttMeasurementSettings(FixSessionSettings.RttMeasurementSettings.builder().probeInterval(Duration.ofSeconds(2)).build())
                             .resetSeqNumOnLogon(true);
@@ -256,7 +256,7 @@ public final class JvmWarmup {
                             .fixSessionId(initiatorSid)
                             .fixSessionType(FixSession.FixSessionType.INITIATOR)
                             .dictionaryId("jvm-warmup")
-                            .fixApplicationInstanceId(initiatorSid.getId())
+                            .fixApplicationInstanceId(initiatorSid.getQualifiedName())
                             .fixMessageStoreInstanceId(storeInstanceId)
                             .rttMeasurementSettings(FixSessionSettings.RttMeasurementSettings.builder().probeInterval(Duration.ofSeconds(2)).build())
                             .resetSeqNumOnLogon(true);

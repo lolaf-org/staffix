@@ -49,8 +49,14 @@ public class ActuatorSessionsRegistry {
         return Optional.ofNullable(stats.get(fixSessionId));
     }
 
-    public Optional<ActuatorSessionStats> findById(String id) {
-        return stats.values().stream().filter(s -> s.getFixSession().getFixSessionId().getId().equals(id)).findFirst();
+    /**
+     * By group and name together: a name is unique only within its group.
+     */
+    public Optional<ActuatorSessionStats> find(String group, String name) {
+        return stats.values().stream()
+                .filter(s -> s.getFixSession().getFixSessionId().getGroup().equals(group)
+                        && s.getFixSession().getFixSessionId().getName().equals(name))
+                .findFirst();
     }
 
     public Collection<ActuatorSessionStats> snapshot() {

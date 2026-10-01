@@ -24,7 +24,7 @@ staffix:
       instance-id: INITIATOR_1
       main-target:
         fix-session-id:
-          id: test
+          name: test
           fix-version: VERSION_44
           sender-comp-id: INITIATOR_1
           target-comp-id: ACCEPTOR
@@ -32,7 +32,7 @@ staffix:
           - "localhost:17001"
       backup-targets:
         - fix-session-id:
-            id: backup
+            name: backup
             fix-version: VERSION_44
             sender-comp-id: INITIATOR_1_DR
             target-comp-id: ACCEPTOR_DR

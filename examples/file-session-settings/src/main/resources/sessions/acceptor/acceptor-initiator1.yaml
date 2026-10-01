@@ -2,6 +2,6 @@
 # fixVersion, group and all the instance ids are inherited from default.yaml.
 # yaml-language-server: $schema=../fix-session-settings.v1.schema.json
 fixSessionId:
-  id: "acceptor-initiator1"
+  name: "acceptor-initiator1"
   senderCompID: "ACCEPTOR"
   targetCompID: "INITIATOR_1"

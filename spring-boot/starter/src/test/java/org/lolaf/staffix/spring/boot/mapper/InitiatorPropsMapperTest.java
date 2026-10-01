@@ -28,7 +28,7 @@ class InitiatorPropsMapperTest {
 
     private static FixSessionIdProps sessionId(String senderCompId) {
         FixSessionIdProps sessionId = new FixSessionIdProps();
-        sessionId.setId("test");
+        sessionId.setName("test");
         sessionId.setFixVersion("VERSION_44");
         sessionId.setSenderCompId(senderCompId);
         sessionId.setTargetCompId("ACCEPTOR");

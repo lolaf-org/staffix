@@ -8,6 +8,6 @@
 # it does not have to be matched on the other side.
 # yaml-language-server: $schema=../fix-session-settings.v1.schema.json
 fixSessionId:
-  id: "${sysprop:staffix.example.initiator.prefix:}initiator1"
+  name: "${sysprop:staffix.example.initiator.prefix:}initiator1"
   senderCompID: "INITIATOR_1"
   targetCompID: "ACCEPTOR"
