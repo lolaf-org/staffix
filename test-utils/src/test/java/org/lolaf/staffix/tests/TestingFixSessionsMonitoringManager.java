@@ -42,8 +42,8 @@ public class TestingFixSessionsMonitoringManager extends Startable.SimpleStartab
     }
 
     @Override
-    public Optional<? extends FixSessionPlugin<FixSessionsMonitoringContext, ?>> onSessionCreated(String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
-        return fixSessionMonitoringManagerSettings.getMock().onSessionCreated(fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes);
+    public Optional<? extends FixSessionPlugin<FixSessionsMonitoringContext, ?>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
+        return fixSessionMonitoringManagerSettings.getMock().onSessionCreated(fixEngineId, fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes);
     }
 
     @Override

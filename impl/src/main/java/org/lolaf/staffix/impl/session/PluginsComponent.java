@@ -89,7 +89,7 @@ class PluginsComponent implements FixSessionLayerComponent, FixMessageEncodingLi
                Set<MessageType> outgoingMessageTypes) {
         List<FixSessionPlugin<?, ?>> created = new ArrayList<>();
         runtimeDependencies.getFixSessionsPlugins().forEach(p ->
-                p.onSessionCreated(fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes)
+                p.onSessionCreated(runtimeDependencies.getEngineId(), fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes)
                         .ifPresent(l -> created.add(new FailSafeFixSessionPlugin<>(l))));
         this.plugins = created.isEmpty() ? NONE : created.toArray(new FixSessionPlugin[0]);
     }

@@ -121,7 +121,7 @@ class TestAsyncMessagesLogger {
         messageTypeRegistry = mock(MessageTypeRegistry.class);
         when(messageTypeRegistry.find(anyInt())).thenReturn(messageType);
 
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
     }
 
     @AfterEach
@@ -234,7 +234,7 @@ class TestAsyncMessagesLogger {
                 .build();
         asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings);
         asyncMessagesLogger.start();
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
         asyncLogger.start();
 
         verify(batchingLogger).isUnderlyingStorageResourceAvailable();
@@ -282,7 +282,7 @@ class TestAsyncMessagesLogger {
                 .build();
         asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings);
         asyncMessagesLogger.start();
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
         asyncLogger.start();
 
         String logMessage = "test";

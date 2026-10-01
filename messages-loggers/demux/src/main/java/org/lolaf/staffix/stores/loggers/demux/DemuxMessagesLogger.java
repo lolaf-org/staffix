@@ -59,8 +59,8 @@ public class DemuxMessagesLogger extends Startable.SimpleStartable<FixMessagesLo
     }
 
     @Override
-    public Logger getLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
-        List<Logger> wrappedLoggers = loggers.stream().map(l -> l.getLogger(fixInstanceId, fixSessionId, messageTypeRegistry)).collect(Collectors.toList());
+    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+        List<Logger> wrappedLoggers = loggers.stream().map(l -> l.getLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry)).collect(Collectors.toList());
         if (wrappedLoggers.stream().allMatch(BatchingLogger.class::isInstance)) {
             return new BatchingLoggerImpl(wrappedLoggers);
         }

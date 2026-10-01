@@ -25,6 +25,8 @@ could mean.
   [staffix admin console](https://github.com/lolaf-org/staffix-admin), which can then monitor and operate it.
 - A generated FIX package now carries its dictionary as `staffix-dictionaries/<dictionaryId>-<version>.xml`, so the
   HTTP admin API can serve it and the console decodes a session's messages with the dictionary that session runs.
+- Metrics, FIX message logs and traces carry `fix.eid`, the engine's id, so a session can be told apart from a
+  same-named one in another engine. The Grafana dashboard filters by engine.
 
 ### Changed
 
@@ -37,6 +39,10 @@ could mean.
   message store, and the same key in the JDBC store, the async store queues, the file logger and the session
   settings files.
 - **Monitoring attributes follow the same naming:** `fix.sn` (session name) and `fix.sg` (group)
+- **A custom `FixMessagesLogger` receives the engine's id:** `getLogger(fixEngineId, fixInstanceId, fixSessionId,
+  messageTypeRegistry)`.
+- **A `FixSessionsPlugin` receives the engine's id:** `onSessionCreated(fixEngineId, fixInstanceId, fixSession,
+  incomingMessageTypes, outgoingMessageTypes)`.
 - **Management endpoints include the group:** one session is at `/actuator/fix-sessions/{group}/{name}`, the
   health details are keyed `group.name`, and each JMX session bean name has a `group` key.
 

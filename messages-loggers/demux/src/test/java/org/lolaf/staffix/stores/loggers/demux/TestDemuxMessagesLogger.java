@@ -63,14 +63,14 @@ class TestDemuxMessagesLogger {
                 DemuxMessagesLoggerSettings.builder().instanceId("demux");
         for (Logger w : wrapped) {
             FixMessagesLogger outer = mock(FixMessagesLogger.class);
-            when(outer.getLogger(any(), any(), any())).thenReturn(w);
+            when(outer.getLogger(any(), any(), any(), any())).thenReturn(w);
             builder.demuxedLogger(outer);
         }
         return new DemuxMessagesLogger(builder.build());
     }
 
     private Logger getCompositeLogger(DemuxMessagesLogger demux) {
-        return demux.getLogger("fixInstanceId", fixSessionId, messageTypeRegistry);
+        return demux.getLogger("engine", "fixInstanceId", fixSessionId, messageTypeRegistry);
     }
 
     @Test
@@ -265,14 +265,14 @@ class TestDemuxMessagesLogger {
     void testGetLoggerForwardsArgumentsToWrappedLoggers() {
         Logger wrapped = mock(Logger.class);
         FixMessagesLogger outer = mock(FixMessagesLogger.class, RETURNS_DEEP_STUBS);
-        when(outer.getLogger(any(), any(), any())).thenReturn(wrapped);
+        when(outer.getLogger(any(), any(), any(), any())).thenReturn(wrapped);
         DemuxMessagesLogger demux = new DemuxMessagesLogger(DemuxMessagesLoggerSettings.builder()
                 .instanceId("demux")
                 .demuxedLogger(outer)
                 .build());
 
-        demux.getLogger("fixInstanceId", fixSessionId, messageTypeRegistry);
+        demux.getLogger("engine", "fixInstanceId", fixSessionId, messageTypeRegistry);
 
-        verify(outer).getLogger("fixInstanceId", fixSessionId, messageTypeRegistry);
+        verify(outer).getLogger("engine", "fixInstanceId", fixSessionId, messageTypeRegistry);
     }
 }

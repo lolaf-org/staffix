@@ -38,13 +38,13 @@ public abstract class MessagesCoreBatchingLogger extends MessagesCoreLogger {
     }
 
     @Override
-    public Logger getLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
         return getLoggers().computeIfAbsent(fixSessionId, sid -> new BatchingLoggerWrapperImpl(
-                fixSessionId, instanciateLogger(fixInstanceId, fixSessionId, messageTypeRegistry), getMessageTypeFilter(), getObfuscators()));
+                fixSessionId, instanciateLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry), getMessageTypeFilter(), getObfuscators()));
     }
 
     @Override
-    public abstract BatchingLogger instanciateLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
+    public abstract BatchingLogger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
 
     private static class BatchingLoggerWrapperImpl extends LoggerWrapperImpl implements BatchingLogger {
 

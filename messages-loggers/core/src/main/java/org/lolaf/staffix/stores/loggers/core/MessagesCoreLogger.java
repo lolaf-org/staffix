@@ -59,12 +59,12 @@ public abstract class MessagesCoreLogger extends Startable.SimpleStartable<FixMe
     }
 
     @Override
-    public Logger getLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
         return loggers.computeIfAbsent(fixSessionId, sid -> new LoggerWrapperImpl(
-                fixSessionId, instanciateLogger(fixInstanceId, fixSessionId, messageTypeRegistry), messageTypeFilter, obfuscators));
+                fixSessionId, instanciateLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry), messageTypeFilter, obfuscators));
     }
 
-    public abstract Logger instanciateLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
+    public abstract Logger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
 
     static class LoggerWrapperImpl extends AbstractLogger implements Logger {
 

@@ -72,7 +72,7 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
     }
 
     @Override
-    public BatchingLogger instanciateLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+    public BatchingLogger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
         return new LoggerImpl(settings, fixSessionId);
     }
 

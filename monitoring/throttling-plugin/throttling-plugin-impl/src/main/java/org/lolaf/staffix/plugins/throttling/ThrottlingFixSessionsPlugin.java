@@ -74,10 +74,10 @@ public final class ThrottlingFixSessionsPlugin<C extends PluginContext>
     }
 
     @Override
-    public Optional<FixSessionPlugin<C, Object>> onSessionCreated(String fixInstanceId, FixSession fixSession,
+    public Optional<FixSessionPlugin<C, Object>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession,
                                                                   Collection<MessageType> incomingMessageTypes,
                                                                   Collection<MessageType> outgoingMessageTypes) {
-        return delegate.onSessionCreated(fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes)
+        return delegate.onSessionCreated(fixEngineId, fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes)
                 .map(sessionPlugin -> new ThrottlingFixSessionPlugin<>(sessionPlugin,
                         settings.getMaxReceivedMessages(), settings.getMaxSentMessages(), windowNanos));
     }

@@ -89,8 +89,8 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
     }
 
     @Override
-    public BatchingLogger instanciateLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
-        return new LoggerImpl(settings, fixSessionId, messageTypeRegistry, logsFlushingExecutorService, fixInstanceId);
+    public BatchingLogger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+        return new LoggerImpl(settings, fixSessionId, messageTypeRegistry, logsFlushingExecutorService, fixEngineId, fixInstanceId);
     }
 
     private static class LoggerImpl extends AbstractLogger implements BatchingLogger {
@@ -124,14 +124,16 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
         private final IdleStrategy batchedLogsFullIdleStrategy;
         private final String otlpEndpoint;
         private final byte fieldDelimiterReplacementChar;
+        private final String fixEngineId;
         private final String fixInstanceId;
         private ScheduledFuture<?> scheduledFlush;
         private long totalLogsSent = 0;
         private long cacheHitCount;
 
         public LoggerImpl(OtlpMessagesLoggerSettings settings, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
-                          ScheduledExecutorService logsFlushingExecutorService, String fixInstanceId) {
+                          ScheduledExecutorService logsFlushingExecutorService, String fixEngineId, String fixInstanceId) {
             super(settings, fixSessionId);
+            this.fixEngineId = fixEngineId;
             this.fixInstanceId = fixInstanceId;
             this.settings = settings;
             // The endpoint, the method and the content type belong to the logger, not to whoever
@@ -368,6 +370,7 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
             if (!serviceNameProvided) {
                 attributes.add(createKeyValue(FixMonitoringConstants.OTLP_SERVICE_NAME, fixInstanceId));
             }
+            attributes.add(createKeyValue(FixMonitoringAttributes.FIX_ENGINE_ID, fixEngineId));
             attributes.add(KeyValue.newBuilder()
                     .setKey(FixMonitoringAttributes.FIX_INSTANCE_ID)
                     .setValue(AnyValue.newBuilder().setStringValue(fixInstanceId)

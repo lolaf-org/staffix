@@ -63,7 +63,7 @@ class TestFileMessagesLogger {
         fileMessagesLogger = new FileMessagesLogger(settings);
         fileMessagesLogger.start();
         fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
-        logger = fileMessagesLogger.instanciateLogger("test", fixSessionId, null);
+        logger = fileMessagesLogger.instanciateLogger("engine", "test", fixSessionId, null);
         logger.start();
         now = Instant.now();
         logTime = UTCTime.of(now);
@@ -105,7 +105,7 @@ class TestFileMessagesLogger {
                 .build();
         fileMessagesLogger = new FileMessagesLogger(settings);
         fileMessagesLogger.start();
-        logger = fileMessagesLogger.instanciateLogger("test", fixSessionId, null);
+        logger = fileMessagesLogger.instanciateLogger("engine", "test", fixSessionId, null);
         logger.start();
 
         logger.logIncoming(UTCTime.of(Instant.now()), messageType, ByteBuffer.wrap("test log".getBytes()));

@@ -18,18 +18,37 @@ package org.lolaf.staffix.api.monitoring;
 import lombok.experimental.UtilityClass;
 
 /**
- * The tag keys the engine puts on its meters - session, direction, message type.
+ * The attribute keys staffix puts on its meters, message log records and trace spans.
  *
- * <p>Shared with the loggers and the tracing plugin so one query selects the same session across metrics, logs
- * and traces.
+ * <p>The same keys are used everywhere, so one query selects the same session across metrics, logs and traces.
  */
 @UtilityClass
 public class FixMonitoringAttributes {
 
+    /**
+     * The engine's {@link org.lolaf.staffix.api.FixEngineBuilder#getInstanceId() instance id}. With the session's
+     * group and name, it tells a session apart from a same-named one in another engine.
+     */
+    public static final String FIX_ENGINE_ID = "fix.eid";
+    /**
+     * The id of the initiator or acceptor instance managing the session.
+     */
     public static final String FIX_INSTANCE_ID = "fix.iid";
+    /**
+     * The session's {@link org.lolaf.staffix.api.session.FixSessionId#getName() name}, unique only within its group.
+     */
     public static final String FIX_SESSION_NAME = "fix.sn";
+    /**
+     * The session's {@link org.lolaf.staffix.api.session.FixSessionId#getGroup() group}.
+     */
     public static final String FIX_SESSION_GROUP = "fix.sg";
+    /**
+     * The message's MsgType(35) value, e.g. {@code D}.
+     */
     public static final String FIX_MESSAGE_TYPE = "fix.msg.type";
+    /**
+     * Whether the message was received or sent: {@code in} or {@code out}.
+     */
     public static final String FIX_MESSAGE_DIRECTION = "fix.msg.dir";
 
 }

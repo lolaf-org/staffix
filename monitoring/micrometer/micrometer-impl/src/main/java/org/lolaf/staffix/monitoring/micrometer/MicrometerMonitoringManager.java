@@ -81,9 +81,9 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     }
 
     @Override
-    public Optional<FixSessionPlugin<FixSessionsMonitoringContext, Void>> onSessionCreated(String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
+    public Optional<FixSessionPlugin<FixSessionsMonitoringContext, Void>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
         return Optional.of(listeners.computeIfAbsent(fixSession.getFixSessionId(),
-                fid -> new FixSessionEventsListenerImpl(fixInstanceId, fid, incomingMessageTypes, outgoingMessageTypes, meterRegistry, settings, this::onSessionDestroyed)));
+                fid -> new FixSessionEventsListenerImpl(fixEngineId, fixInstanceId, fid, incomingMessageTypes, outgoingMessageTypes, meterRegistry, settings, this::onSessionDestroyed)));
     }
 
     @Override
@@ -119,16 +119,19 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         private final MeterRegistry meterRegistry;
         private final MicrometerMonitoringManagerSettings settings;
         private final Optional<FixSessionsMonitoringContext> pluginContext;
+        private final String fixEngineId;
 
-        FixSessionEventsListenerImpl(String fixInstanceId, FixSessionId fixSessionId, Collection<MessageType> incomingMessageTypes,
+        FixSessionEventsListenerImpl(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, Collection<MessageType> incomingMessageTypes,
                                      Collection<MessageType> outgoingMessageTypes, MeterRegistry meterRegistry, MicrometerMonitoringManagerSettings micrometerMonitoringManagerSettings,
                                      BiConsumer<String, FixSessionId> onSessionDestroyed) {
+            this.fixEngineId = fixEngineId;
             this.meterRegistry = meterRegistry;
             this.settings = micrometerMonitoringManagerSettings;
             this.timersForSession = new ConcurrentHashMap<>();
             this.loggedOn = new AtomicBoolean(false);
             this.onSessionDestroyed = onSessionDestroyed;
-            Tags tags = Tags.of(Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId),
+            Tags tags = Tags.of(Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID, fixEngineId),
+                    Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP, fixSessionId.getGroup()));
             this.sessionState = Gauge.builder(SESSION_LOGON_STATE, loggedOn, value -> loggedOn.get() ? 1d : 0d)
@@ -190,7 +193,8 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                 if (timerSettings == null) {
                     timerSettings = micrometerMonitoringManagerSettings.getDefaultTimersSettings();
                 }
-                Tags tagsForTimer = Tags.of(Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId),
+                Tags tagsForTimer = Tags.of(Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID, fixEngineId),
+                    Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId),
                         Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()),
                         Tag.of(FixMonitoringAttributes.FIX_MESSAGE_TYPE, mt.code()),
                         Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP, fixSessionId.getGroup()),
@@ -231,6 +235,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
 
         private org.lolaf.staffix.api.monitoring.Timer getCustomTimer(String fixInstanceId, FixSessionId fixSessionId, String id, String description, Map<String, String> tags) {
             Tags tagsForTimer = Tags.of(
+                    Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID, fixEngineId),
                     Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP, fixSessionId.getGroup()));

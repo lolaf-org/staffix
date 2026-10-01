@@ -159,7 +159,7 @@ class TestFixTracer {
             when(registry.addUserDefinedField(anyInt(), any(), any())).thenReturn(w3cField);
             when(fixSession.getFieldsRegistry()).thenReturn(registry);
 
-            FixSessionPlugin<FixTracer, Span> plugin = w3cTracing.onSessionCreated("engine", fixSession, List.of(), List.of()).orElseThrow();
+            FixSessionPlugin<FixTracer, Span> plugin = w3cTracing.onSessionCreated("engine-1", "engine", fixSession, List.of(), List.of()).orElseThrow();
             FixTracer tracer = plugin.getPluginContext().orElseThrow();
 
             // Producing thread: a span is in scope when encoding starts; capture the token.
@@ -200,7 +200,7 @@ class TestFixTracer {
             when(registry.addUserDefinedField(anyInt(), any(), any())).thenReturn(w3cField);
             when(fixSession.getFieldsRegistry()).thenReturn(registry);
 
-            FixSessionPlugin<FixTracer, Span> plugin = w3cTracing.onSessionCreated("engine", fixSession, List.of(), List.of()).orElseThrow();
+            FixSessionPlugin<FixTracer, Span> plugin = w3cTracing.onSessionCreated("engine-1", "engine", fixSession, List.of(), List.of()).orElseThrow();
 
             // No span in scope on the producing thread -> null token -> nothing to inject downstream.
             Span token = plugin.getMessageEncodingToken(businessMessage, 1L);

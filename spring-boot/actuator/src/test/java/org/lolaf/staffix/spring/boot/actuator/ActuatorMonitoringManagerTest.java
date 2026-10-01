@@ -55,7 +55,7 @@ class ActuatorMonitoringManagerTest {
         when(session.getFixSessionId()).thenReturn(SESSION_ID);
 
         Optional<FixSessionPlugin<PluginContext.VoidPluginContext, Void>> plugin =
-                manager.onSessionCreated("instance-1", session, List.of(), List.of());
+                manager.onSessionCreated("engine-1", "instance-1", session, List.of(), List.of());
 
         assertThat(plugin).isPresent();
         assertThat(registry.find(SESSION_ID)).isPresent();
@@ -89,7 +89,7 @@ class ActuatorMonitoringManagerTest {
 
         FixSession session = mock(FixSession.class);
         when(session.getFixSessionId()).thenReturn(SESSION_ID);
-        manager.onSessionCreated("instance-1", session, List.of(), List.of());
+        manager.onSessionCreated("engine-1", "instance-1", session, List.of(), List.of());
         assertThat(registry.snapshot()).hasSize(1);
 
         manager.stop(Deadline.of(Duration.ofSeconds(1)));

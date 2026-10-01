@@ -31,7 +31,7 @@ public interface AdminApi extends InstanceIdSupplier {
 
     /**
      * The engine's id, its {@link org.lolaf.staffix.api.FixEngineBuilder#getInstanceId() instance id}: what names
-     * the engine in administration tools, and the {@code fix.iid} of its metrics, logs and traces.
+     * the engine in administration tools, and the {@code fix.eid} of its metrics, logs and traces.
      *
      * @return the engine's id
      */

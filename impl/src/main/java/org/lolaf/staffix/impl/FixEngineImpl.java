@@ -206,7 +206,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     private FixSessionRuntimeDependencies getDependencies(FixSessionSettings fixSessionSettings) {
-        return new FixSessionRuntimeDependencies(findMatchAmongstMessagesStores(fixSessionSettings),
+        return new FixSessionRuntimeDependencies(getInstanceId(), findMatchAmongstMessagesStores(fixSessionSettings),
                 findMatchAmongstMessagesLoggers(fixSessionSettings),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
                 findMatchAmongstPluginsComponent(fixSessionSettings),

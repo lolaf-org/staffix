@@ -35,13 +35,14 @@ public interface FixSessionsPlugin<C extends PluginContext> extends InstanceIdSu
      * in listening to plugin events for the provided session, the implementation MUST return a dedicated instance of
      * the plugin for the provided session. Shared instances for multiple session are not supported.
      *
-     * @param fixInstanceId        the fix instance id
+     * @param fixEngineId          the id of the engine running the session, its {@link org.lolaf.staffix.api.FixEngineBuilder#getInstanceId()}
+     * @param fixInstanceId        the id of the initiator or acceptor instance managing the session
      * @param fixSession           the fix session
      * @param incomingMessageTypes the expected fix session incoming message types
      * @param outgoingMessageTypes the expected fix session outgoing message types
      * @return the instance or null
      */
-    Optional<? extends FixSessionPlugin<C, ?>> onSessionCreated(String fixInstanceId, FixSession fixSession,
+    Optional<? extends FixSessionPlugin<C, ?>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession,
                                                                 Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes);
 
     /**

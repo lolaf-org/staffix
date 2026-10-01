@@ -294,7 +294,7 @@ class TestToYamlFixSessionSettingsTransformer {
         }
 
         @Override
-        public Optional<FixSessionPlugin<PluginContext, Void>> onSessionCreated(String fixInstanceId, FixSession fixSession,
+        public Optional<FixSessionPlugin<PluginContext, Void>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession,
                                                                                 Collection<MessageType> incomingMessageTypes,
                                                                                 Collection<MessageType> outgoingMessageTypes) {
             return Optional.empty();

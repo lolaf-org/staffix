@@ -107,7 +107,7 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "session_logon_state{fix_sg=\"$group\"}",
+          "expr": "session_logon_state{fix_eid=~\"$engine\", fix_sg=\"$group\"}",
           "legendFormat": "{{fix_sg}}.{{fix_sn}}",
           "refId": "A"
         }
@@ -982,6 +982,32 @@
       {
         "allValue": "",
         "allowCustomValue": true,
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheusUID"
+        },
+        "definition": "label_values(session_logon_state, fix_eid)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "engine",
+        "multi": true,
+        "name": "engine",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(session_logon_state, fix_eid)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "regexApplyTo": "value",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": "",
+        "allowCustomValue": true,
         "current": {
           "text": "All",
           "value": [
@@ -992,7 +1018,7 @@
           "type": "prometheus",
           "uid": "prometheusUID"
         },
-        "definition": "label_values(session_logon_state, fix_sg)",
+        "definition": "label_values(session_logon_state{fix_eid=~\"$engine\"}, fix_sg)",
         "hide": 0,
         "includeAll": true,
         "label": "Group",
@@ -1001,7 +1027,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(session_logon_state, fix_sg)",
+          "query": "label_values(session_logon_state{fix_eid=~\"$engine\"}, fix_sg)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -1023,7 +1049,7 @@
           "type": "prometheus",
           "uid": "prometheusUID"
         },
-        "definition": "label_values(session_logon_state{fix_sg=~\"$group\"}, fix_sn)",
+        "definition": "label_values(session_logon_state{fix_eid=~\"$engine\", fix_sg=~\"$group\"}, fix_sn)",
         "hide": 0,
         "includeAll": true,
         "label": "Session",
@@ -1032,7 +1058,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(session_logon_state{fix_sg=~\"$group\"}, fix_sn)",
+          "query": "label_values(session_logon_state{fix_eid=~\"$engine\", fix_sg=~\"$group\"}, fix_sn)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

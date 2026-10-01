@@ -105,7 +105,7 @@ final class SessionWiring {
         this.messagesStore = new FailSafeFixSessionMessagesStore(runtimeDependencies.getFixMessagesStore().getStore(fixSessionId));
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
         this.messagesLogger = runtimeDependencies.getFixMessagesLogger() != null
-                ? runtimeDependencies.getFixMessagesLogger().getLogger(fixInstanceId, fixSessionId, messageTypeRegistry)
+                ? runtimeDependencies.getFixMessagesLogger().getLogger(runtimeDependencies.getEngineId(), fixInstanceId, fixSessionId, messageTypeRegistry)
                 : VoidMessageLogger.getInstance();
         this.messageExecutors = messageExecutorsRuntime.newSessionExecutors();
         this.disconnectedSessionsExecutor = runtimeDependencies.getDisconnectedSessionsExecutor();

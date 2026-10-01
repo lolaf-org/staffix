@@ -187,7 +187,7 @@ class TestFixMessageParser {
                 .maxSendingTime(null)
                 .build();
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry), validationSettings, TestingClock.get(), fixMessageParserEventsListener);
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry), validationSettings, TestingClock.get(), fixMessageParserEventsListener);
         logon = MessageTypeRegistry.Registry.getInstance(fixDictionaryId).find("A");
     }
 
@@ -233,7 +233,7 @@ class TestFixMessageParser {
                 .maxMessageSize(32).build();
 
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry), validationSettings,
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry), validationSettings,
                 TestingClock.get(), fixMessageParserEventsListener);
 
         StringBuilder message = new StringBuilder("8=FIX.4.49=8335=A34=149=TARGET_TEST52=20241013-19:07:17.86156=SENDER_TEST98=0108=30141=Y10=249");
@@ -824,7 +824,7 @@ class TestFixMessageParser {
     private FixMessageParser outOfOrderValidatingParser() {
         FixSessionSettings.ValidationSettings settings = validationSettings.toBuilder().validateFieldsOutOfOrder(true).build();
         return new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry), settings, TestingClock.get(), fixMessageParserEventsListener);
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry), settings, TestingClock.get(), fixMessageParserEventsListener);
     }
 
     private ByteBuffer encodeQuoteCancel(QuoteCancelEncoder encoder) {
@@ -986,7 +986,7 @@ class TestFixMessageParser {
 
         Duration maxAge = Duration.ofMillis(100);
         validationSettings = validationSettings.toBuilder().maxSendingTime(maxAge).build();
-        fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, fixMessagesLogger.getLogger("test", fixSessionId, mock(MessageTypeRegistry.class)),
+        fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, fixMessagesLogger.getLogger("engine", "test", fixSessionId, mock(MessageTypeRegistry.class)),
                 validationSettings, testClock, fixMessageParserEventsListener);
 
         fixMessageParser.parseMessages((ByteBuffer.wrap(message.getBytes())), getFixMessageDecoderFunction(mock(FixMessageDecoder.class)), () -> 1, 0);
@@ -1010,7 +1010,7 @@ class TestFixMessageParser {
 
         Duration maxDeviation = Duration.ofMillis(100);
         validationSettings = validationSettings.toBuilder().maxSendingTime(maxDeviation).build();
-        fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, fixMessagesLogger.getLogger("test", fixSessionId, mock(MessageTypeRegistry.class)),
+        fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, fixMessagesLogger.getLogger("engine", "test", fixSessionId, mock(MessageTypeRegistry.class)),
                 validationSettings, testClock, fixMessageParserEventsListener);
 
         // the message is dated 101ms ahead of the local clock, one millisecond past the tolerance
@@ -1487,7 +1487,7 @@ class TestFixMessageParser {
         validationSettings = validationSettings.toBuilder().validateCompId(true).build();
 
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry), validationSettings, TestingClock.get(), fixMessageParserEventsListener);
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry), validationSettings, TestingClock.get(), fixMessageParserEventsListener);
 
         String message = "8=FIX.4.49=8335=A34=149=TARGET_TEST52=20241013-19:07:17.86156=SENDER_TEST98=0108=30141=Y10=249";
         ByteBuffer bb = ByteBuffer.wrap(message.getBytes());
@@ -1670,7 +1670,7 @@ class TestFixMessageParser {
 
     private FixMessageParser parserWith(FixSessionSettings.ValidationSettings settings) {
         return new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry), settings, TestingClock.get(), fixMessageParserEventsListener);
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry), settings, TestingClock.get(), fixMessageParserEventsListener);
     }
 
     @Test
@@ -1762,7 +1762,7 @@ class TestFixMessageParser {
                 .build();
 
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry), validationSettings,
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry), validationSettings,
                 TestingClock.get(), fixMessageParserEventsListener);
 
         FixMessageDecoder decoder = mock(FixMessageDecoder.class);

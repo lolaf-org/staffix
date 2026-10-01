@@ -70,7 +70,7 @@ public class StampingFixSessionsPlugin implements FixSessionsPlugin<PluginContex
      */
     @Override
     public Optional<? extends FixSessionPlugin<PluginContext.VoidPluginContext, ?>> onSessionCreated(
-            String fixInstanceId, FixSession fixSession,
+            String fixEngineId, String fixInstanceId, FixSession fixSession,
             Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
         if (!outgoingMessageTypes.contains(settings.getStampedMessageType())) {
             log.info("stamping plugin: session {} does not send {}, declining it",
