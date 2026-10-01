@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.admin.AdminApiExporterSettings;
 
 import javax.net.ssl.SSLContext;
 import java.time.Duration;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * Where the engine serves its admin API, and the staffix admin console it announces itself to.
@@ -74,4 +75,10 @@ public class HttpAdminApiSettings extends AdminApiExporterSettings {
      */
     @Builder.Default
     private final Duration announceInterval = Duration.ofSeconds(30);
+
+    /**
+     * Runs the announcements; null creates one daemon thread per engine. A given scheduler is never shut down by
+     * the engine.
+     */
+    private final ScheduledExecutorService announceScheduler;
 }

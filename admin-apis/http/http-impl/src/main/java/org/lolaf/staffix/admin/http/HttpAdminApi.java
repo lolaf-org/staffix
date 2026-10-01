@@ -20,7 +20,12 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.AdminApiExporter;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
 
@@ -36,6 +41,7 @@ public class HttpAdminApi implements AdminApiExporter {
     private HttpAdminServer server;
     private String mountedInstanceId;
     private String apiToken;
+    private Announcer announcer;
 
     HttpAdminApi(HttpAdminApiSettings settings) {
         this.settings = settings;
@@ -54,7 +60,39 @@ public class HttpAdminApi implements AdminApiExporter {
         } catch (Exception e) {
             log.error("Failed to serve the admin API of instance {} on {}", instanceId, address, e);
             releaseServer();
+            return;
         }
+        if (settings.getAnnounceUrl() != null) {
+            startAnnouncing(instanceId);
+        }
+    }
+
+    private void startAnnouncing(String instanceId) {
+        try {
+            announcer = new Announcer(settings, instanceId, baseUrl(instanceId), apiToken);
+            announcer.start();
+        } catch (Exception e) {
+            log.error("Failed to announce instance {} to {}; its admin API is served but the console will not know it",
+                    instanceId, settings.getAnnounceUrl(), e);
+        }
+    }
+
+    /**
+     * Where the console reaches this engine: the advertised URL, else the bind address or, when bound to every
+     * interface, the host name.
+     */
+    URI baseUrl(String instanceId) throws UnknownHostException {
+        String root = settings.getAdvertisedUrl();
+        if (root == null) {
+            InetAddress bound = server.getAddress().getAddress();
+            String host = bound.isAnyLocalAddress() ? InetAddress.getLocalHost().getCanonicalHostName() : bound.getHostAddress();
+            if (host.contains(":")) {
+                host = "[" + host + "]";
+            }
+            root = (settings.getSslContext() != null ? "https" : "http") + "://" + host + ":" + server.getAddress().getPort();
+        }
+        String encodedId = URLEncoder.encode(instanceId, StandardCharsets.UTF_8).replace("+", "%20");
+        return URI.create(root.replaceAll("/+$", "") + "/engines/" + encodedId);
     }
 
     private static String randomToken() {
@@ -80,6 +118,10 @@ public class HttpAdminApi implements AdminApiExporter {
     }
 
     private void releaseServer() {
+        if (announcer != null) {
+            announcer.stop();
+            announcer = null;
+        }
         if (server != null) {
             server.release(mountedInstanceId);
             server = null;
