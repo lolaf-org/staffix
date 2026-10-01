@@ -98,6 +98,7 @@ own token:
 | `POST sessions/{group}/{name}/messages` | `{"message": "35=B|148=hello|", "separator": "|", "possDup": false}` |
 | `POST sessions/{group}/{name}/activate` | switch the initiator to this config |
 | `GET settings-stores`, `POST settings-stores/{id}/reload` | |
+| `GET dictionaries/{id}` | a dictionary a session lists in `status`, with its SHA-256 as `ETag` |
 
 An error answers with its status and an `application/problem+json` body, `{"status": 409, "detail": "..."}`.
 A failed announcement is logged and retried; it never stops the engine or the API.

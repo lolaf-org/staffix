@@ -66,8 +66,8 @@ the plugin**, and point `dictionaryFile` at the resource with a `classpath:` pre
 ```
 
 The goal runs at `generate-sources` and adds the generated sources to the compilation, so `mvn compile` is enough.
-The dictionary is only read at build time: the artifact is not a dependency of your project and does not reach your
-runtime classpath.
+The dictionary artifact is only read at build time and is not a dependency of your project; the generated package
+carries a copy of the dictionary itself (see below).
 
 - **`packageName`** is yours to choose. The examples in these guides use `org.lolaf.staffix.fix44`.
 - **`dictionaryId`** names the dictionary to the engine. It defaults to `default`, which is what a session uses
@@ -116,6 +116,9 @@ For a message like QuoteRequest, in `org.lolaf.staffix.fix44`:
 - **enum classes** for fields the dictionary enumerates, so `Side.SideValues.BUY` rather than `'1'`.
 - **registries**, published through the ServiceLoader SPI, so the engine finds the right field and message-type
   metadata for the version a session speaks.
+- **the dictionary**, as the resource `staffix-dictionaries/<dictionaryId>-<version>.xml` (`FIXT.1.1.xml` for the
+  session layer), so an admin tool such as the [HTTP admin API](runtime-administration.md#http-for-the-staffix-admin-console)
+  decodes a session's messages with exactly the dictionary it runs.
 
 Encoders come from the session so they are bound to it:
 

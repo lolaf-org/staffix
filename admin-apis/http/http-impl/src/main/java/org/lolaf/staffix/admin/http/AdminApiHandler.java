@@ -101,6 +101,9 @@ class AdminApiHandler implements HttpHandler {
             log.info("Admin API: reload settings store {}", path.get(1));
             adminApi.reloadFixSessionsSettingsStore(path.get(1));
             sendNoContent(exchange);
+        } else if (path.size() == 2 && path.get(0).equals("dictionaries")) {
+            requireMethod(exchange, "GET");
+            sendDictionary(exchange, path.get(1));
         } else if (path.size() == 4 && path.get(0).equals("sessions")) {
             sessionOperation(exchange, path.get(1), path.get(2), path.get(3));
         } else {
@@ -154,6 +157,18 @@ class AdminApiHandler implements HttpHandler {
                 throw new HttpProblemException(404, "No resource " + exchange.getRequestURI().getPath());
         }
         sendNoContent(exchange);
+    }
+
+    private static void sendDictionary(HttpExchange exchange, String id) throws IOException {
+        Dictionaries.Dictionary dictionary = Dictionaries.get(id)
+                .orElseThrow(() -> new HttpProblemException(404, "No dictionary " + id));
+        String etag = "\"" + dictionary.hash + "\"";
+        exchange.getResponseHeaders().set("ETag", etag);
+        if (etag.equals(exchange.getRequestHeaders().getFirst("If-None-Match"))) {
+            exchange.sendResponseHeaders(304, -1);
+            return;
+        }
+        send(exchange, 200, "application/xml", dictionary.xml);
     }
 
     private void setSeqNums(FixSessionId fixSessionId, SeqNumsRequest seqNums) {

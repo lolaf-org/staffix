@@ -163,6 +163,25 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void aDictionaryIsServedWithItsHashAsETag() throws Exception {
+        HttpResponse<String> dictionary = call("GET", "/engines/alpha-engine/dictionaries/alpha-FIX.4.4", null);
+
+        assertThat(dictionary.statusCode()).isEqualTo(200);
+        assertThat(dictionary.headers().firstValue("Content-Type")).hasValue("application/xml");
+        assertThat(dictionary.body()).startsWith("<fix major=\"4\"");
+        String etag = dictionary.headers().firstValue("ETag").orElseThrow();
+        assertThat(etag).isEqualTo("\"" + Dictionaries.get("alpha-FIX.4.4").orElseThrow().hash + "\"");
+
+        HttpResponse<String> unchanged = client.send(HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port + "/engines/alpha-engine/dictionaries/alpha-FIX.4.4"))
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("If-None-Match", etag)
+                .build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(unchanged.statusCode()).isEqualTo(304);
+        assertThat(call("GET", "/engines/alpha-engine/dictionaries/beta-FIX.4.4", null).statusCode()).isEqualTo(404);
+    }
+
+    @Test
     void errorsAreProblemDetails() throws Exception {
         doThrow(new IllegalStateException("trading is not logged in"))
                 .when(adminApi).sendFixMessage(any(), anyString(), anyChar(), anyBoolean());

@@ -56,4 +56,9 @@ public class SessionStatus {
     FixSessionState desiredState;
     long incomingSeqNum;
     long outgoingSeqNum;
+    /**
+     * The selected config's dictionaries, served by {@code GET dictionaries/{id}}.
+     */
+    @Singular
+    List<DictionaryRef> dictionaries;
 }

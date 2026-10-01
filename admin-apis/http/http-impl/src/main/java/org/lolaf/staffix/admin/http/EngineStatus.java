@@ -86,6 +86,7 @@ public class EngineStatus {
                 .withinSessionTime(session.isWithinSessionTime())
                 .desiredState(session.getDesiredState())
                 .incomingSeqNum(adminApi.getIncomingSeqNum(fixSessionId))
-                .outgoingSeqNum(adminApi.getOutgoingSeqNum(fixSessionId));
+                .outgoingSeqNum(adminApi.getOutgoingSeqNum(fixSessionId))
+                .dictionaries(Dictionaries.of(fixSessionId, session.getFixSessionSettings().getDictionaryId()));
     }
 }

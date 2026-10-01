@@ -66,6 +66,8 @@ class TestCodeGenerator {
         Assertions.assertThat(new File(target.getParentFile(), "src/test/resources/expected.MarketDataSnapshotFullRefresh.fieldsInfo"))
                 .hasSameTextualContentAs(new File(resourcesOuput, "VERSION_44.test-dict-FIX.4.4.MarketDataSnapshotFullRefresh.fieldsInfo"));
 
+        Assertions.assertThat(new File(resourcesOuput, CodeGenerator.DICTIONARIES_DIRECTORY + "/test-dict-FIX.4.4.xml"))
+                .hasSameBinaryContentAs(dict);
     }
 
     /**

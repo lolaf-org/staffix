@@ -23,6 +23,8 @@ could mean.
 - An HTTP admin API (`staffix-admin-api-http-impl`, and `staffix-admin-api-http-spring-boot` for Spring Boot) serves
   every session's state, settings and operations as JSON behind a bearer token, and announces the engine to the
   [staffix admin console](https://github.com/lolaf-org/staffix-admin), which can then monitor and operate it.
+- A generated FIX package now carries its dictionary as `staffix-dictionaries/<dictionaryId>-<version>.xml`, so the
+  HTTP admin API can serve it and the console decodes a session's messages with the dictionary that session runs.
 
 ### Changed
 
