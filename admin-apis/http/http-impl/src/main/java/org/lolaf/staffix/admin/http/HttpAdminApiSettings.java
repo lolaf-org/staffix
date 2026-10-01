@@ -62,7 +62,7 @@ public class HttpAdminApiSettings extends AdminApiExporterSettings {
     private final String announceUrl;
 
     /**
-     * A console user with the ENGINE role, used only to announce the engine; it grants nothing on this API.
+     * An admin console user with the ENGINE role, used only to announce the engine; it grants nothing on this API.
      */
     private final String announceUsername;
 

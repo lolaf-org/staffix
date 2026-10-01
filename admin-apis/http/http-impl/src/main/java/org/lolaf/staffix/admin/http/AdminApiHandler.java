@@ -117,8 +117,13 @@ class AdminApiHandler implements HttpHandler {
             sendNoContent(exchange);
             return;
         }
-        FixSessionId fixSessionId = managedSession(group, name);
+        FixSession session = managedSession(group, name);
+        FixSessionId fixSessionId = session.getFixSessionId();
         switch (operation) {
+            case "settings":
+                requireMethod(exchange, "GET");
+                sendJson(exchange, SettingsJson.of(session.getFixSessionSettings()));
+                return;
             case "logon":
                 requireMethod(exchange, "POST");
                 log.info("Admin API: logon {}", fixSessionId.getQualifiedName());
@@ -162,10 +167,10 @@ class AdminApiHandler implements HttpHandler {
         }
     }
 
-    private FixSessionId managedSession(String group, String name) {
+    private FixSession managedSession(String group, String name) {
         return adminApi.getManagedFixSessions().stream()
-                .map(FixSession::getFixSessionId)
-                .filter(fixSessionId -> fixSessionId.getGroup().equals(group) && fixSessionId.getName().equals(name))
+                .filter(session -> session.getFixSessionId().getGroup().equals(group)
+                        && session.getFixSessionId().getName().equals(name))
                 .findFirst()
                 .orElseThrow(() -> new HttpProblemException(404, "No running session " + name + " in group " + group));
     }

@@ -154,6 +154,15 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void settingsOfTheRunningConfigAreJson() throws Exception {
+        HttpResponse<String> response = call("GET", "/engines/alpha-engine/sessions/alpha/trading/settings", null);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.headers().firstValue("Content-Type")).hasValue("application/json");
+        assertThat(call("GET", "/engines/alpha-engine/sessions/alpha/trading-drp/settings", null).statusCode()).isEqualTo(404);
+    }
+
+    @Test
     void errorsAreProblemDetails() throws Exception {
         doThrow(new IllegalStateException("trading is not logged in"))
                 .when(adminApi).sendFixMessage(any(), anyString(), anyChar(), anyBoolean());
