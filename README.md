@@ -46,8 +46,9 @@ time and shipped in the jar, so your editor completes and validates the file.
 
 **Administration**: an `AdminApi` carrying the whole operational surface: log a session on or off, reset sequence state,
 set or read either side's sequence numbers, reload a settings store without a restart, and be notified as sessions come
-and go. It is deliberately independent of how it reaches the engine: `AdminApiExporter` is the SPI, and JMX is the
-exporter that ships, so you are not forced onto a management protocol you do not use. See
+and go. It is deliberately independent of how it reaches the engine: `AdminApiExporter` is the SPI, and JMX and HTTP (for
+the [staffix admin console](https://github.com/lolaf-org/staffix-admin)) are the exporters that ship, so you are not
+forced onto a management protocol you do not use. See
 [Runtime administration](docs/runtime-administration.md).
 
 **Monitoring**: Micrometer metrics with configurable timers for latency, and OpenTelemetry tracing with W3C

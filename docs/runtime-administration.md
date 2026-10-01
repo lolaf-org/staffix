@@ -22,10 +22,11 @@ forced onto a management protocol you do not use.
 | `reloadFixSessionsSettingsStore(String)` | re-read one, picking up changes without a restart |
 | `switchInitiatorSession(FixSessionId)` | move an initiator to another of its [targets](#switching-an-initiator-to-a-backup) |
 | `getInitiatorsTargets()` | each initiator's sessions, and the one it runs |
+| `getAcceptorsSessions()` | each acceptor's sessions |
 | `registerSessionLifecycleListener` / `unregister…` | be told as sessions come and go |
 
-**`AdminApiExporter`** is the SPI that publishes that contract over a transport. `JmxAdminApi` is one implementation
-of it, and nothing more privileged than that.
+**`AdminApiExporter`** is the SPI that publishes that contract over a transport. `JmxAdminApi` and `HttpAdminApi`
+are two implementations of it, and nothing more privileged than that.
 
 ---
 
@@ -49,9 +50,60 @@ You get an MBean per session exposing `logon()`, `logout()`, `reset(String reset
 `setIncomingSeqNum(long)`, `getOutgoingSeqNum()`, `setOutgoingSeqNum(long)` and `getFixSessionId()`, plus an
 engine-level MBean. Any JMX client (JConsole, VisualVM, your monitoring agent) can drive them.
 
-The engine-level MBean names a session by its full `toString()` form, `test:FIX.4.4:SENDER->TARGET`, in both
-`getInitiatorsTargets()` and `switchInitiatorSession(String)`: the short id is a label and several sessions may share
-it. Copy the string from the first into the second.
+The engine-level MBean names a session by its full `toString()` form, `alpha.trading:VERSION_44:SENDER->TARGET`, in
+both `getInitiatorsTargets()` and `switchInitiatorSession(String)`: a session name is unique only within its group.
+Copy the string from the first into the second.
+
+---
+
+## HTTP, for the staffix admin console
+
+`staffix-admin-api-http-impl` serves the admin API as JSON over HTTP, with the JDK's own HTTP server, and announces
+the engine to a [staffix admin console](https://github.com/lolaf-org/staffix-admin), which then shows its sessions and
+drives them. Nothing has to be configured on the console side: the engine tells it where it is and which token to use.
+
+```java
+FixEngineBuilder.builder()
+        .adminApiExporter(HttpAdminApiSettings.builder()
+                .port(8686)
+                .announceUrl("https://staffix-admin.example.com")
+                .announceUsername("engine")
+                .announcePassword(System.getenv("STAFFIX_ADMIN_ENGINE_PASSWORD"))
+                .build())
+        // …
+```
+
+| setting | default | |
+|---------|---------|---|
+| `bindAddress` | `0.0.0.0` | |
+| `port` | `8686` | 0 picks a free port |
+| `sslContext` | none | serves HTTPS when set |
+| `apiToken` | random | the bearer token every request must carry; random means only the console it is announced to knows it |
+| `advertisedUrl` | derived | where the console reaches the engine; set it behind a proxy or a NAT |
+| `announceUrl` | none | the console's URL; none serves the API without announcing the engine |
+| `announceUsername` / `announcePassword` | none | a console user with the ENGINE role, used only to announce; they grant nothing on this API |
+| `announceInterval` | 30 s | the engine announces itself again on every interval, so a restarted console finds it |
+| `announceScheduler` | its own thread | runs the announcements; one you pass is left running at shutdown |
+
+Each engine is served under `/engines/{instanceId}/`, so several engines of one JVM can share a port, each with its
+own token:
+
+| request | |
+|---------|---|
+| `GET status` | every session with its state and sequence numbers, and for an initiator its configs and the selected one |
+| `GET sessions/{group}/{name}/settings` | the session's settings, values that look secret masked |
+| `POST sessions/{group}/{name}/logon`, `logout` | |
+| `POST sessions/{group}/{name}/reset` | `{"mode": "RESET_SEQUENCE"}` |
+| `PUT sessions/{group}/{name}/seqnums` | `{"incoming": 1, "outgoing": 1}`, either may be left out |
+| `POST sessions/{group}/{name}/messages` | `{"message": "35=B|148=hello|", "separator": "|", "possDup": false}` |
+| `POST sessions/{group}/{name}/activate` | switch the initiator to this config |
+| `GET settings-stores`, `POST settings-stores/{id}/reload` | |
+
+An error answers with its status and an `application/problem+json` body, `{"status": 409, "detail": "..."}`.
+A failed announcement is logged and retried; it never stops the engine or the API.
+
+Serve it over HTTPS outside a test setup: the token travels in every request, and the API can send messages on your
+sessions.
 
 ---
 
@@ -75,7 +127,7 @@ worked example: it is a thin adapter, and yours should be too.
 
 ## Spring Boot
 
-The starter wires the JMX exporter from properties, and the actuator module adds a `fix-sessions` endpoint; the
+The starter wires the JMX and HTTP exporters from properties, and the actuator module adds a `fix-sessions` endpoint; the
 properties are in [Spring Boot](spring-boot.md#monitoring-and-admin).
 
 `staffix.actuator.fix-session-state-contributes-to-health-status=true` turns the health endpoint DOWN when a session

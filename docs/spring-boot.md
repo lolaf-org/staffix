@@ -118,10 +118,20 @@ rather than creating their own.
 ```properties
 staffix.admin-api-jmx.domain=com.example.trading
 
+staffix.admin-api-http.port=8686
+staffix.admin-api-http.ssl-bundle=admin
+staffix.admin-api-http.announce-url=https://staffix-admin.example.com
+staffix.admin-api-http.announce-username=engine
+staffix.admin-api-http.announce-password=${STAFFIX_ADMIN_ENGINE_PASSWORD}
+
 management.endpoints.web.exposure.include=fix-sessions,health,info
 staffix.actuator.enabled=true
 staffix.actuator.fix-session-state-contributes-to-health-status=true
 ```
+
+`staffix-admin-api-http-spring-boot` serves the admin API over HTTP and announces the engine to the staffix admin
+console; `ssl-bundle` names a Spring Boot SSL bundle to serve HTTPS with, and the other settings are in
+[Runtime administration](runtime-administration.md#http-for-the-staffix-admin-console).
 
 The actuator module adds a `fix-sessions` endpoint and can fold session state into the health status; see
 [Runtime administration](runtime-administration.md#spring-boot) before turning that on.
