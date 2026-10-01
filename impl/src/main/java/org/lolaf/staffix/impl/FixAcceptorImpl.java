@@ -36,6 +36,7 @@ import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.InstanceProvider;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.admin.AdminApi.ResetFixSessionMode;
+import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
 import org.lolaf.staffix.api.fields.CoreFields;
@@ -81,6 +82,10 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private static final int DEFAULT_BUFFERED_WRITES_POOL_SIZE = Integer.parseInt(System.getProperty("staffix.DefaultBufferedWritesPoolSize", "4"));
 
     private final Set<FixSessionImpl> connectedSessions;
+    /**
+     * Synchronized, and synchronized on for compound operations: the settings store's listener changes it while
+     * admin calls read it.
+     */
     private final Set<FixSessionSettings> configuredSessionsSettings;
     private final Map<FixSessionId, FixSessionImpl> configuredSessions;
     private final Map<Class<?>, String> encodersPoolIdsForBroadCasting;
@@ -97,7 +102,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     FixAcceptorImpl(FixAcceptorBuilder fixAcceptorBuilder, Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesSupplier,
                     Collection<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver) {
-        this.configuredSessionsSettings = new HashSet<>();
+        this.configuredSessionsSettings = Collections.synchronizedSet(new HashSet<>());
         this.connectedSessions = Collections.synchronizedSet(new HashSet<>());
         this.connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
         this.configuredSessions = new ConcurrentHashMap<>();
@@ -365,7 +370,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public Set<FixSessionSettings> getConfiguredSessionsSettings() {
-        return Collections.unmodifiableSet(configuredSessionsSettings);
+        synchronized (configuredSessionsSettings) {
+            return Set.copyOf(configuredSessionsSettings);
+        }
     }
 
     @Override
@@ -407,8 +414,10 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         }
         // the running session keeps the settings it was created with; the new ones are managed and are what the next
         // session created for this id will be built from
-        configuredSessionsSettings.remove(oldSettings);
-        configuredSessionsSettings.add(newSettings);
+        synchronized (configuredSessionsSettings) {
+            configuredSessionsSettings.remove(oldSettings);
+            configuredSessionsSettings.add(newSettings);
+        }
     }
 
     /**
@@ -475,7 +484,18 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public List<FixSessionSettings> getManagedFixSessionsSettings() {
-        return new ArrayList<>(configuredSessionsSettings);
+        synchronized (configuredSessionsSettings) {
+            return new ArrayList<>(configuredSessionsSettings);
+        }
+    }
+
+    FixAcceptorSessions getFixAcceptorSessions() {
+        return FixAcceptorSessions.builder()
+                .instanceId(fixAcceptorBuilder.getInstanceId())
+                .fixSessionIds(getManagedFixSessionsSettings().stream()
+                        .map(FixSessionSettings::getFixSessionId)
+                        .collect(Collectors.toList()))
+                .build();
     }
 
     @Override

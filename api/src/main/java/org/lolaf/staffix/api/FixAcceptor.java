@@ -71,7 +71,8 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
     void broadcast(FixMessageEncoder<?> encoder, UTCTime sendingTime, Predicate<FixSession> fixSessionPredicate, boolean connectedSessionsOnly);
 
     /**
-     * The settings of every session configured on this acceptor.
+     * A snapshot of the settings of every session configured on this acceptor: a later change in its settings store
+     * shows in the next call, not in a set already returned.
      */
     Set<FixSessionSettings> getConfiguredSessionsSettings();
 

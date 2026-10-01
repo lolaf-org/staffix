@@ -176,6 +176,18 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
     }
 
     @Test
+    void theAdminApiListsEachAcceptorWithItsSessions() {
+        startAcceptorWithBothSessions();
+
+        assertThat(((AdminApi) acceptorFixEngine).getAcceptorsSessions()).singleElement().satisfies(acceptor -> {
+            assertThat(acceptor.getInstanceId()).isEqualTo(fixAcceptorBuilder.getInstanceId());
+            assertThat(acceptor.getFixSessionIds()).containsExactlyInAnyOrder(
+                    getAcceptorFixSessionSettings().build().getFixSessionId(), BACKUP_ACCEPTOR);
+        });
+        assertThat(((AdminApi) initiatorFixEngine).getAcceptorsSessions()).isEmpty();
+    }
+
+    @Test
     void theAdminApiRejectsASessionNoInitiatorTargets() {
         FixSessionId unknown = FixSessionId.of("unknown", FixRegularVersion.VERSION_44, "NOBODY", "NOWHERE");
 

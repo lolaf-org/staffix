@@ -21,6 +21,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.AdminApiExporter;
+import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
@@ -364,6 +365,13 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     public List<FixInitiatorTargets> getInitiatorsTargets() {
         return initiators.values().stream()
                 .map(FixInitiatorImpl::getFixInitiatorTargets)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<FixAcceptorSessions> getAcceptorsSessions() {
+        return acceptors.values().stream()
+                .map(FixAcceptorImpl::getFixAcceptorSessions)
                 .collect(Collectors.toList());
     }
 

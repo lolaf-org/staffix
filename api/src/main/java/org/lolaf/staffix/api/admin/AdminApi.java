@@ -26,10 +26,17 @@ import java.util.List;
 /**
  * Management control surface for a FIX engine's sessions. Implemented by the engine itself, which
  * routes each operation to the initiator/acceptor managing the target session.
- *
- * <p>{@link #getInstanceId()} returns the owning engine's instance id.
  */
 public interface AdminApi extends InstanceIdSupplier {
+
+    /**
+     * The engine's id, its {@link org.lolaf.staffix.api.FixEngineBuilder#getInstanceId() instance id}: what names
+     * the engine in administration tools, and the {@code fix.iid} of its metrics, logs and traces.
+     *
+     * @return the engine's id
+     */
+    @Override
+    String getInstanceId();
 
     /**
      * Initiates a logon for the given session, establishing the FIX connection if it is not already up.
@@ -175,6 +182,13 @@ public interface AdminApi extends InstanceIdSupplier {
      * @return one entry per initiator; empty if the engine has none
      */
     List<FixInitiatorTargets> getInitiatorsTargets();
+
+    /**
+     * Returns each acceptor's sessions, the counterpart of {@link #getInitiatorsTargets()} for acceptors.
+     *
+     * @return one entry per acceptor; empty if the engine has none
+     */
+    List<FixAcceptorSessions> getAcceptorsSessions();
 
     /**
      * Registers a listener notified whenever a session is added to or removed from the set of managed sessions, so that

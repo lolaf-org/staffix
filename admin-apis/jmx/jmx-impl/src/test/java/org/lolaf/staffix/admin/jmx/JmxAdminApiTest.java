@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -264,6 +265,11 @@ class JmxAdminApiTest {
         @Override
         public List<FixInitiatorTargets> getInitiatorsTargets() {
             return new ArrayList<>(initiatorsTargets);
+        }
+
+        @Override
+        public List<FixAcceptorSessions> getAcceptorsSessions() {
+            return List.of();
         }
 
         @Override

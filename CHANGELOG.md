@@ -16,6 +16,11 @@ could mean.
 
 ## [0.9.1] - 2026-10-01
 
+### Added
+
+- `AdminApi.getAcceptorsSessions()` lists each acceptor with the sessions it accepts, the counterpart of
+  `getInitiatorsTargets()`, so an administration tool can tell which acceptor a session belongs to.
+
 ### Changed
 
 - **A session is identified by its group and its name.** A session name is unique only within its group, so two
@@ -34,6 +39,8 @@ could mean.
 
 - Two sessions with the same name in different groups no longer share stored state, log files, metrics, JMX beans
   or health entries; before, they overwrote each other.
+- Reading an acceptor's sessions while its settings store reloads (`getConfiguredSessionsSettings()`, the admin
+  API) could fail or return a partial list. `getConfiguredSessionsSettings()` now returns a snapshot.
 
 ## [0.9.0] - 2026-09-30
 

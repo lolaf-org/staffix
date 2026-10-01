@@ -29,6 +29,7 @@ import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -75,6 +76,20 @@ class TestFixAcceptor extends AbstractFixTests {
         assertThat(fixAcceptor.getConfiguredSessionsSettings()).contains(added);
         assertThat(fixAcceptor.getSessions())
                 .anyMatch(s -> s.getFixSessionId().equals(added.getFixSessionId()));
+    }
+
+    @Test
+    void testConfiguredSettingsAreASnapshot() {
+        startFixAcceptor();
+        Set<FixSessionSettings> before = fixAcceptor.getConfiguredSessionsSettings();
+        FixSessionSettings added = getAcceptorFixSessionSettings()
+                .fixSessionId(FixSessionId.of("added-after-snapshot", FixRegularVersion.VERSION_44, "SNAP_TARGET", "SNAP_SENDER"))
+                .build();
+
+        acceptorFixEngine.getFixSessionsSettingsStores().get(0).add(added);
+
+        assertThat(before).doesNotContain(added);
+        assertThat(fixAcceptor.getConfiguredSessionsSettings()).contains(added);
     }
 
     /**
