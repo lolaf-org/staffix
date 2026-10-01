@@ -53,7 +53,7 @@ class ModulePathResolutionTest {
      * module whose name nobody checked. Modules held back from the release bundle keep the parent's
      * sentinel name and are deliberately not counted here.
      */
-    private static final int PUBLISHED_MODULES = 66;
+    private static final int PUBLISHED_MODULES = 68;
 
     /**
      * {@code PooledBytesString} extends protobuf's {@code ByteString} to serialize OTLP log records

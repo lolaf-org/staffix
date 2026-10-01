@@ -3,21 +3,21 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>org.lolaf.staffix</groupId>
-        <artifactId>staffix-parent</artifactId>
+        <artifactId>staffix-admin-api-parent</artifactId>
         <version>0.9.1-SNAPSHOT</version>
     </parent>
     <packaging>pom</packaging>
 
-    <name>Staffix Admin APIs</name>
+    <name>Staffix HTTP Admin API (Parent)</name>
     <description>
-        Inspecting and driving a running engine from outside it.
+        The HTTP admin API and its Spring Boot auto-configuration.
     </description>
 
-    <artifactId>staffix-admin-api-parent</artifactId>
+    <artifactId>staffix-admin-api-http-parent</artifactId>
 
     <modules>
-        <module>jmx</module>
-        <module>http</module>
+        <module>http-impl</module>
+        <module>http-spring-boot</module>
     </modules>
 
 </project>
