@@ -19,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
@@ -71,6 +73,12 @@ public final class ThrottlingFixSessionsPlugin<C extends PluginContext>
     @Override
     public boolean matchesPluginClass(Class<? extends FixSessionsPlugin<?>> pluginClass) {
         return getClass().equals(pluginClass) || delegate.matchesPluginClass(pluginClass);
+    }
+
+    @Override
+    public boolean requiresTimeMeasurement(FixSessionId fixSessionId, FixSessionSettings fixSessionSettings) {
+        // Admission reuses the engine-provided timestamps, so they must always be captured.
+        return true;
     }
 
     @Override

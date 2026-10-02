@@ -18,9 +18,11 @@ package org.lolaf.staffix.impl.session;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodingListener;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.RttMeasurement;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
+import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.PluginContext;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
@@ -42,6 +44,7 @@ class PluginsComponent implements FixSessionLayerComponent, FixMessageEncodingLi
     private final String fixInstanceId;
     private final FixSessionId fixSessionId;
     private final FixSessionImpl fixSession;
+    private final boolean requiresTimeMeasurement;
     private FixSessionPlugin<?, ?>[] plugins = NONE;
 
     /**
@@ -49,13 +52,16 @@ class PluginsComponent implements FixSessionLayerComponent, FixMessageEncodingLi
      * decoders: an encoder built during the wiring reports here from the start, and an empty fan out answers the way
      * a session with no plugin does.
      *
-     * <p>The session id is passed rather than read off the session, which is half built at this point and has not
-     * taken its own id yet.
+     * <p>The session id is read off the settings rather than the session, which is half built at this point and has
+     * not taken its own id yet.
      */
-    PluginsComponent(String fixInstanceId, FixSessionId fixSessionId, FixSessionImpl fixSession) {
+    PluginsComponent(String fixInstanceId, FixSessionSettings fixSessionSettings, FixSessionImpl fixSession,
+                     Collection<FixSessionsPlugin<?>> fixSessionsPlugins) {
         this.fixInstanceId = fixInstanceId;
-        this.fixSessionId = fixSessionId;
+        this.fixSessionId = fixSessionSettings.getFixSessionId();
         this.fixSession = fixSession;
+        this.requiresTimeMeasurement = fixSessionsPlugins.stream()
+                .anyMatch(p -> p.requiresTimeMeasurement(fixSessionId, fixSessionSettings));
     }
 
     // Captures each heterogeneous plugin's token type once so the token it produces flows back into its own
@@ -103,7 +109,7 @@ class PluginsComponent implements FixSessionLayerComponent, FixMessageEncodingLi
     }
 
     boolean requiresTimeMeasurement() {
-        return Arrays.stream(plugins).anyMatch(FixSessionPlugin::requiresTimeMeasurement);
+        return requiresTimeMeasurement;
     }
 
     <C extends PluginContext> Optional<C> getPluginContext(Class<C> pluginContextClass) {

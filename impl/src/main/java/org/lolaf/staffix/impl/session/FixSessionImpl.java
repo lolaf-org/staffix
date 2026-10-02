@@ -166,9 +166,9 @@ public class FixSessionImpl implements FixSession {
         }
         fixMessagesLogger.start();
         fixSessionMessagesStore.start();
-
+        // important setup encoders clock first, this.fixApplication.setup may create encoders that need the right clock
+        codecs.setupEncodersClock();
         List<FixMessageDecoder> fixMessageDecoders = this.fixApplication.setup(fixSessionSettings, this, codecs.getOutgoingMessageTypes());
-        codecs.setupApplicationDecoders(fixMessageDecoders);
         wiring.setupApplicationComponents(this, fixSessionRuntimeDependencies, fixMessageDecoders);
         fixSessionLayerComponents.onSessionStarted();
         logEvent("Session %s created", fixSessionId);

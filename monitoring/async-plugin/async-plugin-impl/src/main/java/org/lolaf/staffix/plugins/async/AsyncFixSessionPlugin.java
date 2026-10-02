@@ -43,7 +43,7 @@ import java.util.concurrent.TimeUnit;
  * producing thread) and replayed against the delegate on the consumer thread. Callbacks that must run
  * synchronously are delegated inline:
  * <ul>
- *   <li>{@link #isForPluginContext}, {@link #getPluginContext}, {@link #requiresTimeMeasurement} — they
+ *   <li>{@link #isForPluginContext}, {@link #getPluginContext} — they
  *       return a value;</li>
  *   <li>{@link #onDecoderSetup} — it registers field listeners on live setup-time objects and must run
  *       before any message flows.</li>
@@ -129,11 +129,6 @@ final class AsyncFixSessionPlugin<C> implements FixSessionPlugin<C, Object> {
     @Override
     public Optional<C> getPluginContext() {
         return delegate.getPluginContext();
-    }
-
-    @Override
-    public boolean requiresTimeMeasurement() {
-        return delegate.requiresTimeMeasurement();
     }
 
     @Override

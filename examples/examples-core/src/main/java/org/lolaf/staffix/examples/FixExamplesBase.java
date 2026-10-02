@@ -125,7 +125,9 @@ class FixExamplesBase {
     public static void logConfiguration(Logger log, Object example) {
         log.info("Example running with Java {}", Runtime.version());
         try {
-            log.info("{}", describeConfiguration(example));
+            if (log.isInfoEnabled()) {
+                log.info("{}", describeConfiguration(example));
+            }
         } catch (RuntimeException e) {
             log.warn("Could not log the {} configuration", example.getClass().getSimpleName(), e);
         }
@@ -365,6 +367,7 @@ class FixExamplesBase {
                 .mainTarget(FixInitiatorTarget.builder()
                         .fixSessionId(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
                                 .name(sessionId)
+                                .group("initiators")
                                 .senderCompID(senderCompId)
                                 .targetCompID(ACCEPTOR).build()))
                         .connectAddress(new InetSocketAddress("localhost", 7001))

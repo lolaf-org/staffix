@@ -276,7 +276,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         if (ioWorkerGroup == null) {
             ioWorkerGroup = IOWorkersGroupSettings.builder().id(fixInitiatorBuilder.getInstanceId()).build().newInstance();
         }
-
+        boolean hasConfiguredPluginsWithTimeMeasurementRequired = fixSession.hasConfiguredPluginsWithTimeMeasurementRequired();
         return ClientBuilder.builder()
                 .id(fixInitiatorBuilder.getInstanceId())
                 .SSLSettings(fixInitiatorBuilder.getSslSettings())
@@ -287,10 +287,10 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                         .readDirectBuffer(false) // make sure we don't use direct buffer as we need access to underlying byte array when parsing message for perfs reason
                         .writeIoBufferPoolSettings(addBufferedWritesPoolZoneIfNeeded(fixInitiatorBuilder.getIoSettings()))
                         .socketOptions(addTcpOptionsIfNeeded(fixInitiatorBuilder.getIoSettings()))
-                        .trackReceiveTime(fixSession.hasConfiguredPluginsWithTimeMeasurementRequired())
+                        .trackReceiveTime(hasConfiguredPluginsWithTimeMeasurementRequired)
                         .build())
                 .ioWorkersGroup(ioWorkerGroup)
-                .ioStatsProvider(getIoStatsProvider(fixSession.hasConfiguredPluginsWithTimeMeasurementRequired()))
+                .ioStatsProvider(getIoStatsProvider(hasConfiguredPluginsWithTimeMeasurementRequired))
                 .ioEventsListener(new IOEventsListenerImpl(fixSession)).build().newInstance();
     }
 

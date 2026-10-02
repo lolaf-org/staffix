@@ -65,7 +65,7 @@ public class CodecsComponent implements FixSessionLayerComponent {
     @Getter
     private final Set<MessageType> outgoingMessageTypes;
     private final Map<String, FixMessageEncodersPool<?>> allocatedEncodersPool;
-    private Clock encodersClock = Clock.VoidClock.getInstance();
+    private Clock encodersClock;
     private boolean firstMessageIsLogonOrLogoutCheck;
 
     CodecsComponent(FixSessionImpl fixSession, FixSessionSettings fixSessionSettings, FixAdminMessagesCodec fixAdminMessagesCodec,
@@ -107,9 +107,12 @@ public class CodecsComponent implements FixSessionLayerComponent {
         }
     }
 
+    void setupEncodersClock() {
+        encodersClock = plugins.requiresTimeMeasurement() ? clock : Clock.VoidClock.getInstance();
+    }
+
     @Override
     public void onSessionStarted(FixSessionLayerComponents components) {
-        encodersClock = plugins.requiresTimeMeasurement() ? clock : Clock.VoidClock.getInstance();
         if (!plugins.isEmpty()) {
             decoders.values().forEach(d -> ((FixMessageDecoderImpl) d).onPluginsSetup(plugins.get()));
             fixAdminMessagesCodec.getAdminMessageDecoders().values().forEach(d ->
@@ -182,7 +185,8 @@ public class CodecsComponent implements FixSessionLayerComponent {
      */
     byte[] encodeStandaloneLogout(FixSessionId targetSessionId, String logoutText) {
         // null fixSession/fixApplication skips per-session application encoding hooks, the header is fully driven by targetSessionId
-        ByteBuffer encoded = fixAdminMessagesCodec.generateLogout(logoutText)
+        ByteBuffer encoded = fixAdminMessagesCodec
+                .generateLogout(logoutText)
                 .encode(ByteBuffer::allocate, 1L, targetSessionId, null, sendingTimeAccuracy, clock.now(), null);
         encoded.flip();
         byte[] bytes = new byte[encoded.remaining()];

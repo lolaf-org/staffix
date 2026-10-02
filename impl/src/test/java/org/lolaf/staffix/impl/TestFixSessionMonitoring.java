@@ -80,13 +80,13 @@ class TestFixSessionMonitoring extends AbstractFixTests {
         super.setup();
         initiatorFixSessionMonitoringManager = mock(FixSessionsMonitoringManager.class);
         initiatorFixSessionEventsListener = mock(FixSessionPlugin.class);
-        when(initiatorFixSessionEventsListener.requiresTimeMeasurement()).thenReturn(true);
+        when(initiatorFixSessionMonitoringManager.requiresTimeMeasurement(any(), any())).thenReturn(true);
         when(initiatorFixSessionMonitoringManager.matchesPluginClass(FixSessionsMonitoringManager.class)).thenReturn(true);
         doReturn(Optional.of(initiatorFixSessionEventsListener)).when(initiatorFixSessionMonitoringManager).onSessionCreated(anyString(), anyString(), any(), any(), any());
 
         acceptorFixSessionMonitoringManager = mock(FixSessionsMonitoringManager.class);
         acceptorFixSessionEventsListener = mock(FixSessionPlugin.class);
-        when(acceptorFixSessionEventsListener.requiresTimeMeasurement()).thenReturn(true);
+        when(acceptorFixSessionMonitoringManager.requiresTimeMeasurement(any(), any())).thenReturn(true);
         when(acceptorFixSessionMonitoringManager.matchesPluginClass(FixSessionsMonitoringManager.class)).thenReturn(true);
         doReturn(Optional.of(acceptorFixSessionEventsListener)).when(acceptorFixSessionMonitoringManager).onSessionCreated(anyString(), anyString(), any(), any(), any());
 

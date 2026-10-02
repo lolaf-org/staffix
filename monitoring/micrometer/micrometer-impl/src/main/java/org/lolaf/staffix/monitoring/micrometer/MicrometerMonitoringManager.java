@@ -25,6 +25,7 @@ import org.lolaf.staffix.api.monitoring.FixSessionMonitoringManagerSettings;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.RttMeasurement;
@@ -84,6 +85,11 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     public Optional<FixSessionPlugin<FixSessionsMonitoringContext, Void>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
         return Optional.of(listeners.computeIfAbsent(fixSession.getFixSessionId(),
                 fid -> new FixSessionEventsListenerImpl(fixEngineId, fixInstanceId, fid, incomingMessageTypes, outgoingMessageTypes, meterRegistry, settings, this::onSessionDestroyed)));
+    }
+
+    @Override
+    public boolean requiresTimeMeasurement(FixSessionId fixSessionId, FixSessionSettings fixSessionSettings) {
+        return true;
     }
 
     @Override
@@ -216,11 +222,6 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                             "FIX messages encoding latency", meterRegistry, tagsForTimer, timerSettings));
                 }
             });
-        }
-
-        @Override
-        public boolean requiresTimeMeasurement() {
-            return true;
         }
 
         @Override

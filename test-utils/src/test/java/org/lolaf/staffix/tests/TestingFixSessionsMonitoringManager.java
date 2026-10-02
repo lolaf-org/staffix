@@ -21,6 +21,8 @@ import org.lolaf.staffix.api.monitoring.FixSessionMonitoringManagerSettings;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
@@ -39,6 +41,11 @@ public class TestingFixSessionsMonitoringManager extends Startable.SimpleStartab
     @Override
     public boolean matchesPluginClass(Class<? extends FixSessionsPlugin<?>> pluginClass) {
         return fixSessionMonitoringManagerSettings.getMock().matchesPluginClass(pluginClass);
+    }
+
+    @Override
+    public boolean requiresTimeMeasurement(FixSessionId fixSessionId, FixSessionSettings fixSessionSettings) {
+        return fixSessionMonitoringManagerSettings.getMock().requiresTimeMeasurement(fixSessionId, fixSessionSettings);
     }
 
     @Override

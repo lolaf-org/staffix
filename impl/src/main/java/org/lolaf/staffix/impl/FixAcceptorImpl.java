@@ -449,7 +449,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public void logoutSession(FixSessionId fixSessionId) {
-        findSession(fixSessionId).logout("Admin API logout");
+        findSession(fixSessionId).logoutPermanently("Admin API logout");
     }
 
     @Override

@@ -53,8 +53,8 @@ import java.util.Optional;
  *
  * <p>A {@code null} limiter means that direction is unthrottled (max ≤ 0) and every call is forwarded.
  * Each callback reuses the {@code System.nanoTime()}-based timestamp the engine already passes, so
- * admission needs no clock read of its own; {@link #requiresTimeMeasurement()} therefore returns
- * {@code true} to guarantee those timestamps are captured.
+ * admission needs no clock read of its own; {@link ThrottlingFixSessionsPlugin#requiresTimeMeasurement}
+ * therefore returns {@code true} to guarantee those timestamps are captured.
  *
  * @param <C> the wrapped plugin's context type
  */
@@ -101,12 +101,6 @@ final class ThrottlingFixSessionPlugin<C> implements FixSessionPlugin<C, Object>
 
     long getDroppedSentCount() {
         return droppedSent;
-    }
-
-    @Override
-    public boolean requiresTimeMeasurement() {
-        // Admission reuses the engine-provided timestamps, so they must always be captured.
-        return true;
     }
 
     // --- Value-returning and lifecycle callbacks: always delegated inline. ---

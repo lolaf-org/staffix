@@ -95,7 +95,7 @@ final class SessionWiring {
         FixMessageEncoderFactory encoderFactory = FixMessageEncoderFactory.Registry.getInstance(fixDictionaryId);
 
         // before the admin codec, whose encoders report their encoding to it from the moment they are built
-        PluginsComponent plugins = new PluginsComponent(fixInstanceId, fixSessionId, fixSession);
+        PluginsComponent plugins = new PluginsComponent(fixInstanceId, settings, fixSession, runtimeDependencies.getFixSessionsPlugins());
 
         FixSessionScheduleManager scheduleManager = new FixSessionScheduleManager(settings, clock);
         FixSessionStateComponent state = new FixSessionStateComponent(
@@ -151,21 +151,6 @@ final class SessionWiring {
     }
 
     /**
-     * What cannot be settled before the application has declared its decoders: which plugins want this session, and
-     * the notifier, registered last of all so that an application callback sees a session in its final state.
-     *
-     * <p>Not a reaction to the session starting: the codecs read which plugins are here as they react to it, so the
-     * fan out must find them already asked.
-     */
-    void setupApplicationComponents(FixSessionImpl fixSession, FixSessionRuntimeDependencies runtimeDependencies,
-                                    List<FixMessageDecoder> decoders) {
-        CodecsComponent codecs = components.get(CodecsComponent.class);
-        components.get(PluginsComponent.class).setup(runtimeDependencies, codecs.getIncomingMessageTypes(),
-                codecs.getOutgoingMessageTypes());
-        components.register(new ApplicationNotifierComponent(fixApplication, fixSession, fieldsRegistry, messageTypeRegistry, decoders));
-    }
-
-    /**
      * A FIXT session names the application version its messages are in; a regular one is its own dictionary.
      */
     private static FixRegularVersion dictionaryVersion(FixSessionId fixSessionId) {
@@ -178,11 +163,6 @@ final class SessionWiring {
         return null;
     }
 
-    /**
-     * The dictionary's own registry, wrapped so that fields it does not describe can be added as they arrive when
-     * the session allows that, and carrying the two cancel on disconnect fields, which are user defined by nature:
-     * the specification does not name them, so each counterparty agrees its own tags.
-     */
     private static FieldsRegistry fieldsRegistry(FixSessionSettings settings, FixDictionaryId fixDictionaryId, FixSessionId fixSessionId) {
         FieldsRegistry dictionaryRegistry = FixTFieldsRegistry.get(fixDictionaryId, fixSessionId.getFixVersion());
         FieldsRegistry fieldsRegistry = settings.getValidationSettings().isAllowUnknownFields()
@@ -195,6 +175,15 @@ final class SessionWiring {
                     FieldType.INT, FieldLocation.BODY);
         }
         return fieldsRegistry;
+    }
+
+    void setupApplicationComponents(FixSessionImpl fixSession, FixSessionRuntimeDependencies runtimeDependencies,
+                                    List<FixMessageDecoder> decoders) {
+        CodecsComponent codecs = components.get(CodecsComponent.class);
+        codecs.setupApplicationDecoders(decoders);
+        components.get(PluginsComponent.class).setup(runtimeDependencies, codecs.getIncomingMessageTypes(),
+                codecs.getOutgoingMessageTypes());
+        components.register(new ApplicationNotifierComponent(fixApplication, fixSession, fieldsRegistry, messageTypeRegistry, decoders));
     }
 
     private FixAdminMessagesCodec adminMessagesCodec(FixSessionImpl fixSession, FixSessionSettings settings,
