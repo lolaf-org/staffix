@@ -152,7 +152,7 @@
           },
           "direction": "backward",
           "editorMode": "builder",
-          "expr": "{service_name=\"$serviceName\"}",
+          "expr": "{service_name=\"$serviceName\", fix_eid=~\"$engine\", fix_sg=~\"$group\", fix_sn=~\"$name\"}",
           "queryType": "range",
           "refId": "A"
         }
