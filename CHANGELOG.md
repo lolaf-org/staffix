@@ -27,6 +27,8 @@ could mean.
   HTTP admin API can serve it and the console decodes a session's messages with the dictionary that session runs.
 - Metrics, FIX message logs and traces carry `fix.eid`, the engine's id, so a session can be told apart from a
   same-named one in another engine. The Grafana dashboard filters by engine.
+- The monitoring stack in `monitoring/grafana` runs Loki 3.7.8 and indexes `fix.eid`, `fix.sg` and `fix.sn`, so a log
+  query for one engine, group or session reads only that session's logs instead of scanning them all.
 
 ### Changed
 
