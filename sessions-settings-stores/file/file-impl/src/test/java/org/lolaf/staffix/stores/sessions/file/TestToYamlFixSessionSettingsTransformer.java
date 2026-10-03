@@ -64,7 +64,7 @@ class TestToYamlFixSessionSettingsTransformer {
 
         defaultSettingsBuilder = YamlFixSessionSettings.builder()
                 .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
-                        .id("default")
+                        .name("default")
                         .fixVersion(FixRegularVersion.VERSION_50_SP2.toString())
                         .senderCompID("senderCompId")
                         .targetCompID("targetCompId")
@@ -73,7 +73,7 @@ class TestToYamlFixSessionSettingsTransformer {
 
         settingsBuilder = YamlFixSessionSettings.builder()
                 .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
-                        .id("testSession1")
+                        .name("testSession1")
                         .fixVersion(FixRegularVersion.VERSION_44.toString())
                         .build());
     }
@@ -102,7 +102,7 @@ class TestToYamlFixSessionSettingsTransformer {
     void testMinimalFixSessionSettingsWorks() throws IOException {
         FixSessionSettings testFullSettings = FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                        .id("testMinimalFixSessionSettingsWorks")
+                        .name("testMinimalFixSessionSettingsWorks")
                         .group("test-group")
                         .senderCompID("senderCompId")
                         .senderSubID("senderSubId")
@@ -133,7 +133,7 @@ class TestToYamlFixSessionSettingsTransformer {
     void testNonStopScheduleFixSessionSettingsWorks() throws IOException {
         FixSessionSettings testNonStopSettings = FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                        .id("testNonStopScheduleFixSessionSettingsWorks")
+                        .name("testNonStopScheduleFixSessionSettingsWorks")
                         .group("test-group")
                         .senderCompID("senderCompId")
                         .senderSubID("senderSubId")
@@ -176,7 +176,7 @@ class TestToYamlFixSessionSettingsTransformer {
     void testFullFixSessionSettingsWorks() throws IOException {
         FixSessionSettings testFullSettings = FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                        .id("testFullFixSessionSettingsWorks")
+                        .name("testFullFixSessionSettingsWorks")
                         .group("test-group")
                         .senderCompID("senderCompId")
                         .senderSubID("senderSubId")
@@ -234,7 +234,7 @@ class TestToYamlFixSessionSettingsTransformer {
     void pluginsRoundTrip() throws IOException {
         FixSessionSettings settings = FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                        .id("rt")
+                        .name("rt")
                         .senderCompID("senderCompId")
                         .targetCompID("targetCompId")
                         .build()))
@@ -261,7 +261,7 @@ class TestToYamlFixSessionSettingsTransformer {
         // dropping it on the way through would silently change what the session does rather than just a number
         FixSessionSettings settings = FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                        .id("recovery-bounds")
+                        .name("recovery-bounds")
                         .senderCompID("senderCompId")
                         .targetCompID("targetCompId")
                         .build()))

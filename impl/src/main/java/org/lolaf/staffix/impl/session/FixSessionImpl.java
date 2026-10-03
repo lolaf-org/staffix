@@ -161,7 +161,7 @@ public class FixSessionImpl implements FixSession {
     public void start(FixSessionRuntimeDependencies fixSessionRuntimeDependencies) {
         for (FixApplicationSessionSettingDescriptor d : fixApplication.getRequiredFixSessionSettings()) {
             if (!fixSessionSettings.getFixApplicationSessionSettings().containsKey(d)) {
-                throw new IllegalStateException("Fix session application settings " + d + " is missing for session " + fixSessionId.getId());
+                throw new IllegalStateException("Fix session application settings " + d + " is missing for session " + fixSessionId.getQualifiedName());
             }
         }
         fixMessagesLogger.start();
@@ -594,7 +594,7 @@ public class FixSessionImpl implements FixSession {
             logEvent("FIX session desired state is DISCONNECTED, disconnecting immediately");
             return false;
         }
-        ioSession.setId(getFixSessionId().getId());
+        ioSession.setId(getFixSessionId().getQualifiedName());
         ownershipHandover.lock();
         try {
             this.ioSession = ioSession;

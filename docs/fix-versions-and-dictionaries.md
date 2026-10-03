@@ -94,7 +94,7 @@ Then name the version on the session id:
 
 ```java
 FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-        .id("initiator-session")
+        .name("initiator-session")
         .senderCompID("initiator")
         .targetCompID("acceptor")
         .build());

@@ -68,4 +68,10 @@ class TestAsyncMessagesStoreWithTestKit extends AbstractFixSessionMessagesStoreT
         }
         return new AsyncMessageStore(testingFixSessionMessagesStore, sessionId, asyncMessagesStoreSettings, asyncStoreThreads, asyncEventInstanceProvider);
     }
+
+    @Override
+    protected AsyncMessageStore createGroupedSessionStore(FixSessionId sessionId) {
+        return new AsyncMessageStore(new TestingFixSessionMessagesStore(messagesFilter), sessionId, asyncMessagesStoreSettings,
+                asyncStoreThreads, asyncEventInstanceProvider);
+    }
 }

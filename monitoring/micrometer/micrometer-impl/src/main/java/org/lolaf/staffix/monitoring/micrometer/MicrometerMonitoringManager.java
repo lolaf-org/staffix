@@ -129,8 +129,8 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             this.loggedOn = new AtomicBoolean(false);
             this.onSessionDestroyed = onSessionDestroyed;
             Tags tags = Tags.of(Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId),
-                    Tag.of(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId()),
-                    Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP_ID, fixSessionId.getGroup()));
+                    Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()),
+                    Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP, fixSessionId.getGroup()));
             this.sessionState = Gauge.builder(SESSION_LOGON_STATE, loggedOn, value -> loggedOn.get() ? 1d : 0d)
                     .description("FIX session logon state gauge")
                     .tags(tags).register(meterRegistry);
@@ -191,9 +191,9 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                     timerSettings = micrometerMonitoringManagerSettings.getDefaultTimersSettings();
                 }
                 Tags tagsForTimer = Tags.of(Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId),
-                        Tag.of(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId()),
+                        Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()),
                         Tag.of(FixMonitoringAttributes.FIX_MESSAGE_TYPE, mt.code()),
-                        Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP_ID, fixSessionId.getGroup()),
+                        Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP, fixSessionId.getGroup()),
                         Tag.of(FixMonitoringAttributes.FIX_MESSAGE_DIRECTION, msgDirection));
                 if (readLatencyEnabled) {
                     readsTimersPerMsgType.put(mt, getTimer(MESSAGES_READ_LATENCY,
@@ -232,8 +232,8 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         private org.lolaf.staffix.api.monitoring.Timer getCustomTimer(String fixInstanceId, FixSessionId fixSessionId, String id, String description, Map<String, String> tags) {
             Tags tagsForTimer = Tags.of(
                     Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId),
-                    Tag.of(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId()),
-                    Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP_ID, fixSessionId.getGroup()));
+                    Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()),
+                    Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP, fixSessionId.getGroup()));
 
             AtomicReference<Tags> tagsRef = new AtomicReference<>(tagsForTimer);
             StringBuilder tagsToString = new StringBuilder();

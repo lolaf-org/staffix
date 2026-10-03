@@ -13,7 +13,7 @@ is the authority.
 
 ```java
 FixSessionId sessionId = FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-        .id("initiator-session")
+        .name("initiator-session")
         .senderCompID("initiator")
         .targetCompID("acceptor")
         .build());
@@ -28,7 +28,8 @@ Only two settings have no default: **`fixSessionId`** and **`fixSessionType`**. 
 be safe and cheap.
 
 A `FixSessionId` is the FIX version plus the CompID pair. It is the identity of the session on the wire *and* the key
-the engine uses to find the right application, store and logger, so `id` needs to be unique within the engine.
+the engine uses to find the right application, store and logger. Its `name` is unique only within its `group`, so two
+counterparties can each have a `trading` session; `getQualifiedName()` (`group.name`) is what is unique in the engine.
 
 ---
 
@@ -42,7 +43,7 @@ FixEngineBuilder.builder()
         .fixMessagesStore(MemoryMessageStoreSettings.builder().instanceId("acceptor").build())
         .fixApplicationFactory(SimpleApplicationFactorySettings.builder()
                 .instanceId("acceptor")
-                .application(sessionId.getId(), myApplication).build())
+                .application(sessionId.getQualifiedName(), myApplication).build())
         // …
 ```
 
@@ -53,7 +54,7 @@ FixSessionSettings.builder()
         .fixMessageStoreInstanceId("acceptor")
         .fixMessageLoggerInstanceId("acceptor")
         .fixApplicationFactoryInstanceId("acceptor")
-        .fixApplicationInstanceId(sessionId.getId())
+        .fixApplicationInstanceId(sessionId.getQualifiedName())
         .build();
 ```
 

@@ -79,7 +79,7 @@ class TestPersistentQueue {
     @Test
     void testStoreFilesCleanupWorks() {
         File chronicleDir = new File("./target/chronicle-" + System.currentTimeMillis());
-        File fixSessionDir = new File(chronicleDir, "test-test");
+        File fixSessionDir = new File(chronicleDir, "test-" + fixSessionId.forFileName(""));
 
         asyncStoreSettings = AsyncStoreSettings.builder()
                 .asyncQueueDirectory(chronicleDir.getPath())
@@ -133,7 +133,7 @@ class TestPersistentQueue {
     @Test
     void testReleasedLiveCycleIsNotSweptOnEveryPoll() {
         File chronicleDir = new File("./target/chronicle-" + System.currentTimeMillis());
-        File fixSessionDir = new File(chronicleDir, "test-test");
+        File fixSessionDir = new File(chronicleDir, "test-" + fixSessionId.forFileName(""));
 
         // the default roll cycle is hourly, so every event below lands in the live cycle and no roll can occur
         asyncStoreSettings = AsyncStoreSettings.builder()

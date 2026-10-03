@@ -46,6 +46,11 @@ class TestMemoryFixSessionMessagesStore extends AbstractFixSessionMessagesStoreT
         return new MemoryFixSessionMessagesStore(settings);
     }
 
+    @Override
+    protected MemoryFixSessionMessagesStore createGroupedSessionStore(FixSessionId sessionId) {
+        return new MemoryFixSessionMessagesStore(settings);
+    }
+
     @Test
     void shouldIncrementOutgoingSequenceNumberWhenDisabled() {
         setupDisabledStore(0);

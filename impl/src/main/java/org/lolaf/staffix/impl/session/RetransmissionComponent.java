@@ -194,7 +194,7 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
         }
         if (resendExecutor == null) {
             resendExecutor = Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "fix-resend-" + fixInstanceId + "-" + fixSessionId.getId());
+                Thread thread = new Thread(runnable, "fix-resend-" + fixInstanceId + "-" + fixSessionId.getQualifiedName());
                 thread.setDaemon(true);
                 return thread;
             });

@@ -57,7 +57,7 @@ class TestFromYamlFixSessionSettingsTransformer {
         settingsBuilder = YamlFixSessionSettings.builder()
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                 .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
-                        .id("testSession1")
+                        .name("testSession1")
                         .fixVersion(FixRegularVersion.VERSION_44.toString())
                         .build());
     }
@@ -68,7 +68,7 @@ class TestFromYamlFixSessionSettingsTransformer {
                 .allowedAddresses(Collections.singletonList(InetAddress.getByName("localhost")));
 
         settingsBuilder.fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
-                .id("test")
+                .name("test")
                 .fixVersion(FixRegularVersion.VERSION_44.toString())
                 .senderSubID("senderSubId-test")
                 .senderLocationID("senderLocId")
@@ -82,7 +82,7 @@ class TestFromYamlFixSessionSettingsTransformer {
 
         assertThat(d.getFixSessionId())
                 .isEqualTo(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                        .id("test")
+                        .name("test")
                         .senderCompID("senderCompId")
                         .targetCompID("targetCompId")
                         .senderSubID("senderSubId-test")
@@ -132,7 +132,7 @@ class TestFromYamlFixSessionSettingsTransformer {
     void testCertificateAreParsed() throws IOException {
         settingsBuilder
                 .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
-                        .id("test")
+                        .name("test")
                         .fixVersion(FixRegularVersion.VERSION_50_SP2.toString())
                         .senderCompID("senderCompId")
                         .targetCompID("targetCompId")

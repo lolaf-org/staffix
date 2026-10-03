@@ -138,7 +138,7 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
                 .rollCycleProvider(sessionId -> {
                     // High-volume sessions: roll hourly
                     // Low-volume sessions: roll daily
-                    return sessionId.getId().startsWith("HIGHVOL")
+                    return sessionId.getName().startsWith("HIGHVOL")
                             ? RollCycles.FAST_HOURLY
                             : RollCycles.FAST_DAILY;
                 })

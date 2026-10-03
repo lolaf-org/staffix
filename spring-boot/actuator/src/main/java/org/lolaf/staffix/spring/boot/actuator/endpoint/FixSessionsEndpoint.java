@@ -26,7 +26,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The {@code /actuator/fixsessions} endpoint: every session, its state and its sequence numbers.
+ * The {@code /actuator/fix-sessions} endpoint: every session, its state and its sequence numbers;
+ * {@code /actuator/fix-sessions/{group}/{name}} for one.
  */
 @Endpoint(id = "fix-sessions")
 public class FixSessionsEndpoint {
@@ -39,7 +40,7 @@ public class FixSessionsEndpoint {
 
     private static Map<String, Object> toJson(ActuatorSessionStats stats) {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", stats.getFixSession().getFixSessionId().getId());
+        m.put("name", stats.getFixSession().getFixSessionId().getName());
         m.put("fixSessionId", stats.getFixSession().getFixSessionId().toString());
         m.put("instanceId", stats.getFixInstanceId());
         m.put("group", stats.getFixSession().getFixSessionId().getGroup());
@@ -66,8 +67,8 @@ public class FixSessionsEndpoint {
     }
 
     @ReadOperation
-    public Map<String, Object> getOne(@Selector String id) {
-        return registry.findById(id)
+    public Map<String, Object> getOne(@Selector String group, @Selector String name) {
+        return registry.find(group, name)
                 .map(FixSessionsEndpoint::toJson)
                 .orElse(null);
     }

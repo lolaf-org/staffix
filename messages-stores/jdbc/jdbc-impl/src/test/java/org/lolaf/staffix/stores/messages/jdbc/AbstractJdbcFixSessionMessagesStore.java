@@ -105,7 +105,7 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
                      "SELECT incoming_seq_num, outgoing_seq_num FROM fix_messages_session_state WHERE session_id = ?")) {
-            stmt.setString(1, sessionId.getId());
+            stmt.setString(1, sessionId.getQualifiedName());
             ResultSet rs = stmt.executeQuery();
             assertThat(rs.next()).isTrue();
             assertThat(rs.getLong("incoming_seq_num")).isEqualTo(1L);
@@ -124,7 +124,7 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
                      "SELECT incoming_seq_num FROM fix_messages_session_state WHERE session_id = ?")) {
-            stmt.setString(1, sessionId.getId());
+            stmt.setString(1, sessionId.getQualifiedName());
             ResultSet rs = stmt.executeQuery();
             assertThat(rs.next()).isTrue();
             assertThat(rs.getLong("incoming_seq_num")).isEqualTo(42L);
@@ -141,7 +141,7 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
                      "SELECT outgoing_seq_num FROM fix_messages_session_state WHERE session_id = ?")) {
-            stmt.setString(1, sessionId.getId());
+            stmt.setString(1, sessionId.getQualifiedName());
             ResultSet rs = stmt.executeQuery();
             assertThat(rs.next()).isTrue();
             assertThat(rs.getLong("outgoing_seq_num")).isEqualTo(99L);
@@ -158,7 +158,7 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
                      "SELECT incoming_seq_num, outgoing_seq_num FROM fix_messages_session_state WHERE session_id = ?")) {
-            stmt.setString(1, sessionId.getId());
+            stmt.setString(1, sessionId.getQualifiedName());
             ResultSet rs = stmt.executeQuery();
             assertThat(rs.next()).isTrue();
             assertThat(rs.getLong("incoming_seq_num")).isEqualTo(1L);
@@ -189,19 +189,19 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
         // built and asserted: start() schedules the pruner one pruningCheckInterval out, and on a slow
         // dialect these 150 round-trips can outlast that window, pruning the fixture as it is written.
         for (long i = 1; i <= 150; i++) {
-            insertMessageDirectly(sessionId.getId(), i);
+            insertMessageDirectly(sessionId.getQualifiedName(), i);
         }
 
-        assertThat(countMessagesInDatabase(sessionId.getId())).isEqualTo(150);
+        assertThat(countMessagesInDatabase(sessionId.getQualifiedName())).isEqualTo(150);
 
         messageStore.start();
 
-        Awaitility.await().untilAsserted(() -> assertThat(countMessagesInDatabase(sessionId.getId()))
+        Awaitility.await().untilAsserted(() -> assertThat(countMessagesInDatabase(sessionId.getQualifiedName()))
                 .as("Message count after pruning should be exactly maxMessagesPerSession (100)")
                 .isEqualTo(100));
 
         // Verify min and max sequence numbers
-        long[] minMax = getMinMaxSequenceNumbers(sessionId.getId());
+        long[] minMax = getMinMaxSequenceNumbers(sessionId.getQualifiedName());
         long minSeq = minMax[0];
         long maxSeq = minMax[1];
 
@@ -237,19 +237,19 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
         // Insert 6 messages with non-contiguous seq nums: 1, 4, 6, 7, 10, 15. Started only after the
         // fixture is asserted, for the reason given above.
         for (long seqNum : new long[]{1L, 4L, 6L, 7L, 10L, 15L}) {
-            insertMessageDirectly(sessionId.getId(), seqNum);
+            insertMessageDirectly(sessionId.getQualifiedName(), seqNum);
         }
-        assertThat(countMessagesInDatabase(sessionId.getId())).isEqualTo(6);
+        assertThat(countMessagesInDatabase(sessionId.getQualifiedName())).isEqualTo(6);
 
         messageStore.start();
 
         // excessCount=3 OFFSET 2 -> cutoff=6, delete <=6 → keeps (7, 10, 15)
         Awaitility.await().untilAsserted(() ->
-                assertThat(countMessagesInDatabase(sessionId.getId()))
+                assertThat(countMessagesInDatabase(sessionId.getQualifiedName()))
                         .as("Message count after pruning should be exactly maxMessagesPerSession (3)")
                         .isEqualTo(3));
 
-        long[] minMax = getMinMaxSequenceNumbers(sessionId.getId());
+        long[] minMax = getMinMaxSequenceNumbers(sessionId.getQualifiedName());
         assertThat(minMax[0])
                 .as("Minimum sequence number should be 7 (oldest of the 3 kept messages)")
                 .isEqualTo(7);

@@ -237,8 +237,8 @@ public class OtelTracing extends Startable.SimpleStartable<OtelTracing> implemen
             messageDecodedSpan = fixTracerImpl.spanBuilder("fix-msg-decoding")
                     .setAttribute(NetworkAttributes.NETWORK_PROTOCOL_NAME, "fix")
                     .setAttribute(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId)
-                    .setAttribute(FixMonitoringAttributes.FIX_SESSION_ID, fixSessionId.getId())
-                    .setAttribute(FixMonitoringAttributes.FIX_SESSION_GROUP_ID, fixSessionId.getGroup())
+                    .setAttribute(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                    .setAttribute(FixMonitoringAttributes.FIX_SESSION_GROUP, fixSessionId.getGroup())
                     .setAttribute(FixMonitoringAttributes.FIX_MESSAGE_TYPE, messageType.code()).startSpan();
             spanScope = messageDecodedSpan.makeCurrent();
         }

@@ -31,9 +31,9 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesSource
 public class FixSessionIdProps {
 
     /**
-     * Free-form name for this session, used in logs and metrics.
+     * Names the session within its group, e.g. trading: unique only within the group.
      */
-    private String id;
+    private String name;
 
     /**
      * FIX version, as a FixRegularVersion name such as VERSION_44 or in FIX.4.4 notation, or FIXT_11 for a
@@ -48,7 +48,8 @@ public class FixSessionIdProps {
     private String defaultApplVerId;
 
     /**
-     * Groups sessions that share configuration.
+     * The group the session belongs to, typically one per counterparty. A session name is unique only within its
+     * group, so group and name together identify the session.
      */
     private String group = FixSessionId.DEFAULT_GROUP;
 
@@ -90,7 +91,7 @@ public class FixSessionIdProps {
 
     public FixSessionId toFixSessionId() {
         FixSessionId.FixSessionIdBuilder idBuilder = FixSessionId.FixSessionIdBuilder.builder()
-                .id(id)
+                .name(name)
                 .group(group == null ? FixSessionId.DEFAULT_GROUP : group)
                 .senderCompID(senderCompId)
                 .senderSubID(senderSubId)
@@ -100,8 +101,8 @@ public class FixSessionIdProps {
                 .targetLocationID(targetLocationId)
                 .build();
 
-        if (id == null || id.isBlank()) {
-            throw new IllegalArgumentException("id is required for session " + senderCompId + "->" + targetCompId);
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("name is required for session " + senderCompId + "->" + targetCompId);
         }
         if (fixVersion == null || fixVersion.isBlank()) {
             throw new IllegalArgumentException("fix-version is required for session " + senderCompId + "->" + targetCompId);

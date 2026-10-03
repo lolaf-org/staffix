@@ -45,7 +45,7 @@ class TestUriSessionSettingsSources {
 
     private static String session(String id) {
         return "fixSessionId:\n"
-                + "  id: \"" + id + "\"\n"
+                + "  name: \"" + id + "\"\n"
                 + "  senderCompID: \"SENDER\"\n"
                 + "  targetCompID: \"TARGET-" + id + "\"\n"
                 + "  fixVersion: \"FIX.4.4\"\n"
@@ -178,7 +178,7 @@ class TestUriSessionSettingsSources {
     }
 
     private List<String> ids(Set<FixSessionSettings> loaded) {
-        return loaded.stream().map(s -> s.getFixSessionId().getId()).collect(java.util.stream.Collectors.toList());
+        return loaded.stream().map(s -> s.getFixSessionId().getName()).collect(java.util.stream.Collectors.toList());
     }
 
     private URI write(String name, String body) throws IOException {

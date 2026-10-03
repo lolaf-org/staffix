@@ -78,6 +78,21 @@ class JmxAdminApiTest {
     }
 
     @Test
+    void registersOneBeanPerGroupForSessionsSharingAnId() throws Exception {
+        FixSessionId alphaTrading = FixSessionId.of(FixRegularVersion.VERSION_44,
+                FixSessionId.FixSessionIdBuilder.builder().name("trading").group("alpha").senderCompID("US").targetCompID("ALPHA").build());
+        FixSessionId betaTrading = FixSessionId.of(FixRegularVersion.VERSION_44,
+                FixSessionId.FixSessionIdBuilder.builder().name("trading").group("beta").senderCompID("US").targetCompID("BETA").build());
+        adminApi.managed.add(session(alphaTrading, true));
+        adminApi.managed.add(session(betaTrading, true));
+
+        exporter.export(adminApi);
+
+        assertThat(mBeanServer.isRegistered(sessionName("alpha", "trading", "Initiator"))).isTrue();
+        assertThat(mBeanServer.isRegistered(sessionName("beta", "trading", "Initiator"))).isTrue();
+    }
+
+    @Test
     void registersAndUnregistersSessionBeansAsSessionsComeAndGo() throws Exception {
         exporter.export(adminApi);
 
@@ -138,7 +153,7 @@ class JmxAdminApiTest {
         proxy.switchInitiatorSession(BACKUP_SESSION.toString());
 
         assertThat(adminApi.switchedTo).containsExactly(BACKUP_SESSION);
-        assertThatThrownBy(() -> proxy.switchInitiatorSession(BACKUP_SESSION.getId()))
+        assertThatThrownBy(() -> proxy.switchInitiatorSession(BACKUP_SESSION.getName()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(BACKUP_SESSION.toString());
     }
@@ -158,8 +173,12 @@ class JmxAdminApiTest {
     }
 
     private ObjectName sessionName(String sessionId, String role) throws Exception {
+        return sessionName(FixSessionId.DEFAULT_GROUP, sessionId, role);
+    }
+
+    private ObjectName sessionName(String group, String sessionId, String role) throws Exception {
         return new ObjectName(DOMAIN + ":type=FixSession,instance=" + ObjectName.quote(adminApi.getInstanceId())
-                + ",session=" + ObjectName.quote(sessionId) + ",role=" + role);
+                + ",group=" + ObjectName.quote(group) + ",session=" + ObjectName.quote(sessionId) + ",role=" + role);
     }
 
     private static final class RecordingAdminApi implements AdminApi {

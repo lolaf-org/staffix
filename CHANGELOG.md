@@ -14,6 +14,27 @@ between releases. A section is written when the version it belongs to is being c
 carries the right number and date the first time and the workflow's check has exactly one heading it
 could mean.
 
+## [0.9.1] - 2026-10-01
+
+### Changed
+
+- **A session is identified by its group and its name.** A session name is unique only within its group, so two
+  counterparties can each have a `trading` session. `FixSessionId` exposes `getName()` (formerly `getId()`, and
+  `.name(...)` on its builder) and `getQualifiedName()`, `group.name`, which is unique in the engine. Session
+  settings files and Spring Boot properties say `name` instead of `id`, and a session without a group belongs to
+  `default`.
+- **Stored state and files are named after the qualified name**, for example `alpha.trading.bin` for the file
+  message store, and the same key in the JDBC store, the async store queues, the file logger and the session
+  settings files.
+- **Monitoring attributes follow the same naming:** `fix.sn` (session name) and `fix.sg` (group)
+- **Management endpoints include the group:** one session is at `/actuator/fix-sessions/{group}/{name}`, the
+  health details are keyed `group.name`, and each JMX session bean name has a `group` key.
+
+### Fixed
+
+- Two sessions with the same name in different groups no longer share stored state, log files, metrics, JMX beans
+  or health entries; before, they overwrote each other.
+
 ## [0.9.0] - 2026-09-30
 
 First public release. Staffix is a FIX engine for Java that treats latency as a correctness property: a full session
@@ -86,4 +107,5 @@ faster than QuickFIX/J's median, and under one byte allocated per message agains
 - All artifacts are signed, carry sources and javadoc, and are built reproducibly — the jars from a given tag are
   byte-identical to the published ones.
 
+[0.9.1]: https://github.com/lolaf-org/staffix/releases/tag/v0.9.1
 [0.9.0]: https://github.com/lolaf-org/staffix/releases/tag/v0.9.0

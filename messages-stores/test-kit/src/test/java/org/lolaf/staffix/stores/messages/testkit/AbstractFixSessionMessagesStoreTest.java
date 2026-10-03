@@ -105,6 +105,45 @@ public abstract class AbstractFixSessionMessagesStoreTest<T extends FixMessagesS
 
 
     @Test
+    protected void shouldKeepSessionsSharingAnIdInDifferentGroupsApart() throws Exception {
+        // Given - same id and CompIDs, only the group differs
+        T alpha = createGroupedSessionStore(groupedSessionId("alpha"));
+        T beta = createGroupedSessionStore(groupedSessionId("beta"));
+        try {
+            alpha.start();
+            beta.start();
+            alpha.storeNextOutgoingSeqNum(50L);
+            beta.storeNextOutgoingSeqNum(7L);
+            alpha.stop(Deadline.unlimited());
+            beta.stop(Deadline.unlimited());
+
+            // When
+            alpha.start();
+            beta.start();
+
+            // Then
+            assertThat(alpha.getOutgoingSeqNum()).isEqualTo(50L);
+            assertThat(beta.getOutgoingSeqNum()).isEqualTo(7L);
+        } finally {
+            alpha.stop(Deadline.unlimited());
+            beta.stop(Deadline.unlimited());
+        }
+    }
+
+    /**
+     * A store of its own for one of two sessions sharing an id; override when {@link #createSessionStore} reuses an
+     * instance or a backing resource that the store under test would not share in an engine.
+     */
+    protected T createGroupedSessionStore(FixSessionId sessionId) throws Exception {
+        return createSessionStore(sessionId, messagesFilter);
+    }
+
+    private static FixSessionId groupedSessionId(String group) {
+        return FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
+                .name("trading").group(group).senderCompID("SENDER").targetCompID("TARGET").build());
+    }
+
+    @Test
     protected void shouldUnderlyingStorageResourceAvailable() {
         // Given
         messageStore.start();

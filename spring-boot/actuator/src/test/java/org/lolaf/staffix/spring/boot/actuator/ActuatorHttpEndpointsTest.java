@@ -106,18 +106,18 @@ class ActuatorHttpEndpointsTest {
             assertThat(sessions).hasSize(2);
             assertThat(sessions).extracting(s -> s.get("state"))
                     .allMatch("LOGGED_IN"::equals);
-            assertThat(sessions).extracting(s -> s.get("id"))
-                    .containsExactlyInAnyOrder(ACCEPTOR_SESSION_ID.getId(), INITIATOR_SESSION_ID.getId());
+            assertThat(sessions).extracting(s -> s.get("name"))
+                    .containsExactlyInAnyOrder(ACCEPTOR_SESSION_ID.getName(), INITIATOR_SESSION_ID.getName());
         });
 
         ResponseEntity<Map<String, Object>> single =
-                getJson("/actuator/fix-sessions/" + ACCEPTOR_SESSION_ID.getId());
+                getJson("/actuator/fix-sessions/" + ACCEPTOR_SESSION_ID.getGroup() + "/" + ACCEPTOR_SESSION_ID.getName());
         assertThat(single.getStatusCode().value()).isEqualTo(200);
         assertThat(single.getBody())
-                .containsEntry("id", ACCEPTOR_SESSION_ID.getId())
+                .containsEntry("name", ACCEPTOR_SESSION_ID.getName())
                 .containsEntry("state", "LOGGED_IN");
 
-        ResponseEntity<Map<String, Object>> missing = getJson("/actuator/fix-sessions/does-not-exist");
+        ResponseEntity<Map<String, Object>> missing = getJson("/actuator/fix-sessions/" + ACCEPTOR_SESSION_ID.getGroup() + "/does-not-exist");
         assertThat(missing.getStatusCode().value()).isEqualTo(404);
 
         ResponseEntity<Map<String, Object>> health = getJson("/actuator/health");
@@ -132,7 +132,7 @@ class ActuatorHttpEndpointsTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> healthDetails = (Map<String, Object>) fixSessions.get("details");
         assertThat(healthDetails).containsKeys(
-                ACCEPTOR_SESSION_ID.getId(), INITIATOR_SESSION_ID.getId());
+                ACCEPTOR_SESSION_ID.getQualifiedName(), INITIATOR_SESSION_ID.getQualifiedName());
 
         ResponseEntity<Map<String, Object>> info = getJson("/actuator/info");
         assertThat(info.getStatusCode().value()).isEqualTo(200);

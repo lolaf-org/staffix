@@ -61,7 +61,8 @@ public class Slf4jMessagesLogger extends MessagesCoreLogger {
 
     private static final class LoggerImpl extends AbstractLogger {
 
-        private static final String FIX_SESSION_ID = "fixSessionId";
+        private static final String FIX_SESSION_NAME = "fixSessionName";
+        private static final String FIX_SESSION_GROUP = "fixSessionGroup";
         private final String logEventTemplate;
         private final String logOutTemplate;
         private final String logInTemplate;
@@ -73,8 +74,8 @@ public class Slf4jMessagesLogger extends MessagesCoreLogger {
         private LoggerImpl(Slf4jMessagesLoggerSettings settings, FixSessionId fixSessionId) {
             super(settings, fixSessionId);
             this.logger = LoggerFactory.getLogger(settings.getLoggerNameForFixSession().apply(fixSessionId));
-            this.mdcAdd = settings.isUseMDC() ? sid -> MDC.put(FIX_SESSION_ID, fixSessionId.getId()) : this::doNotMdc;
-            this.mdcRemove = settings.isUseMDC() ? sid -> MDC.remove(FIX_SESSION_ID) : this::doNotMdc;
+            this.mdcAdd = settings.isUseMDC() ? sid -> putMdc(fixSessionId) : this::doNotMdc;
+            this.mdcRemove = settings.isUseMDC() ? sid -> removeMdc() : this::doNotMdc;
             this.logEventTemplate = settings.getLogEventTemplate();
             this.logInTemplate = settings.getLogInTemplate();
             this.logOutTemplate = settings.getLogOutTemplate();
@@ -89,6 +90,16 @@ public class Slf4jMessagesLogger extends MessagesCoreLogger {
         @Override
         protected void startMe() throws StartStopException {
             // nothing to do
+        }
+
+        private static void putMdc(FixSessionId fixSessionId) {
+            MDC.put(FIX_SESSION_GROUP, fixSessionId.getGroup());
+            MDC.put(FIX_SESSION_NAME, fixSessionId.getName());
+        }
+
+        private static void removeMdc() {
+            MDC.remove(FIX_SESSION_GROUP);
+            MDC.remove(FIX_SESSION_NAME);
         }
 
         private void doNotMdc(FixSessionId sid) {

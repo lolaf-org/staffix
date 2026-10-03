@@ -84,7 +84,8 @@ class TestSlf4jMessagesLogger {
         TestLogger testLogger = TestLoggerFactory.getTestLogger(settings.getLoggerNameForFixSession().apply(fixSessionId));
 
         assertThat(testLogger).hasLogged(loggingEvent -> {
-            Assertions.assertThat(loggingEvent.getMdc()).containsEntry("fixSessionId", fixSessionId.getId());
+            Assertions.assertThat(loggingEvent.getMdc()).containsEntry("fixSessionName", fixSessionId.getName())
+                    .containsEntry("fixSessionGroup", fixSessionId.getGroup());
             Assertions.assertThat(loggingEvent.getFormattedMessage()).isEqualTo("IN:testIn");
             return true;
         });
@@ -93,7 +94,8 @@ class TestSlf4jMessagesLogger {
         logger.logOutgoing(UTCTime.of(Instant.now()), messageType, ByteBuffer.wrap("testOut".getBytes()));
 
         assertThat(testLogger).hasLogged(loggingEvent -> {
-            Assertions.assertThat(loggingEvent.getMdc()).containsEntry("fixSessionId", fixSessionId.getId());
+            Assertions.assertThat(loggingEvent.getMdc()).containsEntry("fixSessionName", fixSessionId.getName())
+                    .containsEntry("fixSessionGroup", fixSessionId.getGroup());
             Assertions.assertThat(loggingEvent.getFormattedMessage()).isEqualTo("OUT:testOut");
             return true;
         });

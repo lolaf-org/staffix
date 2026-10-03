@@ -63,7 +63,7 @@ class FixSessionsHealthIndicatorTest {
         Health health = indicator.health();
 
         assertThat(health.getStatus()).isEqualTo(Status.DOWN);
-        assertThat(health.getDetails().get(SESSION_ID.getId())).asInstanceOf(InstanceOfAssertFactories.map(String.class, Object.class))
+        assertThat(health.getDetails().get(SESSION_ID.getQualifiedName())).asInstanceOf(InstanceOfAssertFactories.map(String.class, Object.class))
                 .containsEntry("status", "DOWN")
                 .containsEntry("state", "DISCONNECTED")
                 .containsEntry("desiredState", "LOGGED_IN")

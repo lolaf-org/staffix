@@ -79,7 +79,7 @@ public class FileLoggerEntryProps {
 
     /**
      * Spring bean name of a BiFunction from FixSessionId and the log directory to the session's log File. The
-     * default names the file after the session id.
+     * default names the file after the session's qualified name, {@code group.name}.
      */
     private String logFileNameBean;
 }

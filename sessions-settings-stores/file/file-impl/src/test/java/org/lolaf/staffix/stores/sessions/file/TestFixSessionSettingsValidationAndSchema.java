@@ -38,7 +38,7 @@ class TestFixSessionSettingsValidationAndSchema {
 
     private static final String VALID_SESSION = String.join("\n",
             "fixSessionId:",
-            "  id: \"test\"",
+            "  name: \"test\"",
             "  fixVersion: \"FIX.4.4\"",
             "  senderCompID: \"SENDER\"",
             "  targetCompID: \"TARGET\"",
@@ -151,7 +151,7 @@ class TestFixSessionSettingsValidationAndSchema {
 
         FixSessionSettings settings = FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                        .id("test")
+                        .name("test")
                         .senderCompID("SENDER")
                         .targetCompID("TARGET")
                         .build()))

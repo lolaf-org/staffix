@@ -195,7 +195,7 @@ public class SessionLifecycleExample extends FixExamplesBase implements Callable
                 .fixSessionEventsListener(new FixAcceptor.FixSessionEventsListener() {
                     @Override
                     public void onFixSessionAccepted(FixSessionId fixSession) {
-                        log.info("[acceptor ] onFixSessionAccepted: a connection is bound to {}", fixSession.getId());
+                        log.info("[acceptor ] onFixSessionAccepted: a connection is bound to {}", fixSession.getName());
                     }
 
                     @Override
@@ -257,7 +257,7 @@ public class SessionLifecycleExample extends FixExamplesBase implements Callable
 
         @Override
         public List<FixMessageDecoder> setup(FixSessionSettings fixSessionSettings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
-            log("setup: decoders are asked for on " + fixSessionSettings.getFixSessionId().getId()
+            log("setup: decoders are asked for on " + fixSessionSettings.getFixSessionId().getName()
                     + ", before anything else. This application maps none");
             return List.of();
         }
@@ -265,7 +265,7 @@ public class SessionLifecycleExample extends FixExamplesBase implements Callable
         @Override
         public void onSessionCreated(FixSession fixSession, FieldsRegistry fieldsRegistry, MessageTypeRegistry messageTypeRegistry,
                                      List<FixMessageDecoder> decoders) {
-            log("onSessionCreated: " + fixSession.getFixSessionId().getId()
+            log("onSessionCreated: " + fixSession.getFixSessionId().getName()
                     + " exists and its plugins are up, nothing is connected yet");
         }
 

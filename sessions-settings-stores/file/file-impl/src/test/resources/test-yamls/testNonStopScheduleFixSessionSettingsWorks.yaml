@@ -1,6 +1,6 @@
 ---
 fixSessionId:
-  id: "testNonStopScheduleFixSessionSettingsWorks"
+  name: "testNonStopScheduleFixSessionSettingsWorks"
   fixVersion: "FIX.4.4"
   fixTSession: false
   group: "test-group"

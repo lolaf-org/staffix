@@ -56,7 +56,7 @@ class TestSessionSettingsPlaceholders {
         writeSession("${sysprop:" + PROPERTY + "}", "PT30S");
 
         assertThat(load()).singleElement()
-                .satisfies(s -> assertThat(s.getFixSessionId().getId()).isEqualTo("RESOLVED"));
+                .satisfies(s -> assertThat(s.getFixSessionId().getName()).isEqualTo("RESOLVED"));
     }
 
     /**
@@ -79,7 +79,7 @@ class TestSessionSettingsPlaceholders {
         writeSession("prefix-${sysprop:" + PROPERTY + "}-suffix", "PT30S");
 
         assertThat(load()).singleElement()
-                .satisfies(s -> assertThat(s.getFixSessionId().getId()).isEqualTo("prefix-ENV-suffix"));
+                .satisfies(s -> assertThat(s.getFixSessionId().getName()).isEqualTo("prefix-ENV-suffix"));
     }
 
     @Test
@@ -87,7 +87,7 @@ class TestSessionSettingsPlaceholders {
         writeSession("${sysprop:" + PROPERTY + ":FALLBACK}", "PT30S");
 
         assertThat(load()).singleElement()
-                .satisfies(s -> assertThat(s.getFixSessionId().getId()).isEqualTo("FALLBACK"));
+                .satisfies(s -> assertThat(s.getFixSessionId().getName()).isEqualTo("FALLBACK"));
     }
 
     @Test
@@ -95,7 +95,7 @@ class TestSessionSettingsPlaceholders {
         writeSession("PLAIN", "PT30S");
 
         assertThat(load()).singleElement()
-                .satisfies(s -> assertThat(s.getFixSessionId().getId()).isEqualTo("PLAIN"));
+                .satisfies(s -> assertThat(s.getFixSessionId().getName()).isEqualTo("PLAIN"));
     }
 
     @Test
@@ -106,7 +106,7 @@ class TestSessionSettingsPlaceholders {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(PROPERTY)
                 .hasMessageContaining("session1.yaml")
-                .hasMessageContaining("fixSessionId.id");
+                .hasMessageContaining("fixSessionId.name");
     }
 
     /**
@@ -121,7 +121,7 @@ class TestSessionSettingsPlaceholders {
         ConfigValueResolver custom = placeholder -> Optional.of("FROM_CUSTOM");
 
         assertThat(load(List.of(custom))).singleElement()
-                .satisfies(s -> assertThat(s.getFixSessionId().getId()).isEqualTo("FROM_CUSTOM"));
+                .satisfies(s -> assertThat(s.getFixSessionId().getName()).isEqualTo("FROM_CUSTOM"));
     }
 
     /**
@@ -312,7 +312,7 @@ class TestSessionSettingsPlaceholders {
 
     private void writeSessionWith(String extraYaml) throws IOException {
         String yaml = "fixSessionId:\n"
-                + "  id: \"SENDER\"\n"
+                + "  name: \"SENDER\"\n"
                 + "  senderCompID: \"SENDER\"\n"
                 + "  targetCompID: \"TARGET\"\n"
                 + "  fixVersion: \"FIX.4.4\"\n"
@@ -327,7 +327,7 @@ class TestSessionSettingsPlaceholders {
 
     private void writeSessionWithoutTimeout(String id) throws IOException {
         String yaml = "fixSessionId:\n"
-                + "  id: \"" + id + "\"\n"
+                + "  name: \"" + id + "\"\n"
                 + "  senderCompID: \"SENDER\"\n"
                 + "  targetCompID: \"TARGET\"\n"
                 + "  fixVersion: \"FIX.4.4\"\n"
@@ -359,7 +359,7 @@ class TestSessionSettingsPlaceholders {
 
     private void writeSession(String id, String timeout) throws IOException {
         String yaml = "fixSessionId:\n"
-                + "  id: \"" + id + "\"\n"
+                + "  name: \"" + id + "\"\n"
                 + "  senderCompID: \"SENDER\"\n"
                 + "  targetCompID: \"TARGET\"\n"
                 + "  fixVersion: \"FIX.4.4\"\n"

@@ -51,8 +51,9 @@ public class Slf4jMessagesLoggerSettings extends AbstractFixMessageLoggerSetting
     @Builder.Default
     private Function<FixSessionId, String> loggerNameForFixSession = s -> Slf4jMessagesLogger.class.getName();
     /**
-     * Whether the session id is put in the MDC, which is what lets a log pattern carry it without it being in
-     * every message.
+     * Whether the session's group and id are put in the MDC ({@code fixSessionGroup}, {@code fixSessionName}), which
+     * is what lets a log pattern carry them without them being in every message. An id alone is unique only within
+     * its group.
      */
     @Builder.Default
     private boolean useMDC = true;

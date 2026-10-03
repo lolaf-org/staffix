@@ -158,14 +158,14 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             // Check if session state exists
             String checkSql = "SELECT COUNT(*) FROM " + tableName + "_session_state WHERE session_id = ?";
             try (PreparedStatement stmt = conn.prepareStatement(checkSql)) {
-                stmt.setString(1, fixSessionId.getId());
+                stmt.setString(1, fixSessionId.getQualifiedName());
                 try (ResultSet rs = stmt.executeQuery()) {
                     if (rs.next() && rs.getInt(1) == 0) {
                         // Insert initial state
                         String insertSql = "INSERT INTO " + tableName + "_session_state " +
                                 "(session_id, incoming_seq_num, outgoing_seq_num) VALUES (?, 1, 1)";
                         try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
-                            insertStmt.setString(1, fixSessionId.getId());
+                            insertStmt.setString(1, fixSessionId.getQualifiedName());
                             insertStmt.executeUpdate();
                         }
                     }
@@ -179,7 +179,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                 tableName + "_session_state WHERE session_id = ?";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(seqNumSelect)) {
-            stmt.setString(1, fixSessionId.getId());
+            stmt.setString(1, fixSessionId.getQualifiedName());
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     incomingSequenceNumber.set(rs.getLong(1));
@@ -200,13 +200,13 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             String resetSeqNumSql = "UPDATE " + tableName + "_session_state " +
                     "SET incoming_seq_num = 1, outgoing_seq_num = 1 WHERE session_id = ?";
             try (PreparedStatement stmt = conn.prepareStatement(resetSeqNumSql)) {
-                stmt.setString(1, fixSessionId.getId());
+                stmt.setString(1, fixSessionId.getQualifiedName());
                 stmt.executeUpdate();
             }
 
             String deleteAllSql = "DELETE FROM " + tableName + " WHERE session_id = ?";
             try (PreparedStatement stmt = conn.prepareStatement(deleteAllSql)) {
-                stmt.setString(1, fixSessionId.getId());
+                stmt.setString(1, fixSessionId.getQualifiedName());
                 stmt.executeUpdate();
             }
             incomingSequenceNumber.set(1);
@@ -256,7 +256,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     private void updateSequenceNumber(long nextSeqNum, PreparedStatement stmt) throws SQLException {
         stmt.setLong(1, nextSeqNum);
-        stmt.setString(2, fixSessionId.getId());
+        stmt.setString(2, fixSessionId.getQualifiedName());
         stmt.executeUpdate();
     }
 
@@ -308,7 +308,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     }
 
     private void storeMessage(long outgoingSequenceNumber, ByteBuffer message, PreparedStatement insert, CachedInputStream cachedInputStream) throws SQLException {
-        insert.setString(1, fixSessionId.getId());
+        insert.setString(1, fixSessionId.getQualifiedName());
         insert.setLong(2, outgoingSequenceNumber);
         insert.setBinaryStream(3, cachedInputStream.setBuffer(message), message.remaining());
     }
@@ -318,7 +318,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(selectMessagesSql)) {
 
-            stmt.setString(1, fixSessionId.getId());
+            stmt.setString(1, fixSessionId.getQualifiedName());
             stmt.setLong(2, startSequenceNumber);
             stmt.setLong(3, stopSequenceNumber);
             try (ResultSet rs = stmt.executeQuery()) {
@@ -353,7 +353,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private Long findCutoffSequenceNumber(long excessCount) throws SQLException {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(findCutoffSeqNumSql)) {
-            stmt.setString(1, fixSessionId.getId());
+            stmt.setString(1, fixSessionId.getQualifiedName());
             stmt.setLong(2, excessCount - 1); // OFFSET is 0-indexed
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -368,7 +368,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
                      "DELETE FROM " + tableName + " WHERE session_id = ? AND sequence_number <= ?")) {
-            stmt.setString(1, fixSessionId.getId());
+            stmt.setString(1, fixSessionId.getQualifiedName());
             stmt.setLong(2, cutoffSeqNum);
             return stmt.executeUpdate();
         }
@@ -377,7 +377,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private long countMessages() throws SQLException {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(countMessagesSql)) {
-            stmt.setString(1, fixSessionId.getId());
+            stmt.setString(1, fixSessionId.getQualifiedName());
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return rs.getLong(1);

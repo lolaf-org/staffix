@@ -43,7 +43,7 @@ Sessions live in a settings store instance and are declared as an indexed list:
 
 ```properties
 staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].type=acceptor
-staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].fix-session-id.id=acceptor-session-1
+staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].fix-session-id.name=acceptor-session-1
 staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].fix-session-id.fix-version=VERSION_44
 staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].fix-session-id.sender-comp-id=ACCEPTOR
 staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].fix-session-id.target-comp-id=INITIATOR_1
@@ -84,13 +84,13 @@ staffix.acceptors.primary.message-executor.executors-threads-count=1
 staffix.acceptors.primary.message-executor.idle-strategy=WAIT_NOTIFY
 
 staffix.initiators.primary.instance-id=INITIATOR_1
-staffix.initiators.primary.main-target.fix-session-id.id=initiator-session-1
+staffix.initiators.primary.main-target.fix-session-id.name=initiator-session-1
 staffix.initiators.primary.main-target.fix-session-id.fix-version=VERSION_44
 staffix.initiators.primary.main-target.fix-session-id.sender-comp-id=INITIATOR_1
 staffix.initiators.primary.main-target.fix-session-id.target-comp-id=ACCEPTOR
 staffix.initiators.primary.main-target.connect-addresses[0]=localhost:17001
 staffix.initiators.primary.connection-retry=PT1S
-staffix.initiators.primary.backup-targets[0].fix-session-id.id=initiator-session-1-dr
+staffix.initiators.primary.backup-targets[0].fix-session-id.name=initiator-session-1-dr
 staffix.initiators.primary.backup-targets[0].fix-session-id.fix-version=VERSION_44
 staffix.initiators.primary.backup-targets[0].fix-session-id.sender-comp-id=INITIATOR_1
 staffix.initiators.primary.backup-targets[0].fix-session-id.target-comp-id=ACCEPTOR_DR

@@ -113,7 +113,7 @@ class ActuatorAutoConfigurationTest {
         // health indicator
         assertThat(healthIndicator.health().getStatus().getCode()).isEqualTo("UP");
         assertThat(healthIndicator.health().getDetails()).containsKeys(
-                ACCEPTOR_SESSION_ID.getId(), INITIATOR_SESSION_ID.getId());
+                ACCEPTOR_SESSION_ID.getQualifiedName(), INITIATOR_SESSION_ID.getQualifiedName());
 
         // endpoint
         Map<String, Object> list = endpoint.list();
@@ -122,12 +122,12 @@ class ActuatorAutoConfigurationTest {
         List<Map<String, Object>> sessions = (List<Map<String, Object>>) list.get("sessions");
         assertThat(sessions).extracting(s -> s.get("state"))
                 .allMatch("LOGGED_IN"::equals);
-        assertThat(sessions).extracting(s -> s.get("id"))
-                .containsExactlyInAnyOrder(ACCEPTOR_SESSION_ID.getId(), INITIATOR_SESSION_ID.getId());
+        assertThat(sessions).extracting(s -> s.get("name"))
+                .containsExactlyInAnyOrder(ACCEPTOR_SESSION_ID.getName(), INITIATOR_SESSION_ID.getName());
 
-        Map<String, Object> single = endpoint.getOne(ACCEPTOR_SESSION_ID.getId());
+        Map<String, Object> single = endpoint.getOne(ACCEPTOR_SESSION_ID.getGroup(), ACCEPTOR_SESSION_ID.getName());
         assertThat(single).isNotNull()
-                .containsEntry("id", ACCEPTOR_SESSION_ID.getId())
+                .containsEntry("name", ACCEPTOR_SESSION_ID.getName())
                 .containsEntry("state", "LOGGED_IN");
 
         // a TestRequest forces a Heartbeat from the peer, exercising onMessageSent/onMessageReceived
@@ -154,7 +154,7 @@ class ActuatorAutoConfigurationTest {
 
     @Test
     void unknownSessionIdReturnsNullFromEndpoint() {
-        assertThat(endpoint.getOne("does-not-exist")).isNull();
+        assertThat(endpoint.getOne(ACCEPTOR_SESSION_ID.getGroup(), "does-not-exist")).isNull();
     }
 
     @SpringBootApplication

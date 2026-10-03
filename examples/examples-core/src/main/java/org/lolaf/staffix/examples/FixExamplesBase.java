@@ -103,7 +103,7 @@ class FixExamplesBase {
 
     static FixSessionId makeFixSessionId(String id, String senderCompId, String targetCompId, String group) {
         return FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                .id(id)
+                .name(id)
                 .senderCompID(senderCompId)
                 .targetCompID(targetCompId)
                 .group(group).build());
@@ -294,7 +294,7 @@ class FixExamplesBase {
                 MemorySessionsSettingsStoreSettings.builder().instanceId(ACCEPTOR);
         for (int i = 1; i <= options.getClientsCount(); i++) {
             FixSessionId sid = makeFixSessionId("acceptor-session-" + i, ACCEPTOR, getInitiatorSenderCompId(i), "acceptor");
-            acceptorAppFactoryBuilder.application(sid.getId(), acceptorFixApplicationSupplier.apply(sid));
+            acceptorAppFactoryBuilder.application(sid.getQualifiedName(), acceptorFixApplicationSupplier.apply(sid));
             acceptorSessionsSettingsBuilder.fixSessionSetting(getFixSessionSetting(sid, FixSession.FixSessionType.ACCEPTOR, ACCEPTOR,
                     resetSequenceOnLogon, acceptorFixApplicationSessionSettings, options));
         }
@@ -305,7 +305,7 @@ class FixExamplesBase {
                 MemorySessionsSettingsStoreSettings.builder().instanceId(INITIATOR);
         for (int i = 1; i <= options.getClientsCount(); i++) {
             FixSessionId sid = makeFixSessionId(getInitiatorSessionId(i), getInitiatorSenderCompId(i), ACCEPTOR, "initiators");
-            initiatorAppFactoryBuilder.application(sid.getId(), initiatorFixApplicationSupplier.apply(sid));
+            initiatorAppFactoryBuilder.application(sid.getQualifiedName(), initiatorFixApplicationSupplier.apply(sid));
             initiatorSessionsSettingsBuilder.fixSessionSetting(getFixSessionSetting(sid, FixSession.FixSessionType.INITIATOR, INITIATOR,
                     resetSequenceOnLogon, initiatorFixApplicationSessionSettings, options));
         }
@@ -364,7 +364,7 @@ class FixExamplesBase {
                 .connectionRetry(Duration.ofSeconds(1))
                 .mainTarget(FixInitiatorTarget.builder()
                         .fixSessionId(FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-                                .id(sessionId)
+                                .name(sessionId)
                                 .senderCompID(senderCompId)
                                 .targetCompID(ACCEPTOR).build()))
                         .connectAddress(new InetSocketAddress("localhost", 7001))
@@ -391,7 +391,7 @@ class FixExamplesBase {
                 .fixMessageStoreInstanceId(targetInstancesId)
                 .fixMessageLoggerInstanceId(targetInstancesId)
                 .fixApplicationFactoryInstanceId(targetInstancesId)
-                .fixApplicationInstanceId(sid.getId())
+                .fixApplicationInstanceId(sid.getQualifiedName())
                 .resetSeqNumOnLogon(resetSequenceOnLogon);
         if (options.isEnableMonitoring()) {
             builder.fixSessionPluginsInstanceId(FixSessionsMonitoringManager.class, "monitoring-" + targetInstancesId);

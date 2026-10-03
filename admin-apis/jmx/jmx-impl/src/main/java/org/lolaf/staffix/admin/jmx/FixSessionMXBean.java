@@ -17,8 +17,8 @@ package org.lolaf.staffix.admin.jmx;
 
 /**
  * Per-session JMX management surface. One bean is exposed for each session managed by the engine's initiators and
- * acceptors; the session is identified by the bean's {@code ObjectName} (its {@code session} and {@code role}
- * properties), so the operations take no session-identifying parameters.
+ * acceptors; the session is identified by the bean's {@code ObjectName} (its {@code group}, {@code session} and
+ * {@code role} properties), so the operations take no session-identifying parameters.
  */
 public interface FixSessionMXBean {
 

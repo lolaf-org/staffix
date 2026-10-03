@@ -105,7 +105,7 @@ public class ToYamlFixSessionSettingsTransformer {
         if (fixSessionId.getFixVersion().equals(FixtVersion.FIXT_11)) {
             fixVersion = FixApplVerID.getFixVersionForCode(fixSessionId.getDefaultApplVerID().getCode());
         }
-        yamlFixSessionId.id(fixSessionId.getId());
+        yamlFixSessionId.name(fixSessionId.getName());
         yamlFixSessionId.fixVersion(fixVersion.toString());
         yamlFixSessionId.fixTSession(fixSessionId.getFixVersion().equals(FixtVersion.FIXT_11));
         mergeIfNeeded(fixSessionId::getGroup, yamlFixSessionId::group);
