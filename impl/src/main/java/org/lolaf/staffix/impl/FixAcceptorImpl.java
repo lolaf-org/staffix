@@ -95,7 +95,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private final Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesSupplier;
     private final Collection<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final FixSessionsObserver fixSessionsObserver;
-    private FixSessionImpl[] connectedSessionsArray;
+    private volatile FixSessionImpl[] connectedSessionsArray;
     private ScheduledExecutorService scheduledExecutorService;
     private Server ioServer;
     private boolean shuttingDown;
@@ -284,8 +284,10 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         messageExecutorsRuntime.stop(stopDeadline);
 
         ioServer = null;
-        connectedSessions.clear();
-        connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+        synchronized (connectedSessions) {
+            connectedSessions.clear();
+            connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+        }
         configuredSessions.clear();
         configuredSessionsSettings.clear();
         log.info("FIX server {} is stopped", fixAcceptorBuilder.getInstanceId());
@@ -334,7 +336,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public Set<FixSession> getConnectedSessions() {
-        return Collections.unmodifiableSet(connectedSessions);
+        return new HashSet<>(Arrays.asList(connectedSessionsArray));
     }
 
     @Override
@@ -637,8 +639,10 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             if (fixSession != null) {
                 fixSession.onDisconnection();
                 session.setAttachment(null);
-                connectedSessions.remove(fixSession);
-                connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+                synchronized (connectedSessions) {
+                    connectedSessions.remove(fixSession);
+                    connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+                }
             }
         }
 
@@ -668,8 +672,10 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 try {
                     fixSession = findTargetSession(session, message, detectedFixSession, receivedFixSession);
                     session.setAttachment(fixSession);
-                    connectedSessions.add(fixSession);
-                    connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+                    synchronized (connectedSessions) {
+                        connectedSessions.add(fixSession);
+                        connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+                    }
                     if (!fixSession.onConnection(session, remotePeerCertificates)) {
                         throw new SessionNotAcceptingConnectionsException();
                     }
