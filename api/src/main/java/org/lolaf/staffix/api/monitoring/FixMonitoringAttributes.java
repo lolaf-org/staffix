@@ -15,40 +15,51 @@
  */
 package org.lolaf.staffix.api.monitoring;
 
-import lombok.experimental.UtilityClass;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 
 /**
  * The attribute keys staffix puts on its meters, message log records and trace spans.
  *
  * <p>The same keys are used everywhere, so one query selects the same session across metrics, logs and traces.
  */
-@UtilityClass
-public class FixMonitoringAttributes {
+@Getter
+@RequiredArgsConstructor
+public enum FixMonitoringAttributes {
 
     /**
      * The engine's {@link org.lolaf.staffix.api.FixEngineBuilder#getInstanceId() instance id}. With the session's
      * group and name, it tells a session apart from a same-named one in another engine.
      */
-    public static final String FIX_ENGINE_ID = "fix.eid";
+    FIX_ENGINE_ID("fix.eid"),
     /**
      * The id of the initiator or acceptor instance managing the session.
      */
-    public static final String FIX_INSTANCE_ID = "fix.iid";
+    FIX_INSTANCE_ID("fix.iid"),
     /**
      * The session's {@link org.lolaf.staffix.api.session.FixSessionId#getName() name}, unique only within its group.
      */
-    public static final String FIX_SESSION_NAME = "fix.sn";
+    FIX_SESSION_NAME("fix.sn"),
     /**
      * The session's {@link org.lolaf.staffix.api.session.FixSessionId#getGroup() group}.
      */
-    public static final String FIX_SESSION_GROUP = "fix.sg";
+    FIX_SESSION_GROUP("fix.sg"),
     /**
      * The message's MsgType(35) value, e.g. {@code D}.
      */
-    public static final String FIX_MESSAGE_TYPE = "fix.msg.type";
+    FIX_MESSAGE_TYPE("fix.msg.type"),
     /**
      * Whether the message was received or sent: {@code in} or {@code out}.
      */
-    public static final String FIX_MESSAGE_DIRECTION = "fix.msg.dir";
+    FIX_MESSAGE_DIRECTION("fix.msg.dir"),
+    /**
+     * What a message log record holds: a message received ({@code in}), sent ({@code out}), or a session
+     * {@code event}.
+     */
+    FIX_LOG_TYPE("fix.log.type");
 
+    /**
+     * As it appears on the wire, e.g. {@code fix.eid}.
+     */
+    private final String key;
 }

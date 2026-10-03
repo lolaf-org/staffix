@@ -105,10 +105,9 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
          */
         private static final String LOGS_SERVICE_EXPORT_METHOD = "/opentelemetry.proto.collector.logs.v1.LogsService/Export";
 
-        private static final String FIX_LOG_TYPE = "fix.log.type";
-        private static final KeyValue INCOMING_LOG = createKeyValue(FIX_LOG_TYPE, "in");
-        private static final KeyValue OUTGOING_LOG = createKeyValue(FIX_LOG_TYPE, "out");
-        private static final KeyValue EVENT_LOG = createKeyValue(FIX_LOG_TYPE, "event");
+        private static final KeyValue INCOMING_LOG = createKeyValue(FixMonitoringAttributes.FIX_LOG_TYPE.getKey(), "in");
+        private static final KeyValue OUTGOING_LOG = createKeyValue(FixMonitoringAttributes.FIX_LOG_TYPE.getKey(), "out");
+        private static final KeyValue EVENT_LOG = createKeyValue(FixMonitoringAttributes.FIX_LOG_TYPE.getKey(), "event");
 
         private final OtlpMessagesLoggerSettings settings;
         private final OtlpLogsTransport transport;
@@ -184,7 +183,7 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
             this.messageTypeCache = new IndexableMap<>(MessageType.class);
             messageTypeRegistry.getMessageTypes().forEach(mt ->
                     messageTypeCache.put(mt, KeyValue.newBuilder()
-                            .setKey(FixMonitoringAttributes.FIX_MESSAGE_TYPE)
+                            .setKey(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey())
                             .setValue(AnyValue.newBuilder().setStringValue(mt.code()).build())
                             .build()));
             this.logsFlushingExecutorService = logsFlushingExecutorService;
@@ -370,17 +369,17 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
             if (!serviceNameProvided) {
                 attributes.add(createKeyValue(FixMonitoringConstants.OTLP_SERVICE_NAME, fixInstanceId));
             }
-            attributes.add(createKeyValue(FixMonitoringAttributes.FIX_ENGINE_ID, fixEngineId));
+            attributes.add(createKeyValue(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), fixEngineId));
             attributes.add(KeyValue.newBuilder()
-                    .setKey(FixMonitoringAttributes.FIX_INSTANCE_ID)
+                    .setKey(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey())
                     .setValue(AnyValue.newBuilder().setStringValue(fixInstanceId)
                             .build()).build());
             attributes.add(KeyValue.newBuilder()
-                    .setKey(FixMonitoringAttributes.FIX_SESSION_NAME)
+                    .setKey(FixMonitoringAttributes.FIX_SESSION_NAME.getKey())
                     .setValue(AnyValue.newBuilder().setStringValue(getFixSessionId().getName())
                             .build()).build());
             attributes.add(KeyValue.newBuilder()
-                    .setKey(FixMonitoringAttributes.FIX_SESSION_GROUP)
+                    .setKey(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey())
                     .setValue(AnyValue.newBuilder().setStringValue(getFixSessionId().getGroup())
                             .build()).build());
             return attributes;
