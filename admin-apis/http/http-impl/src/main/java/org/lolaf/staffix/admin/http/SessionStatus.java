@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.http;
 import lombok.Builder;
 import lombok.Singular;
 import lombok.Value;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionState;
 
@@ -61,4 +62,14 @@ public class SessionStatus {
      */
     @Singular
     List<DictionaryRef> dictionaries;
+    /**
+     * The selected config's messages logger instance, taken as every config's: a backup with other settings than
+     * its main one is not supported.
+     */
+    String messagesLoggerInstanceId;
+    /**
+     * The selected config's {@link FixSessionsMonitoringManager} plugin instance, null when the session is not
+     * monitored; taken as every config's, like {@link #messagesLoggerInstanceId}.
+     */
+    String monitoringInstanceId;
 }

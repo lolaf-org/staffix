@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
@@ -32,6 +33,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -53,6 +55,12 @@ class EngineStatusTest {
         FixSession session = mock(FixSession.class);
         FixSessionSettings settings = mock(FixSessionSettings.class);
         when(settings.getFixSessionType()).thenReturn(type);
+        if (type == FixSession.FixSessionType.INITIATOR) {
+            when(settings.getFixMessageLoggerInstanceId()).thenReturn("otlp-logger");
+            when(settings.getFixSessionPluginsInstanceIds()).thenReturn(Map.of(FixSessionsMonitoringManager.class, "otlp-metrics"));
+        } else {
+            when(settings.getFixMessageLoggerInstanceId()).thenReturn("default");
+        }
         when(session.getFixSessionId()).thenReturn(fixSessionId);
         when(session.getFixSessionSettings()).thenReturn(settings);
         when(session.isLoggedIn()).thenReturn(loggedIn);
@@ -114,6 +122,16 @@ class EngineStatusTest {
         assertThat(dropCopy.get("desiredState").asText()).isEqualTo("LOGGED_OUT");
         assertThat(dropCopy.get("identity").toString())
                 .isEqualTo("{\"fixVersion\":\"FIXT.1.1\",\"defaultApplVerId\":\"9\",\"sender\":{\"compId\":\"US\"},\"target\":{\"compId\":\"BETA\",\"locationId\":\"LDN\"}}");
+    }
+
+    @Test
+    void aSessionReportsItsSelectedConfigsMessagesLoggerAndMonitoringPlugin() {
+        JsonNode sessions = snapshot().get("sessions");
+
+        assertThat(sessions.get(0).get("messagesLoggerInstanceId").asText()).isEqualTo("otlp-logger");
+        assertThat(sessions.get(0).get("monitoringInstanceId").asText()).isEqualTo("otlp-metrics");
+        assertThat(sessions.get(1).get("messagesLoggerInstanceId").asText()).isEqualTo("default");
+        assertThat(sessions.get(1).get("monitoringInstanceId").isNull()).isTrue();
     }
 
     @Test

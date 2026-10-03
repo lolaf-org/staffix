@@ -90,7 +90,7 @@ own token:
 
 | request | |
 |---------|---|
-| `GET status` | every session with its state and sequence numbers, and for an initiator its configs, with the addresses each dials, and the selected one |
+| `GET status` | every session with its state and sequence numbers, its messages logger and monitoring plugin instance ids, and for an initiator its configs, with the addresses each dials, and the selected one |
 | `GET sessions/{group}/{name}/settings` | the session's settings, values that look secret masked |
 | `POST sessions/{group}/{name}/logon`, `logout` | |
 | `POST sessions/{group}/{name}/reset` | `{"mode": "RESET_SEQUENCE"}` |

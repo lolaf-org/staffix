@@ -19,8 +19,10 @@ import lombok.Value;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionSettings;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -82,9 +84,10 @@ public class EngineStatus {
 
     private static SessionStatus.SessionStatusBuilder status(AdminApi adminApi, FixSession session, String instanceId) {
         FixSessionId fixSessionId = session.getFixSessionId();
+        FixSessionSettings settings = session.getFixSessionSettings();
         return SessionStatus.builder()
                 .group(fixSessionId.getGroup())
-                .type(session.getFixSessionSettings().getFixSessionType())
+                .type(settings.getFixSessionType())
                 .instanceId(instanceId)
                 .selectedConfig(fixSessionId.getName())
                 .identity(FixIdentity.of(fixSessionId))
@@ -94,6 +97,8 @@ public class EngineStatus {
                 .desiredState(session.getDesiredState())
                 .incomingSeqNum(adminApi.getIncomingSeqNum(fixSessionId))
                 .outgoingSeqNum(adminApi.getOutgoingSeqNum(fixSessionId))
-                .dictionaries(Dictionaries.of(fixSessionId, session.getFixSessionSettings().getDictionaryId()));
+                .dictionaries(Dictionaries.of(fixSessionId, settings.getDictionaryId()))
+                .messagesLoggerInstanceId(settings.getFixMessageLoggerInstanceId())
+                .monitoringInstanceId(settings.getFixSessionPluginsInstanceIds().get(FixSessionsMonitoringManager.class));
     }
 }
