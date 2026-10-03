@@ -383,6 +383,16 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
+    public List<FixMessagesLoggerSettings> getFixMessagesLoggersSettings() {
+        return List.copyOf(fixEngineBuilder.getFixMessagesLoggers());
+    }
+
+    @Override
+    public List<FixSessionsPluginSettings<?>> getFixSessionsPluginsSettings() {
+        return List.copyOf(fixEngineBuilder.getFixSessionsPlugins());
+    }
+
+    @Override
     public void registerSessionLifecycleListener(SessionLifecycleListener listener) {
         sessionLifecycleListeners.add(listener);
     }

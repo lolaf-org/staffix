@@ -22,6 +22,8 @@ import org.lolaf.ringos.idling.TimerSlackAwareBackoffIdleStrategy;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -82,6 +84,16 @@ public class AsyncFixSessionsPluginSettings implements FixSessionsPluginSettings
     @Builder.Default
     private final Supplier<IdleStrategy> producerIdleStrategySupplier = TimerSlackAwareBackoffIdleStrategy::new;
 
+
+    /**
+     * A session naming the delegate's type resolves to this wrapper, as {@link AsyncFixSessionsPlugin} matches it.
+     */
+    @Override
+    public Set<Class<? extends FixSessionsPlugin<?>>> getPluginTypes() {
+        Set<Class<? extends FixSessionsPlugin<?>>> types = new LinkedHashSet<>(FixSessionsPluginSettings.super.getPluginTypes());
+        types.addAll(delegateSettings.getPluginTypes());
+        return types;
+    }
     /**
      * The wrapper is transparent to session configuration and always reports the wrapped plugin's
      * instance id, so a session that referenced the delegate keeps matching through the wrapper.

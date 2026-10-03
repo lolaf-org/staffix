@@ -93,6 +93,9 @@ class AdminApiHandler implements HttpHandler {
         if (path.equals(List.of("status"))) {
             requireMethod(exchange, "GET");
             sendJson(exchange, EngineStatus.of(adminApi));
+        } else if (path.equals(List.of("emitters"))) {
+            requireMethod(exchange, "GET");
+            sendJson(exchange, EmittersJson.of(adminApi));
         } else if (path.equals(List.of("settings-stores"))) {
             requireMethod(exchange, "GET");
             sendJson(exchange, adminApi.getFixSessionsSettingsStoresInstanceIds());

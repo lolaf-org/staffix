@@ -98,6 +98,7 @@ own token:
 | `POST sessions/{group}/{name}/messages` | `{"message": "35=B|148=hello|", "separator": "|", "possDup": false}` |
 | `POST sessions/{group}/{name}/activate` | switch the initiator to this config |
 | `GET settings-stores`, `POST settings-stores/{id}/reload` | |
+| `GET emitters` | the messages loggers and session plugins the engine was built with, each with its type and plain settings (nested ones included; functions, executors and credentials left out or masked); a plugin also lists the plugin types it serves, a wrapper's delegates included |
 | `GET dictionaries/{id}` | a dictionary a session lists in `status`, with its SHA-256 as `ETag` |
 
 An error answers with its status and an `application/problem+json` body, `{"status": 409, "detail": "..."}`.

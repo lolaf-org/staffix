@@ -17,9 +17,11 @@ package org.lolaf.staffix.api.admin;
 
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.fields.CoreFields;
+import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 
 import java.util.List;
 
@@ -165,6 +167,18 @@ public interface AdminApi extends InstanceIdSupplier {
      * @return the managed sessions; empty if no session is managed
      */
     List<FixSession> getManagedFixSessions();
+
+    /**
+     * The messages loggers the engine was built with, so an admin tool can tell where sessions' logs go; a session
+     * picks one by {@link FixSessionSettings#getFixMessageLoggerInstanceId()}.
+     */
+    List<FixMessagesLoggerSettings> getFixMessagesLoggersSettings();
+
+    /**
+     * The session plugins the engine was built with, monitoring included; a session picks one per plugin type by
+     * {@link FixSessionSettings#getFixSessionPluginsInstanceIds()}.
+     */
+    List<FixSessionsPluginSettings<?>> getFixSessionsPluginsSettings();
 
     /**
      * Makes the given session the active one on every initiator that has it as a target, as

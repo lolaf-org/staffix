@@ -17,13 +17,21 @@ package org.lolaf.staffix.api.monitoring;
 
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
+
+import java.util.Set;
 
 /**
  * Settings for a monitoring manager, resolved through the {@link org.lolaf.staffix.api.Factory} SPI - Micrometer
  * and OTLP are the shipped implementations.
  */
 public interface FixSessionMonitoringManagerSettings extends FixSessionsPluginSettings<FixSessionsMonitoringManager> {
+
+    @Override
+    default Set<Class<? extends FixSessionsPlugin<?>>> getPluginTypes() {
+        return Set.of(FixSessionsMonitoringManager.class);
+    }
 
     @Override
     default FixSessionsMonitoringManager instance() {

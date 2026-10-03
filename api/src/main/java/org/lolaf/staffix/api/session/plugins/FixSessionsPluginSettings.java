@@ -18,6 +18,8 @@ package org.lolaf.staffix.api.session.plugins;
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.InstanceProvider;
 
+import java.util.Set;
+
 /**
  * Settings for a session plugin, resolved through the {@link org.lolaf.staffix.api.Factory} SPI.
  *
@@ -25,6 +27,15 @@ import org.lolaf.staffix.api.InstanceProvider;
  * class, which is how they stay invisible to a session's configuration.
  */
 public interface FixSessionsPluginSettings<T extends FixSessionsPlugin<?>> extends InstanceProvider<T> {
+
+    /**
+     * The plugin types this serves, as a session names them in
+     * {@link org.lolaf.staffix.api.session.FixSessionSettings#getFixSessionPluginsInstanceIds()}. Defaults to the
+     * declared type argument; a wrapper adds its delegate's.
+     */
+    default Set<Class<? extends FixSessionsPlugin<?>>> getPluginTypes() {
+        return Set.of(PluginTypes.declaredBy(getClass()));
+    }
 
 
     @Override

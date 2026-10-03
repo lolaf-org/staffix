@@ -22,9 +22,11 @@ import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import javax.management.JMX;
@@ -255,6 +257,16 @@ class JmxAdminApiTest {
         @Override
         public List<FixSession> getManagedFixSessions() {
             return new ArrayList<>(managed);
+        }
+
+        @Override
+        public List<FixMessagesLoggerSettings> getFixMessagesLoggersSettings() {
+            return List.of();
+        }
+
+        @Override
+        public List<FixSessionsPluginSettings<?>> getFixSessionsPluginsSettings() {
+            return List.of();
         }
 
         @Override
