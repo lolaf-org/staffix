@@ -99,8 +99,9 @@ staffix.initiators.primary.backup-targets[0].connect-addresses[0]=dr-host:17001
 
 `main-target` is the session the initiator runs when it starts. `backup-targets` are sessions it can be
 [switched to through the Admin API](runtime-administration.md#switching-an-initiator-to-a-backup); it never switches
-on its own. Every target needs its own session settings in a sessions settings store, and its own session id: the same
-session on another host is one more entry in its `connect-addresses`.
+on its own. The main target needs session settings in a sessions settings store; a backup runs on them under its own
+session id and must have none of its own. The same session on another host is one more entry in its
+`connect-addresses`.
 
 `select-strategy` and `idle-strategy` are the latency knobs from
 [Tuning for latency](tuning-for-latency.md#2-choose-where-the-cpu-goes), as enum names rather than constructed

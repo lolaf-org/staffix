@@ -223,9 +223,6 @@ class StaffixAutoConfigurationTest {
                     .fixApplicationInstanceId("initiatorApp")
                     .resetSeqNumOnLogon(true)
                     .build();
-            FixSessionSettings backupSession = initiatorSession.toBuilder()
-                    .fixSessionId(BACKUP_SESSION_ID)
-                    .build();
             FixSessionSettings neverConnectedSession = FixSessionSettings.builder()
                     .fixSessionId(NEVER_CONNECTED_SESSION_ID)
                     .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
@@ -236,7 +233,7 @@ class StaffixAutoConfigurationTest {
                     .resetSeqNumOnLogon(true)
                     .build();
             return new TestSessionsSettingsStoreContributor("ACCEPTOR",
-                    List.of(acceptorSession, initiatorSession, backupSession, neverConnectedSession));
+                    List.of(acceptorSession, initiatorSession, neverConnectedSession));
         }
     }
 }

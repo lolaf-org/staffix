@@ -50,8 +50,9 @@ public class FixInitiatorBuilder {
     private final FixInitiatorTarget mainTarget;
 
     /**
-     * Sessions this initiator can be switched to; it never moves to one on its own. Session ids must differ from
-     * each other and from the main target's: the same session on another IP is another address, not another target.
+     * Sessions this initiator can be switched to; it never moves to one on its own. Each runs on the main target's
+     * settings under its own session id, which must differ from the others and have no settings in a store: the same
+     * session on another IP is another address, not another target.
      */
     @Singular
     private final List<FixInitiatorTarget> backupTargets;

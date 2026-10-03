@@ -63,13 +63,12 @@ public class SessionStatus {
     @Singular
     List<DictionaryRef> dictionaries;
     /**
-     * The selected config's messages logger instance, taken as every config's: a backup with other settings than
-     * its main one is not supported.
+     * The session's messages logger instance, the same for every config: a backup runs on its main one's settings.
      */
     String messagesLoggerInstanceId;
     /**
-     * The selected config's {@link FixSessionsMonitoringManager} plugin instance, null when the session is not
-     * monitored; taken as every config's, like {@link #messagesLoggerInstanceId}.
+     * The session's {@link FixSessionsMonitoringManager} plugin instance, null when the session is not monitored;
+     * the same for every config, like {@link #messagesLoggerInstanceId}.
      */
     String monitoringInstanceId;
 }

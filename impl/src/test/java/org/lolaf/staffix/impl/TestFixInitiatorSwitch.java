@@ -66,8 +66,7 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
                         .connectAddress(new InetSocketAddress("localhost", acceptorPort))
                         .build())
                 .build();
-        setupInitiatorSessionsSettings(getInitiatorFixSessionSettings().build(),
-                getInitiatorFixSessionSettings().fixSessionId(BACKUP_INITIATOR).build());
+        setupInitiatorSessionsSettings(getInitiatorFixSessionSettings().build());
         setupAcceptorSessionsSettings(getAcceptorFixSessionSettings().build(),
                 getAcceptorFixSessionSettings().fixSessionId(BACKUP_ACCEPTOR).build());
     }
@@ -94,8 +93,8 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         return initiatorFixEngine.getFixSessionsSettingsStores().get(0);
     }
 
-    private FixSessionSettings backupSettings() {
-        return initiatorStore().find(BACKUP_INITIATOR, FixSession.FixSessionType.INITIATOR).orElseThrow();
+    private FixSessionSettings mainSettings() {
+        return initiatorStore().find(getInitiatorFixSessionSettings().build().getFixSessionId(), FixSession.FixSessionType.INITIATOR).orElseThrow();
     }
 
     @Test
@@ -119,31 +118,54 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
     }
 
     @Test
-    void anUpdatedBackupLeavesTheActiveSessionUpAndIsUsedOnSwitch() {
-        FixSession main = logonMainTarget();
+    void aBackupRunsOnItsMainTargetsSettingsUnderItsOwnSessionId() {
+        logonMainTarget();
 
-        initiatorStore().update(backupSettings().toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(11)).build());
-
-        assertThat(fixInitiator.getSession()).isSameAs(main);
-        assertThat(main.isLoggedIn()).isTrue();
         fixInitiator.switchTo(BACKUP_INITIATOR);
-        assertThat(fixInitiator.getSession().getFixSessionSettings().getLogInOrOutResponseTimeout()).isEqualTo(Duration.ofSeconds(11));
+
+        assertThat(fixInitiator.getSession().getFixSessionSettings())
+                .isEqualTo(mainSettings().toBuilder().fixSessionId(BACKUP_INITIATOR).build());
     }
 
     @Test
-    void aRemovedBackupCannotBeSwitchedToUntilItIsAddedBack() {
-        FixSession main = logonMainTarget();
-        FixSessionSettings backup = backupSettings();
+    void anActiveBackupFollowsAnUpdateOfItsMainTargetsSettings() {
+        logonMainTarget();
+        fixInitiator.switchTo(BACKUP_INITIATOR);
+        await().untilAsserted(() -> assertThat(fixInitiator.getSession().isConnected()).isTrue());
 
-        initiatorStore().remove(backup);
+        initiatorStore().update(mainSettings().toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(11)).build());
 
-        assertThat(main.isLoggedIn()).isTrue();
+        FixSessionSettings running = fixInitiator.getSession().getFixSessionSettings();
+        assertThat(running.getFixSessionId()).isEqualTo(BACKUP_INITIATOR);
+        assertThat(running.getLogInOrOutResponseTimeout()).isEqualTo(Duration.ofSeconds(11));
+    }
+
+    @Test
+    void settingsStoredForABackupPreventTheNextStart() {
+        logonMainTarget();
+        initiatorStore().add(mainSettings().toBuilder().fixSessionId(BACKUP_INITIATOR).build());
+        fixInitiator.stop();
+
+        assertThatThrownBy(() -> fixInitiator.start())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(BACKUP_INITIATOR.toString());
+    }
+
+    @Test
+    void removedMainTargetSettingsBlockSwitchesUntilAddedBack() {
+        logonMainTarget();
+        initiatorStore().update(mainSettings().toBuilder().disconnectOnRemove(false).build());
+        FixSession main = fixInitiator.getSession();
+        FixSessionSettings settings = mainSettings();
+
+        initiatorStore().remove(settings);
+
+        assertThat(fixInitiator.getSession()).isSameAs(main);
         assertThatThrownBy(() -> fixInitiator.switchTo(BACKUP_INITIATOR))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("removed");
-        assertThat(fixInitiator.getSession()).isSameAs(main);
 
-        initiatorStore().add(backup);
+        initiatorStore().add(settings);
         fixInitiator.switchTo(BACKUP_INITIATOR);
 
         assertThat(fixInitiator.getSession().getFixSessionId()).isEqualTo(BACKUP_INITIATOR);
@@ -298,7 +320,8 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
     @Test
     void aSwitchWhoseTargetCannotBeResolvedStopsTheInitiator() {
         logonMainTarget();
-        initiatorStore().update(backupSettings().toBuilder().fixMessageStoreInstanceId("no-such-store").build());
+        initiatorStore().update(mainSettings().toBuilder().restartLiveSessionOnUpdate(false).build());
+        initiatorStore().update(mainSettings().toBuilder().fixMessageStoreInstanceId("no-such-store").build());
 
         assertThatThrownBy(() -> fixInitiator.switchTo(BACKUP_INITIATOR)).hasMessageContaining("no-such-store");
 

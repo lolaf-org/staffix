@@ -160,9 +160,10 @@ FixInitiatorBuilder.builder()
 ```
 
 The same session on another host is not a backup target: it is one more `connectAddress` of its target, and the
-addresses are tried in turn. Every target needs its own initiator settings in a settings store; `newInitiator` fails if
-one is missing, if a session id appears twice, or if a backup target is already used by another initiator or an
-acceptor.
+addresses are tried in turn. A backup target runs on the main target's settings, only its session id differs: the main
+target needs initiator settings in a settings store, a backup must have none. `newInitiator` fails if the main's
+settings are missing, if a backup has settings of its own, if a session id appears twice, or if a backup target is
+already used by another initiator or an acceptor; `start()` also fails if a backup has settings of its own.
 
 The initiator **never switches on its own**: moving to a backup usually comes with a decision about sequence numbers
 that only the operator can make. Switch with `FixInitiator.switchTo`, `AdminApi.switchInitiatorSession` or the JMX
@@ -177,8 +178,9 @@ engine-level MBean. A switch:
 - if the new session fails to start, stops the initiator and rethrows the failure. That session stays picked, so
   once the cause is fixed, `start()` retries it.
 
-The other admin operations address the session an initiator runs now. Settings changes for a backup are held until
-it is switched to, and a backup whose settings were removed cannot be switched to until they are added back.
+The other admin operations address the session an initiator runs now. A change of the main target's settings applies
+to the session running now, whichever target it is, and while they are removed from their store no switch is
+possible.
 
 ---
 

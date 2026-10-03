@@ -49,6 +49,7 @@ class TestFixInitiatorTargetsValidation {
 
     private static final FixSessionId MAIN = FixSessionId.of("main", FixRegularVersion.VERSION_44, "CLIENT", "BROKER");
     private static final FixSessionId BACKUP = FixSessionId.of("backup", FixRegularVersion.VERSION_44, "CLIENT_DR", "BROKER_DR");
+    private static final FixSessionId DR = FixSessionId.of("dr", FixRegularVersion.VERSION_44, "CLIENT_DR2", "BROKER_DR2");
     private static final FixSessionId UNKNOWN = FixSessionId.of("unknown", FixRegularVersion.VERSION_44, "NOBODY", "NOWHERE");
     private static final FixSessionId SHARED_WITH_ACCEPTOR = FixSessionId.of("shared", FixRegularVersion.VERSION_44, "SHARED_A", "SHARED_B");
     private static final InetSocketAddress ADDRESS = new InetSocketAddress("localhost", 1);
@@ -87,7 +88,6 @@ class TestFixInitiatorTargetsValidation {
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
                         .fixSessionSetting(settings(MAIN, FixSession.FixSessionType.INITIATOR))
                         .fixSessionSetting(settings(BACKUP, FixSession.FixSessionType.INITIATOR))
-                        .fixSessionSetting(settings(SHARED_WITH_ACCEPTOR, FixSession.FixSessionType.INITIATOR))
                         .fixSessionSetting(settings(SHARED_WITH_ACCEPTOR, FixSession.FixSessionType.ACCEPTOR))
                         .build())
                 .build()
@@ -102,13 +102,23 @@ class TestFixInitiatorTargetsValidation {
 
     @Test
     void theTargetsAreTheMainTargetFollowedByTheBackupTargets() {
-        assertThat(fixEngine.newInitiator(initiator("initiator").backupTarget(target(BACKUP)).build()).getFixSessionIds())
-                .containsExactly(MAIN, BACKUP);
+        assertThat(fixEngine.newInitiator(initiator("initiator").backupTarget(target(DR)).build()).getFixSessionIds())
+                .containsExactly(MAIN, DR);
     }
 
     @Test
-    void aBackupMissingFromTheStoresIsRejected() {
-        assertThatThrownBy(() -> fixEngine.newInitiator(initiator("initiator").backupTarget(target(UNKNOWN)).build()))
+    void aBackupWithItsOwnSettingsInAStoreIsRejected() {
+        assertThatThrownBy(() -> fixEngine.newInitiator(initiator("initiator").backupTarget(target(BACKUP)).build()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(BACKUP.toString())
+                .hasMessageContaining("main target's settings");
+    }
+
+    @Test
+    void aMainTargetMissingFromTheStoresIsRejected() {
+        assertThatThrownBy(() -> fixEngine.newInitiator(FixInitiatorBuilder.builder()
+                .mainTarget(target(UNKNOWN))
+                .build()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(UNKNOWN.toString());
     }
@@ -122,7 +132,7 @@ class TestFixInitiatorTargetsValidation {
 
     @Test
     void aBackupWithoutAddressIsRejected() {
-        FixInitiatorTarget noAddress = FixInitiatorTarget.builder().fixSessionId(BACKUP).build();
+        FixInitiatorTarget noAddress = FixInitiatorTarget.builder().fixSessionId(DR).build();
 
         assertThatThrownBy(() -> fixEngine.newInitiator(initiator("initiator").backupTarget(noAddress).build()))
                 .isInstanceOf(IllegalStateException.class)
@@ -145,20 +155,22 @@ class TestFixInitiatorTargetsValidation {
         fixEngine.newInitiator(FixInitiatorBuilder.builder()
                 .instanceId("first")
                 .mainTarget(target(BACKUP))
+                .backupTarget(target(DR))
                 .build());
 
-        assertThatThrownBy(() -> fixEngine.newInitiator(initiator("second").backupTarget(target(BACKUP)).build()))
+        assertThatThrownBy(() -> fixEngine.newInitiator(initiator("second").backupTarget(target(DR)).build()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("initiator 'first'");
     }
 
     @Test
     void aMainTargetAlreadyBackingAnotherInitiatorIsRejected() {
-        fixEngine.newInitiator(initiator("first").backupTarget(target(BACKUP)).build());
+        fixEngine.newInitiator(initiator("first").backupTarget(target(DR)).build());
+        fixEngine.getFixSessionsSettingsStores().get(0).add(settings(DR, FixSession.FixSessionType.INITIATOR));
 
         assertThatThrownBy(() -> fixEngine.newInitiator(FixInitiatorBuilder.builder()
                 .instanceId("second")
-                .mainTarget(target(BACKUP))
+                .mainTarget(target(DR))
                 .build()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("backup of initiator 'first'");
