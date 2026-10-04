@@ -19,59 +19,45 @@ import lombok.Value;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
-import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.session.FixSessionSettings;
 
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
- * Every session of an engine with its state, in one response the console polls.
+ * The live state of every session, in one response the console polls; what does not change is in
+ * {@link EngineSessions}.
  */
 @Value
 public class EngineStatus {
     String instanceId;
+    /**
+     * The version of {@link EngineSessions} these sessions belong to.
+     */
+    String sessionsVersion;
     List<SessionStatus> sessions;
 
-    static EngineStatus of(AdminApi adminApi) {
-        Map<FixSessionId, FixSession> running = new HashMap<>();
-        adminApi.getManagedFixSessions().forEach(session -> running.put(session.getFixSessionId(), session));
+    static EngineStatus of(AdminApi adminApi, Map<FixSessionId, FixSession> running, String sessionsVersion) {
         List<SessionStatus> sessions = new ArrayList<>();
         for (FixInitiatorTargets initiator : adminApi.getInitiatorsTargets()) {
             FixSession session = running.get(initiator.getActiveFixSessionId());
             if (session != null) {
-                addIfStillManaged(sessions, () -> {
-                    SessionStatus.SessionStatusBuilder status = status(adminApi, session, initiator.getInstanceId())
-                            .name(initiator.getTargets().get(0).getFixSessionId().getName());
-                    initiator.getTargets().forEach(target -> status.config(new ConfigStatus(target.getFixSessionId().getName(),
-                            target.getConnectAddresses().stream().map(EngineStatus::hostAndPort).collect(Collectors.toList()))));
-                    return status.build();
-                });
+                String name = initiator.getTargets().get(0).getFixSessionId().getName();
+                addIfStillManaged(sessions, () -> status(adminApi, session, name));
             }
         }
         for (FixAcceptorSessions acceptor : adminApi.getAcceptorsSessions()) {
             for (FixSessionId fixSessionId : acceptor.getFixSessionIds()) {
                 FixSession session = running.get(fixSessionId);
                 if (session != null) {
-                    addIfStillManaged(sessions, () -> status(adminApi, session, acceptor.getInstanceId())
-                            .name(fixSessionId.getName())
-                            .config(new ConfigStatus(fixSessionId.getName(), List.of()))
-                            .build());
+                    addIfStillManaged(sessions, () -> status(adminApi, session, fixSessionId.getName()));
                 }
             }
         }
-        return new EngineStatus(adminApi.getInstanceId(), sessions);
-    }
-
-    private static String hostAndPort(InetSocketAddress address) {
-        return address.getHostString() + ":" + address.getPort();
+        return new EngineStatus(adminApi.getInstanceId(), sessionsVersion, sessions);
     }
 
     private static void addIfStillManaged(List<SessionStatus> sessions, Supplier<SessionStatus> status) {
@@ -82,23 +68,18 @@ public class EngineStatus {
         }
     }
 
-    private static SessionStatus.SessionStatusBuilder status(AdminApi adminApi, FixSession session, String instanceId) {
+    private static SessionStatus status(AdminApi adminApi, FixSession session, String name) {
         FixSessionId fixSessionId = session.getFixSessionId();
-        FixSessionSettings settings = session.getFixSessionSettings();
         return SessionStatus.builder()
                 .group(fixSessionId.getGroup())
-                .type(settings.getFixSessionType())
-                .instanceId(instanceId)
+                .name(name)
                 .selectedConfig(fixSessionId.getName())
-                .identity(FixIdentity.of(fixSessionId))
                 .loggedIn(session.isLoggedIn())
                 .connected(session.isConnected())
                 .withinSessionTime(session.isWithinSessionTime())
                 .desiredState(session.getDesiredState())
                 .incomingSeqNum(adminApi.getIncomingSeqNum(fixSessionId))
                 .outgoingSeqNum(adminApi.getOutgoingSeqNum(fixSessionId))
-                .dictionaries(Dictionaries.of(fixSessionId, settings.getDictionaryId()))
-                .messagesLoggerInstanceId(settings.getFixMessageLoggerInstanceId())
-                .monitoringInstanceId(settings.getFixSessionPluginsInstanceIds().get(FixSessionsMonitoringManager.class));
+                .build();
     }
 }

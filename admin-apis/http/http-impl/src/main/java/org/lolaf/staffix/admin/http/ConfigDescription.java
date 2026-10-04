@@ -15,32 +15,24 @@
  */
 package org.lolaf.staffix.admin.http;
 
-import lombok.Builder;
 import lombok.Value;
-import org.lolaf.staffix.api.session.FixSessionState;
+
+import java.util.List;
 
 /**
- * The live state of a session box, named as in {@link EngineSessions}.
+ * One config of a session: an initiator's main or backup, with the {@code host:port} addresses it dials in turn,
+ * or an acceptor's only one, with none.
  */
 @Value
-@Builder
-public class SessionStatus {
-    String group;
-    /**
-     * The main config's name, unique within the group.
-     */
+public class ConfigDescription {
     String name;
+    List<String> connectAddresses;
     /**
-     * The config running now; changes when an initiator switches to a backup.
+     * This config's own FIX session id.
      */
-    String selectedConfig;
-    boolean loggedIn;
-    boolean connected;
-    boolean withinSessionTime;
+    FixIdentity identity;
     /**
-     * LOGGED_OUT when an operator logged the session out, so the console does not report it as an incident.
+     * The dictionaries its messages decode with, served by {@code GET dictionaries/{id}}.
      */
-    FixSessionState desiredState;
-    long incomingSeqNum;
-    long outgoingSeqNum;
+    List<DictionaryRef> dictionaries;
 }

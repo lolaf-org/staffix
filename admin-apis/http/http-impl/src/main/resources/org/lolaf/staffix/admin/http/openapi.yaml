@@ -17,13 +17,39 @@ servers:
 security:
   - bearer: []
 paths:
-  /status:
+  /sessions:
     get:
-      summary: Every session with its state and sequence numbers
-      operationId: getStatus
+      summary: Every running session with what changes only with the sessions or their settings
+      operationId: getSessions
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
       responses:
         '200':
           description: The engine's sessions.
+          headers:
+            ETag:
+              description: The document's version, quoted.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineSessions'
+        '304':
+          description: Unchanged since the ETag sent in If-None-Match.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /status:
+    get:
+      summary: Every running session's state and sequence numbers
+      operationId: getStatus
+      responses:
+        '200':
+          description: The live state of the engine's sessions.
           content:
             application/json:
               schema:
@@ -82,7 +108,7 @@ paths:
           $ref: '#/components/responses/Conflict'
   /dictionaries/{dictionaryId}:
     get:
-      summary: A dictionary a session lists in status
+      summary: A dictionary a session config lists in sessions
       operationId: getDictionary
       parameters:
         - name: dictionaryId
@@ -316,21 +342,22 @@ components:
           type: integer
         detail:
           type: string
-    EngineStatus:
+    EngineSessions:
       type: object
-      required: [instanceId, sessions]
+      required: [instanceId, version, sessions]
       properties:
         instanceId:
           type: string
+        version:
+          type: string
+          description: The SHA-256 of the sessions as JSON; status reports it as sessionsVersion.
         sessions:
           type: array
           items:
-            $ref: '#/components/schemas/SessionStatus'
-    SessionStatus:
+            $ref: '#/components/schemas/SessionDescription'
+    SessionDescription:
       type: object
-      required: [group, name, type, instanceId, configs, selectedConfig, identity, loggedIn, connected,
-                 withinSessionTime, desiredState, incomingSeqNum, outgoingSeqNum, dictionaries,
-                 messagesLoggerInstanceId, monitoringInstanceId]
+      required: [group, name, type, instanceId, configs, messagesLoggerInstanceId, monitoringInstanceId]
       properties:
         group:
           type: string
@@ -347,11 +374,55 @@ components:
           type: array
           description: An initiator's main config, then its backups; an acceptor's single config.
           items:
-            $ref: '#/components/schemas/ConfigStatus'
-        selectedConfig:
+            $ref: '#/components/schemas/ConfigDescription'
+        messagesLoggerInstanceId:
+          type: [string, 'null']
+        monitoringInstanceId:
+          type: [string, 'null']
+          description: The session's monitoring plugin instance, null when the session is not monitored.
+    ConfigDescription:
+      type: object
+      required: [name, connectAddresses, identity, dictionaries]
+      properties:
+        name:
           type: string
+        connectAddresses:
+          type: array
+          description: The host:port addresses an initiator config dials; empty for an acceptor.
+          items:
+            type: string
         identity:
           $ref: '#/components/schemas/FixIdentity'
+        dictionaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/DictionaryRef'
+    EngineStatus:
+      type: object
+      required: [instanceId, sessionsVersion, sessions]
+      properties:
+        instanceId:
+          type: string
+        sessionsVersion:
+          type: string
+          description: The version of the sessions document these sessions belong to; fetch it again when it differs.
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionStatus'
+    SessionStatus:
+      type: object
+      required: [group, name, selectedConfig, loggedIn, connected, withinSessionTime, desiredState, incomingSeqNum,
+                 outgoingSeqNum]
+      properties:
+        group:
+          type: string
+        name:
+          type: string
+          description: The main config's name, unique within the group.
+        selectedConfig:
+          type: string
+          description: The config running now.
         loggedIn:
           type: boolean
         connected:
@@ -368,27 +439,6 @@ components:
         outgoingSeqNum:
           type: integer
           format: int64
-        dictionaries:
-          type: array
-          description: The selected config's dictionaries.
-          items:
-            $ref: '#/components/schemas/DictionaryRef'
-        messagesLoggerInstanceId:
-          type: [string, 'null']
-        monitoringInstanceId:
-          type: [string, 'null']
-          description: The session's monitoring plugin instance, null when the session is not monitored.
-    ConfigStatus:
-      type: object
-      required: [name, connectAddresses]
-      properties:
-        name:
-          type: string
-        connectAddresses:
-          type: array
-          description: The host:port addresses an initiator config dials; empty for an acceptor.
-          items:
-            type: string
     FixIdentity:
       type: object
       required: [fixVersion, sender, target]

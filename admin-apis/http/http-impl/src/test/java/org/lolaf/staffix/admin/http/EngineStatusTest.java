@@ -70,12 +70,9 @@ class EngineStatusTest {
         return session;
     }
 
-    private JsonNode snapshot() {
+    private void engine(FixSession... managed) {
         when(adminApi.getInstanceId()).thenReturn("alpha-engine");
-        List<FixSession> managed = List.of(
-                session(TRADING_DRP, FixSession.FixSessionType.INITIATOR, true),
-                session(DROP_COPY, FixSession.FixSessionType.ACCEPTOR, false));
-        when(adminApi.getManagedFixSessions()).thenReturn(managed);
+        when(adminApi.getManagedFixSessions()).thenReturn(List.of(managed));
         when(adminApi.getInitiatorsTargets()).thenReturn(List.of(FixInitiatorTargets.builder()
                 .instanceId("alpha-initiator")
                 .activeFixSessionId(TRADING_DRP)
@@ -89,44 +86,63 @@ class EngineStatusTest {
                 .build()));
         when(adminApi.getIncomingSeqNum(TRADING_DRP)).thenReturn(12L);
         when(adminApi.getOutgoingSeqNum(TRADING_DRP)).thenReturn(34L);
-        return mapper.valueToTree(EngineStatus.of(adminApi));
+    }
+
+    private void engine() {
+        engine(session(TRADING_DRP, FixSession.FixSessionType.INITIATOR, true),
+                session(DROP_COPY, FixSession.FixSessionType.ACCEPTOR, false));
+    }
+
+    private JsonNode status() {
+        return mapper.valueToTree(EngineStatus.of(adminApi, SessionsDocument.running(adminApi), "v1"));
+    }
+
+    private JsonNode sessions() throws Exception {
+        return mapper.readTree(SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).json);
     }
 
     @Test
     void anInitiatorIsOneSessionNamedAfterItsMainConfigWithTheSelectedOneRunning() {
-        JsonNode trading = snapshot().get("sessions").get(0);
+        engine();
+        JsonNode trading = status().get("sessions").get(0);
 
-        assertThat(trading.get("group").asText()).isEqualTo("alpha");
+        assertThat(trading.toString()).isEqualTo("{\"group\":\"alpha\",\"name\":\"trading\",\"selectedConfig\":\"trading-drp\","
+                + "\"loggedIn\":true,\"connected\":true,\"withinSessionTime\":true,\"desiredState\":\"LOGGED_IN\","
+                + "\"incomingSeqNum\":12,\"outgoingSeqNum\":34}");
+        assertThat(status().get("sessionsVersion").asText()).isEqualTo("v1");
+    }
+
+    @Test
+    void anInitiatorIsDescribedWithEachConfigsAddressesAndIdentity() throws Exception {
+        engine();
+        JsonNode trading = sessions().get("sessions").get(0);
+
         assertThat(trading.get("name").asText()).isEqualTo("trading");
         assertThat(trading.get("type").asText()).isEqualTo("INITIATOR");
         assertThat(trading.get("instanceId").asText()).isEqualTo("alpha-initiator");
-        assertThat(trading.get("configs").toString()).isEqualTo("[{\"name\":\"trading\",\"connectAddresses\":[\"alpha.example.com:9001\"]},"
-                + "{\"name\":\"trading-drp\",\"connectAddresses\":[]}]");
-        assertThat(trading.get("selectedConfig").asText()).isEqualTo("trading-drp");
-        assertThat(trading.get("loggedIn").asBoolean()).isTrue();
-        assertThat(trading.get("desiredState").asText()).isEqualTo("LOGGED_IN");
-        assertThat(trading.get("incomingSeqNum").asLong()).isEqualTo(12);
-        assertThat(trading.get("outgoingSeqNum").asLong()).isEqualTo(34);
-        assertThat(trading.get("identity").toString())
+        assertThat(trading.get("configs")).extracting(config -> config.get("name").asText() + " " + config.get("connectAddresses"))
+                .containsExactly("trading [\"alpha.example.com:9001\"]", "trading-drp []");
+        assertThat(trading.get("configs").get(1).get("identity").toString())
                 .isEqualTo("{\"fixVersion\":\"FIX.4.4\",\"sender\":{\"compId\":\"US\",\"subId\":\"DR\"},\"target\":{\"compId\":\"ALPHA\"}}");
     }
 
     @Test
-    void anAcceptorSessionHasItsOwnNameAsItsOnlyConfig() {
-        JsonNode dropCopy = snapshot().get("sessions").get(1);
+    void anAcceptorSessionHasItsOwnNameAsItsOnlyConfig() throws Exception {
+        engine();
+        JsonNode dropCopy = sessions().get("sessions").get(1);
 
-        assertThat(dropCopy.get("group").asText()).isEqualTo("beta");
         assertThat(dropCopy.get("type").asText()).isEqualTo("ACCEPTOR");
         assertThat(dropCopy.get("instanceId").asText()).isEqualTo("main-acceptor");
-        assertThat(dropCopy.get("configs").toString()).isEqualTo("[{\"name\":\"drop-copy\",\"connectAddresses\":[]}]");
-        assertThat(dropCopy.get("desiredState").asText()).isEqualTo("LOGGED_OUT");
-        assertThat(dropCopy.get("identity").toString())
+        assertThat(dropCopy.get("configs")).hasSize(1);
+        assertThat(dropCopy.get("configs").get(0).get("identity").toString())
                 .isEqualTo("{\"fixVersion\":\"FIXT.1.1\",\"defaultApplVerId\":\"9\",\"sender\":{\"compId\":\"US\"},\"target\":{\"compId\":\"BETA\",\"locationId\":\"LDN\"}}");
+        assertThat(status().get("sessions").get(1).get("desiredState").asText()).isEqualTo("LOGGED_OUT");
     }
 
     @Test
-    void aSessionReportsItsSelectedConfigsMessagesLoggerAndMonitoringPlugin() {
-        JsonNode sessions = snapshot().get("sessions");
+    void aSessionIsDescribedWithItsMessagesLoggerAndMonitoringPlugin() throws Exception {
+        engine();
+        JsonNode sessions = sessions().get("sessions");
 
         assertThat(sessions.get(0).get("messagesLoggerInstanceId").asText()).isEqualTo("otlp-logger");
         assertThat(sessions.get(0).get("monitoringInstanceId").asText()).isEqualTo("otlp-metrics");
@@ -135,11 +151,36 @@ class EngineStatusTest {
     }
 
     @Test
-    void aSessionUnregisteredWhileTheSnapshotIsBuiltIsLeftOut() {
+    void aSessionUnregisteredWhileTheStatusIsBuiltIsLeftOut() {
+        engine();
         when(adminApi.getIncomingSeqNum(DROP_COPY)).thenThrow(new IllegalArgumentException("not managed"));
 
-        JsonNode sessions = snapshot().get("sessions");
+        assertThat(status().get("sessions")).extracting(session -> session.get("name").asText()).containsExactly("trading");
+    }
 
-        assertThat(sessions).extracting(session -> session.get("name").asText()).containsExactly("trading");
+    @Test
+    void theDocumentStaysCurrentUntilASessionComesGoesOrRestartsOnNewSettings() throws Exception {
+        FixSession trading = session(TRADING_DRP, FixSession.FixSessionType.INITIATOR, true);
+        FixSession dropCopy = session(DROP_COPY, FixSession.FixSessionType.ACCEPTOR, false);
+        engine(trading, dropCopy);
+        SessionsDocument document = SessionsDocument.of(adminApi, SessionsDocument.running(adminApi));
+
+        assertThat(document.describes(SessionsDocument.running(adminApi))).isTrue();
+        engine(trading);
+        assertThat(document.describes(SessionsDocument.running(adminApi))).as("gone").isFalse();
+        engine(trading, session(DROP_COPY, FixSession.FixSessionType.ACCEPTOR, false));
+        assertThat(document.describes(SessionsDocument.running(adminApi))).as("restarted on new settings").isFalse();
+    }
+
+    @Test
+    void equalContentHasTheSameVersion() throws Exception {
+        engine();
+        String version = SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).version;
+
+        engine();
+
+        assertThat(SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).version).isEqualTo(version).hasSize(64);
+        engine(session(TRADING_DRP, FixSession.FixSessionType.INITIATOR, true));
+        assertThat(SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).version).isNotEqualTo(version);
     }
 }

@@ -90,7 +90,8 @@ own token:
 
 | request | |
 |---------|---|
-| `GET status` | every session with its state and sequence numbers, its messages logger and monitoring plugin instance ids, and for an initiator its configs, with the addresses each dials, and the selected one |
+| `GET sessions` | every running session as the console draws it: its configs (for an initiator the main one, then its backups, with the addresses each dials), each config's identity and dictionaries, its messages logger and monitoring plugin instance ids; with a `version`, also its `ETag`, that changes only when the sessions or their settings do |
+| `GET status` | every session's state, selected config and sequence numbers, with `sessionsVersion`: fetch `sessions` again when it differs |
 | `GET sessions/{group}/{name}/settings` | the session's settings, values that look secret masked |
 | `POST sessions/{group}/{name}/logon`, `logout` | |
 | `POST sessions/{group}/{name}/reset` | `{"mode": "RESET_SEQUENCE"}` |
@@ -99,7 +100,7 @@ own token:
 | `POST sessions/{group}/{name}/activate` | switch the initiator to this config |
 | `GET settings-stores`, `POST settings-stores/{id}/reload` | |
 | `GET emitters` | the messages loggers and session plugins the engine was built with, each with its type and plain settings (nested ones included; functions, executors and credentials left out or masked); a plugin also lists the plugin types it serves, a wrapper's delegates included |
-| `GET dictionaries/{id}` | a dictionary a session lists in `status`, with its SHA-256 as `ETag` |
+| `GET dictionaries/{id}` | a dictionary a session config lists in `sessions`, with its SHA-256 as `ETag` |
 
 An error answers with its status and an `application/problem+json` body, `{"status": 409, "detail": "..."}`.
 The API is described by an OpenAPI 3.1 document at `GET /openapi.yaml`, served without a token.

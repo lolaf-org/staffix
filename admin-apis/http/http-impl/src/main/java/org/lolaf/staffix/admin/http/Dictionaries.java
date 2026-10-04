@@ -24,9 +24,6 @@ import org.lolaf.staffix.api.version.FixtVersion;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.math.BigInteger;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -53,7 +50,7 @@ final class Dictionaries {
 
         private Dictionary(byte[] xml) {
             this.xml = xml;
-            this.hash = sha256(xml);
+            this.hash = Sha256.hex(xml);
         }
     }
 
@@ -88,14 +85,6 @@ final class Dictionaries {
             return in == null ? Optional.empty() : Optional.of(new Dictionary(in.readAllBytes()));
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read dictionary " + id, e);
-        }
-    }
-
-    private static String sha256(byte[] bytes) {
-        try {
-            return String.format("%064x", new BigInteger(1, MessageDigest.getInstance("SHA-256").digest(bytes)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required of every JVM", e);
         }
     }
 }

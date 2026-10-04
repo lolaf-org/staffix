@@ -15,32 +15,20 @@
  */
 package org.lolaf.staffix.admin.http;
 
-import lombok.Builder;
 import lombok.Value;
-import org.lolaf.staffix.api.session.FixSessionState;
+
+import java.util.List;
 
 /**
- * The live state of a session box, named as in {@link EngineSessions}.
+ * The engine's running sessions as the console draws them, fetched again only when {@link EngineStatus} reports
+ * another version.
  */
 @Value
-@Builder
-public class SessionStatus {
-    String group;
+public class EngineSessions {
+    String instanceId;
     /**
-     * The main config's name, unique within the group.
+     * The SHA-256 of {@link #sessions} as JSON, so equal content has the same version across engine restarts.
      */
-    String name;
-    /**
-     * The config running now; changes when an initiator switches to a backup.
-     */
-    String selectedConfig;
-    boolean loggedIn;
-    boolean connected;
-    boolean withinSessionTime;
-    /**
-     * LOGGED_OUT when an operator logged the session out, so the console does not report it as an incident.
-     */
-    FixSessionState desiredState;
-    long incomingSeqNum;
-    long outgoingSeqNum;
+    String version;
+    List<SessionDescription> sessions;
 }

@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -41,12 +42,13 @@ import java.util.stream.Collectors;
 @Slf4j
 class AdminApiHandler implements HttpHandler {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int ENGINE_SEGMENTS = 3;
 
     private final AdminApi adminApi;
     private final byte[] expectedAuthorization;
     private final List<Route> routes;
+    private SessionsDocument sessionsDocument;
 
     AdminApiHandler(AdminApi adminApi, String apiToken) {
         this.adminApi = adminApi;
@@ -100,7 +102,11 @@ class AdminApiHandler implements HttpHandler {
 
     private List<Route> routes() {
         return List.of(
-                new Route("GET", "status", (exchange, path) -> sendJson(exchange, EngineStatus.of(adminApi))),
+                new Route("GET", "sessions", (exchange, path) -> sendSessions(exchange)),
+                new Route("GET", "status", (exchange, path) -> {
+                    Map<FixSessionId, FixSession> running = SessionsDocument.running(adminApi);
+                    sendJson(exchange, EngineStatus.of(adminApi, running, sessionsDocument(running).version));
+                }),
                 new Route("GET", "emitters", (exchange, path) -> sendJson(exchange, EmittersJson.of(adminApi))),
                 new Route("GET", "settings-stores",
                         (exchange, path) -> sendJson(exchange, adminApi.getFixSessionsSettingsStoresInstanceIds())),
@@ -163,6 +169,24 @@ class AdminApiHandler implements HttpHandler {
         String allowed = matching.stream().map(route -> route.method).collect(Collectors.joining(", "));
         exchange.getResponseHeaders().set("Allow", allowed);
         return new HttpProblemException(405, exchange.getRequestMethod() + " is not allowed here, use " + allowed);
+    }
+
+    private void sendSessions(HttpExchange exchange) throws IOException {
+        SessionsDocument document = sessionsDocument(SessionsDocument.running(adminApi));
+        String etag = "\"" + document.version + "\"";
+        exchange.getResponseHeaders().set("ETag", etag);
+        if (etag.equals(exchange.getRequestHeaders().getFirst("If-None-Match"))) {
+            exchange.sendResponseHeaders(304, -1);
+            return;
+        }
+        send(exchange, 200, "application/json", document.json);
+    }
+
+    private synchronized SessionsDocument sessionsDocument(Map<FixSessionId, FixSession> running) throws IOException {
+        if (sessionsDocument == null || !sessionsDocument.describes(running)) {
+            sessionsDocument = SessionsDocument.of(adminApi, running);
+        }
+        return sessionsDocument;
     }
 
     private static void sendDictionary(HttpExchange exchange, String id) throws IOException {

@@ -135,6 +135,23 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void sessionsAreServedWithTheVersionStatusReportsAsTheirETag() throws Exception {
+        HttpResponse<String> sessions = call("GET", "/engines/alpha-engine/sessions", null);
+
+        assertThat(sessions.statusCode()).isEqualTo(200);
+        assertThat(sessions.body()).contains("\"name\":\"trading\"", "\"configs\":[{\"name\":\"trading\"");
+        String etag = sessions.headers().firstValue("ETag").orElseThrow();
+        assertThat(call("GET", "/engines/alpha-engine/status", null).body()).contains("\"sessionsVersion\":" + etag);
+
+        HttpResponse<String> unchanged = client.send(HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port + "/engines/alpha-engine/sessions"))
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("If-None-Match", etag)
+                .build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(unchanged.statusCode()).isEqualTo(304);
+    }
+
+    @Test
     void sessionOperationsReachTheAdminApi() throws Exception {
         assertThat(call("POST", "/engines/alpha-engine/sessions/alpha/trading/logon", null).statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/sessions/alpha/trading/logout", null).statusCode()).isEqualTo(204);

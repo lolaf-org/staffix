@@ -15,16 +15,20 @@
  */
 package org.lolaf.staffix.admin.http;
 
-import lombok.Value;
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
-import java.util.List;
+final class Sha256 {
 
-/**
- * One config of a session: an initiator's main or backup, with the {@code host:port} addresses it dials in turn,
- * or an acceptor's only one, with none.
- */
-@Value
-public class ConfigStatus {
-    String name;
-    List<String> connectAddresses;
+    private Sha256() {
+    }
+
+    static String hex(byte[] bytes) {
+        try {
+            return String.format("%064x", new BigInteger(1, MessageDigest.getInstance("SHA-256").digest(bytes)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required of every JVM", e);
+        }
+    }
 }
