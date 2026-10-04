@@ -37,4 +37,14 @@ interface FixSessionsObserver {
      * @param fixSession the session no longer managed
      */
     void onSessionUnregistered(FixSession fixSession);
+
+    /**
+     * Invoked when an initiator switches its active target, so the engine can rebuild its cached admin view.
+     */
+    void onInitiatorTargetsChanged();
+
+    /**
+     * Invoked when an acceptor's managed sessions change, so the engine can rebuild its cached admin view.
+     */
+    void onAcceptorSessionsChanged();
 }

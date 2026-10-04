@@ -96,6 +96,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private final Collection<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final FixSessionsObserver fixSessionsObserver;
     private volatile FixSessionImpl[] connectedSessionsArray;
+    private volatile FixAcceptorSessions fixAcceptorSessions;
     private ScheduledExecutorService scheduledExecutorService;
     private Server ioServer;
     private boolean shuttingDown;
@@ -110,6 +111,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         this.fixAcceptorBuilder = fixAcceptorBuilder;
         this.fixRuntimeDependenciesSupplier = fixRuntimeDependenciesSupplier;
         this.fixSessionsObserver = fixSessionsObserver;
+        refreshFixAcceptorSessions();
 
         this.broadcastMessageIdleStrategy = new BackoffIdleStrategy();
         this.messageExecutorsRuntime = new MessageExecutorsRuntime(fixAcceptorBuilder.getMessageExecutorSettings().toBuilder()
@@ -196,6 +198,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             settings.forEach(this::setupNewFixSession);
             store.register(this);
         });
+        refreshFixAcceptorSessions();
 
         IOWorkersGroup ioWorkerGroup = fixAcceptorBuilder.getIoWorkersGroup();
         if (ioWorkerGroup == null) {
@@ -290,6 +293,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         }
         configuredSessions.clear();
         configuredSessionsSettings.clear();
+        refreshFixAcceptorSessions();
         log.info("FIX server {} is stopped", fixAcceptorBuilder.getInstanceId());
     }
 
@@ -384,6 +388,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             // Kept in step with onRemovedSession, which takes the settings back out: without this a session added
             // after start up was managed but absent from getConfiguredSessionsSettings().
             configuredSessionsSettings.add(settings);
+            refreshFixAcceptorSessions();
             setupNewFixSession(settings);
         }
     }
@@ -420,6 +425,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             configuredSessionsSettings.remove(oldSettings);
             configuredSessionsSettings.add(newSettings);
         }
+        refreshFixAcceptorSessions();
     }
 
     /**
@@ -428,6 +434,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
      */
     private void stopManaging(FixSessionSettings settings, boolean disconnect) {
         configuredSessionsSettings.remove(settings);
+        refreshFixAcceptorSessions();
         FixSessionImpl fixSession = configuredSessions.remove(settings.getFixSessionId());
         if (fixSession != null && disconnect) {
             fixSession.onSessionRemoved();
@@ -497,12 +504,20 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     }
 
     FixAcceptorSessions getFixAcceptorSessions() {
-        return FixAcceptorSessions.builder()
-                .instanceId(fixAcceptorBuilder.getInstanceId())
-                .fixSessionIds(getManagedFixSessionsSettings().stream()
-                        .map(FixSessionSettings::getFixSessionId)
-                        .collect(Collectors.toList()))
-                .build();
+        return fixAcceptorSessions;
+    }
+
+    private void refreshFixAcceptorSessions() {
+        // under the lock, so the last refresh to run publishes the latest set whatever order concurrent changes ran in
+        synchronized (configuredSessionsSettings) {
+            fixAcceptorSessions = FixAcceptorSessions.builder()
+                    .instanceId(fixAcceptorBuilder.getInstanceId())
+                    .fixSessionIds(configuredSessionsSettings.stream()
+                            .map(FixSessionSettings::getFixSessionId)
+                            .collect(Collectors.toList()))
+                    .build();
+        }
+        fixSessionsObserver.onAcceptorSessionsChanged();
     }
 
     @Override

@@ -64,9 +64,10 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     private final Function<FixSessionSettings, FixSessionRuntimeDependencies> fixSessionRuntimeDependencies;
     private final FixSessionsObserver fixSessionsObserver;
     private final List<FixSessionsSettingsStore> fixSessionsSettingsStores;
-    private FixSessionSettings mainSettings;
     private final Object lifecycleLock;
+    private FixSessionSettings mainSettings;
     private FixInitiatorTarget activeFixInitiatorTarget;
+    private FixInitiatorTargets fixInitiatorTargets;
     private FixSessionSettings fixSessionSettings;
     private ScheduledExecutorService scheduledExecutorService;
     private FixSessionImpl fixSession;
@@ -84,6 +85,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         this.fixSessionRuntimeDependencies = fixRuntimeDependenciesProvider;
         this.fixSessionsObserver = fixSessionsObserver;
         this.fixInitiatorBuilder = fixInitiatorBuilder;
+        this.fixInitiatorTargets = fixInitiatorTargets(activeFixInitiatorTarget);
         this.messageExecutorsRuntime = new MessageExecutorsRuntime(fixInitiatorBuilder.getMessageExecutorSettings().toBuilder()
                 .instanceId(fixInitiatorBuilder.getInstanceId())
                 .build());
@@ -128,16 +130,16 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         }
     }
 
-    private FixSessionSettings settingsOf(FixInitiatorTarget target) {
-        return target.getFixSessionId().equals(fixInitiatorBuilder.getMainTarget().getFixSessionId())
-                ? mainSettings
-                : mainSettings.toBuilder().fixSessionId(target.getFixSessionId()).build();
-    }
-
     private static Optional<FixSessionSettings> findSettings(FixSessionId fixSessionId, List<FixSessionsSettingsStore> fixSessionsSettingsStores) {
         return fixSessionsSettingsStores.stream()
                 .flatMap(s -> s.find(fixSessionId, FixSession.FixSessionType.INITIATOR).stream())
                 .findFirst();
+    }
+
+    private FixSessionSettings settingsOf(FixInitiatorTarget target) {
+        return target.getFixSessionId().equals(fixInitiatorBuilder.getMainTarget().getFixSessionId())
+                ? mainSettings
+                : mainSettings.toBuilder().fixSessionId(target.getFixSessionId()).build();
     }
 
     @Override
@@ -180,6 +182,8 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                 stopTarget("Fix initiator switching to " + fixSessionId, Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
             }
             activeFixInitiatorTarget = target;
+            fixInitiatorTargets = fixInitiatorTargets(target);
+            fixSessionsObserver.onInitiatorTargetsChanged();
             fixSessionSettings = settingsOf(target);
             if (running) {
                 startSwitchedTarget();
@@ -199,13 +203,15 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     }
 
     FixInitiatorTargets getFixInitiatorTargets() {
-        synchronized (lifecycleLock) {
-            return FixInitiatorTargets.builder()
-                    .instanceId(fixInitiatorBuilder.getInstanceId())
-                    .activeFixSessionId(activeFixInitiatorTarget.getFixSessionId())
-                    .targets(fixInitiatorBuilder.getTargets())
-                    .build();
-        }
+        return fixInitiatorTargets;
+    }
+
+    private FixInitiatorTargets fixInitiatorTargets(FixInitiatorTarget activeTarget) {
+        return FixInitiatorTargets.builder()
+                .instanceId(fixInitiatorBuilder.getInstanceId())
+                .activeFixSessionId(activeTarget.getFixSessionId())
+                .targets(fixInitiatorBuilder.getTargets())
+                .build();
     }
 
     private ScheduledExecutorService getScheduler() {
