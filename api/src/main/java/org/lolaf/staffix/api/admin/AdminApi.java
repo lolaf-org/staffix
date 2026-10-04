@@ -229,7 +229,7 @@ public interface AdminApi extends InstanceIdSupplier {
      * <table border="1">
      *     <caption>Choosing between them</caption>
      *     <tr><th>Mode</th><th>Peer told?</th><th>Connection kept?</th><th>Usable from</th></tr>
-     *     <tr><td>{@link #LOGOUT_LOGON_REST_NUM_FLAG}</td><td>yes</td><td>no</td><td>an initiator session</td></tr>
+     *     <tr><td>{@link #LOGOUT_LOGON_RESET_NUM_FLAG}</td><td>yes</td><td>no</td><td>an initiator session</td></tr>
      *     <tr><td>{@link #RESET_SEQUENCE}</td><td>no</td><td>yes</td><td>either end</td></tr>
      *     <tr><td>{@link #RESET_SEQUENCE_IN_SESSION}</td><td>yes</td><td>yes</td><td>either end</td></tr>
      * </table>
@@ -250,6 +250,13 @@ public interface AdminApi extends InstanceIdSupplier {
          * Only an initiator session can drive it, being the end that sends a Logon of its own;
          * {@link #RESET_SEQUENCE_IN_SESSION} is the equivalent that keeps the connection and works from either end.
          */
+        LOGOUT_LOGON_RESET_NUM_FLAG,
+        /**
+         * The misspelt name {@link #LOGOUT_LOGON_RESET_NUM_FLAG} was released under; behaves exactly like it.
+         *
+         * @deprecated use {@link #LOGOUT_LOGON_RESET_NUM_FLAG}
+         */
+        @Deprecated
         LOGOUT_LOGON_REST_NUM_FLAG,
         /**
          * Puts this session's incoming and outgoing sequence numbers back to 1 and tells nobody: nothing goes on the

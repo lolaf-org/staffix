@@ -50,6 +50,11 @@ could mean.
   health details are keyed `group.name`, and each JMX session bean name has a `group` key.
 
 ### Fixed
+### Deprecated
+
+- `AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`, which
+  behaves the same. The old name keeps working until it is removed in a later version.
+
 
 - Two sessions with the same name in different groups no longer share stored state, log files, metrics, JMX beans
   or health entries; before, they overwrote each other.
