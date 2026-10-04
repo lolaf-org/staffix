@@ -51,7 +51,14 @@
     "allowedAddresses" : {
       "type" : "array",
       "items" : {
-        "type" : "object"
+        "anyOf" : [ {
+          "type" : "string",
+          "description" : "Host name or IP address, e.g. 10.0.0.12"
+        }, {
+          "type" : "string",
+          "pattern" : ".*\\$\\{[^}]+}.*",
+          "description" : "A ${...} placeholder, resolved when the file is loaded"
+        } ]
       },
       "description" : "Addresses an acceptor will accept this session from. Empty means anywhere.\n\nChecked before the Logon is processed, so a connection from elsewhere is dropped without the session ever starting."
     },
@@ -273,14 +280,8 @@
           "description" : "Whether the session runs over FIXT.1.1, FIX 5.0 and later's session layer, with fixVersion as its application version."
         },
         "fixVersion" : {
-          "anyOf" : [ {
-            "type" : "string",
-            "minLength" : 1
-          }, {
-            "type" : "string",
-            "pattern" : ".*\\$\\{[^}]+}.*",
-            "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ],
+          "type" : "string",
+          "enum" : [ "FIX.4.2", "FIX.4.3", "FIX.4.4", "FIX.5.0", "FIX.5.0-SP1", "FIX.5.0-SP2", "FIX.5.0-latest" ],
           "description" : "The FIX version, as BeginString(8) writes it, e.g. FIX.4.4; for a FIXT session, the application version its DefaultApplVerID(1137) names."
         },
         "group" : {
@@ -710,7 +711,14 @@
           "description" : "The days the session keeps trading windows: it opens at ScheduleEntry.startTime and closes at ScheduleEntry.endTime, logging out and staying down until the next open.\n\nA day covered by a NonStopScheduleEntry must not be covered here - a day is either windowed or non-stop, never both."
         },
         "timeZone" : {
-          "type" : "object",
+          "anyOf" : [ {
+            "type" : "string",
+            "description" : "Time zone id, e.g. Europe/Paris"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ],
           "description" : "The zone the schedule's times are read in - the venue's, not the engine's.\n\nDefaults to the JVM's, which is rarely what is wanted for a venue in another country, and never what is wanted if the two observe daylight saving on different dates."
         },
         "withinSessionTimeCheckInterval" : {

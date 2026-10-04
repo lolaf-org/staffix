@@ -18,6 +18,7 @@ package org.lolaf.staffix.sessions.settings.document;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -79,6 +80,24 @@ class TestFixSessionSettingsJsonSchema {
         assertThat(duration.has("anyOf")).isFalse();
         assertThat(duration.path("format").asText()).isEqualTo("duration");
         assertThat(duration.path("description").asText()).startsWith("How long a Logon or Logout");
+    }
+
+    @Test
+    void valuesWrittenAsStringsAreDescribedAsStrings() throws IOException {
+        JsonNode properties = new ObjectMapper().readTree(FixSessionSettingsJsonSchemaGenerator.generateResolved(SOURCE_ROOTS))
+                .path("properties");
+
+        assertThat(properties.at("/allowedAddresses/items/type").asText()).isEqualTo("string");
+        assertThat(properties.at("/sessionScheduleSettings/properties/timeZone/type").asText()).isEqualTo("string");
+    }
+
+    @Test
+    void theFixVersionsListedAreTheOnesReadBack() throws IOException {
+        JsonNode versions = new ObjectMapper().readTree(FixSessionSettingsJsonSchemaGenerator.generateResolved(SOURCE_ROOTS))
+                .at("/properties/fixSessionId/properties/fixVersion/enum");
+
+        assertThat(versions).isNotEmpty();
+        versions.forEach(version -> assertThat(FixRegularVersion.fromString(version.asText())).as(version.asText()).isPresent());
     }
 
     @Test

@@ -289,8 +289,9 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
 
     @Override
     public void onAdd(FixSessionSettings settings) {
-        if (fixSessionSettings.add(settings)) {
+        if (!fixSessionSettings.contains(settings)) {
             writeToDisk(settings);
+            fixSessionSettings.add(settings);
         }
     }
 
@@ -308,11 +309,14 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         }
     }
 
+    /**
+     * Written first: a write the file refuses, such as a change to a placeholder's value, leaves the store as it was.
+     */
     @Override
     public void onUpdate(FixSessionSettings settings) {
+        writeToDisk(settings);
         fixSessionSettings.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
         fixSessionSettings.add(settings);
-        writeToDisk(settings);
     }
 
     private void writeToDisk(FixSessionSettings settings) {

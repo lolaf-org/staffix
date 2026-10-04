@@ -83,6 +83,8 @@ could mean.
   or health entries; before, they overwrote each other.
 - Reading an acceptor's sessions while its settings store reloads (`getConfiguredSessionsSettings()`, the admin
   API) could fail or return a partial list. `getConfiguredSessionsSettings()` now returns a snapshot.
+- An update a file settings store refuses, such as a change to a value a `${...}` placeholder sets, no longer leaves
+  the store holding the refused settings while the session and the file keep the old ones.
 - A session could fail to start with "Fix session application settings ... is missing" although its configuration
   gave the setting, when the application described that setting only after the configuration was read.
 

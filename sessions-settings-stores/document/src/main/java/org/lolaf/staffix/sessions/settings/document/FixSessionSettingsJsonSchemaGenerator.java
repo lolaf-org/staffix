@@ -18,6 +18,7 @@ package org.lolaf.staffix.sessions.settings.document;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.victools.jsonschema.generator.*;
@@ -35,6 +36,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Field;
+import java.net.InetAddress;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -85,14 +87,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
      */
     private static final String LOCAL_TIME_PATTERN = "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$";
 
-    /**
-     * @return the JSON Schema for {@link FixSessionSettingsDocument} as a pretty-printed JSON string.
-     * @throws NoClassDefFoundError if the {@code com.github.victools} artifacts, declared {@code optional} by this
-     * module, are not on the classpath. Prefer {@link FixSessionSettingsJsonSchema#openPackagedSchema()}, which reads
-     * the copy generated at build time and needs no extra dependency.
-     */
-    private static final Set<String> SCALAR_TYPES =
-            new HashSet<>(Arrays.asList("string", "integer", "number", "boolean"));
+    private static final Set<String> SCALAR_TYPES = new HashSet<>(Arrays.asList("string", "integer", "number", "boolean"));
 
     private static final String PLACEHOLDER_PATTERN = ".*\\$\\{[^}]+}.*";
 
@@ -136,7 +131,8 @@ public class FixSessionSettingsJsonSchemaGenerator {
         configBuilder.forTypesInGeneral().withCustomDefinitionProvider(FixSessionSettingsJsonSchemaGenerator::temporalDefinition);
 
         SchemaGeneratorConfig config = configBuilder.build();
-        ObjectNode schema = (ObjectNode) new SchemaGenerator(config).generateSchema(FixSessionSettingsDocument.class);
+        ObjectNode schema = new SchemaGenerator(config).generateSchema(FixSessionSettingsDocument.class);
+        enumerateFixVersions(schema);
         if (placeholders) {
             widenScalarsForPlaceholders(schema);
         }
@@ -196,6 +192,16 @@ public class FixSessionSettingsJsonSchemaGenerator {
         placeholder.put("pattern", PLACEHOLDER_PATTERN);
         placeholder.put("description", "A ${...} placeholder, resolved when the file is loaded");
         return placeholder;
+    }
+
+    /**
+     * Only the versions {@link FixRegularVersion#fromString(String)} reads back are valid, so the schema lists them.
+     */
+    private static void enumerateFixVersions(ObjectNode schema) {
+        ObjectNode fixVersion = (ObjectNode) schema.path("properties").path("fixSessionId").path("properties").path("fixVersion");
+        fixVersion.remove("minLength");
+        ArrayNode versions = fixVersion.putArray("enum");
+        Arrays.stream(FixRegularVersion.values()).map(FixRegularVersion::toString).forEach(versions::add);
     }
 
     private static SettingsJavadoc readJavadoc(List<Path> sourceRoots) throws IOException {
@@ -271,13 +277,19 @@ public class FixSessionSettingsJsonSchemaGenerator {
     }
 
     private static boolean isDefault(JsonNode value) {
-        return !value.isMissingNode() && !value.isNull() && (value.isValueNode() || value.size() > 0);
+        return !value.isMissingNode() && !value.isNull() && (value.isValueNode() || !value.isEmpty());
     }
 
     private static CustomDefinition temporalDefinition(com.fasterxml.classmate.ResolvedType type, SchemaGenerationContext context) {
         if (type.isInstanceOf(Duration.class)) {
             return stringDefinition(context, "duration", ISO8601_DURATION_PATTERN,
                     "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S");
+        }
+        if (type.isInstanceOf(InetAddress.class)) {
+            return stringDefinition(context, null, null, "Host name or IP address, e.g. 10.0.0.12");
+        }
+        if (type.isInstanceOf(TimeZone.class)) {
+            return stringDefinition(context, null, null, "Time zone id, e.g. Europe/Paris");
         }
         if (type.isInstanceOf(LocalTime.class)) {
             // No "format": the standard "time" format is RFC 3339 (offset-required), which a local time is not.
@@ -293,7 +305,9 @@ public class FixSessionSettingsJsonSchemaGenerator {
         if (format != null) {
             node.put("format", format);
         }
-        node.put("pattern", pattern);
+        if (pattern != null) {
+            node.put("pattern", pattern);
+        }
         node.put("description", description);
         return new CustomDefinition(node, CustomDefinition.DefinitionType.INLINE, CustomDefinition.AttributeInclusion.NO);
     }
