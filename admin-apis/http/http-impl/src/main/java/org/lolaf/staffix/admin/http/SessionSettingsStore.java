@@ -18,10 +18,10 @@ package org.lolaf.staffix.admin.http;
 import lombok.Value;
 
 /**
- * One entry of {@code GET settings-stores}, an object so it can gain fields without breaking clients.
+ * One entry of {@code GET session-settings-stores}, an object so it can gain fields without breaking clients.
  */
 @Value
-public class SettingsStore {
+public class SessionSettingsStore {
     String instanceId;
     /**
      * Whether a change made through this API survives the engine's restart.

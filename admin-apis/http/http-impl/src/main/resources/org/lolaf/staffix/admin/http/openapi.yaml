@@ -103,25 +103,25 @@ paths:
                 type: object
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /v1/settings-stores:
+  /v1/session-settings-stores:
     get:
       summary: The engine's session settings stores
-      operationId: getSettingsStores
+      operationId: getSessionSettingsStores
       responses:
         '200':
-          description: The settings stores.
+          description: The session settings stores.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/SettingsStore'
+                  $ref: '#/components/schemas/SessionSettingsStore'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /v1/settings-stores/{storeId}/reload:
+  /v1/session-settings-stores/{storeId}/reload:
     post:
-      summary: Reloads a settings store, starting, stopping or restarting the sessions it changed
-      operationId: reloadSettingsStore
+      summary: Reloads a session settings store, starting, stopping or restarting the sessions it changed
+      operationId: reloadSessionSettingsStore
       parameters:
         - name: storeId
           in: path
@@ -139,9 +139,9 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-  /v1/settings-stores/{storeId}/sessions:
+  /v1/session-settings-stores/{storeId}/sessions:
     post:
-      summary: Adds a session to a settings store, which starts it
+      summary: Adds a session to a session settings store, which starts it
       operationId: addSession
       parameters:
         - name: storeId
@@ -552,9 +552,9 @@ components:
         monitoringInstanceId:
           type: string
           description: The session's monitoring plugin instance, absent when the session is not monitored.
-        settingsStore:
+        sessionSettingsStore:
           type: string
-          description: The settings store holding the session's settings, absent when none does.
+          description: The session settings store holding the session's settings, absent when none does.
     ConfigDescription:
       type: object
       required: [name, connectAddresses, identity, dictionaries]
@@ -646,7 +646,7 @@ components:
           type: string
         hash:
           type: string
-    SettingsStore:
+    SessionSettingsStore:
       type: object
       required: [instanceId, persistent]
       properties:

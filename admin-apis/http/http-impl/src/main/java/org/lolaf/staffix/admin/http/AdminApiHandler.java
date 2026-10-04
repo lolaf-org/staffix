@@ -140,13 +140,13 @@ class AdminApiHandler implements HttpHandler {
                 new Route("GET", "v1/components", (exchange, path) -> sendJson(exchange, ComponentsJson.of(adminApi))),
                 new Route("GET", "v1/schemas/session-settings", (exchange, path) ->
                         send(exchange, 200, "application/schema+json", SESSION_SETTINGS_SCHEMA)),
-                new Route("GET", "v1/settings-stores", (exchange, path) -> sendJson(exchange,
+                new Route("GET", "v1/session-settings-stores", (exchange, path) -> sendJson(exchange,
                         adminApi.getFixSessionsSettingsStoresInstanceIds().stream()
-                                .map(id -> new SettingsStore(id, adminApi.isFixSessionsSettingsStorePersistent(id)))
+                                .map(id -> new SessionSettingsStore(id, adminApi.isFixSessionsSettingsStorePersistent(id)))
                                 .collect(Collectors.toList()))),
-                new Route("POST", "v1/settings-stores/{storeId}/sessions", (exchange, path) -> addSession(exchange, path.get(2))),
-                new Route("POST", "v1/settings-stores/{storeId}/reload", (exchange, path) -> {
-                    log.info("Admin API: reload settings store {}", path.get(2));
+                new Route("POST", "v1/session-settings-stores/{storeId}/sessions", (exchange, path) -> addSession(exchange, path.get(2))),
+                new Route("POST", "v1/session-settings-stores/{storeId}/reload", (exchange, path) -> {
+                    log.info("Admin API: reload session settings store {}", path.get(2));
                     adminApi.reloadFixSessionsSettingsStore(path.get(2));
                     sendNoContent(exchange);
                 }),
@@ -267,11 +267,11 @@ class AdminApiHandler implements HttpHandler {
 
     private void addSession(HttpExchange exchange, String storeId) throws IOException {
         if (!adminApi.getFixSessionsSettingsStoresInstanceIds().contains(storeId)) {
-            throw new HttpProblemException(404, "No settings store " + storeId);
+            throw new HttpProblemException(404, "No session settings store " + storeId);
         }
         FixSessionSettings settings = SessionSettingsDocuments.read(exchange.getRequestBody(), null);
         FixSessionId fixSessionId = settings.getFixSessionId();
-        log.info("Admin API: add session {} to settings store {}", fixSessionId.getQualifiedName(), storeId);
+        log.info("Admin API: add session {} to session settings store {}", fixSessionId.getQualifiedName(), storeId);
         adminApi.addFixSessionSettings(storeId, settings);
         exchange.getResponseHeaders().set("Location", exchange.getHttpContext().getPath() + API_VERSION + "/sessions/"
                 + encode(fixSessionId.getGroup()) + "/" + encode(fixSessionId.getName()));

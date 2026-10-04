@@ -52,7 +52,7 @@ public class SessionDescription {
      */
     String monitoringInstanceId;
     /**
-     * The settings store holding the session's settings, null when none does.
+     * The session settings store holding the session's settings, null when none does.
      */
-    String settingsStore;
+    String sessionSettingsStore;
 }

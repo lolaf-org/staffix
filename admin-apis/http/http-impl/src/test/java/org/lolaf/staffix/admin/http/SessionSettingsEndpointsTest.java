@@ -188,7 +188,7 @@ class SessionSettingsEndpointsTest {
         ((ObjectNode) settings.get("fixSessionId")).put("name", "drop-copy-2");
         ((ObjectNode) settings.get("fixApplicationSessionSettings")).put("endpoints.logon", "s3cret");
 
-        HttpResponse<String> response = call("POST", "settings-stores/main-store/sessions", settings.toString());
+        HttpResponse<String> response = call("POST", "session-settings-stores/main-store/sessions", settings.toString());
 
         assertThat(response.statusCode()).isEqualTo(201);
         assertThat(response.headers().firstValue("Location")).hasValue("/engines/alpha-engine/v1/sessions/alpha/drop-copy-2");
@@ -200,7 +200,7 @@ class SessionSettingsEndpointsTest {
         ObjectNode settings = (ObjectNode) settingsOf("drop-copy");
         ((ObjectNode) settings.get("fixSessionId")).put("name", "drop-copy-2");
 
-        assertThat(call("POST", "settings-stores/main-store/sessions", settings.toString()).statusCode()).isEqualTo(400);
+        assertThat(call("POST", "session-settings-stores/main-store/sessions", settings.toString()).statusCode()).isEqualTo(400);
     }
 
     @Test
@@ -209,8 +209,8 @@ class SessionSettingsEndpointsTest {
         doThrow(new IllegalStateException("The engine already has a session alpha.drop-copy"))
                 .when(adminApi).addFixSessionSettings(eq("main-store"), any());
 
-        assertThat(call("POST", "settings-stores/missing/sessions", settings).statusCode()).isEqualTo(404);
-        assertThat(call("POST", "settings-stores/main-store/sessions", settings.replace("******", "x")).statusCode()).isEqualTo(409);
+        assertThat(call("POST", "session-settings-stores/missing/sessions", settings).statusCode()).isEqualTo(404);
+        assertThat(call("POST", "session-settings-stores/main-store/sessions", settings.replace("******", "x")).statusCode()).isEqualTo(409);
     }
 
     @Test

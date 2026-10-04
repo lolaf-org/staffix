@@ -262,7 +262,7 @@ class AdminApiEndpointsTest {
         when(adminApi.getFixSessionsSettingsStoresInstanceIds()).thenReturn(List.of("main-store"));
         when(adminApi.isFixSessionsSettingsStorePersistent("main-store")).thenReturn(true);
 
-        assertThat(call("GET", "/engines/alpha-engine/v1/settings-stores", null).body())
+        assertThat(call("GET", "/engines/alpha-engine/v1/session-settings-stores", null).body())
                 .isEqualTo("[{\"instanceId\":\"main-store\",\"persistent\":true}]");
     }
 

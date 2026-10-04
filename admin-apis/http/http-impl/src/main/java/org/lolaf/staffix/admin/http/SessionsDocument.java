@@ -62,7 +62,7 @@ final class SessionsDocument {
                 FixSessionId main = initiator.getMainTarget().getFixSessionId();
                 SessionDescription.SessionDescriptionBuilder description = description(session, initiator.getInstanceId())
                         .name(main.getName())
-                        .settingsStore(adminApi.findFixSessionsSettingsStore(main, FixSessionType.INITIATOR).orElse(null));
+                        .sessionSettingsStore(adminApi.findFixSessionsSettingsStore(main, FixSessionType.INITIATOR).orElse(null));
                 initiator.getTargets().forEach(target -> description.config(config(target.getFixSessionId(),
                         target.getConnectAddresses().stream().map(SessionsDocument::hostAndPort).collect(Collectors.toList()),
                         session.getFixSessionSettings())));
@@ -75,7 +75,7 @@ final class SessionsDocument {
                 if (session != null) {
                     sessions.add(description(session, acceptor.getInstanceId())
                             .name(fixSessionId.getName())
-                            .settingsStore(adminApi.findFixSessionsSettingsStore(fixSessionId, FixSessionType.ACCEPTOR).orElse(null))
+                            .sessionSettingsStore(adminApi.findFixSessionsSettingsStore(fixSessionId, FixSessionType.ACCEPTOR).orElse(null))
                             .config(config(fixSessionId, List.of(), session.getFixSessionSettings()))
                             .build());
                 }
