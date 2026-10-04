@@ -62,16 +62,34 @@ public class FixSessionId implements IntSupplier {
     private final int serializedLen;
     @Getter
     private final FixVersion fixVersion;
+    /**
+     * SenderCompID(49): this side's firm, as the counterparty knows it. Required.
+     */
     @Getter
     private final FieldAndValuePair senderCompID;
+    /**
+     * SenderSubID(50): a desk or trader within this side's firm, when the counterparty asks for one.
+     */
     @Getter
     private final FieldAndValuePair senderSubID;
+    /**
+     * SenderLocationID(142): this side's location, when the counterparty asks for one.
+     */
     @Getter
     private final FieldAndValuePair senderLocationID;
+    /**
+     * TargetCompID(56): the counterparty's firm. Required.
+     */
     @Getter
     private final FieldAndValuePair targetCompID;
+    /**
+     * TargetSubID(57): a desk or trader within the counterparty's firm, when it asks for one.
+     */
     @Getter
     private final FieldAndValuePair targetSubID;
+    /**
+     * TargetLocationID(143): the counterparty's location, when it asks for one.
+     */
     @Getter
     private final FieldAndValuePair targetLocationID;
     @Getter

@@ -30,6 +30,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -177,12 +180,70 @@ class TestFixSessionSettingsValidationAndSchema {
 
         assertThat(packaged)
                 .describedAs("packaged schema must match the model it is generated from")
-                .isEqualTo(FixSessionSettingsJsonSchemaGenerator.generate());
+                .isEqualTo(generateSchema());
+    }
+
+    /**
+     * The module's directory is the working directory of a Maven test run.
+     */
+    private static String generateSchema() throws IOException {
+        return FixSessionSettingsJsonSchemaGenerator.generate(List.of(
+                Path.of("../../../api/src/main/java"), Path.of("src/main/java")));
+    }
+
+    @Test
+    void everyPropertyIsDescribed() throws IOException {
+        JsonNode schema = new ObjectMapper().readTree(generateSchema());
+
+        assertThat(undescribedProperties(schema, ""))
+                .describedAs("each needs javadoc on the FixSessionSettings field of the same name, or on the "
+                        + "YamlFixSessionSettings field when only a file has it")
+                .isEmpty();
+    }
+
+    private static List<String> undescribedProperties(JsonNode objectSchema, String path) {
+        List<String> undescribed = new ArrayList<>();
+        objectSchema.path("properties").fields().forEachRemaining(property -> {
+            String propertyPath = path + property.getKey();
+            if (!property.getValue().hasNonNull("description")) {
+                undescribed.add(propertyPath);
+            }
+            undescribed.addAll(undescribedProperties(property.getValue(), propertyPath + "."));
+            undescribed.addAll(undescribedProperties(property.getValue().path("items"), propertyPath + "[]."));
+        });
+        return undescribed;
+    }
+
+    @Test
+    void descriptionsAreTheSettingsJavadocAsPlainText() throws IOException {
+        JsonNode properties = new ObjectMapper().readTree(generateSchema()).path("properties");
+
+        assertThat(properties.path("logInOrOutResponseTimeout").path("description").asText())
+                .isEqualTo("How long a Logon or Logout may go unanswered before the connection is dropped.");
+        assertThat(properties.path("desiredSessionState").path("description").asText())
+                .startsWith("The state the session holds itself in. FixSessionState.LOGGED_IN by default")
+                .doesNotContain("{@link");
+        assertThat(properties.path("heartBeatInterval").path("description").asText())
+                .startsWith("HeartBtInt(108): how often a quiet session proves it is alive")
+                .contains("\n\nAn initiator proposes it at Logon")
+                .doesNotContain("<p>");
+    }
+
+    @Test
+    void defaultsAreThoseOfSettingsBuiltWithNothingSet() throws IOException {
+        JsonNode properties = new ObjectMapper().readTree(generateSchema()).path("properties");
+
+        assertThat(properties.path("logInOrOutResponseTimeout").path("default").asText()).isEqualTo("PT10S");
+        assertThat(properties.path("heartBeatInterval").path("properties").path("initiatorInterval").path("default").asText())
+                .isEqualTo("PT10S");
+        assertThat(properties.path("desiredSessionState").path("default").asText()).isEqualTo("LOGGED_IN");
+        assertThat(properties.path("fixSessionType").has("default")).isFalse();
+        assertThat(properties.path("sessionScheduleSettings").path("properties").path("timeZone").has("default")).isFalse();
     }
 
     @Test
     void generatedSchemaDescribesTheModel() throws IOException {
-        String schemaJson = FixSessionSettingsJsonSchemaGenerator.generate();
+        String schemaJson = generateSchema();
 
         JsonNode schema = new ObjectMapper().readTree(schemaJson);
         assertThat(schema.get("$schema").asText()).contains("2020-12");
@@ -193,7 +254,7 @@ class TestFixSessionSettingsValidationAndSchema {
 
     @Test
     void durationFieldsAreConstrainedByPattern() throws IOException {
-        JsonNode schema = new ObjectMapper().readTree(FixSessionSettingsJsonSchemaGenerator.generate());
+        JsonNode schema = new ObjectMapper().readTree(generateSchema());
 
         // The declared type is the first anyOf branch; the second lets a ${...} placeholder stand here.
         JsonNode duration = schema.get("properties").get("logInOrOutResponseTimeout").get("anyOf").get(0);
@@ -209,7 +270,7 @@ class TestFixSessionSettingsValidationAndSchema {
 
     @Test
     void scheduleTimesAreConstrainedByLocalTimePattern() throws IOException {
-        JsonNode schema = new ObjectMapper().readTree(FixSessionSettingsJsonSchemaGenerator.generate());
+        JsonNode schema = new ObjectMapper().readTree(generateSchema());
 
         JsonNode startTime = schema.path("properties").path("sessionScheduleSettings")
                 .path("properties").path("sessionSchedules")
@@ -230,7 +291,7 @@ class TestFixSessionSettingsValidationAndSchema {
      */
     @Test
     void nonEnumScalarsAlsoAcceptAPlaceholder() throws IOException {
-        JsonNode schema = new ObjectMapper().readTree(FixSessionSettingsJsonSchemaGenerator.generate());
+        JsonNode schema = new ObjectMapper().readTree(generateSchema());
 
         JsonNode duration = schema.path("properties").path("logInOrOutResponseTimeout");
         assertThat(duration.has("anyOf")).isTrue();

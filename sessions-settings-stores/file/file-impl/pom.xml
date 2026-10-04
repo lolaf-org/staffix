@@ -21,6 +21,7 @@
         <jakarta-validation-api.version>3.1.1</jakarta-validation-api.version>
         <hibernate-validator.version>8.0.5.Final</hibernate-validator.version>
         <victools-jsonschema.version>4.38.0</victools-jsonschema.version>
+        <javaparser.version>3.28.2</javaparser.version>
         <jackson-dataformat-yaml.version>2.22.3</jackson-dataformat-yaml.version>
         <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
         <build-helper-maven-plugin.version>3.6.2</build-helper-maven-plugin.version>
@@ -84,6 +85,13 @@
             <version>${victools-jsonschema.version}</version>
             <optional>true</optional>
         </dependency>
+        <!-- Reads the settings' javadoc from source for the schema's descriptions; build time only, like victools. -->
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-core</artifactId>
+            <version>${javaparser.version}</version>
+            <optional>true</optional>
+        </dependency>
     </dependencies>
 
     <build>
@@ -109,6 +117,8 @@
                             <classpathScope>compile</classpathScope>
                             <arguments>
                                 <argument>${fix-session-settings-schema-file}</argument>
+                                <argument>${maven.multiModuleProjectDirectory}/api/src/main/java</argument>
+                                <argument>${project.basedir}/src/main/java</argument>
                             </arguments>
                         </configuration>
                     </execution>

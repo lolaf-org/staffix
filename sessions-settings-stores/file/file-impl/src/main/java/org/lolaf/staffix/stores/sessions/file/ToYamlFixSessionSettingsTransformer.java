@@ -196,7 +196,7 @@ public class ToYamlFixSessionSettingsTransformer {
             FixSessionSettings.SessionScheduleSettings sss = settings.getSessionScheduleSettings();
             mergeIfNeeded(sss::getOutsideSessionTimePreTriggerDelay, ssb::outsideSessionTimePreTriggerDelay);
             mergeIfNeeded(sss::getTimeZone, ssb::timeZone);
-            mergeIfNeeded(sss::getWithinSessionTimeCheckInterval, ssb::withinSessionCheckInterval);
+            mergeIfNeeded(sss::getWithinSessionTimeCheckInterval, ssb::withinSessionTimeCheckInterval);
             if (sss.getSessionSchedules() != null) {
                 sss.getSessionSchedules().forEach(entry -> {
                     YamlFixSessionSettings.SessionScheduleSettings.ScheduleEntry yamlEntry = YamlFixSessionSettings.SessionScheduleSettings.ScheduleEntry.builder()

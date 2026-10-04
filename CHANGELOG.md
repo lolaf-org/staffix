@@ -49,6 +49,10 @@ could mean.
   incomingMessageTypes, outgoingMessageTypes)`.
 - **Management endpoints include the group:** one session is at `/actuator/fix-sessions/{group}/{name}`, the
   health details are keyed `group.name`, and each JMX session bean name has a `group` key.
+- **Session settings files say `withinSessionTimeCheckInterval`** under `sessionScheduleSettings`, the name the
+  Java settings and the Spring Boot properties already use, instead of `withinSessionCheckInterval`.
+- **The session settings JSON schema describes every field and gives its default**, so an editor shows what a
+  setting does and what it is when left out.
 
 ### Deprecated
 

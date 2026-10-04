@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.sessions.file;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.victools.jsonschema.generator.*;
 import com.github.victools.jsonschema.module.jackson.JacksonModule;
@@ -23,14 +25,24 @@ import com.github.victools.jsonschema.module.jackson.JacksonOption;
 import com.github.victools.jsonschema.module.jakarta.validation.JakartaValidationModule;
 import com.github.victools.jsonschema.module.jakarta.validation.JakartaValidationOption;
 import lombok.experimental.UtilityClass;
+import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Generates a JSON Schema (Draft 2020-12) describing the on-disk session settings file format, derived from
@@ -47,7 +59,7 @@ import java.util.*;
  * <p>
  * <strong>Nothing on the runtime path may reference this class.</strong> The {@code com.github.victools} dependencies
  * are declared {@code optional} and so are absent from a consuming application, and merely invoking a method here is
- * enough to make the JVM link the class and fail with {@link NoClassDefFoundError} — verifying {@link #generate()}
+ * enough to make the JVM link the class and fail with {@link NoClassDefFoundError} — verifying {@link #generate(List)}
  * resolves {@code com.github.victools.jsonschema.generator.Module}, whether or not that method is ever called. That is
  * why the runtime-facing constant and accessor live in the dependency-free
  * {@link FixSessionSettingsJsonSchema} instead, and a test asserts this class stays out of its constant pool.
@@ -83,7 +95,19 @@ public class FixSessionSettingsJsonSchemaGenerator {
 
     private static final String PLACEHOLDER_PATTERN = ".*\\$\\{[^}]+}.*";
 
-    public static String generate() {
+    /**
+     * Where each described class's source sits under a source root: the API's, whose javadoc is the description, and
+     * this module's, for the fields only a file has.
+     */
+    private static final List<String> DESCRIBED_SOURCES = List.of(
+            "org/lolaf/staffix/api/session/FixSessionSettings.java",
+            "org/lolaf/staffix/api/session/FixSessionId.java",
+            "org/lolaf/staffix/stores/sessions/file/YamlFixSessionSettings.java");
+
+    /**
+     * @param sourceRoots the API's and this module's {@code src/main/java}, where the descriptions are read from
+     */
+    public static String generate(List<Path> sourceRoots) throws IOException {
         JacksonModule jacksonModule = new JacksonModule(
                 JacksonOption.RESPECT_JSONPROPERTY_ORDER,
                 JacksonOption.FLATTENED_ENUMS_FROM_JSONVALUE);
@@ -102,6 +126,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
         SchemaGeneratorConfig config = configBuilder.build();
         ObjectNode schema = (ObjectNode) new SchemaGenerator(config).generateSchema(YamlFixSessionSettings.class);
         widenScalarsForPlaceholders(schema);
+        describe(schema, YamlFixSessionSettings.class, readJavadoc(sourceRoots), defaults());
         return schema.toPrettyString();
     }
 
@@ -159,6 +184,82 @@ public class FixSessionSettingsJsonSchemaGenerator {
         return placeholder;
     }
 
+    private static SettingsJavadoc readJavadoc(List<Path> sourceRoots) throws IOException {
+        SettingsJavadoc javadoc = new SettingsJavadoc();
+        for (String source : DESCRIBED_SOURCES) {
+            Path file = sourceRoots.stream().map(root -> root.resolve(source)).filter(Files::isRegularFile).findFirst()
+                    .orElseThrow(() -> new IOException(source + " is in none of " + sourceRoots));
+            javadoc.read(file);
+        }
+        return javadoc;
+    }
+
+    /**
+     * The values of settings built with nothing set, as a file would write them. The identity is a stand-in, and the
+     * time zone is the build machine's, so neither is a default.
+     */
+    private static JsonNode defaults() {
+        FixSessionSettings unset = FixSessionSettings.builder()
+                .fixSessionId(FixSessionId.of("default", FixRegularVersion.VERSION_44, "sender", "target"))
+                .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
+                .build();
+        ObjectNode defaults = FileFixSessionsSettingsStore.newMapper()
+                .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+                .valueToTree(ToYamlFixSessionSettingsTransformer.toYamlFixSessionSettings(unset));
+        defaults.remove(List.of("fixSessionId", "fixSessionType"));
+        defaults.with("sessionScheduleSettings").remove("timeZone");
+        return defaults;
+    }
+
+    private static void describe(JsonNode objectSchema, Class<?> type, SettingsJavadoc javadoc, JsonNode defaults) {
+        JsonNode properties = objectSchema.path("properties");
+        for (Field field : type.getDeclaredFields()) {
+            JsonNode property = properties.get(field.getName());
+            if (Modifier.isStatic(field.getModifiers()) || !(property instanceof ObjectNode)) {
+                continue;
+            }
+            String description = description(javadoc, type, field.getName());
+            if (description != null) {
+                ((ObjectNode) property).put("description", description);
+            }
+            Class<?> nested = nestedModelType(field);
+            JsonNode fieldDefault = defaults.path(field.getName());
+            if (nested == null) {
+                if (isDefault(fieldDefault)) {
+                    ((ObjectNode) property).set("default", fieldDefault);
+                }
+            } else if (List.class.isAssignableFrom(field.getType())) {
+                describe(property.path("items"), nested, javadoc, MissingNode.getInstance());
+            } else {
+                describe(property, nested, javadoc, fieldDefault);
+            }
+        }
+    }
+
+    /**
+     * The API class's javadoc for the same field, else this module's for a field only a file has.
+     */
+    private static String description(SettingsJavadoc javadoc, Class<?> type, String field) {
+        String className = type.getName().substring(type.getPackage().getName().length() + 1).replace('$', '.');
+        String apiClassName = className.equals("YamlFixSessionSettings.FixSessionId")
+                ? "FixSessionId"
+                : className.replaceFirst("^YamlFixSessionSettings", "FixSessionSettings");
+        String description = javadoc.describe(apiClassName, field);
+        return description != null ? description : javadoc.describe(className, field);
+    }
+
+    private static Class<?> nestedModelType(Field field) {
+        Type type = List.class.isAssignableFrom(field.getType()) && field.getGenericType() instanceof ParameterizedType
+                ? ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0]
+                : field.getType();
+        return type instanceof Class && ((Class<?>) type).getName().startsWith(YamlFixSessionSettings.class.getName() + "$")
+                ? (Class<?>) type : null;
+    }
+
+    private static boolean isDefault(JsonNode value) {
+        return !value.isMissingNode() && !value.isNull() && (value.isValueNode() || value.size() > 0);
+    }
+
     private static CustomDefinition temporalDefinition(com.fasterxml.classmate.ResolvedType type, SchemaGenerationContext context) {
         if (type.isInstanceOf(Duration.class)) {
             return stringDefinition(context, "duration", ISO8601_DURATION_PATTERN,
@@ -186,8 +287,8 @@ public class FixSessionSettingsJsonSchemaGenerator {
     /**
      * Writes the generated schema to the given file, creating or overwriting it.
      */
-    public static void writeTo(File file) throws IOException {
-        Files.write(file.toPath(), generate().getBytes(StandardCharsets.UTF_8));
+    public static void writeTo(File file, List<Path> sourceRoots) throws IOException {
+        Files.write(file.toPath(), generate(sourceRoots).getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -200,11 +301,12 @@ public class FixSessionSettingsJsonSchemaGenerator {
      * constant without updating the pom (or the reverse) fails the build with the message below, instead of quietly
      * producing a jar whose schema cannot be found.
      *
-     * @param args a single argument: the file to write, i.e. the pom's {@code fix-session-settings-schema-file}
+     * @param args the file to write, i.e. the pom's {@code fix-session-settings-schema-file}, then the source roots the
+     *             descriptions are read from
      */
     public static void main(String[] args) throws IOException {
-        if (args.length != 1) {
-            throw new IllegalArgumentException("Expected a single argument: the schema file to write");
+        if (args.length < 2) {
+            throw new IllegalArgumentException("Expected the schema file to write, then the source roots");
         }
         File file = new File(args[0]);
         String expectedPackagePath =
@@ -220,7 +322,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
         if (!directory.isDirectory() && !directory.mkdirs()) {
             throw new IOException("Unable to create schema output directory " + directory);
         }
-        writeTo(file);
+        writeTo(file, Arrays.stream(args, 1, args.length).map(Path::of).collect(Collectors.toList()));
         System.out.println("Generated FIX session settings JSON schema: " + file);
     }
 }

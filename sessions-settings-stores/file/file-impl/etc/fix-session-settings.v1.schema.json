@@ -22,7 +22,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether the Logon names the application and its version, as distinct from the engine's.",
+      "default" : false
     },
     "advertiseEngineOnLogon" : {
       "anyOf" : [ {
@@ -31,7 +33,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether the Logon names this engine and its version. Off by default: some venues record it, most ignore it.",
+      "default" : false
     },
     "advertiseMsgTypeGrpOnLogon" : {
       "anyOf" : [ {
@@ -40,13 +44,16 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether the Logon lists the message types this session sends and accepts, in MsgTypeGrp(384).\n\nOff by default: it makes the Logon considerably larger and few counterparties read it.",
+      "default" : false
     },
     "allowedAddresses" : {
       "type" : "array",
       "items" : {
         "type" : "object"
-      }
+      },
+      "description" : "Addresses an acceptor will accept this session from. Empty means anywhere.\n\nChecked before the Logon is processed, so a connection from elsewhere is dropped without the session ever starting."
     },
     "allowedCertificates" : {
       "type" : "array",
@@ -60,7 +67,8 @@
               "type" : "string",
               "pattern" : ".*\\$\\{[^}]+}.*",
               "description" : "A ${...} placeholder, resolved when the file is loaded"
-            } ]
+            } ],
+            "description" : "The certificate file to accept the session's client certificate from."
           },
           "type" : {
             "anyOf" : [ {
@@ -69,17 +77,21 @@
               "type" : "string",
               "pattern" : ".*\\$\\{[^}]+}.*",
               "description" : "A ${...} placeholder, resolved when the file is loaded"
-            } ]
+            } ],
+            "description" : "The certificate type, as CertificateFactory names it, e.g. X.509."
           }
         }
-      }
+      },
+      "description" : "Client certificates an acceptor will accept this session from, for mutual TLS. Empty means any certificate the truststore already trusts."
     },
     "cancelOnDisconnectSettings" : {
       "type" : "object",
       "properties" : {
         "cancelOnDisconnectType" : {
           "type" : "string",
-          "enum" : [ "DO_NOT_CANCEL_ON_DISCONNECT_OR_LOGOUT", "CANCEL_ON_DISCONNECT_ONLY", "CANCEL_ON_LOGOUT_ONLY", "CANCEL_ON_DISCONNECT_OR_LOGOUT" ]
+          "enum" : [ "DO_NOT_CANCEL_ON_DISCONNECT_OR_LOGOUT", "CANCEL_ON_DISCONNECT_ONLY", "CANCEL_ON_LOGOUT_ONLY", "CANCEL_ON_DISCONNECT_OR_LOGOUT" ],
+          "description" : "For an initiator session this is the COD setting to be sent during logon. For acceptor and the initiator logon message does not contain any COD fields, it will use this value to trigger a COD, a null value will disable COD, this allows to have COD functionality even if not specified by initiator in a logon message",
+          "default" : "CANCEL_ON_DISCONNECT_OR_LOGOUT"
         },
         "cancelOnDisconnectTypeFieldCode" : {
           "anyOf" : [ {
@@ -88,10 +100,19 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "COD FIX field mapping in logon message",
+          "default" : 35002
         },
         "cancelOnDisconnectTypeFieldCodes" : {
-          "type" : "object"
+          "type" : "object",
+          "description" : "COD enum FIX enum mapping",
+          "default" : {
+            "DO_NOT_CANCEL_ON_DISCONNECT_OR_LOGOUT" : "0",
+            "CANCEL_ON_DISCONNECT_ONLY" : "1",
+            "CANCEL_ON_LOGOUT_ONLY" : "2",
+            "CANCEL_ON_DISCONNECT_OR_LOGOUT" : "3"
+          }
         },
         "codTimeoutWindow" : {
           "anyOf" : [ {
@@ -103,7 +124,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "For an initiator session, this will be the COD timeout windows sent in the logon message For an acceptor session, this is the received allowed minimum COD timeout window value.\n\nwindow before triggering FixApplication.onCancelOnDisconnectTriggered()",
+          "default" : "PT10S"
         },
         "codTimeoutWindowFieldCode" : {
           "anyOf" : [ {
@@ -112,10 +135,14 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "COD timeout window FIX field mapping in a logon message",
+          "default" : 35003
         },
         "codTimeoutWindowScale" : {
-          "$ref" : "#/$defs/TimeUnit"
+          "$ref" : "#/$defs/TimeUnit",
+          "description" : "Scale of the codTimeoutWindow to be sent in the logon message, I.E with TimeUnit.MILLISECONDS and codTimeoutWindow set to 10s , 10,000 will be sent in the logon message",
+          "default" : "MILLISECONDS"
         },
         "enabled" : {
           "anyOf" : [ {
@@ -124,13 +151,18 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Toggles Cancel On Disconnect functionality. For an initiator it will indicate to send the COD fields during logon sequence. For an acceptor session it will enable COD fields handling during the logon sequence",
+          "default" : false
         }
-      }
+      },
+      "description" : "What the counterparty should do with resting orders when this session goes away. An initiator sends it on its Logon; an acceptor checks the Logon it receives against it."
     },
     "desiredSessionState" : {
       "type" : "string",
-      "enum" : [ "LOGGED_IN", "LOGGED_OUT", "CONNECTED", "DISCONNECTED" ]
+      "enum" : [ "LOGGED_IN", "LOGGED_OUT", "CONNECTED", "DISCONNECTED" ],
+      "description" : "The state the session holds itself in. FixSessionState.LOGGED_IN by default, so it logs on and stays on; FixSessionState.LOGGED_OUT takes a session out of service without removing its configuration.",
+      "default" : "LOGGED_IN"
     },
     "dictionaryId" : {
       "anyOf" : [ {
@@ -139,7 +171,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Which dictionary's encoders this session uses, for a counterparty whose messages differ from the standard. Defaults to the one every generated FIX package registers.",
+      "default" : "default"
     },
     "disconnectMessagesFlushDeadline" : {
       "anyOf" : [ {
@@ -151,7 +185,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "How long a disconnect waits for messages already queued to be sent before the socket is closed.",
+      "default" : "PT2S"
     },
     "disconnectOnRemove" : {
       "anyOf" : [ {
@@ -160,7 +196,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether removing these settings from their FixSessionsSettingsStore disconnects the live session. On by default. Off makes the removal a configuration change only: the session keeps running until it drops on its own, which is what a venue asking you to stop reconnecting after the trading day needs.",
+      "default" : true
     },
     "enabledLogonNextExpectedMsgSeqNum" : {
       "anyOf" : [ {
@@ -169,7 +207,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether the Logon carries NextExpectedMsgSeqNum(789), so a sequence gap is settled by the Logon exchange itself rather than by a ResendRequest afterwards (section 4.4.1). On by default; turn it off for a counterparty that rejects the field.",
+      "default" : true
     },
     "fixApplicationFactoryInstanceId" : {
       "anyOf" : [ {
@@ -178,7 +218,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Instance id of the application factory this session uses; see FixApplicationFactorySettings.getInstanceId().",
+      "default" : "default"
     },
     "fixApplicationInstanceId" : {
       "anyOf" : [ {
@@ -187,10 +229,13 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Instance id of the application this session is bound to, within the selected factory; see FixApplicationFactory.getInstance().",
+      "default" : "default"
     },
     "fixApplicationSessionSettings" : {
-      "$ref" : "#/$defs/Map(String,String)"
+      "$ref" : "#/$defs/Map(String,String)",
+      "description" : "Settings the application declares it needs, passed to it untouched; see FixApplication.getRequiredFixSessionSettings()."
     },
     "fixMessageLoggerInstanceId" : {
       "anyOf" : [ {
@@ -199,7 +244,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Instance id of the message logger this session uses; see FixMessagesLoggerSettings.getInstanceId().",
+      "default" : "default"
     },
     "fixMessageStoreInstanceId" : {
       "anyOf" : [ {
@@ -208,7 +255,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Instance id of the message store this session uses; see FixMessagesStoreSettings.getInstanceId().",
+      "default" : "default"
     },
     "fixSessionId" : {
       "type" : "object",
@@ -220,7 +269,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Whether the session runs over FIXT.1.1, FIX 5.0 and later's session layer, with fixVersion as its application version."
         },
         "fixVersion" : {
           "anyOf" : [ {
@@ -230,7 +280,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "The FIX version, as BeginString(8) writes it, e.g. FIX.4.4; for a FIXT session, the application version its DefaultApplVerID(1137) names."
         },
         "group" : {
           "anyOf" : [ {
@@ -239,7 +290,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "The group the session belongs to, typically one per counterparty, default when none is given. With the name it identifies the session; see getQualifiedName()."
         },
         "name" : {
           "anyOf" : [ {
@@ -249,7 +301,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Names the session within its group, e.g. trading: two groups may each have a session of the same name, so it identifies nothing on its own; getQualifiedName() does."
         },
         "senderCompID" : {
           "anyOf" : [ {
@@ -259,7 +312,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "SenderCompID(49): this side's firm, as the counterparty knows it. Required."
         },
         "senderLocationID" : {
           "anyOf" : [ {
@@ -268,7 +322,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "SenderLocationID(142): this side's location, when the counterparty asks for one."
         },
         "senderSubID" : {
           "anyOf" : [ {
@@ -277,7 +332,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "SenderSubID(50): a desk or trader within this side's firm, when the counterparty asks for one."
         },
         "targetCompID" : {
           "anyOf" : [ {
@@ -287,7 +343,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "TargetCompID(56): the counterparty's firm. Required."
         },
         "targetLocationID" : {
           "anyOf" : [ {
@@ -296,7 +353,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "TargetLocationID(143): the counterparty's location, when it asks for one."
         },
         "targetSubID" : {
           "anyOf" : [ {
@@ -305,17 +363,21 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "TargetSubID(57): a desk or trader within the counterparty's firm, when it asks for one."
         }
       },
-      "required" : [ "fixVersion", "name", "senderCompID", "targetCompID" ]
+      "required" : [ "fixVersion", "name", "senderCompID", "targetCompID" ],
+      "description" : "The session's identity on the wire: FIX version and CompIDs. Required, and what an inbound Logon is matched against."
     },
     "fixSessionPluginsInstanceIds" : {
-      "$ref" : "#/$defs/Map(String,String)"
+      "$ref" : "#/$defs/Map(String,String)",
+      "description" : "The plugin instance each plugin type uses for this session, keyed by the plugin class; see FixEngineBuilder.getFixSessionsPlugins()."
     },
     "fixSessionType" : {
       "type" : "string",
-      "enum" : [ "INITIATOR", "ACCEPTOR" ]
+      "enum" : [ "INITIATOR", "ACCEPTOR" ],
+      "description" : "Whether these settings describe an initiator or an acceptor session. Required: the same FixSessionId may be configured for both roles, so this distinguishes them (e.g. in FixSessionsSettingsStore.find)."
     },
     "heartBeatInterval" : {
       "type" : "object",
@@ -330,7 +392,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "For acceptors, the lower bound interval that will be accepted by an initiator",
+          "default" : "PT1S"
         },
         "acceptorUpperBoundInterval" : {
           "anyOf" : [ {
@@ -342,7 +406,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "For acceptors, the upper bound interval that will be accepted by an initiator",
+          "default" : "PT20S"
         },
         "initiatorInterval" : {
           "anyOf" : [ {
@@ -354,9 +420,12 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "The heartbeat interval used by the initiator on logon requests",
+          "default" : "PT10S"
         }
-      }
+      },
+      "description" : "HeartBtInt(108): how often a quiet session proves it is alive, and how long it waits before asking.\n\nAn initiator proposes it at Logon and an acceptor may accept or impose its own, which is why this is a settings object rather than a single duration."
     },
     "logInOrOutResponseTimeout" : {
       "anyOf" : [ {
@@ -368,7 +437,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "How long a Logon or Logout may go unanswered before the connection is dropped.",
+      "default" : "PT10S"
     },
     "maxMessagesResentPerRequest" : {
       "anyOf" : [ {
@@ -377,7 +448,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "How many messages at most are replayed for one ResendRequest(35=2) from the peer, which otherwise decides how much work this engine does. The rest of the range is gap filled, which section 4.8.5 allows, so the peer still ends up in sync. 0 removes the limit.",
+      "default" : 10000
     },
     "maxOutOfSequenceMessagesQueued" : {
       "anyOf" : [ {
@@ -386,7 +459,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "How many messages received ahead of a sequence gap are kept until the gap is filled, as section 4.5 requires. Past it the session logs out, rather than grow the queue for a peer that never answers the ResendRequest. 0 removes the limit, not the queueing.",
+      "default" : 10000
     },
     "maxOutgoingMessagesHeldDuringRecovery" : {
       "anyOf" : [ {
@@ -395,7 +470,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "How many application messages are held back while a resend this session asked for is under way, so both sides are in sync before new traffic (section 4.3.11). Past it, a send fails through its MessageSendOperationCallback rather than being held. 0 holds nothing and sends straight through.",
+      "default" : 1000
     },
     "messageEncodersDirectByteBuffers" : {
       "anyOf" : [ {
@@ -404,7 +481,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether the session's own encoders encode into direct byte buffers.",
+      "default" : true
     },
     "pooledMessageEncodersDirectByteBuffers" : {
       "anyOf" : [ {
@@ -413,11 +492,15 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether encoders borrowed from a FixMessageEncodersPool encode into direct byte buffers.",
+      "default" : true
     },
     "resendRequestRange" : {
       "type" : "string",
-      "enum" : [ "CLOSED", "OPEN_ENDED" ]
+      "enum" : [ "CLOSED", "OPEN_ENDED" ],
+      "description" : "How EndSeqNo(16) is filled in on the ResendRequests this session sends: ResendRequestRange.CLOSED, the default, asks for exactly the missing messages, ResendRequestRange.OPEN_ENDED for everything from BeginSeqNo(7) on. Both are valid (section 4.8.2); some peers only answer one. QuickFIX/J's default, ClosedResendInterval=N, is OPEN_ENDED.",
+      "default" : "CLOSED"
     },
     "resendRequestResponseTimeout" : {
       "anyOf" : [ {
@@ -429,7 +512,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "How long a ResendRequest(35=2) this session sent may go without progress before it is repeated, then given up on with a logout. Without it, an answer lost to a garbled message stalls the session forever while heartbeats keep flowing. Measured from the last message that advanced the recovery, so a slow but progressing resend never trips it. Duration.ZERO waits forever.",
+      "default" : "PT30S"
     },
     "resetSeqNumOnLogon" : {
       "anyOf" : [ {
@@ -438,7 +523,8 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether sequence numbers restart at 1 on logon. True resets on every logon, false refuses a counterparty's reset with a Logout (section 4.4.3), and null, the default, follows whatever the counterparty asks for."
     },
     "restartLiveSessionOnUpdate" : {
       "anyOf" : [ {
@@ -447,7 +533,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether updating these settings in their FixSessionsSettingsStore restarts the live session, so the change takes effect now. On by default, since an update that never reaches the running session is the worse surprise. Off, the new settings apply the next time the session connects. Read from the settings the session is running under, not the new ones.",
+      "default" : true
     },
     "rttMeasurementSettings" : {
       "type" : "object",
@@ -462,7 +550,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "EMA time window for smoothing RTT and clock-offset samples. A longer window absorbs more jitter at the cost of slower convergence.",
+          "default" : "PT30S"
         },
         "maxAcceptedRtt" : {
           "anyOf" : [ {
@@ -474,7 +564,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Samples whose measured RTT exceeds this threshold are discarded as outliers (e.g. GC pauses, scheduling spikes, network blips). Set to null to accept any RTT.",
+          "default" : "PT2S"
         },
         "probeInterval" : {
           "anyOf" : [ {
@@ -486,7 +578,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Interval between TestRequest probes used to measure RTT. Null or zero disables continuous probing. Heartbeat-driven TestRequests issued by the standard heartbeat machinery (when the peer goes silent) still feed the estimator."
         },
         "probeTestReqIdPrefix" : {
           "anyOf" : [ {
@@ -495,7 +588,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Prefix for the TestReqID of probe messages, used to distinguish them in logs from heartbeat-driven TestRequests.",
+          "default" : "RTT-measurement-"
         },
         "sendingTimeToWireDelay" : {
           "anyOf" : [ {
@@ -507,12 +602,17 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Empirical bias subtracted from each raw clock-offset sample before it is fed to the EMA. Models the delay between the moment the remote stamps SendingTime (tag 52) into the outgoing byte buffer and the moment those bytes actually leave the wire: encode tail, write syscall, kernel queueing, NIC handoff. Because the NTP-style offset formula R − (T1 + T2) / 2 assumes the remote's SendingTime coincides with the actual send instant, this delay shows up as a persistent positive offset even when the two peers share the same clock (e.g. on localhost). Subtracting it removes that systemic bias and leaves only the genuine wall-clock skew between the peers.\n\nThe right value is implementation- and deployment-specific: measure it on a loopback run (where the true offset is zero) and use the steady-state EMA you observe. A few microseconds is typical for a Java FIX engine on a tuned host; high-latency or busy systems may see more. Set to Duration.ZERO or null to disable the correction.",
+          "default" : "PT0.0000015S"
         }
-      }
+      },
+      "description" : "Continuous network RTT and remote clock-offset measurement settings.\n\nWhen enabled (non-null RttMeasurementSettings.getProbeInterval()), the session emits TestRequest probes at that interval and uses the matching Heartbeat responses (with the remote SendingTime in tag 52) to compute a smoothed RTT and remote-vs-local clock offset. Heartbeat-driven TestRequests issued by the existing heartbeat machinery are also fed into the estimator regardless of this setting."
     },
     "sendingTimeAccuracy" : {
-      "$ref" : "#/$defs/TimeUnit"
+      "$ref" : "#/$defs/TimeUnit",
+      "description" : "The precision SendingTime(52) is written to. Microseconds by default; a counterparty that cannot parse sub-second digits needs TimeUnit.SECONDS.",
+      "default" : "MICROSECONDS"
     },
     "sessionScheduleSettings" : {
       "type" : "object",
@@ -523,7 +623,8 @@
             "type" : "object",
             "properties" : {
               "dayOfWeek" : {
-                "$ref" : "#/$defs/DayOfWeek"
+                "$ref" : "#/$defs/DayOfWeek",
+                "description" : "The day this entry describes. At most one entry per day."
               },
               "initiatesReset" : {
                 "anyOf" : [ {
@@ -532,7 +633,8 @@
                   "type" : "string",
                   "pattern" : ".*\\$\\{[^}]+}.*",
                   "description" : "A ${...} placeholder, resolved when the file is loaded"
-                } ]
+                } ],
+                "description" : "True when this end sends the section 4.4.2 Logon(35=A) at the appointed time, false when it waits for the peer's and only acknowledges, and null on a day that does not roll at all.\n\nBoxed rather than primitive so that \"not stated\" is distinguishable from \"awaits\": a primitive would default to false and quietly leave a rolling day that nobody rolls. Mandatory wherever sequenceResetTime is set, because section 4.4.2 has the counterparties agree between themselves which peer initiates and nothing about that agreement is visible on the wire, so staffix has nothing to derive a default from: both ends initiating puts two resets on the wire at once, and neither initiating leaves the numbering running for ever."
               },
               "sequenceResetTime" : {
                 "anyOf" : [ {
@@ -543,11 +645,13 @@
                   "type" : "string",
                   "pattern" : ".*\\$\\{[^}]+}.*",
                   "description" : "A ${...} placeholder, resolved when the file is loaded"
-                } ]
+                } ],
+                "description" : "The time of day, in the schedule's SessionScheduleSettings.timeZone, at which the numbering restarts, or null on a day that is non-stop and does not roll.\n\nNullable because the two things an entry says are independent: that the day never closes, and that the numbering restarts on it. A session rolling weekly rather than daily - up around the clock all week, resetting on the Sunday alone - has six days of the first without the second, and there is no time of day that expresses \"no reset\". Naming an hour the deployment is quiet is not the same statement: it still rolls, it just rolls where nobody was looking.\n\nNull and initiatesReset go together: an entry states both or neither, which FixSessionSettingsValidator enforces. A day with a time and no role would have no one to perform the roll it asks for, and a role with no time is the shape a forgotten time leaves behind."
               }
             },
             "required" : [ "dayOfWeek" ]
-          }
+          },
+          "description" : "The days the session runs non-stop: it is up for the whole of the day and restarts its sequence numbers at NonStopScheduleEntry.sequenceResetTime through the section 4.4.2 exchange - both ends back to 1 over the live connection, with nothing logged out and no connection dropped.\n\nDeliberately not spelled as a ScheduleEntry whose start and end are equal, which is how some engines say it: staffix rejects such an entry as a zero-duration typo, and it would read as a mistake rather than as a session that never closes. A day listed here has no open and no close, only a point at which the numbering starts again.\n\nConsecutive non-stop days are contiguous - midnight between them is not a close - and a non-stop day is contiguous with a neighbouring window that runs up to or starts at that midnight. A day named by neither list is a day the session is down. Both lists empty is the default: a session with no schedule at all, always up and never resetting on a timer."
         },
         "outsideSessionTimePreTriggerDelay" : {
           "anyOf" : [ {
@@ -559,7 +663,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "How long before the close FixApplication.onPreOutsideSessionTime() is called, so the application can wind down rather than be cut off.",
+          "default" : "PT2S"
         },
         "sessionSchedules" : {
           "type" : "array",
@@ -567,7 +673,8 @@
             "type" : "object",
             "properties" : {
               "endDay" : {
-                "$ref" : "#/$defs/DayOfWeek"
+                "$ref" : "#/$defs/DayOfWeek",
+                "description" : "The day it closes on."
               },
               "endTime" : {
                 "anyOf" : [ {
@@ -578,10 +685,12 @@
                   "type" : "string",
                   "pattern" : ".*\\$\\{[^}]+}.*",
                   "description" : "A ${...} placeholder, resolved when the file is loaded"
-                } ]
+                } ],
+                "description" : "The close."
               },
               "startDay" : {
-                "$ref" : "#/$defs/DayOfWeek"
+                "$ref" : "#/$defs/DayOfWeek",
+                "description" : "The day the window opens on."
               },
               "startTime" : {
                 "anyOf" : [ {
@@ -592,16 +701,19 @@
                   "type" : "string",
                   "pattern" : ".*\\$\\{[^}]+}.*",
                   "description" : "A ${...} placeholder, resolved when the file is loaded"
-                } ]
+                } ],
+                "description" : "The open."
               }
             },
             "required" : [ "endDay", "endTime", "startDay", "startTime" ]
-          }
+          },
+          "description" : "The days the session keeps trading windows: it opens at ScheduleEntry.startTime and closes at ScheduleEntry.endTime, logging out and staying down until the next open.\n\nA day covered by a NonStopScheduleEntry must not be covered here - a day is either windowed or non-stop, never both."
         },
         "timeZone" : {
-          "type" : "object"
+          "type" : "object",
+          "description" : "The zone the schedule's times are read in - the venue's, not the engine's.\n\nDefaults to the JVM's, which is rarely what is wanted for a venue in another country, and never what is wanted if the two observe daylight saving on different dates."
         },
-        "withinSessionCheckInterval" : {
+        "withinSessionTimeCheckInterval" : {
           "anyOf" : [ {
             "type" : "string",
             "format" : "duration",
@@ -611,9 +723,12 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "How often the schedule is re-evaluated, which bounds how late an open or close can be acted on.",
+          "default" : "PT1S"
         }
-      }
+      },
+      "description" : "When the session is expected to be up, in the venue's own time zone."
     },
     "testingMode" : {
       "anyOf" : [ {
@@ -622,7 +737,9 @@
         "type" : "string",
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ]
+      } ],
+      "description" : "Whether the Logon sets TestMessageIndicator(464), for FIX 4.3 and later.",
+      "default" : false
     },
     "validationSettings" : {
       "type" : "object",
@@ -634,7 +751,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Accepts tags the data dictionary defines but not for the received message type. Turning it off rejects them with TAG_NOT_DEFINED_FOR_THIS_MESSAGE_TYPE, at a slight cost in performance.",
+          "default" : true
         },
         "allowUnknownFields" : {
           "anyOf" : [ {
@@ -643,7 +762,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Accepts standard tags the data dictionary does not define. That is how a session on an older dictionary takes tags a later FIX version has allocated, from 40000 up, rather than through allowUserDefinedFields.",
+          "default" : false
         },
         "allowUserDefinedFields" : {
           "anyOf" : [ {
@@ -652,7 +773,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Accepts user defined tags, the ones the standard does not own, that the data dictionary does not define; see FixField.isUserDefined().",
+          "default" : false
         },
         "detectGarbledMessages" : {
           "anyOf" : [ {
@@ -661,7 +784,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Whether the garbled message checks of section 4.5.2 that cost extra are run: BeginString(8), BodyLength(9) and MsgType(35) out of place, or an unknown BeginString(8). A wrong BodyLength(9) is always caught. A garbled message is ignored, so the next one shows as a sequence gap and drives the usual recovery. Off by default.",
+          "default" : false
         },
         "expectedDeliverToCompIds" : {
           "type" : "array",
@@ -673,7 +798,8 @@
               "pattern" : ".*\\$\\{[^}]+}.*",
               "description" : "A ${...} placeholder, resolved when the file is loaded"
             } ]
-          }
+          },
+          "description" : "CompIDs the peer may deliver to, in DeliverToCompID(128). Works as expectedOnBehalfOfCompIds."
         },
         "expectedOnBehalfOfCompIds" : {
           "type" : "array",
@@ -685,7 +811,8 @@
               "pattern" : ".*\\$\\{[^}]+}.*",
               "description" : "A ${...} placeholder, resolved when the file is loaded"
             } ]
-          }
+          },
+          "description" : "CompIDs the peer may send on behalf of, in OnBehalfOfCompID(115), for third party routing (section 6.2). A message with another value is rejected with SessionRejectReason(373) 9, and the session stays up. Null or empty, the default, the field is not checked."
         },
         "maxMessageSize" : {
           "anyOf" : [ {
@@ -695,7 +822,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "The largest message, in bytes, this session accepts. When set it is advertised in the Logon's MaxMessageSize(383) and larger inbound messages are rejected. Null, the default, sets no limit."
         },
         "maxSendingTime" : {
           "anyOf" : [ {
@@ -707,7 +835,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "How far a received SendingTime(52) may be from this session's clock, either way, before the message is rejected and the session logged out (section 4.2.3). Null, the default, turns the check off and leaves SendingTime unparsed."
         },
         "requiredPeerMaxMessageSize" : {
           "anyOf" : [ {
@@ -717,7 +846,8 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "The smallest MaxMessageSize(383) the peer must advertise on its Logon, i.e. the largest message this session may need to send it. A peer advertising less is logged out. Null, the default, requires nothing."
         },
         "validateBeginString" : {
           "anyOf" : [ {
@@ -726,7 +856,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Whether a received message whose BeginString(8) does not match the session's FIX version ends the session with a Logout. Off by default, since it costs a little on every message.",
+          "default" : false
         },
         "validateChecksum" : {
           "anyOf" : [ {
@@ -735,7 +867,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Whether the CheckSum(10) of each received message is verified.",
+          "default" : true
         },
         "validateCompId" : {
           "anyOf" : [ {
@@ -744,7 +878,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Whether SenderCompID(49) and TargetCompID(56) of each received message must match the session's. Off by default, since it costs a little on every message.",
+          "default" : false
         },
         "validateDuplicateTags" : {
           "anyOf" : [ {
@@ -753,7 +889,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Reject messages where the same tag appears more than once at the same level (message body, or within a single repeating-group entry), rejected with TAG_APPEARS_MORE_THAN_ONCE. Enabling it has a slight impact on performance.",
+          "default" : false
         },
         "validateFieldsHaveValues" : {
           "anyOf" : [ {
@@ -762,7 +900,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Whether a received message with an empty field is rejected.",
+          "default" : true
         },
         "validateFieldsOutOfOrder" : {
           "anyOf" : [ {
@@ -771,7 +911,9 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Reject messages whose fields appear out of the order defined by the data dictionary. This covers both fields breaching the header/body/trailer section ordering (rejected with TAG_SPECIFIED_OUT_OF_REQUIRED_ORDER) and repeating-group fields appearing out of their declared order (rejected with REPEATING_GROUP_FIELDS_OUT_OF_ORDER). Enabling it has a slight impact on performance.",
+          "default" : false
         },
         "validateRequiredFields" : {
           "anyOf" : [ {
@@ -780,9 +922,12 @@
             "type" : "string",
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ]
+          } ],
+          "description" : "Whether a received message missing a field the data dictionary requires is rejected. Off by default, since it costs a little on every message.",
+          "default" : false
         }
-      }
+      },
+      "description" : "What this session checks on every inbound message. Each check costs something on the message path, which is why most are off."
     }
   },
   "required" : [ "fixSessionId", "fixSessionType" ]

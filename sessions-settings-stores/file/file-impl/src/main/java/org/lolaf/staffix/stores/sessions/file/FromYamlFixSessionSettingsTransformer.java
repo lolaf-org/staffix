@@ -219,7 +219,7 @@ public class FromYamlFixSessionSettingsTransformer {
             YamlFixSessionSettings.SessionScheduleSettings yssSettings = settings.getSessionScheduleSettings();
             mergeIfNeeded(yssSettings::getOutsideSessionTimePreTriggerDelay, ssb::outsideSessionTimePreTriggerDelay);
             mergeIfNeeded(yssSettings::getTimeZone, ssb::timeZone);
-            mergeIfNeeded(yssSettings::getWithinSessionCheckInterval, ssb::withinSessionTimeCheckInterval);
+            mergeIfNeeded(yssSettings::getWithinSessionTimeCheckInterval, ssb::withinSessionTimeCheckInterval);
             if (yssSettings.getSessionSchedules() != null) {
                 yssSettings.getSessionSchedules().forEach(yamlEntry -> {
                     FixSessionSettings.SessionScheduleSettings.ScheduleEntry entry = FixSessionSettings.SessionScheduleSettings.ScheduleEntry.builder()

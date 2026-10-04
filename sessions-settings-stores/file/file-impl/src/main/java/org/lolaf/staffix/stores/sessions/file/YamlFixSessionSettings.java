@@ -104,8 +104,16 @@ public class YamlFixSessionSettings {
 
         @NotBlank
         private String name;
+        /**
+         * The FIX version, as BeginString(8) writes it, e.g. {@code FIX.4.4}; for a FIXT session, the application
+         * version its DefaultApplVerID(1137) names.
+         */
         @NotBlank
         private String fixVersion;
+        /**
+         * Whether the session runs over FIXT.1.1, FIX 5.0 and later's session layer, with {@code fixVersion} as its
+         * application version.
+         */
         private boolean fixTSession;
         private String group;
         @NotBlank
@@ -164,7 +172,13 @@ public class YamlFixSessionSettings {
     @AllArgsConstructor
     public static class Certificate {
 
+        /**
+         * The certificate file to accept the session's client certificate from.
+         */
         private String filePath;
+        /**
+         * The certificate type, as {@code CertificateFactory} names it, e.g. {@code X.509}.
+         */
         private String type;
 
     }
@@ -205,7 +219,7 @@ public class YamlFixSessionSettings {
 
         private Duration outsideSessionTimePreTriggerDelay;
         private TimeZone timeZone;
-        private Duration withinSessionCheckInterval;
+        private Duration withinSessionTimeCheckInterval;
         @Singular
         private List<@Valid ScheduleEntry> sessionSchedules;
         @Singular

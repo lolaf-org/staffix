@@ -67,7 +67,7 @@ rttMeasurementSettings:
 sessionScheduleSettings:
   outsideSessionTimePreTriggerDelay: "PT2S"
   timeZone: "Europe/Zurich"
-  withinSessionCheckInterval: "PT1S"
+  withinSessionTimeCheckInterval: "PT1S"
   sessionSchedules: [ ]
   nonStopSchedules:
     - dayOfWeek: "MONDAY"
