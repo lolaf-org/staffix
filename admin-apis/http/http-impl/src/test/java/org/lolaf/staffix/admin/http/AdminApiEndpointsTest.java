@@ -88,8 +88,8 @@ class AdminApiEndpointsTest {
         when(adminApi.getInitiatorsTargets()).thenReturn(List.of(FixInitiatorTargets.builder()
                 .instanceId("alpha-initiator")
                 .activeFixSessionId(activeConfig)
-                .target(FixInitiatorTarget.builder().fixSessionId(TRADING).build())
-                .target(FixInitiatorTarget.builder().fixSessionId(TRADING_DRP).build())
+                .mainTarget(FixInitiatorTarget.builder().fixSessionId(TRADING).build())
+                .backupTarget(FixInitiatorTarget.builder().fixSessionId(TRADING_DRP).build())
                 .build()));
     }
 

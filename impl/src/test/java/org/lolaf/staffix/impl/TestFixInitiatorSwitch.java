@@ -192,8 +192,9 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         assertThat(adminApi.getInitiatorsTargets()).singleElement().satisfies(targets -> {
             assertThat(targets.getInstanceId()).isEqualTo(fixInitiatorBuilder.getInstanceId());
             assertThat(targets.getActiveFixSessionId()).isEqualTo(BACKUP_INITIATOR);
-            assertThat(targets.getTargets()).extracting(FixInitiatorTarget::getFixSessionId)
-                    .containsExactly(main.getFixSessionId(), BACKUP_INITIATOR);
+            assertThat(targets.getMainTarget().getFixSessionId()).isEqualTo(main.getFixSessionId());
+            assertThat(targets.getBackupTargets()).extracting(FixInitiatorTarget::getFixSessionId)
+                    .containsExactly(BACKUP_INITIATOR);
         });
     }
 

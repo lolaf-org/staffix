@@ -16,14 +16,18 @@
 package org.lolaf.staffix.api.admin;
 
 import org.lolaf.staffix.api.InstanceIdSupplier;
+import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Management control surface for a FIX engine's sessions. Implemented by the engine itself, which
@@ -155,6 +159,52 @@ public interface AdminApi extends InstanceIdSupplier {
      * @throws IllegalArgumentException if no store with the given instance id is configured
      */
     void reloadFixSessionsSettingsStore(String instanceId);
+
+    /**
+     * @throws IllegalArgumentException if no store with the given instance id is configured
+     * @see FixSessionsSettingsStore#isPersistent()
+     */
+    boolean isFixSessionsSettingsStorePersistent(String instanceId);
+
+    /**
+     * @return the instance id of the store holding the session's settings; empty when none does, as for an
+     * initiator's backup target, which runs on its main target's settings
+     */
+    Optional<String> findFixSessionsSettingsStore(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType);
+
+    /**
+     * Adds a session to a store, which starts it: an acceptor serves it at once, an initiator connects.
+     *
+     * @throws IllegalArgumentException if no store has that instance id, or the settings are invalid
+     * @throws IllegalStateException    if the engine already has a session of that group and name, or an initiator
+     *                                  targets it as a backup
+     */
+    void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings);
+
+    /**
+     * Replaces a session's settings in the store holding them. The live session restarts on them unless its
+     * {@link FixSessionSettings#isRestartLiveSessionOnUpdate()} is off.
+     *
+     * @param fixSessionId the session's id now, which the new settings may change (CompIDs, FIX version, name)
+     * @throws IllegalArgumentException if no store holds the session, the settings are invalid or change its type
+     * @throws IllegalStateException    if the new group and name belong to another session
+     */
+    void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings);
+
+    /**
+     * Removes a session from the store holding it. The live session is disconnected unless its
+     * {@link FixSessionSettings#isDisconnectOnRemove()} is off.
+     *
+     * @throws IllegalArgumentException if no store holds the session
+     */
+    void removeFixSessionSettings(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType);
+
+    /**
+     * The application settings the session's application declares, with their descriptions and secrecy.
+     *
+     * @throws IllegalArgumentException if no initiator or acceptor manages the session
+     */
+    Collection<FixApplicationSessionSettingDescriptor> getFixApplicationSessionSettingDescriptors(FixSessionId fixSessionId);
 
     /**
      * Returns a snapshot of every session currently managed by the engine's initiators and acceptors, each paired with

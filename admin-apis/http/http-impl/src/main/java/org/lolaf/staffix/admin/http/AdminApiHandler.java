@@ -297,7 +297,7 @@ class AdminApiHandler implements HttpHandler {
 
     private FixInitiatorTargets initiator(String group, String name) {
         for (FixInitiatorTargets initiator : adminApi.getInitiatorsTargets()) {
-            if (isNamed(initiator.getTargets().get(0).getFixSessionId(), group, name)) {
+            if (isNamed(initiator.getMainTarget().getFixSessionId(), group, name)) {
                 return initiator;
             }
         }

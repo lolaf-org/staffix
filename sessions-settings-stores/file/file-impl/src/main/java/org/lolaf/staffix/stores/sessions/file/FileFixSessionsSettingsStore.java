@@ -143,6 +143,14 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         return loadFromSources();
     }
 
+    /**
+     * A directory-backed store writes each change to its file; a URI-backed one keeps changes in memory only.
+     */
+    @Override
+    public boolean isPersistent() {
+        return savable;
+    }
+
     private Set<FixSessionSettings> loadFromSources() {
         configValueResolvers.refresh();
         return savable ? loadFromDirectory() : loadFromUris();

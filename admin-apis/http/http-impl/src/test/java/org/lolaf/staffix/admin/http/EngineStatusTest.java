@@ -76,9 +76,9 @@ class EngineStatusTest {
         when(adminApi.getInitiatorsTargets()).thenReturn(List.of(FixInitiatorTargets.builder()
                 .instanceId("alpha-initiator")
                 .activeFixSessionId(TRADING_DRP)
-                .target(FixInitiatorTarget.builder().fixSessionId(TRADING)
+                .mainTarget(FixInitiatorTarget.builder().fixSessionId(TRADING)
                         .connectAddress(InetSocketAddress.createUnresolved("alpha.example.com", 9001)).build())
-                .target(FixInitiatorTarget.builder().fixSessionId(TRADING_DRP)
+                .backupTarget(FixInitiatorTarget.builder().fixSessionId(TRADING_DRP)
                         .connectAddress(InetSocketAddress.createUnresolved("2001:db8::7", 9002)).build())
                 .build()));
         when(adminApi.getAcceptorsSessions()).thenReturn(List.of(FixAcceptorSessions.builder()

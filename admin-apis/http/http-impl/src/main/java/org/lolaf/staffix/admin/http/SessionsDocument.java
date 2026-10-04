@@ -59,7 +59,7 @@ final class SessionsDocument {
             FixSession session = running.get(initiator.getActiveFixSessionId());
             if (session != null) {
                 SessionDescription.SessionDescriptionBuilder description = description(session, initiator.getInstanceId())
-                        .name(initiator.getTargets().get(0).getFixSessionId().getName());
+                        .name(initiator.getMainTarget().getFixSessionId().getName());
                 initiator.getTargets().forEach(target -> description.config(config(target.getFixSessionId(),
                         target.getConnectAddresses().stream().map(SessionsDocument::hostAndPort).collect(Collectors.toList()),
                         session.getFixSessionSettings())));

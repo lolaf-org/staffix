@@ -210,7 +210,8 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         return FixInitiatorTargets.builder()
                 .instanceId(fixInitiatorBuilder.getInstanceId())
                 .activeFixSessionId(activeTarget.getFixSessionId())
-                .targets(fixInitiatorBuilder.getTargets())
+                .mainTarget(fixInitiatorBuilder.getMainTarget())
+                .backupTargets(fixInitiatorBuilder.getBackupTargets())
                 .build();
     }
 

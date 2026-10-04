@@ -33,11 +33,7 @@ import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
 import java.net.InetSocketAddress;
-import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -48,7 +44,7 @@ class TestFixEngineReloadSessionsSettings {
 
     private static final String STORE_ID = "test-store";
 
-    private final ControllableStore store = new ControllableStore(STORE_ID);
+    private final ControllableSettingsStore store = new ControllableSettingsStore(STORE_ID);
     private FixEngine fixEngine;
 
     private static FixSessionSettings session(String sender, String target) {
@@ -70,7 +66,7 @@ class TestFixEngineReloadSessionsSettings {
                     .fixApplicationFactory(SimpleApplicationFactorySettings.builder()
                             .application(InstanceProvider.DEFAULT_INSTANCE_ID, application)
                             .build())
-                    .fixSessionsSettingsStore(new ControllableStoreSettings(store))
+                    .fixSessionsSettingsStore(new ControllableSettingsStore.Settings(store))
                     .build()
                     .instance();
             fixEngine.start();
@@ -173,91 +169,5 @@ class TestFixEngineReloadSessionsSettings {
                 .as("removed")
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No initiator or acceptor manages session");
-    }
-
-    /**
-     * A {@link FixSessionsSettingsStore} whose {@link #load()} result is fully controlled by the test, so the engine's
-     * reconciliation against the managed settings can be exercised without a real backing source.
-     */
-    private static class ControllableStore extends FixSessionsSettingsStore.AbstractFixSessionSettingsStore {
-
-        private final String instanceId;
-        private final Set<FixSessionSettings> managed = new HashSet<>();
-        private Set<FixSessionSettings> source = new HashSet<>();
-
-        ControllableStore(String instanceId) {
-            this.instanceId = instanceId;
-        }
-
-        void setSource(FixSessionSettings... settings) {
-            this.source = new HashSet<>(Set.of(settings));
-        }
-
-        @Override
-        public String getInstanceId() {
-            return instanceId;
-        }
-
-        @Override
-        public Collection<FixSessionSettings> getSettings() {
-            return managed;
-        }
-
-        @Override
-        public Optional<FixSessionSettings> find(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
-            return managed.stream()
-                    .filter(s -> s.getFixSessionId().equals(fixSessionId) && s.getFixSessionType() == fixSessionType)
-                    .findFirst();
-        }
-
-        @Override
-        public Set<FixSessionSettings> load() {
-            return new HashSet<>(source);
-        }
-
-        @Override
-        public void onAdd(FixSessionSettings settings) {
-            managed.add(settings);
-        }
-
-        @Override
-        public void onRemove(FixSessionSettings settings) {
-            managed.remove(settings);
-        }
-
-        @Override
-        public void onUpdate(FixSessionSettings settings) {
-            managed.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
-            managed.add(settings);
-        }
-
-        @Override
-        protected void startMe() {
-            // nothing to do
-        }
-
-        @Override
-        protected void stopMe(Deadline stopDeadline) {
-            // nothing to do
-        }
-    }
-
-    private static class ControllableStoreSettings implements FixSessionsSettingsStoreSettings {
-
-        private final ControllableStore store;
-
-        ControllableStoreSettings(ControllableStore store) {
-            this.store = store;
-        }
-
-        @Override
-        public String getInstanceId() {
-            return store.getInstanceId();
-        }
-
-        @Override
-        public FixSessionsSettingsStore instance() {
-            return store;
-        }
     }
 }

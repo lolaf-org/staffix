@@ -23,8 +23,10 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.AdminApiExporter;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
+import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.*;
@@ -326,32 +328,127 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     public void reloadFixSessionsSettingsStore(String instanceId) {
-        FixSessionsSettingsStore store = fixSessionsSettingsStores.stream()
+        FixSessionsSettingsStore store = store(instanceId);
+        synchronized (store) {
+            // load() reads the backing source without mutating the store; we reconcile the difference here, keyed by
+            // FixSessionId, so that the store's add/remove/update fire the listener callbacks the sessions react to.
+            Set<FixSessionSettings> loaded = store.load();
+            loaded.forEach(FixSessionSettingsValidator::validate);
+            Map<FixSessionId, FixSessionSettings> currentBySessionId = store.getSettings().stream()
+                    .collect(Collectors.toMap(FixSessionSettings::getFixSessionId, s -> s));
+            Set<FixSessionId> loadedSessionIds = new HashSet<>();
+            for (FixSessionSettings loadedSettings : loaded) {
+                loadedSessionIds.add(loadedSettings.getFixSessionId());
+                FixSessionSettings current = currentBySessionId.get(loadedSettings.getFixSessionId());
+                if (current == null) {
+                    store.add(loadedSettings);
+                } else if (!current.equals(loadedSettings)) {
+                    store.update(loadedSettings);
+                }
+            }
+            currentBySessionId.values().stream()
+                    .filter(current -> !loadedSessionIds.contains(current.getFixSessionId()))
+                    .forEach(store::remove);
+        }
+    }
+
+    @Override
+    public boolean isFixSessionsSettingsStorePersistent(String instanceId) {
+        return store(instanceId).isPersistent();
+    }
+
+    @Override
+    public Optional<String> findFixSessionsSettingsStore(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
+        return storeHolding(fixSessionId, fixSessionType).map(FixSessionsSettingsStore::getInstanceId);
+    }
+
+    @Override
+    public void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings) {
+        FixSessionsSettingsStore store = store(storeInstanceId);
+        FixSessionSettingsValidator.validate(settings);
+        synchronized (store) {
+            requireUnusedName(settings.getFixSessionId(), null);
+            store.add(settings);
+        }
+    }
+
+    @Override
+    public void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings) {
+        FixSession.FixSessionType type = settings.getFixSessionType();
+        FixSessionsSettingsStore store = storeHolding(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));
+        FixSessionSettingsValidator.validate(settings);
+        synchronized (store) {
+            FixSessionSettings current = store.find(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));
+            if (settings.getFixSessionId().equals(fixSessionId)) {
+                store.update(settings);
+            } else {
+                // a store updates by id, so a session whose id changes is replaced
+                requireUnusedName(settings.getFixSessionId(), fixSessionId);
+                store.remove(current);
+                store.add(settings);
+            }
+        }
+    }
+
+    @Override
+    public void removeFixSessionSettings(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
+        FixSessionsSettingsStore store = storeHolding(fixSessionId, fixSessionType)
+                .orElseThrow(() -> noStoreHolds(fixSessionId, fixSessionType));
+        synchronized (store) {
+            store.find(fixSessionId, fixSessionType).ifPresent(store::remove);
+        }
+    }
+
+    @Override
+    public Collection<FixApplicationSessionSettingDescriptor> getFixApplicationSessionSettingDescriptors(FixSessionId fixSessionId) {
+        return getManagedFixSessions().stream()
+                .filter(session -> session.getFixSessionId().equals(fixSessionId))
+                .findFirst()
+                .map(session -> session.<FixApplication>getApplication().getRequiredFixSessionSettings())
+                .orElseThrow(() -> new IllegalArgumentException("No initiator or acceptor manages session " + fixSessionId));
+    }
+
+    private FixSessionsSettingsStore store(String instanceId) {
+        return fixSessionsSettingsStores.stream()
                 .filter(s -> s.getInstanceId().equals(instanceId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(String.format(
                         "No FixSessionsSettingsStore found for instance id '%s' within: '%s'", instanceId,
                         fixSessionsSettingsStores.stream().map(FixSessionsSettingsStore::getInstanceId).collect(Collectors.joining(",")))));
+    }
 
-        // load() reads the backing source without mutating the store; we reconcile the difference here, keyed by
-        // FixSessionId, so that the store's add/remove/update fire the listener callbacks the sessions react to.
-        Set<FixSessionSettings> loaded = store.load();
-        loaded.forEach(FixSessionSettingsValidator::validate);
-        Map<FixSessionId, FixSessionSettings> currentBySessionId = store.getSettings().stream()
-                .collect(Collectors.toMap(FixSessionSettings::getFixSessionId, s -> s));
-        Set<FixSessionId> loadedSessionIds = new HashSet<>();
-        for (FixSessionSettings loadedSettings : loaded) {
-            loadedSessionIds.add(loadedSettings.getFixSessionId());
-            FixSessionSettings current = currentBySessionId.get(loadedSettings.getFixSessionId());
-            if (current == null) {
-                store.add(loadedSettings);
-            } else if (!current.equals(loadedSettings)) {
-                store.update(loadedSettings);
-            }
-        }
-        currentBySessionId.values().stream()
-                .filter(current -> !loadedSessionIds.contains(current.getFixSessionId()))
-                .forEach(store::remove);
+    private Optional<FixSessionsSettingsStore> storeHolding(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
+        return fixSessionsSettingsStores.stream()
+                .filter(store -> store.find(fixSessionId, fixSessionType).isPresent())
+                .findFirst();
+    }
+
+    private static IllegalArgumentException noStoreHolds(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
+        return new IllegalArgumentException("No store holds the " + fixSessionType + " session " + fixSessionId);
+    }
+
+    /**
+     * The qualified name names the session's stored state and files, so it must stay unique in the engine, backup
+     * targets included.
+     */
+    private void requireUnusedName(FixSessionId fixSessionId, FixSessionId replacedOrNull) {
+        String name = fixSessionId.getQualifiedName();
+        fixSessionsSettingsStores.stream()
+                .flatMap(store -> store.getSettings().stream())
+                .map(FixSessionSettings::getFixSessionId)
+                .filter(id -> !id.equals(replacedOrNull) && id.getQualifiedName().equals(name))
+                .findFirst()
+                .ifPresent(id -> {
+                    throw new IllegalStateException("The engine already has a session " + name + ": " + id);
+                });
+        initiatorsTargets.stream()
+                .flatMap(initiator -> initiator.getBackupTargets().stream())
+                .filter(backup -> backup.getFixSessionId().getQualifiedName().equals(name))
+                .findFirst()
+                .ifPresent(backup -> {
+                    throw new IllegalStateException("Session " + name + " is an initiator's backup target, which runs on"
+                            + " its main target's settings");
+                });
     }
 
     @Override

@@ -45,7 +45,7 @@ public class EngineStatus {
         for (FixInitiatorTargets initiator : adminApi.getInitiatorsTargets()) {
             FixSession session = running.get(initiator.getActiveFixSessionId());
             if (session != null) {
-                String name = initiator.getTargets().get(0).getFixSessionId().getName();
+                String name = initiator.getMainTarget().getFixSessionId().getName();
                 addIfStillManaged(sessions, () -> status(adminApi, session, name));
             }
         }

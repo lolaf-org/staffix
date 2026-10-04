@@ -31,6 +31,10 @@ could mean.
   engine, group and session selectors.
 - The monitoring stack in `monitoring/grafana` runs Loki 3.7.8 and indexes `fix.eid`, `fix.sg` and `fix.sn`, so a log
   query for one engine, group or session reads only that session's logs instead of scanning them all.
+- **`AdminApi` adds, updates and removes a session's settings** in the store that holds them
+  (`addFixSessionSettings`, `updateFixSessionSettings`, `removeFixSessionSettings`), tells which store holds a session
+  and whether that store keeps changes across a restart, and lists the application settings a session's application
+  declares. An update may change the session's CompIDs; a name already used in the engine is refused.
 - **An application can declare a session setting secret** with `FixApplicationSessionSettingDescriptor.secret(id,
   description)`, such as a Logon password: the HTTP admin API never shows its value, whatever its name.
 
@@ -55,6 +59,10 @@ could mean.
   Java settings and the Spring Boot properties already use, instead of `withinSessionCheckInterval`.
 - **The session settings JSON schema describes every field and gives its default**, so an editor shows what a
   setting does and what it is when left out.
+- **A custom `FixSessionsSettingsStore` implements `isPersistent()`**: whether a change made through it survives a
+  restart.
+- **`FixInitiatorTargets` names the main target and the backups** (`getMainTarget()`, `getBackupTargets()`);
+  `getTargets()` still lists them all, main first.
 - **The session settings document has its own module, `staffix-sessions-settings-document`**: the model a session
   file is read into, with its JSON schema, for tools that read or write session settings outside the file store.
   The schema is published from it (classifier `schema`) rather than from `staffix-sessions-settings-store-file-impl`.
