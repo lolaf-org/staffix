@@ -16,15 +16,19 @@
 package org.lolaf.staffix.admin.http;
 
 import lombok.Value;
+import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 
 /**
- * One entry of {@code GET settings-stores}, an object so it can gain fields without breaking clients.
+ * An application setting a session's application declares; a secret one's value is masked in the session's settings.
  */
 @Value
-public class SettingsStore {
-    String instanceId;
-    /**
-     * Whether a change made through this API survives the engine's restart.
-     */
-    boolean persistent;
+public class ApplicationSetting {
+    String id;
+    String description;
+    boolean secret;
+
+    static ApplicationSetting of(FixApplicationSessionSettingDescriptor descriptor) {
+        return new ApplicationSetting(descriptor.getId(), descriptor.getDescription(),
+                SessionSettingsDocuments.isSecret(descriptor.getId()));
+    }
 }

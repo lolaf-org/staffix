@@ -31,6 +31,11 @@ could mean.
   engine, group and session selectors.
 - The monitoring stack in `monitoring/grafana` runs Loki 3.7.8 and indexes `fix.eid`, `fix.sg` and `fix.sn`, so a log
   query for one engine, group or session reads only that session's logs instead of scanning them all.
+- **The HTTP admin API edits sessions**: `GET schemas/session-settings` describes a session's settings document,
+  `GET` / `PUT` / `DELETE sessions/{group}/{name}/settings` read, replace and remove a session's settings,
+  `POST settings-stores/{id}/sessions` adds one, and `sessions/{group}/{name}/application-settings` lists the
+  application settings its application declares. `settings` now answers that document, with the session's stored
+  values rather than the Java settings class's fields; secret values are masked and kept when sent back masked.
 - **`AdminApi` adds, updates and removes a session's settings** in the store that holds them
   (`addFixSessionSettings`, `updateFixSessionSettings`, `removeFixSessionSettings`), tells which store holds a session
   and whether that store keeps changes across a restart, and lists the application settings a session's application

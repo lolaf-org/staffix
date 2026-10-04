@@ -20,7 +20,7 @@ import lombok.experimental.UtilityClass;
 import java.io.InputStream;
 
 /**
- * Runtime access to the JSON Schema describing the on-disk session settings file format. The schema itself is produced
+ * Runtime access to the JSON Schemas describing a session settings document. The schemas themselves are produced
  * at build time by {@link FixSessionSettingsJsonSchemaGenerator} and packaged in this module's jar; here it is only
  * located and read.
  * <p>
@@ -49,5 +49,18 @@ public class FixSessionSettingsJsonSchema {
      */
     public static InputStream openPackagedSchema() {
         return FixSessionSettingsJsonSchema.class.getResourceAsStream(SCHEMA_FILE_NAME);
+    }
+
+    /**
+     * The schema of a document whose values are all resolved, which no {@code ${...}} placeholder may stand in: what
+     * the HTTP admin API serves and accepts.
+     */
+    public static final String RESOLVED_SCHEMA_FILE_NAME = "fix-session-settings-resolved.v1.schema.json";
+
+    /**
+     * As {@link #openPackagedSchema()}, for {@link #RESOLVED_SCHEMA_FILE_NAME}.
+     */
+    public static InputStream openPackagedResolvedSchema() {
+        return FixSessionSettingsJsonSchema.class.getResourceAsStream(RESOLVED_SCHEMA_FILE_NAME);
     }
 }

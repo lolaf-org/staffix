@@ -89,10 +89,10 @@ final class ComponentsJson {
             for (Iterator<Map.Entry<String, JsonNode>> fields = object.fields(); fields.hasNext(); ) {
                 Map.Entry<String, JsonNode> field = fields.next();
                 if (SECRET_NAME.matcher(field.getKey()).matches() && !field.getValue().isContainerNode()) {
-                    field.setValue(object.textNode(SettingsJson.MASK));
+                    field.setValue(object.textNode(SessionSettingsDocuments.MASK));
                 } else if (field.getKey().equals("headers") && field.getValue() instanceof ObjectNode) {
                     ObjectNode headers = (ObjectNode) field.getValue();
-                    headers.fieldNames().forEachRemaining(name -> headers.put(name, SettingsJson.MASK));
+                    headers.fieldNames().forEachRemaining(name -> headers.put(name, SessionSettingsDocuments.MASK));
                 } else {
                     redact(field.getValue());
                 }

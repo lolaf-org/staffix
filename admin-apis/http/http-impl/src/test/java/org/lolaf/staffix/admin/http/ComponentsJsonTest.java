@@ -79,8 +79,8 @@ class ComponentsJsonTest {
         JsonNode monitoring = plugins.get(0);
         assertThat(monitoring.get("baseTimeUnit").asText()).isEqualTo("MICROSECONDS");
         assertThat(monitoring.get("decodingLatencyEnabled").asBoolean()).isTrue();
-        assertThat(monitoring.get("headers").get("Authorization").asText()).isEqualTo(SettingsJson.MASK);
-        assertThat(monitoring.get("apiToken").asText()).isEqualTo(SettingsJson.MASK);
+        assertThat(monitoring.get("headers").get("Authorization").asText()).isEqualTo(SessionSettingsDocuments.MASK);
+        assertThat(monitoring.get("apiToken").asText()).isEqualTo(SessionSettingsDocuments.MASK);
         assertThat(monitoring.has("registrySupplier")).isFalse();
     }
 

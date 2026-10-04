@@ -103,15 +103,20 @@ state: read `status` again to see it.
 
 | request, under `v1/` | |
 |---------|---|
-| `GET sessions` | every running session: its configs (for an initiator the main one, then its backups, with the addresses each dials), each config's identity and dictionaries, its messages logger and monitoring plugin instance ids; with a `version`, also its `ETag`, that changes only when the sessions or their settings do |
+| `GET sessions` | every running session: its configs (for an initiator the main one, then its backups, with the addresses each dials), each config's identity and dictionaries, its messages logger and monitoring plugin instance ids, the settings store holding it; with a `version`, also its `ETag`, that changes only when the sessions or their settings do |
 | `GET status` | every session's state, running config and sequence numbers, with `sessionsVersion`: fetch `sessions` again when it differs |
-| `GET sessions/{group}/{name}/settings` | the settings of the config the session runs, for display: values that look secret are masked, and the fields are those of the settings class |
+| `GET schemas/session-settings` | the JSON Schema of a session's settings document, every field described, with its default |
+| `GET sessions/{group}/{name}/settings` | the session's settings as a document of that schema; an application setting declared secret, or whose name looks secret, is masked |
+| `PUT sessions/{group}/{name}/settings` | replaces them in the store holding them; the live session restarts on them unless `restartLiveSessionOnUpdate` is off. A masked value keeps the session's. An acceptor session's CompIDs may change; an initiator's id is set by its targets |
+| `DELETE sessions/{group}/{name}/settings` | removes the session from its store; it is disconnected unless `disconnectOnRemove` is off |
+| `GET sessions/{group}/{name}/application-settings` | the application settings the session's application declares, `{"id", "description", "secret"}` |
 | `POST sessions/{group}/{name}/logon`, `logout` | |
 | `POST sessions/{group}/{name}/reset` | `{"mode": "RESET_SEQUENCE"}`; `LOGOUT_LOGON_REST_NUM_FLAG`, the name `LOGOUT_LOGON_RESET_NUM_FLAG` was first released under, is still accepted |
 | `PUT sessions/{group}/{name}/seqnums` | `{"incoming": 1, "outgoing": 1}`, either may be left out |
 | `POST sessions/{group}/{name}/messages` | `{"message": "35=B|148=hello|", "separator": "|", "possDup": false}` |
 | `POST sessions/{group}/{name}/activate` | `{"config": "trading-drp"}` switches an initiator session to one of its configs |
-| `GET settings-stores`, `POST settings-stores/{id}/reload` | |
+| `GET settings-stores`, `POST settings-stores/{id}/reload` | each store says whether a change made through the API survives a restart (`persistent`) |
+| `POST settings-stores/{id}/sessions` | adds a session, a settings document, to the store, which starts it; answers `201` with its `Location` |
 | `GET components` | the messages loggers and session plugins the engine was built with, each with its type and plain settings (nested ones included; functions, executors and credentials left out or masked); a plugin also lists the plugin types it serves, a wrapper's delegates included. Introspection: the fields follow the settings classes and may change with them |
 | `GET dictionaries/{id}` | a dictionary a session config lists in `sessions`, with its SHA-256 as `ETag` |
 

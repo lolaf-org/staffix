@@ -175,6 +175,19 @@ class TestFixEngineSessionsSettingsWrites {
     }
 
     @Test
+    void anInitiatorSessionKeepsTheIdItsTargetsGiveIt() {
+        FixSessionSettings initiator = session("alpha", "ALPHA").toBuilder()
+                .fixSessionType(FixSession.FixSessionType.INITIATOR)
+                .build();
+
+        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(initiator.getFixSessionId(), initiator.toBuilder()
+                .fixSessionId(FixSessionId.of("alpha", FixRegularVersion.VERSION_44, "SENDER", "ALPHA2"))
+                .build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("set by the initiator's targets");
+    }
+
+    @Test
     void writesToASessionNoStoreHoldsAreRefused() {
         FixSessionSettings alpha = session("alpha", "ALPHA");
 

@@ -20,17 +20,24 @@ import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsJsonSchema;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
@@ -48,6 +55,7 @@ class AdminApiHandler implements HttpHandler {
 
     static final String API_VERSION = "v1";
     static final ObjectMapper MAPPER = new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL);
+    private static final byte[] SESSION_SETTINGS_SCHEMA = readSessionSettingsSchema();
     private static final int ENGINE_SEGMENTS = 3;
     private static final Pattern VERSION_SEGMENT = Pattern.compile("v[0-9]+");
 
@@ -130,8 +138,13 @@ class AdminApiHandler implements HttpHandler {
                     sendJson(exchange, EngineStatus.of(adminApi, running, sessionsDocument(running).version));
                 }),
                 new Route("GET", "v1/components", (exchange, path) -> sendJson(exchange, ComponentsJson.of(adminApi))),
+                new Route("GET", "v1/schemas/session-settings", (exchange, path) ->
+                        send(exchange, 200, "application/schema+json", SESSION_SETTINGS_SCHEMA)),
                 new Route("GET", "v1/settings-stores", (exchange, path) -> sendJson(exchange,
-                        adminApi.getFixSessionsSettingsStoresInstanceIds().stream().map(SettingsStore::new).collect(Collectors.toList()))),
+                        adminApi.getFixSessionsSettingsStoresInstanceIds().stream()
+                                .map(id -> new SettingsStore(id, adminApi.isFixSessionsSettingsStorePersistent(id)))
+                                .collect(Collectors.toList()))),
+                new Route("POST", "v1/settings-stores/{storeId}/sessions", (exchange, path) -> addSession(exchange, path.get(2))),
                 new Route("POST", "v1/settings-stores/{storeId}/reload", (exchange, path) -> {
                     log.info("Admin API: reload settings store {}", path.get(2));
                     adminApi.reloadFixSessionsSettingsStore(path.get(2));
@@ -139,7 +152,13 @@ class AdminApiHandler implements HttpHandler {
                 }),
                 new Route("GET", "v1/dictionaries/{dictionaryId}", (exchange, path) -> sendDictionary(exchange, path.get(2))),
                 new Route("GET", "v1/sessions/{group}/{name}/settings", (exchange, path) ->
-                        sendJson(exchange, SettingsJson.of(runningSession(path).getFixSessionSettings()))),
+                        send(exchange, 200, "application/json", SessionSettingsDocuments.write(storedSession(path).settings))),
+                new Route("PUT", "v1/sessions/{group}/{name}/settings", this::updateSettings),
+                new Route("DELETE", "v1/sessions/{group}/{name}/settings", this::removeSession),
+                new Route("GET", "v1/sessions/{group}/{name}/application-settings", (exchange, path) -> sendJson(exchange,
+                        adminApi.getFixApplicationSessionSettingDescriptors(runningConfig(path.get(2), path.get(3))).stream()
+                                .map(ApplicationSetting::of)
+                                .collect(Collectors.toList()))),
                 sessionOperation("POST", "logon", (fixSessionId, exchange) -> {
                     log.info("Admin API: logon {}", fixSessionId.getQualifiedName());
                     adminApi.logonSession(fixSessionId);
@@ -246,6 +265,58 @@ class AdminApiHandler implements HttpHandler {
         send(exchange, 200, "application/xml", dictionary.xml);
     }
 
+    private void addSession(HttpExchange exchange, String storeId) throws IOException {
+        if (!adminApi.getFixSessionsSettingsStoresInstanceIds().contains(storeId)) {
+            throw new HttpProblemException(404, "No settings store " + storeId);
+        }
+        FixSessionSettings settings = SessionSettingsDocuments.read(exchange.getRequestBody(), null);
+        FixSessionId fixSessionId = settings.getFixSessionId();
+        log.info("Admin API: add session {} to settings store {}", fixSessionId.getQualifiedName(), storeId);
+        adminApi.addFixSessionSettings(storeId, settings);
+        exchange.getResponseHeaders().set("Location", exchange.getHttpContext().getPath() + API_VERSION + "/sessions/"
+                + encode(fixSessionId.getGroup()) + "/" + encode(fixSessionId.getName()));
+        exchange.sendResponseHeaders(201, -1);
+    }
+
+    private void updateSettings(HttpExchange exchange, List<String> path) throws IOException {
+        StoredSession session = storedSession(path);
+        FixSessionSettings settings = SessionSettingsDocuments.read(exchange.getRequestBody(), session.settings);
+        log.info("Admin API: update the settings of {}", session.fixSessionId.getQualifiedName());
+        adminApi.updateFixSessionSettings(session.fixSessionId, settings);
+        sendNoContent(exchange);
+    }
+
+    private void removeSession(HttpExchange exchange, List<String> path) throws IOException {
+        StoredSession session = storedSession(path);
+        log.info("Admin API: remove session {}", session.fixSessionId.getQualifiedName());
+        adminApi.removeFixSessionSettings(session.fixSessionId, session.type);
+        sendNoContent(exchange);
+    }
+
+    /**
+     * The settings as stored: under the main config's id, which a running backup's settings are a copy of.
+     */
+    private StoredSession storedSession(List<String> path) {
+        String group = path.get(2);
+        String name = path.get(3);
+        FixInitiatorTargets initiator = initiator(group, name);
+        FixSessionId stored = initiator != null ? initiator.getMainTarget().getFixSessionId() : acceptorSession(group, name);
+        if (stored == null) {
+            throw noSession(group, name);
+        }
+        FixSessionId running = initiator != null ? initiator.getActiveFixSessionId() : stored;
+        FixSessionType type = initiator != null ? FixSessionType.INITIATOR : FixSessionType.ACCEPTOR;
+        FixSessionSettings settings = adminApi.getManagedFixSessionsSettings().stream()
+                .filter(candidate -> candidate.getFixSessionType() == type && candidate.getFixSessionId().equals(running))
+                .findFirst()
+                .orElseThrow(() -> new HttpProblemException(404, "Session " + name + " of group " + group + " has no settings"));
+        return new StoredSession(stored, type, settings.toBuilder().fixSessionId(stored).build());
+    }
+
+    private static String encode(String pathSegment) {
+        return URLEncoder.encode(pathSegment, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
     private void setSeqNums(FixSessionId fixSessionId, SeqNumsRequest seqNums) {
         log.info("Admin API: set seqnums of {} to incoming {}, outgoing {}",
                 fixSessionId.getQualifiedName(), seqNums.getIncoming(), seqNums.getOutgoing());
@@ -270,14 +341,6 @@ class AdminApiHandler implements HttpHandler {
             throw noSession(group, name);
         }
         return acceptorSession;
-    }
-
-    private FixSession runningSession(List<String> path) {
-        FixSessionId running = runningConfig(path.get(2), path.get(3));
-        return adminApi.getManagedFixSessions().stream()
-                .filter(session -> session.getFixSessionId().equals(running))
-                .findFirst()
-                .orElseThrow(() -> new HttpProblemException(404, "Session " + path.get(3) + " of group " + path.get(2) + " is not running"));
     }
 
     private FixSessionId initiatorConfig(String group, String name, String config) {
@@ -321,6 +384,21 @@ class AdminApiHandler implements HttpHandler {
 
     private static HttpProblemException noSession(String group, String name) {
         return new HttpProblemException(404, "No session " + name + " in group " + group);
+    }
+
+    private static byte[] readSessionSettingsSchema() {
+        try (InputStream in = FixSessionSettingsJsonSchema.openPackagedResolvedSchema()) {
+            return in.readAllBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @RequiredArgsConstructor
+    private static final class StoredSession {
+        private final FixSessionId fixSessionId;
+        private final FixSessionType type;
+        private final FixSessionSettings settings;
     }
 
     private static void sendJson(HttpExchange exchange, Object body) throws IOException {

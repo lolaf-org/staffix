@@ -85,6 +85,8 @@ class AdminApiEndpointsTest {
         when(trading.getFixSessionId()).thenReturn(activeConfig);
         when(trading.getFixSessionSettings()).thenReturn(settings);
         when(adminApi.getManagedFixSessions()).thenReturn(List.of(trading));
+        when(adminApi.getManagedFixSessionsSettings()).thenReturn(List.of(FixSessionSettings.builder()
+                .fixSessionId(activeConfig).fixSessionType(FixSession.FixSessionType.INITIATOR).build()));
         when(adminApi.getInitiatorsTargets()).thenReturn(List.of(FixInitiatorTargets.builder()
                 .instanceId("alpha-initiator")
                 .activeFixSessionId(activeConfig)
@@ -258,12 +260,14 @@ class AdminApiEndpointsTest {
     @Test
     void settingsStoresAreObjects() throws Exception {
         when(adminApi.getFixSessionsSettingsStoresInstanceIds()).thenReturn(List.of("main-store"));
+        when(adminApi.isFixSessionsSettingsStorePersistent("main-store")).thenReturn(true);
 
-        assertThat(call("GET", "/engines/alpha-engine/v1/settings-stores", null).body()).isEqualTo("[{\"instanceId\":\"main-store\"}]");
+        assertThat(call("GET", "/engines/alpha-engine/v1/settings-stores", null).body())
+                .isEqualTo("[{\"instanceId\":\"main-store\",\"persistent\":true}]");
     }
 
     @Test
-    void settingsOfTheRunningConfigAreJson() throws Exception {
+    void settingsAreJson() throws Exception {
         HttpResponse<String> response = call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/settings", null);
 
         assertThat(response.statusCode()).isEqualTo(200);

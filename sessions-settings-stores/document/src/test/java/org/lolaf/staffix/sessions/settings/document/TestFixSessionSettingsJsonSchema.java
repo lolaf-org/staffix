@@ -31,6 +31,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class TestFixSessionSettingsJsonSchema {
 
+    /**
+     * The module's directory is the working directory of a Maven test run.
+     */
+    private static final List<Path> SOURCE_ROOTS = List.of(Path.of("../../api/src/main/java"), Path.of("src/main/java"));
+
     private static byte[] readAll(InputStream stream) throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         byte[] chunk = new byte[8192];
@@ -57,12 +62,23 @@ class TestFixSessionSettingsJsonSchema {
                 .isEqualTo(generateSchema());
     }
 
-    /**
-     * The module's directory is the working directory of a Maven test run.
-     */
     private static String generateSchema() throws IOException {
-        return FixSessionSettingsJsonSchemaGenerator.generate(List.of(
-                Path.of("../../api/src/main/java"), Path.of("src/main/java")));
+        return FixSessionSettingsJsonSchemaGenerator.generate(SOURCE_ROOTS);
+    }
+
+    @Test
+    void packagedResolvedSchemaMatchesTheModelWithoutPlaceholders() throws IOException {
+        String packaged;
+        try (InputStream stream = FixSessionSettingsJsonSchema.openPackagedResolvedSchema()) {
+            assertThat(stream).isNotNull();
+            packaged = new String(readAll(stream), StandardCharsets.UTF_8);
+        }
+
+        assertThat(packaged).isEqualTo(FixSessionSettingsJsonSchemaGenerator.generateResolved(SOURCE_ROOTS));
+        JsonNode duration = new ObjectMapper().readTree(packaged).path("properties").path("logInOrOutResponseTimeout");
+        assertThat(duration.has("anyOf")).isFalse();
+        assertThat(duration.path("format").asText()).isEqualTo("duration");
+        assertThat(duration.path("description").asText()).startsWith("How long a Logon or Logout");
     }
 
     @Test

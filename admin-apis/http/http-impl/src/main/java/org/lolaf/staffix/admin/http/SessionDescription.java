@@ -51,4 +51,8 @@ public class SessionDescription {
      * the same for every config, like {@link #messagesLoggerInstanceId}.
      */
     String monitoringInstanceId;
+    /**
+     * The settings store holding the session's settings, null when none does.
+     */
+    String settingsStore;
 }

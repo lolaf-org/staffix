@@ -375,6 +375,10 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Override
     public void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings) {
         FixSession.FixSessionType type = settings.getFixSessionType();
+        if (type == FixSession.FixSessionType.INITIATOR && !settings.getFixSessionId().equals(fixSessionId)) {
+            throw new IllegalArgumentException("An initiator session's id is set by the initiator's targets: "
+                    + fixSessionId + " cannot become " + settings.getFixSessionId());
+        }
         FixSessionsSettingsStore store = storeHolding(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));
         FixSessionSettingsValidator.validate(settings);
         synchronized (store) {

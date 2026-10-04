@@ -89,9 +89,23 @@ paths:
                 $ref: '#/components/schemas/Components'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/schemas/session-settings:
+    get:
+      summary: The JSON Schema of a session's settings document, each field described, with its default
+      description: Values are resolved; no ${...} placeholder may stand in for one.
+      operationId: getSessionSettingsSchema
+      responses:
+        '200':
+          description: The schema.
+          content:
+            application/schema+json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/settings-stores:
     get:
-      summary: The instance ids of the engine's session settings stores
+      summary: The engine's session settings stores
       operationId: getSettingsStores
       responses:
         '200':
@@ -123,6 +137,40 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/settings-stores/{storeId}/sessions:
+    post:
+      summary: Adds a session to a settings store, which starts it
+      operationId: addSession
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionSettings'
+      responses:
+        '201':
+          description: Added.
+          headers:
+            Location:
+              description: The new session, under sessions/{group}/{name}.
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
   /v1/dictionaries/{dictionaryId}:
@@ -160,8 +208,8 @@ paths:
           $ref: '#/components/responses/NotFound'
   /v1/sessions/{group}/{name}/settings:
     get:
-      summary: The settings of the config the session runs, values that look secret masked
-      description: For display; the fields are those of the engine's settings class and change with it.
+      summary: The session's settings as stored, secret application settings masked
+      description: An initiator running a backup answers its main config's settings, which every config runs on.
       operationId: getSessionSettings
       parameters:
         - $ref: '#/components/parameters/group'
@@ -172,7 +220,74 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/SessionSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Replaces the session's settings in the store holding them
+      description: >
+        The live session restarts on them unless restartLiveSessionOnUpdate is off. A masked application setting keeps
+        the value the session has. An acceptor session's id (CompIDs, FIX version, name) may change; an initiator's is
+        set by its targets.
+      operationId: updateSessionSettings
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionSettings'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      summary: Removes the session from the store holding it
+      description: The live session is disconnected unless disconnectOnRemove is off.
+      operationId: removeSession
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sessions/{group}/{name}/application-settings:
+    get:
+      summary: The application settings the session's application declares
+      operationId: getApplicationSettings
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '200':
+          description: The declared settings.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApplicationSetting'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -437,6 +552,9 @@ components:
         monitoringInstanceId:
           type: string
           description: The session's monitoring plugin instance, absent when the session is not monitored.
+        settingsStore:
+          type: string
+          description: The settings store holding the session's settings, absent when none does.
     ConfigDescription:
       type: object
       required: [name, connectAddresses, identity, dictionaries]
@@ -530,10 +648,27 @@ components:
           type: string
     SettingsStore:
       type: object
-      required: [instanceId]
+      required: [instanceId, persistent]
       properties:
         instanceId:
           type: string
+        persistent:
+          type: boolean
+          description: Whether a change made through this API survives the engine's restart.
+    SessionSettings:
+      type: object
+      description: A session settings document, described by GET /v1/schemas/session-settings.
+    ApplicationSetting:
+      type: object
+      required: [id, secret]
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        secret:
+          type: boolean
+          description: Its value is masked in the session's settings.
     Components:
       type: object
       required: [messagesLoggers, sessionsPlugins]

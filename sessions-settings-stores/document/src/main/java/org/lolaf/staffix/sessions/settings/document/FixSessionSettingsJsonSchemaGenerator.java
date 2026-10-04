@@ -109,6 +109,17 @@ public class FixSessionSettingsJsonSchemaGenerator {
      * @param sourceRoots the API's and this module's {@code src/main/java}, where the descriptions are read from
      */
     public static String generate(List<Path> sourceRoots) throws IOException {
+        return generate(sourceRoots, true);
+    }
+
+    /**
+     * As {@link #generate(List)}, without the {@code ${...}} placeholder a file may write in place of a value.
+     */
+    public static String generateResolved(List<Path> sourceRoots) throws IOException {
+        return generate(sourceRoots, false);
+    }
+
+    private static String generate(List<Path> sourceRoots, boolean placeholders) throws IOException {
         JacksonModule jacksonModule = new JacksonModule(
                 JacksonOption.RESPECT_JSONPROPERTY_ORDER,
                 JacksonOption.FLATTENED_ENUMS_FROM_JSONVALUE);
@@ -126,7 +137,9 @@ public class FixSessionSettingsJsonSchemaGenerator {
 
         SchemaGeneratorConfig config = configBuilder.build();
         ObjectNode schema = (ObjectNode) new SchemaGenerator(config).generateSchema(FixSessionSettingsDocument.class);
-        widenScalarsForPlaceholders(schema);
+        if (placeholders) {
+            widenScalarsForPlaceholders(schema);
+        }
         describe(schema, FixSessionSettingsDocument.class, readJavadoc(sourceRoots), defaults());
         return schema.toPrettyString();
     }
@@ -286,10 +299,12 @@ public class FixSessionSettingsJsonSchemaGenerator {
     }
 
     /**
-     * Writes the generated schema to the given file, creating or overwriting it.
+     * Writes the generated schema to the given file, and the resolved one next to it.
      */
     public static void writeTo(File file, List<Path> sourceRoots) throws IOException {
         Files.write(file.toPath(), generate(sourceRoots).getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(file.getParentFile(), FixSessionSettingsJsonSchema.RESOLVED_SCHEMA_FILE_NAME).toPath(),
+                generateResolved(sourceRoots).getBytes(StandardCharsets.UTF_8));
     }
 
     /**

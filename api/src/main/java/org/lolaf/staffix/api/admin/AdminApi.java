@@ -185,8 +185,10 @@ public interface AdminApi extends InstanceIdSupplier {
      * Replaces a session's settings in the store holding them. The live session restarts on them unless its
      * {@link FixSessionSettings#isRestartLiveSessionOnUpdate()} is off.
      *
-     * @param fixSessionId the session's id now, which the new settings may change (CompIDs, FIX version, name)
-     * @throws IllegalArgumentException if no store holds the session, the settings are invalid or change its type
+     * @param fixSessionId the session's id now, which the new settings may change (CompIDs, FIX version, name) for an
+     *                     acceptor's session; an initiator's is set by its targets
+     * @throws IllegalArgumentException if no store holds the session, the settings are invalid, change its type or an
+     *                                  initiator session's id
      * @throws IllegalStateException    if the new group and name belong to another session
      */
     void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings);

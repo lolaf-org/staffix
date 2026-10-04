@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 
@@ -58,8 +59,10 @@ final class SessionsDocument {
         for (FixInitiatorTargets initiator : adminApi.getInitiatorsTargets()) {
             FixSession session = running.get(initiator.getActiveFixSessionId());
             if (session != null) {
+                FixSessionId main = initiator.getMainTarget().getFixSessionId();
                 SessionDescription.SessionDescriptionBuilder description = description(session, initiator.getInstanceId())
-                        .name(initiator.getMainTarget().getFixSessionId().getName());
+                        .name(main.getName())
+                        .settingsStore(adminApi.findFixSessionsSettingsStore(main, FixSessionType.INITIATOR).orElse(null));
                 initiator.getTargets().forEach(target -> description.config(config(target.getFixSessionId(),
                         target.getConnectAddresses().stream().map(SessionsDocument::hostAndPort).collect(Collectors.toList()),
                         session.getFixSessionSettings())));
@@ -72,6 +75,7 @@ final class SessionsDocument {
                 if (session != null) {
                     sessions.add(description(session, acceptor.getInstanceId())
                             .name(fixSessionId.getName())
+                            .settingsStore(adminApi.findFixSessionsSettingsStore(fixSessionId, FixSessionType.ACCEPTOR).orElse(null))
                             .config(config(fixSessionId, List.of(), session.getFixSessionSettings()))
                             .build());
                 }
