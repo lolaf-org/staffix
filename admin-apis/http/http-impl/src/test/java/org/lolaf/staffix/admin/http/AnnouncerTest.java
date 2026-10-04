@@ -106,7 +106,7 @@ class AnnouncerTest {
         assertThat(authorizations.get(0)).isEqualTo("Basic "
                 + Base64.getEncoder().encodeToString("engine:secret".getBytes(StandardCharsets.UTF_8)));
 
-        HttpResponse<Void> status = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(baseUrl + "/status"))
+        HttpResponse<Void> status = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(baseUrl + "/v1/status"))
                 .header("Authorization", "Bearer " + announcement.get("token").asText())
                 .build(), HttpResponse.BodyHandlers.discarding());
         assertThat(status.statusCode()).isEqualTo(200);

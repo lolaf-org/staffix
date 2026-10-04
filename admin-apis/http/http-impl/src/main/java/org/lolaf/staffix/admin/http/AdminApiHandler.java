@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.admin.http;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
@@ -22,6 +23,8 @@ import com.sun.net.httpserver.HttpHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.admin.FixAcceptorSessions;
+import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 
@@ -33,37 +36,43 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
  * Routes one engine's requests, under {@code /engines/{instanceId}/}, to its {@link AdminApi}. Every request
- * must carry the engine's bearer token.
+ * must carry the engine's bearer token, or its read-only one for a {@code GET}.
  */
 @Slf4j
 class AdminApiHandler implements HttpHandler {
 
-    static final ObjectMapper MAPPER = new ObjectMapper();
+    static final String API_VERSION = "v1";
+    static final ObjectMapper MAPPER = new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL);
     private static final int ENGINE_SEGMENTS = 3;
+    private static final Pattern VERSION_SEGMENT = Pattern.compile("v[0-9]+");
 
     private final AdminApi adminApi;
-    private final byte[] expectedAuthorization;
+    private final byte[] fullAuthorization;
+    private final byte[] readOnlyAuthorization;
     private final List<Route> routes;
     private SessionsDocument sessionsDocument;
 
-    AdminApiHandler(AdminApi adminApi, String apiToken) {
+    AdminApiHandler(AdminApi adminApi, String apiToken, String readOnlyApiToken) {
         this.adminApi = adminApi;
-        this.expectedAuthorization = ("Bearer " + apiToken).getBytes(StandardCharsets.UTF_8);
+        this.fullAuthorization = bearer(apiToken);
+        this.readOnlyAuthorization = readOnlyApiToken == null ? null : bearer(readOnlyApiToken);
         this.routes = routes();
     }
 
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         try {
-            if (!isAuthorized(exchange)) {
+            Access access = access(exchange);
+            if (access == Access.NONE) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
                 throw new HttpProblemException(401, "Missing or wrong bearer token");
             }
-            route(exchange, pathAfterEngine(exchange));
+            route(exchange, pathAfterEngine(exchange), access);
         } catch (HttpProblemException e) {
             sendProblem(exchange, e);
         } catch (JacksonException e) {
@@ -74,7 +83,7 @@ class AdminApiHandler implements HttpHandler {
             sendProblem(exchange, new HttpProblemException(409, e.getMessage()));
         } catch (RuntimeException e) {
             log.error("Admin API request {} {} failed", exchange.getRequestMethod(), exchange.getRequestURI(), e);
-            sendProblem(exchange, new HttpProblemException(500, e.toString()));
+            sendProblem(exchange, new HttpProblemException(500, "The engine failed to serve the request; see its log"));
         } finally {
             exchange.close();
         }
@@ -87,10 +96,21 @@ class AdminApiHandler implements HttpHandler {
         return routes.stream().map(Route::toString).collect(Collectors.toList());
     }
 
-    private boolean isAuthorized(HttpExchange exchange) {
-        String authorization = exchange.getRequestHeaders().getFirst("Authorization");
-        return authorization != null
-                && MessageDigest.isEqual(expectedAuthorization, authorization.getBytes(StandardCharsets.UTF_8));
+    private static byte[] bearer(String token) {
+        return ("Bearer " + token).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private Access access(HttpExchange exchange) {
+        String header = exchange.getRequestHeaders().getFirst("Authorization");
+        if (header == null) {
+            return Access.NONE;
+        }
+        byte[] authorization = header.getBytes(StandardCharsets.UTF_8);
+        if (MessageDigest.isEqual(fullAuthorization, authorization)) {
+            return Access.FULL;
+        }
+        return readOnlyAuthorization != null && MessageDigest.isEqual(readOnlyAuthorization, authorization)
+                ? Access.READ_ONLY : Access.NONE;
     }
 
     private static List<String> pathAfterEngine(HttpExchange exchange) {
@@ -102,22 +122,24 @@ class AdminApiHandler implements HttpHandler {
 
     private List<Route> routes() {
         return List.of(
-                new Route("GET", "sessions", (exchange, path) -> sendSessions(exchange)),
-                new Route("GET", "status", (exchange, path) -> {
+                new Route("GET", "", (exchange, path) -> sendJson(exchange,
+                        new EngineInfo(adminApi.getInstanceId(), EngineInfo.STAFFIX_VERSION, List.of(API_VERSION)))),
+                new Route("GET", "v1/sessions", (exchange, path) -> sendSessions(exchange)),
+                new Route("GET", "v1/status", (exchange, path) -> {
                     Map<FixSessionId, FixSession> running = SessionsDocument.running(adminApi);
                     sendJson(exchange, EngineStatus.of(adminApi, running, sessionsDocument(running).version));
                 }),
-                new Route("GET", "emitters", (exchange, path) -> sendJson(exchange, EmittersJson.of(adminApi))),
-                new Route("GET", "settings-stores",
-                        (exchange, path) -> sendJson(exchange, adminApi.getFixSessionsSettingsStoresInstanceIds())),
-                new Route("POST", "settings-stores/{storeId}/reload", (exchange, path) -> {
-                    log.info("Admin API: reload settings store {}", path.get(1));
-                    adminApi.reloadFixSessionsSettingsStore(path.get(1));
+                new Route("GET", "v1/components", (exchange, path) -> sendJson(exchange, ComponentsJson.of(adminApi))),
+                new Route("GET", "v1/settings-stores", (exchange, path) -> sendJson(exchange,
+                        adminApi.getFixSessionsSettingsStoresInstanceIds().stream().map(SettingsStore::new).collect(Collectors.toList()))),
+                new Route("POST", "v1/settings-stores/{storeId}/reload", (exchange, path) -> {
+                    log.info("Admin API: reload settings store {}", path.get(2));
+                    adminApi.reloadFixSessionsSettingsStore(path.get(2));
                     sendNoContent(exchange);
                 }),
-                new Route("GET", "dictionaries/{dictionaryId}", (exchange, path) -> sendDictionary(exchange, path.get(1))),
-                new Route("GET", "sessions/{group}/{name}/settings", (exchange, path) ->
-                        sendJson(exchange, SettingsJson.of(managedSession(path).getFixSessionSettings()))),
+                new Route("GET", "v1/dictionaries/{dictionaryId}", (exchange, path) -> sendDictionary(exchange, path.get(2))),
+                new Route("GET", "v1/sessions/{group}/{name}/settings", (exchange, path) ->
+                        sendJson(exchange, SettingsJson.of(runningSession(path).getFixSessionSettings()))),
                 sessionOperation("POST", "logon", (fixSessionId, exchange) -> {
                     log.info("Admin API: logon {}", fixSessionId.getQualifiedName());
                     adminApi.logonSession(fixSessionId);
@@ -135,33 +157,56 @@ class AdminApiHandler implements HttpHandler {
                         setSeqNums(fixSessionId, MAPPER.readValue(exchange.getRequestBody(), SeqNumsRequest.class))),
                 sessionOperation("POST", "messages", (fixSessionId, exchange) -> {
                     SendMessageRequest send = MAPPER.readValue(exchange.getRequestBody(), SendMessageRequest.class);
-                    log.info("Admin API: send to {}: {}", fixSessionId.getQualifiedName(), send.getMessage());
+                    // the message itself is not logged: it may carry a Password(554) or a client's data
+                    log.info("Admin API: send a message of {} characters to {}", send.getMessage().length(), fixSessionId.getQualifiedName());
                     adminApi.sendFixMessage(fixSessionId, send.getMessage(), send.getSeparator(), send.isPossDup());
                 }),
-                new Route("POST", "sessions/{group}/{name}/activate", (exchange, path) -> {
-                    FixSessionId target = initiatorTarget(path.get(1), path.get(2));
+                new Route("POST", "v1/sessions/{group}/{name}/activate", (exchange, path) -> {
+                    ActivateRequest activate = MAPPER.readValue(exchange.getRequestBody(), ActivateRequest.class);
+                    FixSessionId target = initiatorConfig(path.get(2), path.get(3), activate.getConfig());
                     log.info("Admin API: activate {}", target.getQualifiedName());
                     adminApi.switchInitiatorSession(target);
                     sendNoContent(exchange);
                 }));
     }
 
+    /**
+     * The engine refuses a config that stopped running, so an initiator switching configs while the request runs
+     * answers 409 rather than the 400 of a request that was wrong.
+     */
     private Route sessionOperation(String method, String operation, SessionOperation action) {
-        return new Route(method, "sessions/{group}/{name}/" + operation, (exchange, path) -> {
-            action.apply(managedSession(path).getFixSessionId(), exchange);
+        return new Route(method, "v1/sessions/{group}/{name}/" + operation, (exchange, path) -> {
+            String group = path.get(2);
+            String name = path.get(3);
+            FixSessionId running = runningConfig(group, name);
+            try {
+                action.apply(running, exchange);
+            } catch (IllegalArgumentException e) {
+                if (!running.equals(runningConfig(group, name))) {
+                    throw new HttpProblemException(409, "Session " + name + " of group " + group
+                            + " switched to another config while the request ran; retry");
+                }
+                throw e;
+            }
             sendNoContent(exchange);
         });
     }
 
-    private void route(HttpExchange exchange, List<String> path) throws IOException {
+    private void route(HttpExchange exchange, List<String> path, Access access) throws IOException {
         List<Route> matching = routes.stream().filter(route -> route.matches(path)).collect(Collectors.toList());
         if (matching.isEmpty()) {
+            if (!path.isEmpty() && VERSION_SEGMENT.matcher(path.get(0)).matches() && !path.get(0).equals(API_VERSION)) {
+                throw new HttpProblemException(404, "API version " + path.get(0) + " is not served, this engine serves " + API_VERSION);
+            }
             throw new HttpProblemException(404, "No resource " + exchange.getRequestURI().getPath());
         }
         Route route = matching.stream()
                 .filter(candidate -> candidate.method.equals(exchange.getRequestMethod()))
                 .findFirst()
                 .orElseThrow(() -> methodNotAllowed(exchange, matching));
+        if (access == Access.READ_ONLY && !route.method.equals("GET")) {
+            throw new HttpProblemException(403, "The read-only token cannot " + route.method + " " + exchange.getRequestURI().getPath());
+        }
         route.action.handle(exchange, path);
     }
 
@@ -212,23 +257,70 @@ class AdminApiHandler implements HttpHandler {
         }
     }
 
-    private FixSession managedSession(List<String> path) {
-        String group = path.get(1);
-        String name = path.get(2);
-        return adminApi.getManagedFixSessions().stream()
-                .filter(session -> session.getFixSessionId().getGroup().equals(group)
-                        && session.getFixSessionId().getName().equals(name))
-                .findFirst()
-                .orElseThrow(() -> new HttpProblemException(404, "No running session " + name + " in group " + group));
+    /**
+     * A session is named after its main config, as in {@code sessions}; an initiator may be running a backup.
+     */
+    private FixSessionId runningConfig(String group, String name) {
+        FixInitiatorTargets initiator = initiator(group, name);
+        if (initiator != null) {
+            return initiator.getActiveFixSessionId();
+        }
+        FixSessionId acceptorSession = acceptorSession(group, name);
+        if (acceptorSession == null) {
+            throw noSession(group, name);
+        }
+        return acceptorSession;
     }
 
-    private FixSessionId initiatorTarget(String group, String name) {
-        return adminApi.getInitiatorsTargets().stream()
-                .flatMap(initiator -> initiator.getTargets().stream())
-                .map(FixInitiatorTarget::getFixSessionId)
-                .filter(fixSessionId -> fixSessionId.getGroup().equals(group) && fixSessionId.getName().equals(name))
+    private FixSession runningSession(List<String> path) {
+        FixSessionId running = runningConfig(path.get(2), path.get(3));
+        return adminApi.getManagedFixSessions().stream()
+                .filter(session -> session.getFixSessionId().equals(running))
                 .findFirst()
-                .orElseThrow(() -> new HttpProblemException(404, "No initiator config " + name + " in group " + group));
+                .orElseThrow(() -> new HttpProblemException(404, "Session " + path.get(3) + " of group " + path.get(2) + " is not running"));
+    }
+
+    private FixSessionId initiatorConfig(String group, String name, String config) {
+        FixInitiatorTargets initiator = initiator(group, name);
+        if (initiator == null) {
+            if (acceptorSession(group, name) == null) {
+                throw noSession(group, name);
+            }
+            throw new HttpProblemException(409, "Session " + name + " of group " + group + " is an acceptor's, it has a single config");
+        }
+        return initiator.getTargets().stream()
+                .map(FixInitiatorTarget::getFixSessionId)
+                .filter(fixSessionId -> fixSessionId.getName().equals(config))
+                .findFirst()
+                .orElseThrow(() -> new HttpProblemException(404, "Session " + name + " of group " + group + " has no config " + config));
+    }
+
+    private FixInitiatorTargets initiator(String group, String name) {
+        for (FixInitiatorTargets initiator : adminApi.getInitiatorsTargets()) {
+            if (isNamed(initiator.getTargets().get(0).getFixSessionId(), group, name)) {
+                return initiator;
+            }
+        }
+        return null;
+    }
+
+    private FixSessionId acceptorSession(String group, String name) {
+        for (FixAcceptorSessions acceptor : adminApi.getAcceptorsSessions()) {
+            for (FixSessionId fixSessionId : acceptor.getFixSessionIds()) {
+                if (isNamed(fixSessionId, group, name)) {
+                    return fixSessionId;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isNamed(FixSessionId fixSessionId, String group, String name) {
+        return fixSessionId.getGroup().equals(group) && fixSessionId.getName().equals(name);
+    }
+
+    private static HttpProblemException noSession(String group, String name) {
+        return new HttpProblemException(404, "No session " + name + " in group " + group);
     }
 
     private static void sendJson(HttpExchange exchange, Object body) throws IOException {
@@ -252,6 +344,12 @@ class AdminApiHandler implements HttpHandler {
         }
     }
 
+    private enum Access {
+        NONE,
+        READ_ONLY,
+        FULL
+    }
+
     private interface RouteAction {
         void handle(HttpExchange exchange, List<String> path) throws IOException;
     }
@@ -270,7 +368,7 @@ class AdminApiHandler implements HttpHandler {
 
         Route(String method, String template, RouteAction action) {
             this.method = method;
-            this.template = List.of(template.split("/"));
+            this.template = template.isEmpty() ? List.of() : List.of(template.split("/"));
             this.action = action;
         }
 

@@ -48,6 +48,7 @@ public class HttpAdminApiContributor implements AdminApiExporterSettingsContribu
                         ? sslBundles.getBundle(props.getSslBundle()).createSslContext()
                         : null)
                 .apiToken(props.getApiToken())
+                .readOnlyApiToken(props.getReadOnlyApiToken())
                 .advertisedUrl(props.getAdvertisedUrl())
                 .announceUrl(props.getAnnounceUrl())
                 .announceUsername(props.getAnnounceUsername())

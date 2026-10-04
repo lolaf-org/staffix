@@ -19,7 +19,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -29,7 +28,6 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -67,7 +65,7 @@ class Announcer {
         body.put("engineId", instanceId);
         body.put("baseUrl", baseUrl.toString());
         body.put("token", apiToken);
-        body.put("staffixVersion", staffixVersion());
+        body.put("staffixVersion", EngineInfo.STAFFIX_VERSION);
         this.announcement = MAPPER.writeValueAsBytes(body);
         this.interval = settings.getAnnounceInterval();
         this.client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
@@ -79,22 +77,6 @@ class Announcer {
                     return thread;
                 })
                 : settings.getAnnounceScheduler();
-    }
-
-    /**
-     * Read from the engine's jar rather than this one's, as this connector may be built apart from the engine.
-     */
-    private static String staffixVersion() {
-        try (InputStream in = Announcer.class.getClassLoader().getResourceAsStream("engine-version.txt")) {
-            if (in == null) {
-                return null;
-            }
-            Properties properties = new Properties();
-            properties.load(in);
-            return properties.getProperty("engineVersion");
-        } catch (IOException e) {
-            return null;
-        }
     }
 
     synchronized void start() {

@@ -33,7 +33,7 @@ import java.util.function.Supplier;
  */
 @Value
 public class EngineStatus {
-    String instanceId;
+    String engineId;
     /**
      * The version of {@link EngineSessions} these sessions belong to.
      */

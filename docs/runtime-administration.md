@@ -79,6 +79,7 @@ FixEngineBuilder.builder()
 | `port` | `8686` | 0 picks a free port |
 | `sslContext` | none | serves HTTPS when set |
 | `apiToken` | random | the bearer token every request must carry; random means only the console it is announced to knows it |
+| `readOnlyApiToken` | none | a second token allowed `GET` requests only, for monitoring tools that must not operate sessions |
 | `advertisedUrl` | derived | where the console reaches the engine; set it behind a proxy or a NAT |
 | `announceUrl` | none | the console's URL; none serves the API without announcing the engine |
 | `announceUsername` / `announcePassword` | none | a console user with the ENGINE role, used only to announce; they grant nothing on this API |
@@ -86,25 +87,35 @@ FixEngineBuilder.builder()
 | `announceScheduler` | its own thread | runs the announcements; one you pass is left running at shutdown |
 
 Each engine is served under `/engines/{instanceId}/`, so several engines of one JVM can share a port, each with its
-own token:
+own token. `GET /engines/{instanceId}/` gives the engine's id, its staffix version and the API versions it serves;
+every other request is under one of them, `v1` today, so a later incompatible version can be served next to it.
 
-| request | |
+A session is always addressed by its name: an acceptor session's, or an initiator's main config's, whichever config
+the initiator is running. An operation answers once the engine has taken it, not once the session reached the new
+state: read `status` again to see it.
+
+| request, under `v1/` | |
 |---------|---|
-| `GET sessions` | every running session as the console draws it: its configs (for an initiator the main one, then its backups, with the addresses each dials), each config's identity and dictionaries, its messages logger and monitoring plugin instance ids; with a `version`, also its `ETag`, that changes only when the sessions or their settings do |
-| `GET status` | every session's state, selected config and sequence numbers, with `sessionsVersion`: fetch `sessions` again when it differs |
-| `GET sessions/{group}/{name}/settings` | the session's settings, values that look secret masked |
+| `GET sessions` | every running session: its configs (for an initiator the main one, then its backups, with the addresses each dials), each config's identity and dictionaries, its messages logger and monitoring plugin instance ids; with a `version`, also its `ETag`, that changes only when the sessions or their settings do |
+| `GET status` | every session's state, running config and sequence numbers, with `sessionsVersion`: fetch `sessions` again when it differs |
+| `GET sessions/{group}/{name}/settings` | the settings of the config the session runs, for display: values that look secret are masked, and the fields are those of the settings class |
 | `POST sessions/{group}/{name}/logon`, `logout` | |
-| `POST sessions/{group}/{name}/reset` | `{"mode": "RESET_SEQUENCE"}` |
+| `POST sessions/{group}/{name}/reset` | `{"mode": "RESET_SEQUENCE"}`; `LOGOUT_LOGON_REST_NUM_FLAG`, the name `LOGOUT_LOGON_RESET_NUM_FLAG` was first released under, is still accepted |
 | `PUT sessions/{group}/{name}/seqnums` | `{"incoming": 1, "outgoing": 1}`, either may be left out |
 | `POST sessions/{group}/{name}/messages` | `{"message": "35=B|148=hello|", "separator": "|", "possDup": false}` |
-| `POST sessions/{group}/{name}/activate` | switch the initiator to this config |
+| `POST sessions/{group}/{name}/activate` | `{"config": "trading-drp"}` switches an initiator session to one of its configs |
 | `GET settings-stores`, `POST settings-stores/{id}/reload` | |
-| `GET emitters` | the messages loggers and session plugins the engine was built with, each with its type and plain settings (nested ones included; functions, executors and credentials left out or masked); a plugin also lists the plugin types it serves, a wrapper's delegates included |
+| `GET components` | the messages loggers and session plugins the engine was built with, each with its type and plain settings (nested ones included; functions, executors and credentials left out or masked); a plugin also lists the plugin types it serves, a wrapper's delegates included. Introspection: the fields follow the settings classes and may change with them |
 | `GET dictionaries/{id}` | a dictionary a session config lists in `sessions`, with its SHA-256 as `ETag` |
+
+A session switching config while an operation on it runs answers 409: retry. The read-only token is answered 403 for
+anything but a `GET`.
 
 An error answers with its status and an `application/problem+json` body, `{"status": 409, "detail": "..."}`.
 The API is described by an OpenAPI 3.1 document at `GET /openapi.yaml`, served without a token.
-A failed announcement is logged and retried; it never stops the engine or the API.
+A failed announcement is logged and retried; it never stops the engine or the API. The announcement is the console's
+protocol: a `POST` of `{"engineId", "baseUrl", "token", "staffixVersion"}` to `<announceUrl>/api/engines/announce`
+with HTTP Basic credentials; another tool can receive it on that path.
 
 Serve it over HTTPS outside a test setup: the token travels in every request, and the API can send messages on your
 sessions.

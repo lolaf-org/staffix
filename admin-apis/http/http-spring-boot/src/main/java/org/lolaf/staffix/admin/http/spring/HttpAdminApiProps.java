@@ -50,6 +50,11 @@ public class HttpAdminApiProps {
     private String apiToken;
 
     /**
+     * A second bearer token that may only read, for monitoring tools; unset serves none.
+     */
+    private String readOnlyApiToken;
+
+    /**
      * The URL the console reaches this engine at; unset derives it from the host name and the bound port.
      */
     private String advertisedUrl;

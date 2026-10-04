@@ -54,7 +54,7 @@ public class HttpAdminApi implements AdminApiExporter {
         apiToken = settings.getApiToken() != null ? settings.getApiToken() : randomToken();
         try {
             server = HttpAdminServer.acquire(address, settings.getSslContext());
-            server.mount(instanceId, new AdminApiHandler(adminApi, apiToken));
+            server.mount(instanceId, new AdminApiHandler(adminApi, apiToken, settings.getReadOnlyApiToken()));
             mountedInstanceId = instanceId;
             log.info("Serving the admin API of instance {} on {}{}", instanceId, server.getAddress(), HttpAdminServer.basePath(instanceId));
         } catch (Exception e) {

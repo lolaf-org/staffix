@@ -17,18 +17,10 @@ package org.lolaf.staffix.admin.http;
 
 import lombok.Value;
 
-import java.util.List;
-
 /**
- * The engine's running sessions as the console draws them, fetched again only when {@link EngineStatus} reports
- * another version.
+ * One entry of {@code GET settings-stores}, an object so it can gain fields without breaking clients.
  */
 @Value
-public class EngineSessions {
-    String engineId;
-    /**
-     * The SHA-256 of {@link #sessions} as JSON, so equal content has the same version across engine restarts.
-     */
-    String version;
-    List<SessionDescription> sessions;
+public class SettingsStore {
+    String instanceId;
 }

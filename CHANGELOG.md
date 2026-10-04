@@ -21,7 +21,8 @@ could mean.
 - `AdminApi.getAcceptorsSessions()` lists each acceptor with the sessions it accepts, the counterpart of
   `getInitiatorsTargets()`, so an administration tool can tell which acceptor a session belongs to.
 - An HTTP admin API (`staffix-admin-api-http-impl`, and `staffix-admin-api-http-spring-boot` for Spring Boot) serves
-  every session's state, settings and operations as JSON behind a bearer token, and announces the engine to the
+  every session's state, settings and operations as JSON behind a bearer token (and, optionally, a read-only one
+  for monitoring tools), and announces the engine to the
   [staffix admin console](https://github.com/lolaf-org/staffix-admin), which can then monitor and operate it.
 - A generated FIX package now carries its dictionary as `staffix-dictionaries/<dictionaryId>-<version>.xml`, so the
   HTTP admin API can serve it and the console decodes a session's messages with the dictionary that session runs.
@@ -49,12 +50,12 @@ could mean.
 - **Management endpoints include the group:** one session is at `/actuator/fix-sessions/{group}/{name}`, the
   health details are keyed `group.name`, and each JMX session bean name has a `group` key.
 
-### Fixed
 ### Deprecated
 
 - `AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`, which
   behaves the same. The old name keeps working until it is removed in a later version.
 
+### Fixed
 
 - Two sessions with the same name in different groups no longer share stored state, log files, metrics, JMX beans
   or health entries; before, they overwrote each other.

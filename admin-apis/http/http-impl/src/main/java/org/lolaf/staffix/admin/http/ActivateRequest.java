@@ -15,20 +15,21 @@
  */
 package org.lolaf.staffix.admin.http;
 
+import lombok.Builder;
+import lombok.NonNull;
 import lombok.Value;
-
-import java.util.List;
+import lombok.extern.jackson.Jacksonized;
 
 /**
- * The engine's running sessions as the console draws them, fetched again only when {@link EngineStatus} reports
- * another version.
+ * Body of {@code POST .../activate}.
  */
 @Value
-public class EngineSessions {
-    String engineId;
+@Builder
+@Jacksonized
+public class ActivateRequest {
     /**
-     * The SHA-256 of {@link #sessions} as JSON, so equal content has the same version across engine restarts.
+     * The initiator config to switch to, its main one or a backup.
      */
-    String version;
-    List<SessionDescription> sessions;
+    @NonNull
+    String config;
 }

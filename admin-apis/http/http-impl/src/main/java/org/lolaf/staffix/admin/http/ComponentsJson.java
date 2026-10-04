@@ -41,12 +41,13 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * The engine's messages loggers and session plugins as JSON, so the console can tell where sessions' telemetry
- * goes. Only plain values are kept: functions, executors and live objects say nothing an admin can act on, and
+ * The engine's messages loggers and session plugins as JSON, for a tool to see how the engine is built, such as
+ * where sessions' telemetry goes. Introspection, not a stable contract: the fields are those of each settings class.
+ * Only plain values are kept: functions, executors and live objects say nothing an admin can act on, and
  * calling their getters could have side effects. Each settings object, nested ones included, carries its
  * {@code type}; a plugin also lists its {@link FixSessionsPluginSettings#getPluginTypes() pluginTypes}.
  */
-final class EmittersJson {
+final class ComponentsJson {
 
     private static final Pattern SECRET_NAME = Pattern.compile("(?i).*(password|passwd|secret|token|credential|private.?key|authorization|api.?key).*");
 
@@ -59,7 +60,7 @@ final class EmittersJson {
             .disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS)
             .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
 
-    private EmittersJson() {
+    private ComponentsJson() {
     }
 
     static ObjectNode of(AdminApi adminApi) {
@@ -97,7 +98,7 @@ final class EmittersJson {
                 }
             }
         } else if (json instanceof ArrayNode) {
-            json.forEach(EmittersJson::redact);
+            json.forEach(ComponentsJson::redact);
         }
     }
 

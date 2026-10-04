@@ -52,6 +52,12 @@ public class HttpAdminApiSettings extends AdminApiExporterSettings {
     private final String apiToken;
 
     /**
+     * A second bearer token that may only read ({@code GET}), for monitoring tools that must not operate sessions;
+     * null serves none.
+     */
+    private final String readOnlyApiToken;
+
+    /**
      * The URL the console reaches this engine at; null derives it from the host name and the bound port, which
      * is wrong behind a proxy or a NAT.
      */

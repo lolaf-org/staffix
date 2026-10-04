@@ -42,14 +42,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class EmittersJsonTest {
+class ComponentsJsonTest {
 
     private final AdminApi adminApi = mock(AdminApi.class);
 
     private JsonNode emitters(List<FixMessagesLoggerSettings> loggers, List<FixSessionsPluginSettings<?>> plugins) {
         when(adminApi.getFixMessagesLoggersSettings()).thenReturn(loggers);
         when(adminApi.getFixSessionsPluginsSettings()).thenReturn(plugins);
-        return EmittersJson.of(adminApi);
+        return ComponentsJson.of(adminApi);
     }
 
     @Test
@@ -57,9 +57,9 @@ class EmittersJsonTest {
         JsonNode logger = emitters(List.of(new AlphaAsyncLoggerSettings("clients", new AlphaOtlpLoggerSettings("default", "http://collector:4318"))), List.of())
                 .get("messagesLoggers").get(0);
 
-        assertThat(logger.get("type").asText()).isEqualTo("EmittersJsonTest$AlphaAsyncLoggerSettings");
+        assertThat(logger.get("type").asText()).isEqualTo("ComponentsJsonTest$AlphaAsyncLoggerSettings");
         assertThat(logger.get("instanceId").asText()).isEqualTo("clients");
-        assertThat(logger.get("wrappedLoggerSettings").get("type").asText()).isEqualTo("EmittersJsonTest$AlphaOtlpLoggerSettings");
+        assertThat(logger.get("wrappedLoggerSettings").get("type").asText()).isEqualTo("ComponentsJsonTest$AlphaOtlpLoggerSettings");
         assertThat(logger.get("wrappedLoggerSettings").get("otlpEndpointUrl").asText()).isEqualTo("http://collector:4318");
         assertThat(logger.get("wrappedLoggerSettings").get("flushDelay").asText()).isEqualTo("PT1S");
         assertThat(logger.get("wrappedLoggerSettings").has("flushingExecutor")).isFalse();
@@ -75,7 +75,7 @@ class EmittersJsonTest {
         assertThat(plugins.get(0).get("pluginTypes").toString()).isEqualTo("[\"FixSessionsMonitoringManager\"]");
         assertThat(plugins.get(1).get("pluginTypes").toString()).isEqualTo("[\"FixSessionsPlugin\"]");
         assertThat(plugins.get(2).get("pluginTypes").toString()).isEqualTo("[\"FixSessionsPlugin\",\"FixSessionsMonitoringManager\"]");
-        assertThat(plugins.get(2).get("delegateSettings").get("type").asText()).isEqualTo("EmittersJsonTest$AlphaMonitoringSettings");
+        assertThat(plugins.get(2).get("delegateSettings").get("type").asText()).isEqualTo("ComponentsJsonTest$AlphaMonitoringSettings");
         JsonNode monitoring = plugins.get(0);
         assertThat(monitoring.get("baseTimeUnit").asText()).isEqualTo("MICROSECONDS");
         assertThat(monitoring.get("decodingLatencyEnabled").asBoolean()).isTrue();

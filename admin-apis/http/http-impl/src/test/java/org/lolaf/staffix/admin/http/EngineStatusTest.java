@@ -78,7 +78,8 @@ class EngineStatusTest {
                 .activeFixSessionId(TRADING_DRP)
                 .target(FixInitiatorTarget.builder().fixSessionId(TRADING)
                         .connectAddress(InetSocketAddress.createUnresolved("alpha.example.com", 9001)).build())
-                .target(FixInitiatorTarget.builder().fixSessionId(TRADING_DRP).build())
+                .target(FixInitiatorTarget.builder().fixSessionId(TRADING_DRP)
+                        .connectAddress(InetSocketAddress.createUnresolved("2001:db8::7", 9002)).build())
                 .build()));
         when(adminApi.getAcceptorsSessions()).thenReturn(List.of(FixAcceptorSessions.builder()
                 .instanceId("main-acceptor")
@@ -110,6 +111,7 @@ class EngineStatusTest {
                 + "\"loggedIn\":true,\"connected\":true,\"withinSessionTime\":true,\"desiredState\":\"LOGGED_IN\","
                 + "\"incomingSeqNum\":12,\"outgoingSeqNum\":34}");
         assertThat(status().get("sessionsVersion").asText()).isEqualTo("v1");
+        assertThat(status().get("engineId").asText()).isEqualTo("alpha-engine");
     }
 
     @Test
@@ -121,7 +123,7 @@ class EngineStatusTest {
         assertThat(trading.get("type").asText()).isEqualTo("INITIATOR");
         assertThat(trading.get("instanceId").asText()).isEqualTo("alpha-initiator");
         assertThat(trading.get("configs")).extracting(config -> config.get("name").asText() + " " + config.get("connectAddresses"))
-                .containsExactly("trading [\"alpha.example.com:9001\"]", "trading-drp []");
+                .containsExactly("trading [\"alpha.example.com:9001\"]", "trading-drp [\"[2001:db8::7]:9002\"]");
         assertThat(trading.get("configs").get(1).get("identity").toString())
                 .isEqualTo("{\"fixVersion\":\"FIX.4.4\",\"sender\":{\"compId\":\"US\",\"subId\":\"DR\"},\"target\":{\"compId\":\"ALPHA\"}}");
     }
@@ -147,7 +149,7 @@ class EngineStatusTest {
         assertThat(sessions.get(0).get("messagesLoggerInstanceId").asText()).isEqualTo("otlp-logger");
         assertThat(sessions.get(0).get("monitoringInstanceId").asText()).isEqualTo("otlp-metrics");
         assertThat(sessions.get(1).get("messagesLoggerInstanceId").asText()).isEqualTo("default");
-        assertThat(sessions.get(1).get("monitoringInstanceId").isNull()).isTrue();
+        assertThat(sessions.get(1).has("monitoringInstanceId")).as("absent when not monitored").isFalse();
     }
 
     @Test

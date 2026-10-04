@@ -114,7 +114,7 @@ public class AdminApiStatusBenchmark {
             adminApi = (AdminApi) engine;
             sessionsVersion = SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).version;
             client = HttpClient.newHttpClient();
-            statusRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + PORT + "/engines/benchmark/status"))
+            statusRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + PORT + "/engines/benchmark/v1/status"))
                     .header("Authorization", "Bearer " + TOKEN)
                     .build();
         }

@@ -103,7 +103,8 @@ final class SessionsDocument {
     }
 
     private static String hostAndPort(InetSocketAddress address) {
-        return address.getHostString() + ":" + address.getPort();
+        String host = address.getHostString();
+        return (host.contains(":") ? "[" + host + "]" : host) + ":" + address.getPort();
     }
 
     /**

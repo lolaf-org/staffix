@@ -61,7 +61,7 @@ class OpenApiTest {
         }
 
         assertThat(documented).containsExactlyInAnyOrderElementsOf(
-                new AdminApiHandler(mock(AdminApi.class), "alpha-token").routeTemplates());
+                new AdminApiHandler(mock(AdminApi.class), "alpha-token", null).routeTemplates());
     }
 
     @Test
