@@ -44,6 +44,18 @@ class HttpAdminServer {
     static final String OPENAPI_PATH = "/openapi.yaml";
     private static final byte[] OPENAPI = readOpenApi();
     private static final Map<InetSocketAddress, HttpAdminServer> SHARED = new HashMap<>();
+    /**
+     * The JDK server writes a response's headers and body apart, so Nagle against a client's delayed ACK holds the
+     * body about 40 ms. The JDK reads it once, at the JVM's first server: if the application starts one before the
+     * engine, the delay stays unless the property is set on the command line.
+     */
+    private static final String NO_DELAY = "sun.net.httpserver.nodelay";
+
+    static {
+        if (System.getProperty(NO_DELAY) == null) {
+            System.setProperty(NO_DELAY, "true");
+        }
+    }
 
     private final InetSocketAddress requestedAddress;
     private final SSLContext sslContext;
