@@ -46,10 +46,12 @@ class AdminApiHandler implements HttpHandler {
 
     private final AdminApi adminApi;
     private final byte[] expectedAuthorization;
+    private final List<Route> routes;
 
     AdminApiHandler(AdminApi adminApi, String apiToken) {
         this.adminApi = adminApi;
         this.expectedAuthorization = ("Bearer " + apiToken).getBytes(StandardCharsets.UTF_8);
+        this.routes = routes();
     }
 
     @Override
@@ -76,6 +78,13 @@ class AdminApiHandler implements HttpHandler {
         }
     }
 
+    /**
+     * The routes as {@code METHOD /template}, in the OpenAPI document's path syntax.
+     */
+    List<String> routeTemplates() {
+        return routes.stream().map(Route::toString).collect(Collectors.toList());
+    }
+
     private boolean isAuthorized(HttpExchange exchange) {
         String authorization = exchange.getRequestHeaders().getFirst("Authorization");
         return authorization != null
@@ -89,77 +98,71 @@ class AdminApiHandler implements HttpHandler {
                 .collect(Collectors.toList());
     }
 
-    private void route(HttpExchange exchange, List<String> path) throws IOException {
-        if (path.equals(List.of("status"))) {
-            requireMethod(exchange, "GET");
-            sendJson(exchange, EngineStatus.of(adminApi));
-        } else if (path.equals(List.of("emitters"))) {
-            requireMethod(exchange, "GET");
-            sendJson(exchange, EmittersJson.of(adminApi));
-        } else if (path.equals(List.of("settings-stores"))) {
-            requireMethod(exchange, "GET");
-            sendJson(exchange, adminApi.getFixSessionsSettingsStoresInstanceIds());
-        } else if (path.size() == 3 && path.get(0).equals("settings-stores") && path.get(2).equals("reload")) {
-            requireMethod(exchange, "POST");
-            log.info("Admin API: reload settings store {}", path.get(1));
-            adminApi.reloadFixSessionsSettingsStore(path.get(1));
-            sendNoContent(exchange);
-        } else if (path.size() == 2 && path.get(0).equals("dictionaries")) {
-            requireMethod(exchange, "GET");
-            sendDictionary(exchange, path.get(1));
-        } else if (path.size() == 4 && path.get(0).equals("sessions")) {
-            sessionOperation(exchange, path.get(1), path.get(2), path.get(3));
-        } else {
-            throw new HttpProblemException(404, "No resource " + exchange.getRequestURI().getPath());
-        }
+    private List<Route> routes() {
+        return List.of(
+                new Route("GET", "status", (exchange, path) -> sendJson(exchange, EngineStatus.of(adminApi))),
+                new Route("GET", "emitters", (exchange, path) -> sendJson(exchange, EmittersJson.of(adminApi))),
+                new Route("GET", "settings-stores",
+                        (exchange, path) -> sendJson(exchange, adminApi.getFixSessionsSettingsStoresInstanceIds())),
+                new Route("POST", "settings-stores/{storeId}/reload", (exchange, path) -> {
+                    log.info("Admin API: reload settings store {}", path.get(1));
+                    adminApi.reloadFixSessionsSettingsStore(path.get(1));
+                    sendNoContent(exchange);
+                }),
+                new Route("GET", "dictionaries/{dictionaryId}", (exchange, path) -> sendDictionary(exchange, path.get(1))),
+                new Route("GET", "sessions/{group}/{name}/settings", (exchange, path) ->
+                        sendJson(exchange, SettingsJson.of(managedSession(path).getFixSessionSettings()))),
+                sessionOperation("POST", "logon", (fixSessionId, exchange) -> {
+                    log.info("Admin API: logon {}", fixSessionId.getQualifiedName());
+                    adminApi.logonSession(fixSessionId);
+                }),
+                sessionOperation("POST", "logout", (fixSessionId, exchange) -> {
+                    log.info("Admin API: logout {}", fixSessionId.getQualifiedName());
+                    adminApi.logoutSession(fixSessionId);
+                }),
+                sessionOperation("POST", "reset", (fixSessionId, exchange) -> {
+                    ResetRequest reset = MAPPER.readValue(exchange.getRequestBody(), ResetRequest.class);
+                    log.info("Admin API: reset {} with {}", fixSessionId.getQualifiedName(), reset.getMode());
+                    adminApi.resetSession(fixSessionId, reset.getMode());
+                }),
+                sessionOperation("PUT", "seqnums", (fixSessionId, exchange) ->
+                        setSeqNums(fixSessionId, MAPPER.readValue(exchange.getRequestBody(), SeqNumsRequest.class))),
+                sessionOperation("POST", "messages", (fixSessionId, exchange) -> {
+                    SendMessageRequest send = MAPPER.readValue(exchange.getRequestBody(), SendMessageRequest.class);
+                    log.info("Admin API: send to {}: {}", fixSessionId.getQualifiedName(), send.getMessage());
+                    adminApi.sendFixMessage(fixSessionId, send.getMessage(), send.getSeparator(), send.isPossDup());
+                }),
+                new Route("POST", "sessions/{group}/{name}/activate", (exchange, path) -> {
+                    FixSessionId target = initiatorTarget(path.get(1), path.get(2));
+                    log.info("Admin API: activate {}", target.getQualifiedName());
+                    adminApi.switchInitiatorSession(target);
+                    sendNoContent(exchange);
+                }));
     }
 
-    private void sessionOperation(HttpExchange exchange, String group, String name, String operation) throws IOException {
-        if (operation.equals("activate")) {
-            requireMethod(exchange, "POST");
-            FixSessionId target = initiatorTarget(group, name);
-            log.info("Admin API: activate {}", target.getQualifiedName());
-            adminApi.switchInitiatorSession(target);
+    private Route sessionOperation(String method, String operation, SessionOperation action) {
+        return new Route(method, "sessions/{group}/{name}/" + operation, (exchange, path) -> {
+            action.apply(managedSession(path).getFixSessionId(), exchange);
             sendNoContent(exchange);
-            return;
+        });
+    }
+
+    private void route(HttpExchange exchange, List<String> path) throws IOException {
+        List<Route> matching = routes.stream().filter(route -> route.matches(path)).collect(Collectors.toList());
+        if (matching.isEmpty()) {
+            throw new HttpProblemException(404, "No resource " + exchange.getRequestURI().getPath());
         }
-        FixSession session = managedSession(group, name);
-        FixSessionId fixSessionId = session.getFixSessionId();
-        switch (operation) {
-            case "settings":
-                requireMethod(exchange, "GET");
-                sendJson(exchange, SettingsJson.of(session.getFixSessionSettings()));
-                return;
-            case "logon":
-                requireMethod(exchange, "POST");
-                log.info("Admin API: logon {}", fixSessionId.getQualifiedName());
-                adminApi.logonSession(fixSessionId);
-                break;
-            case "logout":
-                requireMethod(exchange, "POST");
-                log.info("Admin API: logout {}", fixSessionId.getQualifiedName());
-                adminApi.logoutSession(fixSessionId);
-                break;
-            case "reset":
-                requireMethod(exchange, "POST");
-                ResetRequest reset = MAPPER.readValue(exchange.getRequestBody(), ResetRequest.class);
-                log.info("Admin API: reset {} with {}", fixSessionId.getQualifiedName(), reset.getMode());
-                adminApi.resetSession(fixSessionId, reset.getMode());
-                break;
-            case "seqnums":
-                requireMethod(exchange, "PUT");
-                setSeqNums(fixSessionId, MAPPER.readValue(exchange.getRequestBody(), SeqNumsRequest.class));
-                break;
-            case "messages":
-                requireMethod(exchange, "POST");
-                SendMessageRequest send = MAPPER.readValue(exchange.getRequestBody(), SendMessageRequest.class);
-                log.info("Admin API: send to {}: {}", fixSessionId.getQualifiedName(), send.getMessage());
-                adminApi.sendFixMessage(fixSessionId, send.getMessage(), send.getSeparator(), send.isPossDup());
-                break;
-            default:
-                throw new HttpProblemException(404, "No resource " + exchange.getRequestURI().getPath());
-        }
-        sendNoContent(exchange);
+        Route route = matching.stream()
+                .filter(candidate -> candidate.method.equals(exchange.getRequestMethod()))
+                .findFirst()
+                .orElseThrow(() -> methodNotAllowed(exchange, matching));
+        route.action.handle(exchange, path);
+    }
+
+    private static HttpProblemException methodNotAllowed(HttpExchange exchange, List<Route> matching) {
+        String allowed = matching.stream().map(route -> route.method).collect(Collectors.joining(", "));
+        exchange.getResponseHeaders().set("Allow", allowed);
+        return new HttpProblemException(405, exchange.getRequestMethod() + " is not allowed here, use " + allowed);
     }
 
     private static void sendDictionary(HttpExchange exchange, String id) throws IOException {
@@ -185,7 +188,9 @@ class AdminApiHandler implements HttpHandler {
         }
     }
 
-    private FixSession managedSession(String group, String name) {
+    private FixSession managedSession(List<String> path) {
+        String group = path.get(1);
+        String name = path.get(2);
         return adminApi.getManagedFixSessions().stream()
                 .filter(session -> session.getFixSessionId().getGroup().equals(group)
                         && session.getFixSessionId().getName().equals(name))
@@ -202,13 +207,6 @@ class AdminApiHandler implements HttpHandler {
                 .orElseThrow(() -> new HttpProblemException(404, "No initiator config " + name + " in group " + group));
     }
 
-    private static void requireMethod(HttpExchange exchange, String method) {
-        if (!exchange.getRequestMethod().equals(method)) {
-            exchange.getResponseHeaders().set("Allow", method);
-            throw new HttpProblemException(405, exchange.getRequestMethod() + " is not allowed here, use " + method);
-        }
-    }
-
     private static void sendJson(HttpExchange exchange, Object body) throws IOException {
         send(exchange, 200, "application/json", MAPPER.writeValueAsBytes(body));
     }
@@ -222,11 +220,51 @@ class AdminApiHandler implements HttpHandler {
                 MAPPER.writeValueAsBytes(new Problem(problem.getStatus(), problem.getMessage())));
     }
 
-    private static void send(HttpExchange exchange, int status, String contentType, byte[] body) throws IOException {
+    static void send(HttpExchange exchange, int status, String contentType, byte[] body) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", contentType);
         exchange.sendResponseHeaders(status, body.length);
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(body);
+        }
+    }
+
+    private interface RouteAction {
+        void handle(HttpExchange exchange, List<String> path) throws IOException;
+    }
+
+    private interface SessionOperation {
+        void apply(FixSessionId fixSessionId, HttpExchange exchange) throws IOException;
+    }
+
+    /**
+     * A template segment in braces matches any value.
+     */
+    private static final class Route {
+        private final String method;
+        private final List<String> template;
+        private final RouteAction action;
+
+        Route(String method, String template, RouteAction action) {
+            this.method = method;
+            this.template = List.of(template.split("/"));
+            this.action = action;
+        }
+
+        boolean matches(List<String> path) {
+            if (path.size() != template.size()) {
+                return false;
+            }
+            for (int i = 0; i < path.size(); i++) {
+                if (!template.get(i).startsWith("{") && !template.get(i).equals(path.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            return method + " /" + String.join("/", template);
         }
     }
 }

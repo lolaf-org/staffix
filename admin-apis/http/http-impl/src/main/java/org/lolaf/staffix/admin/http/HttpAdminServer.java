@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.admin.http;
 
+import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpsConfigurator;
@@ -22,6 +23,8 @@ import com.sun.net.httpserver.HttpsServer;
 
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,6 +38,11 @@ import java.util.concurrent.Executors;
  */
 class HttpAdminServer {
 
+    /**
+     * Served without a token: the document holds no secret, and tools fetch it before they have one.
+     */
+    static final String OPENAPI_PATH = "/openapi.yaml";
+    private static final byte[] OPENAPI = readOpenApi();
     private static final Map<InetSocketAddress, HttpAdminServer> SHARED = new HashMap<>();
 
     private final InetSocketAddress requestedAddress;
@@ -53,9 +61,29 @@ class HttpAdminServer {
             return thread;
         });
         server.setExecutor(executor);
-        server.createContext("/", exchange -> AdminApiHandler.sendProblem(exchange,
-                new HttpProblemException(404, "No engine serves " + exchange.getRequestURI().getPath())));
+        server.createContext("/", HttpAdminServer::serveRoot);
         server.start();
+    }
+
+    private static void serveRoot(HttpExchange exchange) throws IOException {
+        try {
+            if (exchange.getRequestURI().getPath().equals(OPENAPI_PATH) && exchange.getRequestMethod().equals("GET")) {
+                AdminApiHandler.send(exchange, 200, "application/yaml", OPENAPI);
+            } else {
+                AdminApiHandler.sendProblem(exchange,
+                        new HttpProblemException(404, "No engine serves " + exchange.getRequestURI().getPath()));
+            }
+        } finally {
+            exchange.close();
+        }
+    }
+
+    private static byte[] readOpenApi() {
+        try (InputStream in = HttpAdminServer.class.getResourceAsStream("openapi.yaml")) {
+            return in.readAllBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static HttpsServer httpsServer(InetSocketAddress address, SSLContext sslContext) throws IOException {

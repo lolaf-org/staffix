@@ -1,0 +1,484 @@
+openapi: 3.1.0
+info:
+  title: staffix HTTP admin API
+  description: >
+    Reads an engine's sessions and drives them. Each engine of a JVM is served under /engines/{instanceId}/, with its
+    own bearer token. Errors answer with an application/problem+json body.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  version: "1.0"
+servers:
+  - url: /engines/{instanceId}
+    variables:
+      instanceId:
+        default: engine
+        description: The engine's FixEngineBuilder instance id.
+security:
+  - bearer: []
+paths:
+  /status:
+    get:
+      summary: Every session with its state and sequence numbers
+      operationId: getStatus
+      responses:
+        '200':
+          description: The engine's sessions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /emitters:
+    get:
+      summary: The messages loggers and session plugins the engine was built with
+      description: >
+        Each settings object has its simple class name as type and only plain values; values that look secret, and
+        every headers value, are masked.
+      operationId: getEmitters
+      responses:
+        '200':
+          description: The engine's emitters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Emitters'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings-stores:
+    get:
+      summary: The instance ids of the engine's session settings stores
+      operationId: getSettingsStores
+      responses:
+        '200':
+          description: The settings stores.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings-stores/{storeId}/reload:
+    post:
+      summary: Reloads a settings store, starting, stopping or restarting the sessions it changed
+      operationId: reloadSettingsStore
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Reloaded.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /dictionaries/{dictionaryId}:
+    get:
+      summary: A dictionary a session lists in status
+      operationId: getDictionary
+      parameters:
+        - name: dictionaryId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The dictionary in QuickFIX XML format.
+          headers:
+            ETag:
+              description: The dictionary's SHA-256, quoted.
+              schema:
+                type: string
+          content:
+            application/xml:
+              schema:
+                type: string
+        '304':
+          description: Unchanged since the ETag sent in If-None-Match.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /sessions/{group}/{name}/settings:
+    get:
+      summary: The running config's settings, values that look secret masked
+      operationId: getSessionSettings
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /sessions/{group}/{name}/logon:
+    post:
+      summary: Logs the session on
+      operationId: logon
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /sessions/{group}/{name}/logout:
+    post:
+      summary: Logs the session out, until an operator logs it on again
+      operationId: logout
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /sessions/{group}/{name}/reset:
+    post:
+      summary: Resets the session's sequence numbers
+      operationId: reset
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /sessions/{group}/{name}/seqnums:
+    put:
+      summary: Sets the session's incoming and outgoing sequence numbers
+      operationId: setSeqNums
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeqNumsRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /sessions/{group}/{name}/messages:
+    post:
+      summary: Sends a FIX message on the session
+      operationId: sendMessage
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /sessions/{group}/{name}/activate:
+    post:
+      summary: Switches the initiator to this config, its main one or a backup
+      operationId: activate
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - name: name
+          in: path
+          required: true
+          description: The config's name, main or backup.
+          schema:
+            type: string
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: The engine's apiToken, random unless set, sent to the console in the announcement.
+  parameters:
+    group:
+      name: group
+      in: path
+      required: true
+      schema:
+        type: string
+    name:
+      name: name
+      in: path
+      required: true
+      description: The name of the session's running config.
+      schema:
+        type: string
+  responses:
+    Done:
+      description: Done.
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing or wrong bearer token.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: No such session, config or dictionary.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Refused in the session's current state.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      required: [status, detail]
+      properties:
+        status:
+          type: integer
+        detail:
+          type: string
+    EngineStatus:
+      type: object
+      required: [instanceId, sessions]
+      properties:
+        instanceId:
+          type: string
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionStatus'
+    SessionStatus:
+      type: object
+      required: [group, name, type, instanceId, configs, selectedConfig, identity, loggedIn, connected,
+                 withinSessionTime, desiredState, incomingSeqNum, outgoingSeqNum, dictionaries,
+                 messagesLoggerInstanceId, monitoringInstanceId]
+      properties:
+        group:
+          type: string
+        name:
+          type: string
+          description: The main config's name, unique within the group.
+        type:
+          type: string
+          enum: [INITIATOR, ACCEPTOR]
+        instanceId:
+          type: string
+          description: The initiator or acceptor serving the session.
+        configs:
+          type: array
+          description: An initiator's main config, then its backups; an acceptor's single config.
+          items:
+            $ref: '#/components/schemas/ConfigStatus'
+        selectedConfig:
+          type: string
+        identity:
+          $ref: '#/components/schemas/FixIdentity'
+        loggedIn:
+          type: boolean
+        connected:
+          type: boolean
+        withinSessionTime:
+          type: boolean
+        desiredState:
+          type: string
+          description: LOGGED_OUT when an operator logged the session out.
+          enum: [LOGGED_IN, LOGGED_OUT, CONNECTED, DISCONNECTED]
+        incomingSeqNum:
+          type: integer
+          format: int64
+        outgoingSeqNum:
+          type: integer
+          format: int64
+        dictionaries:
+          type: array
+          description: The selected config's dictionaries.
+          items:
+            $ref: '#/components/schemas/DictionaryRef'
+        messagesLoggerInstanceId:
+          type: [string, 'null']
+        monitoringInstanceId:
+          type: [string, 'null']
+          description: The session's monitoring plugin instance, null when the session is not monitored.
+    ConfigStatus:
+      type: object
+      required: [name, connectAddresses]
+      properties:
+        name:
+          type: string
+        connectAddresses:
+          type: array
+          description: The host:port addresses an initiator config dials; empty for an acceptor.
+          items:
+            type: string
+    FixIdentity:
+      type: object
+      required: [fixVersion, sender, target]
+      properties:
+        fixVersion:
+          type: string
+          description: The BeginString, such as FIX.4.4 or FIXT.1.1.
+        defaultApplVerId:
+          type: string
+          description: The DefaultApplVerID code of a FIXT session.
+        sender:
+          $ref: '#/components/schemas/CompIds'
+        target:
+          $ref: '#/components/schemas/CompIds'
+    CompIds:
+      type: object
+      required: [compId]
+      properties:
+        compId:
+          type: string
+        subId:
+          type: string
+        locationId:
+          type: string
+    DictionaryRef:
+      type: object
+      required: [id, hash]
+      properties:
+        id:
+          type: string
+        hash:
+          type: string
+    Emitters:
+      type: object
+      required: [messagesLoggers, sessionsPlugins]
+      properties:
+        messagesLoggers:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmitterSettings'
+        sessionsPlugins:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/EmitterSettings'
+              - type: object
+                required: [pluginTypes]
+                properties:
+                  pluginTypes:
+                    type: array
+                    description: The plugin types it serves, a wrapper's delegates included.
+                    items:
+                      type: string
+    EmitterSettings:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: The settings' simple class name.
+      additionalProperties: true
+    ResetRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [LOGOUT_LOGON_REST_NUM_FLAG, RESET_SEQUENCE, RESET_SEQUENCE_IN_SESSION]
+    SeqNumsRequest:
+      type: object
+      description: Either may be left out.
+      properties:
+        incoming:
+          type: integer
+          format: int64
+        outgoing:
+          type: integer
+          format: int64
+    SendMessageRequest:
+      type: object
+      required: [message, separator]
+      properties:
+        message:
+          type: string
+          example: 35=B|148=hello|
+        separator:
+          type: string
+          minLength: 1
+          maxLength: 1
+          description: The field separator used in message, such as SOH or |.
+        possDup:
+          type: boolean
+          default: false

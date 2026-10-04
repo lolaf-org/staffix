@@ -102,6 +102,7 @@ own token:
 | `GET dictionaries/{id}` | a dictionary a session lists in `status`, with its SHA-256 as `ETag` |
 
 An error answers with its status and an `application/problem+json` body, `{"status": 409, "detail": "..."}`.
+The API is described by an OpenAPI 3.1 document at `GET /openapi.yaml`, served without a token.
 A failed announcement is logged and retried; it never stops the engine or the API.
 
 Serve it over HTTPS outside a test setup: the token travels in every request, and the API can send messages on your
