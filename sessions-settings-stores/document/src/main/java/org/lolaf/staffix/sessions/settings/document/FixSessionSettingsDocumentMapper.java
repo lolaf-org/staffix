@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.experimental.UtilityClass;
 
 import java.io.IOException;
@@ -39,7 +40,8 @@ public class FixSessionSettingsDocumentMapper {
      * @return the same mapper, configured
      */
     public static ObjectMapper configure(ObjectMapper mapper) {
-        mapper.findAndRegisterModules();
+        // explicitly rather than through findAndRegisterModules, whose service files a fat jar can lose
+        mapper.registerModule(new JavaTimeModule());
         // Jackson's built-in InetAddress deserializer (2.19+) rejects any string that is not an IP literal
         SimpleModule inetAddressModule = new SimpleModule();
         inetAddressModule.addDeserializer(InetAddress.class, new JsonDeserializer<>() {

@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.admin.http;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -22,6 +23,7 @@ import org.lolaf.staffix.sessions.settings.document.*;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -42,7 +44,7 @@ final class SessionSettingsDocuments {
     private SessionSettingsDocuments() {
     }
 
-    static byte[] write(FixSessionSettings settings) throws IOException {
+    static byte[] write(FixSessionSettings settings) {
         FixSessionSettingsDocument document = ToFixSessionSettingsDocumentTransformer.toDocument(settings);
         Map<String, String> applicationSettings = document.getFixApplicationSessionSettings();
         if (applicationSettings != null) {
@@ -50,7 +52,12 @@ final class SessionSettingsDocuments {
             masked.replaceAll((id, value) -> isSecret(id) ? MASK : value);
             document.setFixApplicationSessionSettings(masked);
         }
-        return MAPPER.writeValueAsBytes(document);
+        try {
+            return MAPPER.writeValueAsBytes(document);
+        } catch (JsonProcessingException e) {
+            // the engine's own settings failed to write: its fault, not the request's
+            throw new UncheckedIOException(e);
+        }
     }
 
     /**
