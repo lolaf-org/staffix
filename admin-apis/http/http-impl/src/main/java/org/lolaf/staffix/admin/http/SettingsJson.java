@@ -33,13 +33,12 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * A session's settings as JSON for display, with application setting values that look secret masked: an
- * application setting carries no sensitivity flag, so its name is all there is to go on.
+ * A session's settings as JSON for display, with secret application setting values masked: those the application
+ * declares secret, and, for a setting no application declared, those whose name looks secret.
  */
 final class SettingsJson {
 
@@ -64,15 +63,15 @@ final class SettingsJson {
         ObjectNode json = MAPPER.valueToTree(settings);
         JsonNode applicationSettings = json.get("fixApplicationSessionSettings");
         if (applicationSettings instanceof ObjectNode) {
-            ObjectNode values = (ObjectNode) applicationSettings;
-            for (Iterator<String> names = values.fieldNames(); names.hasNext(); ) {
-                String name = names.next();
-                if (SECRET_NAME.matcher(name).matches()) {
-                    values.put(name, MASK);
-                }
-            }
+            settings.getFixApplicationSessionSettings().keySet().stream()
+                    .filter(SettingsJson::isSecret)
+                    .forEach(descriptor -> ((ObjectNode) applicationSettings).put(descriptor.getId(), MASK));
         }
         return json;
+    }
+
+    static boolean isSecret(FixApplicationSessionSettingDescriptor descriptor) {
+        return descriptor.isSecret() || SECRET_NAME.matcher(descriptor.getId()).matches();
     }
 
     private static class DescriptorKeySerializer extends JsonSerializer<FixApplicationSessionSettingDescriptor> {

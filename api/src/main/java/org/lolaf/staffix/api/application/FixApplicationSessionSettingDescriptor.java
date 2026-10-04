@@ -30,19 +30,28 @@ import java.util.concurrent.ConcurrentHashMap;
 @Getter
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @ToString
-@EqualsAndHashCode
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class FixApplicationSessionSettingDescriptor {
 
     private static final Map<String, FixApplicationSessionSettingDescriptor> SETTINGS = new ConcurrentHashMap<>();
 
+    /**
+     * The only part of equality: a descriptor is a key in each session's settings, and its description and secrecy
+     * may be declared after it was first used.
+     */
+    @EqualsAndHashCode.Include
     private final String id;
-    private String description;
+    private volatile String description;
+    /**
+     * Whether the value is a credential, such as a Logon password, that administration tools must never show.
+     */
+    private volatile boolean secret;
 
     /**
      * The descriptor registered under this id, registering one without a description on first use.
      */
     public static FixApplicationSessionSettingDescriptor of(String id) {
-        return SETTINGS.computeIfAbsent(id, i -> new FixApplicationSessionSettingDescriptor(id, null));
+        return SETTINGS.computeIfAbsent(id, i -> new FixApplicationSessionSettingDescriptor(id, null, false));
     }
 
     /**
@@ -53,6 +62,16 @@ public class FixApplicationSessionSettingDescriptor {
         if (setting.description == null) {
             setting.description = description;
         }
+        return setting;
+    }
+
+    /**
+     * As {@link #of(String, String)}, declaring the value a credential. A setting declared secret stays secret, even
+     * when it was first read from a session's configuration before the application declared it.
+     */
+    public static FixApplicationSessionSettingDescriptor secret(String id, String description) {
+        FixApplicationSessionSettingDescriptor setting = of(id, description);
+        setting.secret = true;
         return setting;
     }
 }

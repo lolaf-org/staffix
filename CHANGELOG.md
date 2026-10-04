@@ -31,6 +31,8 @@ could mean.
   engine, group and session selectors.
 - The monitoring stack in `monitoring/grafana` runs Loki 3.7.8 and indexes `fix.eid`, `fix.sg` and `fix.sn`, so a log
   query for one engine, group or session reads only that session's logs instead of scanning them all.
+- **An application can declare a session setting secret** with `FixApplicationSessionSettingDescriptor.secret(id,
+  description)`, such as a Logon password: the HTTP admin API never shows its value, whatever its name.
 
 ### Changed
 
@@ -68,6 +70,8 @@ could mean.
   or health entries; before, they overwrote each other.
 - Reading an acceptor's sessions while its settings store reloads (`getConfiguredSessionsSettings()`, the admin
   API) could fail or return a partial list. `getConfiguredSessionsSettings()` now returns a snapshot.
+- A session could fail to start with "Fix session application settings ... is missing" although its configuration
+  gave the setting, when the application described that setting only after the configuration was read.
 
 ## [0.9.0] - 2026-09-30
 

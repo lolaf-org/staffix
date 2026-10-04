@@ -35,6 +35,7 @@ class SettingsJsonTest {
             .fixApplicationSessionSetting(FixApplicationSessionSettingDescriptor.of("logon.password"), "hunter2")
             .fixApplicationSessionSetting(FixApplicationSessionSettingDescriptor.of("apiToken"), "abc")
             .fixApplicationSessionSetting(FixApplicationSessionSettingDescriptor.of("account"), "ACC-1")
+            .fixApplicationSessionSetting(FixApplicationSessionSettingDescriptor.of("logon.pin"), "1234")
             .allowedAddress(InetAddress.getLoopbackAddress())
             .build();
 
@@ -47,6 +48,15 @@ class SettingsJsonTest {
         assertThat(json.get("logInOrOutResponseTimeout").asText()).isEqualTo("PT10S");
         assertThat(json.get("allowedAddresses").get(0).asText()).isEqualTo("127.0.0.1");
         assertThat(json.at("/sessionScheduleSettings/timeZone").isTextual()).isTrue();
+    }
+
+    @Test
+    void applicationSettingsDeclaredSecretAreMaskedWhateverTheirName() {
+        FixApplicationSessionSettingDescriptor.secret("logon.pin", "The PIN the venue asks for at Logon");
+
+        JsonNode application = SettingsJson.of(SETTINGS).get("fixApplicationSessionSettings");
+
+        assertThat(application.get("logon.pin").asText()).isEqualTo(SettingsJson.MASK);
     }
 
     @Test

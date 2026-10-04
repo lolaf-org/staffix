@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -132,9 +133,18 @@ class AnnouncerTest {
         await().atMost(Duration.ofSeconds(5)).until(() -> !announcements.isEmpty());
 
         exporter.shutdown(Deadline.of(Duration.ofSeconds(1)));
-        int announced = announcements.size();
 
-        await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(1)).until(() -> announcements.size() == announced);
+        awaitNoMoreAnnouncements();
+    }
+
+    /**
+     * An announcement already sent when the engine stops may still reach the console, so the count must settle
+     * rather than equal the one taken at shutdown.
+     */
+    private void awaitNoMoreAnnouncements() {
+        AtomicInteger lastCount = new AtomicInteger(-1);
+        await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(2))
+                .until(() -> lastCount.getAndSet(announcements.size()) == announcements.size());
     }
 
     @Test
@@ -145,10 +155,9 @@ class AnnouncerTest {
             await().atMost(Duration.ofSeconds(5)).until(() -> !announcements.isEmpty());
 
             exporter.shutdown(Deadline.of(Duration.ofSeconds(1)));
-            int announced = announcements.size();
 
             assertThat(scheduler.isShutdown()).isFalse();
-            await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(1)).until(() -> announcements.size() == announced);
+            awaitNoMoreAnnouncements();
         } finally {
             scheduler.shutdownNow();
         }
