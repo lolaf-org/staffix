@@ -68,7 +68,11 @@ class Announcer {
         body.put("staffixVersion", EngineInfo.STAFFIX_VERSION);
         this.announcement = MAPPER.writeValueAsBytes(body);
         this.interval = settings.getAnnounceInterval();
-        this.client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
+        HttpClient.Builder client = HttpClient.newBuilder().connectTimeout(TIMEOUT);
+        if (settings.getAnnounceSslContext() != null) {
+            client.sslContext(settings.getAnnounceSslContext());
+        }
+        this.client = client.build();
         this.ownsScheduler = settings.getAnnounceScheduler() == null;
         this.scheduler = ownsScheduler
                 ? Executors.newSingleThreadScheduledExecutor(runnable -> {

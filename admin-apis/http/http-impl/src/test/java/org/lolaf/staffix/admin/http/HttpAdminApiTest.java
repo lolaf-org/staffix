@@ -75,6 +75,27 @@ class HttpAdminApiTest {
     }
 
     @Test
+    void servesHttpsWithAnSslContext() throws Exception {
+        HttpAdminApi https = new HttpAdminApi(HttpAdminApiSettings.builder()
+                .bindAddress("127.0.0.1")
+                .port(0)
+                .sslContext(TestTls.server())
+                .build());
+        https.export(adminApi());
+        try {
+            HttpClient trustingClient = HttpClient.newBuilder().sslContext(TestTls.trusting()).build();
+            URI openApi = URI.create("https://127.0.0.1:" + https.getAddress().getPort() + HttpAdminServer.OPENAPI_PATH);
+
+            HttpResponse<Void> response = trustingClient.send(HttpRequest.newBuilder(openApi).build(),
+                    HttpResponse.BodyHandlers.discarding());
+
+            assertThat(response.statusCode()).isEqualTo(200);
+        } finally {
+            https.shutdown(Deadline.of(Duration.ofSeconds(1)));
+        }
+    }
+
+    @Test
     void aPortInUseLeavesTheEngineRunningWithoutTheApi() throws IOException {
         try (ServerSocket taken = new ServerSocket(0, 0, InetAddress.getLoopbackAddress())) {
             HttpAdminApi clashing = new HttpAdminApi(HttpAdminApiSettings.builder()

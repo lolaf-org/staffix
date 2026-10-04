@@ -21,7 +21,7 @@ could mean.
 - `AdminApi.getAcceptorsSessions()` lists each acceptor with the sessions it accepts, the counterpart of
   `getInitiatorsTargets()`, so an administration tool can tell which acceptor a session belongs to.
 - An HTTP admin API (`staffix-admin-api-http-impl`, and `staffix-admin-api-http-spring-boot` for Spring Boot) serves
-  every session's state, settings and operations as JSON behind a bearer token (and, optionally, a read-only one
+  every session's state, settings and operations as JSON, over HTTP or HTTPS, behind a bearer token (and, optionally, a read-only one
   for monitoring tools), and announces the engine to the
   [staffix admin console](https://github.com/lolaf-org/staffix-admin), which can then monitor and operate it.
 - A generated FIX package now carries its dictionary as `staffix-dictionaries/<dictionaryId>-<version>.xml`, so the

@@ -20,6 +20,8 @@ import org.lolaf.staffix.api.admin.AdminApiExporterSettings;
 import org.lolaf.staffix.spring.boot.spi.AdminApiExporterSettingsContributor;
 import org.springframework.boot.ssl.SslBundles;
 
+import javax.net.ssl.SSLContext;
+
 import java.util.function.Consumer;
 
 /**
@@ -32,7 +34,7 @@ public class HttpAdminApiContributor implements AdminApiExporterSettingsContribu
     private final SslBundles sslBundles;
 
     /**
-     * @param sslBundles resolves {@link HttpAdminApiProps#getSslBundle()}; may be null when none is set
+     * @param sslBundles resolves the props' SSL bundles; may be null when none is set
      */
     public HttpAdminApiContributor(HttpAdminApiProps props, SslBundles sslBundles) {
         this.props = props;
@@ -44,16 +46,19 @@ public class HttpAdminApiContributor implements AdminApiExporterSettingsContribu
         sink.accept(HttpAdminApiSettings.builder()
                 .bindAddress(props.getBindAddress())
                 .port(props.getPort())
-                .sslContext(props.getSslBundle() != null
-                        ? sslBundles.getBundle(props.getSslBundle()).createSslContext()
-                        : null)
+                .sslContext(sslContext(props.getSslBundle()))
                 .apiToken(props.getApiToken())
                 .readOnlyApiToken(props.getReadOnlyApiToken())
                 .advertisedUrl(props.getAdvertisedUrl())
                 .announceUrl(props.getAnnounceUrl())
                 .announceUsername(props.getAnnounceUsername())
                 .announcePassword(props.getAnnouncePassword())
+                .announceSslContext(sslContext(props.getAnnounceSslBundle()))
                 .announceInterval(props.getAnnounceInterval())
                 .build());
+    }
+
+    private SSLContext sslContext(String bundleName) {
+        return bundleName != null ? sslBundles.getBundle(bundleName).createSslContext() : null;
     }
 }

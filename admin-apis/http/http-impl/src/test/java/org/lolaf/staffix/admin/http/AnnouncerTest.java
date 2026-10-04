@@ -18,6 +18,8 @@ package org.lolaf.staffix.admin.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,7 +57,11 @@ class AnnouncerTest {
 
     @BeforeEach
     void startConsole() throws Exception {
-        console = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        startConsole(HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0));
+    }
+
+    private void startConsole(HttpServer server) {
+        console = server;
         console.createContext(Announcer.ANNOUNCE_PATH, exchange -> {
             announcements.add(MAPPER.readTree(exchange.getRequestBody()));
             authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));
@@ -78,18 +84,24 @@ class AnnouncerTest {
     }
 
     private void export(String instanceId, ScheduledExecutorService scheduler) {
-        AdminApi adminApi = mock(AdminApi.class);
-        when(adminApi.getInstanceId()).thenReturn(instanceId);
-        exporter = new HttpAdminApi(HttpAdminApiSettings.builder()
+        export(settings().announceScheduler(scheduler), instanceId);
+    }
+
+    private HttpAdminApiSettings.HttpAdminApiSettingsBuilder<?, ?> settings() {
+        return HttpAdminApiSettings.builder()
                 .bindAddress("127.0.0.1")
                 .port(0)
                 .apiToken("alpha-token")
                 .announceUrl("http://127.0.0.1:" + console.getAddress().getPort() + "/")
                 .announceUsername("engine")
                 .announcePassword("secret")
-                .announceInterval(Duration.ofMillis(50))
-                .announceScheduler(scheduler)
-                .build());
+                .announceInterval(Duration.ofMillis(50));
+    }
+
+    private void export(HttpAdminApiSettings.HttpAdminApiSettingsBuilder<?, ?> settings, String instanceId) {
+        AdminApi adminApi = mock(AdminApi.class);
+        when(adminApi.getInstanceId()).thenReturn(instanceId);
+        exporter = new HttpAdminApi(settings.build());
         exporter.export(adminApi);
     }
 
@@ -147,5 +159,30 @@ class AnnouncerTest {
 
         await().atMost(Duration.ofSeconds(5)).until(() -> announcements.size() >= 3);
         assertThat(exporter.getAddress()).isNotNull();
+    }
+
+    @Test
+    void announcesToAnHttpsConsoleItIsToldToTrust() throws Exception {
+        console.stop(0);
+        HttpsServer httpsConsole = HttpsServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        httpsConsole.setHttpsConfigurator(new HttpsConfigurator(TestTls.server()));
+        startConsole(httpsConsole);
+        String announceUrl = "https://127.0.0.1:" + console.getAddress().getPort();
+
+        export(settings().announceUrl(announceUrl).announceSslContext(TestTls.trusting()), "alpha-engine");
+
+        await().atMost(Duration.ofSeconds(5)).until(() -> !announcements.isEmpty());
+    }
+
+    @Test
+    void anHttpsConsoleNotTrustedIsNotAnnouncedTo() throws Exception {
+        console.stop(0);
+        HttpsServer httpsConsole = HttpsServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        httpsConsole.setHttpsConfigurator(new HttpsConfigurator(TestTls.server()));
+        startConsole(httpsConsole);
+
+        export(settings().announceUrl("https://127.0.0.1:" + console.getAddress().getPort()), "alpha-engine");
+
+        await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(1)).until(announcements::isEmpty);
     }
 }

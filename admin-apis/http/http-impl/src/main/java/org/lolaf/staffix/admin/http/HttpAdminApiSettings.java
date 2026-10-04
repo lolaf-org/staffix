@@ -76,6 +76,12 @@ public class HttpAdminApiSettings extends AdminApiExporterSettings {
     private final String announcePassword;
 
     /**
+     * Trusts an HTTPS console whose certificate the JVM's default truststore does not, such as one from a private
+     * CA; null uses the JVM's default.
+     */
+    private final SSLContext announceSslContext;
+
+    /**
      * How often the engine announces itself again, so a restarted console finds it; keep it well under the
      * console's heartbeat timeout.
      */

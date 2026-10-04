@@ -75,6 +75,12 @@ public class HttpAdminApiProps {
     private String announcePassword;
 
     /**
+     * The name of a Spring Boot SSL bundle whose truststore trusts the console's HTTPS certificate; unset uses the
+     * JVM's default truststore.
+     */
+    private String announceSslBundle;
+
+    /**
      * How often the engine announces itself again; keep it well under the console's heartbeat timeout.
      */
     private Duration announceInterval = Duration.ofSeconds(30);

@@ -83,6 +83,7 @@ FixEngineBuilder.builder()
 | `advertisedUrl` | derived | where the console reaches the engine; set it behind a proxy or a NAT |
 | `announceUrl` | none | the console's URL; none serves the API without announcing the engine |
 | `announceUsername` / `announcePassword` | none | a console user with the ENGINE role, used only to announce; they grant nothing on this API |
+| `announceSslContext` | JVM default | trusts an HTTPS console whose certificate the JVM's default truststore does not, such as one from a private CA |
 | `announceInterval` | 30 s | the engine announces itself again on every interval, so a restarted console finds it |
 | `announceScheduler` | its own thread | runs the announcements; one you pass is left running at shutdown |
 
@@ -117,8 +118,8 @@ A failed announcement is logged and retried; it never stops the engine or the AP
 protocol: a `POST` of `{"engineId", "baseUrl", "token", "staffixVersion"}` to `<announceUrl>/api/engines/announce`
 with HTTP Basic credentials; another tool can receive it on that path.
 
-Serve it over HTTPS outside a test setup: the token travels in every request, and the API can send messages on your
-sessions.
+Serve it over HTTPS outside a test setup (`sslContext`), and announce to an `https` console: the token travels in
+every request and in the announcement, and the API can send messages on your sessions.
 
 ---
 
