@@ -151,15 +151,16 @@ so a typo is an error rather than a silently missing setting. The merged result 
 
 ### The JSON schema
 
-The build generates a JSON schema from the YAML model, so an editor completes and validates a session file, including
-`${...}` placeholders in fields that are not strings. It is the
-[`fix-session-settings.v1.schema.json`](../sessions-settings-stores/file/file-impl/etc/fix-session-settings.v1.schema.json)
-in the module's `etc` directory, and it can be reached in three other ways:
+The build generates a JSON schema from the session settings document, the model a session file is read into, so an
+editor completes and validates a session file, including `${...}` placeholders in fields that are not strings, and
+shows what each setting does and its default. It is the
+[`fix-session-settings.v1.schema.json`](../sessions-settings-stores/document/etc/fix-session-settings.v1.schema.json)
+in the `staffix-sessions-settings-document` module's `etc` directory, and it can be reached in three other ways:
 
 | where | how |
 |-------|-----|
-| in the jar | the resource `org/lolaf/staffix/stores/sessions/file/fix-session-settings.v1.schema.json` |
-| in the Maven repository | `staffix-sessions-settings-store-file-impl`, classifier `schema`, type `json` |
+| in the jar | the resource `org/lolaf/staffix/sessions/settings/document/fix-session-settings.v1.schema.json` of `staffix-sessions-settings-document` |
+| in the Maven repository | `staffix-sessions-settings-document`, classifier `schema`, type `json` |
 | next to your files | a store reading a directory copies it there on start |
 
 A file opts in with a comment read by editors built on the YAML language server. The path is relative to the file,

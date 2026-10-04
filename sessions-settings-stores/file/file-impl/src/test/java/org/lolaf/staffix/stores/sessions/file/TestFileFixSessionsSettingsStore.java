@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.stores.sessions.file;
 
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocument;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -122,11 +123,11 @@ class TestFileFixSessionsSettingsStore {
 
     @Test
     void defaultYamlIsMergedIntoSessionsAndNotLoadedAsSession() throws IOException {
-        YamlFixSessionSettings defaults = YamlFixSessionSettings.builder()
+        FixSessionSettingsDocument defaults = FixSessionSettingsDocument.builder()
                 .dictionaryId("fromDefault")
                 .build();
-        YamlFixSessionSettings sessionYaml = YamlFixSessionSettings.builder()
-                .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
+        FixSessionSettingsDocument sessionYaml = FixSessionSettingsDocument.builder()
+                .fixSessionId(FixSessionSettingsDocument.FixSessionId.builder()
                         .name("session1")
                         .fixVersion(FixRegularVersion.VERSION_44.toString())
                         .senderCompID("SENDER")

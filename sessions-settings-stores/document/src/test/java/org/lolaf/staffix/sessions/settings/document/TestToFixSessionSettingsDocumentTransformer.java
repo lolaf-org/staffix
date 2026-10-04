@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file;
+package org.lolaf.staffix.sessions.settings.document;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,12 +45,12 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class TestToYamlFixSessionSettingsTransformer {
+class TestToFixSessionSettingsDocumentTransformer {
 
     ObjectMapper mapper;
     StringWriter stringWriter;
-    YamlFixSessionSettings.YamlFixSessionSettingsBuilder settingsBuilder;
-    YamlFixSessionSettings.YamlFixSessionSettingsBuilder defaultSettingsBuilder;
+    FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder settingsBuilder;
+    FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder defaultSettingsBuilder;
 
     @BeforeEach
     void setup() {
@@ -62,8 +62,8 @@ class TestToYamlFixSessionSettingsTransformer {
         mapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL); // null objects are not serialized
         stringWriter = new StringWriter();
 
-        defaultSettingsBuilder = YamlFixSessionSettings.builder()
-                .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
+        defaultSettingsBuilder = FixSessionSettingsDocument.builder()
+                .fixSessionId(FixSessionSettingsDocument.FixSessionId.builder()
                         .name("default")
                         .fixVersion(FixRegularVersion.VERSION_50_SP2.toString())
                         .senderCompID("senderCompId")
@@ -71,8 +71,8 @@ class TestToYamlFixSessionSettingsTransformer {
                         .build())
                 .dictionaryId("testId");
 
-        settingsBuilder = YamlFixSessionSettings.builder()
-                .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
+        settingsBuilder = FixSessionSettingsDocument.builder()
+                .fixSessionId(FixSessionSettingsDocument.FixSessionId.builder()
                         .name("testSession1")
                         .fixVersion(FixRegularVersion.VERSION_44.toString())
                         .build());
@@ -82,7 +82,7 @@ class TestToYamlFixSessionSettingsTransformer {
      * Reads an expected yaml, substituting the {@code $expectedTz} placeholder with the machine default time zone so
      * that settings falling back on {@link TimeZone#getDefault()} compare equal whatever the machine time zone is.
      */
-    private YamlFixSessionSettings readExpected(String testName) throws IOException {
+    private FixSessionSettingsDocument readExpected(String testName) throws IOException {
         String resource = "test-yamls/" + testName + ".yaml";
         try (InputStream in = this.getClass().getClassLoader().getResourceAsStream(resource)) {
             assertThat(in).as("missing test resource %s", resource).isNotNull();
@@ -94,7 +94,7 @@ class TestToYamlFixSessionSettingsTransformer {
             }
             String yaml = buffer.toString(StandardCharsets.UTF_8)
                     .replace("$expectedTz", TimeZone.getDefault().getID());
-            return mapper.readValue(yaml, YamlFixSessionSettings.class);
+            return mapper.readValue(yaml, FixSessionSettingsDocument.class);
         }
     }
 
@@ -114,12 +114,12 @@ class TestToYamlFixSessionSettingsTransformer {
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                 .build();
 
-        YamlFixSessionSettings yamlFixSessionSettings = ToYamlFixSessionSettingsTransformer.toYamlFixSessionSettings(testFullSettings);
+        FixSessionSettingsDocument yamlFixSessionSettings = ToFixSessionSettingsDocumentTransformer.toDocument(testFullSettings);
         mapper.writeValue(stringWriter, yamlFixSessionSettings);
 
-        YamlFixSessionSettings expected = readExpected("testMinimalFixSessionSettingsWorks");
+        FixSessionSettingsDocument expected = readExpected("testMinimalFixSessionSettingsWorks");
 
-        YamlFixSessionSettings actual = mapper.readValue(stringWriter.getBuffer().toString(), YamlFixSessionSettings.class);
+        FixSessionSettingsDocument actual = mapper.readValue(stringWriter.getBuffer().toString(), FixSessionSettingsDocument.class);
 
         assertThat(actual).isEqualTo(expected);
     }
@@ -163,11 +163,11 @@ class TestToYamlFixSessionSettingsTransformer {
                         .build())
                 .build();
 
-        YamlFixSessionSettings yamlFixSessionSettings = ToYamlFixSessionSettingsTransformer.toYamlFixSessionSettings(testNonStopSettings);
+        FixSessionSettingsDocument yamlFixSessionSettings = ToFixSessionSettingsDocumentTransformer.toDocument(testNonStopSettings);
         mapper.writeValue(stringWriter, yamlFixSessionSettings);
 
-        YamlFixSessionSettings expected = readExpected("testNonStopScheduleFixSessionSettingsWorks");
-        YamlFixSessionSettings actual = mapper.readValue(stringWriter.getBuffer().toString(), YamlFixSessionSettings.class);
+        FixSessionSettingsDocument expected = readExpected("testNonStopScheduleFixSessionSettingsWorks");
+        FixSessionSettingsDocument actual = mapper.readValue(stringWriter.getBuffer().toString(), FixSessionSettingsDocument.class);
 
         assertThat(actual).isEqualTo(expected);
     }
@@ -220,12 +220,12 @@ class TestToYamlFixSessionSettingsTransformer {
                 .allowedAddress(InetAddress.getByName("127.0.0.1"))
                 .build();
 
-        YamlFixSessionSettings yamlFixSessionSettings = ToYamlFixSessionSettingsTransformer.toYamlFixSessionSettings(testFullSettings);
+        FixSessionSettingsDocument yamlFixSessionSettings = ToFixSessionSettingsDocumentTransformer.toDocument(testFullSettings);
         mapper.writeValue(stringWriter, yamlFixSessionSettings);
 
-        YamlFixSessionSettings expected = readExpected("testFullFixSessionSettingsWorks");
+        FixSessionSettingsDocument expected = readExpected("testFullFixSessionSettingsWorks");
 
-        YamlFixSessionSettings actual = mapper.readValue(stringWriter.getBuffer().toString(), YamlFixSessionSettings.class);
+        FixSessionSettingsDocument actual = mapper.readValue(stringWriter.getBuffer().toString(), FixSessionSettingsDocument.class);
 
         assertThat(actual).isEqualTo(expected);
     }
@@ -242,14 +242,14 @@ class TestToYamlFixSessionSettingsTransformer {
                 .fixSessionPluginsInstanceId(TestPlugin.class, "plugin-instance")
                 .build();
 
-        YamlFixSessionSettings yaml = ToYamlFixSessionSettingsTransformer.toYamlFixSessionSettings(settings);
+        FixSessionSettingsDocument yaml = ToFixSessionSettingsDocumentTransformer.toDocument(settings);
         mapper.writeValue(stringWriter, yaml);
-        YamlFixSessionSettings readBack = mapper.readValue(stringWriter.getBuffer().toString(), YamlFixSessionSettings.class);
+        FixSessionSettingsDocument readBack = mapper.readValue(stringWriter.getBuffer().toString(), FixSessionSettingsDocument.class);
 
         assertThat(readBack.getFixSessionPluginsInstanceIds())
                 .containsEntry(TestPlugin.class.getName(), "plugin-instance");
 
-        FixSessionSettings back = FromYamlFixSessionSettingsTransformer.toFixSessionSettings(readBack);
+        FixSessionSettings back = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(readBack);
 
         assertThat(back.getFixSessionPluginsInstanceIds()).containsEntry(TestPlugin.class, "plugin-instance");
     }
@@ -271,15 +271,15 @@ class TestToYamlFixSessionSettingsTransformer {
                 .maxMessagesResentPerRequest(0)
                 .build();
 
-        YamlFixSessionSettings yaml = ToYamlFixSessionSettingsTransformer.toYamlFixSessionSettings(settings);
+        FixSessionSettingsDocument yaml = ToFixSessionSettingsDocumentTransformer.toDocument(settings);
         mapper.writeValue(stringWriter, yaml);
-        YamlFixSessionSettings readBack = mapper.readValue(stringWriter.getBuffer().toString(), YamlFixSessionSettings.class);
+        FixSessionSettingsDocument readBack = mapper.readValue(stringWriter.getBuffer().toString(), FixSessionSettingsDocument.class);
 
         assertThat(readBack.getMaxOutOfSequenceMessagesQueued()).isZero();
         assertThat(readBack.getMaxOutgoingMessagesHeldDuringRecovery()).isEqualTo(25);
         assertThat(readBack.getMaxMessagesResentPerRequest()).isZero();
 
-        FixSessionSettings back = FromYamlFixSessionSettingsTransformer.toFixSessionSettings(readBack);
+        FixSessionSettings back = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(readBack);
 
         assertThat(back.getMaxOutOfSequenceMessagesQueued()).isZero();
         assertThat(back.getMaxOutgoingMessagesHeldDuringRecovery()).isEqualTo(25);

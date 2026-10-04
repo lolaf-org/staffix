@@ -27,7 +27,7 @@ import java.util.Map;
 
 /**
  * Replaces the placeholders in a parsed session file, before it is bound to
- * {@link YamlFixSessionSettings}.
+ * {@link FixSessionSettingsDocument}.
  *
  * <p>On the tree rather than on the bound object, so a placeholder works in a field of any type: a
  * resolved {@code "PT30S"} or {@code "8080"} is still a string when Jackson binds it, and Jackson coerces

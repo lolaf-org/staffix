@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file;
+package org.lolaf.staffix.sessions.settings.document;
 
-import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsJsonSchemaGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -56,12 +55,12 @@ class TestSchemaResource {
     }
 
     @Test
-    void storeDoesNotReferenceTheGenerator() throws IOException {
-        String constantPool = classBytesAsLatin1(FileFixSessionsSettingsStore.class);
+    void runtimeSchemaClassDoesNotReferenceTheGenerator() throws IOException {
+        String constantPool = classBytesAsLatin1(FixSessionSettingsJsonSchema.class);
 
         assertThat(constantPool)
-                .describedAs("FileFixSessionsSettingsStore.writeSchemaFile runs on startup and must not pull in the "
-                        + "schema generator")
+                .describedAs("FixSessionSettingsJsonSchema is reached at runtime, where the optional victools "
+                        + "dependency is absent; keep generator references in FixSessionSettingsJsonSchemaGenerator")
                 .doesNotContain("victools")
                 .doesNotContain("FixSessionSettingsJsonSchemaGenerator");
     }

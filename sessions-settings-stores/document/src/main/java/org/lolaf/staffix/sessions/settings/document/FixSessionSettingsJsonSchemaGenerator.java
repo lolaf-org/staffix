@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file;
+package org.lolaf.staffix.sessions.settings.document;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -45,11 +46,11 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Generates a JSON Schema (Draft 2020-12) describing the on-disk session settings file format, derived from
- * {@link YamlFixSessionSettings} together with its Jackson and Jakarta Bean Validation annotations.
+ * Generates a JSON Schema (Draft 2020-12) describing a session settings document, derived from
+ * {@link FixSessionSettingsDocument} together with its Jackson and Jakarta Bean Validation annotations.
  * <p>
  * Because the schema is generated from the model rather than maintained by hand, it cannot drift from what the loader
- * actually accepts. It is intended to be dropped next to the {@code *.yaml} session files so editors (IntelliJ, or
+ * actually accepts. The file store copies it next to its {@code *.yaml} session files so editors (IntelliJ, or
  * VS Code with the Red Hat YAML extension) can offer autocomplete, inline documentation and validation when a file
  * declares {@code # yaml-language-server: $schema=<file>}.
  * <p>
@@ -85,7 +86,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
     private static final String LOCAL_TIME_PATTERN = "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$";
 
     /**
-     * @return the JSON Schema for {@link YamlFixSessionSettings} as a pretty-printed JSON string.
+     * @return the JSON Schema for {@link FixSessionSettingsDocument} as a pretty-printed JSON string.
      * @throws NoClassDefFoundError if the {@code com.github.victools} artifacts, declared {@code optional} by this
      * module, are not on the classpath. Prefer {@link FixSessionSettingsJsonSchema#openPackagedSchema()}, which reads
      * the copy generated at build time and needs no extra dependency.
@@ -97,12 +98,12 @@ public class FixSessionSettingsJsonSchemaGenerator {
 
     /**
      * Where each described class's source sits under a source root: the API's, whose javadoc is the description, and
-     * this module's, for the fields only a file has.
+     * this module's, for the fields only a document has.
      */
     private static final List<String> DESCRIBED_SOURCES = List.of(
             "org/lolaf/staffix/api/session/FixSessionSettings.java",
             "org/lolaf/staffix/api/session/FixSessionId.java",
-            "org/lolaf/staffix/stores/sessions/file/YamlFixSessionSettings.java");
+            "org/lolaf/staffix/sessions/settings/document/FixSessionSettingsDocument.java");
 
     /**
      * @param sourceRoots the API's and this module's {@code src/main/java}, where the descriptions are read from
@@ -124,9 +125,9 @@ public class FixSessionSettingsJsonSchemaGenerator {
         configBuilder.forTypesInGeneral().withCustomDefinitionProvider(FixSessionSettingsJsonSchemaGenerator::temporalDefinition);
 
         SchemaGeneratorConfig config = configBuilder.build();
-        ObjectNode schema = (ObjectNode) new SchemaGenerator(config).generateSchema(YamlFixSessionSettings.class);
+        ObjectNode schema = (ObjectNode) new SchemaGenerator(config).generateSchema(FixSessionSettingsDocument.class);
         widenScalarsForPlaceholders(schema);
-        describe(schema, YamlFixSessionSettings.class, readJavadoc(sourceRoots), defaults());
+        describe(schema, FixSessionSettingsDocument.class, readJavadoc(sourceRoots), defaults());
         return schema.toPrettyString();
     }
 
@@ -203,9 +204,9 @@ public class FixSessionSettingsJsonSchemaGenerator {
                 .fixSessionId(FixSessionId.of("default", FixRegularVersion.VERSION_44, "sender", "target"))
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                 .build();
-        ObjectNode defaults = FileFixSessionsSettingsStore.newMapper()
+        ObjectNode defaults = FixSessionSettingsDocumentMapper.configure(new ObjectMapper())
                 .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
-                .valueToTree(ToYamlFixSessionSettingsTransformer.toYamlFixSessionSettings(unset));
+                .valueToTree(ToFixSessionSettingsDocumentTransformer.toDocument(unset));
         defaults.remove(List.of("fixSessionId", "fixSessionType"));
         defaults.with("sessionScheduleSettings").remove("timeZone");
         return defaults;
@@ -237,13 +238,13 @@ public class FixSessionSettingsJsonSchemaGenerator {
     }
 
     /**
-     * The API class's javadoc for the same field, else this module's for a field only a file has.
+     * The API class's javadoc for the same field, else this module's for a field only a document has.
      */
     private static String description(SettingsJavadoc javadoc, Class<?> type, String field) {
         String className = type.getName().substring(type.getPackage().getName().length() + 1).replace('$', '.');
-        String apiClassName = className.equals("YamlFixSessionSettings.FixSessionId")
+        String apiClassName = className.equals("FixSessionSettingsDocument.FixSessionId")
                 ? "FixSessionId"
-                : className.replaceFirst("^YamlFixSessionSettings", "FixSessionSettings");
+                : className.replaceFirst("^FixSessionSettingsDocument", "FixSessionSettings");
         String description = javadoc.describe(apiClassName, field);
         return description != null ? description : javadoc.describe(className, field);
     }
@@ -252,7 +253,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
         Type type = List.class.isAssignableFrom(field.getType()) && field.getGenericType() instanceof ParameterizedType
                 ? ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0]
                 : field.getType();
-        return type instanceof Class && ((Class<?>) type).getName().startsWith(YamlFixSessionSettings.class.getName() + "$")
+        return type instanceof Class && ((Class<?>) type).getName().startsWith(FixSessionSettingsDocument.class.getName() + "$")
                 ? (Class<?>) type : null;
     }
 
@@ -297,7 +298,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
      * The destination is passed in rather than derived, because the pom needs that same path a second time to attach
      * the schema as a standalone build artifact. To stop the two from drifting apart, the path is validated here: it
      * must be named {@link FixSessionSettingsJsonSchema#SCHEMA_FILE_NAME} and sit in this class's package, which is where
-     * {@link FixSessionSettingsJsonSchema#openPackagedSchema()} and therefore {@link FileFixSessionsSettingsStore} look for it. Renaming the
+     * {@link FixSessionSettingsJsonSchema#openPackagedSchema()} looks for it. Renaming the
      * constant without updating the pom (or the reverse) fails the build with the message below, instead of quietly
      * producing a jar whose schema cannot be found.
      *

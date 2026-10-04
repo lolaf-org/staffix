@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file;
+package org.lolaf.staffix.sessions.settings.document;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
@@ -34,29 +35,29 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class TestFromYamlFixSessionSettingsTransformer {
+class TestFromFixSessionSettingsDocumentTransformer {
 
     ObjectMapper mapper;
     StringWriter stringWriter;
-    YamlFixSessionSettings.YamlFixSessionSettingsBuilder settingsBuilder;
-    YamlFixSessionSettings.YamlFixSessionSettingsBuilder defaultSettingsBuilder;
+    FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder settingsBuilder;
+    FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder defaultSettingsBuilder;
 
     @BeforeEach
     void setup() {
-        mapper = FileFixSessionsSettingsStore.newMapper();
+        mapper = FixSessionSettingsDocumentMapper.configure(new ObjectMapper(new YAMLFactory()));
         stringWriter = new StringWriter();
 
-        defaultSettingsBuilder = YamlFixSessionSettings.builder()
-                .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
+        defaultSettingsBuilder = FixSessionSettingsDocument.builder()
+                .fixSessionId(FixSessionSettingsDocument.FixSessionId.builder()
                         .fixVersion(FixRegularVersion.VERSION_50_SP2.toString())
                         .senderCompID("senderCompId")
                         .targetCompID("targetCompId")
                         .build())
                 .dictionaryId("testId");
 
-        settingsBuilder = YamlFixSessionSettings.builder()
+        settingsBuilder = FixSessionSettingsDocument.builder()
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
-                .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
+                .fixSessionId(FixSessionSettingsDocument.FixSessionId.builder()
                         .name("testSession1")
                         .fixVersion(FixRegularVersion.VERSION_44.toString())
                         .build());
@@ -64,10 +65,10 @@ class TestFromYamlFixSessionSettingsTransformer {
 
     @Test
     void testMergingWorks() throws IOException {
-        defaultSettingsBuilder.validationSettings(YamlFixSessionSettings.ValidationSettings.builder().maxMessageSize(1024).build())
+        defaultSettingsBuilder.validationSettings(FixSessionSettingsDocument.ValidationSettings.builder().maxMessageSize(1024).build())
                 .allowedAddresses(Collections.singletonList(InetAddress.getByName("localhost")));
 
-        settingsBuilder.fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
+        settingsBuilder.fixSessionId(FixSessionSettingsDocument.FixSessionId.builder()
                 .name("test")
                 .fixVersion(FixRegularVersion.VERSION_44.toString())
                 .senderSubID("senderSubId-test")
@@ -76,8 +77,8 @@ class TestFromYamlFixSessionSettingsTransformer {
                 .targetLocationID("targetLocId")
                 .build());
 
-        FixSessionSettings d = FromYamlFixSessionSettingsTransformer.toFixSessionSettings(
-                FromYamlFixSessionSettingsTransformer.mergeWithDefault(
+        FixSessionSettings d = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(
+                FromFixSessionSettingsDocumentTransformer.mergeWithDefault(
                         roundTrip(defaultSettingsBuilder.build()), roundTrip(settingsBuilder.build())));
 
         assertThat(d.getFixSessionId())
@@ -104,8 +105,8 @@ class TestFromYamlFixSessionSettingsTransformer {
 
         settingsBuilder.fixApplicationSessionSettings(Map.of("session1Setting", "session1Value"));
 
-        FixSessionSettings d = FromYamlFixSessionSettingsTransformer.toFixSessionSettings(
-                FromYamlFixSessionSettingsTransformer.mergeWithDefault(
+        FixSessionSettings d = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(
+                FromFixSessionSettingsDocumentTransformer.mergeWithDefault(
                         roundTrip(defaultSettingsBuilder.build()), roundTrip(settingsBuilder.build())));
 
         Map<FixApplicationSessionSettingDescriptor, String> customSettings = d.getFixApplicationSessionSettings();
@@ -120,8 +121,8 @@ class TestFromYamlFixSessionSettingsTransformer {
         defaultSettingsBuilder.fixApplicationSessionSettings(Map.of("shared", "fromDefault"));
         settingsBuilder.fixApplicationSessionSettings(Map.of("shared", "fromSession"));
 
-        FixSessionSettings d = FromYamlFixSessionSettingsTransformer.toFixSessionSettings(
-                FromYamlFixSessionSettingsTransformer.mergeWithDefault(
+        FixSessionSettings d = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(
+                FromFixSessionSettingsDocumentTransformer.mergeWithDefault(
                         roundTrip(defaultSettingsBuilder.build()), roundTrip(settingsBuilder.build())));
 
         assertThat(d.getFixApplicationSessionSettings())
@@ -131,18 +132,18 @@ class TestFromYamlFixSessionSettingsTransformer {
     @Test
     void testCertificateAreParsed() throws IOException {
         settingsBuilder
-                .fixSessionId(YamlFixSessionSettings.FixSessionId.builder()
+                .fixSessionId(FixSessionSettingsDocument.FixSessionId.builder()
                         .name("test")
                         .fixVersion(FixRegularVersion.VERSION_50_SP2.toString())
                         .senderCompID("senderCompId")
                         .targetCompID("targetCompId")
                         .build())
-                .allowedCertificates(List.of(YamlFixSessionSettings.Certificate.builder()
+                .allowedCertificates(List.of(FixSessionSettingsDocument.Certificate.builder()
                         .filePath("src/test/resources/test.pem")
                         .type("X.509").build()))
                 .build();
 
-        FixSessionSettings d = FromYamlFixSessionSettingsTransformer.toFixSessionSettings(
+        FixSessionSettings d = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(
                 roundTrip(settingsBuilder.build()));
 
         Certificate cert = d.getAllowedCertificates().get(0);
@@ -151,9 +152,9 @@ class TestFromYamlFixSessionSettingsTransformer {
         assertThat(cert.toString()).contains("Subject: EMAILADDRESS=test@test.com, CN=test, OU=test, O=test, L=test, ST=test, C=CH");
     }
 
-    private YamlFixSessionSettings roundTrip(YamlFixSessionSettings settings) throws IOException {
+    private FixSessionSettingsDocument roundTrip(FixSessionSettingsDocument settings) throws IOException {
         StringWriter writer = new StringWriter();
         mapper.writeValue(writer, settings);
-        return mapper.readValue(writer.getBuffer().toString(), YamlFixSessionSettings.class);
+        return mapper.readValue(writer.getBuffer().toString(), FixSessionSettingsDocument.class);
     }
 }

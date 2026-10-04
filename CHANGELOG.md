@@ -53,6 +53,9 @@ could mean.
   Java settings and the Spring Boot properties already use, instead of `withinSessionCheckInterval`.
 - **The session settings JSON schema describes every field and gives its default**, so an editor shows what a
   setting does and what it is when left out.
+- **The session settings document has its own module, `staffix-sessions-settings-document`**: the model a session
+  file is read into, with its JSON schema, for tools that read or write session settings outside the file store.
+  The schema is published from it (classifier `schema`) rather than from `staffix-sessions-settings-store-file-impl`.
 
 ### Deprecated
 

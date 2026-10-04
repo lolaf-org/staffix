@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file;
+package org.lolaf.staffix.sessions.settings.document;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -32,16 +32,17 @@ import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
 /**
- * A session as a YAML file states it, and the model the JSON schema is generated from.
+ * A session's settings as a document, YAML in a file or JSON over HTTP, and the model the JSON schema is generated
+ * from.
  *
- * <p>Separate from {@code FixSessionSettings} on purpose: this is the shape a file may take, including the
+ * <p>Separate from {@code FixSessionSettings} on purpose: this is the shape a document may take, including the
  * placeholders and the loose forms a human writes, before any of it is resolved.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class YamlFixSessionSettings {
+public class FixSessionSettingsDocument {
 
     @Valid
     @NotNull
@@ -61,10 +62,8 @@ public class YamlFixSessionSettings {
 
     private List<InetAddress> allowedAddresses;
     /**
-     * Note: allowedCertificates are only supported on deserialization (read from disk): the source file path and type
-     * are loaded into the resulting {@link FixSessionSettings#getAllowedCertificates()}. They are NOT covered on
-     * serialization (write to disk) for the time being, because a parsed {@link java.security.cert.Certificate} cannot
-     * be reverse-mapped to its originating file path/type. A session written back out therefore loses its certificates.
+     * Read only: a parsed {@link java.security.cert.Certificate} cannot be traced back to its file, so a session
+     * written back out loses its certificates.
      */
     private List<Certificate> allowedCertificates;
     private Boolean resetSeqNumOnLogon;

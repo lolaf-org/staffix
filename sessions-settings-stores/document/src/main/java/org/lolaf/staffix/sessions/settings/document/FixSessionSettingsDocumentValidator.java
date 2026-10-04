@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file;
+package org.lolaf.staffix.sessions.settings.document;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
@@ -26,14 +26,14 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Runs Jakarta Bean Validation against a {@link YamlFixSessionSettings} loaded from (or about to be written to) disk,
+ * Runs Jakarta Bean Validation against a {@link FixSessionSettingsDocument} read, or about to be written,
  * turning constraint violations into a single, readable error instead of a value surfacing as {@code null} much later.
  * <p>
  * Hibernate Validator is configured with a {@link ParameterMessageInterpolator} so that no Expression Language (EL)
  * implementation is required on the classpath.
  */
 @UtilityClass
-public class FixSessionSettingsValidator {
+public class FixSessionSettingsDocumentValidator {
 
     // Held for the lifetime of the process: the Validator is thread-safe and cheap to reuse, and the factory must
     // outlive the Validator obtained from it.
@@ -51,8 +51,8 @@ public class FixSessionSettingsValidator {
      * @param settings the settings to validate
      * @param source   a human-readable origin (e.g. the file path) included in the error message
      */
-    public static void validate(YamlFixSessionSettings settings, String source) {
-        Set<ConstraintViolation<YamlFixSessionSettings>> violations = VALIDATOR.validate(settings);
+    public static void validate(FixSessionSettingsDocument settings, String source) {
+        Set<ConstraintViolation<FixSessionSettingsDocument>> violations = VALIDATOR.validate(settings);
         if (!violations.isEmpty()) {
             String details = violations.stream()
                     .map(v -> v.getPropertyPath() + " " + v.getMessage())

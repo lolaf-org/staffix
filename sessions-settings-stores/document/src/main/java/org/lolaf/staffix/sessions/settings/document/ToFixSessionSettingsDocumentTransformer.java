@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file;
+package org.lolaf.staffix.sessions.settings.document;
 
 import lombok.experimental.UtilityClass;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -33,7 +33,7 @@ import static java.util.stream.Collectors.toMap;
  * The reverse, for writing a session back out - what lets a session added at runtime be persisted as a file.
  */
 @UtilityClass
-public class ToYamlFixSessionSettingsTransformer {
+public class ToFixSessionSettingsDocumentTransformer {
 
     private static <T> void mergeIfNeeded(Supplier<T> source, Function<T, ?> target) {
         T value = source.get();
@@ -42,8 +42,8 @@ public class ToYamlFixSessionSettingsTransformer {
         }
     }
 
-    public static YamlFixSessionSettings toYamlFixSessionSettings(FixSessionSettings settings) {
-        YamlFixSessionSettings.YamlFixSessionSettingsBuilder builder = YamlFixSessionSettings.builder();
+    public static FixSessionSettingsDocument toDocument(FixSessionSettings settings) {
+        FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder = FixSessionSettingsDocument.builder();
         mergeFixSessionId(settings, builder);
         builder.fixSessionType(settings.getFixSessionType());
         builder.dictionaryId(settings.getDictionaryId());
@@ -66,7 +66,7 @@ public class ToYamlFixSessionSettingsTransformer {
         }
         // allowedCertificates are intentionally NOT serialized for the time being: a parsed Certificate cannot be
         // reverse-mapped to its originating file path/type (that metadata is not retained on the Certificate object).
-        // Deserialization is supported; see YamlFixSessionSettings#allowedCertificates.
+        // Deserialization is supported; see FixSessionSettingsDocument#allowedCertificates.
 
         mergeIfNeeded(settings::getResetSeqNumOnLogon, builder::resetSeqNumOnLogon);
         mergeIfNeeded(settings::getDesiredSessionState, builder::desiredSessionState);
@@ -98,8 +98,8 @@ public class ToYamlFixSessionSettingsTransformer {
         return builder.build();
     }
 
-    private static void mergeFixSessionId(FixSessionSettings settings, YamlFixSessionSettings.YamlFixSessionSettingsBuilder builder) {
-        YamlFixSessionSettings.FixSessionId.FixSessionIdBuilder yamlFixSessionId = YamlFixSessionSettings.FixSessionId.builder();
+    private static void mergeFixSessionId(FixSessionSettings settings, FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder) {
+        FixSessionSettingsDocument.FixSessionId.FixSessionIdBuilder yamlFixSessionId = FixSessionSettingsDocument.FixSessionId.builder();
         FixSessionId fixSessionId = settings.getFixSessionId();
         FixVersion fixVersion = fixSessionId.getFixVersion();
         if (fixSessionId.getFixVersion().equals(FixtVersion.FIXT_11)) {
@@ -122,9 +122,9 @@ public class ToYamlFixSessionSettingsTransformer {
         return pair != null ? pair.getValue() : null;
     }
 
-    private static void mergeHeartbeatInterval(FixSessionSettings settings, YamlFixSessionSettings.YamlFixSessionSettingsBuilder builder) {
+    private static void mergeHeartbeatInterval(FixSessionSettings settings, FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder) {
         if (settings.getHeartBeatInterval() != null) {
-            YamlFixSessionSettings.HeartbeatInterval.HeartbeatIntervalBuilder hbb = YamlFixSessionSettings.HeartbeatInterval.builder();
+            FixSessionSettingsDocument.HeartbeatInterval.HeartbeatIntervalBuilder hbb = FixSessionSettingsDocument.HeartbeatInterval.builder();
             FixSessionSettings.HeartbeatInterval hbi = settings.getHeartBeatInterval();
             mergeIfNeeded(hbi::getInitiatorInterval, hbb::initiatorInterval);
             mergeIfNeeded(hbi::getAcceptorLowerBoundInterval, hbb::acceptorLowerBoundInterval);
@@ -133,9 +133,9 @@ public class ToYamlFixSessionSettingsTransformer {
         }
     }
 
-    private static void mergeValidationSettings(FixSessionSettings settings, YamlFixSessionSettings.YamlFixSessionSettingsBuilder builder) {
+    private static void mergeValidationSettings(FixSessionSettings settings, FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder) {
         if (settings.getValidationSettings() != null) {
-            YamlFixSessionSettings.ValidationSettings.ValidationSettingsBuilder vsb = YamlFixSessionSettings.ValidationSettings.builder();
+            FixSessionSettingsDocument.ValidationSettings.ValidationSettingsBuilder vsb = FixSessionSettingsDocument.ValidationSettings.builder();
             FixSessionSettings.ValidationSettings vs = settings.getValidationSettings();
             mergeIfNeeded(vs::isValidateChecksum, vsb::validateChecksum);
             mergeIfNeeded(vs::isValidateFieldsHaveValues, vsb::validateFieldsHaveValues);
@@ -162,9 +162,9 @@ public class ToYamlFixSessionSettingsTransformer {
         }
     }
 
-    private static void mergeCancelOnDisconnectSettings(FixSessionSettings settings, YamlFixSessionSettings.YamlFixSessionSettingsBuilder builder) {
+    private static void mergeCancelOnDisconnectSettings(FixSessionSettings settings, FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder) {
         if (settings.getCancelOnDisconnectSettings() != null) {
-            YamlFixSessionSettings.CancelOnDisconnectSettings.CancelOnDisconnectSettingsBuilder codBuilder = YamlFixSessionSettings.CancelOnDisconnectSettings.builder();
+            FixSessionSettingsDocument.CancelOnDisconnectSettings.CancelOnDisconnectSettingsBuilder codBuilder = FixSessionSettingsDocument.CancelOnDisconnectSettings.builder();
             FixSessionSettings.CancelOnDisconnectSettings cod = settings.getCancelOnDisconnectSettings();
             mergeIfNeeded(cod::isEnabled, codBuilder::enabled);
             mergeIfNeeded(cod::getCancelOnDisconnectType, codBuilder::cancelOnDisconnectType);
@@ -177,9 +177,9 @@ public class ToYamlFixSessionSettingsTransformer {
         }
     }
 
-    private static void mergeRttMeasurementSettings(FixSessionSettings settings, YamlFixSessionSettings.YamlFixSessionSettingsBuilder builder) {
+    private static void mergeRttMeasurementSettings(FixSessionSettings settings, FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder) {
         if (settings.getRttMeasurementSettings() != null) {
-            YamlFixSessionSettings.RttMeasurementSettings.RttMeasurementSettingsBuilder rb = YamlFixSessionSettings.RttMeasurementSettings.builder();
+            FixSessionSettingsDocument.RttMeasurementSettings.RttMeasurementSettingsBuilder rb = FixSessionSettingsDocument.RttMeasurementSettings.builder();
             FixSessionSettings.RttMeasurementSettings rtt = settings.getRttMeasurementSettings();
             mergeIfNeeded(rtt::getProbeInterval, rb::probeInterval);
             mergeIfNeeded(rtt::getEmaTimeWindow, rb::emaTimeWindow);
@@ -190,16 +190,16 @@ public class ToYamlFixSessionSettingsTransformer {
         }
     }
 
-    private static void mergeSessionScheduleSettings(FixSessionSettings settings, YamlFixSessionSettings.YamlFixSessionSettingsBuilder builder) {
+    private static void mergeSessionScheduleSettings(FixSessionSettings settings, FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder) {
         if (settings.getSessionScheduleSettings() != null) {
-            YamlFixSessionSettings.SessionScheduleSettings.SessionScheduleSettingsBuilder ssb = YamlFixSessionSettings.SessionScheduleSettings.builder();
+            FixSessionSettingsDocument.SessionScheduleSettings.SessionScheduleSettingsBuilder ssb = FixSessionSettingsDocument.SessionScheduleSettings.builder();
             FixSessionSettings.SessionScheduleSettings sss = settings.getSessionScheduleSettings();
             mergeIfNeeded(sss::getOutsideSessionTimePreTriggerDelay, ssb::outsideSessionTimePreTriggerDelay);
             mergeIfNeeded(sss::getTimeZone, ssb::timeZone);
             mergeIfNeeded(sss::getWithinSessionTimeCheckInterval, ssb::withinSessionTimeCheckInterval);
             if (sss.getSessionSchedules() != null) {
                 sss.getSessionSchedules().forEach(entry -> {
-                    YamlFixSessionSettings.SessionScheduleSettings.ScheduleEntry yamlEntry = YamlFixSessionSettings.SessionScheduleSettings.ScheduleEntry.builder()
+                    FixSessionSettingsDocument.SessionScheduleSettings.ScheduleEntry yamlEntry = FixSessionSettingsDocument.SessionScheduleSettings.ScheduleEntry.builder()
                             .startDay(entry.getStartDay())
                             .endDay(entry.getEndDay())
                             .startTime(entry.getStartTime())
@@ -210,7 +210,7 @@ public class ToYamlFixSessionSettingsTransformer {
             }
             if (sss.getNonStopSchedules() != null) {
                 sss.getNonStopSchedules().forEach(nonStop -> ssb.nonStopSchedule(
-                        YamlFixSessionSettings.SessionScheduleSettings.NonStopScheduleEntry.builder()
+                        FixSessionSettingsDocument.SessionScheduleSettings.NonStopScheduleEntry.builder()
                                 .dayOfWeek(nonStop.getDayOfWeek())
                                 .sequenceResetTime(nonStop.getSequenceResetTime())
                                 .initiatesReset(nonStop.getInitiatesReset())
