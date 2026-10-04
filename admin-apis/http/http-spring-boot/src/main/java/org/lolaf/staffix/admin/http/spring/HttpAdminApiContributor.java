@@ -50,11 +50,13 @@ public class HttpAdminApiContributor implements AdminApiExporterSettingsContribu
                 .apiToken(props.getApiToken())
                 .readOnlyApiToken(props.getReadOnlyApiToken())
                 .advertisedUrl(props.getAdvertisedUrl())
-                .announceUrl(props.getAnnounceUrl())
-                .announceUsername(props.getAnnounceUsername())
-                .announcePassword(props.getAnnouncePassword())
-                .announceSslContext(sslContext(props.getAnnounceSslBundle()))
-                .announceInterval(props.getAnnounceInterval())
+                .announcement(props.getAnnounceUrl() == null ? null : HttpAdminApiSettings.AnnouncementSettings.builder()
+                        .url(props.getAnnounceUrl())
+                        .username(props.getAnnounceUsername())
+                        .password(props.getAnnouncePassword())
+                        .sslContext(sslContext(props.getAnnounceSslBundle()))
+                        .interval(props.getAnnounceInterval())
+                        .build())
                 .build());
     }
 

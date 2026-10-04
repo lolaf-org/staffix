@@ -84,24 +84,26 @@ class AnnouncerTest {
     }
 
     private void export(String instanceId, ScheduledExecutorService scheduler) {
-        export(settings().announceScheduler(scheduler), instanceId);
+        export(announcement().scheduler(scheduler), instanceId);
     }
 
-    private HttpAdminApiSettings.HttpAdminApiSettingsBuilder<?, ?> settings() {
-        return HttpAdminApiSettings.builder()
+    private HttpAdminApiSettings.AnnouncementSettings.AnnouncementSettingsBuilder announcement() {
+        return HttpAdminApiSettings.AnnouncementSettings.builder()
+                .url("http://127.0.0.1:" + console.getAddress().getPort() + "/")
+                .username("engine")
+                .password("secret")
+                .interval(Duration.ofMillis(50));
+    }
+
+    private void export(HttpAdminApiSettings.AnnouncementSettings.AnnouncementSettingsBuilder announcement, String instanceId) {
+        AdminApi adminApi = mock(AdminApi.class);
+        when(adminApi.getInstanceId()).thenReturn(instanceId);
+        exporter = new HttpAdminApi(HttpAdminApiSettings.builder()
                 .bindAddress("127.0.0.1")
                 .port(0)
                 .apiToken("alpha-token")
-                .announceUrl("http://127.0.0.1:" + console.getAddress().getPort() + "/")
-                .announceUsername("engine")
-                .announcePassword("secret")
-                .announceInterval(Duration.ofMillis(50));
-    }
-
-    private void export(HttpAdminApiSettings.HttpAdminApiSettingsBuilder<?, ?> settings, String instanceId) {
-        AdminApi adminApi = mock(AdminApi.class);
-        when(adminApi.getInstanceId()).thenReturn(instanceId);
-        exporter = new HttpAdminApi(settings.build());
+                .announcement(announcement.build())
+                .build());
         exporter.export(adminApi);
     }
 
@@ -169,7 +171,7 @@ class AnnouncerTest {
         startConsole(httpsConsole);
         String announceUrl = "https://127.0.0.1:" + console.getAddress().getPort();
 
-        export(settings().announceUrl(announceUrl).announceSslContext(TestTls.trusting()), "alpha-engine");
+        export(announcement().url(announceUrl).sslContext(TestTls.trusting()), "alpha-engine");
 
         await().atMost(Duration.ofSeconds(5)).until(() -> !announcements.isEmpty());
     }
@@ -181,7 +183,7 @@ class AnnouncerTest {
         httpsConsole.setHttpsConfigurator(new HttpsConfigurator(TestTls.server()));
         startConsole(httpsConsole);
 
-        export(settings().announceUrl("https://127.0.0.1:" + console.getAddress().getPort()), "alpha-engine");
+        export(announcement().url("https://127.0.0.1:" + console.getAddress().getPort()), "alpha-engine");
 
         await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(1)).until(announcements::isEmpty);
     }

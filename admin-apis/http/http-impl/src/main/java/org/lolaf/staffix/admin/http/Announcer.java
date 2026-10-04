@@ -56,31 +56,35 @@ class Announcer {
     private boolean announced;
     private boolean failing;
 
-    Announcer(HttpAdminApiSettings settings, String instanceId, URI baseUrl, String apiToken) throws IOException {
+    Announcer(HttpAdminApiSettings.AnnouncementSettings settings, String instanceId, URI baseUrl, String apiToken) throws IOException {
         this.instanceId = instanceId;
-        this.announceUri = URI.create(settings.getAnnounceUrl().replaceAll("/+$", "") + ANNOUNCE_PATH);
-        this.authorization = settings.getAnnounceUsername() == null ? null : "Basic " + Base64.getEncoder().encodeToString(
-                (settings.getAnnounceUsername() + ":" + settings.getAnnouncePassword()).getBytes(StandardCharsets.UTF_8));
+        this.announceUri = URI.create(settings.getUrl().replaceAll("/+$", "") + ANNOUNCE_PATH);
+        if (!"https".equalsIgnoreCase(announceUri.getScheme())) {
+            log.warn("Instance {} announces to {} without TLS: its API token and the console password travel in clear",
+                    instanceId, announceUri);
+        }
+        this.authorization = settings.getUsername() == null ? null : "Basic " + Base64.getEncoder().encodeToString(
+                (settings.getUsername() + ":" + settings.getPassword()).getBytes(StandardCharsets.UTF_8));
         Map<String, String> body = new LinkedHashMap<>();
         body.put("engineId", instanceId);
         body.put("baseUrl", baseUrl.toString());
         body.put("token", apiToken);
         body.put("staffixVersion", EngineInfo.STAFFIX_VERSION);
         this.announcement = MAPPER.writeValueAsBytes(body);
-        this.interval = settings.getAnnounceInterval();
+        this.interval = settings.getInterval();
         HttpClient.Builder client = HttpClient.newBuilder().connectTimeout(TIMEOUT);
-        if (settings.getAnnounceSslContext() != null) {
-            client.sslContext(settings.getAnnounceSslContext());
+        if (settings.getSslContext() != null) {
+            client.sslContext(settings.getSslContext());
         }
         this.client = client.build();
-        this.ownsScheduler = settings.getAnnounceScheduler() == null;
+        this.ownsScheduler = settings.getScheduler() == null;
         this.scheduler = ownsScheduler
                 ? Executors.newSingleThreadScheduledExecutor(runnable -> {
                     Thread thread = new Thread(runnable, "staffix-admin-announce-" + instanceId);
                     thread.setDaemon(true);
                     return thread;
                 })
-                : settings.getAnnounceScheduler();
+                : settings.getScheduler();
     }
 
     synchronized void start() {

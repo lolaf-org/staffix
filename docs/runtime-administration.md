@@ -66,9 +66,11 @@ drives them. Nothing has to be configured on the console side: the engine tells 
 FixEngineBuilder.builder()
         .adminApiExporter(HttpAdminApiSettings.builder()
                 .port(8686)
-                .announceUrl("https://staffix-admin.example.com")
-                .announceUsername("engine")
-                .announcePassword(System.getenv("STAFFIX_ADMIN_ENGINE_PASSWORD"))
+                .announcement(HttpAdminApiSettings.AnnouncementSettings.builder()
+                        .url("https://staffix-admin.example.com")
+                        .username("engine")
+                        .password(System.getenv("STAFFIX_ADMIN_ENGINE_PASSWORD"))
+                        .build())
                 .build())
         // …
 ```
@@ -81,11 +83,15 @@ FixEngineBuilder.builder()
 | `apiToken` | random | the bearer token every request must carry; random means only the console it is announced to knows it |
 | `readOnlyApiToken` | none | a second token allowed `GET` requests only, for monitoring tools that must not operate sessions |
 | `advertisedUrl` | derived | where the console reaches the engine; set it behind a proxy or a NAT |
-| `announceUrl` | none | the console's URL; none serves the API without announcing the engine |
-| `announceUsername` / `announcePassword` | none | a console user with the ENGINE role, used only to announce; they grant nothing on this API |
-| `announceSslContext` | JVM default | trusts an HTTPS console whose certificate the JVM's default truststore does not, such as one from a private CA |
-| `announceInterval` | 30 s | the engine announces itself again on every interval, so a restarted console finds it |
-| `announceScheduler` | its own thread | runs the announcements; one you pass is left running at shutdown |
+| `announcement` | none | the console to announce the engine to, below; none serves the API without announcing it |
+
+| `AnnouncementSettings` | default | |
+|---------|---------|---|
+| `url` | required | the console's URL |
+| `username` / `password` | none | a console user with the ENGINE role, used only to announce; they grant nothing on this API |
+| `sslContext` | JVM default | trusts an HTTPS console whose certificate the JVM's default truststore does not, such as one from a private CA |
+| `interval` | 30 s | the engine announces itself again on every interval, so a restarted console finds it |
+| `scheduler` | its own thread | runs the announcements; one you pass is left running at shutdown |
 
 Each engine is served under `/engines/{instanceId}/`, so several engines of one JVM can share a port, each with its
 own token. `GET /engines/{instanceId}/` gives the engine's id, its staffix version and the API versions it serves;
@@ -115,11 +121,12 @@ anything but a `GET`.
 An error answers with its status and an `application/problem+json` body, `{"status": 409, "detail": "..."}`.
 The API is described by an OpenAPI 3.1 document at `GET /openapi.yaml`, served without a token.
 A failed announcement is logged and retried; it never stops the engine or the API. The announcement is the console's
-protocol: a `POST` of `{"engineId", "baseUrl", "token", "staffixVersion"}` to `<announceUrl>/api/engines/announce`
+protocol: a `POST` of `{"engineId", "baseUrl", "token", "staffixVersion"}` to `<url>/api/engines/announce`
 with HTTP Basic credentials; another tool can receive it on that path.
 
 Serve it over HTTPS outside a test setup (`sslContext`), and announce to an `https` console: the token travels in
-every request and in the announcement, and the API can send messages on your sessions.
+every request and in the announcement, and the API can send messages on your sessions. An engine announcing to a
+plain `http` console logs a warning at start.
 
 ---
 

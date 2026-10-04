@@ -62,18 +62,18 @@ public class HttpAdminApi implements AdminApiExporter {
             releaseServer();
             return;
         }
-        if (settings.getAnnounceUrl() != null) {
+        if (settings.getAnnouncement() != null) {
             startAnnouncing(instanceId);
         }
     }
 
     private void startAnnouncing(String instanceId) {
         try {
-            announcer = new Announcer(settings, instanceId, baseUrl(instanceId), apiToken);
+            announcer = new Announcer(settings.getAnnouncement(), instanceId, baseUrl(instanceId), apiToken);
             announcer.start();
         } catch (Exception e) {
             log.error("Failed to announce instance {} to {}; its admin API is served but the console will not know it",
-                    instanceId, settings.getAnnounceUrl(), e);
+                    instanceId, settings.getAnnouncement().getUrl(), e);
         }
     }
 
