@@ -235,8 +235,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                         throw new IllegalStateException("Backup FIX session " + backup.getFixSessionId()
                                 + " is already a target of initiator '" + initiator.getKey() + "'");
                     });
-            if (acceptors.values().stream().anyMatch(acceptor -> acceptor.getManagedFixSessionsSettings().stream()
-                    .anyMatch(settings -> settings.getFixSessionId().equals(backup.getFixSessionId())))) {
+            if (acceptors.values().stream().anyMatch(acceptor -> acceptor.managesFixSession(backup.getFixSessionId()))) {
                 throw new IllegalStateException("Backup FIX session " + backup.getFixSessionId() + " is already managed by an acceptor");
             }
         }
@@ -420,8 +419,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     private FixSessionAdminControl findControl(FixSessionId fixSessionId) {
         return sessionAdminControls()
-                .filter(c -> c.getManagedFixSessionsSettings().stream()
-                        .anyMatch(s -> s.getFixSessionId().equals(fixSessionId)))
+                .filter(c -> c.managesFixSession(fixSessionId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("No initiator or acceptor manages session " + fixSessionId));
     }

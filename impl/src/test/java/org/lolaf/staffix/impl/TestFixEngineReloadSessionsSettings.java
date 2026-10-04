@@ -18,6 +18,7 @@ package org.lolaf.staffix.impl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.InstanceProvider;
@@ -31,8 +32,10 @@ import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySe
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
+import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -148,6 +151,28 @@ class TestFixEngineReloadSessionsSettings {
         assertThatThrownBy(() -> adminApi().reloadFixSessionsSettingsStore("does-not-exist"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("does-not-exist");
+    }
+
+    @Test
+    void adminCallsReachOnlyTheSessionsAnAcceptorManagesNow() {
+        FixSessionSettings a = session("SENDER_A", "TARGET_A");
+        FixSessionSettings b = session("SENDER_B", "TARGET_B");
+        store.add(a);
+        adminApi();
+        fixEngine.newAcceptor(FixAcceptorBuilder.builder()
+                .instanceId("acceptor")
+                .bindAddress(new InetSocketAddress("localhost", 0))
+                .targetFixSessionsSettingsStoreInstancesIds(List.of(STORE_ID))
+                .build()).start();
+
+        store.setSource(b);
+        adminApi().reloadFixSessionsSettingsStore(STORE_ID);
+
+        assertThat(adminApi().getIncomingSeqNum(b.getFixSessionId())).as("added after start").isPositive();
+        assertThatThrownBy(() -> adminApi().getIncomingSeqNum(a.getFixSessionId()))
+                .as("removed")
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("No initiator or acceptor manages session");
     }
 
     /**

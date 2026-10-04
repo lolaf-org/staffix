@@ -429,7 +429,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     // AdminApi implementation
 
     private void validateSessionId(FixSessionId fixSessionId) {
-        if (!fixSessionSettings.getFixSessionId().equals(fixSessionId)) {
+        if (!managesFixSession(fixSessionId)) {
             throw new IllegalArgumentException("Unknown session ID: " + fixSessionId
                     + ", managed session is: " + fixSessionSettings.getFixSessionId());
         }
@@ -486,6 +486,11 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     @Override
     public List<FixSessionSettings> getManagedFixSessionsSettings() {
         return List.of(fixSessionSettings);
+    }
+
+    @Override
+    public boolean managesFixSession(FixSessionId fixSessionId) {
+        return fixSessionSettings.getFixSessionId().equals(fixSessionId);
     }
 
     @Override

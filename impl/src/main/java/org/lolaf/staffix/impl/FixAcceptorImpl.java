@@ -491,6 +491,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         }
     }
 
+    @Override
+    public boolean managesFixSession(FixSessionId fixSessionId) {
+        return configuredSessions.containsKey(fixSessionId);
+    }
+
     FixAcceptorSessions getFixAcceptorSessions() {
         return FixAcceptorSessions.builder()
                 .instanceId(fixAcceptorBuilder.getInstanceId())

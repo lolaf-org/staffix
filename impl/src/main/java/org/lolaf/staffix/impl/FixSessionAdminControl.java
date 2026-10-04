@@ -47,6 +47,12 @@ interface FixSessionAdminControl {
 
     List<FixSessionSettings> getManagedFixSessionsSettings();
 
+    /**
+     * Same answer as searching {@link #getManagedFixSessionsSettings()}, without copying them: the engine routes every
+     * admin call through it, and {@code status} makes two per session.
+     */
+    boolean managesFixSession(FixSessionId fixSessionId);
+
     List<FixSession> getManagedFixSessions();
 
     /**
