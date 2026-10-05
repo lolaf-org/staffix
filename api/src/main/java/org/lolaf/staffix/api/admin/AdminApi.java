@@ -137,6 +137,30 @@ public interface AdminApi extends InstanceIdSupplier {
     void sendFixMessage(FixSessionId fixSessionId, String fixMessage, char separator, boolean possDupFlag);
 
     /**
+     * Sends each message in turn, as {@link #sendFixMessage(FixSessionId, String, char, boolean)} does. Stops at the
+     * first message refused, those before it having gone out; when there are several, the exception's message starts
+     * with the refused one's position, e.g. "Message 2 of 3: ".
+     *
+     * @throws IllegalArgumentException as {@link #sendFixMessage(FixSessionId, String, char, boolean)}
+     * @throws IllegalStateException    as {@link #sendFixMessage(FixSessionId, String, char, boolean)}
+     */
+    default void sendFixMessages(FixSessionId fixSessionId, List<String> fixMessages, char separator, boolean possDupFlag) {
+        for (int i = 0; i < fixMessages.size(); i++) {
+            try {
+                sendFixMessage(fixSessionId, fixMessages.get(i), separator, possDupFlag);
+            } catch (IllegalArgumentException e) {
+                throw fixMessages.size() == 1 ? e : new IllegalArgumentException(position(i, fixMessages) + e.getMessage(), e);
+            } catch (IllegalStateException e) {
+                throw fixMessages.size() == 1 ? e : new IllegalStateException(position(i, fixMessages) + e.getMessage(), e);
+            }
+        }
+    }
+
+    private static String position(int index, List<String> fixMessages) {
+        return "Message " + (index + 1) + " of " + fixMessages.size() + ": ";
+    }
+
+    /**
      * Returns the settings of every session currently managed by the engine's initiators and acceptors.
      *
      * @return the managed sessions' settings; empty if no session is managed
@@ -303,13 +327,6 @@ public interface AdminApi extends InstanceIdSupplier {
          * {@link #RESET_SEQUENCE_IN_SESSION} is the equivalent that keeps the connection and works from either end.
          */
         LOGOUT_LOGON_RESET_NUM_FLAG,
-        /**
-         * The misspelt name {@link #LOGOUT_LOGON_RESET_NUM_FLAG} was released under; behaves exactly like it.
-         *
-         * @deprecated use {@link #LOGOUT_LOGON_RESET_NUM_FLAG}
-         */
-        @Deprecated
-        LOGOUT_LOGON_REST_NUM_FLAG,
         /**
          * Puts this session's incoming and outgoing sequence numbers back to 1 and tells nobody: nothing goes on the
          * wire, and the peer carries on counting from where it was.

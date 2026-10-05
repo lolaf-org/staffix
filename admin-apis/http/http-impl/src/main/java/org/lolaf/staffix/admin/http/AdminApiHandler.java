@@ -176,9 +176,12 @@ class AdminApiHandler implements HttpHandler {
                         setSeqNums(fixSessionId, MAPPER.readValue(exchange.getRequestBody(), SeqNumsRequest.class))),
                 sessionOperation("POST", "messages", (fixSessionId, exchange) -> {
                     SendMessageRequest send = MAPPER.readValue(exchange.getRequestBody(), SendMessageRequest.class);
-                    // the message itself is not logged: it may carry a Password(554) or a client's data
-                    log.info("Admin API: send a message of {} characters to {}", send.getMessage().length(), fixSessionId.getQualifiedName());
-                    adminApi.sendFixMessage(fixSessionId, send.getMessage(), send.getSeparator(), send.isPossDup());
+                    if (send.getMessages().isEmpty()) {
+                        throw new HttpProblemException(400, "No message to send");
+                    }
+                    // the messages themselves are not logged: they may carry a Password(554) or a client's data
+                    log.info("Admin API: send {} message(s) to {}", send.getMessages().size(), fixSessionId.getQualifiedName());
+                    adminApi.sendFixMessages(fixSessionId, send.getMessages(), send.getSeparator(), send.isPossDup());
                 }),
                 new Route("POST", "v1/sessions/{group}/{name}/activate", (exchange, path) -> {
                     ActivateRequest activate = MAPPER.readValue(exchange.getRequestBody(), ActivateRequest.class);

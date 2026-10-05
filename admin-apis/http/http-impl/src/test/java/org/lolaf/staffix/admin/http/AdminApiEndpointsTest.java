@@ -42,8 +42,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyChar;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -172,7 +172,7 @@ class AdminApiEndpointsTest {
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/reset", "{\"mode\":\"RESET_SEQUENCE\"}").statusCode()).isEqualTo(204);
         assertThat(call("PUT", "/engines/alpha-engine/v1/sessions/alpha/trading/seqnums", "{\"outgoing\":42}").statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/messages",
-                "{\"message\":\"35=B|148=hello|\",\"separator\":\"|\",\"possDup\":true}").statusCode()).isEqualTo(204);
+                "{\"messages\":[\"35=B|148=hello|\",\"35=B|148=again|\"],\"separator\":\"|\",\"possDup\":true}").statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/activate", "{\"config\":\"trading-drp\"}").statusCode()).isEqualTo(204);
 
         verify(adminApi).logonSession(TRADING);
@@ -180,7 +180,7 @@ class AdminApiEndpointsTest {
         verify(adminApi).resetSession(TRADING, ResetFixSessionMode.RESET_SEQUENCE);
         verify(adminApi).setOutgoingSeqNum(TRADING, 42);
         verify(adminApi, never()).setIncomingSeqNum(any(), anyLong());
-        verify(adminApi).sendFixMessage(TRADING, "35=B|148=hello|", '|', true);
+        verify(adminApi).sendFixMessages(TRADING, List.of("35=B|148=hello|", "35=B|148=again|"), '|', true);
         verify(adminApi).switchInitiatorSession(TRADING_DRP);
     }
 
@@ -219,11 +219,11 @@ class AdminApiEndpointsTest {
     }
 
     @Test
-    void theResetModeIsAlsoAcceptedUnderItsFirstMisspeltName() throws Exception {
+    void theResetModeIsNoLongerAcceptedUnderItsFirstMisspeltName() throws Exception {
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/reset", "{\"mode\":\"LOGOUT_LOGON_RESET_NUM_FLAG\"}").statusCode())
                 .isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/reset", "{\"mode\":\"LOGOUT_LOGON_REST_NUM_FLAG\"}").statusCode())
-                .isEqualTo(204);
+                .isEqualTo(400);
     }
 
     @Test
@@ -297,13 +297,15 @@ class AdminApiEndpointsTest {
     @Test
     void errorsAreProblemDetails() throws Exception {
         doThrow(new IllegalStateException("trading is not logged in"))
-                .when(adminApi).sendFixMessage(any(), anyString(), anyChar(), anyBoolean());
+                .when(adminApi).sendFixMessages(any(), anyList(), anyChar(), anyBoolean());
 
         HttpResponse<String> refused = call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/messages",
-                "{\"message\":\"35=B|\",\"separator\":\"|\"}");
+                "{\"messages\":[\"35=B|\"],\"separator\":\"|\"}");
         assertThat(refused.statusCode()).isEqualTo(409);
         assertThat(refused.headers().firstValue("Content-Type")).hasValue("application/problem+json");
         assertThat(refused.body()).isEqualTo("{\"status\":409,\"detail\":\"trading is not logged in\"}");
+        assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/messages", "{\"messages\":[],\"separator\":\"|\"}").body())
+                .isEqualTo("{\"status\":400,\"detail\":\"No message to send\"}");
 
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/beta/trading/logon", null).statusCode()).isEqualTo(404);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading-drp/logon", null).statusCode()).isEqualTo(404);

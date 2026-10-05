@@ -85,7 +85,7 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
             throw new IllegalStateException("Cannot send a FIX message on FIX session " + fixSessionId
                     + ": it is not logged in");
         }
-        DecodedFixMessage bodyFields = adminFixMessageTransformer().transform(fixMessage, separator, possDupFlag);
+        DecodedFixMessage bodyFields = adminFixMessageTransformer().transform(fixMessage.trim(), separator, possDupFlag);
         GenericFixMessageEncoder encoder = new GenericFixMessageEncoder(bodyFields.getMessageType()).begin();
         bodyFields.foreach((field, value) -> encoder.addField(field, value, ByteArraySerde.instance()));
         fixSession.logEvent("Admin API send %s", bodyFields.getMessageType().code());
@@ -160,19 +160,19 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
      * sent - and a Logout arriving as MsgSeqNum(34)=1 is answered by the peer with a "MsgSeqNum too low" Logout of
      * its own, which is the opposite of a clean cycle.
      */
-    @SuppressWarnings("deprecation")
     private void applyResetSequence(AdminApi.ResetFixSessionMode resetFixSessionMode) {
         switch (resetFixSessionMode) {
             case RESET_SEQUENCE:
                 fixSession.resetSequence("Admin API reset sequence");
                 break;
             case LOGOUT_LOGON_RESET_NUM_FLAG:
-            case LOGOUT_LOGON_REST_NUM_FLAG:
                 cycleSessionWithSequenceReset();
                 break;
             case RESET_SEQUENCE_IN_SESSION:
                 fixSession.sendInSessionSequenceReset();
                 break;
+            default:
+                throw new IllegalStateException("not implemented");
         }
     }
 

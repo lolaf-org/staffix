@@ -17,20 +17,24 @@ package org.lolaf.staffix.admin.http;
 
 import lombok.Builder;
 import lombok.NonNull;
+import lombok.Singular;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
+import java.util.List;
+
 /**
- * Body of {@code POST .../messages}.
+ * Body of {@code POST .../messages}: messages sent in order, the separator and possDup applying to each.
  */
 @Value
 @Builder
 @Jacksonized
 public class SendMessageRequest {
     @NonNull
-    String message;
+    @Singular
+    List<String> messages;
     /**
-     * The field separator used in {@link #getMessage()}, such as SOH or {@code |}.
+     * The field separator used in {@link #getMessages()}, such as SOH or {@code |}.
      */
     char separator;
     boolean possDup;

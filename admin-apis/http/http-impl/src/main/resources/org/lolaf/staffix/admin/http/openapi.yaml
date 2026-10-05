@@ -382,8 +382,10 @@ paths:
           $ref: '#/components/responses/Conflict'
   /v1/sessions/{group}/{name}/messages:
     post:
-      summary: Sends a FIX message on the session
-      operationId: sendMessage
+      summary: Sends FIX messages on the session, in order
+      description: Stops at the first message the engine refuses, those before it having been sent; when several were
+        asked, the problem's detail starts with the refused one's position, e.g. "Message 2 of 3".
+      operationId: sendMessages
       parameters:
         - $ref: '#/components/parameters/group'
         - $ref: '#/components/parameters/name'
@@ -705,7 +707,6 @@ components:
         mode:
           type: string
           enum: [LOGOUT_LOGON_RESET_NUM_FLAG, RESET_SEQUENCE, RESET_SEQUENCE_IN_SESSION]
-          description: LOGOUT_LOGON_REST_NUM_FLAG, the name it was first released under, is still accepted.
     SeqNumsRequest:
       type: object
       description: Either may be left out.
@@ -725,16 +726,19 @@ components:
           description: The config to switch to, the session's main one or a backup.
     SendMessageRequest:
       type: object
-      required: [message, separator]
+      required: [messages, separator]
       properties:
-        message:
-          type: string
-          example: 35=B|148=hello|
+        messages:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          example: [35=B|148=hello|]
         separator:
           type: string
           minLength: 1
           maxLength: 1
-          description: The field separator used in message, such as SOH or |.
+          description: The field separator used in the messages, such as SOH or |.
         possDup:
           type: boolean
           default: false

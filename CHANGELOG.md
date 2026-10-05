@@ -42,6 +42,8 @@ could mean.
   declares. An update may change the session's CompIDs; a name already used in the engine is refused.
 - **An application can declare a session setting secret** with `FixApplicationSessionSettingDescriptor.secret(id,
   description)`, such as a Logon password: the HTTP admin API never shows its value, whatever its name.
+- **`AdminApi.sendFixMessages` sends several messages in order** on a session. It stops at the first one the session
+  refuses, those before it having gone out, and the error says which one it was ("Message 2 of 3: ...").
 
 ### Changed
 
@@ -68,14 +70,18 @@ could mean.
   restart.
 - **`FixInitiatorTargets` names the main target and the backups** (`getMainTarget()`, `getBackupTargets()`);
   `getTargets()` still lists them all, main first.
+- **The HTTP admin API's `POST sessions/{group}/{name}/messages` takes a list**, `messages`, instead of a single
+  `message`, and sends them in order.
+- **A message sent through the admin API may start or end with whitespace**, such as the line break of a message
+  pasted from a log; it is ignored instead of making the message invalid.
 - **The session settings document has its own module, `staffix-sessions-settings-document`**: the model a session
   file is read into, with its JSON schema, for tools that read or write session settings outside the file store.
   The schema is published from it (classifier `schema`) rather than from `staffix-sessions-settings-store-file-impl`.
 
-### Deprecated
+### Removed
 
 - `AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`, which
-  behaves the same. The old name keeps working until it is removed in a later version.
+  behaves the same.
 
 ### Fixed
 

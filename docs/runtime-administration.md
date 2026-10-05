@@ -111,9 +111,9 @@ state: read `status` again to see it.
 | `DELETE sessions/{group}/{name}/settings` | removes the session from its store; it is disconnected unless `disconnectOnRemove` is off |
 | `GET sessions/{group}/{name}/application-settings` | the application settings the session's application declares, `{"id", "description", "secret"}` |
 | `POST sessions/{group}/{name}/logon`, `logout` | |
-| `POST sessions/{group}/{name}/reset` | `{"mode": "RESET_SEQUENCE"}`; `LOGOUT_LOGON_REST_NUM_FLAG`, the name `LOGOUT_LOGON_RESET_NUM_FLAG` was first released under, is still accepted |
+| `POST sessions/{group}/{name}/reset` | `{"mode": "RESET_SEQUENCE"}` |
 | `PUT sessions/{group}/{name}/seqnums` | `{"incoming": 1, "outgoing": 1}`, either may be left out |
-| `POST sessions/{group}/{name}/messages` | `{"message": "35=B|148=hello|", "separator": "|", "possDup": false}` |
+| `POST sessions/{group}/{name}/messages` | `{"messages": ["35=B|148=hello|"], "separator": "|", "possDup": false}`, sent in order; stops at the first refused one |
 | `POST sessions/{group}/{name}/activate` | `{"config": "trading-drp"}` switches an initiator session to one of its configs |
 | `GET session-settings-stores`, `POST session-settings-stores/{id}/reload` | each store says whether a change made through the API survives a restart (`persistent`) |
 | `POST session-settings-stores/{id}/sessions` | adds a session, a settings document, to the store, which starts it; answers `201` with its `Location` |
