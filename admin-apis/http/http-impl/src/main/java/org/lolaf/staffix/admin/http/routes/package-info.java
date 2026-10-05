@@ -13,19 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
-
-import lombok.Builder;
-import lombok.Value;
-import lombok.extern.jackson.Jacksonized;
-
 /**
- * Body of {@code PUT .../seqnums}; an absent number is left unchanged.
+ * The admin API's endpoints, one class each.
  */
-@Value
-@Builder
-@Jacksonized
-public class SeqNumsRequest {
-    Long incoming;
-    Long outgoing;
-}
+package org.lolaf.staffix.admin.http.routes;

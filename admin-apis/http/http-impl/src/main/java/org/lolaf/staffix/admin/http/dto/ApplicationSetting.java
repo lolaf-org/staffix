@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
 import lombok.Value;
+import org.lolaf.staffix.admin.http.SessionSettingsDocuments;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 
 /**
@@ -27,7 +28,7 @@ public class ApplicationSetting {
     String description;
     boolean secret;
 
-    static ApplicationSetting of(FixApplicationSessionSettingDescriptor descriptor) {
+    public static ApplicationSetting of(FixApplicationSessionSettingDescriptor descriptor) {
         return new ApplicationSetting(descriptor.getId(), descriptor.getDescription(),
                 SessionSettingsDocuments.isSecret(descriptor.getId()));
     }

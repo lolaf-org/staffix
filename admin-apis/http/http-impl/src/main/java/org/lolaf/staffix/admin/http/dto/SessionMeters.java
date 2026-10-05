@@ -13,23 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
-import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
-import lombok.extern.jackson.Jacksonized;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
+
+import java.util.List;
 
 /**
- * Body of {@code POST .../activate}.
+ * An element of {@code GET meters}: a running session, by the name of the config it runs, and its meters.
  */
 @Value
-@Builder
-@Jacksonized
-public class ActivateRequest {
-    /**
-     * The initiator config to switch to, its main one or a backup.
-     */
-    @NonNull
-    String config;
+public class SessionMeters {
+    String group;
+    String name;
+    List<FixMeterDescriptor> meters;
 }

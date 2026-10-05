@@ -13,29 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
-
-import lombok.Builder;
-import lombok.NonNull;
-import lombok.Singular;
-import lombok.Value;
-import lombok.extern.jackson.Jacksonized;
-
-import java.util.List;
-
 /**
- * Body of {@code POST .../messages}: messages sent in order, the separator and possDup applying to each.
+ * The JSON documents the admin API reads and answers.
  */
-@Value
-@Builder
-@Jacksonized
-public class SendMessageRequest {
-    @NonNull
-    @Singular
-    List<String> messages;
-    /**
-     * The field separator used in {@link #getMessages()}, such as SOH or {@code |}.
-     */
-    char separator;
-    boolean possDup;
-}
+package org.lolaf.staffix.admin.http.dto;

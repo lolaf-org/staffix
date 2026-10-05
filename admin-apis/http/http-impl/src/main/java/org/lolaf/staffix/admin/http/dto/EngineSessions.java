@@ -13,19 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
 import lombok.Value;
-import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 
 import java.util.List;
 
 /**
- * An element of {@code GET meters}: a running session, by the name of the config it runs, and its meters.
+ * The engine's running sessions as the console draws them, fetched again only when {@link EngineStatus} reports
+ * another version.
  */
 @Value
-class SessionMeters {
-    String group;
-    String name;
-    List<FixMeterDescriptor> meters;
+public class EngineSessions {
+    String engineId;
+    /**
+     * The SHA-256 of {@link #sessions} as JSON, so equal content has the same version across engine restarts.
+     */
+    String version;
+    List<SessionDescription> sessions;
 }

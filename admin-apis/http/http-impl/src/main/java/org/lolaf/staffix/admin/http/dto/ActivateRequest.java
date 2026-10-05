@@ -13,17 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
-import lombok.Getter;
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
 
-@Getter
-public class HttpProblemException extends RuntimeException {
-
-    private final int status;
-
-    public HttpProblemException(int status, String detail) {
-        super(detail);
-        this.status = status;
-    }
+/**
+ * Body of {@code POST .../activate}.
+ */
+@Value
+@Builder
+@Jacksonized
+public class ActivateRequest {
+    /**
+     * The initiator config to switch to, its main one or a backup.
+     */
+    @NonNull
+    String config;
 }

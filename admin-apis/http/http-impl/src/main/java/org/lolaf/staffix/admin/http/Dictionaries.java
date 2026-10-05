@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.admin.http;
 
+import org.lolaf.staffix.admin.http.dto.DictionaryRef;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.version.FixtVersion;
@@ -33,7 +34,7 @@ import java.util.regex.Pattern;
  * The dictionaries the encoders generator ships as {@code staffix-dictionaries/<id>.xml} beside the encoders, so
  * an admin tool decodes a session's messages with exactly the dictionary it runs.
  */
-final class Dictionaries {
+public final class Dictionaries {
 
     private static final String DIRECTORY = "staffix-dictionaries/";
     private static final Pattern VALID_ID = Pattern.compile("[A-Za-z0-9_-][A-Za-z0-9._-]*");
@@ -42,9 +43,9 @@ final class Dictionaries {
     private Dictionaries() {
     }
 
-    static final class Dictionary {
-        final byte[] xml;
-        final String hash;
+    public static final class Dictionary {
+        public final byte[] xml;
+        public final String hash;
 
         private Dictionary(byte[] xml) {
             this.xml = xml;
@@ -68,7 +69,7 @@ final class Dictionaries {
         return refs;
     }
 
-    static Optional<Dictionary> get(String id) {
+    public static Optional<Dictionary> get(String id) {
         if (!VALID_ID.matcher(id).matches() || id.contains("..")) {
             return Optional.empty();
         }

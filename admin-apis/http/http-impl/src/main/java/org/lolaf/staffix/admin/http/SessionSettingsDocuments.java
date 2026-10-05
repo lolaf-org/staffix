@@ -32,7 +32,7 @@ import java.util.regex.Pattern;
  * A session's settings as the JSON document of the settings schema, application settings that are secret masked,
  * and back: a masked value sent back keeps the one the session has.
  */
-final class SessionSettingsDocuments {
+public final class SessionSettingsDocuments {
 
     static final String MASK = "******";
     /**
@@ -44,7 +44,7 @@ final class SessionSettingsDocuments {
     private SessionSettingsDocuments() {
     }
 
-    static byte[] write(FixSessionSettings settings) {
+    public static byte[] write(FixSessionSettings settings) {
         FixSessionSettingsDocument document = ToFixSessionSettingsDocumentTransformer.toDocument(settings);
         Map<String, String> applicationSettings = document.getFixApplicationSessionSettings();
         if (applicationSettings != null) {
@@ -65,7 +65,7 @@ final class SessionSettingsDocuments {
      *                null for a new session
      * @throws HttpProblemException 400 when the document is invalid
      */
-    static FixSessionSettings read(InputStream body, FixSessionSettings current) throws IOException {
+    public static FixSessionSettings read(InputStream body, FixSessionSettings current) throws IOException {
         FixSessionSettingsDocument document = MAPPER.readValue(body, FixSessionSettingsDocument.class);
         restoreMaskedSecrets(document, current);
         try {
@@ -80,7 +80,7 @@ final class SessionSettingsDocuments {
         }
     }
 
-    static boolean isSecret(String applicationSettingId) {
+    public static boolean isSecret(String applicationSettingId) {
         return FixApplicationSessionSettingDescriptor.of(applicationSettingId).isSecret()
                 || SECRET_NAME.matcher(applicationSettingId).matches();
     }

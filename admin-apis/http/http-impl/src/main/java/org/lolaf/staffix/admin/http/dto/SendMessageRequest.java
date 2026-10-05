@@ -13,18 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Singular;
 import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
+
+import java.util.List;
 
 /**
- * One entry of {@code GET session-settings-stores}, an object so it can gain fields without breaking clients.
+ * Body of {@code POST .../messages}: messages sent in order, the separator and possDup applying to each.
  */
 @Value
-public class SessionSettingsStore {
-    String instanceId;
+@Builder
+@Jacksonized
+public class SendMessageRequest {
+    @NonNull
+    @Singular
+    List<String> messages;
     /**
-     * Whether a change made through this API survives the engine's restart.
+     * The field separator used in {@link #getMessages()}, such as SOH or {@code |}.
      */
-    boolean persistent;
+    char separator;
+    boolean possDup;
 }

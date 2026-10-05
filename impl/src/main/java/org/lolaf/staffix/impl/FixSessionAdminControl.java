@@ -55,6 +55,14 @@ interface FixSessionAdminControl {
 
     List<FixSession> getManagedFixSessions();
 
+    int getManagedFixSessionsSize();
+
+    /**
+     * Adds to {@code sessions} rather than returning a copy: the engine merges every control's sessions on each
+     * {@code status} call, into a list sized from {@link #getManagedFixSessionsSize()}.
+     */
+    void addManagedFixSessions(List<FixSession> sessions);
+
     /**
      * @return {@code true} if this control runs initiator sessions, {@code false} if it runs acceptor sessions
      */

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
 import lombok.Value;
 
@@ -28,7 +28,7 @@ import java.util.Properties;
 @Value
 public class EngineInfo {
 
-    static final String STAFFIX_VERSION = readStaffixVersion();
+    public static final String STAFFIX_VERSION = readStaffixVersion();
 
     String engineId;
     /**

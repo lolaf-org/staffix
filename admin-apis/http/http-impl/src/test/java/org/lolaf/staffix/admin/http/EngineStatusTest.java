@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.admin.http.dto.EngineStatus;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
@@ -26,13 +27,15 @@ import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
-import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Map;
@@ -50,7 +53,7 @@ class EngineStatusTest {
             .group("beta").name("drop-copy").senderCompID("US").targetCompID("BETA").targetLocationID("LDN").build());
 
     private final AdminApi adminApi = mock(AdminApi.class);
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = AdminApiHandler.newObjectMapper();
 
     private static FixApplication application(FixSessionId fixSessionId) {
         FixRegularVersion version = fixSessionId.getFixVersion() instanceof FixRegularVersion
@@ -106,11 +109,19 @@ class EngineStatusTest {
     }
 
     private JsonNode status() {
-        return mapper.valueToTree(EngineStatus.of(adminApi, SessionsDocument.running(adminApi), "v1"));
+        return mapper.valueToTree(EngineStatus.of(adminApi, document().running, "v1"));
     }
 
     private JsonNode sessions() throws Exception {
-        return mapper.readTree(SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).json);
+        return mapper.readTree(document().json);
+    }
+
+    private SessionsDocument document() {
+        try {
+            return SessionsDocument.of(adminApi, adminApi.getManagedFixSessions(), mapper);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Test
@@ -172,28 +183,33 @@ class EngineStatusTest {
     }
 
     @Test
-    void theDocumentStaysCurrentUntilASessionComesGoesOrRestartsOnNewSettings() throws Exception {
+    void theDocumentStaysCurrentUntilASessionComesGoesOrRestarts() throws Exception {
         FixSession trading = session(TRADING_DRP, FixSession.FixSessionType.INITIATOR, true);
         FixSession dropCopy = session(DROP_COPY, FixSession.FixSessionType.ACCEPTOR, false);
         engine(trading, dropCopy);
-        SessionsDocument document = SessionsDocument.of(adminApi, SessionsDocument.running(adminApi));
+        SessionsDocument document = document();
 
-        assertThat(document.describes(SessionsDocument.running(adminApi))).isTrue();
+        assertThat(document.describes(adminApi.getManagedFixSessions())).isTrue();
         engine(trading);
-        assertThat(document.describes(SessionsDocument.running(adminApi))).as("gone").isFalse();
+        assertThat(document.describes(adminApi.getManagedFixSessions())).as("gone").isFalse();
         engine(trading, session(DROP_COPY, FixSession.FixSessionType.ACCEPTOR, false));
-        assertThat(document.describes(SessionsDocument.running(adminApi))).as("restarted on new settings").isFalse();
+        assertThat(document.describes(adminApi.getManagedFixSessions())).as("restarted on new settings").isFalse();
+        FixSession restarted = session(TRADING_DRP, FixSession.FixSessionType.INITIATOR, true);
+        FixSessionSettings sameSettings = trading.getFixSessionSettings();
+        when(restarted.getFixSessionSettings()).thenReturn(sameSettings);
+        engine(restarted, dropCopy);
+        assertThat(document.describes(adminApi.getManagedFixSessions())).as("restarted on the same settings").isFalse();
     }
 
     @Test
     void equalContentHasTheSameVersion() throws Exception {
         engine();
-        String version = SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).version;
+        String version = document().version;
 
         engine();
 
-        assertThat(SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).version).isEqualTo(version).hasSize(64);
+        assertThat(document().version).isEqualTo(version).hasSize(64);
         engine(session(TRADING_DRP, FixSession.FixSessionType.INITIATOR, true));
-        assertThat(SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).version).isNotEqualTo(version);
+        assertThat(document().version).isNotEqualTo(version);
     }
 }

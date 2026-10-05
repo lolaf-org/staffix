@@ -13,17 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
-import lombok.Getter;
+import lombok.Value;
 
-@Getter
-public class HttpProblemException extends RuntimeException {
-
-    private final int status;
-
-    public HttpProblemException(int status, String detail) {
-        super(detail);
-        this.status = status;
-    }
+/**
+ * An RFC 9457 problem details body, sent with every error status.
+ */
+@Value
+public class Problem {
+    int status;
+    String detail;
 }

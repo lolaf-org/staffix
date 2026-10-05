@@ -13,16 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.routes;
 
-import lombok.Value;
+import org.lolaf.staffix.api.admin.AdminApi;
 
-/**
- * A dictionary a session decodes with, and the SHA-256 of its XML, so a console caches it once across engines and
- * notices when it changes.
- */
-@Value
-public class DictionaryRef {
-    String id;
-    String hash;
+import java.util.List;
+
+public final class SessionComponentsRoute extends JsonRoute {
+
+    private final AdminApi adminApi;
+
+    public SessionComponentsRoute(AdminApi adminApi, JsonResponseBuffer json) {
+        super("v1/session-components", json);
+        this.adminApi = adminApi;
+    }
+
+    @Override
+    Object body(List<String> path) {
+        return adminApi.getFixSessionComponents();
+    }
 }

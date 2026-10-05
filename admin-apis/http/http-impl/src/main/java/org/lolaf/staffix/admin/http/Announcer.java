@@ -17,6 +17,7 @@ package org.lolaf.staffix.admin.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.lolaf.staffix.admin.http.dto.EngineInfo;
 
 import java.io.IOException;
 import java.net.URI;

@@ -13,22 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
 import lombok.Value;
 
-import java.util.List;
-
 /**
- * The engine's running sessions as the console draws them, fetched again only when {@link EngineStatus} reports
- * another version.
+ * One entry of {@code GET session-settings-stores}, an object so it can gain fields without breaking clients.
  */
 @Value
-public class EngineSessions {
-    String engineId;
+public class SessionSettingsStore {
+    String instanceId;
     /**
-     * The SHA-256 of {@link #sessions} as JSON, so equal content has the same version across engine restarts.
+     * Whether a change made through this API survives the engine's restart.
      */
-    String version;
-    List<SessionDescription> sessions;
+    boolean persistent;
 }

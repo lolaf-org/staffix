@@ -15,7 +15,10 @@
  */
 package org.lolaf.staffix.admin.http;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.admin.http.dto.EngineStatus;
+import org.lolaf.staffix.admin.http.routes.SessionsDocumentCache;
 import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixEngine;
@@ -42,7 +45,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -64,9 +66,8 @@ public class AdminApiStatusBenchmark {
 
     @Benchmark
     public byte[] status(EngineState state) throws IOException {
-        AdminApi adminApi = state.adminApi;
-        Map<FixSessionId, FixSession> running = SessionsDocument.running(adminApi);
-        return AdminApiHandler.MAPPER.writeValueAsBytes(EngineStatus.of(adminApi, running, state.sessionsVersion));
+        SessionsDocument document = state.documents.get();
+        return state.mapper.writeValueAsBytes(EngineStatus.of(state.adminApi, document.running, document.version));
     }
 
     @Benchmark
@@ -80,7 +81,8 @@ public class AdminApiStatusBenchmark {
         int sessions;
         FixEngine engine;
         AdminApi adminApi;
-        String sessionsVersion;
+        ObjectMapper mapper;
+        SessionsDocumentCache documents;
         HttpClient client;
         HttpRequest statusRequest;
 
@@ -112,7 +114,8 @@ public class AdminApiStatusBenchmark {
                     .targetFixSessionsSettingsStoreInstancesIds(List.of("acceptor-sessions"))
                     .build()).start();
             adminApi = (AdminApi) engine;
-            sessionsVersion = SessionsDocument.of(adminApi, SessionsDocument.running(adminApi)).version;
+            mapper = AdminApiHandler.newObjectMapper();
+            documents = new SessionsDocumentCache(adminApi, mapper);
             client = HttpClient.newHttpClient();
             statusRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + PORT + "/engines/benchmark/v1/status"))
                     .header("Authorization", "Bearer " + TOKEN)

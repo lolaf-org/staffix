@@ -523,7 +523,22 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public List<FixSession> getManagedFixSessions() {
-        return new ArrayList<>(configuredSessions.values());
+        List<FixSession> sessions = new ArrayList<>(configuredSessions.size());
+        addManagedFixSessions(sessions);
+        return sessions;
+    }
+
+    @Override
+    public int getManagedFixSessionsSize() {
+        return configuredSessions.size();
+    }
+
+    @Override
+    public void addManagedFixSessions(List<FixSession> sessions) {
+        // not addAll: it copies the values into a temporary array first, on every status call
+        for (FixSessionImpl session : configuredSessions.values()) {
+            sessions.add(session);
+        }
     }
 
     @Override

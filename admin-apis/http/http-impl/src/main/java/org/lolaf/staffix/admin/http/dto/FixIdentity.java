@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Value;
@@ -38,7 +38,7 @@ public class FixIdentity {
     CompIds sender;
     CompIds target;
 
-    static FixIdentity of(FixSessionId fixSessionId) {
+    public static FixIdentity of(FixSessionId fixSessionId) {
         return new FixIdentity(
                 new String(fixSessionId.getFixVersion().getBeginString(), StandardCharsets.US_ASCII),
                 fixSessionId.getDefaultApplVerID() != null ? fixSessionId.getDefaultApplVerID().getCode() : null,

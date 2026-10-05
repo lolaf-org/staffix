@@ -511,6 +511,19 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     }
 
     @Override
+    public int getManagedFixSessionsSize() {
+        return fixSession == null ? 0 : 1;
+    }
+
+    @Override
+    public void addManagedFixSessions(List<FixSession> sessions) {
+        FixSessionImpl session = fixSession;
+        if (session != null) {
+            sessions.add(session);
+        }
+    }
+
+    @Override
     public boolean isInitiator() {
         return true;
     }

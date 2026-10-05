@@ -15,11 +15,9 @@
  */
 package org.lolaf.staffix.admin.http;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
-import com.sun.net.httpserver.HttpsConfigurator;
-import com.sun.net.httpserver.HttpsServer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.*;
+import org.lolaf.staffix.admin.http.routes.Route;
 
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
@@ -61,6 +59,7 @@ class HttpAdminServer {
     private final SSLContext sslContext;
     private final HttpServer server;
     private final ExecutorService executor;
+    private final ObjectMapper mapper;
     private int engines;
 
     private HttpAdminServer(InetSocketAddress requestedAddress, SSLContext sslContext) throws IOException {
@@ -72,22 +71,10 @@ class HttpAdminServer {
             thread.setDaemon(true);
             return thread;
         });
+        this.mapper = AdminApiHandler.newObjectMapper();
         server.setExecutor(executor);
-        server.createContext("/", HttpAdminServer::serveRoot);
+        server.createContext("/", this::serveRoot);
         server.start();
-    }
-
-    private static void serveRoot(HttpExchange exchange) throws IOException {
-        try {
-            if (exchange.getRequestURI().getPath().equals(OPENAPI_PATH) && exchange.getRequestMethod().equals("GET")) {
-                AdminApiHandler.send(exchange, 200, "application/yaml", OPENAPI);
-            } else {
-                AdminApiHandler.sendProblem(exchange,
-                        new HttpProblemException(404, "No engine serves " + exchange.getRequestURI().getPath()));
-            }
-        } finally {
-            exchange.close();
-        }
     }
 
     private static byte[] readOpenApi() {
@@ -123,6 +110,19 @@ class HttpAdminServer {
 
     static String basePath(String instanceId) {
         return "/engines/" + instanceId + "/";
+    }
+
+    private void serveRoot(HttpExchange exchange) throws IOException {
+        try {
+            if (exchange.getRequestURI().getPath().equals(OPENAPI_PATH) && exchange.getRequestMethod().equals("GET")) {
+                Route.send(exchange, 200, "application/yaml", OPENAPI);
+            } else {
+                AdminApiHandler.sendProblem(exchange, mapper,
+                        new HttpProblemException(404, "No engine serves " + exchange.getRequestURI().getPath()));
+            }
+        } finally {
+            exchange.close();
+        }
     }
 
     /**

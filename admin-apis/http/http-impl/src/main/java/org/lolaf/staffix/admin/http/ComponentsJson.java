@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
  * calling their getters could have side effects. Each settings object, nested ones included, carries its
  * {@code type}; a plugin also lists its {@link FixSessionsPluginSettings#getPluginTypes() pluginTypes}.
  */
-final class ComponentsJson {
+public final class ComponentsJson {
 
     private static final Pattern SECRET_NAME = Pattern.compile("(?i).*(password|passwd|secret|token|credential|private.?key|authorization|api.?key).*");
 
@@ -63,7 +63,7 @@ final class ComponentsJson {
     private ComponentsJson() {
     }
 
-    static ObjectNode of(AdminApi adminApi) {
+    public static ObjectNode of(AdminApi adminApi) {
         ObjectNode json = MAPPER.createObjectNode();
         ArrayNode loggers = json.putArray("messagesLoggers");
         adminApi.getFixMessagesLoggersSettings().forEach(settings -> loggers.add(settings(settings)));

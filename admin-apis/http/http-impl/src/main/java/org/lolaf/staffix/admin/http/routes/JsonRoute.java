@@ -13,26 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.routes;
 
-import lombok.Value;
+import com.sun.net.httpserver.HttpExchange;
 
+import java.io.IOException;
 import java.util.List;
 
 /**
- * One config of a session: an initiator's main or backup, with the {@code host:port} addresses it dials in turn,
- * or an acceptor's only one, with none.
+ * A {@code GET} answered with a JSON document.
  */
-@Value
-public class ConfigDescription {
-    String name;
-    List<String> connectAddresses;
-    /**
-     * This config's own FIX session id.
-     */
-    FixIdentity identity;
-    /**
-     * The dictionaries its messages decode with, served by {@code GET dictionaries/{id}}.
-     */
-    List<DictionaryRef> dictionaries;
+abstract class JsonRoute extends Route {
+
+    private final JsonResponseBuffer json;
+
+    JsonRoute(String template, JsonResponseBuffer json) {
+        super("GET", template);
+        this.json = json;
+    }
+
+    abstract Object body(List<String> path) throws IOException;
+
+    @Override
+    public final void handle(HttpExchange exchange, List<String> path) throws IOException {
+        json.send(exchange, body(path));
+    }
 }

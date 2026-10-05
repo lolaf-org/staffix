@@ -16,6 +16,7 @@
 package org.lolaf.staffix.admin.http;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.admin.http.dto.DictionaryRef;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.version.FixApplVerID;

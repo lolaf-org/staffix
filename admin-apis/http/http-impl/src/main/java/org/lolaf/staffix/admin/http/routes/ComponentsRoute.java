@@ -13,15 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.routes;
 
-import lombok.Value;
+import org.lolaf.staffix.admin.http.ComponentsJson;
+import org.lolaf.staffix.api.admin.AdminApi;
 
-/**
- * An RFC 9457 problem details body, sent with every error status.
- */
-@Value
-public class Problem {
-    int status;
-    String detail;
+import java.util.List;
+
+public final class ComponentsRoute extends JsonRoute {
+
+    private final AdminApi adminApi;
+
+    public ComponentsRoute(AdminApi adminApi, JsonResponseBuffer json) {
+        super("v1/components", json);
+        this.adminApi = adminApi;
+    }
+
+    @Override
+    Object body(List<String> path) {
+        return ComponentsJson.of(adminApi);
+    }
 }

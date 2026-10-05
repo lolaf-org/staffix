@@ -13,17 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
-import lombok.Getter;
+import lombok.Value;
 
-@Getter
-public class HttpProblemException extends RuntimeException {
+import java.util.List;
 
-    private final int status;
-
-    public HttpProblemException(int status, String detail) {
-        super(detail);
-        this.status = status;
-    }
+/**
+ * One config of a session: an initiator's main or backup, with the {@code host:port} addresses it dials in turn,
+ * or an acceptor's only one, with none.
+ */
+@Value
+public class ConfigDescription {
+    String name;
+    List<String> connectAddresses;
+    /**
+     * This config's own FIX session id.
+     */
+    FixIdentity identity;
+    /**
+     * The dictionaries its messages decode with, served by {@code GET dictionaries/{id}}.
+     */
+    List<DictionaryRef> dictionaries;
 }

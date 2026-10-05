@@ -13,17 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.admin.http.dto;
 
-import lombok.Getter;
+import lombok.Value;
 
-@Getter
-public class HttpProblemException extends RuntimeException {
-
-    private final int status;
-
-    public HttpProblemException(int status, String detail) {
-        super(detail);
-        this.status = status;
-    }
+/**
+ * A dictionary a session decodes with, and the SHA-256 of its XML, so a console caches it once across engines and
+ * notices when it changes.
+ */
+@Value
+public class DictionaryRef {
+    String id;
+    String hash;
 }

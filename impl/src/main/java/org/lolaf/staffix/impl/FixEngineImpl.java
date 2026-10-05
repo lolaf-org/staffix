@@ -68,7 +68,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private final Set<SessionLifecycleListener> sessionLifecycleListeners;
     @Getter
     private final FixSessionRegistryImpl fixSessionRegistry;
-    private volatile List<FixSessionAdminControl> sessionAdminControls = List.of();
+    private volatile FixSessionAdminControl[] sessionAdminControls = new FixSessionAdminControl[0];
     private volatile List<FixInitiatorTargets> initiatorsTargets = List.of();
     private volatile List<FixAcceptorSessions> acceptorsSessions = List.of();
     private ExecutorService selfManagedDisconnectedSessionsExecutor;
@@ -480,9 +480,16 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     public List<FixSession> getManagedFixSessions() {
-        return sessionAdminControls.stream()
-                .flatMap(c -> c.getManagedFixSessions().stream())
-                .collect(Collectors.toList());
+        FixSessionAdminControl[] controls = sessionAdminControls;
+        int size = 0;
+        for (FixSessionAdminControl control : controls) {
+            size += control.getManagedFixSessionsSize();
+        }
+        List<FixSession> sessions = new ArrayList<>(size);
+        for (FixSessionAdminControl control : controls) {
+            control.addManagedFixSessions(sessions);
+        }
+        return sessions;
     }
 
     @Override
@@ -562,7 +569,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private synchronized void refreshSessionAdminControls() {
         List<FixSessionAdminControl> controls = new ArrayList<>(initiators.values());
         controls.addAll(acceptors.values());
-        sessionAdminControls = List.copyOf(controls);
+        sessionAdminControls = controls.toArray(FixSessionAdminControl[]::new);
     }
 
     private FixSessionAdminControl findControl(FixSessionId fixSessionId) {

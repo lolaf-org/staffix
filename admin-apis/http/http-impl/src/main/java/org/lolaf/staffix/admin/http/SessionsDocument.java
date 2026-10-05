@@ -15,13 +15,18 @@
  */
 package org.lolaf.staffix.admin.http;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.lolaf.staffix.admin.http.dto.ConfigDescription;
+import org.lolaf.staffix.admin.http.dto.EngineSessions;
+import org.lolaf.staffix.admin.http.dto.FixIdentity;
+import org.lolaf.staffix.admin.http.dto.SessionDescription;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
-import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 
@@ -37,25 +42,28 @@ import java.util.stream.Collectors;
  * {@link EngineSessions} encoded once, with the sessions and settings it was built from, so a status call can tell
  * it is still current without building it again.
  */
-final class SessionsDocument {
+public final class SessionsDocument {
 
-    final String version;
-    final byte[] json;
+    public final String version;
+    public final byte[] json;
+    public final Map<FixSessionId, FixSession> running;
     private final Map<FixSessionId, FixSessionSettings> builtFrom;
 
-    private SessionsDocument(String version, byte[] json, Map<FixSessionId, FixSessionSettings> builtFrom) {
+    private SessionsDocument(String version, byte[] json, Map<FixSessionId, FixSession> running,
+                             Map<FixSessionId, FixSessionSettings> builtFrom) {
         this.version = version;
         this.json = json;
+        this.running = running;
         this.builtFrom = builtFrom;
     }
 
-    static Map<FixSessionId, FixSession> running(AdminApi adminApi) {
+    public static SessionsDocument of(AdminApi adminApi, List<FixSession> managed, ObjectMapper mapper) throws IOException {
         Map<FixSessionId, FixSession> running = new HashMap<>();
-        adminApi.getManagedFixSessions().forEach(session -> running.put(session.getFixSessionId(), session));
-        return running;
-    }
-
-    static SessionsDocument of(AdminApi adminApi, Map<FixSessionId, FixSession> running) throws IOException {
+        Map<FixSessionId, FixSessionSettings> builtFrom = new HashMap<>();
+        for (FixSession session : managed) {
+            running.put(session.getFixSessionId(), session);
+            builtFrom.put(session.getFixSessionId(), session.getFixSessionSettings());
+        }
         List<SessionDescription> sessions = new ArrayList<>();
         for (FixInitiatorTargets initiator : adminApi.getInitiatorsTargets()) {
             FixSession session = running.get(initiator.getActiveFixSessionId());
@@ -82,11 +90,9 @@ final class SessionsDocument {
                 }
             }
         }
-        String version = Sha256.hex(AdminApiHandler.MAPPER.writeValueAsBytes(sessions));
-        byte[] json = AdminApiHandler.MAPPER.writeValueAsBytes(new EngineSessions(adminApi.getInstanceId(), version, sessions));
-        Map<FixSessionId, FixSessionSettings> builtFrom = new HashMap<>();
-        running.values().forEach(session -> builtFrom.put(session.getFixSessionId(), session.getFixSessionSettings()));
-        return new SessionsDocument(version, json, builtFrom);
+        String version = Sha256.hex(mapper.writeValueAsBytes(sessions));
+        byte[] json = mapper.writeValueAsBytes(new EngineSessions(adminApi.getInstanceId(), version, sessions));
+        return new SessionsDocument(version, json, running, builtFrom);
     }
 
     private static SessionDescription.SessionDescriptionBuilder description(FixSession session, String instanceId) {
@@ -114,15 +120,16 @@ final class SessionsDocument {
     }
 
     /**
-     * Settings are compared by reference: a session restarted on new settings, even under the same id, holds
-     * another instance.
+     * Sessions and settings are compared by reference: a restarted session is another instance, and so are the
+     * settings it restarted on when they changed, even under the same id.
      */
-    boolean describes(Map<FixSessionId, FixSession> running) {
-        if (running.size() != builtFrom.size()) {
+    public boolean describes(List<FixSession> managed) {
+        if (managed.size() != running.size()) {
             return false;
         }
-        for (FixSession session : running.values()) {
-            if (builtFrom.get(session.getFixSessionId()) != session.getFixSessionSettings()) {
+        for (FixSession session : managed) {
+            FixSessionId fixSessionId = session.getFixSessionId();
+            if (running.get(fixSessionId) != session || builtFrom.get(fixSessionId) != session.getFixSessionSettings()) {
                 return false;
             }
         }
