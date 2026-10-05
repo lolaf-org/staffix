@@ -19,10 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.FixAcceptorBuilder;
-import org.lolaf.staffix.api.FixEngine;
-import org.lolaf.staffix.api.FixEngineBuilder;
-import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -33,6 +30,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApiVersion;
+import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
@@ -71,6 +69,7 @@ class TestFixEngineSessionsSettingsWrites {
     void startEngineWithAnAcceptorOnTheStore() {
         FixApplication application = mock(FixApplication.class);
         when(application.getFixApiVersion()).thenReturn(FixApiVersion.of("test app", SemVer.of(1, 0, 0), "test vendor"));
+        when(application.getDictionaryId()).thenReturn(FixDictionaryId.of(FixRegularVersion.VERSION_44));
         when(application.getRequiredFixSessionSettings()).thenReturn(List.of(ACCOUNT));
         FixSessionsMonitoringManager monitoring = mock(FixSessionsMonitoringManager.class);
         when(monitoring.getInstanceId()).thenReturn("metrics");
@@ -182,6 +181,34 @@ class TestFixEngineSessionsSettingsWrites {
         assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(),
                 alpha.toBuilder().fixApplicationInstanceId("orders").build()))
                 .isInstanceOf(IllegalArgumentException.class);
+        assertThat(store.getSettings()).containsExactly(alpha);
+    }
+
+    @Test
+    void aSessionOnAnotherVersionThanItsApplicationIsRefusedBeforeAnythingChanges() {
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+        FixSessionSettings alpha42 = alpha.toBuilder()
+                .fixSessionId(FixSessionId.of("alpha", FixRegularVersion.VERSION_42, "SENDER", "ALPHA"))
+                .build();
+
+        assertThatThrownBy(() -> adminApi.addFixSessionSettings(STORE_ID, alpha42))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("speaks FIX.4.4");
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(), alpha42))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("speaks FIX.4.4");
+        assertThat(store.getSettings()).containsExactly(alpha);
+    }
+
+    @Test
+    void aFixtSessionCarryingItsApplicationsVersionIsAccepted() {
+        FixSessionSettings alpha = session("alpha", "ALPHA").toBuilder()
+                .fixSessionId(FixSessionId.ofFIXT11("alpha", FixApplVerID.FIX44, "SENDER", "ALPHA"))
+                .build();
+
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+
         assertThat(store.getSettings()).containsExactly(alpha);
     }
 

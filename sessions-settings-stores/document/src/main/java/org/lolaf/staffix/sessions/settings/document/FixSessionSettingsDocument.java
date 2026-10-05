@@ -49,7 +49,6 @@ public class FixSessionSettingsDocument {
     private FixSessionId fixSessionId;
     @NotNull
     private FixSession.FixSessionType fixSessionType;
-    private String dictionaryId;
     @Valid
     private HeartbeatInterval heartBeatInterval;
     private TimeUnit sendingTimeAccuracy;

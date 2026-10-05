@@ -74,7 +74,8 @@ could mean.
 - **The session settings JSON schema describes every field and gives its default**, so an editor shows what a
   setting does and what it is when left out.
 - **A custom `FixApplicationFactory` implements `getApplicationIds()`**: the application ids its `getInstance`
-  accepts.
+  accepts. It may also override `getDictionaryId(applicationId)`, which the engine uses to check settings without
+  binding an application; the default asks `getInstance`.
 - **A custom `FixSessionsSettingsStore` implements `isPersistent()`**: whether a change made through it survives a
   restart.
 - **`FixInitiatorTargets` names the main target and the backups** (`getMainTarget()`, `getBackupTargets()`);
@@ -83,12 +84,20 @@ could mean.
   `message`, and sends them in order.
 - **A message sent through the admin API may start or end with whitespace**, such as the line break of a message
   pasted from a log; it is ignored instead of making the message invalid.
+- **A `FixApplication` declares the dictionary it speaks** with `getDictionaryId()`, for example
+  `FixDictionaryId.of(FixDictionaryId.DEFAULT_ID, FixRegularVersion.VERSION_44)`, and its sessions use it. A session
+  whose FIX version, or for FIXT its DefaultApplVerID, is not the application's is refused when its settings are
+  added or updated, when its initiator is created and when it starts, instead of failing at its first message. A
+  FIXT backup target is accepted when its DefaultApplVerID is the main target's version.
 - **The session settings document has its own module, `staffix-sessions-settings-document`**: the model a session
   file is read into, with its JSON schema, for tools that read or write session settings outside the file store.
   The schema is published from it (classifier `schema`) rather than from `staffix-sessions-settings-store-file-impl`.
 
 ### Removed
 
+- **The `dictionaryId` session setting**, in `FixSessionSettings`, session settings files and the in-memory store's
+  Spring Boot properties: a session speaks its application's dictionary. A settings file that still sets it is
+  refused.
 - `AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`, which
   behaves the same.
 
@@ -102,6 +111,8 @@ could mean.
   the store holding the refused settings while the session and the file keep the old ones.
 - A session could fail to start with "Fix session application settings ... is missing" although its configuration
   gave the setting, when the application described that setting only after the configuration was read.
+- An application from the Spring application factory could miss its `destroy()` call at shutdown, or the shutdown
+  could fail, when sessions were being created on several threads at once.
 - The error for a session naming an unknown message store listed the session settings stores instead of the message
   stores to choose from.
 

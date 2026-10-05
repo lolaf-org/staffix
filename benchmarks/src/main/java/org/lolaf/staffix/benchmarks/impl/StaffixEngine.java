@@ -141,7 +141,6 @@ public class StaffixEngine extends AbstractBenchmark {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of("test", FixRegularVersion.VERSION_44, "TARGET44_TEST", "SENDER44_TEST"))
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
-                .dictionaryId("benchmarks")
                 .resetSeqNumOnLogon(false)
                 .fixApplicationFactoryInstanceId(ACCEPTOR)
                 .fixApplicationInstanceId(ACCEPTOR)
@@ -153,7 +152,6 @@ public class StaffixEngine extends AbstractBenchmark {
         return FixSessionSettings.builder()
                 .fixSessionId(getInitiatorFixSessionId())
                 .fixSessionType(FixSession.FixSessionType.INITIATOR)
-                .dictionaryId("benchmarks")
                 .heartBeatInterval(FixSessionSettings.HeartbeatInterval.builder().initiatorInterval(Duration.ofSeconds(1)).build())
                 .resetSeqNumOnLogon(false)
                 .fixApplicationFactoryInstanceId(INITIATOR)
@@ -224,6 +222,11 @@ public class StaffixEngine extends AbstractBenchmark {
         }
 
         @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of("benchmarks", FixRegularVersion.VERSION_44);
+        }
+
+        @Override
         public List<FixMessageDecoder> setup(FixSessionSettings fixSessionSettings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
             return List.of(new QuoteDecoder(receivedResponse));
         }
@@ -271,6 +274,11 @@ public class StaffixEngine extends AbstractBenchmark {
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of("benchmarks", FixRegularVersion.VERSION_44);
         }
 
         @Override

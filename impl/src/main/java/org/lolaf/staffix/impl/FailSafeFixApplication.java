@@ -17,6 +17,7 @@ package org.lolaf.staffix.impl;
 
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.codec.FixFieldsEncoder;
@@ -61,6 +62,11 @@ public class FailSafeFixApplication implements FixApplication {
     @Override
     public FixApiVersion getFixApiVersion() {
         return fixApplication.getFixApiVersion();
+    }
+
+    @Override
+    public FixDictionaryId getDictionaryId() {
+        return fixApplication.getDictionaryId();
     }
 
     @Override

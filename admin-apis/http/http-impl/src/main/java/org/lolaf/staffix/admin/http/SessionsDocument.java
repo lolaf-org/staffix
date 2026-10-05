@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.http;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
@@ -65,7 +66,7 @@ final class SessionsDocument {
                         .sessionSettingsStore(adminApi.findFixSessionsSettingsStore(main, FixSessionType.INITIATOR).orElse(null));
                 initiator.getTargets().forEach(target -> description.config(config(target.getFixSessionId(),
                         target.getConnectAddresses().stream().map(SessionsDocument::hostAndPort).collect(Collectors.toList()),
-                        session.getFixSessionSettings())));
+                        session.getApplication())));
                 sessions.add(description.build());
             }
         }
@@ -76,7 +77,7 @@ final class SessionsDocument {
                     sessions.add(description(session, acceptor.getInstanceId())
                             .name(fixSessionId.getName())
                             .sessionSettingsStore(adminApi.findFixSessionsSettingsStore(fixSessionId, FixSessionType.ACCEPTOR).orElse(null))
-                            .config(config(fixSessionId, List.of(), session.getFixSessionSettings()))
+                            .config(config(fixSessionId, List.of(), session.getApplication()))
                             .build());
                 }
             }
@@ -99,11 +100,12 @@ final class SessionsDocument {
     }
 
     /**
-     * A backup runs on its main config's settings, so its dictionary id is theirs while its FIX version is its own.
+     * A backup runs on its main config's application, so its application dictionary is theirs while a FIXT
+     * transport is its own.
      */
-    private static ConfigDescription config(FixSessionId fixSessionId, List<String> connectAddresses, FixSessionSettings settings) {
+    private static ConfigDescription config(FixSessionId fixSessionId, List<String> connectAddresses, FixApplication application) {
         return new ConfigDescription(fixSessionId.getName(), connectAddresses, FixIdentity.of(fixSessionId),
-                Dictionaries.of(fixSessionId, settings.getDictionaryId()));
+                Dictionaries.of(fixSessionId, application.getDictionaryId()));
     }
 
     private static String hostAndPort(InetSocketAddress address) {

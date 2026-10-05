@@ -17,7 +17,6 @@ package org.lolaf.staffix.api.session;
 
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.InstanceProvider;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -65,12 +64,6 @@ public class FixSessionSettings {
      */
     @NonNull
     private FixSession.FixSessionType fixSessionType;
-    /**
-     * Which dictionary's encoders this session uses, for a counterparty whose messages differ from the standard.
-     * Defaults to the one every generated FIX package registers.
-     */
-    @Builder.Default
-    private String dictionaryId = FixDictionaryId.DEFAULT_ID;
     /**
      * HeartBtInt(108): how often a quiet session proves it is alive, and how long it waits before asking.
      * <p>
@@ -212,7 +205,8 @@ public class FixSessionSettings {
     private String fixMessageLoggerInstanceId = InstanceProvider.DEFAULT_INSTANCE_ID;
 
     /**
-     * Instance id of the application this session is bound to, within the selected factory; see
+     * Instance id of the application this session is bound to, within the selected factory, whose
+     * {@link FixApplication#getDictionaryId() dictionary} the session speaks; see
      * {@link FixApplicationFactory#getInstance(String)}.
      */
     @Builder.Default

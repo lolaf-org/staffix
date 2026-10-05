@@ -101,6 +101,7 @@ abstract class AbstractScenario {
 
         fixInitiatorApplication = mock(FixApplication.class);
         when(fixInitiatorApplication.getFixApiVersion()).thenReturn(FixApiVersion.of(FixRegularVersion.VERSION_44));
+        when(fixInitiatorApplication.getDictionaryId()).thenReturn(FixDictionaryId.of(FixRegularVersion.VERSION_44));
         when(fixInitiatorApplication.validateLogon(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(Optional.empty()));
         doNothing().when(fixInitiatorApplication)
                 .onSessionCreated(assertArg((Consumer<FixSession>) fixSession -> fixInitiatorSession = fixSession), any(), any(), any());
@@ -135,6 +136,7 @@ abstract class AbstractScenario {
         fixSessionEventsListener = mock(FixAcceptor.FixSessionEventsListener.class);
         fixAcceptorApplication = mock(FixApplication.class);
         when(fixAcceptorApplication.getFixApiVersion()).thenReturn(FixApiVersion.of(FixRegularVersion.VERSION_44));
+        when(fixAcceptorApplication.getDictionaryId()).thenReturn(FixDictionaryId.of(FixRegularVersion.VERSION_44));
         when(fixAcceptorApplication.validateLogon(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(Optional.empty()));
         doNothing().when(fixAcceptorApplication)
                 .onSessionCreated(assertArg((Consumer<FixSession>) fixSession -> fixAcceptorSession = fixSession), any(), any(), any());

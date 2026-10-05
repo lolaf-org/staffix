@@ -70,8 +70,9 @@ The dictionary artifact is only read at build time and is not a dependency of yo
 carries a copy of the dictionary itself (see below).
 
 - **`packageName`** is yours to choose. The examples in these guides use `org.lolaf.staffix.fix44`.
-- **`dictionaryId`** names the dictionary to the engine. It defaults to `default`, which is what a session uses
-  unless its settings name another, see [your own dictionary](#generating-a-package-from-your-own-dictionary).
+- **`dictionaryId`** names the dictionary to the engine. It defaults to `default`. An application returns it, with
+  the version, from `FixApplication.getDictionaryId()`, see
+  [your own dictionary](#generating-a-package-from-your-own-dictionary).
 - **`dictionaryFile`** also takes a file path, relative to the project, for a dictionary you keep yourself.
 - **`testSources`** set to `true` generates into the test sources instead, for encoders only your tests use. Set
   `resourcesOutputDirectory` to `${project.build.testOutputDirectory}` with it, or the registrations the generator
@@ -147,7 +148,7 @@ dictionary carries deprecated elements with nothing to distinguish them, so noth
 
 Nothing stops an engine hosting FIX 4.2 and FIX 4.4 sessions at once: generate both, one execution each with its own
 `packageName`, and give each session the matching `FixSessionId`. The registries are per-version and resolved through the SPI, so the right metadata follows
-the session.
+the session. An application speaks one version, so each version needs its own application.
 
 What each session must not share is its *instance ids* if it needs its own store, logger or application, see
 [Configuring a session](configuring-sessions.md#wiring-the-session-to-the-engine).
@@ -225,8 +226,9 @@ from a file in your project as well as from the classpath:
 </plugin>
 ```
 
-`dictionaryId` is how a session selects it: set `FixSessionSettings.dictionaryId("counterparty-a")` and that
-session decodes with your dictionary while others keep the default. See the
+`dictionaryId` is how an application selects it: return `FixDictionaryId.of("counterparty-a",
+FixRegularVersion.VERSION_44)` from `FixApplication.getDictionaryId()` and every session bound to that application
+speaks your dictionary, while applications returning the default keep it. See the
 [plugin's own README](../fix-packages/fix-encoders-generator-maven-plugin/README.md) for the full option list.
 
 Two companion plugins serve the same pipeline, and the rest of this guide covers them: the **Orchestra dictionary

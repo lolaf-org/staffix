@@ -18,10 +18,12 @@ package org.lolaf.staffix.admin.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -36,8 +38,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class EngineStatusTest {
 
@@ -51,6 +52,15 @@ class EngineStatusTest {
     private final AdminApi adminApi = mock(AdminApi.class);
     private final ObjectMapper mapper = new ObjectMapper();
 
+    private static FixApplication application(FixSessionId fixSessionId) {
+        FixRegularVersion version = fixSessionId.getFixVersion() instanceof FixRegularVersion
+                ? (FixRegularVersion) fixSessionId.getFixVersion()
+                : FixApplVerID.getFixVersionForCode(fixSessionId.getDefaultApplVerID().getCode());
+        FixApplication application = mock(FixApplication.class);
+        when(application.getDictionaryId()).thenReturn(FixDictionaryId.of(version));
+        return application;
+    }
+
     private static FixSession session(FixSessionId fixSessionId, FixSession.FixSessionType type, boolean loggedIn) {
         FixSession session = mock(FixSession.class);
         FixSessionSettings settings = mock(FixSessionSettings.class);
@@ -63,6 +73,7 @@ class EngineStatusTest {
         }
         when(session.getFixSessionId()).thenReturn(fixSessionId);
         when(session.getFixSessionSettings()).thenReturn(settings);
+        doReturn(application(fixSessionId)).when(session).getApplication();
         when(session.isLoggedIn()).thenReturn(loggedIn);
         when(session.isConnected()).thenReturn(loggedIn);
         when(session.isWithinSessionTime()).thenReturn(true);

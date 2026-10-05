@@ -19,12 +19,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.AdminApi.ResetFixSessionMode;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
+import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -42,17 +44,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyChar;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 class AdminApiEndpointsTest {
 
@@ -86,6 +79,9 @@ class AdminApiEndpointsTest {
         when(settings.getFixSessionType()).thenReturn(FixSession.FixSessionType.INITIATOR);
         when(trading.getFixSessionId()).thenReturn(activeConfig);
         when(trading.getFixSessionSettings()).thenReturn(settings);
+        FixApplication application = mock(FixApplication.class);
+        when(application.getDictionaryId()).thenReturn(FixDictionaryId.of(FixRegularVersion.VERSION_44));
+        doReturn(application).when(trading).getApplication();
         when(adminApi.getManagedFixSessions()).thenReturn(List.of(trading));
         when(adminApi.getManagedFixSessionsSettings()).thenReturn(List.of(FixSessionSettings.builder()
                 .fixSessionId(activeConfig).fixSessionType(FixSession.FixSessionType.INITIATOR).build()));
@@ -281,8 +277,8 @@ class AdminApiEndpointsTest {
 
         assertThat(call("GET", "/engines/alpha-engine/v1/session-components", null).body()).isEqualTo(
                 "{\"applicationFactories\":[{\"instanceId\":\"default\",\"applicationIds\":[\"drop-copy\",\"orders\"]}],"
-                + "\"messagesStores\":[\"default\"],\"messagesLoggers\":[\"clients-otlp\"],"
-                + "\"sessionsPlugins\":[{\"instanceId\":\"metrics\",\"pluginTypes\":[\"org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager\"]}]}");
+                        + "\"messagesStores\":[\"default\"],\"messagesLoggers\":[\"clients-otlp\"],"
+                        + "\"sessionsPlugins\":[{\"instanceId\":\"metrics\",\"pluginTypes\":[\"org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager\"]}]}");
     }
 
     @Test

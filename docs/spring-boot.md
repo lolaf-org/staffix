@@ -69,6 +69,8 @@ public FixApplication acceptorApp() {
 }
 ```
 
+The session speaks that bean's dictionary, `getDictionaryId()`, so its `fix-version` must be the dictionary's.
+
 ---
 
 ## Acceptors and initiators

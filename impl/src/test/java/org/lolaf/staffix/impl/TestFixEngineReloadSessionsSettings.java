@@ -18,10 +18,7 @@ package org.lolaf.staffix.impl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.FixAcceptorBuilder;
-import org.lolaf.staffix.api.FixEngine;
-import org.lolaf.staffix.api.FixEngineBuilder;
-import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.*;
@@ -59,6 +56,7 @@ class TestFixEngineReloadSessionsSettings {
         if (fixEngine == null) {
             FixApplication application = mock(FixApplication.class);
             when(application.getFixApiVersion()).thenReturn(FixApiVersion.of("test app", SemVer.of(1, 0, 0), "test vendor"));
+            when(application.getDictionaryId()).thenReturn(FixDictionaryId.of(FixRegularVersion.VERSION_44));
             fixEngine = FixEngineBuilder.builder()
                     .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
                             .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())

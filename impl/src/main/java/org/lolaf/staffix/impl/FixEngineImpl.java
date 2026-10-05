@@ -603,6 +603,8 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             throw new IllegalArgumentException(String.format("Unable to find any FIX application for id '%s' in application factory '%s' within: '%s'",
                     settings.getFixApplicationInstanceId(), factory.getInstanceId(), String.join(",", factory.getApplicationIds())));
         }
+        ApplicationDictionary.require(factory.getDictionaryId(settings.getFixApplicationInstanceId()),
+                settings.getFixApplicationInstanceId(), settings.getFixSessionId());
     }
 
     private FixApplicationFactory findMatchAmongstFixApplicationFactories(FixSessionSettings fixSessionSettings) {

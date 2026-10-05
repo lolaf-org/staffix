@@ -19,18 +19,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.FixAcceptorBuilder;
-import org.lolaf.staffix.api.FixEngine;
-import org.lolaf.staffix.api.FixEngineBuilder;
-import org.lolaf.staffix.api.FixInitiatorBuilder;
-import org.lolaf.staffix.api.FixInitiatorTarget;
-import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApiVersion;
+import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
@@ -51,6 +47,9 @@ class TestFixInitiatorTargetsValidation {
     private static final FixSessionId BACKUP = FixSessionId.of("backup", FixRegularVersion.VERSION_44, "CLIENT_DR", "BROKER_DR");
     private static final FixSessionId DR = FixSessionId.of("dr", FixRegularVersion.VERSION_44, "CLIENT_DR2", "BROKER_DR2");
     private static final FixSessionId UNKNOWN = FixSessionId.of("unknown", FixRegularVersion.VERSION_44, "NOBODY", "NOWHERE");
+    private static final FixSessionId FIXT_MAIN = FixSessionId.ofFIXT11("fixtMain", FixApplVerID.FIX44, "FIXT_CLIENT", "FIXT_BROKER");
+    private static final FixSessionId FIXT_DR = FixSessionId.ofFIXT11("fixtDr", FixApplVerID.FIX44, "FIXT_CLIENT_DR", "FIXT_BROKER_DR");
+    private static final FixSessionId FIX42_DR = FixSessionId.of("fix42Dr", FixRegularVersion.VERSION_42, "CLIENT_DR42", "BROKER_DR42");
     private static final FixSessionId SHARED_WITH_ACCEPTOR = FixSessionId.of("shared", FixRegularVersion.VERSION_44, "SHARED_A", "SHARED_B");
     private static final InetSocketAddress ADDRESS = new InetSocketAddress("localhost", 1);
 
@@ -78,6 +77,7 @@ class TestFixInitiatorTargetsValidation {
     void startEngine() {
         FixApplication application = mock(FixApplication.class);
         when(application.getFixApiVersion()).thenReturn(FixApiVersion.of("test app", SemVer.of(1, 0, 0), "test vendor"));
+        when(application.getDictionaryId()).thenReturn(FixDictionaryId.of(FixRegularVersion.VERSION_44));
         fixEngine = FixEngineBuilder.builder()
                 .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
                         .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
@@ -88,6 +88,7 @@ class TestFixInitiatorTargetsValidation {
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
                         .fixSessionSetting(settings(MAIN, FixSession.FixSessionType.INITIATOR))
                         .fixSessionSetting(settings(BACKUP, FixSession.FixSessionType.INITIATOR))
+                        .fixSessionSetting(settings(FIXT_MAIN, FixSession.FixSessionType.INITIATOR))
                         .fixSessionSetting(settings(SHARED_WITH_ACCEPTOR, FixSession.FixSessionType.ACCEPTOR))
                         .build())
                 .build()
@@ -104,6 +105,31 @@ class TestFixInitiatorTargetsValidation {
     void theTargetsAreTheMainTargetFollowedByTheBackupTargets() {
         assertThat(fixEngine.newInitiator(initiator("initiator").backupTarget(target(DR)).build()).getFixSessionIds())
                 .containsExactly(MAIN, DR);
+    }
+
+    @Test
+    void aBackupOnAnotherVersionThanItsApplicationIsRejected() {
+        assertThatThrownBy(() -> fixEngine.newInitiator(initiator("initiator").backupTarget(target(FIX42_DR)).build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("speaks FIX.4.4")
+                .hasMessageContaining(FIX42_DR.toString());
+    }
+
+    @Test
+    void aFixtBackupCarryingTheMainTargetsVersionIsAccepted() {
+        assertThat(fixEngine.newInitiator(initiator("initiator").backupTarget(target(FIXT_DR)).build()).getFixSessionIds())
+                .containsExactly(MAIN, FIXT_DR);
+    }
+
+    @Test
+    void aBackupOnTheVersionAFixtMainTargetCarriesIsAccepted() {
+        FixInitiatorBuilder fixtInitiator = FixInitiatorBuilder.builder()
+                .instanceId("initiator")
+                .mainTarget(target(FIXT_MAIN))
+                .backupTarget(target(DR))
+                .build();
+
+        assertThat(fixEngine.newInitiator(fixtInitiator).getFixSessionIds()).containsExactly(FIXT_MAIN, DR);
     }
 
     @Test

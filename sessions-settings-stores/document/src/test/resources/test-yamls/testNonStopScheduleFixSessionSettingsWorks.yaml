@@ -11,7 +11,6 @@ fixSessionId:
   targetSubID: "targetSubId"
   targetLocationID: "targetLocId"
 fixSessionType: "ACCEPTOR"
-dictionaryId: "default"
 heartBeatInterval:
   initiatorInterval: "PT10S"
   acceptorLowerBoundInterval: "PT1S"

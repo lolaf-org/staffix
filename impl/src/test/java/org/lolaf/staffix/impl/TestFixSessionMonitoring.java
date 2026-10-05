@@ -134,7 +134,7 @@ class TestFixSessionMonitoring extends AbstractFixTests {
 
     @Test
     void testLogonLogoutEventsAreDispatched() {
-        MessageTypeRegistry mtr = MessageTypeRegistry.Registry.getInstance(FixDictionaryId.of(FixDictionaryId.DEFAULT_ID, FixRegularVersion.VERSION_44));
+        MessageTypeRegistry mtr = MessageTypeRegistry.Registry.getInstance(FixDictionaryId.of(FixRegularVersion.VERSION_44));
 
         logonClient();
 

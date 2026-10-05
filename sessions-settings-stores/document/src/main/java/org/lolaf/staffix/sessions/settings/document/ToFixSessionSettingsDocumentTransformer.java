@@ -46,7 +46,6 @@ public class ToFixSessionSettingsDocumentTransformer {
         FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder = FixSessionSettingsDocument.builder();
         mergeFixSessionId(settings, builder);
         builder.fixSessionType(settings.getFixSessionType());
-        builder.dictionaryId(settings.getDictionaryId());
         mergeHeartbeatInterval(settings, builder);
         mergeIfNeeded(settings::getSendingTimeAccuracy, builder::sendingTimeAccuracy);
 

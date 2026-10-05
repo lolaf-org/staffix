@@ -19,15 +19,10 @@ import io.opentelemetry.api.trace.Span;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.lolaf.staffix.tracing.otlp.FixTracer;
-import org.lolaf.staffix.tracing.otlp.VoidFixTracer;
 import org.lolaf.ringos.timer.MutableTimeout;
 import org.lolaf.ringos.timer.Timeout;
 import org.lolaf.ringos.timer.WheelTimer;
-import org.lolaf.staffix.api.FixAcceptor;
-import org.lolaf.staffix.api.FixEngine;
-import org.lolaf.staffix.api.FixEngineBuilder;
-import org.lolaf.staffix.api.FixInitiator;
+import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
@@ -51,6 +46,8 @@ import org.lolaf.staffix.fix44.fields.*;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.jvmwarmup.JvmWarmup;
 import org.lolaf.staffix.jvmwarmup.JvmWarmupOptions;
+import org.lolaf.staffix.tracing.otlp.FixTracer;
+import org.lolaf.staffix.tracing.otlp.VoidFixTracer;
 import picocli.CommandLine;
 
 import java.time.Duration;
@@ -154,6 +151,11 @@ public class MetricsLogsTracesExample extends FixExamplesBase implements Callabl
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
         }
 
         @Override
@@ -261,6 +263,11 @@ public class MetricsLogsTracesExample extends FixExamplesBase implements Callabl
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
         }
 
         private void scheduleSendQuoteRequest() {

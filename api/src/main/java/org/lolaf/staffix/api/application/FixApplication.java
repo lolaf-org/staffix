@@ -16,6 +16,7 @@
 package org.lolaf.staffix.api.application;
 
 import org.lolaf.betty.api.settings.IOSettings;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixInitiatorBuilder;
 import org.lolaf.staffix.api.codec.FixFieldsEncoder;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
@@ -76,6 +77,14 @@ public interface FixApplication {
      * @return the FIX api version implemented by this application
      */
     FixApiVersion getFixApiVersion();
+
+    /**
+     * The dictionary this application's decoders and encoders are generated from, which every session bound to it
+     * speaks. A session whose FIX version, or FIXT DefaultApplVerID, is another version is refused.
+     *
+     * @return the dictionary of this application
+     */
+    FixDictionaryId getDictionaryId();
 
     /**
      * Set up the list of messages decoders instances for the given FIX session, warning decoders instance cannot be shared within multiple session as they are stateful

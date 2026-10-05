@@ -164,10 +164,19 @@ public class CodecsComponent implements FixSessionLayerComponent {
 
     @SuppressWarnings("unchecked")
     <T extends FixMessageEncoder<?>> FixMessageEncodersPool<T> newEncodersPool(String id, int size, boolean multiThreadedBorrows, Class<T> encoderClass) {
+        requireSessionDictionary(encoderClass);
         return (FixMessageEncodersPool<T>) allocatedEncodersPool.computeIfAbsent(id, poolId ->
                 new FixMessageEncodersPoolImpl<>(p -> allocatedEncodersPool.remove(poolId),
                         multiThreadedBorrows, size, encoderClass, fixMessageEncoderFactory, plugins,
                         fixSessionSettings.isPooledMessageEncodersDirectByteBuffers(), encodersClock));
+    }
+
+    private void requireSessionDictionary(Class<? extends FixMessageEncoder<?>> encoderClass) {
+        if (!fixMessageEncoderFactory.isFactoryFor(encoderClass)) {
+            throw new IllegalArgumentException(String.format("Encoder %s is from dictionary %s, FIX session %s speaks %s",
+                    encoderClass.getName(), FixMessageEncoderFactory.Registry.find(encoderClass).getTargetDictionaryId(),
+                    fixSession.getFixSessionId(), fixMessageEncoderFactory.getTargetDictionaryId()));
+        }
     }
 
     <T extends FixMessageEncoder<?>> T newEncoder(Class<T> encoderClass) {

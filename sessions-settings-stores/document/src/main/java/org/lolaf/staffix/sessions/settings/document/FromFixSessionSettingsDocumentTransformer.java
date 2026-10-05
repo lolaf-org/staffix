@@ -63,7 +63,6 @@ public class FromFixSessionSettingsDocumentTransformer {
         FixSessionSettings.FixSessionSettingsBuilder<?, ?> builder = FixSessionSettings.builder();
         mergeFixSessionId(settings, builder);
         mergeIfNeeded(settings::getFixSessionType, builder::fixSessionType);
-        mergeIfNeeded(settings::getDictionaryId, builder::dictionaryId);
         mergeHeartbeatIntervalSettings(settings, builder);
 
         mergeIfNeeded(settings::getSendingTimeAccuracy, builder::sendingTimeAccuracy);

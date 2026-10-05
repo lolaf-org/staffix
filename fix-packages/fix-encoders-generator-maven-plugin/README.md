@@ -97,7 +97,7 @@ dependency of your project.
 | `sourcesOutputDirectory`       | Yes      | -                                    | Directory where Java source files will be generated                                          |
 | `resourcesOutputDirectory`     | No       | `${project.build.directory}/classes` | Directory for the field validation info and the SPI registrations                            |
 | `packageName`                  | Yes      | -                                    | Base package name for generated classes                                                      |
-| `dictionaryId`                 | No       | `default`                            | The id a session names to use this dictionary; `default` is the one sessions use unless set |
+| `dictionaryId`                 | No       | `default`                            | The id an application returns from `getDictionaryId()` to use this dictionary                |
 | `addFIXEngineAndAppInfoFields` | No       | `true`                               | Whether to add FIX engine and application info fields (1600-1605) into generated code        |
 | `testSources`                  | No       | `false`                              | Adds the sources to the test compilation; set `resourcesOutputDirectory` to test output too |
 

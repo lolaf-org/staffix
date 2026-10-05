@@ -31,13 +31,13 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
-import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
 import org.lolaf.staffix.codec.decoders.FixMessageParser;
 import org.lolaf.staffix.codec.decoders.FixTFieldsRegistry;
 import org.lolaf.staffix.codec.decoders.FixTMessageFieldsRegistry;
 import org.lolaf.staffix.codec.decoders.FixTMessageTypeRegistry;
+import org.lolaf.staffix.impl.ApplicationDictionary;
 import org.lolaf.staffix.impl.FailSafeFixApplication;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
@@ -84,12 +84,12 @@ final class SessionWiring {
                   FixSessionRuntimeDependencies runtimeDependencies, ScheduledExecutorService scheduler,
                   IOSettings ioSettings, MessageExecutorsRuntime messageExecutorsRuntime, Clock providedClock) {
         this.fixSessionId = settings.getFixSessionId();
-        this.fixApplication = new FailSafeFixApplication(runtimeDependencies.getFixApplicationFactory()
-                .getInstance(settings.getFixApplicationInstanceId()));
+        FixApplication application = runtimeDependencies.getFixApplicationFactory().getInstance(settings.getFixApplicationInstanceId());
+        FixDictionaryId fixDictionaryId = ApplicationDictionary.require(application.getDictionaryId(), settings.getFixApplicationInstanceId(), fixSessionId);
+        this.fixApplication = new FailSafeFixApplication(application);
         this.clock = providedClock == null ? ClockImpl.get() : providedClock;
         TimeUnit sendingTimeAccuracy = settings.getSendingTimeAccuracy();
 
-        FixDictionaryId fixDictionaryId = FixDictionaryId.of(settings.getDictionaryId(), dictionaryVersion(fixSessionId));
         this.fieldsRegistry = fieldsRegistry(settings, fixDictionaryId, fixSessionId);
         this.messageTypeRegistry = FixTMessageTypeRegistry.get(fixDictionaryId, fixSessionId.getFixVersion());
         FixMessageEncoderFactory encoderFactory = FixMessageEncoderFactory.Registry.getInstance(fixDictionaryId);
@@ -148,19 +148,6 @@ final class SessionWiring {
         components.register(new SessionTimeWindowComponent(fixSession, fixApplication, state, scheduleManager, settings, scheduler));
         components.register(logonLogout);
         components.register(plugins);
-    }
-
-    /**
-     * A FIXT session names the application version its messages are in; a regular one is its own dictionary.
-     */
-    private static FixRegularVersion dictionaryVersion(FixSessionId fixSessionId) {
-        if (fixSessionId.getFixVersion() instanceof FixtVersion) {
-            return FixApplVerID.getFixVersionForCode(fixSessionId.getDefaultApplVerID().getCode());
-        }
-        if (fixSessionId.getFixVersion() instanceof FixRegularVersion) {
-            return (FixRegularVersion) fixSessionId.getFixVersion();
-        }
-        return null;
     }
 
     private static FieldsRegistry fieldsRegistry(FixSessionSettings settings, FixDictionaryId fixDictionaryId, FixSessionId fixSessionId) {

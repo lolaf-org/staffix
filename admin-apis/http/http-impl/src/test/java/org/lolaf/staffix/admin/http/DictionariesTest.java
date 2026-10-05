@@ -16,6 +16,7 @@
 package org.lolaf.staffix.admin.http;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -24,26 +25,28 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class DictionariesTest {
 
+    private static final FixDictionaryId ALPHA_44 = FixDictionaryId.of("alpha", FixRegularVersion.VERSION_44);
+
     @Test
     void aSessionDecodesWithTheDictionaryOfItsVersionAndId() {
         FixSessionId fix44 = FixSessionId.of("trading", FixRegularVersion.VERSION_44, "US", "ALPHA");
 
-        assertThat(Dictionaries.of(fix44, "alpha")).extracting(DictionaryRef::getId).containsExactly("alpha-FIX.4.4");
-        assertThat(Dictionaries.of(fix44, "alpha").get(0).getHash()).hasSize(64);
+        assertThat(Dictionaries.of(fix44, ALPHA_44)).extracting(DictionaryRef::getId).containsExactly("alpha-FIX.4.4");
+        assertThat(Dictionaries.of(fix44, ALPHA_44).get(0).getHash()).hasSize(64);
     }
 
     @Test
     void aFixtSessionDecodesWithTheTransportDictionaryThenTheApplicationOne() {
         FixSessionId fixt = FixSessionId.ofFIXT11("trading", FixApplVerID.FIX44, "US", "ALPHA");
 
-        assertThat(Dictionaries.of(fixt, "alpha")).extracting(DictionaryRef::getId).containsExactly("FIXT.1.1", "alpha-FIX.4.4");
+        assertThat(Dictionaries.of(fixt, ALPHA_44)).extracting(DictionaryRef::getId).containsExactly("FIXT.1.1", "alpha-FIX.4.4");
     }
 
     @Test
     void aDictionaryNotShippedIsLeftOut() {
         FixSessionId fix44 = FixSessionId.of("trading", FixRegularVersion.VERSION_44, "US", "ALPHA");
 
-        assertThat(Dictionaries.of(fix44, "beta")).isEmpty();
+        assertThat(Dictionaries.of(fix44, FixDictionaryId.of("beta", FixRegularVersion.VERSION_44))).isEmpty();
     }
 
     @Test

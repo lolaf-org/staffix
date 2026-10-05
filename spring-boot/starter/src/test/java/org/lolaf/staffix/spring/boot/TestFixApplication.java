@@ -16,6 +16,7 @@
 package org.lolaf.staffix.spring.boot;
 
 import lombok.Getter;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
@@ -38,6 +39,11 @@ public class TestFixApplication implements FixApplication {
     @Override
     public FixApiVersion getFixApiVersion() {
         return FixApiVersion.of(FixRegularVersion.VERSION_44);
+    }
+
+    @Override
+    public FixDictionaryId getDictionaryId() {
+        return FixDictionaryId.of(FixRegularVersion.VERSION_44);
     }
 
     @Override

@@ -63,6 +63,7 @@ import java.util.function.BiConsumer;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.*;
@@ -160,6 +161,17 @@ class TestFixMessagesSending extends AbstractFixTests {
      * few dozen and the next send blocked forever, on the IO thread too. The sends are queued on the session's
      * owner now, so the store is what says they all went through: the caller no longer waits for them.
      */
+    @Test
+    void testAnEncodersPoolFromAnotherDictionaryIsRefused() {
+        logonClient();
+
+        assertThatThrownBy(() -> fixAcceptorSession.newEncodersPool("fix50sp2-emails", false,
+                org.lolaf.staffix.fix50sp2.encoders.EmailEncoder.class))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("default-FIX.5.0-SP2")
+                .hasMessageContaining("speaks");
+    }
+
     @Test
     void testSendingOffLineDoesNotExhaustTheSendingContexts() {
         setupInitiatorSessionSettings(s -> s.desiredSessionState(FixSessionState.LOGGED_OUT).build());

@@ -17,8 +17,6 @@ package org.lolaf.staffix.admin.http;
 
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.version.FixApplVerID;
-import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
 
 import java.io.IOException;
@@ -57,15 +55,12 @@ final class Dictionaries {
     /**
      * For FIXT the transport's first, then the application's; a dictionary not shipped is left out.
      */
-    static List<DictionaryRef> of(FixSessionId fixSessionId, String dictionaryId) {
+    static List<DictionaryRef> of(FixSessionId fixSessionId, FixDictionaryId applicationDictionaryId) {
         List<String> ids = new ArrayList<>();
         if (fixSessionId.getFixVersion() instanceof FixtVersion) {
             ids.add(fixSessionId.getFixVersion().toString());
-            ids.add(FixDictionaryId.of(dictionaryId,
-                    FixApplVerID.getFixVersionForCode(fixSessionId.getDefaultApplVerID().getCode())).getId());
-        } else {
-            ids.add(FixDictionaryId.of(dictionaryId, (FixRegularVersion) fixSessionId.getFixVersion()).getId());
         }
+        ids.add(applicationDictionaryId.getId());
         List<DictionaryRef> refs = new ArrayList<>();
         for (String id : ids) {
             get(id).ifPresent(dictionary -> refs.add(new DictionaryRef(id, dictionary.hash)));

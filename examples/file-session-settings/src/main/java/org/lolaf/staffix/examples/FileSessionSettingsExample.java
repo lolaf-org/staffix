@@ -209,6 +209,11 @@ public final class FileSessionSettingsExample {
         }
 
         @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
         public List<FixMessageDecoder> setup(FixSessionSettings fixSessionSettings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
             return Collections.emptyList();
         }

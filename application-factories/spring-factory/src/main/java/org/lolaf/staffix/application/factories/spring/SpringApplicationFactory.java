@@ -18,14 +18,16 @@ package org.lolaf.staffix.application.factories.spring;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.springframework.context.ApplicationContext;
 
-import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Resolves each session's {@code FixApplication} from the Spring context, so it is a managed bean with its own
@@ -38,11 +40,13 @@ public class SpringApplicationFactory extends Startable.SimpleStartable<FixAppli
     private final String instanceId;
     private final ApplicationContext applicationContext;
     private final Set<FixApplication> usedApps;
+    private final Map<String, FixDictionaryId> dictionaryIds;
 
     private SpringApplicationFactory(SpringApplicationFactorySettings springApplicationFactorySettings) {
         this.instanceId = springApplicationFactorySettings.getInstanceId();
         this.applicationContext = springApplicationFactorySettings.getApplicationContext();
-        this.usedApps = new HashSet<>();
+        this.usedApps = ConcurrentHashMap.newKeySet();
+        this.dictionaryIds = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -63,13 +67,26 @@ public class SpringApplicationFactory extends Startable.SimpleStartable<FixAppli
 
     @Override
     public FixApplication getInstance(String applicationId) {
+        FixApplication app = bean(applicationId);
+        usedApps.add(app);
+        return app;
+    }
+
+    /**
+     * Remembered per bean name and not tracked for {@link FixApplication#destroy()}: a prototype bean would otherwise
+     * be created, then destroyed at stop, for every check of a session's settings.
+     */
+    @Override
+    public FixDictionaryId getDictionaryId(String applicationId) {
+        return dictionaryIds.computeIfAbsent(applicationId, id -> bean(id).getDictionaryId());
+    }
+
+    private FixApplication bean(String applicationId) {
         if (!applicationContext.containsBean(applicationId)) {
             throw new IllegalArgumentException(String.format("No FixApplication bean named '%s' in ApplicationContext. Available FixApplication beans: '%s'",
                     applicationId, String.join(",", applicationContext.getBeanNamesForType(FixApplication.class))));
         }
-        FixApplication app = applicationContext.getBean(applicationId, FixApplication.class);
-        usedApps.add(app);
-        return app;
+        return applicationContext.getBean(applicationId, FixApplication.class);
     }
 
     @Override

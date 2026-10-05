@@ -124,7 +124,7 @@ class TestFileFixSessionsSettingsStore {
     @Test
     void defaultYamlIsMergedIntoSessionsAndNotLoadedAsSession() throws IOException {
         FixSessionSettingsDocument defaults = FixSessionSettingsDocument.builder()
-                .dictionaryId("fromDefault")
+                .fixApplicationInstanceId("fromDefault")
                 .build();
         FixSessionSettingsDocument sessionYaml = FixSessionSettingsDocument.builder()
                 .fixSessionId(FixSessionSettingsDocument.FixSessionId.builder()
@@ -143,7 +143,7 @@ class TestFileFixSessionsSettingsStore {
 
         assertThat(store.getSettings()).hasSize(1);
         assertThat(store.getSettings()).first()
-                .extracting(FixSessionSettings::getDictionaryId).isEqualTo("fromDefault");
+                .extracting(FixSessionSettings::getFixApplicationInstanceId).isEqualTo("fromDefault");
     }
 
     @Test

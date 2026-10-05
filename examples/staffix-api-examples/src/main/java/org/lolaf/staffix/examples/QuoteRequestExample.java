@@ -22,6 +22,7 @@ import org.lolaf.ringos.timer.MutableTimeout;
 import org.lolaf.ringos.timer.Timeout;
 import org.lolaf.ringos.timer.WheelTimer;
 import org.lolaf.staffix.api.FixAcceptor;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -120,6 +121,11 @@ public class QuoteRequestExample extends FixExamplesBase implements Callable<Int
         }
 
         @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
         public List<FixMessageDecoder> setup(FixSessionSettings fixSessionSettings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
             encodedMessagesTypes.add(MessageTypes.Quote);
             return List.of(new QuoteRequestDecoder(fixSession));
@@ -200,6 +206,11 @@ public class QuoteRequestExample extends FixExamplesBase implements Callable<Int
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
         }
 
         private void scheduleSendQuoteRequest() {

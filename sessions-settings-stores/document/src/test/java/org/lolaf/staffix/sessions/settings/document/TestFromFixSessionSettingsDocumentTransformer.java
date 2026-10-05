@@ -53,7 +53,7 @@ class TestFromFixSessionSettingsDocumentTransformer {
                         .senderCompID("senderCompId")
                         .targetCompID("targetCompId")
                         .build())
-                .dictionaryId("testId");
+                .fixApplicationInstanceId("testId");
 
         settingsBuilder = FixSessionSettingsDocument.builder()
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
@@ -92,7 +92,7 @@ class TestFromFixSessionSettingsDocumentTransformer {
                         .targetLocationID("targetLocId")
                         .build()));
 
-        assertThat(d.getDictionaryId()).isEqualTo("testId");
+        assertThat(d.getFixApplicationInstanceId()).isEqualTo("testId");
 
         assertThat(d.getValidationSettings().getMaxMessageSize()).isEqualTo(1024);
 

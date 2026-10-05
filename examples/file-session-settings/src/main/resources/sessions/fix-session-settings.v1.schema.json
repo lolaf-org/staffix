@@ -171,17 +171,6 @@
       "description" : "The state the session holds itself in. FixSessionState.LOGGED_IN by default, so it logs on and stays on; FixSessionState.LOGGED_OUT takes a session out of service without removing its configuration.",
       "default" : "LOGGED_IN"
     },
-    "dictionaryId" : {
-      "anyOf" : [ {
-        "type" : "string"
-      }, {
-        "type" : "string",
-        "pattern" : ".*\\$\\{[^}]+}.*",
-        "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ],
-      "description" : "Which dictionary's encoders this session uses, for a counterparty whose messages differ from the standard. Defaults to the one every generated FIX package registers.",
-      "default" : "default"
-    },
     "disconnectMessagesFlushDeadline" : {
       "anyOf" : [ {
         "type" : "string",

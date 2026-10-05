@@ -76,7 +76,7 @@ class TestFixSessionSettingsValidationAndSchema {
 
     @Test
     void missingRequiredSessionIdFailsWithReadableError() throws IOException {
-        writeSessionFile("bad.yaml", "dictionaryId: \"default\"\n");
+        writeSessionFile("bad.yaml", "fixApplicationInstanceId: \"default\"\n");
 
         FileFixSessionsSettingsStore store = newStore();
         assertThatThrownBy(store::start)

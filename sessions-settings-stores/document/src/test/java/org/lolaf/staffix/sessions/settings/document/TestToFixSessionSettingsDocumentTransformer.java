@@ -69,7 +69,7 @@ class TestToFixSessionSettingsDocumentTransformer {
                         .senderCompID("senderCompId")
                         .targetCompID("targetCompId")
                         .build())
-                .dictionaryId("testId");
+                .fixApplicationInstanceId("testId");
 
         settingsBuilder = FixSessionSettingsDocument.builder()
                 .fixSessionId(FixSessionSettingsDocument.FixSessionId.builder()

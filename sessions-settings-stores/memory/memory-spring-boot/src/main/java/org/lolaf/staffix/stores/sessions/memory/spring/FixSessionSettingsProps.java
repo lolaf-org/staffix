@@ -49,12 +49,6 @@ public class FixSessionSettingsProps {
     private FixSession.FixSessionType type;
 
     /**
-     * Which dictionary's encoders this session uses, for a counterparty whose messages differ from the
-     * standard. Defaults to the one every generated FIX package registers.
-     */
-    private String dictionaryId;
-
-    /**
      * HeartBtInt(108): how often a quiet session proves it is alive, and how long it waits before asking.
      */
     @NestedConfigurationProperty

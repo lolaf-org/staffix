@@ -17,6 +17,7 @@ package org.lolaf.staffix.admin.http;
 
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixAcceptorBuilder;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.admin.AdminApi;
@@ -96,7 +97,6 @@ public class AdminApiStatusBenchmark {
                         .fixSessionId(id)
                         .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                         .fixApplicationInstanceId(id.getQualifiedName())
-                        .dictionaryId("benchmarks")
                         .build());
             }
             engine = FixEngineBuilder.builder()
@@ -130,6 +130,11 @@ public class AdminApiStatusBenchmark {
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of("benchmarks", FixRegularVersion.VERSION_44);
         }
 
         @Override

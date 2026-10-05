@@ -16,6 +16,7 @@
 package org.lolaf.staffix.jvmwarmup;
 
 import lombok.extern.slf4j.Slf4j;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.executor.MessageExecutor;
@@ -24,6 +25,7 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixApiVersion;
+import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
 import org.lolaf.staffix.jvmwarmup.fix.msg.MessageTypes;
 
@@ -44,6 +46,11 @@ class JvmWarmupAcceptorApplication implements FixApplication {
     @Override
     public FixApiVersion getFixApiVersion() {
         return FixApiVersion.of("jvm-warmup-api", SemVer.SEM_VER_V1);
+    }
+
+    @Override
+    public FixDictionaryId getDictionaryId() {
+        return FixDictionaryId.of("jvm-warmup", FixRegularVersion.VERSION_44);
     }
 
     @Override

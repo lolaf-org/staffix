@@ -24,6 +24,7 @@ import org.lolaf.betty.api.io.IOWorkersGroup;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.stats.IOStats;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixInitiator;
 import org.lolaf.staffix.api.FixInitiatorBuilder;
 import org.lolaf.staffix.api.FixInitiatorTarget;
@@ -78,6 +79,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                      List<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver) {
         validateTargets(fixInitiatorBuilder, fixSessionsSettingsStores);
         this.mainSettings = findSettings(fixInitiatorBuilder.getMainTarget().getFixSessionId(), fixSessionsSettingsStores).orElseThrow();
+        requireApplicationSpeaksEveryTarget(fixInitiatorBuilder, mainSettings, fixRuntimeDependenciesProvider.apply(mainSettings));
         this.lifecycleLock = new Object();
         this.activeFixInitiatorTarget = fixInitiatorBuilder.getMainTarget();
         this.fixSessionSettings = mainSettings;
@@ -117,6 +119,13 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                     fixSessionsSettingsStores.stream().flatMap(s -> s.getSettings().stream()).map(FixSessionSettings::getFixSessionId).collect(Collectors.toList()));
         }
         checkNoBackupHasStoredSettings(fixInitiatorBuilder, fixSessionsSettingsStores);
+    }
+
+    private static void requireApplicationSpeaksEveryTarget(FixInitiatorBuilder fixInitiatorBuilder, FixSessionSettings mainSettings,
+                                                            FixSessionRuntimeDependencies runtimeDependencies) {
+        String applicationId = mainSettings.getFixApplicationInstanceId();
+        FixDictionaryId dictionaryId = runtimeDependencies.getFixApplicationFactory().getDictionaryId(applicationId);
+        fixInitiatorBuilder.getTargets().forEach(target -> ApplicationDictionary.require(dictionaryId, applicationId, target.getFixSessionId()));
     }
 
     private static void checkNoBackupHasStoredSettings(FixInitiatorBuilder fixInitiatorBuilder, List<FixSessionsSettingsStore> fixSessionsSettingsStores) {
