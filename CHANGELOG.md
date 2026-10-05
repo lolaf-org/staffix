@@ -45,6 +45,10 @@ could mean.
 - **Adding or updating a session's settings refuses an application factory, application, message store, messages
   logger or session plugin the engine does not have**, instead of accepting settings the session then fails to start
   with.
+- **An application publishes gauges with its session's metrics**: `FixSessionsMonitoringContext.getGauge(id,
+  description, tags)` gives a gauge the application sets or adds to, from any thread and without allocating, and
+  `getGauge(id, description, tags, supplier)` one read from the supplier at each export, for a value the application
+  already holds. Both are listed among the session's meters.
 - **A session's monitoring describes the meters it publishes**: `FixSessionsMonitoringContext.getMeterDescriptors()`
   lists the built-in meters switched on and the custom timers the application obtained from `getTimer`, each with
   its description, the tags that split it into series and whether quantiles can be computed;
@@ -78,7 +82,8 @@ could mean.
   Java settings and the Spring Boot properties already use, instead of `withinSessionCheckInterval`.
 - **The session settings JSON schema describes every field and gives its default**, so an editor shows what a
   setting does and what it is when left out.
-- **A custom `FixSessionsMonitoringContext` implements `getMeterDescriptors()`**: the meters created through it.
+- **A custom `FixSessionsMonitoringContext` implements `getMeterDescriptors()`** (the meters created through it) **and
+  both `getGauge` methods**.
 - **A custom `FixApplicationFactory` implements `getApplicationIds()`**: the application ids its `getInstance`
   accepts. It may also override `getDictionaryId(applicationId)`, which the engine uses to check settings without
   binding an application; the default asks `getInstance`.

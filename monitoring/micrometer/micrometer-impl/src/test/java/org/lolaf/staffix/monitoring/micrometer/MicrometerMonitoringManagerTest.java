@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -281,6 +282,51 @@ class MicrometerMonitoringManagerTest {
                 .containsExactlyInAnyOrder(
                         tuple("orders.pricing", List.of("venue", "desk"), true),
                         tuple("timer.with.no.histogram", List.of(), false));
+    }
+
+    @Test
+    void aPushedGaugeReadsWhatTheApplicationSetsAndAdds() {
+        monitoringManager.start();
+        FixSessionsMonitoringContext context = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow();
+
+        org.lolaf.staffix.api.monitoring.Gauge inFlight = context.getGauge("orders.in.flight", "Orders sent, not yet acknowledged", Map.of("venue", "xpar"));
+        inFlight.set(3);
+        inFlight.add(2);
+        context.getGauge("orders.in.flight", "Orders sent, not yet acknowledged", Map.of("venue", "xpar")).add(-1);
+
+        assertThat(meterRegistry.find("orders.in.flight").tag("venue", "xpar")
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).gauge().value()).isEqualTo(4);
+        assertThat(context.getMeterDescriptors()).filteredOn(FixMeterDescriptor::isCustom).singleElement().satisfies(gauge -> {
+            assertThat(gauge.getType()).isEqualTo(FixMeterDescriptor.Type.GAUGE);
+            assertThat(gauge.getTagKeys()).containsExactly("venue");
+        });
+    }
+
+    @Test
+    void aPulledGaugeReadsItsSupplierAndIgnoresSets() {
+        monitoringManager.start();
+        FixSessionsMonitoringContext context = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow();
+        AtomicInteger pending = new AtomicInteger(7);
+
+        org.lolaf.staffix.api.monitoring.Gauge gauge = context.getGauge("quotes.pending", "Quotes pending", Map.of(), pending::get);
+        gauge.set(100);
+        pending.set(9);
+
+        assertThat(meterRegistry.find("quotes.pending").gauge().value()).isEqualTo(9);
+    }
+
+    @Test
+    void gaugesGoWithTheirSession() {
+        monitoringManager.start();
+        FixSessionPlugin<FixSessionsMonitoringContext, Void> listener = monitoringManager
+                .onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+        listener.getPluginContext().orElseThrow().getGauge("orders.in.flight", "Orders in flight", Map.of()).set(1);
+
+        listener.onSessionDestroyed("fix-instance-1", fixSessionId);
+
+        assertThat(meterRegistry.find("orders.in.flight").gauge()).isNull();
     }
 
     @Test

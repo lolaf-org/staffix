@@ -19,6 +19,7 @@ import org.lolaf.staffix.api.session.plugins.PluginContext;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.DoubleSupplier;
 
 /**
  * A session's meters, created once and reused.
@@ -39,6 +40,30 @@ public interface FixSessionsMonitoringContext extends PluginContext {
      * @return a timer instance to measure time
      */
     Timer getTimer(String id, String description, Map<String, String> tags);
+
+    /**
+     * Retrieves a gauge the application sets; the same id and tags give the same gauge. The returned NOOP gauge
+     * when monitoring is disabled has no impact on performances.
+     *
+     * @param id          the gauge id
+     * @param description the gauge description
+     * @param tags        the gauge tags
+     * @return a gauge holding the value the next export reads
+     */
+    Gauge getGauge(String id, String description, Map<String, String> tags);
+
+    /**
+     * Registers a gauge read from {@code value} at each export, for a value the application already holds. The
+     * supplier runs on the exporter's thread, so it must be thread-safe, cheap and non-blocking; it is kept until the
+     * session ends. The returned gauge ignores {@link Gauge#set} and {@link Gauge#add}.
+     *
+     * @param id          the gauge id
+     * @param description the gauge description
+     * @param tags        the gauge tags
+     * @param value       read at each export
+     * @return the registered gauge
+     */
+    Gauge getGauge(String id, String description, Map<String, String> tags, DoubleSupplier value);
 
     /**
      * The meters this session publishes: the monitoring's own, and the timers obtained so far from

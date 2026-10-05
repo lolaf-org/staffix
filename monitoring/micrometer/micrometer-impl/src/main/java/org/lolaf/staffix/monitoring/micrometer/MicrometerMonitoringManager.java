@@ -16,19 +16,17 @@
 package org.lolaf.staffix.monitoring.micrometer;
 
 import io.micrometer.core.instrument.*;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
-import org.lolaf.staffix.api.monitoring.FixMonitoringAttributes;
-import org.lolaf.staffix.api.monitoring.FixSessionMonitoringManagerSettings;
-import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
-import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
+import org.lolaf.staffix.api.monitoring.*;
 import org.lolaf.staffix.api.msg.MessageType;
-import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.RttMeasurement;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
@@ -37,19 +35,14 @@ import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.collections.IndexableMap;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.DoubleSupplier;
+import java.util.function.ToDoubleFunction;
 
 /**
  * Publishes session and message metrics to a Micrometer registry the application supplies.
@@ -188,32 +181,32 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         private final Gauge sessionState;
         private final BiConsumer<String, FixSessionId> onSessionDestroyed;
         private final Map<String, MicrometerTimerWrapper> timersForSession;
+        private final Map<String, RegisteredGauge> gaugesForSession;
         private final MeterRegistry meterRegistry;
         private final MicrometerMonitoringManagerSettings settings;
         private final Optional<FixSessionsMonitoringContext> pluginContext;
         private final String fixEngineId;
-        private final String fixInstanceId;
-        private final FixSessionId fixSessionId;
         private final List<FixMeterDescriptor> builtInMeters;
         private final Map<String, FixMeterDescriptor> customMeters;
+        private final Tags sessionTags;
 
         FixSessionEventsListenerImpl(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, Collection<MessageType> incomingMessageTypes,
                                      Collection<MessageType> outgoingMessageTypes, MeterRegistry meterRegistry, MicrometerMonitoringManagerSettings micrometerMonitoringManagerSettings,
                                      List<FixMeterDescriptor> builtInMeters, BiConsumer<String, FixSessionId> onSessionDestroyed) {
             this.fixEngineId = fixEngineId;
-            this.fixInstanceId = fixInstanceId;
-            this.fixSessionId = fixSessionId;
             this.builtInMeters = builtInMeters;
             this.customMeters = new ConcurrentHashMap<>();
             this.meterRegistry = meterRegistry;
             this.settings = micrometerMonitoringManagerSettings;
             this.timersForSession = new ConcurrentHashMap<>();
+            this.gaugesForSession = new ConcurrentHashMap<>();
             this.loggedOn = new AtomicBoolean(false);
             this.onSessionDestroyed = onSessionDestroyed;
             Tags tags = Tags.of(Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), fixEngineId),
                     Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey(), fixInstanceId),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey(), fixSessionId.getGroup()));
+            this.sessionTags = tags;
             this.sessionState = Gauge.builder(SESSION_LOGON_STATE, loggedOn, value -> loggedOn.get() ? 1d : 0d)
                     .description(LOGON_STATE_DESCRIPTION)
                     .tags(tags).register(meterRegistry);
@@ -263,6 +256,35 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                     .register(meterRegistry);
         }
 
+        private static String meterKey(String id, Map<String, String> tags) {
+            if (tags.isEmpty()) {
+                return id;
+            }
+            StringBuilder tagsToString = new StringBuilder();
+            tags.forEach((k, v) -> tagsToString.append(k).append(v));
+            return id + "-" + tagsToString.toString().hashCode();
+        }
+
+        private static FixMeterDescriptor customMeter(String id, String description, Collection<String> tagKeys,
+                                                      MicrometerMonitoringManagerSettings.TimerSettings timerSettings) {
+            return FixMeterDescriptor.builder()
+                    .name(id)
+                    .type(FixMeterDescriptor.Type.TIMER)
+                    .description(description)
+                    .tagKeys(tagKeys)
+                    .percentiles(timerSettings.isPublishPercentileHistogram())
+                    .custom(true)
+                    .build();
+        }
+
+        private static FixMeterDescriptor withTagKeysOf(FixMeterDescriptor known, FixMeterDescriptor added) {
+            Set<String> tagKeys = new LinkedHashSet<>(known.getTagKeys());
+            if (!tagKeys.addAll(added.getTagKeys())) {
+                return known;
+            }
+            return known.toBuilder().clearTagKeys().tagKeys(tagKeys).build();
+        }
+
         private void registerTimers(String msgDirection, String fixInstanceId, FixSessionId fixSessionId, MeterRegistry meterRegistry, MicrometerMonitoringManagerSettings micrometerMonitoringManagerSettings,
                                     Collection<MessageType> messageTypes, boolean readLatencyEnabled, boolean writeLatencyEnabled, boolean decodingLatencyEnabled, boolean encodingLatencyEnabled) {
             messageTypes.forEach(mt -> {
@@ -273,7 +295,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                     timerSettings = micrometerMonitoringManagerSettings.getDefaultTimersSettings();
                 }
                 Tags tagsForTimer = Tags.of(Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), fixEngineId),
-                    Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey(), fixInstanceId),
+                        Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey(), fixInstanceId),
                         Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()),
                         Tag.of(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(), mt.code()),
                         Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey(), fixSessionId.getGroup()),
@@ -309,25 +331,54 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
 
         @Override
         public org.lolaf.staffix.api.monitoring.Timer getTimer(String id, String description, Map<String, String> tags) {
-            Tags tagsForTimer = Tags.of(
-                    Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), fixEngineId),
-                    Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey(), fixInstanceId),
-                    Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()),
-                    Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey(), fixSessionId.getGroup()));
-
-            AtomicReference<Tags> tagsRef = new AtomicReference<>(tagsForTimer);
-            StringBuilder tagsToString = new StringBuilder();
-            tags.forEach((k, v) -> {
-                tagsToString.append(k).append(v);
-                tagsRef.getAndUpdate(currentTags -> currentTags.and(Tag.of(k, v)));
-            });
-            String timerKey = tags.isEmpty() ? id : id + "-" + tagsToString.toString().hashCode();
             MicrometerMonitoringManagerSettings.TimerSettings timerSettings = settings.getTimerSettings().getOrDefault(id, settings.getDefaultTimersSettings());
-            return timersForSession.computeIfAbsent(timerKey, i -> {
-                Timer raw = getTimer(id, description, meterRegistry, tagsRef.get(), timerSettings);
+            return timersForSession.computeIfAbsent(meterKey(id, tags), i -> {
+                Timer raw = getTimer(id, description, meterRegistry, customTags(tags), timerSettings);
                 customMeters.merge(id, customMeter(id, description, tags.keySet(), timerSettings), FixSessionEventsListenerImpl::withTagKeysOf);
                 return new MicrometerTimerWrapper(raw);
             });
+        }
+
+        @Override
+        public org.lolaf.staffix.api.monitoring.Gauge getGauge(String id, String description, Map<String, String> tags) {
+            return gaugesForSession.computeIfAbsent(meterKey(id, tags), i -> {
+                PushedGauge gauge = new PushedGauge();
+                gauge.meter = registerGauge(id, description, tags, gauge, PushedGauge::value);
+                return gauge;
+            });
+        }
+
+        @Override
+        public org.lolaf.staffix.api.monitoring.Gauge getGauge(String id, String description, Map<String, String> tags, DoubleSupplier value) {
+            return gaugesForSession.computeIfAbsent(meterKey(id, tags), i -> {
+                PulledGauge gauge = new PulledGauge();
+                gauge.meter = registerGauge(id, description, tags, value, DoubleSupplier::getAsDouble);
+                return gauge;
+            });
+        }
+
+        private <T> Gauge registerGauge(String id, String description, Map<String, String> tags, T state, ToDoubleFunction<T> value) {
+            Gauge gauge = Gauge.builder(id, state, value)
+                    .description(description)
+                    .tags(customTags(tags))
+                    .strongReference(true)
+                    .register(meterRegistry);
+            customMeters.merge(id, FixMeterDescriptor.builder()
+                    .name(id)
+                    .type(FixMeterDescriptor.Type.GAUGE)
+                    .description(description)
+                    .tagKeys(tags.keySet())
+                    .custom(true)
+                    .build(), FixSessionEventsListenerImpl::withTagKeysOf);
+            return gauge;
+        }
+
+        private Tags customTags(Map<String, String> tags) {
+            Tags all = sessionTags;
+            for (Map.Entry<String, String> tag : tags.entrySet()) {
+                all = all.and(tag.getKey(), tag.getValue());
+            }
+            return all;
         }
 
         @Override
@@ -340,26 +391,6 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             return meters;
         }
 
-        private static FixMeterDescriptor customMeter(String id, String description, Collection<String> tagKeys,
-                                                      MicrometerMonitoringManagerSettings.TimerSettings timerSettings) {
-            return FixMeterDescriptor.builder()
-                    .name(id)
-                    .type(FixMeterDescriptor.Type.TIMER)
-                    .description(description)
-                    .tagKeys(tagKeys)
-                    .percentiles(timerSettings.isPublishPercentileHistogram())
-                    .custom(true)
-                    .build();
-        }
-
-        private static FixMeterDescriptor withTagKeysOf(FixMeterDescriptor known, FixMeterDescriptor added) {
-            Set<String> tagKeys = new LinkedHashSet<>(known.getTagKeys());
-            if (!tagKeys.addAll(added.getTagKeys())) {
-                return known;
-            }
-            return known.toBuilder().clearTagKeys().tagKeys(tagKeys).build();
-        }
-
         @Override
         public void onSessionDestroyed(String fixInstanceId, FixSessionId fixSessionId) {
             onSessionDestroyed.accept(fixInstanceId, fixSessionId);
@@ -368,6 +399,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         void destroy(MeterRegistry meterRegistry) {
             meterRegistry.remove(sessionState);
             timersForSession.values().forEach(timer -> timer.destroy(meterRegistry));
+            gaugesForSession.values().forEach(gauge -> meterRegistry.remove(gauge.meter));
             if (readsTimersPerMsgType != null) {
                 readsTimersPerMsgType.values().forEach(meterRegistry::remove);
                 readsTimersPerMsgType.clear();
@@ -472,6 +504,45 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             }
             if (clockOffsetNanos != null) {
                 clockOffsetNanos.set(measurement.getClockOffset().toNanos());
+            }
+        }
+
+        private abstract static class RegisteredGauge implements org.lolaf.staffix.api.monitoring.Gauge {
+            Gauge meter;
+        }
+
+        private static final class PushedGauge extends RegisteredGauge {
+
+            private final AtomicLong bits = new AtomicLong(Double.doubleToRawLongBits(0));
+
+            @Override
+            public void set(double value) {
+                bits.set(Double.doubleToRawLongBits(value));
+            }
+
+            @Override
+            public void add(double delta) {
+                long current;
+                do {
+                    current = bits.get();
+                } while (!bits.compareAndSet(current, Double.doubleToRawLongBits(Double.longBitsToDouble(current) + delta)));
+            }
+
+            double value() {
+                return Double.longBitsToDouble(bits.get());
+            }
+        }
+
+        private static final class PulledGauge extends RegisteredGauge {
+
+            @Override
+            public void set(double value) {
+                // the supplier gives the value
+            }
+
+            @Override
+            public void add(double delta) {
+                // the supplier gives the value
             }
         }
 
