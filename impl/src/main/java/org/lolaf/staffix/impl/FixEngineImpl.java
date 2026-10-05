@@ -19,11 +19,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
-import org.lolaf.staffix.api.admin.AdminApi;
-import org.lolaf.staffix.api.admin.AdminApiExporter;
-import org.lolaf.staffix.api.admin.FixAcceptorSessions;
-import org.lolaf.staffix.api.admin.FixInitiatorTargets;
-import org.lolaf.staffix.api.admin.FixSessionComponents;
+import org.lolaf.staffix.api.admin.*;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
@@ -52,6 +48,7 @@ import java.util.stream.Collectors;
  * nothing is torn down while a session is still draining into it.
  */
 @Slf4j
+@SuppressWarnings("java:S3077")
 public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implements FixEngine, AdminApi, FixSessionsObserver {
 
     private static final String PROVIDE_AT_LEAST_ONE = "Provide at least one ";
@@ -102,6 +99,10 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         this.adminApiExporter = fixEngineBuilder.getAdminApiExporter() != null ? fixEngineBuilder.getAdminApiExporter().instance() : null;
         this.initiators = new ConcurrentHashMap<>();
         this.acceptors = new ConcurrentHashMap<>();
+    }
+
+    private static IllegalArgumentException noStoreHolds(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
+        return new IllegalArgumentException("No store holds the " + fixSessionType + " session " + fixSessionId);
     }
 
     private <T extends InstanceIdSupplier> void ensurePluginsUniqueInstanceIdsAreProvided(List<T> pluginsSettings) {
@@ -254,6 +255,8 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 });
     }
 
+    // AdminApi implementation - routes each operation to the initiator/acceptor managing the session
+
     @Override
     public FixAcceptor newAcceptor(FixAcceptorBuilder fixAcceptorBuilder) {
         if (!isStarted()) {
@@ -265,8 +268,6 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         onAcceptorSessionsChanged();
         return acceptor;
     }
-
-    // AdminApi implementation - routes each operation to the initiator/acceptor managing the session
 
     @Override
     public String getInstanceId() {
@@ -430,10 +431,6 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         return fixSessionsSettingsStores.stream()
                 .filter(store -> store.find(fixSessionId, fixSessionType).isPresent())
                 .findFirst();
-    }
-
-    private static IllegalArgumentException noStoreHolds(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
-        return new IllegalArgumentException("No store holds the " + fixSessionType + " session " + fixSessionId);
     }
 
     /**

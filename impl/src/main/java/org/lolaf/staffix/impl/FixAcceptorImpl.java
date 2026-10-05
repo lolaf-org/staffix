@@ -73,6 +73,7 @@ import java.util.stream.Stream;
  * raw bytes to find which configured session it is - before any decoder exists for it.
  */
 @Slf4j
+@SuppressWarnings("java:S3077")
 public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> implements FixAcceptor, FixSessionAdminControl, FixSessionsSettingsStore.Listener {
 
     // short window to let a best-effort rejection reply (Logout) flush before the connection is torn down
@@ -149,9 +150,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         return opts.isEmpty() ? Map.of(StandardSocketOptions.TCP_NODELAY, true) : opts;
     }
 
-    static ScheduledExecutorService stopOwnSchedulerIfNeeded(ScheduledExecutorService ownScheduler, String instanceId, Deadline deadline) {
+    static void stopOwnSchedulerIfNeeded(ScheduledExecutorService ownScheduler, String instanceId, Deadline deadline) {
         if (ownScheduler == null) {
-            return null;
+            return;
         }
         ownScheduler.shutdownNow();
         try {
@@ -162,7 +163,6 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
-        return null;
     }
 
     /**
@@ -282,8 +282,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         stopSessionsProtocol(stopDeadline);
         ioServer.stop(stopDeadline.fromRemainingTime(0.8));
         configuredSessions.values().forEach(fixSession -> fixSession.releaseResources(stopDeadline));
-        scheduledExecutorService = stopOwnSchedulerIfNeeded(scheduledExecutorService, fixAcceptorBuilder.getInstanceId(),
+        stopOwnSchedulerIfNeeded(scheduledExecutorService, fixAcceptorBuilder.getInstanceId(),
                 stopDeadline.fromRemainingTime(0.3));
+        scheduledExecutorService = null;
         messageExecutorsRuntime.stop(stopDeadline);
 
         ioServer = null;

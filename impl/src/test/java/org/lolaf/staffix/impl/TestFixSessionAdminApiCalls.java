@@ -31,6 +31,7 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+@SuppressWarnings("java:S2699")
 class TestFixSessionAdminApiCalls extends AbstractFixTests {
 
 

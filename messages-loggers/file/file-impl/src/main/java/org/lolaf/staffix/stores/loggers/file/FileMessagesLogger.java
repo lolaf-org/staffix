@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.stores.loggers.file;
 
-import org.lolaf.staffix.api.serde.SerDe;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +23,7 @@ import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
+import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.codec.serde.UtcDateTimeSerde;
@@ -114,8 +114,7 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
         private void compress(File toCompress, File orginalFile) throws IOException {
             log.info("Compressing FIX log file {}", toCompress);
             if (settings.getMaxCompressedFiles() > 0) {
-                File logsDir = orginalFile.getParentFile();
-                File[] gzLogFiles = logsDir.listFiles(pathname -> pathname.getName().startsWith(orginalFile.getName() + "_") && pathname.getName().endsWith(".gz"));
+                File[] gzLogFiles = orginalFile.getParentFile().listFiles(pathname -> pathname.getName().startsWith(orginalFile.getName() + "_") && pathname.getName().endsWith(".gz"));
                 if (gzLogFiles != null) {
                     int filesToDelete = gzLogFiles.length - settings.getMaxCompressedFiles() + 1;
                     if (filesToDelete > 0) {

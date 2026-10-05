@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import java.lang.management.ManagementFactory;
 import java.util.LinkedHashMap;
@@ -88,7 +89,7 @@ public class JmxAdminApi implements AdminApiExporter, AdminApi.SessionLifecycleL
         }
     }
 
-    private ObjectName sessionObjectName(FixSession session) throws Exception {
+    private ObjectName sessionObjectName(FixSession session) throws MalformedObjectNameException {
         return new ObjectName(settings.getJmxDomain() + ":type=FixSession"
                 + ",instance=" + ObjectName.quote(adminApi.getInstanceId())
                 + ",group=" + ObjectName.quote(session.getFixSessionId().getGroup())

@@ -60,6 +60,7 @@ import static org.mockito.Mockito.*;
  * the dialling instead of loosening the verification keeps the counts exact, so a reject path that fires its
  * callbacks twice for one attempt still fails the test.
  */
+@SuppressWarnings("java:S2699")
 class TestFixLogonValidations extends AbstractFixTests {
 
     @Test

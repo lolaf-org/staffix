@@ -30,6 +30,7 @@ import org.lolaf.staffix.tracing.otlp.sender.StaffixHttpSenderProvider;
 import org.openjdk.jmh.annotations.*;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -204,7 +205,7 @@ public class OtlpTracingExportBenchmark {
             return recorded;
         }
 
-        private static Process startServer() throws Exception {
+        private static Process startServer() throws IOException {
             return new ProcessBuilder(
                     System.getProperty("java.home") + "/bin/java",
                     "-cp", System.getProperty("java.class.path"),
@@ -214,7 +215,7 @@ public class OtlpTracingExportBenchmark {
                     .start();
         }
 
-        private static int portOf(Process server) throws Exception {
+        private static int portOf(Process server) throws IOException {
             BufferedReader out = new BufferedReader(
                     new InputStreamReader(server.getInputStream(), StandardCharsets.UTF_8));
             String line;
@@ -227,7 +228,7 @@ public class OtlpTracingExportBenchmark {
         }
 
         @Setup(Level.Trial)
-        public void setUp() throws Exception {
+        public void setUp() throws IOException {
             server = startServer();
             String address = "http://127.0.0.1:" + portOf(server) + "/v1/traces";
 

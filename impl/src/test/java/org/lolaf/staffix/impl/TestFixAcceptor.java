@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.assertArg;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 
+@SuppressWarnings("java:S2699")
 class TestFixAcceptor extends AbstractFixTests {
 
     /**

@@ -37,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.*;
 
+@SuppressWarnings("java:S2699")
 class TestFixt extends AbstractFixTests {
 
     @Override

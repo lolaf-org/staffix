@@ -24,11 +24,7 @@ import org.lolaf.betty.api.io.IOWorkersGroup;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.stats.IOStats;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.FixDictionaryId;
-import org.lolaf.staffix.api.FixInitiator;
-import org.lolaf.staffix.api.FixInitiatorBuilder;
-import org.lolaf.staffix.api.FixInitiatorTarget;
-import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi.ResetFixSessionMode;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.session.FixSession;
@@ -371,8 +367,8 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     }
 
     private void stopInitiatorResources(Deadline stopDeadline) {
-        scheduledExecutorService = stopOwnSchedulerIfNeeded(scheduledExecutorService, fixInitiatorBuilder.getInstanceId(),
-                stopDeadline.fromRemainingTime(0.3));
+        stopOwnSchedulerIfNeeded(scheduledExecutorService, fixInitiatorBuilder.getInstanceId(), stopDeadline.fromRemainingTime(0.3));
+        scheduledExecutorService = null;
         messageExecutorsRuntime.stop(stopDeadline);
     }
 

@@ -42,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>Each test runs against a {@link StubHttpServer} on a free port, created before and closed after.
  * {@link #settings()} is already pointed at it.
  */
+@SuppressWarnings("java:S2699")
 public abstract class AbstractHttpSenderTest {
 
     protected static final byte[] PAYLOAD = "a protobuf encoded batch of metrics".getBytes(StandardCharsets.UTF_8);
