@@ -55,14 +55,14 @@ public class HttpAdminApiProps {
     private String readOnlyApiToken;
 
     /**
-     * The URL the console reaches this engine at; unset derives it from the host name and the bound port.
-     */
-    private String advertisedUrl;
-
-    /**
      * The console's base URL the engine announces itself to; unset serves the API without announcing it.
      */
     private String announceUrl;
+
+    /**
+     * The URL the console reaches this engine at; unset derives it from the host name and the bound port.
+     */
+    private String announceAdvertisedUrl;
 
     /**
      * A console user with the ENGINE role, used only to announce the engine; it grants nothing on this API.

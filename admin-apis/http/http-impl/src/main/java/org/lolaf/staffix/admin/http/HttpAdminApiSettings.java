@@ -59,12 +59,6 @@ public class HttpAdminApiSettings extends AdminApiExporterSettings {
     private final String readOnlyApiToken;
 
     /**
-     * The URL the console reaches this engine at; null derives it from the host name and the bound port, which
-     * is wrong behind a proxy or a NAT.
-     */
-    private final String advertisedUrl;
-
-    /**
      * The staffix admin console to announce the engine to; null serves the API without announcing it.
      */
     private final AnnouncementSettings announcement;
@@ -78,6 +72,12 @@ public class HttpAdminApiSettings extends AdminApiExporterSettings {
          */
         @NonNull
         private final String url;
+
+        /**
+         * The URL the console reaches this engine at; null derives it from the host name and the bound port, which
+         * is wrong behind a proxy or a NAT.
+         */
+        private final String advertisedUrl;
 
         /**
          * An admin console user with the ENGINE role, used only to announce the engine; it grants nothing on this API.

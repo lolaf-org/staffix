@@ -82,12 +82,12 @@ FixEngineBuilder.builder()
 | `sslContext` | none | serves HTTPS when set |
 | `apiToken` | random | the bearer token every request must carry; random means only the console it is announced to knows it |
 | `readOnlyApiToken` | none | a second token allowed `GET` requests only, for monitoring tools that must not operate sessions |
-| `advertisedUrl` | derived | where the console reaches the engine; set it behind a proxy or a NAT |
 | `announcement` | none | the console to announce the engine to, below; none serves the API without announcing it |
 
 | `AnnouncementSettings` | default | |
 |---------|---------|---|
 | `url` | required | the console's URL |
+| `advertisedUrl` | derived | where the console reaches the engine; set it behind a proxy or a NAT |
 | `username` / `password` | none | a console user with the ENGINE role, used only to announce; they grant nothing on this API |
 | `sslContext` | JVM default | trusts an HTTPS console whose certificate the JVM's default truststore does not, such as one from a private CA |
 | `interval` | 30 s | the engine announces itself again on every interval, so a restarted console finds it |

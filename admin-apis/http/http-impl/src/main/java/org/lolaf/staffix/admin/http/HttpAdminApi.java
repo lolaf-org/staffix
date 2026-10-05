@@ -82,7 +82,7 @@ public class HttpAdminApi implements AdminApiExporter {
      * interface, the host name.
      */
     URI baseUrl(String instanceId) throws UnknownHostException {
-        String root = settings.getAdvertisedUrl();
+        String root = settings.getAnnouncement().getAdvertisedUrl();
         if (root == null) {
             InetAddress bound = server.getAddress().getAddress();
             String host = bound.isAnyLocalAddress() ? InetAddress.getLocalHost().getCanonicalHostName() : bound.getHostAddress();
