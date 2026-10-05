@@ -24,6 +24,8 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.AdminApi.ResetFixSessionMode;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.admin.FixSessionComponents;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
@@ -264,6 +266,23 @@ class AdminApiEndpointsTest {
 
         assertThat(call("GET", "/engines/alpha-engine/v1/session-settings-stores", null).body())
                 .isEqualTo("[{\"instanceId\":\"main-store\",\"persistent\":true}]");
+    }
+
+    @Test
+    void sessionComponentsNamePluginTypesAsTheSettingsKeyThem() throws Exception {
+        when(adminApi.getFixSessionComponents()).thenReturn(FixSessionComponents.builder()
+                .applicationFactory(FixSessionComponents.ApplicationFactory.builder()
+                        .instanceId("default").applicationId("drop-copy").applicationId("orders").build())
+                .messagesStore("default")
+                .messagesLogger("clients-otlp")
+                .sessionsPlugin(FixSessionComponents.SessionsPlugin.builder()
+                        .instanceId("metrics").pluginType(FixSessionsMonitoringManager.class).build())
+                .build());
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/session-components", null).body()).isEqualTo(
+                "{\"applicationFactories\":[{\"instanceId\":\"default\",\"applicationIds\":[\"drop-copy\",\"orders\"]}],"
+                + "\"messagesStores\":[\"default\"],\"messagesLoggers\":[\"clients-otlp\"],"
+                + "\"sessionsPlugins\":[{\"instanceId\":\"metrics\",\"pluginTypes\":[\"org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager\"]}]}");
     }
 
     @Test

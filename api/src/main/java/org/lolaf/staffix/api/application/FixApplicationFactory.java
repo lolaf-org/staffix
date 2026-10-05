@@ -19,6 +19,8 @@ import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 
+import java.util.Set;
+
 /**
  * Supplies the {@code FixApplication} that receives a session's messages.
  *
@@ -33,4 +35,8 @@ public interface FixApplicationFactory extends InstanceIdSupplier, Startable<Fix
      */
     FixApplication getInstance(String applicationId);
 
+    /**
+     * The application ids {@link #getInstance(String)} accepts
+     */
+    Set<String> getApplicationIds();
 }

@@ -42,6 +42,13 @@ could mean.
   declares. An update may change the session's CompIDs; a name already used in the engine is refused.
 - **An application can declare a session setting secret** with `FixApplicationSessionSettingDescriptor.secret(id,
   description)`, such as a Logon password: the HTTP admin API never shows its value, whatever its name.
+- **Adding or updating a session's settings refuses an application factory, application, message store, messages
+  logger or session plugin the engine does not have**, instead of accepting settings the session then fails to start
+  with.
+- **An admin tool can offer a session's components to choose from**: `AdminApi.getFixSessionComponents()` and the
+  HTTP admin API's `GET session-components` list the application factories with the applications each serves, the
+  message stores, the messages loggers and the session plugins with the plugin types they serve, under the ids a
+  session's settings name them by.
 - **`AdminApi.sendFixMessages` sends several messages in order** on a session. It stops at the first one the session
   refuses, those before it having gone out, and the error says which one it was ("Message 2 of 3: ...").
 
@@ -66,6 +73,8 @@ could mean.
   Java settings and the Spring Boot properties already use, instead of `withinSessionCheckInterval`.
 - **The session settings JSON schema describes every field and gives its default**, so an editor shows what a
   setting does and what it is when left out.
+- **A custom `FixApplicationFactory` implements `getApplicationIds()`**: the application ids its `getInstance`
+  accepts.
 - **A custom `FixSessionsSettingsStore` implements `isPersistent()`**: whether a change made through it survives a
   restart.
 - **`FixInitiatorTargets` names the main target and the backups** (`getMainTarget()`, `getBackupTargets()`);
@@ -93,6 +102,8 @@ could mean.
   the store holding the refused settings while the session and the file keep the old ones.
 - A session could fail to start with "Fix session application settings ... is missing" although its configuration
   gave the setting, when the application described that setting only after the configuration was read.
+- The error for a session naming an unknown message store listed the session settings stores instead of the message
+  stores to choose from.
 
 ## [0.9.0] - 2026-09-30
 

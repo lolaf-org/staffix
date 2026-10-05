@@ -23,7 +23,9 @@ import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Builds a {@code FixApplication} from a class name, one instance per session, through its no-argument
@@ -65,6 +67,11 @@ public class SimpleApplicationFactory extends Startable.SimpleStartable<FixAppli
                     applicationId, String.join(",", applications.keySet())));
         }
         return app;
+    }
+
+    @Override
+    public Set<String> getApplicationIds() {
+        return Collections.unmodifiableSet(applications.keySet());
     }
 
     public static class SimpleApplicationFactoryImpl implements FixApplicationFactorySettings.FixApplicationFactoryFactory<SimpleApplicationFactorySettings> {

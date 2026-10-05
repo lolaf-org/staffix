@@ -72,6 +72,11 @@ public class SpringApplicationFactory extends Startable.SimpleStartable<FixAppli
         return app;
     }
 
+    @Override
+    public Set<String> getApplicationIds() {
+        return Set.of(applicationContext.getBeanNamesForType(FixApplication.class));
+    }
+
     public static class SpringApplicationFactoryImpl implements FixApplicationFactorySettings.FixApplicationFactoryFactory<SpringApplicationFactorySettings> {
 
         @Override

@@ -24,8 +24,10 @@ import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.InstanceProvider;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -36,6 +38,7 @@ import org.lolaf.staffix.api.version.SemVer;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
+import org.lolaf.staffix.tests.TestingFixSessionMonitoringManagerSettings;
 
 import java.net.InetSocketAddress;
 import java.util.List;
@@ -69,6 +72,9 @@ class TestFixEngineSessionsSettingsWrites {
         FixApplication application = mock(FixApplication.class);
         when(application.getFixApiVersion()).thenReturn(FixApiVersion.of("test app", SemVer.of(1, 0, 0), "test vendor"));
         when(application.getRequiredFixSessionSettings()).thenReturn(List.of(ACCOUNT));
+        FixSessionsMonitoringManager monitoring = mock(FixSessionsMonitoringManager.class);
+        when(monitoring.getInstanceId()).thenReturn("metrics");
+        when(monitoring.matchesPluginClass(FixSessionsMonitoringManager.class)).thenReturn(true);
         fixEngine = FixEngineBuilder.builder()
                 .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
                         .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
@@ -77,6 +83,10 @@ class TestFixEngineSessionsSettingsWrites {
                         .application(InstanceProvider.DEFAULT_INSTANCE_ID, application)
                         .build())
                 .fixSessionsSettingsStore(new ControllableSettingsStore.Settings(store))
+                .fixSessionsPlugin(TestingFixSessionMonitoringManagerSettings.builder()
+                        .instanceId("metrics")
+                        .mock(monitoring)
+                        .build())
                 .build()
                 .instance();
         fixEngine.start();
@@ -91,6 +101,22 @@ class TestFixEngineSessionsSettingsWrites {
     @AfterEach
     void stopEngine() {
         fixEngine.stop(Deadline.unlimited());
+    }
+
+    @Test
+    void listsWhatASessionsSettingsCanName() {
+        FixSessionComponents components = adminApi.getFixSessionComponents();
+
+        assertThat(components.getApplicationFactories()).singleElement().satisfies(factory -> {
+            assertThat(factory.getInstanceId()).isEqualTo(InstanceProvider.DEFAULT_INSTANCE_ID);
+            assertThat(factory.getApplicationIds()).containsExactly(InstanceProvider.DEFAULT_INSTANCE_ID);
+        });
+        assertThat(components.getMessagesStores()).containsExactly(InstanceProvider.DEFAULT_INSTANCE_ID);
+        assertThat(components.getMessagesLoggers()).isEmpty();
+        assertThat(components.getSessionsPlugins()).singleElement().satisfies(plugin -> {
+            assertThat(plugin.getInstanceId()).isEqualTo("metrics");
+            assertThat(plugin.getPluginTypes()).containsExactly(FixSessionsMonitoringManager.class);
+        });
     }
 
     @Test
@@ -126,6 +152,48 @@ class TestFixEngineSessionsSettingsWrites {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("missing");
         assertThat(store.getSettings()).isEmpty();
+    }
+
+    @Test
+    void settingsNamingAComponentTheEngineDoesNotHaveAreRefusedBeforeAnythingChanges() {
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+
+        assertThatThrownBy(() -> adminApi.addFixSessionSettings(STORE_ID, alpha.toBuilder().fixMessageStoreInstanceId("jdbc").build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message store for id jdbc within: default");
+        assertThatThrownBy(() -> adminApi.addFixSessionSettings(STORE_ID, alpha.toBuilder().fixApplicationFactoryInstanceId("spring").build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("application factory for id spring");
+        assertThatThrownBy(() -> adminApi.addFixSessionSettings(STORE_ID, alpha.toBuilder().fixApplicationInstanceId("orders").build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("application for id 'orders' in application factory 'default' within: 'default'");
+        assertThatThrownBy(() -> adminApi.addFixSessionSettings(STORE_ID, alpha.toBuilder()
+                .fixSessionPluginsInstanceId(FixSessionsMonitoringManager.class, "otlp").build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unable to match all FIX sessions plugins");
+        assertThat(store.getSettings()).isEmpty();
+    }
+
+    @Test
+    void anUpdateNamingAnApplicationTheFactoryDoesNotServeIsRefused() {
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+
+        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(),
+                alpha.toBuilder().fixApplicationInstanceId("orders").build()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(store.getSettings()).containsExactly(alpha);
+    }
+
+    @Test
+    void aSessionSelectingAPluginTheEngineHasIsAccepted() {
+        FixSessionSettings alpha = session("alpha", "ALPHA").toBuilder()
+                .fixSessionPluginsInstanceId(FixSessionsMonitoringManager.class, "metrics")
+                .build();
+
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+
+        assertThat(store.getSettings()).containsExactly(alpha);
     }
 
     @Test

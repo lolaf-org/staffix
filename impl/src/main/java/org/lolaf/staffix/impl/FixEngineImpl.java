@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.AdminApiExporter;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
@@ -366,6 +367,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     public void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings) {
         FixSessionsSettingsStore store = store(storeInstanceId);
         FixSessionSettingsValidator.validate(settings);
+        requireResolvableComponents(settings);
         synchronized (store) {
             requireUnusedName(settings.getFixSessionId(), null);
             store.add(settings);
@@ -381,6 +383,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         }
         FixSessionsSettingsStore store = storeHolding(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));
         FixSessionSettingsValidator.validate(settings);
+        requireResolvableComponents(settings);
         synchronized (store) {
             FixSessionSettings current = store.find(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));
             if (settings.getFixSessionId().equals(fixSessionId)) {
@@ -494,6 +497,22 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
+    public FixSessionComponents getFixSessionComponents() {
+        FixSessionComponents.FixSessionComponentsBuilder components = FixSessionComponents.builder();
+        fixApplicationFactories.forEach(factory -> components.applicationFactory(FixSessionComponents.ApplicationFactory.builder()
+                .instanceId(factory.getInstanceId())
+                .applicationIds(factory.getApplicationIds().stream().sorted().collect(Collectors.toList()))
+                .build()));
+        fixMessagesStores.forEach(store -> components.messagesStore(store.getInstanceId()));
+        fixMessagesLoggers.forEach(logger -> components.messagesLogger(logger.getInstanceId()));
+        fixEngineBuilder.getFixSessionsPlugins().forEach(plugin -> components.sessionsPlugin(FixSessionComponents.SessionsPlugin.builder()
+                .instanceId(plugin.getInstanceId())
+                .pluginTypes(plugin.getPluginTypes())
+                .build()));
+        return components.build();
+    }
+
+    @Override
     public void registerSessionLifecycleListener(SessionLifecycleListener listener) {
         sessionLifecycleListeners.add(listener);
     }
@@ -575,6 +594,17 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         return pluginsMatches;
     }
 
+    private void requireResolvableComponents(FixSessionSettings settings) {
+        findMatchAmongstMessagesStores(settings);
+        findMatchAmongstMessagesLoggers(settings);
+        findMatchAmongstPluginsComponent(settings);
+        FixApplicationFactory factory = findMatchAmongstFixApplicationFactories(settings);
+        if (!factory.getApplicationIds().contains(settings.getFixApplicationInstanceId())) {
+            throw new IllegalArgumentException(String.format("Unable to find any FIX application for id '%s' in application factory '%s' within: '%s'",
+                    settings.getFixApplicationInstanceId(), factory.getInstanceId(), String.join(",", factory.getApplicationIds())));
+        }
+    }
+
     private FixApplicationFactory findMatchAmongstFixApplicationFactories(FixSessionSettings fixSessionSettings) {
         for (FixApplicationFactory faf : fixApplicationFactories) {
             if (faf.getInstanceId().equals(fixSessionSettings.getFixApplicationFactoryInstanceId())) {
@@ -592,7 +622,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             }
         }
         throw new IllegalArgumentException(String.format("Unable to find any FIX message store for id %s within: %s", fixSessionSettings.getFixMessageStoreInstanceId(),
-                fixSessionsSettingsStores.stream().map(FixSessionsSettingsStore::getInstanceId).collect(Collectors.joining(","))));
+                fixMessagesStores.stream().map(FixMessagesStore::getInstanceId).collect(Collectors.joining(","))));
     }
 
     private FixMessagesLogger findMatchAmongstMessagesLoggers(FixSessionSettings fixSessionSettings) {

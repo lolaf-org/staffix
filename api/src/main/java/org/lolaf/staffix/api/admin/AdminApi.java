@@ -257,6 +257,12 @@ public interface AdminApi extends InstanceIdSupplier {
     List<FixSessionsPluginSettings<?>> getFixSessionsPluginsSettings();
 
     /**
+     * The application factories (with the applications each serves), message stores, messages loggers and session
+     * plugins a session's settings can name.
+     */
+    FixSessionComponents getFixSessionComponents();
+
+    /**
      * Makes the given session the active one on every initiator that has it as a target, as
      * {@link org.lolaf.staffix.api.FixInitiator#switchTo} does. Every one, because two initiators may share a main target.
      *

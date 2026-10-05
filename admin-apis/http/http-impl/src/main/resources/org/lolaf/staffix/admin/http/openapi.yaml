@@ -118,6 +118,19 @@ paths:
                   $ref: '#/components/schemas/SessionSettingsStore'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/session-components:
+    get:
+      summary: What a session's settings can name, so a tool offers choices the engine resolves
+      operationId: getSessionComponents
+      responses:
+        '200':
+          description: The application factories, message stores, messages loggers and session plugins.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionComponents'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/session-settings-stores/{storeId}/reload:
     post:
       summary: Reloads a session settings store, starting, stopping or restarting the sessions it changed
@@ -657,6 +670,47 @@ components:
         persistent:
           type: boolean
           description: Whether a change made through this API survives the engine's restart.
+    SessionComponents:
+      type: object
+      required: [applicationFactories, messagesStores, messagesLoggers, sessionsPlugins]
+      properties:
+        applicationFactories:
+          type: array
+          description: For fixApplicationFactoryInstanceId, each with the ids it takes as fixApplicationInstanceId.
+          items:
+            type: object
+            required: [instanceId, applicationIds]
+            properties:
+              instanceId:
+                type: string
+              applicationIds:
+                type: array
+                items:
+                  type: string
+        messagesStores:
+          type: array
+          description: For fixMessageStoreInstanceId.
+          items:
+            type: string
+        messagesLoggers:
+          type: array
+          description: For fixMessageLoggerInstanceId.
+          items:
+            type: string
+        sessionsPlugins:
+          type: array
+          description: For fixSessionPluginsInstanceIds, whose keys are the plugin types.
+          items:
+            type: object
+            required: [instanceId, pluginTypes]
+            properties:
+              instanceId:
+                type: string
+              pluginTypes:
+                type: array
+                description: Full class names, as the settings key them.
+                items:
+                  type: string
     SessionSettings:
       type: object
       description: A session settings document, described by GET /v1/schemas/session-settings.

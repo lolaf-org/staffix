@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
@@ -300,6 +301,11 @@ class JmxAdminApiTest {
         @Override
         public List<FixSessionsPluginSettings<?>> getFixSessionsPluginsSettings() {
             return List.of();
+        }
+
+        @Override
+        public FixSessionComponents getFixSessionComponents() {
+            return FixSessionComponents.builder().build();
         }
 
         @Override

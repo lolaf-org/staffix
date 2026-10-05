@@ -138,6 +138,7 @@ class AdminApiHandler implements HttpHandler {
                     sendJson(exchange, EngineStatus.of(adminApi, running, sessionsDocument(running).version));
                 }),
                 new Route("GET", "v1/components", (exchange, path) -> sendJson(exchange, ComponentsJson.of(adminApi))),
+                new Route("GET", "v1/session-components", (exchange, path) -> sendJson(exchange, adminApi.getFixSessionComponents())),
                 new Route("GET", "v1/schemas/session-settings", (exchange, path) ->
                         send(exchange, 200, "application/schema+json", SESSION_SETTINGS_SCHEMA)),
                 new Route("GET", "v1/session-settings-stores", (exchange, path) -> sendJson(exchange,

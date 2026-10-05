@@ -115,6 +115,7 @@ state: read `status` again to see it.
 | `PUT sessions/{group}/{name}/seqnums` | `{"incoming": 1, "outgoing": 1}`, either may be left out |
 | `POST sessions/{group}/{name}/messages` | `{"messages": ["35=B|148=hello|"], "separator": "|", "possDup": false}`, sent in order; stops at the first refused one |
 | `POST sessions/{group}/{name}/activate` | `{"config": "trading-drp"}` switches an initiator session to one of its configs |
+| `GET session-components` | what a session's settings can name: application factories with their application ids, message stores, messages loggers, session plugins with the plugin types (full class names) they serve |
 | `GET session-settings-stores`, `POST session-settings-stores/{id}/reload` | each store says whether a change made through the API survives a restart (`persistent`) |
 | `POST session-settings-stores/{id}/sessions` | adds a session, a settings document, to the store, which starts it; answers `201` with its `Location` |
 | `GET components` | the messages loggers and session plugins the engine was built with, each with its type and plain settings (nested ones included; functions, executors and credentials left out or masked); a plugin also lists the plugin types it serves, a wrapper's delegates included. Introspection: the fields follow the settings classes and may change with them |
