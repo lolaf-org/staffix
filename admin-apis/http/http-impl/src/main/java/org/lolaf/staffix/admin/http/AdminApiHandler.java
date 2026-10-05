@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -139,6 +140,14 @@ class AdminApiHandler implements HttpHandler {
                 }),
                 new Route("GET", "v1/components", (exchange, path) -> sendJson(exchange, ComponentsJson.of(adminApi))),
                 new Route("GET", "v1/session-components", (exchange, path) -> sendJson(exchange, adminApi.getFixSessionComponents())),
+                new Route("GET", "v1/meters", (exchange, path) -> sendJson(exchange, adminApi.getManagedFixSessions().stream()
+                        .map(session -> new SessionMeters(session.getFixSessionId().getGroup(), session.getFixSessionId().getName(),
+                                session.getPluginContext(FixSessionsMonitoringContext.class)
+                                        .map(FixSessionsMonitoringContext::getMeterDescriptors)
+                                        .orElse(List.of())))
+                        .collect(Collectors.toList()))),
+                new Route("GET", "v1/sessions/{group}/{name}/meters", (exchange, path) ->
+                        sendJson(exchange, adminApi.getFixSessionMeters(runningConfig(path.get(2), path.get(3))))),
                 new Route("GET", "v1/schemas/session-settings", (exchange, path) ->
                         send(exchange, 200, "application/schema+json", SESSION_SETTINGS_SCHEMA)),
                 new Route("GET", "v1/session-settings-stores", (exchange, path) -> sendJson(exchange,

@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixMonitoringAttributes;
 import org.lolaf.staffix.api.monitoring.FixSessionMonitoringManagerSettings;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
@@ -36,9 +37,13 @@ import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.collections.IndexableMap;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -59,14 +64,74 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     static final String SESSION_LOGON_STATE = "session.logon.state";
     static final String SESSION_RTT = "session.rtt";
     static final String SESSION_CLOCK_OFFSET = "session.clock.offset";
+    private static final String READ_LATENCY_DESCRIPTION = "Time to fully process a received message: from reading its bytes off the socket"
+            + " until the engine is done with it, including the application's handling, the message log and the message store.";
+    private static final String DECODING_LATENCY_DESCRIPTION = "Time to decode a received message and let the application handle it: from"
+            + " reading its bytes off the socket until the application's decoder returns; unlike the read latency, without the"
+            + " message log and the message store.";
+    private static final String ENCODING_LATENCY_DESCRIPTION = "Time to encode a sent message: from the moment the application starts"
+            + " building it until it is encoded on the session's I/O thread, just before it is written, including the wait in the"
+            + " session's outgoing queue.";
+    private static final String WRITE_LATENCY_DESCRIPTION = "Time to send an encoded message: from handing it to the network layer until"
+            + " it is written to the socket, including any wait for the I/O thread; messages sent together in one batch share the"
+            + " same start time.";
+    private static final String RTT_DESCRIPTION = "Round-trip time to the counterparty, measured with TestRequest / Heartbeat exchanges"
+            + " and smoothed (exponential moving average); probes run at the session's probe interval, or only when the"
+            + " counterparty falls silent if none is set.";
+    private static final String CLOCK_OFFSET_DESCRIPTION = "The counterparty's clock minus this engine's, estimated NTP-style from the"
+            + " SendingTime (52) of the Heartbeats answering TestRequests, and smoothed; positive means the counterparty's clock"
+            + " is ahead.";
+    private static final String LOGON_STATE_DESCRIPTION = "1 while the session is logged on, 0 otherwise.";
 
     private final MicrometerMonitoringManagerSettings settings;
     private final Map<FixSessionId, FixSessionEventsListenerImpl> listeners;
+    private final List<FixMeterDescriptor> builtInMeters;
     private MeterRegistry meterRegistry;
 
     public MicrometerMonitoringManager(MicrometerMonitoringManagerSettings settings) {
         this.settings = settings;
         this.listeners = new ConcurrentHashMap<>();
+        this.builtInMeters = builtInMeters(settings);
+    }
+
+    private static List<FixMeterDescriptor> builtInMeters(MicrometerMonitoringManagerSettings settings) {
+        boolean latencyPercentiles = settings.getDefaultTimersSettings().isPublishPercentileHistogram()
+                || settings.getBuiltInTimerSettings().values().stream().anyMatch(MicrometerMonitoringManagerSettings.TimerSettings::isPublishPercentileHistogram);
+        List<FixMeterDescriptor> meters = new ArrayList<>();
+        if (settings.isReadLatencyEnabled()) {
+            meters.add(latency(MESSAGES_READ_LATENCY, READ_LATENCY_DESCRIPTION, latencyPercentiles));
+        }
+        if (settings.isDecodingLatencyEnabled()) {
+            meters.add(latency(MESSAGES_DECODING_LATENCY, DECODING_LATENCY_DESCRIPTION, latencyPercentiles));
+        }
+        if (settings.isEncodingLatencyEnabled()) {
+            meters.add(latency(MESSAGES_ENCODING_LATENCY, ENCODING_LATENCY_DESCRIPTION, latencyPercentiles));
+        }
+        if (settings.isWriteLatencyEnabled()) {
+            meters.add(latency(MESSAGES_WRITE_LATENCY, WRITE_LATENCY_DESCRIPTION, latencyPercentiles));
+        }
+        if (settings.isRttLatencyEnabled()) {
+            meters.add(FixMeterDescriptor.builder().name(SESSION_RTT).type(FixMeterDescriptor.Type.TIMER).description(RTT_DESCRIPTION)
+                    .percentiles(settings.getRttTimerSettings().isPublishPercentileHistogram()).build());
+        }
+        if (settings.isClockOffsetEnabled()) {
+            meters.add(FixMeterDescriptor.builder().name(SESSION_CLOCK_OFFSET).type(FixMeterDescriptor.Type.GAUGE)
+                    .description(CLOCK_OFFSET_DESCRIPTION).unit(TimeUnit.NANOSECONDS).build());
+        }
+        meters.add(FixMeterDescriptor.builder().name(SESSION_LOGON_STATE).type(FixMeterDescriptor.Type.GAUGE)
+                .description(LOGON_STATE_DESCRIPTION).build());
+        return List.copyOf(meters);
+    }
+
+    private static FixMeterDescriptor latency(String name, String description, boolean percentiles) {
+        return FixMeterDescriptor.builder()
+                .name(name)
+                .type(FixMeterDescriptor.Type.TIMER)
+                .description(description)
+                .tagKey(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey())
+                .tagKey(FixMonitoringAttributes.FIX_MESSAGE_DIRECTION.getKey())
+                .percentiles(percentiles)
+                .build();
     }
 
     @Override
@@ -84,7 +149,8 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     @Override
     public Optional<FixSessionPlugin<FixSessionsMonitoringContext, Void>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
         return Optional.of(listeners.computeIfAbsent(fixSession.getFixSessionId(),
-                fid -> new FixSessionEventsListenerImpl(fixEngineId, fixInstanceId, fid, incomingMessageTypes, outgoingMessageTypes, meterRegistry, settings, this::onSessionDestroyed)));
+                fid -> new FixSessionEventsListenerImpl(fixEngineId, fixInstanceId, fid, incomingMessageTypes, outgoingMessageTypes, meterRegistry, settings,
+                        builtInMeters, this::onSessionDestroyed)));
     }
 
     @Override
@@ -109,7 +175,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         return settings.getInstanceId();
     }
 
-    private static class FixSessionEventsListenerImpl implements FixSessionPlugin<FixSessionsMonitoringContext, Void> {
+    private static class FixSessionEventsListenerImpl implements FixSessionPlugin<FixSessionsMonitoringContext, Void>, FixSessionsMonitoringContext {
 
         private final AtomicBoolean loggedOn;
         private final Map<MessageType, Timer> readsTimersPerMsgType;
@@ -126,11 +192,19 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         private final MicrometerMonitoringManagerSettings settings;
         private final Optional<FixSessionsMonitoringContext> pluginContext;
         private final String fixEngineId;
+        private final String fixInstanceId;
+        private final FixSessionId fixSessionId;
+        private final List<FixMeterDescriptor> builtInMeters;
+        private final Map<String, FixMeterDescriptor> customMeters;
 
         FixSessionEventsListenerImpl(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, Collection<MessageType> incomingMessageTypes,
                                      Collection<MessageType> outgoingMessageTypes, MeterRegistry meterRegistry, MicrometerMonitoringManagerSettings micrometerMonitoringManagerSettings,
-                                     BiConsumer<String, FixSessionId> onSessionDestroyed) {
+                                     List<FixMeterDescriptor> builtInMeters, BiConsumer<String, FixSessionId> onSessionDestroyed) {
             this.fixEngineId = fixEngineId;
+            this.fixInstanceId = fixInstanceId;
+            this.fixSessionId = fixSessionId;
+            this.builtInMeters = builtInMeters;
+            this.customMeters = new ConcurrentHashMap<>();
             this.meterRegistry = meterRegistry;
             this.settings = micrometerMonitoringManagerSettings;
             this.timersForSession = new ConcurrentHashMap<>();
@@ -141,7 +215,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey(), fixSessionId.getGroup()));
             this.sessionState = Gauge.builder(SESSION_LOGON_STATE, loggedOn, value -> loggedOn.get() ? 1d : 0d)
-                    .description("FIX session logon state gauge")
+                    .description(LOGON_STATE_DESCRIPTION)
                     .tags(tags).register(meterRegistry);
 
             boolean readLatencyEnabled = micrometerMonitoringManagerSettings.isReadLatencyEnabled();
@@ -152,20 +226,19 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             this.decodingTimersPerMsgType = decodingLatencyEnabled ? new IndexableMap<>(MessageType.class) : null;
             boolean encodingLatencyEnabled = micrometerMonitoringManagerSettings.isEncodingLatencyEnabled();
             this.encodingTimersPerMsgType = encodingLatencyEnabled ? new IndexableMap<>(MessageType.class) : null;
-            this.pluginContext = Optional.of((id, description, tags1) ->
-                    getCustomTimer(fixInstanceId, fixSessionId, id, description, tags1));
+            this.pluginContext = Optional.of(this);
             registerTimers("in", fixInstanceId, fixSessionId, meterRegistry, micrometerMonitoringManagerSettings,
                     incomingMessageTypes, readLatencyEnabled, writeLatencyEnabled, decodingLatencyEnabled, encodingLatencyEnabled);
             registerTimers("out", fixInstanceId, fixSessionId, meterRegistry, micrometerMonitoringManagerSettings,
                     outgoingMessageTypes, readLatencyEnabled, writeLatencyEnabled, decodingLatencyEnabled, encodingLatencyEnabled);
 
             this.rttTimer = micrometerMonitoringManagerSettings.isRttLatencyEnabled()
-                    ? getTimer(SESSION_RTT, "FIX session round-trip-time (EMA)", meterRegistry, tags, micrometerMonitoringManagerSettings.getRttTimerSettings())
+                    ? getTimer(SESSION_RTT, RTT_DESCRIPTION, meterRegistry, tags, micrometerMonitoringManagerSettings.getRttTimerSettings())
                     : null;
             if (micrometerMonitoringManagerSettings.isClockOffsetEnabled()) {
                 this.clockOffsetNanos = new AtomicLong(0L);
                 this.clockOffsetGauge = Gauge.builder(SESSION_CLOCK_OFFSET, clockOffsetNanos, AtomicLong::doubleValue)
-                        .description("FIX session clock offset (remote − local, EMA, nanoseconds; signed)")
+                        .description(CLOCK_OFFSET_DESCRIPTION)
                         .tags(tags)
                         .register(meterRegistry);
             } else {
@@ -207,19 +280,19 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                         Tag.of(FixMonitoringAttributes.FIX_MESSAGE_DIRECTION.getKey(), msgDirection));
                 if (readLatencyEnabled) {
                     readsTimersPerMsgType.put(mt, getTimer(MESSAGES_READ_LATENCY,
-                            "FIX messages read latency", meterRegistry, tagsForTimer, timerSettings));
+                            READ_LATENCY_DESCRIPTION, meterRegistry, tagsForTimer, timerSettings));
                 }
                 if (writeLatencyEnabled) {
                     writesTimersPerMsgType.put(mt, getTimer(MESSAGES_WRITE_LATENCY,
-                            "FIX messages write latency", meterRegistry, tagsForTimer, timerSettings));
+                            WRITE_LATENCY_DESCRIPTION, meterRegistry, tagsForTimer, timerSettings));
                 }
                 if (decodingLatencyEnabled) {
                     decodingTimersPerMsgType.put(mt, getTimer(MESSAGES_DECODING_LATENCY,
-                            "FIX messages decoding latency", meterRegistry, tagsForTimer, timerSettings));
+                            DECODING_LATENCY_DESCRIPTION, meterRegistry, tagsForTimer, timerSettings));
                 }
                 if (encodingLatencyEnabled) {
                     encodingTimersPerMsgType.put(mt, getTimer(MESSAGES_ENCODING_LATENCY,
-                            "FIX messages encoding latency", meterRegistry, tagsForTimer, timerSettings));
+                            ENCODING_LATENCY_DESCRIPTION, meterRegistry, tagsForTimer, timerSettings));
                 }
             });
         }
@@ -234,7 +307,8 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             return pluginContext;
         }
 
-        private org.lolaf.staffix.api.monitoring.Timer getCustomTimer(String fixInstanceId, FixSessionId fixSessionId, String id, String description, Map<String, String> tags) {
+        @Override
+        public org.lolaf.staffix.api.monitoring.Timer getTimer(String id, String description, Map<String, String> tags) {
             Tags tagsForTimer = Tags.of(
                     Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), fixEngineId),
                     Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey(), fixInstanceId),
@@ -251,8 +325,39 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             MicrometerMonitoringManagerSettings.TimerSettings timerSettings = settings.getTimerSettings().getOrDefault(id, settings.getDefaultTimersSettings());
             return timersForSession.computeIfAbsent(timerKey, i -> {
                 Timer raw = getTimer(id, description, meterRegistry, tagsRef.get(), timerSettings);
+                customMeters.merge(id, customMeter(id, description, tags.keySet(), timerSettings), FixSessionEventsListenerImpl::withTagKeysOf);
                 return new MicrometerTimerWrapper(raw);
             });
+        }
+
+        @Override
+        public List<FixMeterDescriptor> getMeterDescriptors() {
+            if (customMeters.isEmpty()) {
+                return builtInMeters;
+            }
+            List<FixMeterDescriptor> meters = new ArrayList<>(builtInMeters);
+            meters.addAll(customMeters.values());
+            return meters;
+        }
+
+        private static FixMeterDescriptor customMeter(String id, String description, Collection<String> tagKeys,
+                                                      MicrometerMonitoringManagerSettings.TimerSettings timerSettings) {
+            return FixMeterDescriptor.builder()
+                    .name(id)
+                    .type(FixMeterDescriptor.Type.TIMER)
+                    .description(description)
+                    .tagKeys(tagKeys)
+                    .percentiles(timerSettings.isPublishPercentileHistogram())
+                    .custom(true)
+                    .build();
+        }
+
+        private static FixMeterDescriptor withTagKeysOf(FixMeterDescriptor known, FixMeterDescriptor added) {
+            Set<String> tagKeys = new LinkedHashSet<>(known.getTagKeys());
+            if (!tagKeys.addAll(added.getTagKeys())) {
+                return known;
+            }
+            return known.toBuilder().clearTagKeys().tagKeys(tagKeys).build();
         }
 
         @Override

@@ -19,6 +19,7 @@ import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -261,6 +262,14 @@ public interface AdminApi extends InstanceIdSupplier {
      * plugins a session's settings can name.
      */
     FixSessionComponents getFixSessionComponents();
+
+    /**
+     * The meters the session's monitoring publishes, its application's custom timers included once it asked for them;
+     * empty for a session without monitoring.
+     *
+     * @throws IllegalArgumentException if no initiator or acceptor manages the given session
+     */
+    List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId);
 
     /**
      * Makes the given session the active one on every initiator that has it as a target, as

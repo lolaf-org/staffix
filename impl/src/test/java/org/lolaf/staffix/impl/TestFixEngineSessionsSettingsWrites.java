@@ -119,6 +119,16 @@ class TestFixEngineSessionsSettingsWrites {
     }
 
     @Test
+    void aSessionWithoutMonitoringHasNoMetersAndAnUnknownOneIsRefused() {
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+
+        assertThat(adminApi.getFixSessionMeters(alpha.getFixSessionId())).isEmpty();
+        assertThatThrownBy(() -> adminApi.getFixSessionMeters(session("beta", "BETA").getFixSessionId()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void anAddedSessionIsServedAndFoundInItsStore() {
         FixSessionSettings alpha = session("alpha", "ALPHA");
 

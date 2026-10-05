@@ -27,6 +27,8 @@ import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.application.FixApplication;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -42,6 +44,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
@@ -279,6 +282,26 @@ class AdminApiEndpointsTest {
                 "{\"applicationFactories\":[{\"instanceId\":\"default\",\"applicationIds\":[\"drop-copy\",\"orders\"]}],"
                         + "\"messagesStores\":[\"default\"],\"messagesLoggers\":[\"clients-otlp\"],"
                         + "\"sessionsPlugins\":[{\"instanceId\":\"metrics\",\"pluginTypes\":[\"org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager\"]}]}");
+    }
+
+    @Test
+    void metersAreDescribedPerSessionAndForEveryRunningSession() throws Exception {
+        FixMeterDescriptor pricing = FixMeterDescriptor.builder()
+                .name("orders.pricing").type(FixMeterDescriptor.Type.TIMER).description("Pricing an order")
+                .tagKey("venue").percentiles(true).custom(true).build();
+        when(adminApi.getFixSessionMeters(TRADING)).thenReturn(List.of(pricing));
+        FixSession session = mock(FixSession.class);
+        FixSessionsMonitoringContext monitoring = mock(FixSessionsMonitoringContext.class);
+        when(monitoring.getMeterDescriptors()).thenReturn(List.of(pricing));
+        when(session.getFixSessionId()).thenReturn(TRADING);
+        when(session.getPluginContext(FixSessionsMonitoringContext.class)).thenReturn(Optional.of(monitoring));
+        when(adminApi.getManagedFixSessions()).thenReturn(List.of(session));
+        String meter = "{\"name\":\"orders.pricing\",\"type\":\"TIMER\",\"description\":\"Pricing an order\","
+                + "\"tagKeys\":[\"venue\"],\"percentiles\":true,\"custom\":true}";
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/meters", null).body()).isEqualTo("[" + meter + "]");
+        assertThat(call("GET", "/engines/alpha-engine/v1/meters", null).body())
+                .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"meters\":[" + meter + "]}]");
     }
 
     @Test

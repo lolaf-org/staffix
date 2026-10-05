@@ -18,6 +18,7 @@ package org.lolaf.staffix.api.monitoring;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -36,5 +37,10 @@ public class VoidFixSessionsMonitoringContext implements FixSessionsMonitoringCo
     @Override
     public Timer getTimer(String id, String description, Map<String, String> tags) {
         return Timer.VoidTimer.getInstance();
+    }
+
+    @Override
+    public List<FixMeterDescriptor> getMeterDescriptors() {
+        return List.of();
     }
 }

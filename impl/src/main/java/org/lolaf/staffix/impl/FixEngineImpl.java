@@ -30,6 +30,8 @@ import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.session.*;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
@@ -510,6 +512,16 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 .pluginTypes(plugin.getPluginTypes())
                 .build()));
         return components.build();
+    }
+
+    @Override
+    public List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId) {
+        return findControl(fixSessionId).getManagedFixSessions().stream()
+                .filter(session -> session.getFixSessionId().equals(fixSessionId))
+                .findFirst()
+                .flatMap(session -> session.getPluginContext(FixSessionsMonitoringContext.class))
+                .map(FixSessionsMonitoringContext::getMeterDescriptors)
+                .orElse(List.of());
     }
 
     @Override

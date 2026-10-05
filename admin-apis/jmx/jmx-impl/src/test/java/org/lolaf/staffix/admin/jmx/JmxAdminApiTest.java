@@ -25,6 +25,7 @@ import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -306,6 +307,11 @@ class JmxAdminApiTest {
         @Override
         public FixSessionComponents getFixSessionComponents() {
             return FixSessionComponents.builder().build();
+        }
+
+        @Override
+        public List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId) {
+            return List.of();
         }
 
         @Override

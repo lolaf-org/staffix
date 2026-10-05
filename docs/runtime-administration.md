@@ -115,6 +115,7 @@ state: read `status` again to see it.
 | `PUT sessions/{group}/{name}/seqnums` | `{"incoming": 1, "outgoing": 1}`, either may be left out |
 | `POST sessions/{group}/{name}/messages` | `{"messages": ["35=B|148=hello|"], "separator": "|", "possDup": false}`, sent in order; stops at the first refused one |
 | `POST sessions/{group}/{name}/activate` | `{"config": "trading-drp"}` switches an initiator session to one of its configs |
+| `GET meters`, `GET sessions/{group}/{name}/meters` | the meters each running session (or this one) publishes, with their descriptions: the monitoring's own and the application's custom timers once it asked for them |
 | `GET session-components` | what a session's settings can name: application factories with their application ids, message stores, messages loggers, session plugins with the plugin types (full class names) they serve |
 | `GET session-settings-stores`, `POST session-settings-stores/{id}/reload` | each store says whether a change made through the API survives a restart (`persistent`) |
 | `POST session-settings-stores/{id}/sessions` | adds a session, a settings document, to the store, which starts it; answers `201` with its `Location` |

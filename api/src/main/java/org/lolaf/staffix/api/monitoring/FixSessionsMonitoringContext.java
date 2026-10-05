@@ -17,6 +17,7 @@ package org.lolaf.staffix.api.monitoring;
 
 import org.lolaf.staffix.api.session.plugins.PluginContext;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -38,5 +39,11 @@ public interface FixSessionsMonitoringContext extends PluginContext {
      * @return a timer instance to measure time
      */
     Timer getTimer(String id, String description, Map<String, String> tags);
+
+    /**
+     * The meters this session publishes: the monitoring's own, and the timers obtained so far from
+     * {@link #getTimer(String, String, Map)}.
+     */
+    List<FixMeterDescriptor> getMeterDescriptors();
 
 }

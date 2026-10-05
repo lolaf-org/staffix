@@ -22,6 +22,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixMonitoringAttributes;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -41,6 +42,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.lolaf.staffix.monitoring.micrometer.MicrometerMonitoringManager.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -227,6 +229,66 @@ class MicrometerMonitoringManagerTest {
                 .tag("custom.tag2", "value2")
                 .timer();
         assertThat(micrometerTimer).isNotNull();
+    }
+
+    @Test
+    void describesTheBuiltInMetersItsSettingsSwitchOn() {
+        monitoringManager.start();
+
+        List<FixMeterDescriptor> meters = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow().getMeterDescriptors();
+
+        assertThat(meters).extracting(FixMeterDescriptor::getName)
+                .containsExactly(MESSAGES_READ_LATENCY, MESSAGES_WRITE_LATENCY, SESSION_LOGON_STATE);
+        assertThat(meters.get(0)).satisfies(read -> {
+            assertThat(read.getType()).isEqualTo(FixMeterDescriptor.Type.TIMER);
+            assertThat(read.getTagKeys()).containsExactly(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(),
+                    FixMonitoringAttributes.FIX_MESSAGE_DIRECTION.getKey());
+            assertThat(read.isPercentiles()).isTrue();
+            assertThat(read.isCustom()).isFalse();
+            assertThat(read.getDescription()).startsWith("Time to fully process a received message");
+        });
+    }
+
+    @Test
+    void describesTheClockOffsetAsAGaugeInNanoseconds() {
+        MicrometerMonitoringManager manager = createManager(settings.toBuilder().clockOffsetEnabled(true).rttLatencyEnabled(true).build());
+        manager.start();
+
+        List<FixMeterDescriptor> meters = manager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow().getMeterDescriptors();
+
+        assertThat(meters).filteredOn(meter -> meter.getName().equals(SESSION_CLOCK_OFFSET)).singleElement().satisfies(offset -> {
+            assertThat(offset.getType()).isEqualTo(FixMeterDescriptor.Type.GAUGE);
+            assertThat(offset.getUnit()).isEqualTo(TimeUnit.NANOSECONDS);
+        });
+        assertThat(meters).extracting(FixMeterDescriptor::getName).contains(SESSION_RTT);
+    }
+
+    @Test
+    void describesEachCustomTimerOnceWithEveryTagKeyItWasRecordedUnder() {
+        monitoringManager.start();
+        FixSessionsMonitoringContext context = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow();
+
+        context.getTimer("orders.pricing", "Pricing an order", Map.of("venue", "alpha"));
+        context.getTimer("orders.pricing", "Pricing an order", Map.of("venue", "beta"));
+        context.getTimer("orders.pricing", "Pricing an order", Map.of("venue", "beta", "desk", "fx"));
+        context.getTimer("timer.with.no.histogram", "Without percentiles", Map.of());
+
+        assertThat(context.getMeterDescriptors()).filteredOn(FixMeterDescriptor::isCustom)
+                .extracting(FixMeterDescriptor::getName, FixMeterDescriptor::getTagKeys, FixMeterDescriptor::isPercentiles)
+                .containsExactlyInAnyOrder(
+                        tuple("orders.pricing", List.of("venue", "desk"), true),
+                        tuple("timer.with.no.histogram", List.of(), false));
+    }
+
+    @Test
+    void describesNoCustomTimerBeforeTheApplicationAsksForOne() {
+        monitoringManager.start();
+
+        assertThat(monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow().getMeterDescriptors()).noneMatch(FixMeterDescriptor::isCustom);
     }
 
     @Test

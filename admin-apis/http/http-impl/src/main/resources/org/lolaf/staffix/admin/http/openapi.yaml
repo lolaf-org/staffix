@@ -131,6 +131,51 @@ paths:
                 $ref: '#/components/schemas/SessionComponents'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/meters:
+    get:
+      summary: The meters each running session publishes, by the name of the config it runs
+      operationId: getMeters
+      responses:
+        '200':
+          description: One element per running session.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [group, name, meters]
+                  properties:
+                    group:
+                      type: string
+                    name:
+                      type: string
+                    meters:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/Meter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/sessions/{group}/{name}/meters:
+    get:
+      summary: The meters the session publishes, its application's custom timers included once it asked for them
+      operationId: getSessionMeters
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '200':
+          description: The session's meters; empty without monitoring.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Meter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/session-settings-stores/{storeId}/reload:
     post:
       summary: Reloads a session settings store, starting, stopping or restarting the sessions it changed
@@ -670,6 +715,32 @@ components:
         persistent:
           type: boolean
           description: Whether a change made through this API survives the engine's restart.
+    Meter:
+      type: object
+      required: [name, type, description, tagKeys, percentiles, custom]
+      properties:
+        name:
+          type: string
+          description: As the monitoring plugin publishes it, such as messages.read.latency.
+        type:
+          type: string
+          enum: [TIMER, GAUGE]
+        description:
+          type: string
+        tagKeys:
+          type: array
+          description: Tags beyond the session's own, which split the meter into several series.
+          items:
+            type: string
+        unit:
+          type: string
+          description: A gauge's time unit, such as NANOSECONDS; absent for a timer, in the plugin's base time unit.
+        percentiles:
+          type: boolean
+          description: Whether the backend can compute quantiles of this timer.
+        custom:
+          type: boolean
+          description: Registered by the application rather than by the monitoring.
     SessionComponents:
       type: object
       required: [applicationFactories, messagesStores, messagesLoggers, sessionsPlugins]
