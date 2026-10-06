@@ -95,7 +95,7 @@
         <hikaricp.version>7.1.0</hikaricp.version>
         <micrometer.version>1.17.1</micrometer.version>
         <okhttp.version>5.5.0</okhttp.version>
-        <okio.version>3.17.0</okio.version>
+        <okio.version>3.18.2</okio.version>
         <jetty.version>12.1.13</jetty.version>
         <spring-boot.version>4.1.1</spring-boot.version>
 
