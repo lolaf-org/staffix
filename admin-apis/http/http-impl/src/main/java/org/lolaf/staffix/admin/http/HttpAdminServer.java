@@ -66,9 +66,11 @@ class HttpAdminServer {
         this.requestedAddress = requestedAddress;
         this.sslContext = sslContext;
         this.server = sslContext == null ? HttpServer.create(requestedAddress, 0) : httpsServer(requestedAddress, sslContext);
+        ClassLoader staffixClassLoader = HttpAdminServer.class.getClassLoader();
         this.executor = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "staffix-admin-http-" + requestedAddress.getPort());
             thread.setDaemon(true);
+            thread.setContextClassLoader(staffixClassLoader);
             return thread;
         });
         this.mapper = AdminApiHandler.newObjectMapper();
