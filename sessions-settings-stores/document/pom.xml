@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>org.lolaf.staffix</groupId>
@@ -21,7 +22,6 @@
         <hibernate-validator.version>8.0.5.Final</hibernate-validator.version>
         <victools-jsonschema.version>4.38.0</victools-jsonschema.version>
         <javaparser.version>3.28.2</javaparser.version>
-        <jackson.version>2.22.3</jackson.version>
         <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
         <build-helper-maven-plugin.version>3.6.2</build-helper-maven-plugin.version>
         <!-- The generated schema: written here by exec-maven-plugin, then attached as a build artifact by
@@ -113,7 +113,8 @@
                             <goal>java</goal>
                         </goals>
                         <configuration>
-                            <mainClass>org.lolaf.staffix.sessions.settings.document.FixSessionSettingsJsonSchemaGenerator
+                            <mainClass>
+                                org.lolaf.staffix.sessions.settings.document.FixSessionSettingsJsonSchemaGenerator
                             </mainClass>
                             <classpathScope>compile</classpathScope>
                             <arguments>
@@ -143,7 +144,9 @@
                             <overwrite>true</overwrite>
                             <resources>
                                 <resource>
-                                    <directory>${project.build.outputDirectory}/org/lolaf/staffix/sessions/settings/document</directory>
+                                    <directory>
+                                        ${project.build.outputDirectory}/org/lolaf/staffix/sessions/settings/document
+                                    </directory>
                                     <includes>
                                         <include>fix-session-settings.v1.schema.json</include>
                                     </includes>
