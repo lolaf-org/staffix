@@ -94,6 +94,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             throw new IllegalStateException("FixInitiatorBuilder requires a mainTarget");
         }
         String instanceId = fixInitiatorBuilder.getInstanceId();
+        FixSessionId mainFixSessionId = fixInitiatorBuilder.getMainTarget().getFixSessionId();
         Set<FixSessionId> fixSessionIds = new HashSet<>();
         for (FixInitiatorTarget target : fixInitiatorBuilder.getTargets()) {
             FixSessionId fixSessionId = target.getFixSessionId();
@@ -107,8 +108,11 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             if (target.getConnectAddresses().isEmpty()) {
                 throw new IllegalStateException("Initiator '" + instanceId + "' has no connect address for FIX session " + fixSessionId);
             }
+            if (!fixSessionId.getGroup().equals(mainFixSessionId.getGroup())) {
+                throw new IllegalStateException("Initiator '" + instanceId + "' backup FIX session " + fixSessionId + " is in group '"
+                        + fixSessionId.getGroup() + "', its main target's is '" + mainFixSessionId.getGroup() + "'");
+            }
         }
-        FixSessionId mainFixSessionId = fixInitiatorBuilder.getMainTarget().getFixSessionId();
         if (findSettings(mainFixSessionId, fixSessionsSettingsStores).isEmpty()) {
             throw new IllegalStateException("Unable to find any FixSessionSettings in stores for fix session "
                     + mainFixSessionId + ", available fix session ids are: " +

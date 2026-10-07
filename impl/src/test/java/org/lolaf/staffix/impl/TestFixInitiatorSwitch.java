@@ -17,10 +17,12 @@ package org.lolaf.staffix.impl;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.FixInitiatorBuilder;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -35,10 +37,7 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.notNull;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
@@ -46,6 +45,12 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
 
     private static final FixSessionId BACKUP_INITIATOR = FixSessionId.of("backup", FixRegularVersion.VERSION_44, "SENDER44_DR", "TARGET44_DR");
     private static final FixSessionId BACKUP_ACCEPTOR = FixSessionId.of("backup", FixRegularVersion.VERSION_44, "TARGET44_DR", "SENDER44_DR");
+
+    private static Set<Thread> threadsNamed(String prefix) {
+        return Thread.getAllStackTraces().keySet().stream()
+                .filter(thread -> thread.isAlive() && thread.getName().startsWith(prefix))
+                .collect(Collectors.toSet());
+    }
 
     @BeforeEach
     void setupBackupSessions() {
@@ -106,10 +111,13 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         assertThat(main.isLoggedIn()).as("logged out by the time the switch returns").isFalse();
         await().untilAsserted(() -> verify(fixInitiatorApplication).onLogout(eq(main), any(), notNull()));
         FixSession backup = fixInitiator.getSession();
+        assertThat(main).isNotEqualTo(backup);
         assertThat(backup.getFixSessionId()).isEqualTo(BACKUP_INITIATOR);
         assertThat(((AdminApi) initiatorFixEngine).getManagedFixSessions()).containsExactly(backup);
         assertThat(initiatorFixEngine.getFixSessionRegistry().find(main.getFixSessionId())).isEmpty();
         assertThat(initiatorFixEngine.getFixSessionRegistry().find(BACKUP_INITIATOR)).contains(backup);
+        assertThat(initiatorFixEngine.getFixSessionRegistry()
+                .find(sid -> sid.getGroup().equals(backup.getFixSessionId().getGroup()))).contains(backup);
 
         await().untilAsserted(() -> assertThat(backup.isConnected()).isTrue());
         backup.logon();
@@ -149,6 +157,24 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         assertThatThrownBy(() -> fixInitiator.start())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(BACKUP_INITIATOR.toString());
+    }
+
+    @Test
+    void aBackupInAnotherGroupThanItsMainTargetIsRejected() {
+        FixSessionId otherGroup = FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionIdBuilder.builder()
+                .group("other-group").name("backup").senderCompID("SENDER44_DR2").targetCompID("TARGET44_DR2").build());
+        
+        FixInitiatorBuilder b = fixInitiatorBuilder.toBuilder()
+                .instanceId("cross-group-initiator")
+                .backupTarget(FixInitiatorTarget.builder()
+                        .fixSessionId(otherGroup)
+                        .connectAddress(new InetSocketAddress("localhost", acceptorPort))
+                        .build())
+                .build();
+        assertThatThrownBy(() -> initiatorFixEngine.newInitiator(b))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(otherGroup.toString())
+                .hasMessageContaining("other-group");
     }
 
     @Test
@@ -351,11 +377,5 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
 
     private Set<Thread> initiatorIoThreads() {
         return threadsNamed("IO-worker-" + fixInitiatorBuilder.getInstanceId() + "-");
-    }
-
-    private static Set<Thread> threadsNamed(String prefix) {
-        return Thread.getAllStackTraces().keySet().stream()
-                .filter(thread -> thread.isAlive() && thread.getName().startsWith(prefix))
-                .collect(Collectors.toSet());
     }
 }
