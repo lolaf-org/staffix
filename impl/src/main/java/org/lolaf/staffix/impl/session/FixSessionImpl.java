@@ -192,7 +192,8 @@ public class FixSessionImpl implements FixSession {
 
     @Override
     public boolean isWithinSessionTime() {
-        return fixSessionLayerComponents.get(SessionTimeWindowComponent.class).isInsideSessionTime();
+        SessionTimeWindowComponent window = fixSessionLayerComponents.get(SessionTimeWindowComponent.class);
+        return fixSessionState.isDisconnected() ? window.isWithinSessionTimeNow() : window.isInsideSessionTime();
     }
 
     public boolean isReadyToConnect() {

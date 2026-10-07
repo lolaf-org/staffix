@@ -126,6 +126,10 @@ could mean.
   could fail, when sessions were being created on several threads at once.
 - The error for a session naming an unknown message store listed the session settings stores instead of the message
   stores to choose from.
+- `FixSession.isWithinSessionTime()` kept its last answer while the session was disconnected: a session down when
+  its window closed still read as within session time, and one down when it opened as outside it, until it connected
+  again. It now follows the schedule while disconnected too, and so do the HTTP admin API's session status and the
+  actuator's health.
 
 ## [0.9.0] - 2026-09-30
 

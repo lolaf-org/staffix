@@ -576,6 +576,49 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         await().untilAsserted(() -> verify(fixAcceptorApplication).onLogon(any(FixSession.class), any(DecodedFixMessage.class)));
     }
 
+    /**
+     * A disconnected session runs no schedule check, so what it acted on last stays as it was: the answer has to come
+     * from the clock, or a session that lost its line in its window reads in session time all night.
+     */
+    @Test
+    void testADisconnectedSessionLeavesSessionTimeWithTheClock() {
+        fixInitiatorClock.toAdvanceableTime(SESSION_TIME.toInstant());
+
+        setupInitiatorSessionSettings(s ->
+                s.sessionScheduleSettings(scheduleWindow(BASE, BASE.plusSeconds(4)))
+                        .desiredSessionState(FixSessionState.LOGGED_IN)
+                        .build());
+
+        startFixInitiatorAndAcceptor();
+        await().untilAsserted(() -> assertThat(fixInitiatorSession.isLoggedIn()).isTrue());
+
+        fixInitiatorSession.disconnect("Disconnected for the test");
+        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
+        assertThat(fixInitiatorSession.isWithinSessionTime()).isTrue();
+
+        fixInitiatorClock.advance(Duration.ofSeconds(5));
+
+        assertThat(fixInitiatorSession.isWithinSessionTime()).isFalse();
+    }
+
+    @Test
+    void testADisconnectedSessionEntersSessionTimeWithTheClock() {
+        fixInitiatorClock.toAdvanceableTime(SESSION_TIME.minusSeconds(2).toInstant());
+
+        setupInitiatorSessionSettings(s ->
+                s.sessionScheduleSettings(scheduleWindow(BASE, BASE.plusSeconds(4)))
+                        .desiredSessionState(FixSessionState.DISCONNECTED)
+                        .build());
+
+        startFixInitiatorAndAcceptor();
+        assertThat(fixInitiatorSession.isWithinSessionTime()).isFalse();
+
+        fixInitiatorClock.advance(Duration.ofSeconds(3));
+
+        assertThat(fixInitiatorSession.isConnected()).isFalse();
+        assertThat(fixInitiatorSession.isWithinSessionTime()).isTrue();
+    }
+
     @Test
     void testNoAutomaticLogonLogoutWhenInsideOrOutsideOfSessionTimeWithDesiredSessionStateLoggedOut() {
         fixInitiatorClock.toAdvanceableTime(SESSION_TIME.minusSeconds(2).toInstant());
