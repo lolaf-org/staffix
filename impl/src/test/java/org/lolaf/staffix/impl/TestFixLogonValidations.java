@@ -68,7 +68,7 @@ class TestFixLogonValidations extends AbstractFixTests {
         when(fixAcceptorApplication.validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class)))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("test error")));
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -107,7 +107,7 @@ class TestFixLogonValidations extends AbstractFixTests {
                                 TestingLoginModule.class, null, "Invalid test credentials"))
                 .when(fixAcceptorApplication).validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class));
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -122,7 +122,7 @@ class TestFixLogonValidations extends AbstractFixTests {
         when(fixAcceptorApplication.validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class)))
                 .thenReturn(CompletableFuture.completedFuture(Optional.of("Test logon reject")));
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -167,7 +167,7 @@ class TestFixLogonValidations extends AbstractFixTests {
             return CompletableFuture.supplyAsync(() -> Optional.of("Test logon reject"), executor);
         }).when(fixAcceptorApplication).validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class));
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -179,7 +179,7 @@ class TestFixLogonValidations extends AbstractFixTests {
     void testImmediateDisconnectionWhenFixSessionNotSetupToAllowConnections() {
         setupAcceptorSessionSettings(s -> s.desiredSessionState(FixSessionState.DISCONNECTED).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -256,7 +256,7 @@ class TestFixLogonValidations extends AbstractFixTests {
     void testLogonRejectedWhenFixSessionNotSetupToAllowLogins() {
         setupAcceptorSessionSettings(s -> s.desiredSessionState(FixSessionState.LOGGED_OUT).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -268,7 +268,7 @@ class TestFixLogonValidations extends AbstractFixTests {
     void testLogonRejectedWithTestMessageIndicatorSetAndNotEnabledOnAcceptorSide() {
         setupInitiatorSessionSettings(s -> s.testingMode(true).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -280,7 +280,7 @@ class TestFixLogonValidations extends AbstractFixTests {
     void testLogonRejectedWithTestMessageIndicatorSetOnAcceptorSideAndNotEnabledOnClient() {
         setupAcceptorSessionSettings(s -> s.testingMode(true).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -300,7 +300,7 @@ class TestFixLogonValidations extends AbstractFixTests {
                         .build())
                 .build()).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -318,7 +318,7 @@ class TestFixLogonValidations extends AbstractFixTests {
         setupAcceptorSessionSettings(s -> s.validationSettings(
                 FixSessionSettings.ValidationSettings.builder().requiredPeerMaxMessageSize(4096).build()).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -424,7 +424,7 @@ class TestFixLogonValidations extends AbstractFixTests {
                         .acceptorUpperBoundInterval(Duration.ofSeconds(3))
                         .build()).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();

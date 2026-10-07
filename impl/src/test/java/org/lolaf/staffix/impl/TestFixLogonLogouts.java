@@ -148,7 +148,7 @@ class TestFixLogonLogouts extends AbstractFixTests {
 
     @Test
     void testSimpleLogon() {
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -263,6 +263,25 @@ class TestFixLogonLogouts extends AbstractFixTests {
         inOrder.verify(fixInitiatorApplication).onDisconnected(any());
         assertThat(connectedOnLogout).as("connected on each onLogout").containsExactly(false);
         assertSentBeforeLogout(acceptorLogger.getIncomingMessages());
+    }
+
+    /**
+     * Logged out on purpose, an initiator has no Logon to send, so it does not dial: the peer would drop the connection
+     * for want of one, or hold it unbound. {@link FixSession#logon()} is what brings it back.
+     */
+    @Test
+    void testAnInitiatorLoggedOutPermanentlyDoesNotDialUntilItLogsOnAgain() {
+        logonClient();
+
+        fixInitiatorSession.logoutPermanently("test logout");
+
+        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
+        await().during(Duration.ofMillis(500)).untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
+
+        fixInitiatorSession.logon();
+
+        await().untilAsserted(() -> assertThat(fixInitiatorSession.isLoggedIn()).isTrue());
+        await().untilAsserted(() -> assertThat(fixAcceptorSession.isLoggedIn()).isTrue());
     }
 
     @Test

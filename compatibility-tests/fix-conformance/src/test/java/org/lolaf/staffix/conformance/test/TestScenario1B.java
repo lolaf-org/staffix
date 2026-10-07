@@ -46,8 +46,7 @@ class TestScenario1B extends AbstractScenario {
         fixAcceptor.start();
         fixInitiator.start();
 
-        await().until(() -> fixInitiator.isConnected());
-        await().until(() -> fixInitiatorSession.isConnected());
+        await().until(() -> fixInitiatorSession != null);
     }
 
     @Test
@@ -118,9 +117,9 @@ class TestScenario1B extends AbstractScenario {
         // replies to the initiator's Logon with a Heartbeat(35=0) to exercise the "not a valid first message" path.
         fixInitiator.start();
         ServerSocket srvSocket = new ServerSocket(acceptorPort);
-        Socket socket = srvSocket.accept();
-
+        // the initiator dials once told to log on
         fixInitiatorSession.logon();
+        Socket socket = srvSocket.accept();
 
         byte[] buffer = new byte[2048];
         int readen = socket.getInputStream().read(buffer);

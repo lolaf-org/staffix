@@ -399,7 +399,6 @@ class TestFixMessagesSending extends AbstractFixTests {
                     .mainTarget(fixInitiatorBuilder.getMainTarget().toBuilder().fixSessionId(secondInitiatorSessionId).build())
                     .build());
             secondInitiator.start();
-            await().untilAsserted(() -> assertThat(secondInitiator.getSession().isConnected()).isTrue());
             secondInitiator.getSession().logon();
             await().untilAsserted(() -> assertThat(secondInitiator.getSession().isLoggedIn()).isTrue());
 
@@ -415,8 +414,7 @@ class TestFixMessagesSending extends AbstractFixTests {
 
     @Test
     void testSendBroadcastedMessage() {
-        connectFixInitiatorAndAcceptor();
-        logonClient();
+                logonClient();
 
         EmailEncoder encoder = getFixSession(ConnectorType.ACCEPTOR).newEncoder(EmailEncoder.class);
         encoder.begin().setSubject("test-subject-1");
@@ -444,8 +442,7 @@ class TestFixMessagesSending extends AbstractFixTests {
     @ParameterizedTest
     @MethodSource("initiatorOrAcceptorParams")
     void testSendMessage(ConnectorType connectorType) {
-        connectFixInitiatorAndAcceptor();
-        logonClient();
+                logonClient();
 
         FixSession fixSession = getFixSession(connectorType);
         EmailEncoder encoder = fixSession.newEncoder(EmailEncoder.class);
@@ -465,8 +462,7 @@ class TestFixMessagesSending extends AbstractFixTests {
      */
     @Test
     void aMessageSentWhileDisconnectedIsStoredAndOutlivesTheReconnection() {
-        connectFixInitiatorAndAcceptor();
-        logonClient();
+                logonClient();
 
         fixInitiatorSession.disconnect("sending while down");
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
@@ -505,8 +501,7 @@ class TestFixMessagesSending extends AbstractFixTests {
     @ParameterizedTest
     @MethodSource("initiatorOrAcceptorParams")
     void testSendMessageFromIOThread(ConnectorType connectorType) {
-        connectFixInitiatorAndAcceptor();
-        logonClient();
+                logonClient();
 
         FixSession fixSession = getFixSession(connectorType);
         fixSession.processTask(() -> {
@@ -524,8 +519,7 @@ class TestFixMessagesSending extends AbstractFixTests {
     @MethodSource("initiatorOrAcceptorParams")
     void testSendMessageWithCallback(ConnectorType connectorType) {
 
-        connectFixInitiatorAndAcceptor();
-        logonClient();
+                logonClient();
 
         FixSession fixSession = getFixSession(connectorType);
         EmailEncoder encoder = fixSession.newEncoder(EmailEncoder.class);
@@ -545,8 +539,7 @@ class TestFixMessagesSending extends AbstractFixTests {
     @ParameterizedTest
     @MethodSource("initiatorOrAcceptorParams")
     void testBufferedSendMessageUnderRingBufferSize(ConnectorType connectorType) {
-        connectFixInitiatorAndAcceptor();
-        logonClient();
+                logonClient();
         FixSession fixSession = getFixSession(connectorType);
 
         for (int i = 1; i <= IOSettings.DEFAULT_TASKS_RING_BUFFER_SIZE / 2; i++) {
@@ -564,8 +557,7 @@ class TestFixMessagesSending extends AbstractFixTests {
     @ParameterizedTest
     @MethodSource("initiatorOrAcceptorParams")
     void testBufferedSendMessageOverRingBufferSize(ConnectorType connectorType) {
-        connectFixInitiatorAndAcceptor();
-        logonClient();
+                logonClient();
         FixSession fixSession = getFixSession(connectorType);
 
         for (int i = 1; i <= IOSettings.DEFAULT_TASKS_RING_BUFFER_SIZE * 2; i++) {
@@ -583,8 +575,7 @@ class TestFixMessagesSending extends AbstractFixTests {
     @ParameterizedTest
     @MethodSource("initiatorOrAcceptorParams")
     void testBufferedMessageWithCallback(ConnectorType connectorType) {
-        connectFixInitiatorAndAcceptor();
-        logonClient();
+                logonClient();
         FixSession fixSession = getFixSession(connectorType);
 
         FixSession.MessageSendOperationCallback callback1 = mock(FixSession.MessageSendOperationCallback.class);
@@ -612,8 +603,7 @@ class TestFixMessagesSending extends AbstractFixTests {
     @ParameterizedTest
     @MethodSource("initiatorOrAcceptorParams")
     void testMultiThreadedWrites(ConnectorType connectorType) {
-        connectFixInitiatorAndAcceptor();
-        logonClient();
+                logonClient();
         FixSession fixSession = getFixSession(connectorType);
 
         for (int i = 0; i < 10; i++) {

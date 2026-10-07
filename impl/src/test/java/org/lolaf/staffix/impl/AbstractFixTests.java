@@ -431,6 +431,10 @@ abstract class AbstractFixTests {
                 .desiredSessionState(FixSessionState.LOGGED_OUT);
     }
 
+    /**
+     * For an initiator wanting to be logged in: one that does not, the default here, never dials, so start both ends
+     * and call {@link FixSession#logon()}, which dials.
+     */
     void connectFixInitiatorAndAcceptor() {
         startFixInitiatorAndAcceptor();
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
@@ -457,7 +461,7 @@ abstract class AbstractFixTests {
     }
 
     void logonClient() {
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -467,7 +471,7 @@ abstract class AbstractFixTests {
 
     /**
      * Ends the initiator's dialling on its first rejection, so that a rejected-logon test sees exactly one attempt.
-     * Call it once the connection is up and before the logon it is about to reject.
+     * Call it before the logon it is about to reject.
      * <p>
      * The initiator's desired state stays LOGGED_IN once {@link FixSession#logon()} is called, and this class dials
      * with a 100ms connection retry, so a rejected session re-dials and is rejected again for as long as the test

@@ -103,6 +103,12 @@ could mean.
 - **The session settings document has its own module, `staffix-sessions-settings-document`**: the model a session
   file is read into, with its JSON schema, for tools that read or write session settings outside the file store.
   The schema is published from it (classifier `schema`) rather than from `staffix-sessions-settings-store-file-impl`.
+- **An initiator that is to stay logged out no longer connects.** Logged out with `logoutPermanently()` (the admin
+  API's logout) or configured `desiredSessionState: LOGGED_OUT`, it used to dial and hold a connection without ever
+  logging on, which an acceptor with a logon timeout dropped and the initiator dialed again, over and over. It now
+  waits, as a `DISCONNECTED` one does, and dials again when `logon()` is called.
+- **`desiredSessionState: CONNECTED` is refused** when the settings are validated: a session held connected but not
+  logged on had nothing to do on its connection.
 
 ### Removed
 

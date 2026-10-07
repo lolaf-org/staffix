@@ -125,7 +125,7 @@ class TestFixSessionAdminApiCalls extends AbstractFixTests {
     @Test
     void testLogoutMethodAllowsSessionToBeLoggedInAgain() {
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -151,7 +151,7 @@ class TestFixSessionAdminApiCalls extends AbstractFixTests {
 
         fixAcceptorSession.logoutPermanently(null);
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
@@ -166,7 +166,7 @@ class TestFixSessionAdminApiCalls extends AbstractFixTests {
 
         fixAcceptorSession.disconnect("permanent disconnect");
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 

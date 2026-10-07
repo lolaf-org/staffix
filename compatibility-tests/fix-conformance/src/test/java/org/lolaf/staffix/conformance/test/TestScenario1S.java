@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.fix44.fields.BeginSeqNo;
 import org.lolaf.staffix.fix44.fields.EncryptMethod;
@@ -98,8 +99,7 @@ class TestScenario1S extends AbstractScenario {
         fixAcceptor.start();
         fixInitiator.start();
 
-        await().until(() -> fixInitiator.isConnected());
-        await().until(() -> fixInitiatorSession.isConnected());
+        await().until(() -> fixInitiatorSession != null);
 
         fixInitiatorSession.logon();
 
@@ -110,6 +110,11 @@ class TestScenario1S extends AbstractScenario {
         // FixSessionId inside a single engine is a configuration error its session registry refuses, and is not what
         // this scenario is about.
         FixEngine duplicateIdentityEngine = fixInitiatorEngineBuilder.toBuilder()
+                .clearFixSessionsSettingsStores()
+                .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
+                        .fixSessionSetting(getInitiatorFixSessionSettings()
+                                .desiredSessionState(FixSessionState.LOGGED_IN)
+                                .build()).build())
                 .clearFixMessagesStores()
                 .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
                         .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
@@ -118,10 +123,8 @@ class TestScenario1S extends AbstractScenario {
         duplicateIdentityEngine.start();
         FixInitiator fixInitiator2 = duplicateIdentityEngine.newInitiator(fixInitiatorBuilder.toBuilder().instanceId("second").build());
         try {
+            // logged in from the start, the duplicate dials and logs on by itself
             fixInitiator2.start();
-
-            await().until(fixInitiator2::isConnected);
-            fixInitiatorSession.logon();
 
             await().untilAsserted(() -> verify(fixSessionEventsListener).onFixSessionRejected(any(), any(FixAcceptor.MultipleLogonException.class)));
             await().untilAsserted(() -> assertThat(fixInitiator2.isConnected()).isFalse());
@@ -161,8 +164,7 @@ class TestScenario1S extends AbstractScenario {
 
         fixInitiator.start();
 
-        await().until(() -> fixInitiator.isConnected());
-        await().until(() -> fixInitiatorSession.isConnected());
+        await().until(() -> fixInitiatorSession != null);
 
         fixInitiatorSession.logon();
 

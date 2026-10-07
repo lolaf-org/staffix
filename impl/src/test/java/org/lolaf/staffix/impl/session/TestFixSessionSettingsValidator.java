@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import java.time.DayOfWeek;
@@ -120,6 +121,15 @@ class TestFixSessionSettingsValidator {
                 .build();
 
         assertThatCode(() -> FixSessionSettingsValidator.validate(settings)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsConnectedAsADesiredState() {
+        FixSessionSettings settings = validSettings().desiredSessionState(FixSessionState.CONNECTED).build();
+
+        assertThatThrownBy(() -> FixSessionSettingsValidator.validate(settings))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("desiredSessionState CONNECTED is not a state a session can be held in");
     }
 
     @Test

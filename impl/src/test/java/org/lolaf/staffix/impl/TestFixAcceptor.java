@@ -120,7 +120,7 @@ class TestFixAcceptor extends AbstractFixTests {
         setupAcceptorSessionSettings(builder -> builder
                 .allowedAddress(allowedIp).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 

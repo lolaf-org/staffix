@@ -474,9 +474,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
                         .desiredSessionState(FixSessionState.LOGGED_IN)
                         .build());
 
-        connectFixInitiatorAndAcceptor();
-
-        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -497,9 +495,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
                         .desiredSessionState(FixSessionState.LOGGED_IN)
                         .build());
 
-        connectFixInitiatorAndAcceptor();
-
-        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -620,7 +616,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
     }
 
     @Test
-    void testNoAutomaticLogonLogoutWhenInsideOrOutsideOfSessionTimeWithDesiredSessionStateLoggedOut() {
+    void testALoggedOutSessionDoesNotDialWhenItsWindowOpens() {
         fixInitiatorClock.toAdvanceableTime(SESSION_TIME.minusSeconds(2).toInstant());
 
         setupInitiatorSessionSettings(s ->
@@ -630,17 +626,13 @@ class TestFixSessionsSchedule extends AbstractFixTests {
 
         startFixInitiatorAndAcceptor();
 
-        // enter the session window: wanting to stay logged out is no reason not to hold a connection, so the
-        // initiator dials as soon as the window opens - it just has no Logon to send once there
+        // enter the session window: a session staying logged out would have no Logon to send, so it does not dial,
+        // where the peer would drop it or hold the connection unbound
         fixInitiatorClock.advance(Duration.ofSeconds(3));
 
-        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
-        await().untilAsserted(() -> assertThat(initiatorLogger.getEvents())
-                .contains("FIX session inside of timeframe"));
-        await().untilAsserted(() -> verify(fixInitiatorApplication).onInsideSessionTime(fixInitiatorSession));
-
-        // we have desired state LOGGED_OUT, so no automatic logon should happen even though we are inside the window
         LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(1));
+        assertThat(fixInitiatorSession.isConnected()).isFalse();
         assertThat(fixInitiatorSession.isLoggedIn()).isFalse();
+        assertThat(fixInitiatorSession.isWithinSessionTime()).isTrue();
     }
 }

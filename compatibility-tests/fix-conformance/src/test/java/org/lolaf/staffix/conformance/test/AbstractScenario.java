@@ -214,7 +214,7 @@ abstract class AbstractScenario {
     }
 
     /**
-     * Starts both connectors, waits for the initiator to connect, drives a Logon and waits until both sides are
+     * Starts both connectors, drives a Logon, which has the logged out initiator dial, and waits until both sides are
      * logged in. The initiator/acceptor sessions are trapped by the {@code onSessionCreated} stubs configured in
      * {@link #setup()}.
      */
@@ -223,7 +223,6 @@ abstract class AbstractScenario {
         fixInitiator.start();
 
         await().untilAsserted(() -> assertThat(fixInitiatorSession).isNotNull());
-        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
 
         fixInitiatorSession.logon();
 

@@ -255,7 +255,7 @@ class TestFixMessagesResends extends AbstractFixTests {
 
         initiatorMessagesStore.setCurrentIncomingSeqNum(100);
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 

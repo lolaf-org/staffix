@@ -108,7 +108,7 @@ class TestFixSequenceResets extends AbstractFixTests {
         setupSessionSettings(connectorType, s -> s.resetSeqNumOnLogon(true).build());
         setupSessionSettings(connectorType.inverse(), s -> s.resetSeqNumOnLogon(false).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         fixInitiatorSession.logon();
 
         await().untilAsserted(() -> verify(getFixApplication(connectorType.inverse()))

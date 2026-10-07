@@ -198,8 +198,11 @@ public class FixSessionImpl implements FixSession {
 
     public boolean isReadyToConnect() {
         if (fixSessionState.isStarted()) {
-            if (fixSessionState.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
-                logConnectionHeldOnce("FIX session desired state is DISCONNECTED, holding off connecting");
+            FixSessionState desiredState = fixSessionState.getDesiredState();
+            if (!desiredState.equals(FixSessionState.LOGGED_IN)) {
+                // a session that is not to log on has no use for a connection: the peer would drop it for want of a
+                // Logon, or hold it unbound
+                logConnectionHeldOnce("FIX session desired state is " + desiredState + ", holding off connecting");
                 return false;
             }
             if (!fixSessionLayerComponents.get(SessionTimeWindowComponent.class).isWithinSessionTimeNow()) {

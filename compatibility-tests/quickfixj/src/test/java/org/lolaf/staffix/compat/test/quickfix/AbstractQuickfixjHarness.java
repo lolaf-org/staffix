@@ -847,7 +847,6 @@ abstract class AbstractQuickfixjHarness {
 
         await().untilAsserted(() -> assertThat(staffixSession).isNotNull());
         if (staffixIsInitiator()) {
-            await().untilAsserted(() -> assertThat(staffixSession.isConnected()).isTrue());
             staffixSession.logon();
         }
 

@@ -88,7 +88,6 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         startAcceptorWithBothSessions();
         fixInitiator.start();
         trapCreatedFixSession(ConnectorType.INITIATOR);
-        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
         fixInitiatorSession.logon();
         await().untilAsserted(() -> verify(fixAcceptorApplication).onLogon(any(FixSession.class), any()));
         return fixInitiatorSession;
@@ -119,7 +118,6 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         assertThat(initiatorFixEngine.getFixSessionRegistry()
                 .find(sid -> sid.getGroup().equals(backup.getFixSessionId().getGroup()))).contains(backup);
 
-        await().untilAsserted(() -> assertThat(backup.isConnected()).isTrue());
         backup.logon();
 
         await().untilAsserted(() -> assertThat(backup.isLoggedIn()).isTrue());
@@ -139,6 +137,7 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
     void anActiveBackupFollowsAnUpdateOfItsMainTargetsSettings() {
         logonMainTarget();
         fixInitiator.switchTo(BACKUP_INITIATOR);
+        fixInitiator.getSession().logon();
         await().untilAsserted(() -> assertThat(fixInitiator.getSession().isConnected()).isTrue());
 
         initiatorStore().update(mainSettings().toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(11)).build());
@@ -259,12 +258,14 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
     void aSwitchWhileNoCounterpartyAnswersDialsTheBackupInstead() {
         fixInitiator.start();
         trapCreatedFixSession(ConnectorType.INITIATOR);
+        fixInitiatorSession.logon();
 
         fixInitiator.switchTo(BACKUP_INITIATOR);
         startAcceptorWithBothSessions();
 
         FixSession backup = fixInitiator.getSession();
         assertThat(backup.getFixSessionId()).isEqualTo(BACKUP_INITIATOR);
+        backup.logon();
         await().untilAsserted(() -> assertThat(backup.isConnected()).isTrue());
         assertThat(fixInitiatorSession.isConnected()).isFalse();
     }
@@ -280,6 +281,7 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         trapCreatedFixSession(ConnectorType.INITIATOR);
 
         assertThat(fixInitiatorSession.getFixSessionId()).isEqualTo(BACKUP_INITIATOR);
+        fixInitiatorSession.logon();
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
     }
 
@@ -294,7 +296,6 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
 
         fixInitiator.switchTo(BACKUP_INITIATOR);
         FixSession backup = fixInitiator.getSession();
-        await().untilAsserted(() -> assertThat(backup.isConnected()).isTrue());
         backup.logon();
         await().untilAsserted(() -> assertThat(backup.isLoggedIn()).isTrue());
         assertThat(adminApi.getOutgoingSeqNum(BACKUP_INITIATOR)).isEqualTo(2);
@@ -341,6 +342,7 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         fixInitiator.start();
 
         assertThat(fixInitiator.getSession().getFixSessionId()).isEqualTo(BACKUP_INITIATOR);
+        fixInitiator.getSession().logon();
         await().untilAsserted(() -> assertThat(fixInitiator.getSession().isConnected()).isTrue());
     }
 
@@ -366,6 +368,7 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         setupOrResetFixInitiatorApplication();
         fixInitiator.start();
         trapCreatedFixSession(ConnectorType.INITIATOR);
+        fixInitiatorSession.logon();
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
     }
 
