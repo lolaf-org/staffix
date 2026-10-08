@@ -513,6 +513,10 @@ public class FixSessionImpl implements FixSession {
         return fixSessionState.isLoggedIn();
     }
 
+    public boolean isLogonReceived() {
+        return fixSessionState.isLogonReceived();
+    }
+
     @Override
     @ExternalThread
     public void bufferize(FixMessageEncoder<?> encoder, UTCTime sendingTime) {

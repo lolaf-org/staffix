@@ -157,6 +157,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
     }
 
     private void processLogonRequest(FixSession fixSession, WrongSeqNumException wrongSeqNumException, int peerMaxMessageSize) {
+        getFixSessionStateComponent().onLogonReceived();
         // reset here for every Logon decoded, the decoder outliving the message, and turned on again further down by
         // whichever branch of finishLogon settles the sequence itself.
         //

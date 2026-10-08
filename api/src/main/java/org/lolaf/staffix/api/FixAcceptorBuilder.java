@@ -78,6 +78,12 @@ public class FixAcceptorBuilder {
     @Builder.Default
     private final Duration shutdownMaxDelay = Duration.ofSeconds(20);
     /**
+     * How long a connection may stay open without sending its Logon, counted once TLS is up: past it, the connection
+     * is closed, so a client that connects and sends nothing cannot hold a socket. Zero disables it.
+     */
+    @Builder.Default
+    private final Duration logonTimeout = Duration.ofSeconds(10);
+    /**
      * Told when a session is accepted or refused, and when a TLS handshake fails - the only place a connection
      * that never became a session is visible.
      */

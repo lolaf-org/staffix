@@ -96,6 +96,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private final Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesSupplier;
     private final Collection<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final FixSessionsObserver fixSessionsObserver;
+    private final Map<IOSession, ScheduledFuture<?>> logonTimeouts;
     private volatile FixSessionImpl[] connectedSessionsArray;
     private volatile FixAcceptorSessions fixAcceptorSessions;
     private ScheduledExecutorService scheduledExecutorService;
@@ -112,6 +113,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         this.fixAcceptorBuilder = fixAcceptorBuilder;
         this.fixRuntimeDependenciesSupplier = fixRuntimeDependenciesSupplier;
         this.fixSessionsObserver = fixSessionsObserver;
+        this.logonTimeouts = new ConcurrentHashMap<>();
         refreshFixAcceptorSessions();
 
         this.broadcastMessageIdleStrategy = new BackoffIdleStrategy();
@@ -666,11 +668,45 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             if (shuttingDown) {
                 log.info("Disconnecting session {} as server is shutting down", session.getSocketAddress());
                 session.stop(Deadline.immediate());
+                return;
+            }
+            scheduleLogonTimeout(session);
+        }
+
+        private void scheduleLogonTimeout(IOSession session) {
+            Duration logonTimeout = fixAcceptorBuilder.getLogonTimeout();
+            if (logonTimeout.isZero()) {
+                return;
+            }
+            // a connection gone before its timeout ran needs no closing, hence the callback ignoring the refusal
+            logonTimeouts.put(session, getScheduler().schedule(
+                    () -> session.processTask(() -> closeIfNoLogon(session, logonTimeout),
+                            (task, error) -> {
+                                // don't care
+                            }),
+                    logonTimeout.toNanos(), TimeUnit.NANOSECONDS));
+        }
+
+        // a bound connection is not enough: it is bound by its first CompIDs, before its Logon is complete
+        private void closeIfNoLogon(IOSession session, Duration logonTimeout) {
+            logonTimeouts.remove(session);
+            FixSessionImpl fixSession = session.getAttachment();
+            if ((fixSession == null || !fixSession.isLogonReceived()) && session.isStarted()) {
+                log.warn("Closing the connection from {}: no Logon within {}", session.getSocketAddress(), logonTimeout);
+                session.stop(Deadline.immediate());
+            }
+        }
+
+        private void cancelLogonTimeout(IOSession session) {
+            ScheduledFuture<?> logonTimeout = logonTimeouts.remove(session);
+            if (logonTimeout != null) {
+                logonTimeout.cancel(false);
             }
         }
 
         @Override
         public void onDisconnected(IOSession session) {
+            cancelLogonTimeout(session);
             FixSessionImpl fixSession = session.getAttachment();
             if (fixSession != null) {
                 fixSession.onDisconnection();
@@ -696,7 +732,12 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
         @Override
         public void onTask(IOSession session, Runnable task, BiConsumer<Runnable, Exception> taskCallback) {
-            session.<FixSessionImpl>getAttachment().onIOThreadTask(task, taskCallback);
+            FixSessionImpl fixSession = session.getAttachment();
+            if (fixSession == null) {
+                IOEventsListener.super.onTask(session, task, taskCallback);
+                return;
+            }
+            fixSession.onIOThreadTask(task, taskCallback);
         }
 
         @Override

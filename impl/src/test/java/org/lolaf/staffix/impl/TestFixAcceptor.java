@@ -20,16 +20,33 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixAcceptor;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
+import org.lolaf.staffix.api.fields.CoreFields;
+import org.lolaf.staffix.api.msg.CoreMessageType;
+import org.lolaf.staffix.api.msg.DecodedFixMessage;
+import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionRegistry;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.fix44.fields.EncryptMethod;
+import org.lolaf.staffix.fix44.fields.HeartBtInt;
+import org.lolaf.staffix.fix44.msg.MessageTypes;
+import org.lolaf.staffix.tests.FixMessageFields;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
+import org.lolaf.staffix.tests.RawFixSocketClient;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -37,6 +54,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.assertArg;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S2699")
 class TestFixAcceptor extends AbstractFixTests {
@@ -172,5 +190,80 @@ class TestFixAcceptor extends AbstractFixTests {
             // Not covered by the shutdown in AbstractFixTests, which only knows the two engines it built.
             rogueEngine.stop(Deadline.unlimited());
         }
+    }
+
+    /**
+     * A connection that never sends its Logon used to stay open for as long as the client liked.
+     */
+    @Test
+    void testConnectionWithoutLogonIsClosedAfterTheLogonTimeout() throws IOException {
+        useAcceptorWithLogonTimeout(Duration.ofMillis(500));
+        startFixAcceptor();
+
+        try (RawFixSocketClient.Session silent = RawFixSocketClient.connect(acceptorPort, Duration.ofSeconds(5))) {
+            assertThat(silent.isClosedByPeer(Duration.ofSeconds(10))).isTrue();
+        }
+    }
+
+    @Test
+    void testLogonTimeoutLeavesALoggedOnSessionConnected() {
+        useAcceptorWithLogonTimeout(Duration.ofMillis(500));
+        logonClient();
+
+        LockSupport.parkNanos(Duration.ofSeconds(1).toNanos());
+
+        assertThat(fixAcceptorSession.isLoggedIn()).isTrue();
+    }
+
+    /**
+     * The timeout waits for the Logon, not for the session to be logged in: a validation outlasting it is the
+     * application's to bound.
+     */
+    @Test
+    void testLogonTimeoutSparesALogonStillBeingValidated() throws IOException {
+        when(fixAcceptorApplication.validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class)))
+                .thenAnswer(invocation -> CompletableFuture.supplyAsync(Optional::empty,
+                        CompletableFuture.delayedExecutor(1, TimeUnit.SECONDS)));
+        useAcceptorWithLogonTimeout(Duration.ofMillis(300));
+        startFixAcceptor();
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+
+        try (RawFixSocketClient.Session peer = RawFixSocketClient.connect(acceptorPort, initiator.getFixVersion(),
+                initiator.getSenderCompID().getValue(), initiator.getTargetCompID().getValue(), Duration.ofSeconds(5))) {
+            peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
+
+            String response = peer.readMessageOfType(MessageTypes.Logon, Duration.ofSeconds(10));
+
+            assertThat(FixMessageFields.hasFieldWithValue(response, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON.code()))
+                    .isTrue();
+        }
+    }
+
+    /**
+     * The CompIDs bind a connection to its session before the Logon is complete: one that stops there held the
+     * session, refusing its real counterparty, with no timer running.
+     */
+    @Test
+    void testConnectionStoppingBeforeTheEndOfItsLogonIsClosedAfterTheLogonTimeout() throws IOException {
+        useAcceptorWithLogonTimeout(Duration.ofMillis(500));
+        startFixAcceptor();
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+
+        try (RawFixSocketClient.Session stalled = RawFixSocketClient.connect(acceptorPort, initiator.getFixVersion(),
+                initiator.getSenderCompID().getValue(), initiator.getTargetCompID().getValue(), Duration.ofSeconds(5))) {
+            byte[] logon = stalled.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5").build();
+            int withoutCheckSum = logon.length - "10=000\u0001".length();
+            stalled.send(Arrays.copyOf(logon, withoutCheckSum));
+            await().untilAsserted(() -> assertThat(fixAcceptorSession.isConnected()).isTrue());
+
+            assertThat(stalled.isClosedByPeer(Duration.ofSeconds(10))).isTrue();
+        }
+    }
+
+    private void useAcceptorWithLogonTimeout(Duration logonTimeout) {
+        fixAcceptor = acceptorFixEngine.newAcceptor(fixAcceptorBuilder.toBuilder()
+                .instanceId("logon-timeout")
+                .logonTimeout(logonTimeout)
+                .build());
     }
 }

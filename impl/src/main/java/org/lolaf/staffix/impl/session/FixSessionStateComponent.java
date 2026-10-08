@@ -55,6 +55,8 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
     private boolean adminOnlyMessagesAllowed;
     @Getter
     private volatile boolean started;
+    @Getter
+    private boolean logonReceived;
 
     public FixSessionStateComponent(boolean acceptorSession, FixSessionState desiredState,
                                     FixSessionScheduleManager fixSessionScheduleManager) {
@@ -145,6 +147,10 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
         return (isState(FixSessionState.CONNECTED) || isLoggedIn()) && !logoutSent.get();
     }
 
+    public void onLogonReceived() {
+        logonReceived = true;
+    }
+
     public void onInSessionResetSent() {
         inSessionResetPending.set(true);
     }
@@ -220,6 +226,7 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
         actualState.set(FixSessionState.CONNECTED);
         logoutSent.set(false);
         logonSent.set(false);
+        logonReceived = false;
         // same for a task waiting on a logout that never came: it belongs to the session that just ended
         onLoggedOutConnectionClosedTask = null;
     }

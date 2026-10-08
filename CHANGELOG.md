@@ -136,6 +136,9 @@ could mean.
   its window closed still read as within session time, and one down when it opened as outside it, until it connected
   again. It now follows the schedule while disconnected too, and so do the HTTP admin API's session status and the
   actuator's health.
+- An acceptor kept a connection that never sent a Logon open for as long as the client liked, so any client reaching
+  the port could hold sockets open. It now closes one that sends no Logon within `FixAcceptorBuilder.logonTimeout`,
+  10 seconds by default (`staffix.acceptors.<name>.logon-timeout` with Spring Boot, zero to never close it).
 
 ## [0.9.0] - 2026-09-30
 
