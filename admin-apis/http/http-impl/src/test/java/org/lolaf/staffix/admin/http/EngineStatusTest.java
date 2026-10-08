@@ -78,9 +78,6 @@ class EngineStatusTest {
         when(session.getFixSessionId()).thenReturn(fixSessionId);
         when(session.getFixSessionSettings()).thenReturn(settings);
         doReturn(application(fixSessionId)).when(session).getApplication();
-        when(session.isLoggedIn()).thenReturn(loggedIn);
-        when(session.isConnected()).thenReturn(loggedIn);
-        when(session.isWithinSessionTime()).thenReturn(true);
         when(session.getDesiredState()).thenReturn(loggedIn ? FixSessionDesiredState.LOGGED_IN : FixSessionDesiredState.LOGGED_OUT);
         when(session.getStatus()).thenReturn(loggedIn ? FixSessionStatus.LOGGED_IN : FixSessionStatus.LOGGED_OUT_BY_OPERATOR);
         return session;
@@ -132,8 +129,7 @@ class EngineStatusTest {
         JsonNode trading = status().get("sessions").get(0);
 
         assertThat(trading.toString()).isEqualTo("{\"group\":\"alpha\",\"name\":\"trading\",\"selectedConfig\":\"trading-drp\","
-                + "\"loggedIn\":true,\"connected\":true,\"withinSessionTime\":true,\"desiredState\":\"LOGGED_IN\","
-                + "\"status\":\"LOGGED_IN\",\"incomingSeqNum\":12,\"outgoingSeqNum\":34}");
+                + "\"desiredState\":\"LOGGED_IN\",\"status\":\"LOGGED_IN\",\"incomingSeqNum\":12,\"outgoingSeqNum\":34}");
         assertThat(status().get("sessionsVersion").asText()).isEqualTo("v1");
         assertThat(status().get("engineId").asText()).isEqualTo("alpha-engine");
     }

@@ -35,13 +35,9 @@ public class SessionStatus {
      * The config running now; changes when an initiator switches to a backup.
      */
     String selectedConfig;
-    boolean loggedIn;
-    boolean connected;
-    boolean withinSessionTime;
     FixSessionDesiredState desiredState;
     /**
-     * Where the session stands for an operator, so a tool need not combine the fields above to tell an incident from
-     * a planned pause.
+     * Where the session stands for an operator: tells an incident from a planned pause or an operator's logout.
      */
     FixSessionStatus status;
     long incomingSeqNum;
