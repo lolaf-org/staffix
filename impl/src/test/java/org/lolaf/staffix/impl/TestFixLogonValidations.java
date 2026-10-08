@@ -35,6 +35,7 @@ import org.lolaf.staffix.tests.FixMessageFields;
 import org.lolaf.staffix.tests.RawFixSocketClient;
 import org.mockito.Mockito;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -430,5 +431,49 @@ class TestFixLogonValidations extends AbstractFixTests {
         fixInitiatorSession.logon();
 
         awaitSingleRejectedLogon("HeartBtInt(108) = 5 is not within accepted bounds [1, 3]");
+    }
+
+    /**
+     * A validation's answer used to reach whichever connection the session had when it completed: one finishing after
+     * its connection closed logged on the next one, whatever that connection's own Logon said.
+     */
+    @Test
+    void testLogonValidatedAfterItsConnectionClosedDoesNotLogOnTheNextConnection() throws Exception {
+        CompletableFuture<Optional<String>> firstValidation = new CompletableFuture<>();
+        CompletableFuture<Optional<String>> secondValidation = new CompletableFuture<>();
+        when(fixAcceptorApplication.validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class)))
+                .thenReturn(firstValidation, secondValidation);
+        startFixAcceptor();
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+
+        try (RawFixSocketClient.Session first = connectAs(initiator)) {
+            first.send(resettingLogon(first));
+            await().untilAsserted(() -> verify(fixAcceptorApplication).validateLogon(any(), any(), any()));
+        }
+        await().untilAsserted(() -> assertThat(fixAcceptorSession.isConnected()).isFalse());
+
+        try (RawFixSocketClient.Session second = connectAs(initiator)) {
+            second.send(resettingLogon(second));
+            await().untilAsserted(() -> verify(fixAcceptorApplication, times(2)).validateLogon(any(), any(), any()));
+
+            firstValidation.complete(Optional.empty());
+            secondValidation.complete(Optional.of("second connection refused"));
+
+            String answer = second.readMessage(Duration.ofSeconds(10));
+            assertThat(FixMessageFields.hasFieldWithValue(answer, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGOUT.code()))
+                    .as("the second connection's own refusal comes first, not a Logon, but got: %s", answer)
+                    .isTrue();
+        }
+        assertThat(fixAcceptorSession.isLoggedIn()).isFalse();
+    }
+
+    private RawFixSocketClient.Session connectAs(FixSessionId initiator) throws IOException {
+        return RawFixSocketClient.connect(acceptorPort, initiator.getFixVersion(), initiator.getSenderCompID().getValue(),
+                initiator.getTargetCompID().getValue(), Duration.ofSeconds(10));
+    }
+
+    private static RawFixSocketClient.Session.Message resettingLogon(RawFixSocketClient.Session peer) {
+        return peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5")
+                .set(ResetSeqNumFlag.get(), "Y");
     }
 }

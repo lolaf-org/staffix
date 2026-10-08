@@ -18,6 +18,7 @@ package org.lolaf.staffix.impl.session.codec;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.staffix.api.codec.DecodingException;
 import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
 import org.lolaf.staffix.api.codec.SessionRejectReasonCodes;
@@ -64,6 +65,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
     private static final int SUPPORTED_ENCRYPT_METHOD = 0;
     private static final long NOTHING_TO_RETRANSMIT = 0;
     private static final String REJECTING_LOGON = "Rejecting logon: %s";
+    private static final String LOGON_VALIDATION = "a logon validation";
 
     private final FixField codTypeField;
     private final FixField codWindowField;
@@ -192,21 +194,24 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
             int heartbeatIntervalLocal = heartbeatInterval;
             DecodedFixMessage logonMessageLocal = logonMessage.copy();
             Boolean resetSeqNumFlagLocal = resetSeqNum;
+            IOSession logonConnection = fixSessionImpl.currentIOSession();
             logonRejectionMessageFuture.whenComplete((logonRejectionMessageOptional, error) -> {
                 if (error != null) {
-                    fixSession.processTask(() -> {
+                    fixSessionImpl.processTaskOnConnection(logonConnection, () -> {
                         log.error("Error when validating logon request", error);
                         fixSession.logEvent("Rejecting logon request due to failure: %s", error.getMessage());
                         getLogonLogoutComponent().sendLogoutRequest("Failed to validate logon request", true);
                         // cannot call session.logout() because need to be logged in to send message
-                    });
+                    }, LOGON_VALIDATION);
                 } else {
                     logonRejectionMessageOptional.ifPresentOrElse(logonRejectionMessage ->
-                                    fixSession.processTask(() -> {
+                                    fixSessionImpl.processTaskOnConnection(logonConnection, () -> {
                                         fixSession.logEvent(REJECTING_LOGON, logonRejectionMessage);
                                         getLogonLogoutComponent().sendLogoutRequest(logonRejectionMessage, true);
-                                    }),
-                            () -> fixSession.processTask(() -> finishLogon(wrongSeqNumException, fixSessionImpl, heartbeatIntervalLocal, resetSeqNumFlagLocal, nextExpectedMsgSeqNum, nextExpectedIncomingSeqNum, logonMessageLocal)));
+                                    }, LOGON_VALIDATION),
+                            () -> fixSessionImpl.processTaskOnConnection(logonConnection, () -> finishLogon(wrongSeqNumException, fixSessionImpl,
+                                    heartbeatIntervalLocal, resetSeqNumFlagLocal, nextExpectedMsgSeqNum, nextExpectedIncomingSeqNum, logonMessageLocal),
+                                    LOGON_VALIDATION));
                 }
             });
         } else {

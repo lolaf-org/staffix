@@ -364,8 +364,42 @@ public class FixSessionImpl implements FixSession {
         currentIOSession.processTask(task, callback);
     }
 
-    IOSession currentIOSession() {
+    public IOSession currentIOSession() {
         return ioSession;
+    }
+
+    /**
+     * Runs a task on the given connection, and only while it is still this session's: for an answer worked out
+     * asynchronously, which must not reach the connection that replaced it.
+     *
+     * @param dropped what the task does, for the session event logged when it is dropped
+     */
+    @ExternalThread
+    public void processTaskOnConnection(IOSession connection, Runnable task, String dropped) {
+        if (connection == null) {
+            logEvent("Dropped %s, its connection has closed", dropped);
+            return;
+        }
+        connection.processTask(() -> {
+            if (isCurrentConnection(connection)) {
+                task.run();
+            } else {
+                logEvent("Dropped %s, its connection has closed", dropped);
+            }
+        }, (refused, error) -> {
+            if (error != null) {
+                logEvent("Dropped %s, its connection has closed", dropped);
+            }
+        });
+    }
+
+    private boolean isCurrentConnection(IOSession connection) {
+        ownershipHandover.lock();
+        try {
+            return ioSession == connection;
+        } finally {
+            ownershipHandover.unlock();
+        }
     }
 
     private LogonLogoutComponent logonLogoutComponent() {

@@ -141,6 +141,9 @@ could mean.
   10 seconds by default (`staffix.acceptors.<name>.logon-timeout` with Spring Boot, zero to never close it).
 - An acceptor refused a Logon that reached it in several TCP segments as an unknown session, which a slow link, a
   proxy or a client writing in pieces can cause. It now waits for the whole Logon.
+- A Logon whose validation (`FixApplication.validateLogon`) finished after its connection had closed could log on the
+  session's next connection, whatever that connection's own Logon said. The outcome of a validation now applies only to
+  the connection that sent the Logon.
 
 ## [0.9.0] - 2026-09-30
 
