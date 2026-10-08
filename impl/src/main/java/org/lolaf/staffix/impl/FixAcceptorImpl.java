@@ -55,6 +55,7 @@ import javax.net.ssl.SSLHandshakeException;
 import java.net.SocketOption;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.cert.Certificate;
 import java.time.Duration;
 import java.util.*;
@@ -551,11 +552,72 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     @Slf4j
     private static class FixSessionIdFixMessageParser {
 
+        static final int INCOMPLETE = -1;
         private static final byte EQUALS = '=';
+        private static final byte[] BEGIN_STRING_TAG = (CoreFields.BEGIN_STRING + "=").getBytes(StandardCharsets.US_ASCII);
+        private static final byte[] BODY_LENGTH_TAG = (CoreFields.BODY_LENGTH + "=").getBytes(StandardCharsets.US_ASCII);
+        private static final int CHECKSUM_FIELD_LENGTH = (CoreFields.CHECKSUM + "=000" + CoreFields.FIELD_SEPARATOR).length();
+        private static final int MAX_HEADER_VALUE_LENGTH = 16;
 
-        public static ReceivedFixSessionId receivedFixSessionId(ByteBuffer message) throws RejectedSessionException {
-            ReceivedFixSessionId.ReceivedFixSessionIdBuilder sessionIdBuilder = ReceivedFixSessionId.builder();
+        /**
+         * Where the first message ends, framed by its BodyLength(9) rather than by looking for CheckSum(10), which a
+         * Logon's RawData(96) may contain: {@link #INCOMPLETE} until it is all there.
+         *
+         * @throws UnknownFixSessionException for bytes that cannot start a FIX message, or one larger than the buffer
+         */
+        public static int firstMessageEnd(ByteBuffer message) throws UnknownFixSessionException {
+            byte[] content = message.array();
             int limit = message.limit();
+            int beginStringEnd = headerValueEnd(content, message.position(), limit, BEGIN_STRING_TAG);
+            if (beginStringEnd == INCOMPLETE) {
+                return INCOMPLETE;
+            }
+            int bodyLengthEnd = headerValueEnd(content, beginStringEnd + 1, limit, BODY_LENGTH_TAG);
+            if (bodyLengthEnd == INCOMPLETE) {
+                return INCOMPLETE;
+            }
+            long messageEnd = bodyLengthEnd + 1 + bodyLength(content, beginStringEnd + 1 + BODY_LENGTH_TAG.length, bodyLengthEnd)
+                    + CHECKSUM_FIELD_LENGTH;
+            if (messageEnd - message.position() > message.capacity()) {
+                throw new UnknownFixSessionException();
+            }
+            return messageEnd <= limit ? (int) messageEnd : INCOMPLETE;
+        }
+
+        private static int headerValueEnd(byte[] content, int fieldStart, int limit, byte[] tag) throws UnknownFixSessionException {
+            for (int i = 0; i < tag.length; i++) {
+                if (fieldStart + i >= limit) {
+                    return INCOMPLETE;
+                }
+                if (content[fieldStart + i] != tag[i]) {
+                    throw new UnknownFixSessionException();
+                }
+            }
+            int valueStart = fieldStart + tag.length;
+            int valueEnd = findNextPosition(content, valueStart, Math.min(limit, valueStart + MAX_HEADER_VALUE_LENGTH + 1),
+                    CoreFields.FIELD_SEPARATOR_BYTE);
+            if (valueEnd == -1 && limit > valueStart + MAX_HEADER_VALUE_LENGTH) {
+                throw new UnknownFixSessionException();
+            }
+            return valueEnd == -1 ? INCOMPLETE : valueEnd;
+        }
+
+        private static long bodyLength(byte[] content, int start, int end) throws UnknownFixSessionException {
+            if (start == end) {
+                throw new UnknownFixSessionException();
+            }
+            long bodyLength = 0;
+            for (int i = start; i < end; i++) {
+                if (content[i] < '0' || content[i] > '9') {
+                    throw new UnknownFixSessionException();
+                }
+                bodyLength = bodyLength * 10 + content[i] - '0';
+            }
+            return bodyLength;
+        }
+
+        public static ReceivedFixSessionId receivedFixSessionId(ByteBuffer message, int limit) throws RejectedSessionException {
+            ReceivedFixSessionId.ReceivedFixSessionIdBuilder sessionIdBuilder = ReceivedFixSessionId.builder();
             int startPosition = message.position();
             byte[] messageContent = message.array();
             int currentPosition = startPosition;
@@ -687,7 +749,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                     logonTimeout.toNanos(), TimeUnit.NANOSECONDS));
         }
 
-        // a bound connection is not enough: it is bound by its first CompIDs, before its Logon is complete
+        // bound is not enough: a ResendRequest(35=2) may come before the Logon, CodecsComponent letting it through
         private void closeIfNoLogon(IOSession session, Duration logonTimeout) {
             logonTimeouts.remove(session);
             FixSessionImpl fixSession = session.getAttachment();
@@ -744,10 +806,21 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         public void onRead(IOSession session, ByteBuffer message, long localReceiveTimeInNanos) {
             FixSessionImpl fixSession = session.getAttachment();
             if (fixSession == null) {
+                int logonEnd;
+                try {
+                    logonEnd = FixSessionIdFixMessageParser.firstMessageEnd(message);
+                } catch (RejectedSessionException ex) {
+                    refuseConnection(session, message, null, null, ex);
+                    return;
+                }
+                if (logonEnd == FixSessionIdFixMessageParser.INCOMPLETE) {
+                    // betty keeps what is left unread and appends the next read to it
+                    return;
+                }
                 AtomicReference<FixSessionId> detectedFixSession = new AtomicReference<>();
                 AtomicReference<ReceivedFixSessionId> receivedFixSession = new AtomicReference<>();
                 try {
-                    fixSession = findTargetSession(session, message, detectedFixSession, receivedFixSession);
+                    fixSession = findTargetSession(session, message, logonEnd, detectedFixSession, receivedFixSession);
                     session.setAttachment(fixSession);
                     synchronized (connectedSessions) {
                         connectedSessions.add(fixSession);
@@ -758,9 +831,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                     }
                     fixAcceptorBuilder.getFixSessionEventsListener().onFixSessionAccepted(detectedFixSession.get());
                 } catch (RejectedSessionException ex) {
-                    fixAcceptorBuilder.getFixSessionEventsListener().onFixSessionRejected(detectedFixSession.get(), ex);
-                    message.clear();
-                    respondToRejectionAndClose(session, receivedFixSession.get(), ex);
+                    refuseConnection(session, message, detectedFixSession.get(), receivedFixSession.get(), ex);
                     return;
                 } catch (Exception ex) {
                     log.error("Failed to create session, abnormal situation", ex);
@@ -772,6 +843,13 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 }
             }
             fixSession.onMessageRead(message, localReceiveTimeInNanos);
+        }
+
+        private void refuseConnection(IOSession session, ByteBuffer message, FixSessionId detectedFixSession,
+                                      ReceivedFixSessionId receivedFixSession, RejectedSessionException ex) {
+            fixAcceptorBuilder.getFixSessionEventsListener().onFixSessionRejected(detectedFixSession, ex);
+            message.clear();
+            respondToRejectionAndClose(session, receivedFixSession, ex);
         }
 
         @Override
@@ -806,9 +884,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             )).findFirst().orElse(null);
         }
 
-        private FixSessionImpl findTargetSession(IOSession session, ByteBuffer message, AtomicReference<FixSessionId> detectedFixSession,
+        private FixSessionImpl findTargetSession(IOSession session, ByteBuffer message, int logonEnd, AtomicReference<FixSessionId> detectedFixSession,
                                                  AtomicReference<ReceivedFixSessionId> receivedFixSession) throws RejectedSessionException {
-            ReceivedFixSessionId receivedFixSessionId = FixSessionIdFixMessageParser.receivedFixSessionId(message);
+            ReceivedFixSessionId receivedFixSessionId = FixSessionIdFixMessageParser.receivedFixSessionId(message, logonEnd);
             // expose the parsed identity so a rejected connection can still be answered before being closed
             receivedFixSession.set(receivedFixSessionId);
 

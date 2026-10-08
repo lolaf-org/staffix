@@ -139,6 +139,8 @@ could mean.
 - An acceptor kept a connection that never sent a Logon open for as long as the client liked, so any client reaching
   the port could hold sockets open. It now closes one that sends no Logon within `FixAcceptorBuilder.logonTimeout`,
   10 seconds by default (`staffix.acceptors.<name>.logon-timeout` with Spring Boot, zero to never close it).
+- An acceptor refused a Logon that reached it in several TCP segments as an unknown session, which a slow link, a
+  proxy or a client writing in pieces can cause. It now waits for the whole Logon.
 
 ## [0.9.0] - 2026-09-30
 
