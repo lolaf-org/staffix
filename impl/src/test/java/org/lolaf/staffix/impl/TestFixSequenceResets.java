@@ -185,7 +185,7 @@ class TestFixSequenceResets extends AbstractFixTests {
         logonClient();
         exchangeAMessageEachWay(1);
 
-        fixInitiatorSession.disconnect("taken out for renumbering");
+        fixInitiatorSession.logoutPermanently("taken out for renumbering");
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
         await().untilAsserted(() -> assertThat(fixAcceptorSession.isConnected()).isFalse());
 

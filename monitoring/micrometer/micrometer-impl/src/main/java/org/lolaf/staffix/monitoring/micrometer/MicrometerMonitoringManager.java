@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.api.session.RttMeasurement;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
@@ -38,11 +39,11 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.ToDoubleFunction;
+import java.util.stream.Collectors;
 
 /**
  * Publishes session and message metrics to a Micrometer registry the application supplies.
@@ -54,7 +55,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     static final String MESSAGES_WRITE_LATENCY = "messages.write.latency";
     static final String MESSAGES_DECODING_LATENCY = "messages.decoding.latency";
     static final String MESSAGES_ENCODING_LATENCY = "messages.encoding.latency";
-    static final String SESSION_LOGON_STATE = "session.logon.state";
+    static final String SESSION_LOGON_STATUS = "session.logon.status";
     static final String SESSION_RTT = "session.rtt";
     static final String SESSION_CLOCK_OFFSET = "session.clock.offset";
     private static final String READ_LATENCY_DESCRIPTION = "Time to fully process a received message: from reading its bytes off the socket"
@@ -74,7 +75,9 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     private static final String CLOCK_OFFSET_DESCRIPTION = "The counterparty's clock minus this engine's, estimated NTP-style from the"
             + " SendingTime (52) of the Heartbeats answering TestRequests, and smoothed; positive means the counterparty's clock"
             + " is ahead.";
-    private static final String LOGON_STATE_DESCRIPTION = "1 while the session is logged on, 0 otherwise.";
+    private static final String LOGON_STATUS_DESCRIPTION = "Where the session stands for an operator: "
+            + Arrays.stream(FixSessionStatus.values()).map(status -> status.getCode() + " " + status.name()).collect(Collectors.joining(", "))
+            + ".";
 
     private final MicrometerMonitoringManagerSettings settings;
     private final Map<FixSessionId, FixSessionEventsListenerImpl> listeners;
@@ -111,8 +114,8 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             meters.add(FixMeterDescriptor.builder().name(SESSION_CLOCK_OFFSET).type(FixMeterDescriptor.Type.GAUGE)
                     .description(CLOCK_OFFSET_DESCRIPTION).unit(TimeUnit.NANOSECONDS).build());
         }
-        meters.add(FixMeterDescriptor.builder().name(SESSION_LOGON_STATE).type(FixMeterDescriptor.Type.GAUGE)
-                .description(LOGON_STATE_DESCRIPTION).build());
+        meters.add(FixMeterDescriptor.builder().name(SESSION_LOGON_STATUS).type(FixMeterDescriptor.Type.GAUGE)
+                .description(LOGON_STATUS_DESCRIPTION).build());
         return List.copyOf(meters);
     }
 
@@ -142,7 +145,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     @Override
     public Optional<FixSessionPlugin<FixSessionsMonitoringContext, Void>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
         return Optional.of(listeners.computeIfAbsent(fixSession.getFixSessionId(),
-                fid -> new FixSessionEventsListenerImpl(fixEngineId, fixInstanceId, fid, incomingMessageTypes, outgoingMessageTypes, meterRegistry, settings,
+                fid -> new FixSessionEventsListenerImpl(fixEngineId, fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes, meterRegistry, settings,
                         builtInMeters, this::onSessionDestroyed)));
     }
 
@@ -170,7 +173,6 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
 
     private static class FixSessionEventsListenerImpl implements FixSessionPlugin<FixSessionsMonitoringContext, Void>, FixSessionsMonitoringContext {
 
-        private final AtomicBoolean loggedOn;
         private final Map<MessageType, Timer> readsTimersPerMsgType;
         private final Map<MessageType, Timer> writesTimersPerMsgType;
         private final Map<MessageType, Timer> decodingTimersPerMsgType;
@@ -178,7 +180,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         private final Timer rttTimer;
         private final AtomicLong clockOffsetNanos;
         private final Gauge clockOffsetGauge;
-        private final Gauge sessionState;
+        private final Gauge sessionStatus;
         private final BiConsumer<String, FixSessionId> onSessionDestroyed;
         private final Map<String, MicrometerTimerWrapper> timersForSession;
         private final Map<String, RegisteredGauge> gaugesForSession;
@@ -190,9 +192,10 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         private final Map<String, FixMeterDescriptor> customMeters;
         private final Tags sessionTags;
 
-        FixSessionEventsListenerImpl(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, Collection<MessageType> incomingMessageTypes,
+        FixSessionEventsListenerImpl(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes,
                                      Collection<MessageType> outgoingMessageTypes, MeterRegistry meterRegistry, MicrometerMonitoringManagerSettings micrometerMonitoringManagerSettings,
                                      List<FixMeterDescriptor> builtInMeters, BiConsumer<String, FixSessionId> onSessionDestroyed) {
+            FixSessionId fixSessionId = fixSession.getFixSessionId();
             this.fixEngineId = fixEngineId;
             this.builtInMeters = builtInMeters;
             this.customMeters = new ConcurrentHashMap<>();
@@ -200,15 +203,16 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             this.settings = micrometerMonitoringManagerSettings;
             this.timersForSession = new ConcurrentHashMap<>();
             this.gaugesForSession = new ConcurrentHashMap<>();
-            this.loggedOn = new AtomicBoolean(false);
             this.onSessionDestroyed = onSessionDestroyed;
             Tags tags = Tags.of(Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), fixEngineId),
                     Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey(), fixInstanceId),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey(), fixSessionId.getGroup()));
             this.sessionTags = tags;
-            this.sessionState = Gauge.builder(SESSION_LOGON_STATE, loggedOn, value -> loggedOn.get() ? 1d : 0d)
-                    .description(LOGON_STATE_DESCRIPTION)
+            // pulled at each export: the schedule changes the status with no event to push it on
+            this.sessionStatus = Gauge.builder(SESSION_LOGON_STATUS, fixSession, session -> session.getStatus().getCode())
+                    .strongReference(true)
+                    .description(LOGON_STATUS_DESCRIPTION)
                     .tags(tags).register(meterRegistry);
 
             boolean readLatencyEnabled = micrometerMonitoringManagerSettings.isReadLatencyEnabled();
@@ -397,7 +401,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         }
 
         void destroy(MeterRegistry meterRegistry) {
-            meterRegistry.remove(sessionState);
+            meterRegistry.remove(sessionStatus);
             timersForSession.values().forEach(timer -> timer.destroy(meterRegistry));
             gaugesForSession.values().forEach(gauge -> meterRegistry.remove(gauge.meter));
             if (readsTimersPerMsgType != null) {
@@ -422,11 +426,6 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             if (clockOffsetGauge != null) {
                 meterRegistry.remove(clockOffsetGauge);
             }
-        }
-
-        @Override
-        public void onLogon() {
-            loggedOn.set(true);
         }
 
         @Override
@@ -490,11 +489,6 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                 log.warn("Unable to find a timer for FIX sent message type {}, please add it using Set during method call" +
                         "FixApplication.setup(..., Set<MessageType> encodedMessagesTypes)", messageType);
             }
-        }
-
-        @Override
-        public void onLogout() {
-            loggedOn.set(false);
         }
 
         @Override

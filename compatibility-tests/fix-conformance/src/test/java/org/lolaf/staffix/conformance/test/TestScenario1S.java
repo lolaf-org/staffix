@@ -22,9 +22,9 @@ import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.fix44.fields.BeginSeqNo;
 import org.lolaf.staffix.fix44.fields.EncryptMethod;
@@ -113,7 +113,7 @@ class TestScenario1S extends AbstractScenario {
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
                         .fixSessionSetting(getInitiatorFixSessionSettings()
-                                .desiredSessionState(FixSessionState.LOGGED_IN)
+                                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                                 .build()).build())
                 .clearFixMessagesStores()
                 .fixMessagesStore(TestingFixMessagesStoreSettings.builder()

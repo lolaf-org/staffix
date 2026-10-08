@@ -908,12 +908,6 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 }
             }
 
-            if (match.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
-                // admission control, alongside the checks below: a session that must not be up takes no connection,
-                // and refusing it here is what keeps the session itself - its sequence numbers, its store, its
-                // application callbacks - out of a connection it is not going to serve
-                throw new SessionNotAcceptingConnectionsException();
-            }
             if (Arrays.stream(connectedSessionsArray).anyMatch(s -> s.getFixSessionId().equals(matchedFixSessionId))) {
                 throw new MultipleLogonException();
             }

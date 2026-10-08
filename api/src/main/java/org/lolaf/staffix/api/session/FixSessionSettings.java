@@ -132,13 +132,11 @@ public class FixSessionSettings {
     @Builder.Default
     private Boolean resetSeqNumOnLogon = null;
     /**
-     * The state the session holds itself in. {@link FixSessionState#LOGGED_IN} by default, so it logs on and stays on;
-     * {@link FixSessionState#LOGGED_OUT} and {@link FixSessionState#DISCONNECTED} take it out of service without
-     * removing its configuration: an initiator does not dial, an acceptor answers a Logon with a Logout or closes the
-     * connection. {@link FixSessionState#CONNECTED} is refused.
+     * {@link FixSessionDesiredState#LOGGED_IN} by default, so the session logs on and stays on;
+     * {@link FixSessionDesiredState#LOGGED_OUT} takes it out of service without removing its configuration.
      */
     @Builder.Default
-    private FixSessionState desiredSessionState = FixSessionState.LOGGED_IN;
+    private FixSessionDesiredState desiredSessionState = FixSessionDesiredState.LOGGED_IN;
 
     /**
      * How long a Logon or Logout may go unanswered before the connection is dropped.

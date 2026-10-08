@@ -201,8 +201,7 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
     }
 
     /**
-     * The session's desired state is DISCONNECTED: it must not be up at all, so the connection is refused before
-     * anything of the session layer runs on it.
+     * The session is stopping, so the connection is refused before anything of the session layer runs on it.
      */
     class SessionNotAcceptingConnectionsException extends RejectedSessionException {
 
@@ -212,8 +211,8 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
 
         @Override
         public boolean shouldSendLogout() {
-            // a session refusing to be up cannot answer: sending a Logout is the session layer this connection is
-            // being refused, and the peer is meant to see nothing but the connection going
+            // a stopping session cannot answer: sending a Logout is the session layer this connection is being
+            // refused, and the peer is meant to see nothing but the connection going
             return false;
         }
     }

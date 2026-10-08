@@ -22,9 +22,9 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -59,7 +59,7 @@ class TestFixInitiatorTargetsValidation {
         return FixSessionSettings.builder()
                 .fixSessionId(fixSessionId)
                 .fixSessionType(fixSessionType)
-                .desiredSessionState(FixSessionState.LOGGED_OUT)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_OUT)
                 .build();
     }
 

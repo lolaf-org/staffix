@@ -167,8 +167,8 @@
     },
     "desiredSessionState" : {
       "type" : "string",
-      "enum" : [ "LOGGED_IN", "LOGGED_OUT", "CONNECTED", "DISCONNECTED" ],
-      "description" : "The state the session holds itself in. FixSessionState.LOGGED_IN by default, so it logs on and stays on; FixSessionState.LOGGED_OUT takes a session out of service without removing its configuration.",
+      "enum" : [ "LOGGED_IN", "LOGGED_OUT" ],
+      "description" : "FixSessionDesiredState.LOGGED_IN by default, so the session logs on and stays on; FixSessionDesiredState.LOGGED_OUT takes it out of service without removing its configuration.",
       "default" : "LOGGED_IN"
     },
     "disconnectMessagesFlushDeadline" : {
@@ -226,7 +226,7 @@
         "pattern" : ".*\\$\\{[^}]+}.*",
         "description" : "A ${...} placeholder, resolved when the file is loaded"
       } ],
-      "description" : "Instance id of the application this session is bound to, within the selected factory; see FixApplicationFactory.getInstance().",
+      "description" : "Instance id of the application this session is bound to, within the selected factory, whose dictionary the session speaks; see FixApplicationFactory.getInstance().",
       "default" : "default"
     },
     "fixApplicationSessionSettings" : {

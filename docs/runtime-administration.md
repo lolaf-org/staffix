@@ -104,7 +104,7 @@ state: read `status` again to see it.
 | request, under `v1/` | |
 |---------|---|
 | `GET sessions` | every running session: its configs (for an initiator the main one, then its backups, with the addresses each dials), each config's identity and dictionaries, its messages logger and monitoring plugin instance ids, the session settings store holding it; with a `version`, also its `ETag`, that changes only when the sessions or their settings do |
-| `GET status` | every session's state, running config and sequence numbers, with `sessionsVersion`: fetch `sessions` again when it differs |
+| `GET status` | every session's `status` (`LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`, `LOGGED_OUT_OUTSIDE_SESSION_TIME`, `LOGGED_OUT_INSIDE_SESSION_TIME`), running config and sequence numbers, with `sessionsVersion`: fetch `sessions` again when it differs |
 | `GET schemas/session-settings` | the JSON Schema of a session's settings document, every field described, with its default |
 | `GET sessions/{group}/{name}/settings` | the session's settings as a document of that schema; an application setting declared secret, or whose name looks secret, is masked |
 | `PUT sessions/{group}/{name}/settings` | replaces them in the store holding them; the live session restarts on them unless `restartLiveSessionOnUpdate` is off. A masked value keeps the session's. An acceptor session's CompIDs may change; an initiator's id is set by its targets |
@@ -162,8 +162,9 @@ properties are in [Spring Boot](spring-boot.md#monitoring-and-admin).
 
 `staffix.actuator.fix-session-state-contributes-to-health-status=true` turns the health endpoint DOWN when a session
 that should be logged in is not: it is inside its schedule, nobody logged it out on purpose, and it is not logged in.
-A session outside its trading hours, or logged out through the admin API, stays UP. The health details show each
-session's `state`, `desiredState` and `withinSessionTime`, so a DOWN can be traced to its session. It is off by
+A session outside its trading hours, or logged out through the admin API, stays UP: DOWN is exactly a
+`logonStatus` of `LOGGED_OUT_INSIDE_SESSION_TIME`. The health details show each session's `logonStatus`,
+`desiredState` and `withinSessionTime`, so a DOWN can be traced to its session. It is off by
 default: a load balancer should usually see a counterparty outage, but a liveness probe should not restart the
 application over it, so feed it to a readiness check, not a liveness one.
 

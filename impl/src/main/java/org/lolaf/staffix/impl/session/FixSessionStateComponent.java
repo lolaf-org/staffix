@@ -19,7 +19,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -48,7 +48,7 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
     private Runnable onLoggedOutConnectionClosedTask;
     @Setter
     @Getter
-    private FixSessionState desiredState;
+    private volatile FixSessionDesiredState desiredState;
     @Getter
     private String sentLogoutMessage;
     @Getter
@@ -58,7 +58,7 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
     @Getter
     private boolean logonReceived;
 
-    public FixSessionStateComponent(boolean acceptorSession, FixSessionState desiredState,
+    public FixSessionStateComponent(boolean acceptorSession, FixSessionDesiredState desiredState,
                                     FixSessionScheduleManager fixSessionScheduleManager) {
         this.acceptorSession = acceptorSession;
         this.desiredState = desiredState;
@@ -95,7 +95,7 @@ public class FixSessionStateComponent implements FixSessionLayerComponent {
     }
 
     private boolean wantsToBeLoggedIn() {
-        return desiredState.equals(FixSessionState.LOGGED_IN);
+        return desiredState.equals(FixSessionDesiredState.LOGGED_IN);
     }
 
     public boolean isLoggedIn() {

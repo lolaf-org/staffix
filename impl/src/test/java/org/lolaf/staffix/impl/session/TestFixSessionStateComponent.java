@@ -16,7 +16,7 @@
 package org.lolaf.staffix.impl.session;
 
 import org.junit.jupiter.api.Test;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -26,7 +26,7 @@ import static org.mockito.Mockito.mock;
 class TestFixSessionStateComponent {
 
     private FixSessionStateComponent newState() {
-        return new FixSessionStateComponent(false, FixSessionState.LOGGED_IN,
+        return new FixSessionStateComponent(false, FixSessionDesiredState.LOGGED_IN,
                 mock(FixSessionScheduleManager.class));
     }
 

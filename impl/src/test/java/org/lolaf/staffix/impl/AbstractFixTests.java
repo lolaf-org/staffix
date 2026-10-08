@@ -34,9 +34,9 @@ import org.lolaf.staffix.api.fields.FixField;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
@@ -416,7 +416,7 @@ abstract class AbstractFixTests {
                 // and this session follows it. An explicit false means "resetting is not supported" and is answered
                 // with a Logout, which is a deliberate choice a test should make rather than inherit.
                 .resetSeqNumOnLogon(null)
-                .desiredSessionState(FixSessionState.LOGGED_IN);
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN);
     }
 
     FixSessionSettings.FixSessionSettingsBuilder<?, ?> getInitiatorFixSessionSettings() {
@@ -428,7 +428,7 @@ abstract class AbstractFixTests {
                 // and this session follows it. An explicit false means "resetting is not supported" and is answered
                 // with a Logout, which is a deliberate choice a test should make rather than inherit.
                 .resetSeqNumOnLogon(null)
-                .desiredSessionState(FixSessionState.LOGGED_OUT);
+                .desiredSessionState(FixSessionDesiredState.LOGGED_OUT);
     }
 
     /**
@@ -443,7 +443,7 @@ abstract class AbstractFixTests {
     /**
      * Brings both ends up without waiting for the connection to be established, for the tests where it is not going
      * to be: an initiator is asked before every dialling attempt whether it wants a connection at all, and one whose
-     * session schedule is currently closed - or whose desired state is DISCONNECTED - answers no until that changes.
+     * session schedule is currently closed - or whose desired state is LOGGED_OUT - answers no until that changes.
      */
     void startFixInitiatorAndAcceptor() {
         startFixAcceptor();
@@ -477,15 +477,15 @@ abstract class AbstractFixTests {
      * with a 100ms connection retry, so a rejected session re-dials and is rejected again for as long as the test
      * leaves it running - the callback counts climb the whole time. Verifying them would then have to settle for
      * {@code atLeastOnce()}, which no longer notices a reject path firing its callbacks twice for a single attempt.
-     * {@link FixSession#disconnect(String)} moves the desired state to DISCONNECTED, and that is what an initiator is
-     * asked before every dialling attempt, so the rejection that just happened stays the only one and the counts can
-     * be pinned exactly.
+     * {@link FixSession#logoutPermanently(String)} moves the desired state to LOGGED_OUT, and that is what an initiator
+     * is asked before every dialling attempt, so the rejection that just happened stays the only one and the counts
+     * can be pinned exactly.
      */
     void rejectedLogonEndsDialling() {
         doAnswer(invocation -> {
             // the session the callback carries, rather than the field: the callback can land before the field that
             // traps it has been assigned, and reading it here would end the dialling only sometimes
-            invocation.getArgument(0, FixSession.class).disconnect("test: a single logon attempt");
+            invocation.getArgument(0, FixSession.class).logoutPermanently("test: a single logon attempt");
             return null;
         }).when(fixInitiatorApplication).onLogout(any(), any(), any());
     }

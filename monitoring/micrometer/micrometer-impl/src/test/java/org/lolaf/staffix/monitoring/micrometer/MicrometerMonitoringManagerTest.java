@@ -28,6 +28,7 @@ import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.api.session.RttMeasurement;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.time.UTCTime;
@@ -71,6 +72,7 @@ class MicrometerMonitoringManagerTest {
         fixSession = mock(FixSession.class);
         fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "TEST_SENDER", "TEST_TARGET");
         when(fixSession.getFixSessionId()).thenReturn(fixSessionId);
+        when(fixSession.getStatus()).thenReturn(FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME);
         settings = MicrometerMonitoringManagerSettings.builder()
                 .instanceId("test-instance")
                 .meterRegistrySupplier(() -> meterRegistry)
@@ -134,11 +136,11 @@ class MicrometerMonitoringManagerTest {
         assertThat(listener).isNotNull();
 
         // Verify session state gauge is registered
-        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATE)
+        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATUS)
                 .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge();
         assertThat(gauge).isNotNull();
-        assertThat(gauge.value()).isEqualTo(0.0); // Not logged on initially
+        assertThat(gauge.value()).isEqualTo(0.0);
 
         // Verify timers are registered for each message type
         Timer readTimer = meterRegistry.find(MESSAGES_READ_LATENCY)
@@ -179,7 +181,7 @@ class MicrometerMonitoringManagerTest {
         FixSessionPlugin listener = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
 
         // Verify metrics exist
-        assertThat(meterRegistry.find(SESSION_LOGON_STATE)
+        assertThat(meterRegistry.find(SESSION_LOGON_STATUS)
                 .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge()).isNotNull();
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
@@ -193,7 +195,7 @@ class MicrometerMonitoringManagerTest {
         listener.onSessionDestroyed("fix-instance-1", fixSessionId);
 
         // Then - metrics should be removed
-        assertThat(meterRegistry.find(SESSION_LOGON_STATE)
+        assertThat(meterRegistry.find(SESSION_LOGON_STATUS)
                 .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).gauge()).isNull();
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
                 .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).timer()).isNull();
@@ -240,7 +242,7 @@ class MicrometerMonitoringManagerTest {
                 .orElseThrow().getPluginContext().orElseThrow().getMeterDescriptors();
 
         assertThat(meters).extracting(FixMeterDescriptor::getName)
-                .containsExactly(MESSAGES_READ_LATENCY, MESSAGES_WRITE_LATENCY, SESSION_LOGON_STATE);
+                .containsExactly(MESSAGES_READ_LATENCY, MESSAGES_WRITE_LATENCY, SESSION_LOGON_STATUS);
         assertThat(meters.get(0)).satisfies(read -> {
             assertThat(read.getType()).isEqualTo(FixMeterDescriptor.Type.TIMER);
             assertThat(read.getTagKeys()).containsExactly(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(),
@@ -449,45 +451,29 @@ class MicrometerMonitoringManagerTest {
                 .isLessThan(101.0);
     }
 
+    /**
+     * Read from the session at each export: a session crossing its window changes status with no event to push.
+     */
     @Test
-    void testFixEventsListener_onLogon_shouldUpdateGauge() {
-        // Given
+    void testLogonStatusGauge_followsTheSessionStatus() {
         monitoringManager.start();
-
-        FixSessionPlugin listener =
-                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
-
-        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATE)
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATUS)
                 .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge();
-        assertThat(gauge.value()).isEqualTo(0.0);
 
-        // When
-        listener.onLogon();
+        for (FixSessionStatus status : FixSessionStatus.values()) {
+            when(fixSession.getStatus()).thenReturn(status);
 
-        // Then
-        assertThat(gauge.value()).isEqualTo(1.0);
+            assertThat(gauge.value()).as(status.name()).isEqualTo(status.getCode());
+        }
     }
 
     @Test
-    void testFixEventsListener_onLogout_shouldUpdateGauge() {
-        // Given
-        monitoringManager.start();
-
-        FixSessionPlugin listener =
-                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
-
-        listener.onLogon();
-        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
-                .gauge();
-        assertThat(gauge.value()).isEqualTo(1.0);
-
-        // When
-        listener.onLogout();
-
-        // Then
-        assertThat(gauge.value()).isEqualTo(0.0);
+    void testLogonStatusGauge_codesAreTheOnesDocumented() {
+        assertThat(FixSessionStatus.values())
+                .extracting(FixSessionStatus::getCode)
+                .containsExactly(1, 3, 2, 0);
     }
 
     @Test
@@ -593,27 +579,24 @@ class MicrometerMonitoringManagerTest {
         FixSession fixSession2 = mock(FixSession.class);
         FixSessionId fixSessionId2 = FixSessionId.of("test2", FixRegularVersion.VERSION_44, "TEST_SENDER2", "TEST_TARGET2");
         when(fixSession2.getFixSessionId()).thenReturn(fixSessionId2);
+        when(fixSession.getStatus()).thenReturn(FixSessionStatus.LOGGED_IN);
+        when(fixSession2.getStatus()).thenReturn(FixSessionStatus.LOGGED_OUT_BY_OPERATOR);
         MessageType messageType = getMessageType("A");
 
         // When
-        FixSessionPlugin listener1 =
-                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
-        FixSessionPlugin listener2 =
-                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession2, List.of(messageType), List.of()).orElseThrow();
-
-        listener1.onLogon();
-        listener2.onLogout();
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession2, List.of(messageType), List.of()).orElseThrow();
 
         // Then
-        Gauge gauge1 = meterRegistry.find(SESSION_LOGON_STATE)
+        Gauge gauge1 = meterRegistry.find(SESSION_LOGON_STATUS)
                 .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge();
-        Gauge gauge2 = meterRegistry.find(SESSION_LOGON_STATE)
+        Gauge gauge2 = meterRegistry.find(SESSION_LOGON_STATUS)
                 .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId2.getName())
                 .gauge();
 
         assertThat(gauge1.value()).isEqualTo(1.0);
-        assertThat(gauge2.value()).isEqualTo(0.0);
+        assertThat(gauge2.value()).isEqualTo(3.0);
     }
 
     @Test

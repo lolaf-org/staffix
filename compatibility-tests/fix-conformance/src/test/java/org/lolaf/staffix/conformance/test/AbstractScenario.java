@@ -26,9 +26,9 @@ import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
@@ -250,7 +250,7 @@ abstract class AbstractScenario {
                 // and this session follows it. An explicit false means "resetting is not supported" and is answered
                 // with a Logout, which is a deliberate choice a test should make rather than inherit.
                 .resetSeqNumOnLogon(null)
-                .desiredSessionState(FixSessionState.LOGGED_OUT);
+                .desiredSessionState(FixSessionDesiredState.LOGGED_OUT);
     }
 
     FixSessionSettings.FixSessionSettingsBuilder<?, ?> getAcceptorFixSessionSettings() {
@@ -261,6 +261,6 @@ abstract class AbstractScenario {
                 // and this session follows it. An explicit false means "resetting is not supported" and is answered
                 // with a Logout, which is a deliberate choice a test should make rather than inherit.
                 .resetSeqNumOnLogon(null)
-                .desiredSessionState(FixSessionState.LOGGED_IN);
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN);
     }
 }

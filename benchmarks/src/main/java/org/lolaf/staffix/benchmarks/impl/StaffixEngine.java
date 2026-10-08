@@ -32,9 +32,9 @@ import org.lolaf.staffix.api.fields.FieldsRegistry;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
@@ -144,7 +144,7 @@ public class StaffixEngine extends AbstractBenchmark {
                 .resetSeqNumOnLogon(false)
                 .fixApplicationFactoryInstanceId(ACCEPTOR)
                 .fixApplicationInstanceId(ACCEPTOR)
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build();
     }
 
@@ -156,7 +156,7 @@ public class StaffixEngine extends AbstractBenchmark {
                 .resetSeqNumOnLogon(false)
                 .fixApplicationFactoryInstanceId(INITIATOR)
                 .fixApplicationInstanceId(INITIATOR)
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build();
     }
 

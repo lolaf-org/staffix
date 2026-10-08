@@ -94,7 +94,7 @@ class TestFixLogonLogouts extends AbstractFixTests {
                 peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
                 await().untilAsserted(() -> assertThat(fixInitiatorSession.isLoggedIn()).isTrue());
 
-                fixInitiatorSession.disconnect("never answered");
+                fixInitiatorSession.logoutPermanently("never answered");
                 peer.readMessageOfType(MessageTypes.Logout, Duration.ofSeconds(10));
 
                 assertThat(peer.isClosedByPeer(Duration.ofSeconds(10))).isTrue();
@@ -472,9 +472,8 @@ class TestFixLogonLogouts extends AbstractFixTests {
     }
 
     /**
-     * What {@code logoutPermanently} promises, and where it differs from {@link FixSession#disconnect(String)}: the
-     * session stays logged out for as long as it is left alone - a reconnected initiator sends no Logon of its own -
-     * and {@link FixSession#logon()} is what reopens it.
+     * What {@code logoutPermanently} promises: the session stays logged out for as long as it is left alone, and
+     * {@link FixSession#logon()} is what reopens it.
      */
     @Test
     void aPermanentlyLoggedOutSessionOnlyComesBackOnLogon() {
@@ -491,20 +490,19 @@ class TestFixLogonLogouts extends AbstractFixTests {
     }
 
     /**
-     * The other half of that pair: {@code disconnect} takes the connection down and keeps it down - the initiator is
-     * asked before every dialling attempt and answers no while its desired state is DISCONNECTED - until a
-     * {@link FixSession#logon()} asks for the session back.
+     * The connection goes with it: the initiator is asked before every dialling attempt and answers no while its
+     * desired state is LOGGED_OUT, until a {@link FixSession#logon()} asks for the session back.
      */
     @Test
-    void aDisconnectedSessionStopsDiallingUntilLogon() {
+    void aPermanentlyLoggedOutInitiatorStopsDiallingUntilLogon() {
         logonClient();
 
-        fixInitiatorSession.disconnect("test disconnect");
+        fixInitiatorSession.logoutPermanently("test logout");
 
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
         await().during(STAYS_PUT).atMost(Duration.ofSeconds(15))
                 .untilAsserted(() -> assertThat(fixInitiatorSession.isConnected())
-                        .as("dialled the peer again while disconnected on purpose").isFalse());
+                        .as("dialled the peer again while logged out on purpose").isFalse());
 
         fixInitiatorSession.logon();
 

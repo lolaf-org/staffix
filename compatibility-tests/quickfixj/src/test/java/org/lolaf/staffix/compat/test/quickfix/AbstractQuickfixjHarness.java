@@ -639,9 +639,9 @@ abstract class AbstractQuickfixjHarness {
         if (staffixIsInitiator()) {
             builder.heartBeatInterval(FixSessionSettings.HeartbeatInterval.builder()
                             .initiatorInterval(Duration.ofSeconds(5)).build())
-                    .desiredSessionState(FixSessionState.LOGGED_OUT);
+                    .desiredSessionState(FixSessionDesiredState.LOGGED_OUT);
         } else {
-            builder.desiredSessionState(FixSessionState.LOGGED_IN);
+            builder.desiredSessionState(FixSessionDesiredState.LOGGED_IN);
         }
         return customiseStaffixSettings(builder).build();
     }

@@ -27,10 +27,11 @@ import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
@@ -80,7 +81,8 @@ class EngineStatusTest {
         when(session.isLoggedIn()).thenReturn(loggedIn);
         when(session.isConnected()).thenReturn(loggedIn);
         when(session.isWithinSessionTime()).thenReturn(true);
-        when(session.getDesiredState()).thenReturn(loggedIn ? FixSessionState.LOGGED_IN : FixSessionState.LOGGED_OUT);
+        when(session.getDesiredState()).thenReturn(loggedIn ? FixSessionDesiredState.LOGGED_IN : FixSessionDesiredState.LOGGED_OUT);
+        when(session.getStatus()).thenReturn(loggedIn ? FixSessionStatus.LOGGED_IN : FixSessionStatus.LOGGED_OUT_BY_OPERATOR);
         return session;
     }
 
@@ -131,7 +133,7 @@ class EngineStatusTest {
 
         assertThat(trading.toString()).isEqualTo("{\"group\":\"alpha\",\"name\":\"trading\",\"selectedConfig\":\"trading-drp\","
                 + "\"loggedIn\":true,\"connected\":true,\"withinSessionTime\":true,\"desiredState\":\"LOGGED_IN\","
-                + "\"incomingSeqNum\":12,\"outgoingSeqNum\":34}");
+                + "\"status\":\"LOGGED_IN\",\"incomingSeqNum\":12,\"outgoingSeqNum\":34}");
         assertThat(status().get("sessionsVersion").asText()).isEqualTo("v1");
         assertThat(status().get("engineId").asText()).isEqualTo("alpha-engine");
     }
@@ -161,6 +163,7 @@ class EngineStatusTest {
         assertThat(dropCopy.get("configs").get(0).get("identity").toString())
                 .isEqualTo("{\"fixVersion\":\"FIXT.1.1\",\"defaultApplVerId\":\"9\",\"sender\":{\"compId\":\"US\"},\"target\":{\"compId\":\"BETA\",\"locationId\":\"LDN\"}}");
         assertThat(status().get("sessions").get(1).get("desiredState").asText()).isEqualTo("LOGGED_OUT");
+        assertThat(status().get("sessions").get(1).get("status").asText()).isEqualTo("LOGGED_OUT_BY_OPERATOR");
     }
 
     @Test

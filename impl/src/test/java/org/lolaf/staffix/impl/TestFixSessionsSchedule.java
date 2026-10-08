@@ -21,8 +21,9 @@ import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.msg.CoreMessageType;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.tests.FixMessageFields;
 import org.lolaf.staffix.tests.TestingLogger;
 
@@ -134,7 +135,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         setupInitiatorSessionSettings(s -> s
                 .sessionScheduleSettings(nonStopEveryDay(BASE.plusSeconds(4),
                         AWAITS))
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -163,7 +164,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
                 .heartBeatInterval(FixSessionSettings.HeartbeatInterval.builder()
                         .initiatorInterval(Duration.ofSeconds(20))
                         .build())
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -193,7 +194,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         setupInitiatorSessionSettings(s -> s
                 .sessionScheduleSettings(nonStopEveryDay(BASE.plusSeconds(4),
                         INITIATES))
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -221,7 +222,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         setupInitiatorSessionSettings(s -> s
                 .sessionScheduleSettings(nonStopEveryDay(BASE.plusSeconds(4),
                         AWAITS))
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -246,7 +247,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         setupInitiatorSessionSettings(s -> s
                 .sessionScheduleSettings(nonStopEveryDay(BASE,
                         INITIATES))
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -284,7 +285,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
                                 .endDay(DayOfWeek.FRIDAY).endTime(LocalTime.of(17, 0))
                                 .build())
                         .build())
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -327,7 +328,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
                         .nonStopSchedule(nonStopDay(DayOfWeek.MONDAY, BASE.plusSeconds(4),
                                 AWAITS))
                         .build())
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -358,7 +359,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         }
         setupInitiatorSessionSettings(s -> s
                 .sessionScheduleSettings(schedule.build())
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -400,7 +401,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         }
         setupInitiatorSessionSettings(s -> s
                 .sessionScheduleSettings(schedule.build())
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -447,7 +448,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         }
         setupInitiatorSessionSettings(s -> s
                 .sessionScheduleSettings(schedule.build())
-                .desiredSessionState(FixSessionState.LOGGED_IN)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .build());
 
         connectFixInitiatorAndAcceptor();
@@ -471,7 +472,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         setupInitiatorSessionSettings(s ->
                 s.sessionScheduleSettings(scheduleWindow(BASE.minusSeconds(2), BASE.plusSeconds(60)))
                         .resetSeqNumOnLogon(true)
-                        .desiredSessionState(FixSessionState.LOGGED_IN)
+                        .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                         .build());
 
         startFixInitiatorAndAcceptor();
@@ -492,7 +493,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
 
         setupAcceptorSessionSettings(s ->
                 s.sessionScheduleSettings(scheduleWindow(BASE.minusSeconds(2), BASE.plusSeconds(3)))
-                        .desiredSessionState(FixSessionState.LOGGED_IN)
+                        .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                         .build());
 
         startFixInitiatorAndAcceptor();
@@ -523,7 +524,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
 
         setupInitiatorSessionSettings(s ->
                 s.sessionScheduleSettings(scheduleWindow(BASE, BASE.plusSeconds(4)))
-                        .desiredSessionState(FixSessionState.LOGGED_IN)
+                        .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                         .build());
 
         startFixInitiatorAndAcceptor();
@@ -582,13 +583,13 @@ class TestFixSessionsSchedule extends AbstractFixTests {
 
         setupInitiatorSessionSettings(s ->
                 s.sessionScheduleSettings(scheduleWindow(BASE, BASE.plusSeconds(4)))
-                        .desiredSessionState(FixSessionState.LOGGED_IN)
+                        .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                         .build());
 
         startFixInitiatorAndAcceptor();
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isLoggedIn()).isTrue());
 
-        fixInitiatorSession.disconnect("Disconnected for the test");
+        fixInitiatorSession.logoutPermanently("Disconnected for the test");
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
         assertThat(fixInitiatorSession.isWithinSessionTime()).isTrue();
 
@@ -603,7 +604,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
 
         setupInitiatorSessionSettings(s ->
                 s.sessionScheduleSettings(scheduleWindow(BASE, BASE.plusSeconds(4)))
-                        .desiredSessionState(FixSessionState.DISCONNECTED)
+                        .desiredSessionState(FixSessionDesiredState.LOGGED_OUT)
                         .build());
 
         startFixInitiatorAndAcceptor();
@@ -621,7 +622,7 @@ class TestFixSessionsSchedule extends AbstractFixTests {
 
         setupInitiatorSessionSettings(s ->
                 s.sessionScheduleSettings(scheduleWindow(BASE, BASE.plusSeconds(4)))
-                        .desiredSessionState(FixSessionState.LOGGED_OUT)
+                        .desiredSessionState(FixSessionDesiredState.LOGGED_OUT)
                         .build());
 
         startFixInitiatorAndAcceptor();
@@ -634,5 +635,49 @@ class TestFixSessionsSchedule extends AbstractFixTests {
         assertThat(fixInitiatorSession.isConnected()).isFalse();
         assertThat(fixInitiatorSession.isLoggedIn()).isFalse();
         assertThat(fixInitiatorSession.isWithinSessionTime()).isTrue();
+    }
+
+    /**
+     * Read from the clock while disconnected: a session crossing its window changes status with nothing happening to
+     * it, which is what the logon status gauge relies on.
+     */
+    @Test
+    void testStatusFollowsTheScheduleWithNoConnection() {
+        fixAcceptorClock.toAdvanceableTime(SESSION_TIME.minusSeconds(2).toInstant());
+        setupAcceptorSessionSettings(s -> s.sessionScheduleSettings(scheduleWindow(BASE, BASE.plusSeconds(4))).build());
+        startFixAcceptor();
+
+        assertThat(fixAcceptorSession.getStatus()).isEqualTo(FixSessionStatus.LOGGED_OUT_OUTSIDE_SESSION_TIME);
+
+        fixAcceptorClock.advance(Duration.ofSeconds(3));
+
+        assertThat(fixAcceptorSession.getStatus()).isEqualTo(FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME);
+    }
+
+    @Test
+    void testStatusOfASessionHeldLoggedOutIgnoresTheSchedule() {
+        fixAcceptorClock.toAdvanceableTime(SESSION_TIME.minusSeconds(2).toInstant());
+        setupAcceptorSessionSettings(s -> s.sessionScheduleSettings(scheduleWindow(BASE, BASE.plusSeconds(4)))
+                .desiredSessionState(FixSessionDesiredState.LOGGED_OUT)
+                .build());
+        startFixAcceptor();
+
+        assertThat(fixAcceptorSession.getStatus()).isEqualTo(FixSessionStatus.LOGGED_OUT_BY_OPERATOR);
+
+        fixAcceptorClock.advance(Duration.ofSeconds(3));
+
+        assertThat(fixAcceptorSession.getStatus()).isEqualTo(FixSessionStatus.LOGGED_OUT_BY_OPERATOR);
+    }
+
+    @Test
+    void testStatusOfALoggedInSessionUntilAnOperatorLogsItOut() {
+        logonClient();
+
+        assertThat(fixInitiatorSession.getStatus()).isEqualTo(FixSessionStatus.LOGGED_IN);
+        assertThat(fixAcceptorSession.getStatus()).isEqualTo(FixSessionStatus.LOGGED_IN);
+
+        fixInitiatorSession.logoutPermanently("held out");
+
+        await().untilAsserted(() -> assertThat(fixInitiatorSession.getStatus()).isEqualTo(FixSessionStatus.LOGGED_OUT_BY_OPERATOR));
     }
 }

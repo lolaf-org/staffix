@@ -17,7 +17,8 @@ package org.lolaf.staffix.admin.http.dto;
 
 import lombok.Builder;
 import lombok.Value;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 
 /**
  * The live state of a session box, named as in {@link EngineSessions}.
@@ -37,10 +38,12 @@ public class SessionStatus {
     boolean loggedIn;
     boolean connected;
     boolean withinSessionTime;
+    FixSessionDesiredState desiredState;
     /**
-     * LOGGED_OUT when an operator logged the session out, so the console does not report it as an incident.
+     * Where the session stands for an operator, so a tool need not combine the fields above to tell an incident from
+     * a planned pause.
      */
-    FixSessionState desiredState;
+    FixSessionStatus status;
     long incomingSeqNum;
     long outgoingSeqNum;
 }

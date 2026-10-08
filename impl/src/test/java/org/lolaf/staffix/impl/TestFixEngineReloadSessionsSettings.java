@@ -48,7 +48,7 @@ class TestFixEngineReloadSessionsSettings {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of("test", FixRegularVersion.VERSION_44, sender, target))
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
-                .desiredSessionState(FixSessionState.LOGGED_OUT)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_OUT)
                 .build();
     }
 
@@ -110,7 +110,7 @@ class TestFixEngineReloadSessionsSettings {
         store.register(listener);
 
         // same session id as 'a' but a different value -> update; 'd' unchanged -> no callback; 'b' absent -> removed
-        FixSessionSettings aUpdated = a.toBuilder().desiredSessionState(FixSessionState.LOGGED_IN).build();
+        FixSessionSettings aUpdated = a.toBuilder().desiredSessionState(FixSessionDesiredState.LOGGED_IN).build();
         FixSessionSettings c = session("SENDER_C", "TARGET_C");
         store.setSource(aUpdated, d, c);
 

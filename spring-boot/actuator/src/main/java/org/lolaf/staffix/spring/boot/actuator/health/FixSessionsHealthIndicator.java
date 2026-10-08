@@ -15,8 +15,7 @@
  */
 package org.lolaf.staffix.spring.boot.actuator.health;
 
-import org.lolaf.staffix.api.session.FixSession;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.spring.boot.actuator.ActuatorSessionStats;
 import org.lolaf.staffix.spring.boot.actuator.ActuatorSessionsRegistry;
 import org.lolaf.staffix.spring.boot.actuator.spring.ActuatorMonitoringProps;
@@ -46,7 +45,7 @@ public class FixSessionsHealthIndicator implements HealthIndicator {
     private static Map<String, Object> describe(ActuatorSessionStats stats, boolean up) {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("status", up ? "UP" : "DOWN");
-        d.put("state", stats.getState().name());
+        d.put("logonStatus", stats.getFixSession().getStatus().name());
         d.put("desiredState", stats.getFixSession().getDesiredState().name());
         d.put("withinSessionTime", stats.getFixSession().isWithinSessionTime());
         d.put("messagesReceived", stats.getMessagesReceived());
@@ -74,9 +73,6 @@ public class FixSessionsHealthIndicator implements HealthIndicator {
         if (!props.isFixSessionStateContributesToHealthStatus()) {
             return true;
         }
-        FixSession fixSession = stats.getFixSession();
-        boolean shouldBeLoggedIn = fixSession.isWithinSessionTime()
-                && fixSession.getDesiredState() == FixSessionState.LOGGED_IN;
-        return !shouldBeLoggedIn || stats.getState() == FixSessionState.LOGGED_IN;
+        return !stats.getFixSession().getStatus().equals(FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME);
     }
 }

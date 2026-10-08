@@ -66,7 +66,7 @@ public class FixSessionSettingsDocument {
      */
     private List<Certificate> allowedCertificates;
     private Boolean resetSeqNumOnLogon;
-    private FixSessionState desiredSessionState;
+    private FixSessionDesiredState desiredSessionState;
     private Duration logInOrOutResponseTimeout;
     private Duration resendRequestResponseTimeout;
     private Integer maxOutOfSequenceMessagesQueued;

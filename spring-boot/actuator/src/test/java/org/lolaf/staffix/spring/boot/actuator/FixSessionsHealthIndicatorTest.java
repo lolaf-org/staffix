@@ -17,8 +17,9 @@ package org.lolaf.staffix.spring.boot.actuator;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.spring.boot.actuator.health.FixSessionsHealthIndicator;
 import org.lolaf.staffix.spring.boot.actuator.spring.ActuatorMonitoringProps;
@@ -40,17 +41,19 @@ class FixSessionsHealthIndicatorTest {
     private final ActuatorMonitoringProps props = new ActuatorMonitoringProps();
     private final FixSessionsHealthIndicator indicator = new FixSessionsHealthIndicator(registry, props);
 
-    private ActuatorSessionStats session(boolean withinSessionTime, FixSessionState desiredState) {
+    private void session(FixSessionStatus status) {
         FixSession fixSession = mock(FixSession.class);
         when(fixSession.getFixSessionId()).thenReturn(SESSION_ID);
-        when(fixSession.isWithinSessionTime()).thenReturn(withinSessionTime);
-        when(fixSession.getDesiredState()).thenReturn(desiredState);
-        return registry.register("instance", fixSession);
+        when(fixSession.getStatus()).thenReturn(status);
+        when(fixSession.isWithinSessionTime()).thenReturn(!status.equals(FixSessionStatus.LOGGED_OUT_OUTSIDE_SESSION_TIME));
+        when(fixSession.getDesiredState()).thenReturn(status.equals(FixSessionStatus.LOGGED_OUT_BY_OPERATOR)
+                ? FixSessionDesiredState.LOGGED_OUT : FixSessionDesiredState.LOGGED_IN);
+        registry.register("instance", fixSession);
     }
 
     @Test
-    void aSessionStateDoesNotContributeByDefault() {
-        session(true, FixSessionState.LOGGED_IN);
+    void aSessionStatusDoesNotContributeByDefault() {
+        session(FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME);
 
         assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
     }
@@ -58,14 +61,14 @@ class FixSessionsHealthIndicatorTest {
     @Test
     void aSessionThatShouldBeLoggedInAndIsNotIsDown() {
         props.setFixSessionStateContributesToHealthStatus(true);
-        session(true, FixSessionState.LOGGED_IN);
+        session(FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME);
 
         Health health = indicator.health();
 
         assertThat(health.getStatus()).isEqualTo(Status.DOWN);
         assertThat(health.getDetails().get(SESSION_ID.getQualifiedName())).asInstanceOf(InstanceOfAssertFactories.map(String.class, Object.class))
                 .containsEntry("status", "DOWN")
-                .containsEntry("state", "DISCONNECTED")
+                .containsEntry("logonStatus", "LOGGED_OUT_INSIDE_SESSION_TIME")
                 .containsEntry("desiredState", "LOGGED_IN")
                 .containsEntry("withinSessionTime", true);
     }
@@ -73,7 +76,7 @@ class FixSessionsHealthIndicatorTest {
     @Test
     void aLoggedInSessionIsUp() {
         props.setFixSessionStateContributesToHealthStatus(true);
-        session(true, FixSessionState.LOGGED_IN).onLogon();
+        session(FixSessionStatus.LOGGED_IN);
 
         assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
     }
@@ -81,7 +84,7 @@ class FixSessionsHealthIndicatorTest {
     @Test
     void aSessionOutsideItsScheduleIsUp() {
         props.setFixSessionStateContributesToHealthStatus(true);
-        session(false, FixSessionState.LOGGED_IN).onLogout();
+        session(FixSessionStatus.LOGGED_OUT_OUTSIDE_SESSION_TIME);
 
         assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
     }
@@ -89,7 +92,7 @@ class FixSessionsHealthIndicatorTest {
     @Test
     void aSessionLoggedOutOnPurposeIsUp() {
         props.setFixSessionStateContributesToHealthStatus(true);
-        session(true, FixSessionState.LOGGED_OUT).onLogout();
+        session(FixSessionStatus.LOGGED_OUT_BY_OPERATOR);
 
         assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
     }

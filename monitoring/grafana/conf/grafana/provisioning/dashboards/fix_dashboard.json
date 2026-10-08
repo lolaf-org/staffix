@@ -50,12 +50,22 @@
                 "0": {
                   "color": "red",
                   "index": 0,
-                  "text": "Logged out"
+                  "text": "Logged out inside session time"
                 },
                 "1": {
                   "color": "green",
                   "index": 1,
                   "text": "Logged in"
+                },
+                "2": {
+                  "color": "yellow",
+                  "index": 2,
+                  "text": "Logged out outside session time"
+                },
+                "3": {
+                  "color": "orange",
+                  "index": 3,
+                  "text": "Logged out by an operator"
                 }
               },
               "type": "value"
@@ -107,7 +117,7 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "session_logon_state{fix_eid=~\"$engine\", fix_sg=\"$group\"}",
+          "expr": "session_logon_status{fix_eid=~\"$engine\", fix_sg=\"$group\"}",
           "legendFormat": "{{fix_sg}}.{{fix_sn}}",
           "refId": "A"
         }
@@ -986,7 +996,7 @@
           "type": "prometheus",
           "uid": "prometheusUID"
         },
-        "definition": "label_values(session_logon_state, fix_eid)",
+        "definition": "label_values(session_logon_status, fix_eid)",
         "hide": 0,
         "includeAll": true,
         "label": "engine",
@@ -995,7 +1005,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(session_logon_state, fix_eid)",
+          "query": "label_values(session_logon_status, fix_eid)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -1018,7 +1028,7 @@
           "type": "prometheus",
           "uid": "prometheusUID"
         },
-        "definition": "label_values(session_logon_state{fix_eid=~\"$engine\"}, fix_sg)",
+        "definition": "label_values(session_logon_status{fix_eid=~\"$engine\"}, fix_sg)",
         "hide": 0,
         "includeAll": true,
         "label": "Group",
@@ -1027,7 +1037,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(session_logon_state{fix_eid=~\"$engine\"}, fix_sg)",
+          "query": "label_values(session_logon_status{fix_eid=~\"$engine\"}, fix_sg)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -1049,7 +1059,7 @@
           "type": "prometheus",
           "uid": "prometheusUID"
         },
-        "definition": "label_values(session_logon_state{fix_eid=~\"$engine\", fix_sg=~\"$group\"}, fix_sn)",
+        "definition": "label_values(session_logon_status{fix_eid=~\"$engine\", fix_sg=~\"$group\"}, fix_sn)",
         "hide": 0,
         "includeAll": true,
         "label": "Session",
@@ -1058,7 +1068,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(session_logon_state{fix_eid=~\"$engine\", fix_sg=~\"$group\"}, fix_sn)",
+          "query": "label_values(session_logon_status{fix_eid=~\"$engine\", fix_sg=~\"$group\"}, fix_sn)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

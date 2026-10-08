@@ -104,7 +104,7 @@ class ActuatorHttpEndpointsTest {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> sessions = (List<Map<String, Object>>) body.get("sessions");
             assertThat(sessions).hasSize(2);
-            assertThat(sessions).extracting(s -> s.get("state"))
+            assertThat(sessions).extracting(s -> s.get("logonStatus"))
                     .allMatch("LOGGED_IN"::equals);
             assertThat(sessions).extracting(s -> s.get("name"))
                     .containsExactlyInAnyOrder(ACCEPTOR_SESSION_ID.getName(), INITIATOR_SESSION_ID.getName());
@@ -115,7 +115,7 @@ class ActuatorHttpEndpointsTest {
         assertThat(single.getStatusCode().value()).isEqualTo(200);
         assertThat(single.getBody())
                 .containsEntry("name", ACCEPTOR_SESSION_ID.getName())
-                .containsEntry("state", "LOGGED_IN");
+                .containsEntry("logonStatus", "LOGGED_IN");
 
         ResponseEntity<Map<String, Object>> missing = getJson("/actuator/fix-sessions/" + ACCEPTOR_SESSION_ID.getGroup() + "/does-not-exist");
         assertThat(missing.getStatusCode().value()).isEqualTo(404);

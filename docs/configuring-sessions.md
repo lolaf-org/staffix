@@ -109,8 +109,8 @@ second expiry logs the session out. The application then sees `onResendRequestIn
 | `sessionScheduleSettings` | see below |
 
 `desiredSessionState` is the state the engine works to maintain: leave it `LOGGED_IN` and an initiator reconnects and
-logs on by itself. `LOGGED_OUT` and `DISCONNECTED` keep the session down: an initiator does not dial, and an acceptor
-answers a Logon with a Logout (`LOGGED_OUT`) or closes the connection (`DISCONNECTED`). `CONNECTED` is refused.
+logs on by itself. `LOGGED_OUT` keeps the session down: an initiator does not dial, and an acceptor answers a Logon with
+a Logout saying why. `FixSession.logoutPermanently()` and `logon()` change it at run time.
 
 Session schedules live in `sessionScheduleSettings` and decide when the session is allowed to be up:
 `sessionSchedules`, `nonStopSchedules`, a `timeZone` (default: the JVM's), a `withinSessionTimeCheckInterval`

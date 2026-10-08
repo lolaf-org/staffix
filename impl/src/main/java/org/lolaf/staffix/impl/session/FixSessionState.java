@@ -13,19 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.api.session;
+package org.lolaf.staffix.impl.session;
 
 /**
- * Where a session is between having a socket and being able to trade on it.
- *
- * <p>{@code CONNECTED} and {@code LOGGED_IN} are not the same thing and the difference matters: a connected
- * session has a socket but has not completed the Logon exchange, and an application that sends on it will have
- * its message rejected. Only {@code LOGGED_IN} admits application traffic.
+ * Where a session is between having a socket and being able to trade on it; operators see {@link
+ * org.lolaf.staffix.api.session.FixSessionStatus} instead. Only {@code LOGGED_IN} admits application traffic, and
+ * {@code LOGGED_OUT} is a Logout exchanged on a connection not yet closed.
  */
 public enum FixSessionState {
 
     LOGGED_IN,
     LOGGED_OUT,
     CONNECTED,
-    DISCONNECTED;
+    DISCONNECTED
 }

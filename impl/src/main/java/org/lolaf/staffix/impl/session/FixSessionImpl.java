@@ -186,8 +186,19 @@ public class FixSessionImpl implements FixSession {
     }
 
     @Override
-    public FixSessionState getDesiredState() {
+    public FixSessionDesiredState getDesiredState() {
         return fixSessionState.getDesiredState();
+    }
+
+    @Override
+    public FixSessionStatus getStatus() {
+        if (isLoggedIn()) {
+            return FixSessionStatus.LOGGED_IN;
+        }
+        if (getDesiredState().equals(FixSessionDesiredState.LOGGED_OUT)) {
+            return FixSessionStatus.LOGGED_OUT_BY_OPERATOR;
+        }
+        return isWithinSessionTime() ? FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME : FixSessionStatus.LOGGED_OUT_OUTSIDE_SESSION_TIME;
     }
 
     @Override
@@ -198,8 +209,8 @@ public class FixSessionImpl implements FixSession {
 
     public boolean isReadyToConnect() {
         if (fixSessionState.isStarted()) {
-            FixSessionState desiredState = fixSessionState.getDesiredState();
-            if (!desiredState.equals(FixSessionState.LOGGED_IN)) {
+            FixSessionDesiredState desiredState = fixSessionState.getDesiredState();
+            if (!desiredState.equals(FixSessionDesiredState.LOGGED_IN)) {
                 // a session that is not to log on has no use for a connection: the peer would drop it for want of a
                 // Logon, or hold it unbound
                 logConnectionHeldOnce("FIX session desired state is " + desiredState + ", holding off connecting");
@@ -499,7 +510,7 @@ public class FixSessionImpl implements FixSession {
     @Override
     @ExternalThread
     public void logoutPermanently(String message) {
-        fixSessionState.setDesiredState(FixSessionState.LOGGED_OUT);
+        fixSessionState.setDesiredState(FixSessionDesiredState.LOGGED_OUT);
         runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogoutRequest(message, false), ioSession);
     }
 
@@ -511,13 +522,6 @@ public class FixSessionImpl implements FixSession {
 
     public void disconnect() {
         disconnect(Deadline.of(fixSessionSettings.getDisconnectMessagesFlushDeadline()));
-    }
-
-    @Override
-    @ExternalThread
-    public void disconnect(String disconnectMessage) {
-        fixSessionState.setDesiredState(FixSessionState.DISCONNECTED);
-        runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogoutRequest(disconnectMessage, false), ioSession);
     }
 
     private void disconnect(Deadline deadline) {
@@ -538,7 +542,7 @@ public class FixSessionImpl implements FixSession {
     @Override
     @ExternalThread
     public void logon() {
-        fixSessionState.setDesiredState(FixSessionState.LOGGED_IN);
+        fixSessionState.setDesiredState(FixSessionDesiredState.LOGGED_IN);
         runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogonRequestIfNeeded(), ioSession);
     }
 
@@ -630,10 +634,6 @@ public class FixSessionImpl implements FixSession {
     public boolean onConnection(IOSession ioSession, Collection<Certificate> remoteCertificates) {
         if (!fixSessionState.isStarted()) {
             logEvent("FIX session is stopping, disconnecting immediately");
-            return false;
-        }
-        if (fixSessionState.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
-            logEvent("FIX session desired state is DISCONNECTED, disconnecting immediately");
             return false;
         }
         ioSession.setId(getFixSessionId().getQualifiedName());

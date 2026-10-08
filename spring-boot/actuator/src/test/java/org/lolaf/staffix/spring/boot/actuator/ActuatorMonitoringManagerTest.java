@@ -20,7 +20,6 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.session.plugins.PluginContext;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -60,7 +59,6 @@ class ActuatorMonitoringManagerTest {
         assertThat(plugin).isPresent();
         assertThat(registry.find(SESSION_ID)).isPresent();
         ActuatorSessionStats stats = registry.find(SESSION_ID).orElseThrow();
-        assertThat(stats.getState()).isEqualTo(FixSessionState.DISCONNECTED);
         assertThat(stats.getMessagesReceived()).isZero();
 
         FixSessionPlugin<?, ?> p = plugin.get();
@@ -69,7 +67,6 @@ class ActuatorMonitoringManagerTest {
         p.onMessageReceived(anyMsgType, 64, 0L, clock.now());
         p.onMessageSent(anyMsgType, 256, 0L, clock.now());
 
-        assertThat(stats.getState()).isEqualTo(FixSessionState.LOGGED_IN);
         assertThat(stats.getMessagesReceived()).isEqualTo(2);
         assertThat(stats.getMessagesSent()).isEqualTo(1);
         assertThat(stats.getBytesReceived()).isEqualTo(192);
@@ -77,7 +74,7 @@ class ActuatorMonitoringManagerTest {
         assertThat(stats.getLastLogonEpochMillis()).isPositive();
 
         p.onLogout();
-        assertThat(stats.getState()).isEqualTo(FixSessionState.LOGGED_OUT);
+        assertThat(stats.getLastLogoutEpochMillis()).isPositive();
     }
 
     @Test

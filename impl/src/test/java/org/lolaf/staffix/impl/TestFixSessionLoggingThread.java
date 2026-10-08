@@ -93,7 +93,7 @@ class TestFixSessionLoggingThread extends AbstractFixTests {
         List<Thread> senders = startSenders(sending);
 
         for (int cycle = 0; cycle < CONNECTION_CYCLES; cycle++) {
-            fixInitiatorSession.disconnect("cycling the connection");
+            fixInitiatorSession.logoutPermanently("cycling the connection");
             await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
             fixInitiatorSession.logon();
             await().untilAsserted(() -> assertThat(fixInitiatorSession.isLoggedIn()).isTrue());

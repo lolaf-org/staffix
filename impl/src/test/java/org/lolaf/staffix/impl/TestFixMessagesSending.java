@@ -126,7 +126,7 @@ class TestFixMessagesSending extends AbstractFixTests {
     void testSendOffLineSessionMessage(ConnectorType connectorType) {
         // LOGGED_OUT so that the initiator does not log on by itself the moment the connection comes up: this test
         // drives the logon, after the offline message has been sent.
-        setupInitiatorSessionSettings(s -> s.desiredSessionState(FixSessionState.LOGGED_OUT).build());
+        setupInitiatorSessionSettings(s -> s.desiredSessionState(FixSessionDesiredState.LOGGED_OUT).build());
 
         // Start only the sending side, so its session exists and is registered but has never been connected.
         Startable<?> sender = getConnector(connectorType);
@@ -174,7 +174,7 @@ class TestFixMessagesSending extends AbstractFixTests {
 
     @Test
     void testSendingOffLineDoesNotExhaustTheSendingContexts() {
-        setupInitiatorSessionSettings(s -> s.desiredSessionState(FixSessionState.LOGGED_OUT).build());
+        setupInitiatorSessionSettings(s -> s.desiredSessionState(FixSessionDesiredState.LOGGED_OUT).build());
         Startable<?> sender = getConnector(ConnectorType.INITIATOR);
         sender.start();
         trapCreatedFixSession(ConnectorType.INITIATOR);
@@ -198,7 +198,7 @@ class TestFixMessagesSending extends AbstractFixTests {
      */
     @Test
     void testSendingOffLineRunsOnTheSessionOwner() {
-        setupInitiatorSessionSettings(s -> s.desiredSessionState(FixSessionState.LOGGED_OUT).build());
+        setupInitiatorSessionSettings(s -> s.desiredSessionState(FixSessionDesiredState.LOGGED_OUT).build());
         getConnector(ConnectorType.INITIATOR).start();
         trapCreatedFixSession(ConnectorType.INITIATOR);
         FixSession offLineSession = getFixSession(ConnectorType.INITIATOR);
@@ -229,7 +229,7 @@ class TestFixMessagesSending extends AbstractFixTests {
         restartInitiatorEngineWith(offlineExecutor);
         logonClient();
 
-        fixInitiatorSession.disconnect("queueing work while down");
+        fixInitiatorSession.logoutPermanently("queueing work while down");
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
         CountDownLatch offlineThreadReleased = new CountDownLatch(1);
         offlineExecutor.execute(() -> awaitUninterruptibly(offlineThreadReleased));
@@ -263,7 +263,7 @@ class TestFixMessagesSending extends AbstractFixTests {
         restartInitiatorEngineWith(offlineExecutor);
         logonClient();
 
-        fixInitiatorSession.disconnect("queueing work while down");
+        fixInitiatorSession.logoutPermanently("queueing work while down");
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
         CountDownLatch offlineThreadReleased = new CountDownLatch(1);
         offlineExecutor.execute(() -> awaitUninterruptibly(offlineThreadReleased));
@@ -464,7 +464,7 @@ class TestFixMessagesSending extends AbstractFixTests {
     void aMessageSentWhileDisconnectedIsStoredAndOutlivesTheReconnection() {
                 logonClient();
 
-        fixInitiatorSession.disconnect("sending while down");
+        fixInitiatorSession.logoutPermanently("sending while down");
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
 
         long seqNumOfOfflineMessage = getFixMessagesStore(ConnectorType.INITIATOR).getOutgoingSeqNum();

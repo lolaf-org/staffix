@@ -60,6 +60,10 @@ could mean.
   session's settings name them by.
 - **`AdminApi.sendFixMessages` sends several messages in order** on a session. It stops at the first one the session
   refuses, those before it having gone out, and the error says which one it was ("Message 2 of 3: ...").
+- **`FixSession.getStatus()` says where a session stands for an operator**: `LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`
+  (held logged out, whatever its schedule), `LOGGED_OUT_OUTSIDE_SESSION_TIME` (a planned pause) or
+  `LOGGED_OUT_INSIDE_SESSION_TIME` (meant to be up and is not, the one to alert on). The HTTP admin API's `GET status`
+  reports it as each session's `status`.
 
 ### Changed
 
@@ -106,9 +110,20 @@ could mean.
 - **An initiator that is to stay logged out no longer connects.** Logged out with `logoutPermanently()` (the admin
   API's logout) or configured `desiredSessionState: LOGGED_OUT`, it used to dial and hold a connection without ever
   logging on, which an acceptor with a logon timeout dropped and the initiator dialed again, over and over. It now
-  waits, as a `DISCONNECTED` one does, and dials again when `logon()` is called.
-- **`desiredSessionState: CONNECTED` is refused** when the settings are validated: a session held connected but not
-  logged on had nothing to do on its connection.
+  waits, and dials again when `logon()` is called.
+- **The desired state has its own type, `FixSessionDesiredState`, with two values: `LOGGED_IN` and `LOGGED_OUT`.**
+  `FixSession.getDesiredState()`, `FixSessionSettings.desiredSessionState`, session settings files, the in-memory
+  store's Spring Boot properties and the HTTP admin API use it. `CONNECTED` and `DISCONNECTED` are gone, and a
+  settings file naming them is refused: use `LOGGED_OUT`. An acceptor held logged out now always answers a Logon with
+  a Logout giving the reason, where `DISCONNECTED` closed the connection without a word; the peer's next Logon
+  then carries the next MsgSeqNum, as after any Logout.
+- **`FixSessionState` is no longer public**: `FixSession.isLoggedIn()` and `isConnected()` tell where a connection is,
+  and `getStatus()` where the session stands.
+- **The `session.logon.state` gauge is now `session.logon.status`** and exports the session's status as a code: 1
+  logged in, 0 logged out inside session time, 2 logged out outside session time, 3 logged out by an operator. A
+  query for `== 1` still means logged in; the Grafana dashboard in `monitoring/grafana` shows the four.
+- **The actuator reports `logonStatus` instead of `state`**, in the `fix-sessions` endpoint and the health details.
+  The health is DOWN exactly when a session is `LOGGED_OUT_INSIDE_SESSION_TIME`, as before.
 
 ### Removed
 
@@ -117,6 +132,7 @@ could mean.
   refused.
 - `AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`, which
   behaves the same.
+- **`FixSession.disconnect(String)`**: use `logoutPermanently(String)`, which now does the same.
 
 ### Fixed
 

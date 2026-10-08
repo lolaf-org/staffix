@@ -26,9 +26,9 @@ import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -60,7 +60,7 @@ class TestFixEngineSessionsSettingsWrites {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", target))
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
-                .desiredSessionState(FixSessionState.LOGGED_OUT)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_OUT)
                 .fixApplicationSessionSetting(ACCOUNT, "ACC-1")
                 .build();
     }
@@ -237,7 +237,7 @@ class TestFixEngineSessionsSettingsWrites {
     void anUpdateKeepingTheIdReplacesTheSettingsInPlace() {
         FixSessionSettings alpha = session("alpha", "ALPHA");
         adminApi.addFixSessionSettings(STORE_ID, alpha);
-        FixSessionSettings loggedIn = alpha.toBuilder().desiredSessionState(FixSessionState.LOGGED_IN).build();
+        FixSessionSettings loggedIn = alpha.toBuilder().desiredSessionState(FixSessionDesiredState.LOGGED_IN).build();
 
         adminApi.updateFixSessionSettings(alpha.getFixSessionId(), loggedIn);
 

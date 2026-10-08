@@ -30,6 +30,7 @@ import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.CancelOnDisconnectType;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.version.ApplVerID;
@@ -468,7 +469,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
         if (!getFixSession().isWithinSessionTime()) {
             return CompletableFuture.completedFuture(Optional.of("Logon attempt outside of configured session time"));
         }
-        if (!fixSessionStateComponent.getDesiredState().equals(org.lolaf.staffix.api.session.FixSessionState.LOGGED_IN)) {
+        if (!fixSessionStateComponent.getDesiredState().equals(FixSessionDesiredState.LOGGED_IN)) {
             return CompletableFuture.completedFuture(Optional.of("Logon rejected, session not setup to accept login requests for now"));
         }
         if (fixSessionSettings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR)) {

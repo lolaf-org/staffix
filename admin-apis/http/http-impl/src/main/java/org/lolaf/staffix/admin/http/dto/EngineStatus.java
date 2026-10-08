@@ -77,6 +77,7 @@ public class EngineStatus {
                 .connected(session.isConnected())
                 .withinSessionTime(session.isWithinSessionTime())
                 .desiredState(session.getDesiredState())
+                .status(session.getStatus())
                 .incomingSeqNum(adminApi.getIncomingSeqNum(fixSessionId))
                 .outgoingSeqNum(adminApi.getOutgoingSeqNum(fixSessionId))
                 .build();

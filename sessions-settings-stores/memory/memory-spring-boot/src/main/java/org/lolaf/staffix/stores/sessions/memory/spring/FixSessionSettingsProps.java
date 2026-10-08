@@ -19,7 +19,7 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import lombok.Data;
 import org.lolaf.staffix.api.session.CancelOnDisconnectType;
 import org.lolaf.staffix.api.session.FixSession;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.ResendRequestRange;
 import org.lolaf.staffix.spring.boot.spi.FixSessionIdProps;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
@@ -102,7 +102,7 @@ public class FixSessionSettingsProps {
      * The state the session holds itself in. LOGGED_IN by default, so it logs on and stays on; LOGGED_OUT takes a
      * session out of service without removing its configuration.
      */
-    private FixSessionState desiredSessionState;
+    private FixSessionDesiredState desiredSessionState;
 
     /**
      * How long a Logon or Logout may go unanswered before the connection is dropped. 10 seconds by default.

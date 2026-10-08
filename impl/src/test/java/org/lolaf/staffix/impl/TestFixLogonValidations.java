@@ -22,9 +22,9 @@ import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.msg.CoreMessageType;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.fix44.fields.EncryptMethod;
 import org.lolaf.staffix.fix44.fields.HeartBtInt;
 import org.lolaf.staffix.fix44.fields.ResetSeqNumFlag;
@@ -176,49 +176,13 @@ class TestFixLogonValidations extends AbstractFixTests {
         awaitSingleRejectedLogon("Test logon reject");
     }
 
-    @Test
-    void testImmediateDisconnectionWhenFixSessionNotSetupToAllowConnections() {
-        setupAcceptorSessionSettings(s -> s.desiredSessionState(FixSessionState.DISCONNECTED).build());
-
-        startFixInitiatorAndAcceptor();
-
-        fixInitiatorSession.logon();
-
-        // an acceptor that refuses the connection outright never settles the initiator: it dials again every
-        // connectionRetry and is dropped again, so the disconnection is counted atLeastOnce rather than exactly once -
-        // asserting one raced the retry interval and made this test flaky. What the scenario is about is that the
-        // connection ends with nothing sent: no Logout, and never a logon
-        await().untilAsserted(() -> verify(fixInitiatorApplication, atLeastOnce()).onDisconnected(any()));
-        verify(fixInitiatorApplication, never()).onLogout(any(), any(), any());
-        verify(fixInitiatorApplication, never()).onLogon(any(), any());
-
-        // and on the acceptor side nothing of the session layer ran on the connection it refused: the Logon that
-        // identified the session went no further than identifying it, and the session never took the connection on -
-        // so the application is not told about a disconnection from a connection it never had
-        verify(fixAcceptorApplication, never()).validateLogon(any(), any(), any());
-        verify(fixAcceptorApplication, never()).onLogon(any(), any());
-        verify(fixAcceptorApplication, never()).onDisconnected(any());
-        assertThat(acceptorMessagesStore.getIncomingSeqNum())
-                .as("a Logon that was never processed cannot have counted")
-                .isEqualTo(1);
-
-        // a connection the session refuses is a rejected one, and it is reported as such rather than as accepted.
-        // Awaited: this is the acceptor telling its listener, and what was awaited above is the initiator seeing the
-        // socket close - two sides, so the order between them is not guaranteed
-        await().untilAsserted(() -> verify(fixSessionEventsListener, atLeastOnce())
-                .onFixSessionRejected(any(), any(FixAcceptor.SessionNotAcceptingConnectionsException.class)));
-        verify(fixSessionEventsListener, never()).onFixSessionAccepted(any());
-    }
-
     /**
-     * What the sequence number above is about, end to end: a peer whose Logon was refused was told nothing - no
-     * Logout, no reject - so it reconnects on the very same MsgSeqNum(34). Counting the refused Logon leaves the
-     * acceptor expecting one more than that, and the peer is then logged out for a MsgSeqNum too low it has no way of
-     * knowing about.
+     * A peer refused while the session is held logged out is accepted once it is allowed again. The refused Logon
+     * counted, the peer having been answered, so it comes back on MsgSeqNum(34) 2.
      */
     @Test
     void testLogonAcceptedOnceAllowedAgainAfterARefusedConnection() throws Exception {
-        setupAcceptorSessionSettings(s -> s.desiredSessionState(FixSessionState.DISCONNECTED).build());
+        setupAcceptorSessionSettings(s -> s.desiredSessionState(FixSessionDesiredState.LOGGED_OUT).build());
         startFixAcceptor();
 
         FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
@@ -226,18 +190,18 @@ class TestFixLogonValidations extends AbstractFixTests {
                 initiator.getSenderCompID().getValue(), initiator.getTargetCompID().getValue(), Duration.ofSeconds(10))) {
             peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
 
-            assertThat(peer.isClosedByPeer(Duration.ofSeconds(10)))
-                    .as("a session not setup to allow connections drops the connection with nothing sent")
+            String refusal = peer.readMessageOfType(MessageTypes.Logout, Duration.ofSeconds(10));
+            assertThat(FixMessageFields.hasFieldWithValue(refusal, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGOUT.code()))
+                    .as("a session held logged out answers with a Logout, but got: %s", refusal)
                     .isTrue();
         }
-        await().untilAsserted(() -> verify(fixSessionEventsListener)
-                .onFixSessionRejected(any(), any(FixAcceptor.SessionNotAcceptingConnectionsException.class)));
+        await().untilAsserted(() -> assertThat(fixAcceptorSession.isConnected()).isFalse());
 
         fixAcceptorSession.logon();
 
         try (RawFixSocketClient.Session peer = RawFixSocketClient.connect(acceptorPort, initiator.getFixVersion(),
                 initiator.getSenderCompID().getValue(), initiator.getTargetCompID().getValue(), Duration.ofSeconds(10))) {
-            peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
+            peer.send(peer.message(MessageTypes.Logon, 2).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
 
             String response = peer.readMessageOfType(MessageTypes.Logon, Duration.ofSeconds(10));
             assertThat(FixMessageFields.hasFieldWithValue(response, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON.code()))
@@ -250,12 +214,13 @@ class TestFixLogonValidations extends AbstractFixTests {
         // adjacent lines, so isLoggedIn() above is the earlier of the two signals and a loaded machine can sit
         // between them for longer than it takes this thread to get here
         await().untilAsserted(() -> verify(fixAcceptorApplication).onLogon(any(), any()));
-        await().untilAsserted(() -> verify(fixSessionEventsListener).onFixSessionAccepted(any()));
+        // both connections: the acceptor took the first one too, the refusal being the session's Logout
+        await().untilAsserted(() -> verify(fixSessionEventsListener, times(2)).onFixSessionAccepted(any()));
     }
 
     @Test
     void testLogonRejectedWhenFixSessionNotSetupToAllowLogins() {
-        setupAcceptorSessionSettings(s -> s.desiredSessionState(FixSessionState.LOGGED_OUT).build());
+        setupAcceptorSessionSettings(s -> s.desiredSessionState(FixSessionDesiredState.LOGGED_OUT).build());
 
         startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();

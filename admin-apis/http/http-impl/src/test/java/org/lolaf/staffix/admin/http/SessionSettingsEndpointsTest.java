@@ -28,10 +28,10 @@ import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.mockito.ArgumentCaptor;
 
@@ -160,7 +160,7 @@ class SessionSettingsEndpointsTest {
 
         ArgumentCaptor<FixSessionSettings> updated = ArgumentCaptor.forClass(FixSessionSettings.class);
         verify(adminApi).updateFixSessionSettings(eq(DROP_COPY), updated.capture());
-        assertThat(updated.getValue().getDesiredSessionState()).isEqualTo(FixSessionState.LOGGED_OUT);
+        assertThat(updated.getValue().getDesiredSessionState()).isEqualTo(FixSessionDesiredState.LOGGED_OUT);
         assertThat(updated.getValue().getFixApplicationSessionSettings()).containsEntry(PASSWORD, "hunter2");
     }
 

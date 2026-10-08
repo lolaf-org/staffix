@@ -76,7 +76,7 @@ window.
 
 | panel                                      | what it tells you                                         |
 |--------------------------------------------|-----------------------------------------------------------|
-| Sessions                                   | logon state per session in the selected group             |
+| Sessions                                   | logon status per session in the selected group            |
 | FIX logs                                   | the raw FIX messages, both directions, streamed from Loki |
 | Read / Write Latency Heatmap               | full latency distribution — where the tail actually is    |
 | Read / Write Latency by Session & Msg Type | p50 / p95 / p99, split by message type                    |

@@ -548,7 +548,8 @@ answered, with no guaranteed response time.
 
 To adopt it, do what you would do for any new engine: run your counterparty's certification script against it in UAT,
 start with sessions that are not critical, use a durable [message store](docs/stores-and-loggers.md), alert on the
-`session.logon.state` metric, and watch the message log for rejects and resend requests.
+`session.logon.status` metric when it reads 0 (logged out inside session time), and watch the message log for rejects
+and resend requests.
 
 ---
 

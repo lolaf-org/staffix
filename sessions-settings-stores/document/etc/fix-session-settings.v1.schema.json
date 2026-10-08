@@ -167,8 +167,8 @@
     },
     "desiredSessionState" : {
       "type" : "string",
-      "enum" : [ "LOGGED_IN", "LOGGED_OUT", "CONNECTED", "DISCONNECTED" ],
-      "description" : "The state the session holds itself in. FixSessionState.LOGGED_IN by default, so it logs on and stays on; FixSessionState.LOGGED_OUT and FixSessionState.DISCONNECTED take it out of service without removing its configuration: an initiator does not dial, an acceptor answers a Logon with a Logout or closes the connection. FixSessionState.CONNECTED is refused.",
+      "enum" : [ "LOGGED_IN", "LOGGED_OUT" ],
+      "description" : "FixSessionDesiredState.LOGGED_IN by default, so the session logs on and stays on; FixSessionDesiredState.LOGGED_OUT takes it out of service without removing its configuration.",
       "default" : "LOGGED_IN"
     },
     "disconnectMessagesFlushDeadline" : {

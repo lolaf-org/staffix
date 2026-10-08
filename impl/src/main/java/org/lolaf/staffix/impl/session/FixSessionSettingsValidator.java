@@ -17,7 +17,6 @@ package org.lolaf.staffix.impl.session;
 
 import lombok.experimental.UtilityClass;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 
 import java.time.DayOfWeek;
 import java.time.Duration;
@@ -48,18 +47,10 @@ public class FixSessionSettingsValidator {
         validateTimeouts(settings, violations);
         validateCancelOnDisconnect(settings, violations);
         validateRttMeasurement(settings, violations);
-        validateDesiredSessionState(settings, violations);
 
         if (!violations.isEmpty()) {
             String details = violations.stream().sorted().reduce("", (a, b) -> a + "\n  - " + b);
             throw new IllegalArgumentException("Invalid FIX session settings for " + settings.getFixSessionId() + ":" + details);
-        }
-    }
-
-    private static void validateDesiredSessionState(FixSessionSettings settings, List<String> violations) {
-        if (settings.getDesiredSessionState() == FixSessionState.CONNECTED) {
-            violations.add("desiredSessionState CONNECTED is not a state a session can be held in: use LOGGED_IN, "
-                    + "LOGGED_OUT or DISCONNECTED");
         }
     }
 

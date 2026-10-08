@@ -130,7 +130,7 @@ class TestFixSessionSettingsJsonSchema {
         assertThat(properties.path("logInOrOutResponseTimeout").path("description").asText())
                 .isEqualTo("How long a Logon or Logout may go unanswered before the connection is dropped.");
         assertThat(properties.path("desiredSessionState").path("description").asText())
-                .startsWith("The state the session holds itself in. FixSessionState.LOGGED_IN by default")
+                .startsWith("FixSessionDesiredState.LOGGED_IN by default, so the session logs on and stays on")
                 .doesNotContain("{@link");
         assertThat(properties.path("heartBeatInterval").path("description").asText())
                 .startsWith("HeartBtInt(108): how often a quiet session proves it is alive")
