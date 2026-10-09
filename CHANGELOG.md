@@ -99,6 +99,8 @@ could mean.
 - A Logon validated after its connection closed could log on the session's next connection.
 - When the engine stops, the last `session.logon.status` value a push registry (OTLP, Datadog...) receives is 3,
   logged out, instead of the session's last sampled status.
+- The OTLP messages logger could send a session event (connected, disconnected, sequence reset...) marked as an
+  incoming or outgoing message, and a message with its direction or message type twice.
 
 ## [0.9.0] - 2026-09-30
 

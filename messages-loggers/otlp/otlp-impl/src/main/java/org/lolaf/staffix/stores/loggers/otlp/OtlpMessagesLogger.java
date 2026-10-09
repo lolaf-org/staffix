@@ -425,7 +425,7 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
         boolean returnToPoolIfNeeded(RingBuffer<PooledLogRecord> logRecordPool) {
             if (pooledBytesString != null) {
                 // calling logRecord.clear() is very bad for memory allocation especially when removing attributes
-                for (int i = 0; i < logRecord.getAttributesCount(); i++) {
+                for (int i = logRecord.getAttributesCount() - 1; i >= 0; i--) {
                     logRecord.removeAttributes(i);
                 }
                 logRecord.setBody(VOID_BODY); // logRecord.clearBody() is also allocating memory

@@ -40,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -309,6 +310,42 @@ class TestOtlpMessagesLogger {
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
         assertThat(receivedOutputFromCollector).noneMatch(logLine -> logLine.contains("fix.md"));
+    }
+
+    @Test
+    void testLogEventOnARecycledRecordHasNoDirection() throws FixMessagesLogger.LoggingException {
+        shutdown();
+        setup(OtlpMessagesLoggerSettings.builder().logsBufferSize(2));
+
+        for (int i = 0; i < 4; i++) {
+            String body = "message " + i;
+            logger.logIncoming(UTCTime.of(Instant.ofEpochMilli(1000000)), messageTypeIn, ByteBuffer.wrap(body.getBytes()));
+            Awaitility.await().untilAsserted(() -> assertThat(attributesOf(body)).isNotNull());
+            assertThat(attributesOf(body)).containsExactly("-> fix.md: Str(i)", "-> fix.mt: Str(IN_MSG)");
+        }
+        logger.logEvent(UTCTime.of(Instant.ofEpochMilli(1000000)), "recycled event");
+
+        Awaitility.await().untilAsserted(() -> assertThat(attributesOf("recycled event")).isNotNull());
+        assertThat(attributesOf("recycled event")).isEmpty();
+    }
+
+    /**
+     * The attribute lines the collector's debug exporter printed for the record with this body, null until it printed
+     * them all.
+     */
+    private static List<String> attributesOf(String body) {
+        List<String> lines = List.copyOf(receivedOutputFromCollector);
+        for (int bodyLine = 0; bodyLine < lines.size(); bodyLine++) {
+            if (lines.get(bodyLine).contains("Body: Str(" + body + ")")) {
+                for (int end = bodyLine + 1; end < lines.size(); end++) {
+                    if (lines.get(end).contains("Trace ID:")) {
+                        return lines.subList(bodyLine + 1, end).stream().map(String::strip).filter(line -> line.startsWith("->")).collect(Collectors.toList());
+                    }
+                }
+                return null;
+            }
+        }
+        return null;
     }
 
     @Test
