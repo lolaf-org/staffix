@@ -161,8 +161,8 @@
             "uid": "lokiUID"
           },
           "direction": "backward",
-          "editorMode": "builder",
-          "expr": "{service_name=\"$serviceName\", fix_eid=~\"$engine\", fix_sg=~\"$group\", fix_sn=~\"$name\"}",
+          "editorMode": "code",
+          "expr": "{service_name=\"$serviceName\", fix_eid=~\"$engine\", fix_sg=~\"$group\", fix_sn=~\"$name\"} $direction",
           "queryType": "range",
           "refId": "A"
         }
@@ -1107,6 +1107,47 @@
         "skipUrlSync": false,
         "sort": 0,
         "type": "query"
+      },
+      {
+        "current": {
+          "text": "All",
+          "value": "|= \"\""
+        },
+        "description": "Log records to show: messages received, sent, or session events (records without fix_md).",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Direction",
+        "multi": false,
+        "name": "direction",
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "|= \"\""
+          },
+          {
+            "selected": false,
+            "text": "In",
+            "value": "| fix_md=\"i\""
+          },
+          {
+            "selected": false,
+            "text": "Out",
+            "value": "| fix_md=\"o\""
+          },
+          {
+            "selected": false,
+            "text": "Messages",
+            "value": "| fix_md=~\"i|o\""
+          },
+          {
+            "selected": false,
+            "text": "Events",
+            "value": "| fix_md=\"\""
+          }
+        ],
+        "query": "All : |= \"\",In : | fix_md=\"i\",Out : | fix_md=\"o\",Messages : | fix_md=~\"i|o\",Events : | fix_md=\"\"",
+        "type": "custom"
       }
     ]
   },
