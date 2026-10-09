@@ -413,6 +413,8 @@
                 <version>${license-maven-plugin.version}</version>
                 <inherited>false</inherited>
                 <configuration>
+                    <!-- without it, a check run from the parent alone skips every module directory -->
+                    <aggregate>true</aggregate>
                     <licenseSets>
                         <licenseSet>
                             <header>${project.basedir}/HEADER.txt</header>
@@ -427,6 +429,10 @@
                                 <exclude>**/pom.xml</exclude>
                                 <exclude>**/src/main/resources/**</exclude>
                                 <exclude>**/src/test/resources/**</exclude>
+                                <exclude>**/lombok.config</exclude>
+                                <exclude>**/.env</exclude>
+                                <exclude>**/.env.example</exclude>
+                                <exclude>**/*.ini</exclude>
                             </excludes>
                         </licenseSet>
                     </licenseSets>
