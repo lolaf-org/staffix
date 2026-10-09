@@ -61,7 +61,7 @@ safety** is then yours: most `RandomGenerator` implementations have none.
 `UUIDsGenerator.instance(id)` gives a generator with its own v7 sequence, shared with `UUIDv7.instance(id)` on the same
 id.
 
-<sub>JMH, single thread, JDK 21, `-prof gc`, same machine as the [README](../README.md#measured) round trips. Raw
+<sub>JMH, single thread, JDK 21, `-prof gc`, same machine as the [Performance](performance.md#measured) round trips. Raw
 results: [`jmh-result-IdGenerationBenchmark-2026-08-13.json`](../benchmarks/results/jmh-result-IdGenerationBenchmark-2026-08-13.json).
 Reproduce with `java -jar benchmarks/target/benchmarks.jar IdGenerationBenchmark -prof gc`, and add `-t 8` for the
 contended picture.</sub>

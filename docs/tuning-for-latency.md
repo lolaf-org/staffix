@@ -1,6 +1,6 @@
 # Tuning for latency
 
-The README quotes a round trip of 19.5 µs at stock settings and 11.2 µs busy-spinning. This guide is what turns the
+[Performance](performance.md) quotes a round trip of 19.5 µs at stock settings and 11.2 µs busy-spinning. This guide is what turns the
 first number into the second, and what each step costs you.
 
 Work down it in order. The first two items are worth more than everything below them combined.
@@ -26,7 +26,7 @@ without it they still work, but allocate a fresh object per field and say so onc
 
 ## 2. Choose where the CPU goes
 
-This one setting is the difference between the two tables in the README.
+This one setting is the difference between the two tables in [Performance](performance.md#measured).
 
 A **select strategy** decides how the I/O threads wait for the socket:
 
@@ -131,7 +131,7 @@ Sessions also expose a pool via `newEncodersPool()` for the paths where a single
 A store or logger that does I/O inline puts that I/O inside your round trip. Wrap it in the async decorator, which
 hands the work to a Chronicle Queue and returns. See [Stores and loggers](stores-and-loggers.md).
 
-The benchmark numbers in the README were produced with an in-memory store and logging off, so they measure the
+The benchmark numbers in [Performance](performance.md) were produced with an in-memory store and logging off, so they measure the
 protocol path alone. Turning on a real store is what the async wrapper exists to keep out of the round trip.
 
 ---
@@ -145,8 +145,8 @@ anything. Warm the path before you trust a number, and before the market opens.
 
 ## Measuring your own changes
 
-The benchmarks are in [`benchmarks`](../benchmarks), including the round-trip harness that produced the README's
-figures:
+The benchmarks are in [`benchmarks`](../benchmarks), including the round-trip harness that produced the
+[Performance](performance.md) figures:
 
 ```bash
 mvn clean install -pl benchmarks -am
