@@ -22,6 +22,7 @@ import org.lolaf.ringos.timer.MutableTimeout;
 import org.lolaf.ringos.timer.Timeout;
 import org.lolaf.ringos.timer.WheelTimer;
 import org.lolaf.staffix.api.FixAcceptor;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -127,6 +128,11 @@ public class TradingExample extends FixExamplesBase implements Callable<Integer>
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
         }
 
         @Override
@@ -240,6 +246,11 @@ public class TradingExample extends FixExamplesBase implements Callable<Integer>
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
         }
 
         private void scheduleSendOrder() {

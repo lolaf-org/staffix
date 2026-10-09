@@ -20,15 +20,35 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixAcceptor;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
+import org.lolaf.staffix.api.fields.CoreFields;
+import org.lolaf.staffix.api.msg.CoreMessageType;
+import org.lolaf.staffix.api.msg.DecodedFixMessage;
+import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionRegistry;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.fix44.fields.EncryptMethod;
+import org.lolaf.staffix.fix44.fields.HeartBtInt;
+import org.lolaf.staffix.fix44.msg.MessageTypes;
+import org.lolaf.staffix.tests.FixMessageFields;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
+import org.lolaf.staffix.tests.RawFixSocketClient;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
+import java.io.IOException;
 import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
 import java.net.UnknownHostException;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.ToIntFunction;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -36,8 +56,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.assertArg;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+@SuppressWarnings("java:S2699")
 class TestFixAcceptor extends AbstractFixTests {
+
+    private static final int TEST_REQ_ID = 112;
 
     /**
      * A stopped acceptor must leave nothing behind in its engine's {@link FixSessionRegistry}, which its sessions
@@ -77,6 +101,20 @@ class TestFixAcceptor extends AbstractFixTests {
                 .anyMatch(s -> s.getFixSessionId().equals(added.getFixSessionId()));
     }
 
+    @Test
+    void testConfiguredSettingsAreASnapshot() {
+        startFixAcceptor();
+        Set<FixSessionSettings> before = fixAcceptor.getConfiguredSessionsSettings();
+        FixSessionSettings added = getAcceptorFixSessionSettings()
+                .fixSessionId(FixSessionId.of("added-after-snapshot", FixRegularVersion.VERSION_44, "SNAP_TARGET", "SNAP_SENDER"))
+                .build();
+
+        acceptorFixEngine.getFixSessionsSettingsStores().get(0).add(added);
+
+        assertThat(before).doesNotContain(added);
+        assertThat(fixAcceptor.getConfiguredSessionsSettings()).contains(added);
+    }
+
     /**
      * The registry is reachable from a {@link org.lolaf.staffix.api.session.FixSession}, which is what every
      * {@link org.lolaf.staffix.api.application.FixApplication} callback is handed, and it is the registry of that
@@ -104,7 +142,7 @@ class TestFixAcceptor extends AbstractFixTests {
         setupAcceptorSessionSettings(builder -> builder
                 .allowedAddress(allowedIp).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -156,5 +194,150 @@ class TestFixAcceptor extends AbstractFixTests {
             // Not covered by the shutdown in AbstractFixTests, which only knows the two engines it built.
             rogueEngine.stop(Deadline.unlimited());
         }
+    }
+
+    /**
+     * A connection that never sends its Logon used to stay open for as long as the client liked.
+     */
+    @Test
+    void testConnectionWithoutLogonIsClosedAfterTheLogonTimeout() throws IOException {
+        useAcceptorWithLogonTimeout(Duration.ofMillis(500));
+        startFixAcceptor();
+
+        try (RawFixSocketClient.Session silent = RawFixSocketClient.connect(acceptorPort, Duration.ofSeconds(5))) {
+            assertThat(silent.isClosedByPeer(Duration.ofSeconds(10))).isTrue();
+        }
+    }
+
+    @Test
+    void testLogonTimeoutLeavesALoggedOnSessionConnected() {
+        useAcceptorWithLogonTimeout(Duration.ofMillis(500));
+        logonClient();
+
+        LockSupport.parkNanos(Duration.ofSeconds(1).toNanos());
+
+        assertThat(fixAcceptorSession.isLoggedIn()).isTrue();
+    }
+
+    /**
+     * The timeout waits for the Logon, not for the session to be logged in: a validation outlasting it is the
+     * application's to bound.
+     */
+    @Test
+    void testLogonTimeoutSparesALogonStillBeingValidated() throws IOException {
+        when(fixAcceptorApplication.validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class)))
+                .thenAnswer(invocation -> CompletableFuture.supplyAsync(Optional::empty,
+                        CompletableFuture.delayedExecutor(1, TimeUnit.SECONDS)));
+        useAcceptorWithLogonTimeout(Duration.ofMillis(300));
+        startFixAcceptor();
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+
+        try (RawFixSocketClient.Session peer = RawFixSocketClient.connect(acceptorPort, initiator.getFixVersion(),
+                initiator.getSenderCompID().getValue(), initiator.getTargetCompID().getValue(), Duration.ofSeconds(5))) {
+            peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
+
+            String response = peer.readMessageOfType(MessageTypes.Logon, Duration.ofSeconds(10));
+
+            assertThat(FixMessageFields.hasFieldWithValue(response, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON.code()))
+                    .isTrue();
+        }
+    }
+
+    /**
+     * A Logon that stops before its end leaves the connection waiting for the rest, which the timeout bounds.
+     */
+    @Test
+    void testConnectionStoppingBeforeTheEndOfItsLogonIsClosedAfterTheLogonTimeout() throws IOException {
+        useAcceptorWithLogonTimeout(Duration.ofMillis(500));
+        startFixAcceptor();
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+
+        try (RawFixSocketClient.Session stalled = RawFixSocketClient.connect(acceptorPort, initiator.getFixVersion(),
+                initiator.getSenderCompID().getValue(), initiator.getTargetCompID().getValue(), Duration.ofSeconds(5))) {
+            byte[] logon = stalled.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5").build();
+            int withoutCheckSum = logon.length - "10=000\u0001".length();
+            stalled.send(Arrays.copyOf(logon, withoutCheckSum));
+
+            assertThat(stalled.isClosedByPeer(Duration.ofSeconds(10))).isTrue();
+        }
+    }
+
+    /**
+     * The first read used to be taken for the whole Logon: one cut inside a field was refused as an unknown session.
+     */
+    @Test
+    void testLogonSplitInsideItsSenderCompIdIsAnswered() throws IOException {
+        assertLogonSplitIsAnswered(logon -> indexOf(logon, "49=") + 4);
+    }
+
+    @Test
+    void testLogonSplitInsideItsBeginStringIsAnswered() throws IOException {
+        assertLogonSplitIsAnswered(logon -> 4);
+    }
+
+    @Test
+    void testBytesThatCannotStartAFixMessageAreRefusedAtOnce() throws IOException {
+        startFixAcceptor();
+
+        try (RawFixSocketClient.Session peer = RawFixSocketClient.connect(acceptorPort, Duration.ofSeconds(5))) {
+            peer.send("GET / HTTP/1.1\r\n".getBytes(StandardCharsets.US_ASCII));
+
+            assertThat(peer.isClosedByPeer(Duration.ofSeconds(2))).isTrue();
+        }
+    }
+
+    /**
+     * The session is found from the first message only, and what follows it in the same read reaches the session.
+     */
+    @Test
+    void testMessageSentWithTheLogonInOneWriteIsProcessed() throws IOException {
+        startFixAcceptor();
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+
+        try (RawFixSocketClient.Session peer = connectAs(initiator)) {
+            byte[] logon = peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5").build();
+            byte[] testRequest = peer.message(MessageTypes.TestRequest, 2).set(TEST_REQ_ID, "probe").build();
+            byte[] both = Arrays.copyOf(logon, logon.length + testRequest.length);
+            System.arraycopy(testRequest, 0, both, logon.length, testRequest.length);
+            peer.send(both);
+
+            String heartbeat = peer.readMessageOfType(MessageTypes.Heartbeat, Duration.ofSeconds(10));
+
+            assertThat(FixMessageFields.hasFieldWithValue(heartbeat, TEST_REQ_ID, "probe")).isTrue();
+        }
+    }
+
+    private void assertLogonSplitIsAnswered(ToIntFunction<byte[]> splitAt) throws IOException {
+        startFixAcceptor();
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+
+        try (RawFixSocketClient.Session peer = connectAs(initiator)) {
+            byte[] logon = peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5").build();
+            int split = splitAt.applyAsInt(logon);
+            peer.send(Arrays.copyOfRange(logon, 0, split));
+            LockSupport.parkNanos(Duration.ofMillis(200).toNanos());
+            peer.send(Arrays.copyOfRange(logon, split, logon.length));
+
+            String response = peer.readMessageOfType(MessageTypes.Logon, Duration.ofSeconds(10));
+
+            assertThat(FixMessageFields.hasFieldWithValue(response, CoreFields.MESSAGE_TYPE, CoreMessageType.LOGON.code()))
+                    .isTrue();
+        }
+    }
+
+    private RawFixSocketClient.Session connectAs(FixSessionId initiator) throws IOException {
+        return RawFixSocketClient.connect(acceptorPort, initiator.getFixVersion(), initiator.getSenderCompID().getValue(),
+                initiator.getTargetCompID().getValue(), Duration.ofSeconds(5));
+    }
+
+    private static int indexOf(byte[] message, String field) {
+        return new String(message, StandardCharsets.US_ASCII).indexOf(field);
+    }
+
+    private void useAcceptorWithLogonTimeout(Duration logonTimeout) {
+        fixAcceptor = acceptorFixEngine.newAcceptor(fixAcceptorBuilder.toBuilder()
+                .instanceId("logon-timeout")
+                .logonTimeout(logonTimeout)
+                .build());
     }
 }

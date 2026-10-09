@@ -64,10 +64,13 @@ FixSessionSettings.builder()
 | `fixMessageLoggerInstanceId` | `DEFAULT_INSTANCE_ID` | which registered logger records it |
 | `fixApplicationFactoryInstanceId` | `DEFAULT_INSTANCE_ID` | which factory produces its application |
 | `fixApplicationInstanceId` | `DEFAULT_INSTANCE_ID` | which application *within* that factory |
-| `dictionaryId` | `FixDictionaryId.DEFAULT_ID` | which FIX dictionary this session speaks |
 
 The four instance ids default to the same id, so a single-session engine can leave them out. Once an acceptor and an
 initiator share a process, set them: this is what keeps their sequence numbers, logs and applications apart.
+
+The FIX dictionary is not a setting: a session speaks its application's, `FixApplication.getDictionaryId()`. A
+session whose FIX version, or for FIXT its DefaultApplVerID, is not the application's is refused when its settings
+are saved and when it starts.
 
 ---
 
@@ -106,7 +109,8 @@ second expiry logs the session out. The application then sees `onResendRequestIn
 | `sessionScheduleSettings` | see below |
 
 `desiredSessionState` is the state the engine works to maintain: leave it `LOGGED_IN` and an initiator reconnects and
-logs on by itself.
+logs on by itself. `LOGGED_OUT` keeps the session down: an initiator does not dial, and an acceptor answers a Logon with
+a Logout saying why. `FixSession.logoutPermanently()` and `logon()` change it at run time.
 
 Session schedules live in `sessionScheduleSettings` and decide when the session is allowed to be up:
 `sessionSchedules`, `nonStopSchedules`, a `timeZone` (default: the JVM's), a `withinSessionTimeCheckInterval`

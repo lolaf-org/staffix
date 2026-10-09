@@ -17,6 +17,7 @@ package org.lolaf.staffix.examples;
 
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.FixAcceptor;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixInitiator;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
@@ -101,6 +102,11 @@ public class SpringBootExample {
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
         }
 
         @Override

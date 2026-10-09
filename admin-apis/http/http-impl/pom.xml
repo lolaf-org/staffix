@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-admin-api-http-parent</artifactId>
+        <version>0.9.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>staffix-admin-api-http-impl</artifactId>
+
+    <name>Staffix HTTP Admin API</name>
+    <description>
+        Serves the engine and its sessions over HTTP and announces the engine to the staffix admin console, which
+        reads session state and drives sessions through it.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.admin.http</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-sessions-settings-document</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>${jackson.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

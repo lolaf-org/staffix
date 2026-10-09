@@ -18,6 +18,7 @@ package org.lolaf.staffix.impl.session.codec;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.staffix.api.codec.DecodingException;
 import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
 import org.lolaf.staffix.api.codec.SessionRejectReasonCodes;
@@ -29,6 +30,7 @@ import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.CancelOnDisconnectType;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.version.ApplVerID;
@@ -64,6 +66,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
     private static final int SUPPORTED_ENCRYPT_METHOD = 0;
     private static final long NOTHING_TO_RETRANSMIT = 0;
     private static final String REJECTING_LOGON = "Rejecting logon: %s";
+    private static final String LOGON_VALIDATION = "a logon validation";
 
     private final FixField codTypeField;
     private final FixField codWindowField;
@@ -157,6 +160,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
     }
 
     private void processLogonRequest(FixSession fixSession, WrongSeqNumException wrongSeqNumException, int peerMaxMessageSize) {
+        getFixSessionStateComponent().onLogonReceived();
         // reset here for every Logon decoded, the decoder outliving the message, and turned on again further down by
         // whichever branch of finishLogon settles the sequence itself.
         //
@@ -191,21 +195,24 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
             int heartbeatIntervalLocal = heartbeatInterval;
             DecodedFixMessage logonMessageLocal = logonMessage.copy();
             Boolean resetSeqNumFlagLocal = resetSeqNum;
+            IOSession logonConnection = fixSessionImpl.currentIOSession();
             logonRejectionMessageFuture.whenComplete((logonRejectionMessageOptional, error) -> {
                 if (error != null) {
-                    fixSession.processTask(() -> {
+                    fixSessionImpl.processTaskOnConnection(logonConnection, () -> {
                         log.error("Error when validating logon request", error);
                         fixSession.logEvent("Rejecting logon request due to failure: %s", error.getMessage());
                         getLogonLogoutComponent().sendLogoutRequest("Failed to validate logon request", true);
                         // cannot call session.logout() because need to be logged in to send message
-                    });
+                    }, LOGON_VALIDATION);
                 } else {
                     logonRejectionMessageOptional.ifPresentOrElse(logonRejectionMessage ->
-                                    fixSession.processTask(() -> {
+                                    fixSessionImpl.processTaskOnConnection(logonConnection, () -> {
                                         fixSession.logEvent(REJECTING_LOGON, logonRejectionMessage);
                                         getLogonLogoutComponent().sendLogoutRequest(logonRejectionMessage, true);
-                                    }),
-                            () -> fixSession.processTask(() -> finishLogon(wrongSeqNumException, fixSessionImpl, heartbeatIntervalLocal, resetSeqNumFlagLocal, nextExpectedMsgSeqNum, nextExpectedIncomingSeqNum, logonMessageLocal)));
+                                    }, LOGON_VALIDATION),
+                            () -> fixSessionImpl.processTaskOnConnection(logonConnection, () -> finishLogon(wrongSeqNumException, fixSessionImpl,
+                                    heartbeatIntervalLocal, resetSeqNumFlagLocal, nextExpectedMsgSeqNum, nextExpectedIncomingSeqNum, logonMessageLocal),
+                                    LOGON_VALIDATION));
                 }
             });
         } else {
@@ -462,7 +469,7 @@ public class LogonFixMessageDecoder extends AbstractAdminFixMessageDecoder {
         if (!getFixSession().isWithinSessionTime()) {
             return CompletableFuture.completedFuture(Optional.of("Logon attempt outside of configured session time"));
         }
-        if (!fixSessionStateComponent.getDesiredState().equals(org.lolaf.staffix.api.session.FixSessionState.LOGGED_IN)) {
+        if (!fixSessionStateComponent.getDesiredState().equals(FixSessionDesiredState.LOGGED_IN)) {
             return CompletableFuture.completedFuture(Optional.of("Logon rejected, session not setup to accept login requests for now"));
         }
         if (fixSessionSettings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR)) {

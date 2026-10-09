@@ -79,6 +79,11 @@ public class AcceptorProps {
     private Duration shutdownMaxDelay = Duration.ofSeconds(20);
 
     /**
+     * How long a connection may stay open without sending its Logon before it is closed. Zero disables it.
+     */
+    private Duration logonTimeout = Duration.ofSeconds(10);
+
+    /**
      * Socket-level settings for accepted connections.
      */
     @NestedConfigurationProperty

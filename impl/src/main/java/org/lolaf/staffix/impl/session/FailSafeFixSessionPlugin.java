@@ -46,11 +46,6 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
     }
 
     @Override
-    public boolean requiresTimeMeasurement() {
-        return fixSessionPlugin.requiresTimeMeasurement();
-    }
-
-    @Override
     public Optional<C> getPluginContext() {
         return fixSessionPlugin.getPluginContext();
     }
@@ -60,7 +55,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onDecoderSetup(decoder, fieldsDecoderMapper);
         } catch (Exception ex) {
-            log.error("Failed to call onDecoderSetup() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onDecoderSetup() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -69,7 +64,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onSessionDestroyed(fixInstanceId, fixSessionId);
         } catch (Exception ex) {
-            log.error("Failed to call onSessionDestroyed() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onSessionDestroyed() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -78,7 +73,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onLogon();
         } catch (Exception ex) {
-            log.error("Failed to call onLogon() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onLogon() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -87,7 +82,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onMessageDecodingStarted(messageType, localReceiveTimeInNanos, localReceiveTime);
         } catch (Exception ex) {
-            log.error("Failed to call onDecodingStarted() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onDecodingStarted() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -96,7 +91,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onMessageDecodingFinished(messageType, localReceiveTimeInNanos, localReceiveTime);
         } catch (Exception ex) {
-            log.error("Failed to call onDecodingFinished() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onDecodingFinished() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -105,7 +100,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onMessageReceived(messageType, payloadSize, localReceiveTimeInNanos, localReceiveTime);
         } catch (Exception ex) {
-            log.error("Failed to call onMessageReceived() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onMessageReceived() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -114,7 +109,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             return fixSessionPlugin.getMessageEncodingToken(messageType, localSendingTimeInNanos);
         } catch (Exception ex) {
-            log.error("Failed to call getMessageEncodingToken() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call getMessageEncodingToken() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
             return null;
         }
     }
@@ -124,7 +119,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onMessageEncodingStarted(messageType, localSendingTimeInNanos, encodingToken);
         } catch (Exception ex) {
-            log.error("Failed to call onMessageEncodingStarted() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onMessageEncodingStarted() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -133,7 +128,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onMessageEncodedBody(messageType, encodedBody, fixFieldsEncoder, encodingStartTimeInNanos, encodingToken);
         } catch (Exception ex) {
-            log.error("Failed to call onMessageEncodedBody() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onMessageEncodedBody() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -142,7 +137,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onMessageEncodingFinished(messageType, localSendingTimeInNanos, encodingToken);
         } catch (Exception ex) {
-            log.error("Failed to call onMessageEncodingFinished() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onMessageEncodingFinished() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -152,7 +147,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onMessageSent(messageType, payloadSize, localSendingTimeInNanos, localSendingTime);
         } catch (Exception ex) {
-            log.error("Failed to call onMessageSent() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onMessageSent() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -162,7 +157,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onLogout();
         } catch (Exception ex) {
-            log.error("Failed to call onLogout() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onLogout() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 
@@ -171,7 +166,7 @@ public class FailSafeFixSessionPlugin<C, T> implements FixSessionPlugin<C, T> {
         try {
             fixSessionPlugin.onRttMeasurement(measurement);
         } catch (Exception ex) {
-            log.error("Failed to call onRttMeasurement() on FixMessageEventsListener {}", fixSessionPlugin.getClass().getSimpleName(), ex);
+            log.error("Failed to call onRttMeasurement() on FixSessionPlugin {}", fixSessionPlugin.getClass().getSimpleName(), ex);
         }
     }
 }

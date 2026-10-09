@@ -44,7 +44,7 @@ public class FixSessionsEndpoint {
         m.put("fixSessionId", stats.getFixSession().getFixSessionId().toString());
         m.put("instanceId", stats.getFixInstanceId());
         m.put("group", stats.getFixSession().getFixSessionId().getGroup());
-        m.put("state", stats.getState().name());
+        m.put("logonStatus", stats.getFixSession().getStatus().name());
         m.put("messagesReceived", stats.getMessagesReceived());
         m.put("messagesSent", stats.getMessagesSent());
         m.put("bytesReceived", stats.getBytesReceived());

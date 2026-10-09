@@ -59,7 +59,7 @@ public class ActuatorMonitoringManager extends Startable.SimpleStartable<Actuato
     }
 
     @Override
-    public Optional<FixSessionPlugin<PluginContext.VoidPluginContext, Void>> onSessionCreated(String fixInstanceId,
+    public Optional<FixSessionPlugin<PluginContext.VoidPluginContext, Void>> onSessionCreated(String fixEngineId, String fixInstanceId,
                                                                                               FixSession fixSession,
                                                                                               Collection<MessageType> incomingMessageTypes,
                                                                                               Collection<MessageType> outgoingMessageTypes) {

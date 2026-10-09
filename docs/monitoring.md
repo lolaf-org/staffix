@@ -53,6 +53,9 @@ FixSessionSettings.builder()
 `baseTimeUnit(MICROSECONDS)` is worth setting deliberately: the default unit will quantise away most of what is
 interesting about a FIX engine measured in microseconds.
 
+Every session also publishes the `session.logon.status` gauge, its `FixSession.getStatus()` as a code: 1 logged in,
+0 logged out inside session time (the one to alert on), 2 logged out outside session time, 3 logged out by an operator.
+
 `clockOffsetEnabled` and `rttLatencyEnabled` publish the `session.rtt` timer and the `session.clock.offset` gauge
 from the session's own continuous line measurement; see [Network monitoring](network-monitoring.md). They need
 `rttMeasurementSettings.probeInterval` set on the session to have anything to report.

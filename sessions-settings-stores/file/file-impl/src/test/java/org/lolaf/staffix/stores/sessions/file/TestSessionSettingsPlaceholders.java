@@ -176,6 +176,20 @@ class TestSessionSettingsPlaceholders {
                 .hasMessageContaining("cannot be changed through the store");
     }
 
+    @Test
+    void aRefusedUpdateLeavesTheStoreAsItWas() throws IOException {
+        System.setProperty(PROPERTY, "PT45S");
+        writeSession("SENDER", "${sysprop:" + PROPERTY + "}");
+        FileFixSessionsSettingsStore store = store(List.of());
+        FixSessionSettings loaded = store.load().iterator().next();
+        store.add(loaded);
+
+        assertThatThrownBy(() -> store.update(loaded.toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(99)).build()))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(store.getSettings()).containsExactly(loaded);
+    }
+
     /**
      * A session that was never read from a file has no placeholders to restore.
      */

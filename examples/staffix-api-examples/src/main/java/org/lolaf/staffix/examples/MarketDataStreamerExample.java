@@ -22,6 +22,7 @@ import org.lolaf.ringos.clib.CLibraryApi;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.FixAcceptor;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -261,6 +262,11 @@ public class MarketDataStreamerExample extends FixExamplesBase implements Callab
         }
 
         @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
         public List<FixMessageDecoder> setup(FixSessionSettings fixSessionSettings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
             encodedMessagesTypes.add(MessageTypes.MarketDataSnapshotFullRefresh);
             return List.of(new MarketDataRequestDecoder(marketDataStreamer));
@@ -357,6 +363,11 @@ public class MarketDataStreamerExample extends FixExamplesBase implements Callab
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
         }
 
         public void sendMarketDataRequest(FixSession fixSession, SubscriptionRequestType.SubscriptionRequestTypeValues type, String symbol) {

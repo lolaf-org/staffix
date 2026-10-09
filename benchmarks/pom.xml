@@ -13,7 +13,7 @@
     <name>Staffix Benchmarks</name>
     <description>
         The JMH benchmarks: the FIX engine round trip against QuickFIX/J and Artio on one harness, the serdes per
-        value width and direction, the identifier generators and the clock. Every run's raw JSON is kept under
+        value width and direction, the identifier generators, the clock and the HTTP admin API's status. Every run's raw JSON is kept under
         benchmarks/results, so a number quoted in the documentation can be traced to the file it came from.
     </description>
 
@@ -72,6 +72,11 @@
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-application-factory-simple</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-admin-api-http-impl</artifactId>
             <version>${project.version}</version>
         </dependency>
 

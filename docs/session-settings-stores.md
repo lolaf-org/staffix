@@ -38,10 +38,12 @@ fixEngine.newAcceptor(FixAcceptorBuilder.builder()
 ```
 
 **An initiator runs one session at a time**: its main target, or a backup target it was
-[switched to](runtime-administration.md#switching-an-initiator-to-a-backup). For each target's session id the engine
-looks for an `INITIATOR` session in every registered store and takes the first match; if one is missing, building the
-initiator fails and lists the ids it did find. A target's settings changing in a store are picked up, but only the
-session it runs now is restarted or disconnected by them.
+[switched to](runtime-administration.md#switching-an-initiator-to-a-backup). For its main target's session id the
+engine looks for an `INITIATOR` session in every registered store and takes the first match; if none is found, building
+the initiator fails and lists the ids it did find. A backup target runs on the main target's settings under its own
+session id, so it must have no settings of its own: building or starting the initiator fails if a store holds some. A
+change of the main target's settings applies to whichever target runs, and only that session is restarted or
+disconnected by it.
 
 A store is looked up by `FixSessionId` **and** `FixSessionType`, so one store may hold the acceptor and the initiator
 side of the same id.
@@ -149,15 +151,16 @@ so a typo is an error rather than a silently missing setting. The merged result 
 
 ### The JSON schema
 
-The build generates a JSON schema from the YAML model, so an editor completes and validates a session file, including
-`${...}` placeholders in fields that are not strings. It is the
-[`fix-session-settings.v1.schema.json`](../sessions-settings-stores/file/file-impl/etc/fix-session-settings.v1.schema.json)
-in the module's `etc` directory, and it can be reached in three other ways:
+The build generates a JSON schema from the session settings document, the model a session file is read into, so an
+editor completes and validates a session file, including `${...}` placeholders in fields that are not strings, and
+shows what each setting does and its default. It is the
+[`fix-session-settings.v1.schema.json`](../sessions-settings-stores/document/etc/fix-session-settings.v1.schema.json)
+in the `staffix-sessions-settings-document` module's `etc` directory, and it can be reached in three other ways:
 
 | where | how |
 |-------|-----|
-| in the jar | the resource `org/lolaf/staffix/stores/sessions/file/fix-session-settings.v1.schema.json` |
-| in the Maven repository | `staffix-sessions-settings-store-file-impl`, classifier `schema`, type `json` |
+| in the jar | the resource `org/lolaf/staffix/sessions/settings/document/fix-session-settings.v1.schema.json` of `staffix-sessions-settings-document` |
+| in the Maven repository | `staffix-sessions-settings-document`, classifier `schema`, type `json` |
 | next to your files | a store reading a directory copies it there on start |
 
 A file opts in with a comment read by editors built on the YAML language server. The path is relative to the file,

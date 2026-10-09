@@ -24,7 +24,7 @@ import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.spring.boot.actuator.endpoint.FixSessionsEndpoint;
 import org.lolaf.staffix.spring.boot.actuator.health.FixSessionsHealthIndicator;
@@ -104,10 +104,10 @@ class ActuatorAutoConfigurationTest {
                     assertThat(registry.snapshot()).hasSize(2);
                     assertThat(registry.find(ACCEPTOR_SESSION_ID)).isPresent();
                     assertThat(registry.find(INITIATOR_SESSION_ID)).isPresent();
-                    assertThat(registry.find(ACCEPTOR_SESSION_ID).get().getState())
-                            .isEqualTo(FixSessionState.LOGGED_IN);
-                    assertThat(registry.find(INITIATOR_SESSION_ID).get().getState())
-                            .isEqualTo(FixSessionState.LOGGED_IN);
+                    assertThat(registry.find(ACCEPTOR_SESSION_ID).get().getFixSession().getStatus())
+                            .isEqualTo(FixSessionStatus.LOGGED_IN);
+                    assertThat(registry.find(INITIATOR_SESSION_ID).get().getFixSession().getStatus())
+                            .isEqualTo(FixSessionStatus.LOGGED_IN);
                 });
 
         // health indicator
@@ -120,7 +120,7 @@ class ActuatorAutoConfigurationTest {
         assertThat(list).containsEntry("count", 2);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> sessions = (List<Map<String, Object>>) list.get("sessions");
-        assertThat(sessions).extracting(s -> s.get("state"))
+        assertThat(sessions).extracting(s -> s.get("logonStatus"))
                 .allMatch("LOGGED_IN"::equals);
         assertThat(sessions).extracting(s -> s.get("name"))
                 .containsExactlyInAnyOrder(ACCEPTOR_SESSION_ID.getName(), INITIATOR_SESSION_ID.getName());
@@ -128,7 +128,7 @@ class ActuatorAutoConfigurationTest {
         Map<String, Object> single = endpoint.getOne(ACCEPTOR_SESSION_ID.getGroup(), ACCEPTOR_SESSION_ID.getName());
         assertThat(single).isNotNull()
                 .containsEntry("name", ACCEPTOR_SESSION_ID.getName())
-                .containsEntry("state", "LOGGED_IN");
+                .containsEntry("logonStatus", "LOGGED_IN");
 
         // a TestRequest forces a Heartbeat from the peer, exercising onMessageSent/onMessageReceived
         // across both sessions (logon-handshake messages alone may not have decoded by this point).

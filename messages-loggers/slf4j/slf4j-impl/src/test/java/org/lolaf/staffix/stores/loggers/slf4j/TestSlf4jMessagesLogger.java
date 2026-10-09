@@ -52,7 +52,7 @@ class TestSlf4jMessagesLogger {
                 .build();
 
         slf4jMessagesLogger = new Slf4jMessagesLogger(settings);
-        logger = slf4jMessagesLogger.instanciateLogger("testInstanceId", fixSessionId, null);
+        logger = slf4jMessagesLogger.instanciateLogger("engine", "testInstanceId", fixSessionId, null);
 
         messageType = MessageType.of("A", false);
     }
@@ -77,7 +77,7 @@ class TestSlf4jMessagesLogger {
                 .build();
 
         slf4jMessagesLogger = new Slf4jMessagesLogger(settings);
-        logger = slf4jMessagesLogger.instanciateLogger("testInstanceId", fixSessionId, null);
+        logger = slf4jMessagesLogger.instanciateLogger("engine", "testInstanceId", fixSessionId, null);
 
         logger.logIncoming(UTCTime.of(Instant.now()), messageType, ByteBuffer.wrap("testIn".getBytes()));
 

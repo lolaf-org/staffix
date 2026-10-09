@@ -52,6 +52,7 @@ import static org.lolaf.staffix.tests.FixMessageAssert.assertThatFixMessage;
  * <p>
  * See https://www.fixtrading.org/standards/fix-session-testcases-online
  */
+@SuppressWarnings("java:S2699")
 class TestScenario14 extends AbstractScenario {
 
     /**

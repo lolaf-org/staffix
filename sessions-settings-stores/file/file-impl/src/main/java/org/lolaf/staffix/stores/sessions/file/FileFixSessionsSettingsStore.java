@@ -15,21 +15,25 @@
  */
 package org.lolaf.staffix.stores.sessions.file;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.*;
-import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.*;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocument;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentMapper;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentValidator;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsJsonSchema;
+import org.lolaf.staffix.sessions.settings.document.FromFixSessionSettingsDocumentTransformer;
+import org.lolaf.staffix.sessions.settings.document.ToFixSessionSettingsDocumentTransformer;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -95,27 +99,8 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     // Package-private so tests exercise the exact same mapper configuration (module registrations, strict
     // reading, InetAddress handling) as production, rather than maintaining a divergent copy.
     static ObjectMapper newMapper() {
-        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        mapper.findAndRegisterModules();
-        // Jackson's built-in InetAddress deserializer (2.19+) rejects any string that is not an IP literal
-        SimpleModule inetAddressModule = new SimpleModule();
-        inetAddressModule.addDeserializer(InetAddress.class, new JsonDeserializer<>() {
-            @Override
-            public InetAddress deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-                return InetAddress.getByName(p.getValueAsString().trim());
-            }
-        });
-        mapper.registerModule(inetAddressModule);
-        mapper.configure(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS, false);
-        mapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false); // LocalTime as "10:10:11", not [10,10,11]
-        mapper.configure(SerializationFeature.INDENT_OUTPUT, true);
-        mapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL); // null objects are not serialized
-        // Strict reading: reject typo'd field names, unknown enum constants and trailing junk so editing mistakes
-        // fail loudly at load instead of silently leaving fields null. Bean Validation then enforces value-level rules.
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
-        mapper.configure(DeserializationFeature.FAIL_ON_TRAILING_TOKENS, true);
-        mapper.configure(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL, false);
-        return mapper;
+        return FixSessionSettingsDocumentMapper.configure(new ObjectMapper(new YAMLFactory()))
+                .enable(SerializationFeature.INDENT_OUTPUT);
     }
 
     private static boolean isDefaults(URI uri) {
@@ -158,6 +143,14 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         return loadFromSources();
     }
 
+    /**
+     * A directory-backed store writes each change to its file; a URI-backed one keeps changes in memory only.
+     */
+    @Override
+    public boolean isPersistent() {
+        return savable;
+    }
+
     private Set<FixSessionSettings> loadFromSources() {
         configValueResolvers.refresh();
         return savable ? loadFromDirectory() : loadFromUris();
@@ -185,14 +178,14 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         return load(sources, readUriDefaults());
     }
 
-    private Set<FixSessionSettings> load(List<SettingsSource> sources, YamlFixSessionSettings defaults) {
+    private Set<FixSessionSettings> load(List<SettingsSource> sources, FixSessionSettingsDocument defaults) {
         Map<FixSessionId, String> seen = new HashMap<>();
         return sources.stream()
                 .map(source -> load(source, defaults, seen))
                 .collect(Collectors.toSet());
     }
 
-    private FixSessionSettings load(SettingsSource source, YamlFixSessionSettings defaults,
+    private FixSessionSettings load(SettingsSource source, FixSessionSettingsDocument defaults,
                                     Map<FixSessionId, String> seen) {
         RetainedYaml retained = source.getRead().get();
         FixSessionSettings settings = bind(retained, defaults, source.getName());
@@ -210,7 +203,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         return settings;
     }
 
-    private YamlFixSessionSettings readUriDefaults() {
+    private FixSessionSettingsDocument readUriDefaults() {
         List<URI> found = uris.stream().filter(FileFixSessionsSettingsStore::isDefaults)
                 .collect(Collectors.toList());
         if (found.size() > 1) {
@@ -220,18 +213,18 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         return found.isEmpty() ? null : readRetaining(found.get(0)).getSettings();
     }
 
-    private FixSessionSettings bind(RetainedYaml retained, YamlFixSessionSettings defaults, String source) {
-        YamlFixSessionSettings yaml = FromYamlFixSessionSettingsTransformer.mergeWithDefault(defaults, retained.getSettings());
-        FixSessionSettingsValidator.validate(yaml, source);
-        return FromYamlFixSessionSettingsTransformer.toFixSessionSettings(yaml);
+    private FixSessionSettings bind(RetainedYaml retained, FixSessionSettingsDocument defaults, String source) {
+        FixSessionSettingsDocument yaml = FromFixSessionSettingsDocumentTransformer.mergeWithDefault(defaults, retained.getSettings());
+        FixSessionSettingsDocumentValidator.validate(yaml, source);
+        return FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(yaml);
     }
 
-    private YamlFixSessionSettings readDefaults() {
+    private FixSessionSettingsDocument readDefaults() {
         File defaultFile = new File(directory, DEFAULT_FILE_NAME);
         return defaultFile.isFile() ? read(defaultFile) : null;
     }
 
-    private YamlFixSessionSettings read(File file) {
+    private FixSessionSettingsDocument read(File file) {
         return readRetaining(file).getSettings();
     }
 
@@ -255,7 +248,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     // any type; readValue keeps FAIL_ON_TRAILING_TOKENS, which readTree would not.
     private RetainedYaml readRetaining(JsonNode raw, String source) throws IOException {
         JsonNode resolved = YamlPlaceholderResolver.resolve(raw, configValueResolvers, source);
-        return new RetainedYaml(raw, resolved, mapper.treeToValue(resolved, YamlFixSessionSettings.class));
+        return new RetainedYaml(raw, resolved, mapper.treeToValue(resolved, FixSessionSettingsDocument.class));
     }
 
     private void ensureDirectory() {
@@ -296,8 +289,9 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
 
     @Override
     public void onAdd(FixSessionSettings settings) {
-        if (fixSessionSettings.add(settings)) {
+        if (!fixSessionSettings.contains(settings)) {
             writeToDisk(settings);
+            fixSessionSettings.add(settings);
         }
     }
 
@@ -315,11 +309,14 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         }
     }
 
+    /**
+     * Written first: a write the file refuses, such as a change to a placeholder's value, leaves the store as it was.
+     */
     @Override
     public void onUpdate(FixSessionSettings settings) {
+        writeToDisk(settings);
         fixSessionSettings.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
         fixSessionSettings.add(settings);
-        writeToDisk(settings);
     }
 
     private void writeToDisk(FixSessionSettings settings) {
@@ -329,8 +326,8 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         }
         ensureDirectory();
         File file = fileFor(settings);
-        YamlFixSessionSettings yaml = ToYamlFixSessionSettingsTransformer.toYamlFixSessionSettings(settings);
-        FixSessionSettingsValidator.validate(yaml, file.getPath());
+        FixSessionSettingsDocument yaml = ToFixSessionSettingsDocumentTransformer.toDocument(settings);
+        FixSessionSettingsDocumentValidator.validate(yaml, file.getPath());
         try {
             JsonNode written = mapper.valueToTree(yaml);
             RetainedYaml retained = retainedYaml.get(settings.getFixSessionId());
@@ -360,7 +357,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     private static final class RetainedYaml {
         private final JsonNode raw;
         private final JsonNode resolved;
-        private final YamlFixSessionSettings settings;
+        private final FixSessionSettingsDocument settings;
     }
 
     public static class FileStoreFactoryImpl implements FixSessionsSettingsStoreSettings.FixSessionsStoreFactory<FileSessionsSettingsStoreSettings> {

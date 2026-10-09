@@ -67,7 +67,7 @@ class OkHttpSenderHttpVersionTest {
     }
 
     @AfterEach
-    void stopServer() throws IOException {
+    void stopServer() {
         server.close();
     }
 
@@ -79,7 +79,7 @@ class OkHttpSenderHttpVersionTest {
     }
 
     @Test
-    void doesNotSpeakHttp2ByDefault() throws Exception {
+    void doesNotSpeakHttp2ByDefault() {
         try (HttpSender sender = new OkHttpSender(settings())) {
             assertThatThrownBy(() -> sender.send(PAYLOAD, 0, PAYLOAD.length, null))
                     .isInstanceOf(IOException.class);

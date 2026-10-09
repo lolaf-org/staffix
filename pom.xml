@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" child.project.url.inherit.append.path="false">
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+         child.project.url.inherit.append.path="false">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.lolaf.staffix</groupId>
@@ -39,7 +41,8 @@
         </developer>
     </developers>
 
-    <scm child.scm.connection.inherit.append.path="false" child.scm.developerConnection.inherit.append.path="false" child.scm.url.inherit.append.path="false">
+    <scm child.scm.connection.inherit.append.path="false" child.scm.developerConnection.inherit.append.path="false"
+         child.scm.url.inherit.append.path="false">
         <connection>scm:git:https://github.com/lolaf-org/staffix.git</connection>
         <!-- HTTPS rather than the conventional ssh: the credential that pushes a release is a token,
              and a token is an HTTPS credential. -->
@@ -80,8 +83,10 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Filled by the JaCoCo agent; empty so that surefire's @{argLine} still resolves with -Djacoco.skip. -->
-        <argLine />
-        <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/coverage-report/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+        <argLine/>
+        <sonar.coverage.jacoco.xmlReportPaths>
+            ${maven.multiModuleProjectDirectory}/coverage-report/target/site/jacoco-aggregate/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
         <!-- Reproducible builds. -->
         <project.build.outputTimestamp>2026-09-30T20:33:25Z</project.build.outputTimestamp>
         <maven.compiler.release>11</maven.compiler.release>
@@ -98,6 +103,8 @@
         <okio.version>3.18.2</okio.version>
         <jetty.version>12.1.13</jetty.version>
         <spring-boot.version>4.1.1</spring-boot.version>
+        <!-- not 3.x due to java 11 support -->
+        <jackson.version>2.22.3</jackson.version>
 
         <slf4j.version>2.0.17</slf4j.version>
         <jmh.version>1.37</jmh.version>
@@ -120,7 +127,7 @@
         <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
         <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
         <!-- Appended to what maven-release-plugin passes to its forked builds -->
-        <release.extraArguments />
+        <release.extraArguments/>
         <lombok-maven-plugin.version>1.18.20.0</lombok-maven-plugin.version>
         <automatic.module.name>org.lolaf.staffix.MODULE.NAME.NOT.SET</automatic.module.name>
         <delombok.skip>false</delombok.skip>

@@ -67,7 +67,7 @@ class TestDecodedFixMessageDecoder {
                 .build();
 
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                new TestingLogger().getLogger("test", fixSessionId, messageTypeRegistry), validationSettings,
+                new TestingLogger().getLogger("engine", "test", fixSessionId, messageTypeRegistry), validationSettings,
                 TestingClock.get(), mock(FixMessageParserEventsListener.class));
     }
 

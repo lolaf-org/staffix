@@ -15,9 +15,12 @@
  */
 package org.lolaf.staffix.api.application;
 
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+
+import java.util.Set;
 
 /**
  * Supplies the {@code FixApplication} that receives a session's messages.
@@ -33,4 +36,16 @@ public interface FixApplicationFactory extends InstanceIdSupplier, Startable<Fix
      */
     FixApplication getInstance(String applicationId);
 
+    /**
+     * The application ids {@link #getInstance(String)} accepts
+     */
+    Set<String> getApplicationIds();
+
+    /**
+     * The dictionary of the application registered under the given id, which settings are checked against before a
+     * session exists. Override it when {@link #getInstance(String)} creates or tracks an instance per call.
+     */
+    default FixDictionaryId getDictionaryId(String applicationId) {
+        return getInstance(applicationId).getDictionaryId();
+    }
 }

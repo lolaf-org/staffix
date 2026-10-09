@@ -77,7 +77,7 @@ import java.util.Optional;
  * <h2>Time Measurement</h2>
  *
  * <p>Nanosecond timestamps are passed to message callbacks for latency measurement. If no registered plugin
- * requires time measurement (i.e. all plugins return {@code false} from {@link #requiresTimeMeasurement()}),
+ * requires time measurement (i.e. all plugins return {@code false} from {@link FixSessionsPlugin#requiresTimeMeasurement}),
  * the engine may skip capturing timestamps to avoid the overhead.
  *
  * @param <C> the type of {@link PluginContext} this plugin exposes, allowing other components to access
@@ -115,17 +115,6 @@ public interface FixSessionPlugin<C, T> {
      * @return an {@link Optional} containing the plugin context, or empty if not available
      */
     Optional<C> getPluginContext();
-
-    /**
-     * Indicates whether this plugin requires nanosecond timestamp capture for message callbacks.
-     *
-     * <p>If no registered plugin returns {@code true}, the engine may skip time measurement to reduce overhead.
-     *
-     * @return {@code true} if this plugin needs timestamps in message callbacks, {@code false} by default
-     */
-    default boolean requiresTimeMeasurement() {
-        return false;
-    }
 
     /**
      * Called when the FIX session has successfully completed logon.

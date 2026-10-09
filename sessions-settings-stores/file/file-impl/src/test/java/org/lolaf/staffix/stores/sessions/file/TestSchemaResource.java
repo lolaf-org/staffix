@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.stores.sessions.file;
 
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsJsonSchemaGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -52,17 +53,6 @@ class TestSchemaResource {
             }
             return new String(buffer.toByteArray(), StandardCharsets.ISO_8859_1);
         }
-    }
-
-    @Test
-    void runtimeSchemaClassDoesNotReferenceTheGenerator() throws IOException {
-        String constantPool = classBytesAsLatin1(FixSessionSettingsJsonSchema.class);
-
-        assertThat(constantPool)
-                .describedAs("FixSessionSettingsJsonSchema is reached at runtime, where the optional victools "
-                        + "dependency is absent; keep generator references in FixSessionSettingsJsonSchemaGenerator")
-                .doesNotContain("victools")
-                .doesNotContain("FixSessionSettingsJsonSchemaGenerator");
     }
 
     @Test

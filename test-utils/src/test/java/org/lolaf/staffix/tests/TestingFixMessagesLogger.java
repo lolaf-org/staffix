@@ -28,7 +28,7 @@ public class TestingFixMessagesLogger extends Startable.VoidStartable<FixMessage
     private TestingFixMessagesLoggerSettings testingFixMessagesLoggerSettings;
 
     @Override
-    public Logger getLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
         return testingFixMessagesLoggerSettings.getTestingLogger();
     }
 

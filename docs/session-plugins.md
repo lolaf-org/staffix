@@ -20,7 +20,7 @@ asked, per session, whether it wants that session:
 
 ```java
 Optional<? extends FixSessionPlugin<C, ?>> onSessionCreated(
-        String fixInstanceId, FixSession fixSession,
+        String fixEngineId, String fixInstanceId, FixSession fixSession,
         Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes);
 ```
 

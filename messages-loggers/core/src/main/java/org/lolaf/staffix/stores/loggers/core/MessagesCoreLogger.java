@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 
 /**
@@ -59,22 +60,29 @@ public abstract class MessagesCoreLogger extends Startable.SimpleStartable<FixMe
     }
 
     @Override
-    public Logger getLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
         return loggers.computeIfAbsent(fixSessionId, sid -> new LoggerWrapperImpl(
-                fixSessionId, instanciateLogger(fixInstanceId, fixSessionId, messageTypeRegistry), messageTypeFilter, obfuscators));
+                fixSessionId, instanciateLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry), messageTypeFilter, obfuscators, this::cleanupLoggerFromCache));
     }
 
-    public abstract Logger instanciateLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
+    void cleanupLoggerFromCache(FixSessionId fixSessionId, Logger stopped) {
+        loggers.remove(fixSessionId, stopped);
+    }
+
+    public abstract Logger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
 
     static class LoggerWrapperImpl extends AbstractLogger implements Logger {
 
         private final Logger wrappedLogger;
         private final BiPredicate<MessageType, LogEventType> messageTypeFilter;
         private final LogObfuscator[] obfuscators;
+        private final BiConsumer<FixSessionId, Logger> onStopped;
 
-        public LoggerWrapperImpl(FixSessionId fixSessionId, Logger wrappedLogger, BiPredicate<MessageType, LogEventType> messageTypeFilter, List<LogObfuscator> obfuscators) {
+        public LoggerWrapperImpl(FixSessionId fixSessionId, Logger wrappedLogger, BiPredicate<MessageType, LogEventType> messageTypeFilter,
+                                 List<LogObfuscator> obfuscators, BiConsumer<FixSessionId, Logger> onStopped) {
             super(wrappedLogger.isLoggingIncoming(), wrappedLogger.isLoggingOutgoing(), wrappedLogger.isLoggingEvents(), fixSessionId);
             this.wrappedLogger = wrappedLogger;
+            this.onStopped = onStopped;
             this.messageTypeFilter = messageTypeFilter;
             this.obfuscators = obfuscators.isEmpty() ? null : obfuscators.toArray(obfuscators.toArray(new LogObfuscator[0]));
         }
@@ -107,7 +115,11 @@ public abstract class MessagesCoreLogger extends Startable.SimpleStartable<FixMe
 
         @Override
         protected void stopMe(Deadline stopDeadline) throws StartStopException {
-            wrappedLogger.stop(stopDeadline);
+            try {
+                wrappedLogger.stop(stopDeadline);
+            } finally {
+                onStopped.accept(getFixSessionId(), this);
+            }
         }
 
         @Override

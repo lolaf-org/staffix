@@ -54,8 +54,8 @@ public class AsyncMessagesLogger extends Startable.SimpleStartable<FixMessagesLo
     }
 
     @Override
-    public Logger getLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
-        return loggers.computeIfAbsent(fixSessionId, sid -> new AsyncLogger(wrappedFixMessagesLogger.getLogger(fixInstanceId, fixSessionId, messageTypeRegistry),
+    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+        return loggers.computeIfAbsent(fixSessionId, sid -> new AsyncLogger(wrappedFixMessagesLogger.getLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry),
                 fixSessionId, messageTypeRegistry, asyncMessagesLoggerSettings, asyncStoreThreads, asyncEventInstanceProvider));
     }
 

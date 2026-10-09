@@ -99,17 +99,8 @@ public interface FixSession {
     FixSessionSettings getFixSessionSettings();
 
     /**
-     * Will immediately disconnect the FIX session and reject any new connection attempts.
-     * Session will be allowed to be logged in again only if {@link #logon()} method is called
-     */
-    void disconnect(String message);
-
-    /**
-     * Logs the session out permanently, session will be allowed to be logged in again only if {@link #logon()} method is called
-     * <p>
-     * The connection is not held down with it: an initiator disconnects, then dials again and stays there logged out,
-     * ready for the {@link #logon()} that reopens the session. Use {@link #disconnect(String)} for a session that
-     * should stop connecting altogether.
+     * Logs the session out and makes {@link FixSessionDesiredState#LOGGED_OUT} its desired state, so it stays out until
+     * {@link #logon()}: an initiator does not dial again, an acceptor answers a Logon with a Logout.
      *
      * @param message the logout message
      */
@@ -123,8 +114,8 @@ public interface FixSession {
     void logout(String message);
 
     /**
-     * Makes {@code LOGGED_IN} the desired state again, after a {@link #logoutPermanently(String)} or a
-     * {@link #disconnect(String)}, and sends a Logon if the session is connected.
+     * Makes {@link FixSessionDesiredState#LOGGED_IN} the desired state again, after a {@link #logoutPermanently(String)},
+     * and sends a Logon if the session is connected.
      */
     void logon();
 
@@ -139,9 +130,14 @@ public interface FixSession {
     boolean isConnected();
 
     /**
-     * The current desired (not actual) fix session state
+     * What the session is asked to be, not where it is: see {@link #getStatus()}.
      */
-    FixSessionState getDesiredState();
+    FixSessionDesiredState getDesiredState();
+
+    /**
+     * Where the session stands for an operator, from whether it is logged in, its desired state and its schedule.
+     */
+    FixSessionStatus getStatus();
 
     /**
      * Whether the session is inside its configured schedule, as opposed to an end of day or weekend pause. See

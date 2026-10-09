@@ -180,7 +180,7 @@ class JvmWarmupTest {
 
         @Override
         public Optional<FixSessionPlugin<PluginContext.VoidPluginContext, Void>> onSessionCreated(
-                String fixInstanceId, FixSession fixSession,
+                String fixEngineId, String fixInstanceId, FixSession fixSession,
                 Collection<MessageType> incomingMessageTypes,
                 Collection<MessageType> outgoingMessageTypes) {
             return Optional.empty();

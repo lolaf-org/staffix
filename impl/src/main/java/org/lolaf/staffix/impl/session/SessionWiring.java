@@ -31,13 +31,13 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
-import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
 import org.lolaf.staffix.codec.decoders.FixMessageParser;
 import org.lolaf.staffix.codec.decoders.FixTFieldsRegistry;
 import org.lolaf.staffix.codec.decoders.FixTMessageFieldsRegistry;
 import org.lolaf.staffix.codec.decoders.FixTMessageTypeRegistry;
+import org.lolaf.staffix.impl.ApplicationDictionary;
 import org.lolaf.staffix.impl.FailSafeFixApplication;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
@@ -84,18 +84,18 @@ final class SessionWiring {
                   FixSessionRuntimeDependencies runtimeDependencies, ScheduledExecutorService scheduler,
                   IOSettings ioSettings, MessageExecutorsRuntime messageExecutorsRuntime, Clock providedClock) {
         this.fixSessionId = settings.getFixSessionId();
-        this.fixApplication = new FailSafeFixApplication(runtimeDependencies.getFixApplicationFactory()
-                .getInstance(settings.getFixApplicationInstanceId()));
+        FixApplication application = runtimeDependencies.getFixApplicationFactory().getInstance(settings.getFixApplicationInstanceId());
+        FixDictionaryId fixDictionaryId = ApplicationDictionary.require(application.getDictionaryId(), settings.getFixApplicationInstanceId(), fixSessionId);
+        this.fixApplication = new FailSafeFixApplication(application);
         this.clock = providedClock == null ? ClockImpl.get() : providedClock;
         TimeUnit sendingTimeAccuracy = settings.getSendingTimeAccuracy();
 
-        FixDictionaryId fixDictionaryId = FixDictionaryId.of(settings.getDictionaryId(), dictionaryVersion(fixSessionId));
         this.fieldsRegistry = fieldsRegistry(settings, fixDictionaryId, fixSessionId);
         this.messageTypeRegistry = FixTMessageTypeRegistry.get(fixDictionaryId, fixSessionId.getFixVersion());
         FixMessageEncoderFactory encoderFactory = FixMessageEncoderFactory.Registry.getInstance(fixDictionaryId);
 
         // before the admin codec, whose encoders report their encoding to it from the moment they are built
-        PluginsComponent plugins = new PluginsComponent(fixInstanceId, fixSessionId, fixSession);
+        PluginsComponent plugins = new PluginsComponent(fixInstanceId, settings, fixSession, runtimeDependencies.getFixSessionsPlugins());
 
         FixSessionScheduleManager scheduleManager = new FixSessionScheduleManager(settings, clock);
         FixSessionStateComponent state = new FixSessionStateComponent(
@@ -105,7 +105,7 @@ final class SessionWiring {
         this.messagesStore = new FailSafeFixSessionMessagesStore(runtimeDependencies.getFixMessagesStore().getStore(fixSessionId));
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
         this.messagesLogger = runtimeDependencies.getFixMessagesLogger() != null
-                ? runtimeDependencies.getFixMessagesLogger().getLogger(fixInstanceId, fixSessionId, messageTypeRegistry)
+                ? runtimeDependencies.getFixMessagesLogger().getLogger(runtimeDependencies.getEngineId(), fixInstanceId, fixSessionId, messageTypeRegistry)
                 : VoidMessageLogger.getInstance();
         this.messageExecutors = messageExecutorsRuntime.newSessionExecutors();
         this.disconnectedSessionsExecutor = runtimeDependencies.getDisconnectedSessionsExecutor();
@@ -150,39 +150,6 @@ final class SessionWiring {
         components.register(plugins);
     }
 
-    /**
-     * What cannot be settled before the application has declared its decoders: which plugins want this session, and
-     * the notifier, registered last of all so that an application callback sees a session in its final state.
-     *
-     * <p>Not a reaction to the session starting: the codecs read which plugins are here as they react to it, so the
-     * fan out must find them already asked.
-     */
-    void setupApplicationComponents(FixSessionImpl fixSession, FixSessionRuntimeDependencies runtimeDependencies,
-                                    List<FixMessageDecoder> decoders) {
-        CodecsComponent codecs = components.get(CodecsComponent.class);
-        components.get(PluginsComponent.class).setup(runtimeDependencies, codecs.getIncomingMessageTypes(),
-                codecs.getOutgoingMessageTypes());
-        components.register(new ApplicationNotifierComponent(fixApplication, fixSession, fieldsRegistry, messageTypeRegistry, decoders));
-    }
-
-    /**
-     * A FIXT session names the application version its messages are in; a regular one is its own dictionary.
-     */
-    private static FixRegularVersion dictionaryVersion(FixSessionId fixSessionId) {
-        if (fixSessionId.getFixVersion() instanceof FixtVersion) {
-            return FixApplVerID.getFixVersionForCode(fixSessionId.getDefaultApplVerID().getCode());
-        }
-        if (fixSessionId.getFixVersion() instanceof FixRegularVersion) {
-            return (FixRegularVersion) fixSessionId.getFixVersion();
-        }
-        return null;
-    }
-
-    /**
-     * The dictionary's own registry, wrapped so that fields it does not describe can be added as they arrive when
-     * the session allows that, and carrying the two cancel on disconnect fields, which are user defined by nature:
-     * the specification does not name them, so each counterparty agrees its own tags.
-     */
     private static FieldsRegistry fieldsRegistry(FixSessionSettings settings, FixDictionaryId fixDictionaryId, FixSessionId fixSessionId) {
         FieldsRegistry dictionaryRegistry = FixTFieldsRegistry.get(fixDictionaryId, fixSessionId.getFixVersion());
         FieldsRegistry fieldsRegistry = settings.getValidationSettings().isAllowUnknownFields()
@@ -195,6 +162,15 @@ final class SessionWiring {
                     FieldType.INT, FieldLocation.BODY);
         }
         return fieldsRegistry;
+    }
+
+    void setupApplicationComponents(FixSessionImpl fixSession, FixSessionRuntimeDependencies runtimeDependencies,
+                                    List<FixMessageDecoder> decoders) {
+        CodecsComponent codecs = components.get(CodecsComponent.class);
+        codecs.setupApplicationDecoders(decoders);
+        components.get(PluginsComponent.class).setup(runtimeDependencies, codecs.getIncomingMessageTypes(),
+                codecs.getOutgoingMessageTypes());
+        components.register(new ApplicationNotifierComponent(fixApplication, fixSession, fieldsRegistry, messageTypeRegistry, decoders));
     }
 
     private FixAdminMessagesCodec adminMessagesCodec(FixSessionImpl fixSession, FixSessionSettings settings,

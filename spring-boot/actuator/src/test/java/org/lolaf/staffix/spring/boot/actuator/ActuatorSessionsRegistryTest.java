@@ -17,8 +17,9 @@ package org.lolaf.staffix.spring.boot.actuator;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.session.FixSessionState;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.spring.boot.actuator.health.FixSessionsHealthIndicator;
 import org.lolaf.staffix.spring.boot.actuator.spring.ActuatorMonitoringProps;
@@ -56,7 +57,8 @@ class ActuatorSessionsRegistryTest {
     private void register(FixSessionId fixSessionId) {
         FixSession fixSession = mock(FixSession.class);
         when(fixSession.getFixSessionId()).thenReturn(fixSessionId);
-        when(fixSession.getDesiredState()).thenReturn(FixSessionState.LOGGED_IN);
+        when(fixSession.getDesiredState()).thenReturn(FixSessionDesiredState.LOGGED_IN);
+        when(fixSession.getStatus()).thenReturn(FixSessionStatus.LOGGED_IN);
         registry.register("instance", fixSession);
     }
 

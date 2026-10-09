@@ -76,6 +76,11 @@ public class MemoryFixSessionsSettingsStore extends FixSessionsSettingsStore.Abs
     }
 
     @Override
+    public boolean isPersistent() {
+        return false;
+    }
+
+    @Override
     public void onAdd(FixSessionSettings settings) {
         fixSessionSettings.add(withDefaults(settings));
     }

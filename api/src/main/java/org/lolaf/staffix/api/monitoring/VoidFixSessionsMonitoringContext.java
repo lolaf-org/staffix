@@ -18,7 +18,9 @@ package org.lolaf.staffix.api.monitoring;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
+import java.util.function.DoubleSupplier;
 
 /**
  * The context a session gets when nothing is monitoring it - a singleton whose meters record nothing, so the
@@ -36,5 +38,20 @@ public class VoidFixSessionsMonitoringContext implements FixSessionsMonitoringCo
     @Override
     public Timer getTimer(String id, String description, Map<String, String> tags) {
         return Timer.VoidTimer.getInstance();
+    }
+
+    @Override
+    public Gauge getGauge(String id, String description, Map<String, String> tags) {
+        return Gauge.VoidGauge.getInstance();
+    }
+
+    @Override
+    public Gauge getGauge(String id, String description, Map<String, String> tags, DoubleSupplier value) {
+        return Gauge.VoidGauge.getInstance();
+    }
+
+    @Override
+    public List<FixMeterDescriptor> getMeterDescriptors() {
+        return List.of();
     }
 }

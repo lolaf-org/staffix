@@ -25,6 +25,16 @@
     <dependencies>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-admin-api-http-impl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-admin-api-http-spring-boot</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-admin-api-jmx-impl</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -246,6 +256,11 @@
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-monitoring-tracing-otlp-spring-boot</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-sessions-settings-document</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

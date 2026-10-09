@@ -26,9 +26,9 @@ import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
@@ -101,6 +101,7 @@ abstract class AbstractScenario {
 
         fixInitiatorApplication = mock(FixApplication.class);
         when(fixInitiatorApplication.getFixApiVersion()).thenReturn(FixApiVersion.of(FixRegularVersion.VERSION_44));
+        when(fixInitiatorApplication.getDictionaryId()).thenReturn(FixDictionaryId.of(FixRegularVersion.VERSION_44));
         when(fixInitiatorApplication.validateLogon(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(Optional.empty()));
         doNothing().when(fixInitiatorApplication)
                 .onSessionCreated(assertArg((Consumer<FixSession>) fixSession -> fixInitiatorSession = fixSession), any(), any(), any());
@@ -135,6 +136,7 @@ abstract class AbstractScenario {
         fixSessionEventsListener = mock(FixAcceptor.FixSessionEventsListener.class);
         fixAcceptorApplication = mock(FixApplication.class);
         when(fixAcceptorApplication.getFixApiVersion()).thenReturn(FixApiVersion.of(FixRegularVersion.VERSION_44));
+        when(fixAcceptorApplication.getDictionaryId()).thenReturn(FixDictionaryId.of(FixRegularVersion.VERSION_44));
         when(fixAcceptorApplication.validateLogon(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(Optional.empty()));
         doNothing().when(fixAcceptorApplication)
                 .onSessionCreated(assertArg((Consumer<FixSession>) fixSession -> fixAcceptorSession = fixSession), any(), any(), any());
@@ -212,7 +214,7 @@ abstract class AbstractScenario {
     }
 
     /**
-     * Starts both connectors, waits for the initiator to connect, drives a Logon and waits until both sides are
+     * Starts both connectors, drives a Logon, which has the logged out initiator dial, and waits until both sides are
      * logged in. The initiator/acceptor sessions are trapped by the {@code onSessionCreated} stubs configured in
      * {@link #setup()}.
      */
@@ -221,7 +223,6 @@ abstract class AbstractScenario {
         fixInitiator.start();
 
         await().untilAsserted(() -> assertThat(fixInitiatorSession).isNotNull());
-        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
 
         fixInitiatorSession.logon();
 
@@ -249,7 +250,7 @@ abstract class AbstractScenario {
                 // and this session follows it. An explicit false means "resetting is not supported" and is answered
                 // with a Logout, which is a deliberate choice a test should make rather than inherit.
                 .resetSeqNumOnLogon(null)
-                .desiredSessionState(FixSessionState.LOGGED_OUT);
+                .desiredSessionState(FixSessionDesiredState.LOGGED_OUT);
     }
 
     FixSessionSettings.FixSessionSettingsBuilder<?, ?> getAcceptorFixSessionSettings() {
@@ -260,6 +261,6 @@ abstract class AbstractScenario {
                 // and this session follows it. An explicit false means "resetting is not supported" and is answered
                 // with a Logout, which is a deliberate choice a test should make rather than inherit.
                 .resetSeqNumOnLogon(null)
-                .desiredSessionState(FixSessionState.LOGGED_IN);
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN);
     }
 }

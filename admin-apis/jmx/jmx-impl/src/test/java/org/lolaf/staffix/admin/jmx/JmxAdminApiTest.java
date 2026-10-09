@@ -20,10 +20,16 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.admin.FixSessionComponents;
+import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
+import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import javax.management.JMX;
@@ -33,7 +39,9 @@ import javax.management.ObjectName;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -163,8 +171,8 @@ class JmxAdminApiTest {
         return FixInitiatorTargets.builder()
                 .instanceId("initiator")
                 .activeFixSessionId(INITIATOR_SESSION)
-                .target(FixInitiatorTarget.builder().fixSessionId(INITIATOR_SESSION).connectAddress(address).build())
-                .target(FixInitiatorTarget.builder().fixSessionId(BACKUP_SESSION).connectAddress(address).build())
+                .mainTarget(FixInitiatorTarget.builder().fixSessionId(INITIATOR_SESSION).connectAddress(address).build())
+                .backupTarget(FixInitiatorTarget.builder().fixSessionId(BACKUP_SESSION).connectAddress(address).build())
                 .build();
     }
 
@@ -252,8 +260,58 @@ class JmxAdminApiTest {
         }
 
         @Override
+        public boolean isFixSessionsSettingsStorePersistent(String instanceId) {
+            return false;
+        }
+
+        @Override
+        public Optional<String> findFixSessionsSettingsStore(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void removeFixSessionSettings(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Collection<FixApplicationSessionSettingDescriptor> getFixApplicationSessionSettingDescriptors(FixSessionId fixSessionId) {
+            return List.of();
+        }
+
+        @Override
         public List<FixSession> getManagedFixSessions() {
             return new ArrayList<>(managed);
+        }
+
+        @Override
+        public List<FixMessagesLoggerSettings> getFixMessagesLoggersSettings() {
+            return List.of();
+        }
+
+        @Override
+        public List<FixSessionsPluginSettings<?>> getFixSessionsPluginsSettings() {
+            return List.of();
+        }
+
+        @Override
+        public FixSessionComponents getFixSessionComponents() {
+            return FixSessionComponents.builder().build();
+        }
+
+        @Override
+        public List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId) {
+            return List.of();
         }
 
         @Override
@@ -264,6 +322,11 @@ class JmxAdminApiTest {
         @Override
         public List<FixInitiatorTargets> getInitiatorsTargets() {
             return new ArrayList<>(initiatorsTargets);
+        }
+
+        @Override
+        public List<FixAcceptorSessions> getAcceptorsSessions() {
+            return List.of();
         }
 
         @Override

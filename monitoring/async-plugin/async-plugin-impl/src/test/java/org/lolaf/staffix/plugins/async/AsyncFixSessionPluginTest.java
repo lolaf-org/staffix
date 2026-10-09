@@ -200,7 +200,6 @@ class AsyncFixSessionPluginTest {
         FixMessageDecoder decoder = mock(FixMessageDecoder.class);
         FixFieldsDecoderMapper mapper = mock(FixFieldsDecoderMapper.class);
 
-        assertThat(async.requiresTimeMeasurement()).isTrue();
         assertThat(async.getPluginContext()).isEmpty();
         async.onDecoderSetup(decoder, mapper);
 
@@ -292,7 +291,7 @@ class AsyncFixSessionPluginTest {
         final AtomicReference<Call> lastCall = new AtomicReference<>();
         final AtomicReference<Thread> decoderSetupThread = new AtomicReference<>();
 
-        private void record(Call call) {
+        private void recordCall(Call call) {
             callbackThreads.add(Thread.currentThread());
             calls.add(call);
             lastCall.set(call);
@@ -309,11 +308,6 @@ class AsyncFixSessionPluginTest {
         }
 
         @Override
-        public boolean requiresTimeMeasurement() {
-            return true;
-        }
-
-        @Override
         public void onDecoderSetup(FixMessageDecoder decoder, FixFieldsDecoderMapper fieldsDecoderMapper) {
             decoderSetupThread.set(Thread.currentThread());
         }
@@ -322,14 +316,14 @@ class AsyncFixSessionPluginTest {
         public void onLogon() {
             Call c = new Call();
             c.kind = "onLogon";
-            record(c);
+            recordCall(c);
         }
 
         @Override
         public void onLogout() {
             Call c = new Call();
             c.kind = "onLogout";
-            record(c);
+            recordCall(c);
         }
 
         @Override
@@ -346,7 +340,7 @@ class AsyncFixSessionPluginTest {
             c.messageCode = messageType.code();
             c.timeNanos = encodingStartTimeInNanos;
             c.encodingToken = encodingToken;
-            record(c);
+            recordCall(c);
         }
 
         @Override
@@ -358,7 +352,7 @@ class AsyncFixSessionPluginTest {
             c.timeNanos = localReceiveTimeInNanos;
             c.epochSeconds = localReceiveTime.getEpochSeconds();
             c.nanosOfSecond = localReceiveTime.getNanosOfSecond();
-            record(c);
+            recordCall(c);
         }
 
         @Override
@@ -370,7 +364,7 @@ class AsyncFixSessionPluginTest {
             c.timeNanos = localSendingTimeInNanos;
             c.epochSeconds = localSendingTime.getEpochSeconds();
             c.nanosOfSecond = localSendingTime.getNanosOfSecond();
-            record(c);
+            recordCall(c);
         }
 
         @Override
@@ -386,7 +380,7 @@ class AsyncFixSessionPluginTest {
                 bytes[i] = encodedBody.get(pos + i) & 0xFF;
             }
             c.bodyBytes = bytes;
-            record(c);
+            recordCall(c);
         }
 
         @Override
@@ -396,7 +390,7 @@ class AsyncFixSessionPluginTest {
             c.messageCode = messageType.code();
             c.timeNanos = encodingEndTimeInNanos;
             c.encodingToken = encodingToken;
-            record(c);
+            recordCall(c);
         }
 
         @Override
@@ -405,7 +399,7 @@ class AsyncFixSessionPluginTest {
             c.kind = "onSessionDestroyed";
             c.instanceId = fixInstanceId;
             c.sessionId = fixSessionId;
-            record(c);
+            recordCall(c);
         }
     }
 }

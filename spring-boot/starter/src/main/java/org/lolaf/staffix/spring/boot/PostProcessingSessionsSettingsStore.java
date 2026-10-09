@@ -78,6 +78,11 @@ final class PostProcessingSessionsSettingsStore implements FixSessionsSettingsSt
     }
 
     @Override
+    public boolean isPersistent() {
+        return delegate.isPersistent();
+    }
+
+    @Override
     public void register(Listener listener) {
         delegate.register(listener);
     }

@@ -18,6 +18,7 @@ package org.lolaf.staffix.codec.encoders;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.TestingClock;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixFieldsEncoder;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
@@ -96,6 +97,11 @@ class TestFixMessageEncoderImpl {
             @Override
             public FixApiVersion getFixApiVersion() {
                 return FixApiVersion.of(FixRegularVersion.VERSION_44);
+            }
+
+            @Override
+            public FixDictionaryId getDictionaryId() {
+                return FixDictionaryId.of(FixRegularVersion.VERSION_44);
             }
 
             @Override

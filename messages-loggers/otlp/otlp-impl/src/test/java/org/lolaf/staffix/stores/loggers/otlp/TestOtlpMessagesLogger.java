@@ -137,7 +137,7 @@ class TestOtlpMessagesLogger {
 
         FixSessionId fixSessionId = FixSessionId.of("testSid", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
 
-        logger = otlpMessagesLogger.instanciateLogger("test", fixSessionId, registry);
+        logger = otlpMessagesLogger.instanciateLogger("engine", "test", fixSessionId, registry);
         logger.start();
         receivedOutputFromCollector.clear();
     }

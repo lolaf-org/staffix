@@ -62,7 +62,7 @@ class TestFixRttMeasurement extends AbstractFixTests {
         initiatorPlugin = mock(FixSessionPlugin.class);
         when(initiatorMonitoringManager.matchesPluginClass(FixSessionsMonitoringManager.class)).thenReturn(true);
         doReturn(Optional.of(initiatorPlugin)).when(initiatorMonitoringManager)
-                .onSessionCreated(anyString(), any(), any(), any());
+                .onSessionCreated(anyString(), anyString(), any(), any(), any());
         initiatorFixEngine.stop(Deadline.unlimited());
         initiatorFixEngine = initiatorFixEngineBuilder.toBuilder()
                 .fixSessionsPlugin(TestingFixSessionMonitoringManagerSettings.builder()

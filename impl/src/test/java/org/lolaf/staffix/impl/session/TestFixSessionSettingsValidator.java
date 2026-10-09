@@ -17,6 +17,7 @@ package org.lolaf.staffix.impl.session;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;

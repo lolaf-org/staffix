@@ -53,7 +53,7 @@ class TestFixSSL extends AbstractFixTests {
                 .serverSSLSettings(ServerSSLSettings.builder().sslContext(SSLUtils.getServerSSLContext()).build())
                 .build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -78,7 +78,7 @@ class TestFixSSL extends AbstractFixTests {
                 .build());
 
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -106,6 +106,7 @@ class TestFixSSL extends AbstractFixTests {
 
         fixAcceptor.start();
         fixInitiator.start();
+        fixInitiator.getSession().logon();
 
         await().untilAsserted(() -> verify(fixSessionEventsListener)
                 .onFailedSSLHandshake(any(InetSocketAddress.class), any(SSLHandshakeException.class)));

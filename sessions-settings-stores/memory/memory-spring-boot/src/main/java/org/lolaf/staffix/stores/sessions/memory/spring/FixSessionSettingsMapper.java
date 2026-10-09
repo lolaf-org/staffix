@@ -53,9 +53,6 @@ public class FixSessionSettingsMapper {
      */
     public static FixSessionSettings.FixSessionSettingsBuilder<?, ?> applyTo(
             FixSessionSettingsProps p, FixSessionSettings.FixSessionSettingsBuilder<?, ?> b) {
-        if (p.getDictionaryId() != null) {
-            b.dictionaryId(p.getDictionaryId());
-        }
         if (p.getHeartbeat() != null) {
             FixSessionSettings.HeartbeatInterval.HeartbeatIntervalBuilder<?, ?> hb = FixSessionSettings.HeartbeatInterval.builder();
             if (p.getHeartbeat().getInitiatorInterval() != null)

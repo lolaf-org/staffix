@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 
 /**
@@ -38,20 +39,21 @@ public abstract class MessagesCoreBatchingLogger extends MessagesCoreLogger {
     }
 
     @Override
-    public Logger getLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
         return getLoggers().computeIfAbsent(fixSessionId, sid -> new BatchingLoggerWrapperImpl(
-                fixSessionId, instanciateLogger(fixInstanceId, fixSessionId, messageTypeRegistry), getMessageTypeFilter(), getObfuscators()));
+                fixSessionId, instanciateLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry), getMessageTypeFilter(), getObfuscators(), this::cleanupLoggerFromCache));
     }
 
     @Override
-    public abstract BatchingLogger instanciateLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
+    public abstract BatchingLogger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
 
     private static class BatchingLoggerWrapperImpl extends LoggerWrapperImpl implements BatchingLogger {
 
         private final BatchingLogger wrappedBatchingLogger;
 
-        public BatchingLoggerWrapperImpl(FixSessionId fixSessionId, BatchingLogger wrappedLogger, BiPredicate<MessageType, LogEventType> messageTypeFilter, List<LogObfuscator> obfuscators) {
-            super(fixSessionId, wrappedLogger, messageTypeFilter, obfuscators);
+        public BatchingLoggerWrapperImpl(FixSessionId fixSessionId, BatchingLogger wrappedLogger, BiPredicate<MessageType, LogEventType> messageTypeFilter,
+                                         List<LogObfuscator> obfuscators, BiConsumer<FixSessionId, Logger> onStopped) {
+            super(fixSessionId, wrappedLogger, messageTypeFilter, obfuscators, onStopped);
             this.wrappedBatchingLogger = wrappedLogger;
         }
 

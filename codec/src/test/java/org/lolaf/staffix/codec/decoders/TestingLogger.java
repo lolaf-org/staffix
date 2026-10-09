@@ -73,7 +73,7 @@ public class TestingLogger extends MessagesCoreLogger {
     }
 
     @Override
-    public FixMessagesLogger.Logger instanciateLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+    public FixMessagesLogger.Logger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
         return new FixMessagesLogger.Logger() {
             @Override
             public void logIncoming(UTCTime time, MessageType messageType, ByteBuffer message) {

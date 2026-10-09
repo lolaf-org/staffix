@@ -35,8 +35,9 @@ import java.util.List;
 public class FixInitiatorTarget {
 
     /**
-     * Must have initiator settings in one of the engine's
-     * {@link org.lolaf.staffix.api.session.FixSessionsSettingsStore}s.
+     * A main target's must have initiator settings in one of the engine's
+     * {@link org.lolaf.staffix.api.session.FixSessionsSettingsStore}s; a backup's must have none, it runs on its
+     * main target's.
      */
     FixSessionId fixSessionId;
 

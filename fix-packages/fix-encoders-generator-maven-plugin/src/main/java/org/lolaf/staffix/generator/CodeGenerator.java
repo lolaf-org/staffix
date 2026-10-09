@@ -45,6 +45,7 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -63,6 +64,12 @@ import java.util.stream.Collectors;
  */
 public class CodeGenerator {
 
+    /**
+     * Where the dictionaries are shipped, as {@code <dictionaryId>-<version>.xml}, or {@code <version>.xml} for a
+     * transport dictionary.
+     */
+    public static final String DICTIONARIES_DIRECTORY = "staffix-dictionaries";
+
     public static void process(String packageName, File dictionary, File sourcesOutputDirectory, File resourcesOutputDirectory,
                                String dictionaryId, Log log, boolean addFIXEngineAndAppInfoFields) throws IOException, SAXException, ParserConfigurationException {
         try (InputStream in = new FileInputStream(dictionary)) {
@@ -76,7 +83,8 @@ public class CodeGenerator {
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
         DocumentBuilder builder = factory.newDocumentBuilder();
-        Document document = builder.parse(dictionary);
+        byte[] dictionaryXml = dictionary.readAllBytes();
+        Document document = builder.parse(new ByteArrayInputStream(dictionaryXml));
         Element fix = document.getDocumentElement();
 
         VelocityEngine ve = new VelocityEngine();
@@ -106,6 +114,7 @@ public class CodeGenerator {
         dictionaryId = dictionaryId + "-" + fixVersion.toString();
 
         log.info("Generating code for fix version " + fixVersion + " and dictionary id " + dictionaryId);
+        writeDictionaryResource(resourcesOutputDirectory, fixtDict ? fixVersion.toString() : dictionaryId, dictionaryXml);
         Set<Field> usedField = new HashSet<>();
         if (addFIXEngineAndAppInfoFields) {
             addStringField(usedField, 1600, "FIXEngineName");
@@ -128,6 +137,19 @@ public class CodeGenerator {
         }
         generateUsedFields(fixtDict, generatedFields, sourcesOutputDirectory, resourcesOutputDirectory,
                 log, fieldsPackage, ve, fixVersion, dictionaryId, usedField);
+    }
+
+    /**
+     * Ships the dictionary beside its encoders, so an admin tool can decode a session's messages with exactly
+     * the dictionary it runs. A transport dictionary is named after its version alone, as the engine resolves
+     * it.
+     */
+    private static void writeDictionaryResource(File resourcesOutputDirectory, String name, byte[] dictionaryXml) throws IOException {
+        File directory = new File(resourcesOutputDirectory, DICTIONARIES_DIRECTORY);
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw new IOException("Cannot create " + directory);
+        }
+        Files.write(new File(directory, name + ".xml").toPath(), dictionaryXml);
     }
 
     private static void addStringField(Set<Field> usedField, int code, String name) {

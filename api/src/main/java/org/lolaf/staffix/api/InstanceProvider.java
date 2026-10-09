@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.api;
 
+import java.util.List;
 import java.util.ServiceLoader;
 import java.util.function.Consumer;
 
@@ -38,9 +39,11 @@ public interface InstanceProvider<T> extends InstanceIdSupplier {
      * @throws IllegalStateException if no implementation on the classpath serves these settings
      */
     static <I, F extends Factory<I, S>, S> I getSpiInstance(S settings, Class<F> spiClass) {
-        for (F instance : ServiceLoader.load(spiClass)) {
-            if (instance.getSettingsClass().equals(settings.getClass())) {
-                return instance.newInstance(settings);
+        for (ServiceLoader<F> loader : List.of(ServiceLoader.load(spiClass), ServiceLoader.load(spiClass, spiClass.getClassLoader()))) {
+            for (F instance : loader) {
+                if (instance.getSettingsClass().equals(settings.getClass())) {
+                    return instance.newInstance(settings);
+                }
             }
         }
         throw new IllegalStateException("Unable to find any SPI instance for target settings class " + settings.getClass());

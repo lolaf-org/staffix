@@ -50,8 +50,7 @@ public class CodeGeneratorMojo extends AbstractMojo {
     private String packageName;
 
     /**
-     * The id a session names in its settings to use this dictionary; {@code default} is the id a session uses when
-     * it names none.
+     * The id an application returns from {@code FixApplication.getDictionaryId()} to speak this dictionary.
      */
     @Parameter(property = "dictionaryId", defaultValue = "default")
     private String dictionaryId;

@@ -43,6 +43,7 @@ import org.lolaf.staffix.fix44.fields.EmailThreadID;
 import org.lolaf.staffix.fix44.fields.EmailType;
 import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
+import org.lolaf.staffix.impl.ApplicationDictionary;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.*;
@@ -443,6 +444,8 @@ abstract class AbstractQuickfixjHarness {
 
         staffixApplication = mock(FixApplication.class);
         when(staffixApplication.getFixApiVersion()).thenReturn(staffixApiVersion());
+        when(staffixApplication.getDictionaryId()).thenReturn(FixDictionaryId.of(
+                ApplicationDictionary.applicationVersion(staffixSessionSettings().getFixSessionId())));
         when(staffixApplication.validateLogon(any(), any(), any()))
                 .thenReturn(CompletableFuture.completedFuture(Optional.empty()));
         // an Email decoder, otherwise an inbound application message is answered with onNoDecoderSetupForMessage
@@ -636,9 +639,9 @@ abstract class AbstractQuickfixjHarness {
         if (staffixIsInitiator()) {
             builder.heartBeatInterval(FixSessionSettings.HeartbeatInterval.builder()
                             .initiatorInterval(Duration.ofSeconds(5)).build())
-                    .desiredSessionState(FixSessionState.LOGGED_OUT);
+                    .desiredSessionState(FixSessionDesiredState.LOGGED_OUT);
         } else {
-            builder.desiredSessionState(FixSessionState.LOGGED_IN);
+            builder.desiredSessionState(FixSessionDesiredState.LOGGED_IN);
         }
         return customiseStaffixSettings(builder).build();
     }
@@ -844,7 +847,6 @@ abstract class AbstractQuickfixjHarness {
 
         await().untilAsserted(() -> assertThat(staffixSession).isNotNull());
         if (staffixIsInitiator()) {
-            await().untilAsserted(() -> assertThat(staffixSession.isConnected()).isTrue());
             staffixSession.logon();
         }
 

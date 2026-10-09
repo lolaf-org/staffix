@@ -18,9 +18,7 @@ package org.lolaf.staffix.impl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.FixEngine;
-import org.lolaf.staffix.api.FixEngineBuilder;
-import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.*;
@@ -31,10 +29,8 @@ import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySe
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
+import java.net.InetSocketAddress;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -45,14 +41,14 @@ class TestFixEngineReloadSessionsSettings {
 
     private static final String STORE_ID = "test-store";
 
-    private final ControllableStore store = new ControllableStore(STORE_ID);
+    private final ControllableSettingsStore store = new ControllableSettingsStore(STORE_ID);
     private FixEngine fixEngine;
 
     private static FixSessionSettings session(String sender, String target) {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of("test", FixRegularVersion.VERSION_44, sender, target))
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
-                .desiredSessionState(FixSessionState.LOGGED_OUT)
+                .desiredSessionState(FixSessionDesiredState.LOGGED_OUT)
                 .build();
     }
 
@@ -60,6 +56,7 @@ class TestFixEngineReloadSessionsSettings {
         if (fixEngine == null) {
             FixApplication application = mock(FixApplication.class);
             when(application.getFixApiVersion()).thenReturn(FixApiVersion.of("test app", SemVer.of(1, 0, 0), "test vendor"));
+            when(application.getDictionaryId()).thenReturn(FixDictionaryId.of(FixRegularVersion.VERSION_44));
             fixEngine = FixEngineBuilder.builder()
                     .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
                             .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
@@ -67,7 +64,7 @@ class TestFixEngineReloadSessionsSettings {
                     .fixApplicationFactory(SimpleApplicationFactorySettings.builder()
                             .application(InstanceProvider.DEFAULT_INSTANCE_ID, application)
                             .build())
-                    .fixSessionsSettingsStore(new ControllableStoreSettings(store))
+                    .fixSessionsSettingsStore(new ControllableSettingsStore.Settings(store))
                     .build()
                     .instance();
             fixEngine.start();
@@ -113,7 +110,7 @@ class TestFixEngineReloadSessionsSettings {
         store.register(listener);
 
         // same session id as 'a' but a different value -> update; 'd' unchanged -> no callback; 'b' absent -> removed
-        FixSessionSettings aUpdated = a.toBuilder().desiredSessionState(FixSessionState.LOGGED_IN).build();
+        FixSessionSettings aUpdated = a.toBuilder().desiredSessionState(FixSessionDesiredState.LOGGED_IN).build();
         FixSessionSettings c = session("SENDER_C", "TARGET_C");
         store.setSource(aUpdated, d, c);
 
@@ -150,89 +147,25 @@ class TestFixEngineReloadSessionsSettings {
                 .hasMessageContaining("does-not-exist");
     }
 
-    /**
-     * A {@link FixSessionsSettingsStore} whose {@link #load()} result is fully controlled by the test, so the engine's
-     * reconciliation against the managed settings can be exercised without a real backing source.
-     */
-    private static class ControllableStore extends FixSessionsSettingsStore.AbstractFixSessionSettingsStore {
+    @Test
+    void adminCallsReachOnlyTheSessionsAnAcceptorManagesNow() {
+        FixSessionSettings a = session("SENDER_A", "TARGET_A");
+        FixSessionSettings b = session("SENDER_B", "TARGET_B");
+        store.add(a);
+        adminApi();
+        fixEngine.newAcceptor(FixAcceptorBuilder.builder()
+                .instanceId("acceptor")
+                .bindAddress(new InetSocketAddress("localhost", 0))
+                .targetFixSessionsSettingsStoreInstancesIds(List.of(STORE_ID))
+                .build()).start();
 
-        private final String instanceId;
-        private final Set<FixSessionSettings> managed = new HashSet<>();
-        private Set<FixSessionSettings> source = new HashSet<>();
+        store.setSource(b);
+        adminApi().reloadFixSessionsSettingsStore(STORE_ID);
 
-        ControllableStore(String instanceId) {
-            this.instanceId = instanceId;
-        }
-
-        void setSource(FixSessionSettings... settings) {
-            this.source = new HashSet<>(Set.of(settings));
-        }
-
-        @Override
-        public String getInstanceId() {
-            return instanceId;
-        }
-
-        @Override
-        public Collection<FixSessionSettings> getSettings() {
-            return managed;
-        }
-
-        @Override
-        public Optional<FixSessionSettings> find(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
-            return managed.stream()
-                    .filter(s -> s.getFixSessionId().equals(fixSessionId) && s.getFixSessionType() == fixSessionType)
-                    .findFirst();
-        }
-
-        @Override
-        public Set<FixSessionSettings> load() {
-            return new HashSet<>(source);
-        }
-
-        @Override
-        public void onAdd(FixSessionSettings settings) {
-            managed.add(settings);
-        }
-
-        @Override
-        public void onRemove(FixSessionSettings settings) {
-            managed.remove(settings);
-        }
-
-        @Override
-        public void onUpdate(FixSessionSettings settings) {
-            managed.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
-            managed.add(settings);
-        }
-
-        @Override
-        protected void startMe() {
-            // nothing to do
-        }
-
-        @Override
-        protected void stopMe(Deadline stopDeadline) {
-            // nothing to do
-        }
-    }
-
-    private static class ControllableStoreSettings implements FixSessionsSettingsStoreSettings {
-
-        private final ControllableStore store;
-
-        ControllableStoreSettings(ControllableStore store) {
-            this.store = store;
-        }
-
-        @Override
-        public String getInstanceId() {
-            return store.getInstanceId();
-        }
-
-        @Override
-        public FixSessionsSettingsStore instance() {
-            return store;
-        }
+        assertThat(adminApi().getIncomingSeqNum(b.getFixSessionId())).as("added after start").isPositive();
+        assertThatThrownBy(() -> adminApi().getIncomingSeqNum(a.getFixSessionId()))
+                .as("removed")
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("No initiator or acceptor manages session");
     }
 }

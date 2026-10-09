@@ -44,7 +44,7 @@ class SessionTimeWindowComponent implements FixSessionLayerComponent {
     private final FixSessionSettings fixSessionSettings;
     private LogonLogoutComponent logonLogout;
     private ScheduledFuture<?> sessionTimeCheckTask;
-    private boolean insideSessionTime;
+    private volatile boolean insideSessionTime;
     private boolean preOutsideSessionTimeTriggered;
 
     SessionTimeWindowComponent(FixSessionImpl fixSession, FixApplication fixApplication, FixSessionStateComponent fixSessionStateComponent,

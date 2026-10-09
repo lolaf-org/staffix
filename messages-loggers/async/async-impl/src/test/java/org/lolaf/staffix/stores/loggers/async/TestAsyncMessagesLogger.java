@@ -28,7 +28,6 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.stores.core.async.StoreUnderlyingResourceStateListener;
 import org.lolaf.staffix.tests.TestingFixMessagesLoggerSettings;
-import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -121,7 +120,7 @@ class TestAsyncMessagesLogger {
         messageTypeRegistry = mock(MessageTypeRegistry.class);
         when(messageTypeRegistry.find(anyInt())).thenReturn(messageType);
 
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
     }
 
     @AfterEach
@@ -234,7 +233,7 @@ class TestAsyncMessagesLogger {
                 .build();
         asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings);
         asyncMessagesLogger.start();
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
         asyncLogger.start();
 
         verify(batchingLogger).isUnderlyingStorageResourceAvailable();
@@ -247,7 +246,7 @@ class TestAsyncMessagesLogger {
 
         reset(batchingLogger);
         when(batchingLogger.isUnderlyingStorageResourceAvailable()).thenReturn(false);
-        Mockito.doThrow(new IllegalStateException("test exception")).when(batchingLogger).logEvents(any(), anyInt());
+        doThrow(new IllegalStateException("test exception")).when(batchingLogger).logEvents(any(), anyInt());
 
         String testLog2 = "test message log2";
         asyncLogger.logIncoming(logTime, messageType, serializeLog(testLog2));
@@ -282,7 +281,7 @@ class TestAsyncMessagesLogger {
                 .build();
         asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings);
         asyncMessagesLogger.start();
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
         asyncLogger.start();
 
         String logMessage = "test";

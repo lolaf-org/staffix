@@ -43,4 +43,11 @@ public class FixDictionaryId {
     public static FixDictionaryId of(String id, FixRegularVersion version) {
         return new FixDictionaryId(id + "-" + version, version);
     }
+
+    /**
+     * The default dictionary called {@code id} for this version.
+     */
+    public static FixDictionaryId of(FixRegularVersion version) {
+        return of(DEFAULT_ID, version);
+    }
 }

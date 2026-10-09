@@ -39,11 +39,12 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
     /**
      * Retrieves a logger for a given session
      *
+     * @param fixEngineId         the engine's id ({@link org.lolaf.staffix.api.FixEngineBuilder#getInstanceId()})
      * @param fixInstanceId       the fix instance id ({@link FixInitiatorBuilder#getInstanceId()} or {@link FixAcceptorBuilder#getInstanceId()} )
      * @param fixSessionId        the fix protocol session id
      * @param messageTypeRegistry the messages type registry used by the session, useful for making messages filtering
      */
-    Logger getLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
+    Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
 
     /**
      * What a log entry records: a message in, a message out, or a session event.

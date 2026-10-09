@@ -16,20 +16,34 @@
 package org.lolaf.staffix.api.admin;
 
 import org.lolaf.staffix.api.InstanceIdSupplier;
+import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.fields.CoreFields;
+import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
+import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Management control surface for a FIX engine's sessions. Implemented by the engine itself, which
  * routes each operation to the initiator/acceptor managing the target session.
- *
- * <p>{@link #getInstanceId()} returns the owning engine's instance id.
  */
 public interface AdminApi extends InstanceIdSupplier {
+
+    /**
+     * The engine's id, its {@link org.lolaf.staffix.api.FixEngineBuilder#getInstanceId() instance id}: what names
+     * the engine in administration tools, and the {@code fix.eid} of its metrics, logs and traces.
+     *
+     * @return the engine's id
+     */
+    @Override
+    String getInstanceId();
 
     /**
      * Initiates a logon for the given session, establishing the FIX connection if it is not already up.
@@ -124,6 +138,30 @@ public interface AdminApi extends InstanceIdSupplier {
     void sendFixMessage(FixSessionId fixSessionId, String fixMessage, char separator, boolean possDupFlag);
 
     /**
+     * Sends each message in turn, as {@link #sendFixMessage(FixSessionId, String, char, boolean)} does. Stops at the
+     * first message refused, those before it having gone out; when there are several, the exception's message starts
+     * with the refused one's position, e.g. "Message 2 of 3: ".
+     *
+     * @throws IllegalArgumentException as {@link #sendFixMessage(FixSessionId, String, char, boolean)}
+     * @throws IllegalStateException    as {@link #sendFixMessage(FixSessionId, String, char, boolean)}
+     */
+    default void sendFixMessages(FixSessionId fixSessionId, List<String> fixMessages, char separator, boolean possDupFlag) {
+        for (int i = 0; i < fixMessages.size(); i++) {
+            try {
+                sendFixMessage(fixSessionId, fixMessages.get(i), separator, possDupFlag);
+            } catch (IllegalArgumentException e) {
+                throw fixMessages.size() == 1 ? e : new IllegalArgumentException(position(i, fixMessages) + e.getMessage(), e);
+            } catch (IllegalStateException e) {
+                throw fixMessages.size() == 1 ? e : new IllegalStateException(position(i, fixMessages) + e.getMessage(), e);
+            }
+        }
+    }
+
+    private static String position(int index, List<String> fixMessages) {
+        return "Message " + (index + 1) + " of " + fixMessages.size() + ": ";
+    }
+
+    /**
      * Returns the settings of every session currently managed by the engine's initiators and acceptors.
      *
      * @return the managed sessions' settings; empty if no session is managed
@@ -148,6 +186,54 @@ public interface AdminApi extends InstanceIdSupplier {
     void reloadFixSessionsSettingsStore(String instanceId);
 
     /**
+     * @throws IllegalArgumentException if no store with the given instance id is configured
+     * @see FixSessionsSettingsStore#isPersistent()
+     */
+    boolean isFixSessionsSettingsStorePersistent(String instanceId);
+
+    /**
+     * @return the instance id of the store holding the session's settings; empty when none does, as for an
+     * initiator's backup target, which runs on its main target's settings
+     */
+    Optional<String> findFixSessionsSettingsStore(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType);
+
+    /**
+     * Adds a session to a store, which starts it: an acceptor serves it at once, an initiator connects.
+     *
+     * @throws IllegalArgumentException if no store has that instance id, or the settings are invalid
+     * @throws IllegalStateException    if the engine already has a session of that group and name, or an initiator
+     *                                  targets it as a backup
+     */
+    void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings);
+
+    /**
+     * Replaces a session's settings in the store holding them. The live session restarts on them unless its
+     * {@link FixSessionSettings#isRestartLiveSessionOnUpdate()} is off.
+     *
+     * @param fixSessionId the session's id now, which the new settings may change (CompIDs, FIX version, name) for an
+     *                     acceptor's session; an initiator's is set by its targets
+     * @throws IllegalArgumentException if no store holds the session, the settings are invalid, change its type or an
+     *                                  initiator session's id
+     * @throws IllegalStateException    if the new group and name belong to another session
+     */
+    void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings);
+
+    /**
+     * Removes a session from the store holding it. The live session is disconnected unless its
+     * {@link FixSessionSettings#isDisconnectOnRemove()} is off.
+     *
+     * @throws IllegalArgumentException if no store holds the session
+     */
+    void removeFixSessionSettings(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType);
+
+    /**
+     * The application settings the session's application declares, with their descriptions and secrecy.
+     *
+     * @throws IllegalArgumentException if no initiator or acceptor manages the session
+     */
+    Collection<FixApplicationSessionSettingDescriptor> getFixApplicationSessionSettingDescriptors(FixSessionId fixSessionId);
+
+    /**
      * Returns a snapshot of every session currently managed by the engine's initiators and acceptors, each paired with
      * its initiator/acceptor role.
      *
@@ -158,6 +244,32 @@ public interface AdminApi extends InstanceIdSupplier {
      * @return the managed sessions; empty if no session is managed
      */
     List<FixSession> getManagedFixSessions();
+
+    /**
+     * The messages loggers the engine was built with, so an admin tool can tell where sessions' logs go; a session
+     * picks one by {@link FixSessionSettings#getFixMessageLoggerInstanceId()}.
+     */
+    List<FixMessagesLoggerSettings> getFixMessagesLoggersSettings();
+
+    /**
+     * The session plugins the engine was built with, monitoring included; a session picks one per plugin type by
+     * {@link FixSessionSettings#getFixSessionPluginsInstanceIds()}.
+     */
+    List<FixSessionsPluginSettings<?>> getFixSessionsPluginsSettings();
+
+    /**
+     * The application factories (with the applications each serves), message stores, messages loggers and session
+     * plugins a session's settings can name.
+     */
+    FixSessionComponents getFixSessionComponents();
+
+    /**
+     * The meters the session's monitoring publishes, its application's custom timers included once it asked for them;
+     * empty for a session without monitoring.
+     *
+     * @throws IllegalArgumentException if no initiator or acceptor manages the given session
+     */
+    List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId);
 
     /**
      * Makes the given session the active one on every initiator that has it as a target, as
@@ -175,6 +287,13 @@ public interface AdminApi extends InstanceIdSupplier {
      * @return one entry per initiator; empty if the engine has none
      */
     List<FixInitiatorTargets> getInitiatorsTargets();
+
+    /**
+     * Returns each acceptor's sessions, the counterpart of {@link #getInitiatorsTargets()} for acceptors.
+     *
+     * @return one entry per acceptor; empty if the engine has none
+     */
+    List<FixAcceptorSessions> getAcceptorsSessions();
 
     /**
      * Registers a listener notified whenever a session is added to or removed from the set of managed sessions, so that
@@ -201,7 +320,7 @@ public interface AdminApi extends InstanceIdSupplier {
      * <table border="1">
      *     <caption>Choosing between them</caption>
      *     <tr><th>Mode</th><th>Peer told?</th><th>Connection kept?</th><th>Usable from</th></tr>
-     *     <tr><td>{@link #LOGOUT_LOGON_REST_NUM_FLAG}</td><td>yes</td><td>no</td><td>an initiator session</td></tr>
+     *     <tr><td>{@link #LOGOUT_LOGON_RESET_NUM_FLAG}</td><td>yes</td><td>no</td><td>an initiator session</td></tr>
      *     <tr><td>{@link #RESET_SEQUENCE}</td><td>no</td><td>yes</td><td>either end</td></tr>
      *     <tr><td>{@link #RESET_SEQUENCE_IN_SESSION}</td><td>yes</td><td>yes</td><td>either end</td></tr>
      * </table>
@@ -222,7 +341,7 @@ public interface AdminApi extends InstanceIdSupplier {
          * Only an initiator session can drive it, being the end that sends a Logon of its own;
          * {@link #RESET_SEQUENCE_IN_SESSION} is the equivalent that keeps the connection and works from either end.
          */
-        LOGOUT_LOGON_REST_NUM_FLAG,
+        LOGOUT_LOGON_RESET_NUM_FLAG,
         /**
          * Puts this session's incoming and outgoing sequence numbers back to 1 and tells nobody: nothing goes on the
          * wire, and the peer carries on counting from where it was.

@@ -108,7 +108,7 @@ class TestFixSequenceResets extends AbstractFixTests {
         setupSessionSettings(connectorType, s -> s.resetSeqNumOnLogon(true).build());
         setupSessionSettings(connectorType.inverse(), s -> s.resetSeqNumOnLogon(false).build());
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         fixInitiatorSession.logon();
 
         await().untilAsserted(() -> verify(getFixApplication(connectorType.inverse()))
@@ -185,7 +185,7 @@ class TestFixSequenceResets extends AbstractFixTests {
         logonClient();
         exchangeAMessageEachWay(1);
 
-        fixInitiatorSession.disconnect("taken out for renumbering");
+        fixInitiatorSession.logoutPermanently("taken out for renumbering");
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
         await().untilAsserted(() -> assertThat(fixAcceptorSession.isConnected()).isFalse());
 
@@ -212,7 +212,7 @@ class TestFixSequenceResets extends AbstractFixTests {
         // 1 and sends a Logon(35=A) carrying ResetSeqNumFlag(141)=Y, the peer answers with one of its own, and both
         // finish at 2. Either end may be the one to start it, which is why this runs both ways round.
         //
-        // Keeping the connection is the whole point of 4.4.2 and what separates it from LOGOUT_LOGON_REST_NUM_FLAG,
+        // Keeping the connection is the whole point of 4.4.2 and what separates it from LOGOUT_LOGON_RESET_NUM_FLAG,
         // which reaches the same numbers by dropping it. That half is asserted on the wire rather than on session
         // state: a logout and an immediate re-logon would leave isLoggedIn() reading true either side of a poll and
         // prove nothing.
@@ -277,7 +277,7 @@ class TestFixSequenceResets extends AbstractFixTests {
 
     @Test
     void testSequenceResetWhenSessionEstablishedThroughLogoutAndLogon() {
-        // AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG: the session is cycled and comes back with
+        // AdminApi.ResetFixSessionMode.LOGOUT_LOGON_RESET_NUM_FLAG: the session is cycled and comes back with
         // ResetSeqNumFlag(141)=Y, which is the section 4.4.2 flow and tells the peer to reset with us. Only an
         // initiator can drive it, being the end that sends the Logon.
         //
@@ -293,7 +293,7 @@ class TestFixSequenceResets extends AbstractFixTests {
         initiatorLogger.clear();
         acceptorLogger.clear();
 
-        getFixSessionImpl(ConnectorType.INITIATOR).adminResetSequence(AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG);
+        getFixSessionImpl(ConnectorType.INITIATOR).adminResetSequence(AdminApi.ResetFixSessionMode.LOGOUT_LOGON_RESET_NUM_FLAG);
 
         // the peer sees the reset announced on the Logon that brings the session back
         await().untilAsserted(() -> verify(fixAcceptorApplication)

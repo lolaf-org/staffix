@@ -34,9 +34,9 @@ import org.lolaf.staffix.api.fields.FixField;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
@@ -44,12 +44,12 @@ import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySe
 import org.lolaf.staffix.codec.decoders.DecodedFixMessageDecoder;
 import org.lolaf.staffix.codec.decoders.DecodedFixMessageImpl;
 import org.lolaf.staffix.codec.decoders.FieldMapImpl;
+import org.lolaf.staffix.codec.serde.StringSerde;
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.encoders.group.NoLinesOfTextEncoder;
 import org.lolaf.staffix.fix44.fields.EmailType;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.codec.serde.StringSerde;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.*;
 import org.mockito.ArgumentCaptor;
@@ -124,6 +124,11 @@ abstract class AbstractFixTests {
 
     static Stream<ConnectorType> initiatorOrAcceptorParams() {
         return Stream.of(ConnectorType.INITIATOR, ConnectorType.ACCEPTOR);
+    }
+
+    static void speaksVersionOf(FixApplication application, FixSessionSettings settings) {
+        when(application.getDictionaryId()).thenReturn(FixDictionaryId.of(
+                ApplicationDictionary.applicationVersion(settings.getFixSessionId())));
     }
 
     @BeforeEach
@@ -209,6 +214,7 @@ abstract class AbstractFixTests {
 
     void setupAcceptorSessionsSettings(FixSessionSettings... settings) {
         stopWithinDeadline(acceptorFixEngine, ConnectorType.ACCEPTOR);
+        speaksVersionOf(fixAcceptorApplication, settings[0]);
         acceptorFixEngine = acceptorFixEngineBuilder.toBuilder()
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
@@ -225,6 +231,7 @@ abstract class AbstractFixTests {
 
     void setupInitiatorSessionsSettings(FixSessionSettings... settings) {
         stopWithinDeadline(initiatorFixEngine, ConnectorType.INITIATOR);
+        speaksVersionOf(fixInitiatorApplication, settings[0]);
         initiatorFixEngine = initiatorFixEngineBuilder.toBuilder()
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
@@ -250,6 +257,7 @@ abstract class AbstractFixTests {
             reset(fixAcceptorApplication);
         }
         when(fixAcceptorApplication.getFixApiVersion()).thenReturn(FixApiVersion.of("test acceptor app", SemVer.of(1, 2, 3), "test acceptor vendor"));
+        speaksVersionOf(fixAcceptorApplication, getAcceptorFixSessionSettings().build());
         when(fixAcceptorApplication.validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class)))
                 .thenReturn(CompletableFuture.completedFuture(Optional.empty()));
     }
@@ -261,6 +269,7 @@ abstract class AbstractFixTests {
             reset(fixInitiatorApplication);
         }
         when(fixInitiatorApplication.getFixApiVersion()).thenReturn(FixApiVersion.of("test initiator app", SemVer.of(1, 2, 3), "test initiator vendor"));
+        speaksVersionOf(fixInitiatorApplication, getInitiatorFixSessionSettings().build());
         when(fixInitiatorApplication.validateLogon(any(FixSession.class), any(DecodedFixMessage.class), any(Executor.class)))
                 .thenReturn(CompletableFuture.completedFuture(Optional.empty()));
     }
@@ -407,7 +416,7 @@ abstract class AbstractFixTests {
                 // and this session follows it. An explicit false means "resetting is not supported" and is answered
                 // with a Logout, which is a deliberate choice a test should make rather than inherit.
                 .resetSeqNumOnLogon(null)
-                .desiredSessionState(FixSessionState.LOGGED_IN);
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN);
     }
 
     FixSessionSettings.FixSessionSettingsBuilder<?, ?> getInitiatorFixSessionSettings() {
@@ -419,9 +428,13 @@ abstract class AbstractFixTests {
                 // and this session follows it. An explicit false means "resetting is not supported" and is answered
                 // with a Logout, which is a deliberate choice a test should make rather than inherit.
                 .resetSeqNumOnLogon(null)
-                .desiredSessionState(FixSessionState.LOGGED_OUT);
+                .desiredSessionState(FixSessionDesiredState.LOGGED_OUT);
     }
 
+    /**
+     * For an initiator wanting to be logged in: one that does not, the default here, never dials, so start both ends
+     * and call {@link FixSession#logon()}, which dials.
+     */
     void connectFixInitiatorAndAcceptor() {
         startFixInitiatorAndAcceptor();
         await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isTrue());
@@ -430,7 +443,7 @@ abstract class AbstractFixTests {
     /**
      * Brings both ends up without waiting for the connection to be established, for the tests where it is not going
      * to be: an initiator is asked before every dialling attempt whether it wants a connection at all, and one whose
-     * session schedule is currently closed - or whose desired state is DISCONNECTED - answers no until that changes.
+     * session schedule is currently closed - or whose desired state is LOGGED_OUT - answers no until that changes.
      */
     void startFixInitiatorAndAcceptor() {
         startFixAcceptor();
@@ -448,7 +461,7 @@ abstract class AbstractFixTests {
     }
 
     void logonClient() {
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -458,21 +471,21 @@ abstract class AbstractFixTests {
 
     /**
      * Ends the initiator's dialling on its first rejection, so that a rejected-logon test sees exactly one attempt.
-     * Call it once the connection is up and before the logon it is about to reject.
+     * Call it before the logon it is about to reject.
      * <p>
      * The initiator's desired state stays LOGGED_IN once {@link FixSession#logon()} is called, and this class dials
      * with a 100ms connection retry, so a rejected session re-dials and is rejected again for as long as the test
      * leaves it running - the callback counts climb the whole time. Verifying them would then have to settle for
      * {@code atLeastOnce()}, which no longer notices a reject path firing its callbacks twice for a single attempt.
-     * {@link FixSession#disconnect(String)} moves the desired state to DISCONNECTED, and that is what an initiator is
-     * asked before every dialling attempt, so the rejection that just happened stays the only one and the counts can
-     * be pinned exactly.
+     * {@link FixSession#logoutPermanently(String)} moves the desired state to LOGGED_OUT, and that is what an initiator
+     * is asked before every dialling attempt, so the rejection that just happened stays the only one and the counts
+     * can be pinned exactly.
      */
     void rejectedLogonEndsDialling() {
         doAnswer(invocation -> {
             // the session the callback carries, rather than the field: the callback can land before the field that
             // traps it has been assigned, and reading it here would end the dialling only sometimes
-            invocation.getArgument(0, FixSession.class).disconnect("test: a single logon attempt");
+            invocation.getArgument(0, FixSession.class).logoutPermanently("test: a single logon attempt");
             return null;
         }).when(fixInitiatorApplication).onLogout(any(), any(), any());
     }

@@ -164,20 +164,20 @@ class TestFixMessagesResends extends AbstractFixTests {
     /**
      * Takes the connection down and leaves it down.
      *
-     * <p>Both ends are put in a desired state of DISCONNECTED, not only the one being cut: an initiator left wanting
+     * <p>Both ends are logged out permanently, not only the one being cut: an initiator left wanting
      * to be logged in dials again within its retry interval, and every attempt an acceptor turns away costs the
      * acceptor a MsgSeqNum(34) for the Logout it answers with - so the gap a test is trying to pin down would grow
      * on its own while the test looked away.
      */
     private void cutConnection(ConnectorType connectorType) {
-        getFixSession(connectorType).disconnect("cutting the connection");
+        getFixSession(connectorType).logoutPermanently("cutting the connection");
         await().untilAsserted(() -> {
             assertThat(fixInitiatorSession.isConnected()).isFalse();
             assertThat(fixAcceptorSession.isConnected()).isFalse();
         });
         // and only once the link is down, so that nothing still in flight is dropped by a second teardown: the peer
         // is put in the same desired state, which is what keeps it from dialling straight back in
-        getFixSession(connectorType.inverse()).disconnect("cutting the connection");
+        getFixSession(connectorType.inverse()).logoutPermanently("cutting the connection");
     }
 
     /**
@@ -255,7 +255,7 @@ class TestFixMessagesResends extends AbstractFixTests {
 
         initiatorMessagesStore.setCurrentIncomingSeqNum(100);
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 

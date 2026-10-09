@@ -45,7 +45,7 @@ public class Slf4jMessagesLogger extends MessagesCoreLogger {
     }
 
     @Override
-    public Logger instanciateLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+    public Logger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
         return new LoggerImpl(settings, fixSessionId);
     }
 

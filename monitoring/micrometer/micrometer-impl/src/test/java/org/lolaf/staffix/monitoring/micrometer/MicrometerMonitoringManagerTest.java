@@ -22,11 +22,13 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixMonitoringAttributes;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.api.session.RttMeasurement;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.time.UTCTime;
@@ -38,9 +40,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.lolaf.staffix.monitoring.micrometer.MicrometerMonitoringManager.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -68,6 +72,7 @@ class MicrometerMonitoringManagerTest {
         fixSession = mock(FixSession.class);
         fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "TEST_SENDER", "TEST_TARGET");
         when(fixSession.getFixSessionId()).thenReturn(fixSessionId);
+        when(fixSession.getStatus()).thenReturn(FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME);
         settings = MicrometerMonitoringManagerSettings.builder()
                 .instanceId("test-instance")
                 .meterRegistrySupplier(() -> meterRegistry)
@@ -125,26 +130,26 @@ class MicrometerMonitoringManagerTest {
 
         // When
         FixSessionPlugin listener =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
 
         // Then
         assertThat(listener).isNotNull();
 
         // Verify session state gauge is registered
-        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATUS)
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge();
         assertThat(gauge).isNotNull();
-        assertThat(gauge.value()).isEqualTo(0.0); // Not logged on initially
+        assertThat(gauge.value()).isEqualTo(0.0);
 
         // Verify timers are registered for each message type
         Timer readTimer = meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_MESSAGE_TYPE, "A")
+                .tag(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(), "A")
                 .timer();
         assertThat(readTimer).isNotNull();
 
         Timer writeTimer = meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_MESSAGE_TYPE, "D")
+                .tag(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(), "D")
                 .timer();
         assertThat(writeTimer).isNotNull();
     }
@@ -157,10 +162,10 @@ class MicrometerMonitoringManagerTest {
 
         // When
         FixSessionPlugin listener1 =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
         FixSessionPlugin listener2 =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
-        monitoringManager.onSessionCreated("fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
 
         // Then
         assertThat(listener1).isSameAs(listener2);
@@ -173,29 +178,29 @@ class MicrometerMonitoringManagerTest {
 
         List<MessageType> messageTypes = List.of(getMessageType("A"));
 
-        FixSessionPlugin listener = monitoringManager.onSessionCreated("fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
+        FixSessionPlugin listener = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, messageTypes, List.of()).orElseThrow();
 
         // Verify metrics exist
-        assertThat(meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+        assertThat(meterRegistry.find(SESSION_LOGON_STATUS)
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge()).isNotNull();
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNotNull();
         assertThat(meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNotNull();
 
         // When
         listener.onSessionDestroyed("fix-instance-1", fixSessionId);
 
         // Then - metrics should be removed
-        assertThat(meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()).gauge()).isNull();
+        assertThat(meterRegistry.find(SESSION_LOGON_STATUS)
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).gauge()).isNull();
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()).timer()).isNull();
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).timer()).isNull();
         assertThat(meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName()).timer()).isNull();
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).timer()).isNull();
     }
 
     @Test
@@ -209,7 +214,7 @@ class MicrometerMonitoringManagerTest {
 
         // When
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
         org.lolaf.staffix.api.monitoring.Timer timer = listener.getPluginContext().orElseThrow().getTimer(
                 "custom.timer",
                 "Custom timer for testing",
@@ -220,12 +225,118 @@ class MicrometerMonitoringManagerTest {
 
         // Verify timer is registered with all tags
         Timer micrometerTimer = meterRegistry.find("custom.timer")
-                .tag(FixMonitoringAttributes.FIX_INSTANCE_ID, "fix-instance-1")
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), "engine-1")
+                .tag(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey(), "fix-instance-1")
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .tag("custom.tag1", "value1")
                 .tag("custom.tag2", "value2")
                 .timer();
         assertThat(micrometerTimer).isNotNull();
+    }
+
+    @Test
+    void describesTheBuiltInMetersItsSettingsSwitchOn() {
+        monitoringManager.start();
+
+        List<FixMeterDescriptor> meters = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow().getMeterDescriptors();
+
+        assertThat(meters).extracting(FixMeterDescriptor::getName)
+                .containsExactly(MESSAGES_READ_LATENCY, MESSAGES_WRITE_LATENCY, SESSION_LOGON_STATUS);
+        assertThat(meters.get(0)).satisfies(read -> {
+            assertThat(read.getType()).isEqualTo(FixMeterDescriptor.Type.TIMER);
+            assertThat(read.getTagKeys()).containsExactly(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(),
+                    FixMonitoringAttributes.FIX_MESSAGE_DIRECTION.getKey());
+            assertThat(read.isPercentiles()).isTrue();
+            assertThat(read.isCustom()).isFalse();
+            assertThat(read.getDescription()).startsWith("Time to fully process a received message");
+        });
+    }
+
+    @Test
+    void describesTheClockOffsetAsAGaugeInNanoseconds() {
+        MicrometerMonitoringManager manager = createManager(settings.toBuilder().clockOffsetEnabled(true).rttLatencyEnabled(true).build());
+        manager.start();
+
+        List<FixMeterDescriptor> meters = manager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow().getMeterDescriptors();
+
+        assertThat(meters).filteredOn(meter -> meter.getName().equals(SESSION_CLOCK_OFFSET)).singleElement().satisfies(offset -> {
+            assertThat(offset.getType()).isEqualTo(FixMeterDescriptor.Type.GAUGE);
+            assertThat(offset.getUnit()).isEqualTo(TimeUnit.NANOSECONDS);
+        });
+        assertThat(meters).extracting(FixMeterDescriptor::getName).contains(SESSION_RTT);
+    }
+
+    @Test
+    void describesEachCustomTimerOnceWithEveryTagKeyItWasRecordedUnder() {
+        monitoringManager.start();
+        FixSessionsMonitoringContext context = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow();
+
+        context.getTimer("orders.pricing", "Pricing an order", Map.of("venue", "alpha"));
+        context.getTimer("orders.pricing", "Pricing an order", Map.of("venue", "beta"));
+        context.getTimer("orders.pricing", "Pricing an order", Map.of("venue", "beta", "desk", "fx"));
+        context.getTimer("timer.with.no.histogram", "Without percentiles", Map.of());
+
+        assertThat(context.getMeterDescriptors()).filteredOn(FixMeterDescriptor::isCustom)
+                .extracting(FixMeterDescriptor::getName, FixMeterDescriptor::getTagKeys, FixMeterDescriptor::isPercentiles)
+                .containsExactlyInAnyOrder(
+                        tuple("orders.pricing", List.of("venue", "desk"), true),
+                        tuple("timer.with.no.histogram", List.of(), false));
+    }
+
+    @Test
+    void aPushedGaugeReadsWhatTheApplicationSetsAndAdds() {
+        monitoringManager.start();
+        FixSessionsMonitoringContext context = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow();
+
+        org.lolaf.staffix.api.monitoring.Gauge inFlight = context.getGauge("orders.in.flight", "Orders sent, not yet acknowledged", Map.of("venue", "xpar"));
+        inFlight.set(3);
+        inFlight.add(2);
+        context.getGauge("orders.in.flight", "Orders sent, not yet acknowledged", Map.of("venue", "xpar")).add(-1);
+
+        assertThat(meterRegistry.find("orders.in.flight").tag("venue", "xpar")
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).gauge().value()).isEqualTo(4);
+        assertThat(context.getMeterDescriptors()).filteredOn(FixMeterDescriptor::isCustom).singleElement().satisfies(gauge -> {
+            assertThat(gauge.getType()).isEqualTo(FixMeterDescriptor.Type.GAUGE);
+            assertThat(gauge.getTagKeys()).containsExactly("venue");
+        });
+    }
+
+    @Test
+    void aPulledGaugeReadsItsSupplierAndIgnoresSets() {
+        monitoringManager.start();
+        FixSessionsMonitoringContext context = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow();
+        AtomicInteger pending = new AtomicInteger(7);
+
+        org.lolaf.staffix.api.monitoring.Gauge gauge = context.getGauge("quotes.pending", "Quotes pending", Map.of(), pending::get);
+        gauge.set(100);
+        pending.set(9);
+
+        assertThat(meterRegistry.find("quotes.pending").gauge().value()).isEqualTo(9);
+    }
+
+    @Test
+    void gaugesGoWithTheirSession() {
+        monitoringManager.start();
+        FixSessionPlugin<FixSessionsMonitoringContext, Void> listener = monitoringManager
+                .onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+        listener.getPluginContext().orElseThrow().getGauge("orders.in.flight", "Orders in flight", Map.of()).set(1);
+
+        listener.onSessionDestroyed("fix-instance-1", fixSessionId);
+
+        assertThat(meterRegistry.find("orders.in.flight").gauge()).isNull();
+    }
+
+    @Test
+    void describesNoCustomTimerBeforeTheApplicationAsksForOne() {
+        monitoringManager.start();
+
+        assertThat(monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow().getMeterDescriptors()).noneMatch(FixMeterDescriptor::isCustom);
     }
 
     @Test
@@ -235,7 +346,7 @@ class MicrometerMonitoringManagerTest {
 
         // When
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener = monitoringManager
-                .onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                .onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
         org.lolaf.staffix.api.monitoring.Timer timer1 = listener.getPluginContext().orElseThrow().getTimer(
                 "timer1", "Timer 1", Map.of("tag1", "value1"));
 
@@ -253,7 +364,7 @@ class MicrometerMonitoringManagerTest {
 
         // When
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener = monitoringManager
-                .onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                .onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
         org.lolaf.staffix.api.monitoring.Timer timer1 = listener.getPluginContext().orElseThrow().getTimer(
                 "timer1", "Timer 1", Map.of("tag1", "value1"));
         org.lolaf.staffix.api.monitoring.Timer timer2 = listener.getPluginContext().orElseThrow().getTimer(
@@ -269,7 +380,7 @@ class MicrometerMonitoringManagerTest {
         monitoringManager.start();
 
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener = monitoringManager
-                .onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                .onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
         org.lolaf.staffix.api.monitoring.Timer timerWithNoHistogramSettings = listener.getPluginContext().orElseThrow().getTimer(
                 "timer.with.no.histogram", "Test timer", Map.of());
 
@@ -300,7 +411,7 @@ class MicrometerMonitoringManagerTest {
         monitoringManager.start();
 
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener = monitoringManager
-                .onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                .onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
         org.lolaf.staffix.api.monitoring.Timer timer = listener.getPluginContext().orElseThrow().getTimer(
                 "test.timer", "Test timer", Map.of());
 
@@ -322,7 +433,7 @@ class MicrometerMonitoringManagerTest {
         monitoringManager.start();
 
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener = monitoringManager
-                .onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                .onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
         org.lolaf.staffix.api.monitoring.Timer timer = listener.getPluginContext().orElseThrow().getTimer(
                 "test.timer", "Test timer", Map.of());
 
@@ -331,7 +442,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer micrometerTimer = meterRegistry.find("test.timer")
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer();
         assertThat(micrometerTimer).isNotNull();
         assertThat(micrometerTimer.count()).isEqualTo(1);
@@ -340,45 +451,29 @@ class MicrometerMonitoringManagerTest {
                 .isLessThan(101.0);
     }
 
+    /**
+     * Read from the session at each export: a session crossing its window changes status with no event to push.
+     */
     @Test
-    void testFixEventsListener_onLogon_shouldUpdateGauge() {
-        // Given
+    void testLogonStatusGauge_followsTheSessionStatus() {
         monitoringManager.start();
-
-        FixSessionPlugin listener =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
-
-        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATUS)
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge();
-        assertThat(gauge.value()).isEqualTo(0.0);
 
-        // When
-        listener.onLogon();
+        for (FixSessionStatus status : FixSessionStatus.values()) {
+            when(fixSession.getStatus()).thenReturn(status);
 
-        // Then
-        assertThat(gauge.value()).isEqualTo(1.0);
+            assertThat(gauge.value()).as(status.name()).isEqualTo(status.getCode());
+        }
     }
 
     @Test
-    void testFixEventsListener_onLogout_shouldUpdateGauge() {
-        // Given
-        monitoringManager.start();
-
-        FixSessionPlugin listener =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
-
-        listener.onLogon();
-        Gauge gauge = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
-                .gauge();
-        assertThat(gauge.value()).isEqualTo(1.0);
-
-        // When
-        listener.onLogout();
-
-        // Then
-        assertThat(gauge.value()).isEqualTo(0.0);
+    void testLogonStatusGauge_codesAreTheOnesDocumented() {
+        assertThat(FixSessionStatus.values())
+                .extracting(FixSessionStatus::getCode)
+                .containsExactly(1, 3, 2, 0);
     }
 
     @Test
@@ -388,7 +483,7 @@ class MicrometerMonitoringManagerTest {
         MessageType messageType = getMessageType("A");
 
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
 
         // When
         long receiveTime = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(50);
@@ -396,7 +491,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer timer = meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer();
         assertThat(timer).isNotNull();
         assertThat(timer.count()).isEqualTo(1);
@@ -410,7 +505,7 @@ class MicrometerMonitoringManagerTest {
         MessageType messageType = getMessageType("D");
 
         FixSessionPlugin listener =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
 
         // When
         long sendTime = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(30);
@@ -418,7 +513,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer timer = meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer();
         assertThat(timer).isNotNull();
         assertThat(timer.count()).isEqualTo(1);
@@ -433,7 +528,7 @@ class MicrometerMonitoringManagerTest {
         MessageType unknownType = getMessageType("Z");
 
         FixSessionPlugin listener =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(knownType), List.of()).orElseThrow();
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(knownType), List.of()).orElseThrow();
 
         // When - receive message with unknown type (should not throw exception)
         long receiveTime = System.nanoTime();
@@ -441,12 +536,12 @@ class MicrometerMonitoringManagerTest {
 
         // Then - no timer should be created for unknown type
         Timer timer = meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_MESSAGE_TYPE, knownType.code())
+                .tag(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(), knownType.code())
                 .timer();
         assertThat(timer).isNotNull();
 
         timer = meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_MESSAGE_TYPE, unknownType.code())
+                .tag(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(), unknownType.code())
                 .timer();
         assertThat(timer).isNull();
     }
@@ -457,14 +552,14 @@ class MicrometerMonitoringManagerTest {
         monitoringManager.start();
 
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
 
         listener.getPluginContext().orElseThrow().getTimer(
                 "custom.timer", "Custom timer", Map.of());
 
         // Verify timer exists
         assertThat(meterRegistry.find("custom.timer")
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNotNull();
 
         // When
@@ -472,7 +567,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then - custom timer should be removed
         assertThat(meterRegistry.find("custom.timer")
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNull();
     }
 
@@ -484,27 +579,24 @@ class MicrometerMonitoringManagerTest {
         FixSession fixSession2 = mock(FixSession.class);
         FixSessionId fixSessionId2 = FixSessionId.of("test2", FixRegularVersion.VERSION_44, "TEST_SENDER2", "TEST_TARGET2");
         when(fixSession2.getFixSessionId()).thenReturn(fixSessionId2);
+        when(fixSession.getStatus()).thenReturn(FixSessionStatus.LOGGED_IN);
+        when(fixSession2.getStatus()).thenReturn(FixSessionStatus.LOGGED_OUT_BY_OPERATOR);
         MessageType messageType = getMessageType("A");
 
         // When
-        FixSessionPlugin listener1 =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
-        FixSessionPlugin listener2 =
-                monitoringManager.onSessionCreated("fix-instance-1", fixSession2, List.of(messageType), List.of()).orElseThrow();
-
-        listener1.onLogon();
-        listener2.onLogout();
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession2, List.of(messageType), List.of()).orElseThrow();
 
         // Then
-        Gauge gauge1 = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+        Gauge gauge1 = meterRegistry.find(SESSION_LOGON_STATUS)
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge();
-        Gauge gauge2 = meterRegistry.find(SESSION_LOGON_STATE)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId2.getName())
+        Gauge gauge2 = meterRegistry.find(SESSION_LOGON_STATUS)
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId2.getName())
                 .gauge();
 
         assertThat(gauge1.value()).isEqualTo(1.0);
-        assertThat(gauge2.value()).isEqualTo(0.0);
+        assertThat(gauge2.value()).isEqualTo(3.0);
     }
 
     @Test
@@ -529,7 +621,7 @@ class MicrometerMonitoringManagerTest {
 
         // When
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener =
-                customManager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                customManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
         listener.getPluginContext().orElseThrow().getTimer("special.timer", "Special timer", Map.of());
 
         // Then
@@ -550,15 +642,15 @@ class MicrometerMonitoringManagerTest {
         MessageType messageType = getMessageType("A");
 
         // When
-        manager.onSessionCreated("fix-instance-1", fixSession, List.of(messageType), List.of());
+        manager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of());
 
         // Then
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNull();
         // Write timer should still be registered (enabled by default)
         assertThat(meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNotNull();
 
         manager.stop(Deadline.unlimited());
@@ -574,15 +666,15 @@ class MicrometerMonitoringManagerTest {
         MessageType messageType = getMessageType("D");
 
         // When
-        manager.onSessionCreated("fix-instance-1", fixSession, List.of(messageType), List.of());
+        manager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of());
 
         // Then
         assertThat(meterRegistry.find(MESSAGES_WRITE_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNull();
         // Read timer should still be registered (enabled by default)
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNotNull();
 
         manager.stop(Deadline.unlimited());
@@ -595,11 +687,11 @@ class MicrometerMonitoringManagerTest {
         MessageType messageType = getMessageType("A");
 
         // When
-        monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(messageType), List.of());
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of());
 
         // Then
         assertThat(meterRegistry.find(MESSAGES_DECODING_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNull();
     }
 
@@ -610,11 +702,11 @@ class MicrometerMonitoringManagerTest {
         MessageType messageType = getMessageType("D");
 
         // When
-        monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(messageType), List.of());
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of());
 
         // Then
         assertThat(meterRegistry.find(MESSAGES_ENCODING_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNull();
     }
 
@@ -628,7 +720,7 @@ class MicrometerMonitoringManagerTest {
         MessageType messageType = getMessageType("A");
 
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener =
-                manager.onSessionCreated("fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
+                manager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
 
         // When
         long receiveTime = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(50);
@@ -636,7 +728,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer timer = meterRegistry.find(MESSAGES_DECODING_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer();
         assertThat(timer).isNotNull();
         assertThat(timer.count()).isEqualTo(1);
@@ -655,7 +747,7 @@ class MicrometerMonitoringManagerTest {
         MessageType messageType = getMessageType("D");
 
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener =
-                manager.onSessionCreated("fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
+                manager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(messageType), List.of()).orElseThrow();
 
         // When
         long encodingTime = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(30);
@@ -663,7 +755,7 @@ class MicrometerMonitoringManagerTest {
 
         // Then
         Timer timer = meterRegistry.find(MESSAGES_ENCODING_LATENCY)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer();
         assertThat(timer).isNotNull();
         assertThat(timer.count()).isEqualTo(1);
@@ -676,13 +768,13 @@ class MicrometerMonitoringManagerTest {
     void testRttAndClockOffsetDisabledByDefault_shouldNotRegisterInstruments() {
         monitoringManager.start();
 
-        monitoringManager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of());
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of());
 
         assertThat(meterRegistry.find(SESSION_RTT)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNull();
         assertThat(meterRegistry.find(SESSION_CLOCK_OFFSET)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge()).isNull();
     }
 
@@ -696,7 +788,7 @@ class MicrometerMonitoringManagerTest {
         manager.start();
 
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener =
-                manager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                manager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
 
         Duration rtt = Duration.ofMillis(7);
         // Negative offset must be visible on the Gauge — DistributionSummary would silently drop it.
@@ -704,14 +796,14 @@ class MicrometerMonitoringManagerTest {
         listener.onRttMeasurement(new RttMeasurement(rtt, clockOffset, UTCTime.of(1_700_000_000_000_000_000L)));
 
         Timer rttTimer = meterRegistry.find(SESSION_RTT)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer();
         assertThat(rttTimer).isNotNull();
         assertThat(rttTimer.count()).isEqualTo(1);
         assertThat(rttTimer.totalTime(TimeUnit.MILLISECONDS)).isGreaterThanOrEqualTo(7.0);
 
         Gauge offsetGauge = meterRegistry.find(SESSION_CLOCK_OFFSET)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge();
         assertThat(offsetGauge).isNotNull();
         assertThat(offsetGauge.value()).isEqualTo((double) clockOffset.toNanos());
@@ -733,22 +825,22 @@ class MicrometerMonitoringManagerTest {
         manager.start();
 
         FixSessionPlugin<FixSessionsMonitoringContext, Void> listener =
-                manager.onSessionCreated("fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+                manager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
 
         assertThat(meterRegistry.find(SESSION_RTT)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNotNull();
         assertThat(meterRegistry.find(SESSION_CLOCK_OFFSET)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge()).isNotNull();
 
         listener.onSessionDestroyed("fix-instance-1", fixSessionId);
 
         assertThat(meterRegistry.find(SESSION_RTT)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .timer()).isNull();
         assertThat(meterRegistry.find(SESSION_CLOCK_OFFSET)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
                 .gauge()).isNull();
 
         manager.stop(Deadline.unlimited());

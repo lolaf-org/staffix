@@ -85,7 +85,7 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
             throw new IllegalStateException("Cannot send a FIX message on FIX session " + fixSessionId
                     + ": it is not logged in");
         }
-        DecodedFixMessage bodyFields = adminFixMessageTransformer().transform(fixMessage, separator, possDupFlag);
+        DecodedFixMessage bodyFields = adminFixMessageTransformer().transform(fixMessage.trim(), separator, possDupFlag);
         GenericFixMessageEncoder encoder = new GenericFixMessageEncoder(bodyFields.getMessageType()).begin();
         bodyFields.foreach((field, value) -> encoder.addField(field, value, ByteArraySerde.instance()));
         fixSession.logEvent("Admin API send %s", bodyFields.getMessageType().code());
@@ -155,7 +155,7 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
      * Two reasons, and the second was a bug. Moving the sequence numbers from whichever thread called the admin API
      * races the session thread that is reading and writing them as it sends and receives. And where a mode also puts
      * a message on the wire, the reset has to land on the right side of it:
-     * {@link AdminApi.ResetFixSessionMode#LOGOUT_LOGON_REST_NUM_FLAG} used to queue its Logout to this thread through
+     * {@link AdminApi.ResetFixSessionMode#LOGOUT_LOGON_RESET_NUM_FLAG} used to queue its Logout to this thread through
      * {@code logout} while resetting on the caller's, so the numbering could go back to 1 before the Logout was
      * sent - and a Logout arriving as MsgSeqNum(34)=1 is answered by the peer with a "MsgSeqNum too low" Logout of
      * its own, which is the opposite of a clean cycle.
@@ -165,12 +165,14 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
             case RESET_SEQUENCE:
                 fixSession.resetSequence("Admin API reset sequence");
                 break;
-            case LOGOUT_LOGON_REST_NUM_FLAG:
+            case LOGOUT_LOGON_RESET_NUM_FLAG:
                 cycleSessionWithSequenceReset();
                 break;
             case RESET_SEQUENCE_IN_SESSION:
                 fixSession.sendInSessionSequenceReset();
                 break;
+            default:
+                throw new IllegalStateException("not implemented");
         }
     }
 

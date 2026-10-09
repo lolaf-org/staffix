@@ -21,6 +21,7 @@ import lombok.Value;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.session.FixSessionId;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -35,8 +36,20 @@ public class FixInitiatorTargets {
     FixSessionId activeFixSessionId;
 
     /**
-     * The main target first, then the backup targets.
+     * The target the initiator starts on, whose settings every target runs on.
      */
+    FixInitiatorTarget mainTarget;
+
     @Singular
-    List<FixInitiatorTarget> targets;
+    List<FixInitiatorTarget> backupTargets;
+
+    /**
+     * The main target followed by the backup targets.
+     */
+    public List<FixInitiatorTarget> getTargets() {
+        List<FixInitiatorTarget> targets = new ArrayList<>(backupTargets.size() + 1);
+        targets.add(mainTarget);
+        targets.addAll(backupTargets);
+        return targets;
+    }
 }

@@ -174,7 +174,6 @@ class ThrottlingFixSessionPluginTest {
         RecordingPlugin delegate = new RecordingPlugin();
         ThrottlingFixSessionPlugin<PluginContext> p = wrap(delegate, 1, 1);
 
-        assertThat(p.requiresTimeMeasurement()).isTrue();
         assertThat(p.getPluginContext()).isEmpty();
 
         p.onLogon();

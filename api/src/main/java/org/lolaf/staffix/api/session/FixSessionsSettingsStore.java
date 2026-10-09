@@ -97,6 +97,12 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
     Set<FixSessionSettings> load();
 
     /**
+     * Whether a change made through {@link #add}, {@link #update} or {@link #remove} survives a restart: false when
+     * the store only holds it in memory.
+     */
+    boolean isPersistent();
+
+    /**
      * Registers a listener to be notified of changes to the managed settings.
      *
      * @param listener the listener to register

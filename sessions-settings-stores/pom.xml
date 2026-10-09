@@ -16,6 +16,7 @@
     <artifactId>staffix-sessions-settings-store-parent</artifactId>
 
     <modules>
+        <module>document</module>
         <module>memory</module>
         <module>file</module>
     </modules>

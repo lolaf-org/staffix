@@ -166,9 +166,9 @@ public class FixSessionImpl implements FixSession {
         }
         fixMessagesLogger.start();
         fixSessionMessagesStore.start();
-
+        // important setup encoders clock first, this.fixApplication.setup may create encoders that need the right clock
+        codecs.setupEncodersClock();
         List<FixMessageDecoder> fixMessageDecoders = this.fixApplication.setup(fixSessionSettings, this, codecs.getOutgoingMessageTypes());
-        codecs.setupApplicationDecoders(fixMessageDecoders);
         wiring.setupApplicationComponents(this, fixSessionRuntimeDependencies, fixMessageDecoders);
         fixSessionLayerComponents.onSessionStarted();
         logEvent("Session %s created", fixSessionId);
@@ -186,19 +186,34 @@ public class FixSessionImpl implements FixSession {
     }
 
     @Override
-    public FixSessionState getDesiredState() {
+    public FixSessionDesiredState getDesiredState() {
         return fixSessionState.getDesiredState();
     }
 
     @Override
+    public FixSessionStatus getStatus() {
+        if (isLoggedIn()) {
+            return FixSessionStatus.LOGGED_IN;
+        }
+        if (getDesiredState().equals(FixSessionDesiredState.LOGGED_OUT)) {
+            return FixSessionStatus.LOGGED_OUT_BY_OPERATOR;
+        }
+        return isWithinSessionTime() ? FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME : FixSessionStatus.LOGGED_OUT_OUTSIDE_SESSION_TIME;
+    }
+
+    @Override
     public boolean isWithinSessionTime() {
-        return fixSessionLayerComponents.get(SessionTimeWindowComponent.class).isInsideSessionTime();
+        SessionTimeWindowComponent window = fixSessionLayerComponents.get(SessionTimeWindowComponent.class);
+        return fixSessionState.isDisconnected() ? window.isWithinSessionTimeNow() : window.isInsideSessionTime();
     }
 
     public boolean isReadyToConnect() {
         if (fixSessionState.isStarted()) {
-            if (fixSessionState.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
-                logConnectionHeldOnce("FIX session desired state is DISCONNECTED, holding off connecting");
+            FixSessionDesiredState desiredState = fixSessionState.getDesiredState();
+            if (!desiredState.equals(FixSessionDesiredState.LOGGED_IN)) {
+                // a session that is not to log on has no use for a connection: the peer would drop it for want of a
+                // Logon, or hold it unbound
+                logConnectionHeldOnce("FIX session desired state is " + desiredState + ", holding off connecting");
                 return false;
             }
             if (!fixSessionLayerComponents.get(SessionTimeWindowComponent.class).isWithinSessionTimeNow()) {
@@ -360,8 +375,42 @@ public class FixSessionImpl implements FixSession {
         currentIOSession.processTask(task, callback);
     }
 
-    IOSession currentIOSession() {
+    public IOSession currentIOSession() {
         return ioSession;
+    }
+
+    /**
+     * Runs a task on the given connection, and only while it is still this session's: for an answer worked out
+     * asynchronously, which must not reach the connection that replaced it.
+     *
+     * @param dropped what the task does, for the session event logged when it is dropped
+     */
+    @ExternalThread
+    public void processTaskOnConnection(IOSession connection, Runnable task, String dropped) {
+        if (connection == null) {
+            logEvent("Dropped %s, its connection has closed", dropped);
+            return;
+        }
+        connection.processTask(() -> {
+            if (isCurrentConnection(connection)) {
+                task.run();
+            } else {
+                logEvent("Dropped %s, its connection has closed", dropped);
+            }
+        }, (refused, error) -> {
+            if (error != null) {
+                logEvent("Dropped %s, its connection has closed", dropped);
+            }
+        });
+    }
+
+    private boolean isCurrentConnection(IOSession connection) {
+        ownershipHandover.lock();
+        try {
+            return ioSession == connection;
+        } finally {
+            ownershipHandover.unlock();
+        }
     }
 
     private LogonLogoutComponent logonLogoutComponent() {
@@ -461,7 +510,7 @@ public class FixSessionImpl implements FixSession {
     @Override
     @ExternalThread
     public void logoutPermanently(String message) {
-        fixSessionState.setDesiredState(FixSessionState.LOGGED_OUT);
+        fixSessionState.setDesiredState(FixSessionDesiredState.LOGGED_OUT);
         runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogoutRequest(message, false), ioSession);
     }
 
@@ -473,13 +522,6 @@ public class FixSessionImpl implements FixSession {
 
     public void disconnect() {
         disconnect(Deadline.of(fixSessionSettings.getDisconnectMessagesFlushDeadline()));
-    }
-
-    @Override
-    @ExternalThread
-    public void disconnect(String disconnectMessage) {
-        fixSessionState.setDesiredState(FixSessionState.DISCONNECTED);
-        runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogoutRequest(disconnectMessage, false), ioSession);
     }
 
     private void disconnect(Deadline deadline) {
@@ -500,13 +542,17 @@ public class FixSessionImpl implements FixSession {
     @Override
     @ExternalThread
     public void logon() {
-        fixSessionState.setDesiredState(FixSessionState.LOGGED_IN);
+        fixSessionState.setDesiredState(FixSessionDesiredState.LOGGED_IN);
         runOnSessionOwnerThread(() -> logonLogoutComponent().sendLogonRequestIfNeeded(), ioSession);
     }
 
     @Override
     public boolean isLoggedIn() {
         return fixSessionState.isLoggedIn();
+    }
+
+    public boolean isLogonReceived() {
+        return fixSessionState.isLogonReceived();
     }
 
     @Override
@@ -588,10 +634,6 @@ public class FixSessionImpl implements FixSession {
     public boolean onConnection(IOSession ioSession, Collection<Certificate> remoteCertificates) {
         if (!fixSessionState.isStarted()) {
             logEvent("FIX session is stopping, disconnecting immediately");
-            return false;
-        }
-        if (fixSessionState.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
-            logEvent("FIX session desired state is DISCONNECTED, disconnecting immediately");
             return false;
         }
         ioSession.setId(getFixSessionId().getQualifiedName());

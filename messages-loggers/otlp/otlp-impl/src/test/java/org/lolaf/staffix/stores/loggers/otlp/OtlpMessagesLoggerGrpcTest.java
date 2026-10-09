@@ -55,7 +55,7 @@ class OtlpMessagesLoggerGrpcTest {
     private BatchingLogger startLogger(OtlpMessagesLoggerSettings settings) {
         factory = new OtlpMessagesLogger(settings);
         factory.start();
-        return factory.instanciateLogger("test",
+        return factory.instanciateLogger("engine", "test",
                 FixSessionId.of("grpcSid", FixRegularVersion.VERSION_44, "SENDER", "TARGET"),
                 mock(MessageTypeRegistry.class));
     }

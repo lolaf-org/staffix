@@ -20,7 +20,6 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.impl.session.codec.FixAdminMessagesCodec;
 import org.lolaf.staffix.impl.threading.SchedulerThread;

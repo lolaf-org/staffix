@@ -36,6 +36,7 @@ import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.InstanceProvider;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.admin.AdminApi.ResetFixSessionMode;
+import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
 import org.lolaf.staffix.api.fields.CoreFields;
@@ -54,6 +55,7 @@ import javax.net.ssl.SSLHandshakeException;
 import java.net.SocketOption;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.cert.Certificate;
 import java.time.Duration;
 import java.util.*;
@@ -72,6 +74,7 @@ import java.util.stream.Stream;
  * raw bytes to find which configured session it is - before any decoder exists for it.
  */
 @Slf4j
+@SuppressWarnings("java:S3077")
 public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> implements FixAcceptor, FixSessionAdminControl, FixSessionsSettingsStore.Listener {
 
     // short window to let a best-effort rejection reply (Logout) flush before the connection is torn down
@@ -81,6 +84,10 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private static final int DEFAULT_BUFFERED_WRITES_POOL_SIZE = Integer.parseInt(System.getProperty("staffix.DefaultBufferedWritesPoolSize", "4"));
 
     private final Set<FixSessionImpl> connectedSessions;
+    /**
+     * Synchronized, and synchronized on for compound operations: the settings store's listener changes it while
+     * admin calls read it.
+     */
     private final Set<FixSessionSettings> configuredSessionsSettings;
     private final Map<FixSessionId, FixSessionImpl> configuredSessions;
     private final Map<Class<?>, String> encodersPoolIdsForBroadCasting;
@@ -90,14 +97,16 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private final Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesSupplier;
     private final Collection<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final FixSessionsObserver fixSessionsObserver;
-    private FixSessionImpl[] connectedSessionsArray;
+    private final Map<IOSession, ScheduledFuture<?>> logonTimeouts;
+    private volatile FixSessionImpl[] connectedSessionsArray;
+    private volatile FixAcceptorSessions fixAcceptorSessions;
     private ScheduledExecutorService scheduledExecutorService;
     private Server ioServer;
     private boolean shuttingDown;
 
     FixAcceptorImpl(FixAcceptorBuilder fixAcceptorBuilder, Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesSupplier,
                     Collection<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver) {
-        this.configuredSessionsSettings = new HashSet<>();
+        this.configuredSessionsSettings = Collections.synchronizedSet(new HashSet<>());
         this.connectedSessions = Collections.synchronizedSet(new HashSet<>());
         this.connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
         this.configuredSessions = new ConcurrentHashMap<>();
@@ -105,6 +114,8 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         this.fixAcceptorBuilder = fixAcceptorBuilder;
         this.fixRuntimeDependenciesSupplier = fixRuntimeDependenciesSupplier;
         this.fixSessionsObserver = fixSessionsObserver;
+        this.logonTimeouts = new ConcurrentHashMap<>();
+        refreshFixAcceptorSessions();
 
         this.broadcastMessageIdleStrategy = new BackoffIdleStrategy();
         this.messageExecutorsRuntime = new MessageExecutorsRuntime(fixAcceptorBuilder.getMessageExecutorSettings().toBuilder()
@@ -142,9 +153,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         return opts.isEmpty() ? Map.of(StandardSocketOptions.TCP_NODELAY, true) : opts;
     }
 
-    static ScheduledExecutorService stopOwnSchedulerIfNeeded(ScheduledExecutorService ownScheduler, String instanceId, Deadline deadline) {
+    static void stopOwnSchedulerIfNeeded(ScheduledExecutorService ownScheduler, String instanceId, Deadline deadline) {
         if (ownScheduler == null) {
-            return null;
+            return;
         }
         ownScheduler.shutdownNow();
         try {
@@ -155,7 +166,6 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
-        return null;
     }
 
     /**
@@ -191,6 +201,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             settings.forEach(this::setupNewFixSession);
             store.register(this);
         });
+        refreshFixAcceptorSessions();
 
         IOWorkersGroup ioWorkerGroup = fixAcceptorBuilder.getIoWorkersGroup();
         if (ioWorkerGroup == null) {
@@ -274,15 +285,19 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         stopSessionsProtocol(stopDeadline);
         ioServer.stop(stopDeadline.fromRemainingTime(0.8));
         configuredSessions.values().forEach(fixSession -> fixSession.releaseResources(stopDeadline));
-        scheduledExecutorService = stopOwnSchedulerIfNeeded(scheduledExecutorService, fixAcceptorBuilder.getInstanceId(),
+        stopOwnSchedulerIfNeeded(scheduledExecutorService, fixAcceptorBuilder.getInstanceId(),
                 stopDeadline.fromRemainingTime(0.3));
+        scheduledExecutorService = null;
         messageExecutorsRuntime.stop(stopDeadline);
 
         ioServer = null;
-        connectedSessions.clear();
-        connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+        synchronized (connectedSessions) {
+            connectedSessions.clear();
+            connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+        }
         configuredSessions.clear();
         configuredSessionsSettings.clear();
+        refreshFixAcceptorSessions();
         log.info("FIX server {} is stopped", fixAcceptorBuilder.getInstanceId());
     }
 
@@ -329,7 +344,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public Set<FixSession> getConnectedSessions() {
-        return Collections.unmodifiableSet(connectedSessions);
+        return new HashSet<>(Arrays.asList(connectedSessionsArray));
     }
 
     @Override
@@ -365,7 +380,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public Set<FixSessionSettings> getConfiguredSessionsSettings() {
-        return Collections.unmodifiableSet(configuredSessionsSettings);
+        synchronized (configuredSessionsSettings) {
+            return Set.copyOf(configuredSessionsSettings);
+        }
     }
 
     @Override
@@ -375,6 +392,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             // Kept in step with onRemovedSession, which takes the settings back out: without this a session added
             // after start up was managed but absent from getConfiguredSessionsSettings().
             configuredSessionsSettings.add(settings);
+            refreshFixAcceptorSessions();
             setupNewFixSession(settings);
         }
     }
@@ -407,8 +425,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         }
         // the running session keeps the settings it was created with; the new ones are managed and are what the next
         // session created for this id will be built from
-        configuredSessionsSettings.remove(oldSettings);
-        configuredSessionsSettings.add(newSettings);
+        synchronized (configuredSessionsSettings) {
+            configuredSessionsSettings.remove(oldSettings);
+            configuredSessionsSettings.add(newSettings);
+        }
+        refreshFixAcceptorSessions();
     }
 
     /**
@@ -417,6 +438,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
      */
     private void stopManaging(FixSessionSettings settings, boolean disconnect) {
         configuredSessionsSettings.remove(settings);
+        refreshFixAcceptorSessions();
         FixSessionImpl fixSession = configuredSessions.remove(settings.getFixSessionId());
         if (fixSession != null && disconnect) {
             fixSession.onSessionRemoved();
@@ -440,7 +462,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public void logoutSession(FixSessionId fixSessionId) {
-        findSession(fixSessionId).logout("Admin API logout");
+        findSession(fixSessionId).logoutPermanently("Admin API logout");
     }
 
     @Override
@@ -475,12 +497,51 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public List<FixSessionSettings> getManagedFixSessionsSettings() {
-        return new ArrayList<>(configuredSessionsSettings);
+        synchronized (configuredSessionsSettings) {
+            return new ArrayList<>(configuredSessionsSettings);
+        }
+    }
+
+    @Override
+    public boolean managesFixSession(FixSessionId fixSessionId) {
+        return configuredSessions.containsKey(fixSessionId);
+    }
+
+    FixAcceptorSessions getFixAcceptorSessions() {
+        return fixAcceptorSessions;
+    }
+
+    private void refreshFixAcceptorSessions() {
+        // under the lock, so the last refresh to run publishes the latest set whatever order concurrent changes ran in
+        synchronized (configuredSessionsSettings) {
+            fixAcceptorSessions = FixAcceptorSessions.builder()
+                    .instanceId(fixAcceptorBuilder.getInstanceId())
+                    .fixSessionIds(configuredSessionsSettings.stream()
+                            .map(FixSessionSettings::getFixSessionId)
+                            .collect(Collectors.toList()))
+                    .build();
+        }
+        fixSessionsObserver.onAcceptorSessionsChanged();
     }
 
     @Override
     public List<FixSession> getManagedFixSessions() {
-        return new ArrayList<>(configuredSessions.values());
+        List<FixSession> sessions = new ArrayList<>(configuredSessions.size());
+        addManagedFixSessions(sessions);
+        return sessions;
+    }
+
+    @Override
+    public int getManagedFixSessionsSize() {
+        return configuredSessions.size();
+    }
+
+    @Override
+    public void addManagedFixSessions(List<FixSession> sessions) {
+        // not addAll: it copies the values into a temporary array first, on every status call
+        for (FixSessionImpl session : configuredSessions.values()) {
+            sessions.add(session);
+        }
     }
 
     @Override
@@ -491,11 +552,72 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     @Slf4j
     private static class FixSessionIdFixMessageParser {
 
+        static final int INCOMPLETE = -1;
         private static final byte EQUALS = '=';
+        private static final byte[] BEGIN_STRING_TAG = (CoreFields.BEGIN_STRING + "=").getBytes(StandardCharsets.US_ASCII);
+        private static final byte[] BODY_LENGTH_TAG = (CoreFields.BODY_LENGTH + "=").getBytes(StandardCharsets.US_ASCII);
+        private static final int CHECKSUM_FIELD_LENGTH = (CoreFields.CHECKSUM + "=000" + CoreFields.FIELD_SEPARATOR).length();
+        private static final int MAX_HEADER_VALUE_LENGTH = 16;
 
-        public static ReceivedFixSessionId receivedFixSessionId(ByteBuffer message) throws RejectedSessionException {
-            ReceivedFixSessionId.ReceivedFixSessionIdBuilder sessionIdBuilder = ReceivedFixSessionId.builder();
+        /**
+         * Where the first message ends, framed by its BodyLength(9) rather than by looking for CheckSum(10), which a
+         * Logon's RawData(96) may contain: {@link #INCOMPLETE} until it is all there.
+         *
+         * @throws UnknownFixSessionException for bytes that cannot start a FIX message, or one larger than the buffer
+         */
+        public static int firstMessageEnd(ByteBuffer message) throws UnknownFixSessionException {
+            byte[] content = message.array();
             int limit = message.limit();
+            int beginStringEnd = headerValueEnd(content, message.position(), limit, BEGIN_STRING_TAG);
+            if (beginStringEnd == INCOMPLETE) {
+                return INCOMPLETE;
+            }
+            int bodyLengthEnd = headerValueEnd(content, beginStringEnd + 1, limit, BODY_LENGTH_TAG);
+            if (bodyLengthEnd == INCOMPLETE) {
+                return INCOMPLETE;
+            }
+            long messageEnd = bodyLengthEnd + 1 + bodyLength(content, beginStringEnd + 1 + BODY_LENGTH_TAG.length, bodyLengthEnd)
+                    + CHECKSUM_FIELD_LENGTH;
+            if (messageEnd - message.position() > message.capacity()) {
+                throw new UnknownFixSessionException();
+            }
+            return messageEnd <= limit ? (int) messageEnd : INCOMPLETE;
+        }
+
+        private static int headerValueEnd(byte[] content, int fieldStart, int limit, byte[] tag) throws UnknownFixSessionException {
+            for (int i = 0; i < tag.length; i++) {
+                if (fieldStart + i >= limit) {
+                    return INCOMPLETE;
+                }
+                if (content[fieldStart + i] != tag[i]) {
+                    throw new UnknownFixSessionException();
+                }
+            }
+            int valueStart = fieldStart + tag.length;
+            int valueEnd = findNextPosition(content, valueStart, Math.min(limit, valueStart + MAX_HEADER_VALUE_LENGTH + 1),
+                    CoreFields.FIELD_SEPARATOR_BYTE);
+            if (valueEnd == -1 && limit > valueStart + MAX_HEADER_VALUE_LENGTH) {
+                throw new UnknownFixSessionException();
+            }
+            return valueEnd == -1 ? INCOMPLETE : valueEnd;
+        }
+
+        private static long bodyLength(byte[] content, int start, int end) throws UnknownFixSessionException {
+            if (start == end) {
+                throw new UnknownFixSessionException();
+            }
+            long bodyLength = 0;
+            for (int i = start; i < end; i++) {
+                if (content[i] < '0' || content[i] > '9') {
+                    throw new UnknownFixSessionException();
+                }
+                bodyLength = bodyLength * 10 + content[i] - '0';
+            }
+            return bodyLength;
+        }
+
+        public static ReceivedFixSessionId receivedFixSessionId(ByteBuffer message, int limit) throws RejectedSessionException {
+            ReceivedFixSessionId.ReceivedFixSessionIdBuilder sessionIdBuilder = ReceivedFixSessionId.builder();
             int startPosition = message.position();
             byte[] messageContent = message.array();
             int currentPosition = startPosition;
@@ -608,17 +730,53 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             if (shuttingDown) {
                 log.info("Disconnecting session {} as server is shutting down", session.getSocketAddress());
                 session.stop(Deadline.immediate());
+                return;
+            }
+            scheduleLogonTimeout(session);
+        }
+
+        private void scheduleLogonTimeout(IOSession session) {
+            Duration logonTimeout = fixAcceptorBuilder.getLogonTimeout();
+            if (logonTimeout.isZero()) {
+                return;
+            }
+            // a connection gone before its timeout ran needs no closing, hence the callback ignoring the refusal
+            logonTimeouts.put(session, getScheduler().schedule(
+                    () -> session.processTask(() -> closeIfNoLogon(session, logonTimeout),
+                            (task, error) -> {
+                                // don't care
+                            }),
+                    logonTimeout.toNanos(), TimeUnit.NANOSECONDS));
+        }
+
+        // bound is not enough: a ResendRequest(35=2) may come before the Logon, CodecsComponent letting it through
+        private void closeIfNoLogon(IOSession session, Duration logonTimeout) {
+            logonTimeouts.remove(session);
+            FixSessionImpl fixSession = session.getAttachment();
+            if ((fixSession == null || !fixSession.isLogonReceived()) && session.isStarted()) {
+                log.warn("Closing the connection from {}: no Logon within {}", session.getSocketAddress(), logonTimeout);
+                session.stop(Deadline.immediate());
+            }
+        }
+
+        private void cancelLogonTimeout(IOSession session) {
+            ScheduledFuture<?> logonTimeout = logonTimeouts.remove(session);
+            if (logonTimeout != null) {
+                logonTimeout.cancel(false);
             }
         }
 
         @Override
         public void onDisconnected(IOSession session) {
+            cancelLogonTimeout(session);
             FixSessionImpl fixSession = session.getAttachment();
             if (fixSession != null) {
                 fixSession.onDisconnection();
                 session.setAttachment(null);
-                connectedSessions.remove(fixSession);
-                connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+                synchronized (connectedSessions) {
+                    connectedSessions.remove(fixSession);
+                    connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+                }
             }
         }
 
@@ -636,28 +794,44 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
         @Override
         public void onTask(IOSession session, Runnable task, BiConsumer<Runnable, Exception> taskCallback) {
-            session.<FixSessionImpl>getAttachment().onIOThreadTask(task, taskCallback);
+            FixSessionImpl fixSession = session.getAttachment();
+            if (fixSession == null) {
+                IOEventsListener.super.onTask(session, task, taskCallback);
+                return;
+            }
+            fixSession.onIOThreadTask(task, taskCallback);
         }
 
         @Override
         public void onRead(IOSession session, ByteBuffer message, long localReceiveTimeInNanos) {
             FixSessionImpl fixSession = session.getAttachment();
             if (fixSession == null) {
+                int logonEnd;
+                try {
+                    logonEnd = FixSessionIdFixMessageParser.firstMessageEnd(message);
+                } catch (RejectedSessionException ex) {
+                    refuseConnection(session, message, null, null, ex);
+                    return;
+                }
+                if (logonEnd == FixSessionIdFixMessageParser.INCOMPLETE) {
+                    // betty keeps what is left unread and appends the next read to it
+                    return;
+                }
                 AtomicReference<FixSessionId> detectedFixSession = new AtomicReference<>();
                 AtomicReference<ReceivedFixSessionId> receivedFixSession = new AtomicReference<>();
                 try {
-                    fixSession = findTargetSession(session, message, detectedFixSession, receivedFixSession);
+                    fixSession = findTargetSession(session, message, logonEnd, detectedFixSession, receivedFixSession);
                     session.setAttachment(fixSession);
-                    connectedSessions.add(fixSession);
-                    connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+                    synchronized (connectedSessions) {
+                        connectedSessions.add(fixSession);
+                        connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
+                    }
                     if (!fixSession.onConnection(session, remotePeerCertificates)) {
                         throw new SessionNotAcceptingConnectionsException();
                     }
                     fixAcceptorBuilder.getFixSessionEventsListener().onFixSessionAccepted(detectedFixSession.get());
                 } catch (RejectedSessionException ex) {
-                    fixAcceptorBuilder.getFixSessionEventsListener().onFixSessionRejected(detectedFixSession.get(), ex);
-                    message.clear();
-                    respondToRejectionAndClose(session, receivedFixSession.get(), ex);
+                    refuseConnection(session, message, detectedFixSession.get(), receivedFixSession.get(), ex);
                     return;
                 } catch (Exception ex) {
                     log.error("Failed to create session, abnormal situation", ex);
@@ -669,6 +843,13 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 }
             }
             fixSession.onMessageRead(message, localReceiveTimeInNanos);
+        }
+
+        private void refuseConnection(IOSession session, ByteBuffer message, FixSessionId detectedFixSession,
+                                      ReceivedFixSessionId receivedFixSession, RejectedSessionException ex) {
+            fixAcceptorBuilder.getFixSessionEventsListener().onFixSessionRejected(detectedFixSession, ex);
+            message.clear();
+            respondToRejectionAndClose(session, receivedFixSession, ex);
         }
 
         @Override
@@ -703,9 +884,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             )).findFirst().orElse(null);
         }
 
-        private FixSessionImpl findTargetSession(IOSession session, ByteBuffer message, AtomicReference<FixSessionId> detectedFixSession,
+        private FixSessionImpl findTargetSession(IOSession session, ByteBuffer message, int logonEnd, AtomicReference<FixSessionId> detectedFixSession,
                                                  AtomicReference<ReceivedFixSessionId> receivedFixSession) throws RejectedSessionException {
-            ReceivedFixSessionId receivedFixSessionId = FixSessionIdFixMessageParser.receivedFixSessionId(message);
+            ReceivedFixSessionId receivedFixSessionId = FixSessionIdFixMessageParser.receivedFixSessionId(message, logonEnd);
             // expose the parsed identity so a rejected connection can still be answered before being closed
             receivedFixSession.set(receivedFixSessionId);
 
@@ -727,12 +908,6 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 }
             }
 
-            if (match.getDesiredState().equals(FixSessionState.DISCONNECTED)) {
-                // admission control, alongside the checks below: a session that must not be up takes no connection,
-                // and refusing it here is what keeps the session itself - its sequence numbers, its store, its
-                // application callbacks - out of a connection it is not going to serve
-                throw new SessionNotAcceptingConnectionsException();
-            }
             if (Arrays.stream(connectedSessionsArray).anyMatch(s -> s.getFixSessionId().equals(matchedFixSessionId))) {
                 throw new MultipleLogonException();
             }

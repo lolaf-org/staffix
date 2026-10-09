@@ -1,0 +1,869 @@
+openapi: 3.1.0
+info:
+  title: staffix HTTP admin API
+  description: >
+    Reads an engine's sessions and drives them. Each engine of a JVM is served under /engines/{instanceId}/, with its
+    own bearer token and, optionally, a read-only one allowed GET requests only. GET /engines/{instanceId}/ lists the
+    API versions served; every other path is under one, /v1 here. A session is always addressed by its name, its
+    main config's for an initiator, whichever config it runs. Operations answer once the engine has taken the
+    request, not once the session reached the new state: poll status to see it. Errors answer with an
+    application/problem+json body.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  version: "1"
+servers:
+  - url: /engines/{instanceId}
+    variables:
+      instanceId:
+        default: engine
+        description: The engine's FixEngineBuilder instance id.
+security:
+  - bearer: []
+paths:
+  /:
+    get:
+      summary: The engine and the API versions it serves
+      operationId: getEngine
+      responses:
+        '200':
+          description: The engine.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/sessions:
+    get:
+      summary: Every running session with what changes only with the sessions or their settings
+      operationId: getSessions
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The engine's sessions.
+          headers:
+            ETag:
+              description: The document's version, quoted.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineSessions'
+        '304':
+          description: Unchanged since the ETag sent in If-None-Match.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/status:
+    get:
+      summary: Every running session's state and sequence numbers
+      operationId: getStatus
+      responses:
+        '200':
+          description: The live state of the engine's sessions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/components:
+    get:
+      summary: The messages loggers and session plugins the engine was built with
+      description: >
+        Introspection, not a stable contract: each settings object has its simple class name as type and the plain
+        values of that class, which change with it. Values that look secret, and every headers value, are masked.
+      operationId: getComponents
+      responses:
+        '200':
+          description: The engine's components.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Components'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/schemas/session-settings:
+    get:
+      summary: The JSON Schema of a session's settings document, each field described, with its default
+      description: Values are resolved; no ${...} placeholder may stand in for one.
+      operationId: getSessionSettingsSchema
+      responses:
+        '200':
+          description: The schema.
+          content:
+            application/schema+json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/session-settings-stores:
+    get:
+      summary: The engine's session settings stores
+      operationId: getSessionSettingsStores
+      responses:
+        '200':
+          description: The session settings stores.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionSettingsStore'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/session-components:
+    get:
+      summary: What a session's settings can name, so a tool offers choices the engine resolves
+      operationId: getSessionComponents
+      responses:
+        '200':
+          description: The application factories, message stores, messages loggers and session plugins.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionComponents'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/meters:
+    get:
+      summary: The meters each running session publishes, by the name of the config it runs
+      operationId: getMeters
+      responses:
+        '200':
+          description: One element per running session.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [group, name, meters]
+                  properties:
+                    group:
+                      type: string
+                    name:
+                      type: string
+                    meters:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/Meter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/sessions/{group}/{name}/meters:
+    get:
+      summary: The meters the session publishes, its application's custom timers included once it asked for them
+      operationId: getSessionMeters
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '200':
+          description: The session's meters; empty without monitoring.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Meter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/session-settings-stores/{storeId}/reload:
+    post:
+      summary: Reloads a session settings store, starting, stopping or restarting the sessions it changed
+      operationId: reloadSessionSettingsStore
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Reloaded.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/session-settings-stores/{storeId}/sessions:
+    post:
+      summary: Adds a session to a session settings store, which starts it
+      operationId: addSession
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionSettings'
+      responses:
+        '201':
+          description: Added.
+          headers:
+            Location:
+              description: The new session, under sessions/{group}/{name}.
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/dictionaries/{dictionaryId}:
+    get:
+      summary: A dictionary a session config lists in sessions
+      operationId: getDictionary
+      parameters:
+        - name: dictionaryId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The dictionary in QuickFIX XML format.
+          headers:
+            ETag:
+              description: The dictionary's SHA-256, quoted.
+              schema:
+                type: string
+          content:
+            application/xml:
+              schema:
+                type: string
+        '304':
+          description: Unchanged since the ETag sent in If-None-Match.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sessions/{group}/{name}/settings:
+    get:
+      summary: The session's settings as stored, secret application settings masked
+      description: An initiator running a backup answers its main config's settings, which every config runs on.
+      operationId: getSessionSettings
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Replaces the session's settings in the store holding them
+      description: >
+        The live session restarts on them unless restartLiveSessionOnUpdate is off. A masked application setting keeps
+        the value the session has. An acceptor session's id (CompIDs, FIX version, name) may change; an initiator's is
+        set by its targets.
+      operationId: updateSessionSettings
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionSettings'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      summary: Removes the session from the store holding it
+      description: The live session is disconnected unless disconnectOnRemove is off.
+      operationId: removeSession
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sessions/{group}/{name}/application-settings:
+    get:
+      summary: The application settings the session's application declares
+      operationId: getApplicationSettings
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '200':
+          description: The declared settings.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApplicationSetting'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sessions/{group}/{name}/logon:
+    post:
+      summary: Logs the session on
+      operationId: logon
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sessions/{group}/{name}/logout:
+    post:
+      summary: Logs the session out, until an operator logs it on again
+      operationId: logout
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sessions/{group}/{name}/reset:
+    post:
+      summary: Resets the session's sequence numbers
+      operationId: reset
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sessions/{group}/{name}/seqnums:
+    put:
+      summary: Sets the session's incoming and outgoing sequence numbers
+      operationId: setSeqNums
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeqNumsRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sessions/{group}/{name}/messages:
+    post:
+      summary: Sends FIX messages on the session, in order
+      description: Stops at the first message the engine refuses, those before it having been sent; when several were
+        asked, the problem's detail starts with the refused one's position, e.g. "Message 2 of 3".
+      operationId: sendMessages
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sessions/{group}/{name}/activate:
+    post:
+      summary: Switches an initiator session to one of its configs, its main one or a backup
+      operationId: activate
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivateRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: >
+        The engine's apiToken, random unless set, sent to the console in the announcement; or its readOnlyApiToken,
+        for GET requests only.
+  parameters:
+    group:
+      name: group
+      in: path
+      required: true
+      schema:
+        type: string
+    name:
+      name: name
+      in: path
+      required: true
+      description: The session's name, its main config's for an initiator, as in sessions.
+      schema:
+        type: string
+  responses:
+    Done:
+      description: Done.
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing or wrong bearer token.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: The read-only token cannot change anything.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: No such session, config, dictionary or API version.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Refused in the session's current state.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      required: [status, detail]
+      properties:
+        status:
+          type: integer
+        detail:
+          type: string
+    EngineInfo:
+      type: object
+      required: [engineId, apiVersions]
+      properties:
+        engineId:
+          type: string
+        staffixVersion:
+          type: string
+          description: Absent when the engine's jar does not say.
+        apiVersions:
+          type: array
+          items:
+            type: string
+          example: [v1]
+    EngineSessions:
+      type: object
+      required: [engineId, version, sessions]
+      properties:
+        engineId:
+          type: string
+        version:
+          type: string
+          description: The SHA-256 of the sessions as JSON; status reports it as sessionsVersion.
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionDescription'
+    SessionDescription:
+      type: object
+      required: [group, name, type, instanceId, configs]
+      properties:
+        group:
+          type: string
+        name:
+          type: string
+          description: The main config's name, unique within the group.
+        type:
+          type: string
+          enum: [INITIATOR, ACCEPTOR]
+        instanceId:
+          type: string
+          description: The initiator or acceptor serving the session.
+        configs:
+          type: array
+          description: An initiator's main config, then its backups; an acceptor's single config.
+          items:
+            $ref: '#/components/schemas/ConfigDescription'
+        messagesLoggerInstanceId:
+          type: string
+        monitoringInstanceId:
+          type: string
+          description: The session's monitoring plugin instance, absent when the session is not monitored.
+        sessionSettingsStore:
+          type: string
+          description: The session settings store holding the session's settings, absent when none does.
+    ConfigDescription:
+      type: object
+      required: [name, connectAddresses, identity, dictionaries]
+      properties:
+        name:
+          type: string
+        connectAddresses:
+          type: array
+          description: The host:port addresses an initiator config dials, an IPv6 host in brackets; empty for an acceptor.
+          items:
+            type: string
+        identity:
+          $ref: '#/components/schemas/FixIdentity'
+        dictionaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/DictionaryRef'
+    EngineStatus:
+      type: object
+      required: [engineId, sessionsVersion, sessions]
+      properties:
+        engineId:
+          type: string
+        sessionsVersion:
+          type: string
+          description: The version of the sessions document these sessions belong to; fetch it again when it differs.
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionStatus'
+    SessionStatus:
+      type: object
+      required: [group, name, selectedConfig, loggedIn, connected, withinSessionTime, desiredState, incomingSeqNum,
+                 outgoingSeqNum]
+      properties:
+        group:
+          type: string
+        name:
+          type: string
+          description: The main config's name, unique within the group.
+        selectedConfig:
+          type: string
+          description: The config running now.
+        loggedIn:
+          type: boolean
+        connected:
+          type: boolean
+        withinSessionTime:
+          type: boolean
+        desiredState:
+          type: string
+          description: LOGGED_OUT when an operator logged the session out.
+          enum: [LOGGED_IN, LOGGED_OUT, CONNECTED, DISCONNECTED]
+        incomingSeqNum:
+          type: integer
+          format: int64
+        outgoingSeqNum:
+          type: integer
+          format: int64
+    FixIdentity:
+      type: object
+      required: [fixVersion, sender, target]
+      properties:
+        fixVersion:
+          type: string
+          description: The BeginString, such as FIX.4.4 or FIXT.1.1.
+        defaultApplVerId:
+          type: string
+          description: The DefaultApplVerID code of a FIXT session.
+        sender:
+          $ref: '#/components/schemas/CompIds'
+        target:
+          $ref: '#/components/schemas/CompIds'
+    CompIds:
+      type: object
+      required: [compId]
+      properties:
+        compId:
+          type: string
+        subId:
+          type: string
+        locationId:
+          type: string
+    DictionaryRef:
+      type: object
+      required: [id, hash]
+      properties:
+        id:
+          type: string
+        hash:
+          type: string
+    SessionSettingsStore:
+      type: object
+      required: [instanceId, persistent]
+      properties:
+        instanceId:
+          type: string
+        persistent:
+          type: boolean
+          description: Whether a change made through this API survives the engine's restart.
+    Meter:
+      type: object
+      required: [name, type, description, tagKeys, percentiles, custom]
+      properties:
+        name:
+          type: string
+          description: As the monitoring plugin publishes it, such as messages.read.latency.
+        type:
+          type: string
+          enum: [TIMER, GAUGE]
+        description:
+          type: string
+        tagKeys:
+          type: array
+          description: Tags beyond the session's own, which split the meter into several series.
+          items:
+            type: string
+        unit:
+          type: string
+          description: A gauge's time unit, such as NANOSECONDS; absent for a timer, in the plugin's base time unit.
+        percentiles:
+          type: boolean
+          description: Whether the backend can compute quantiles of this timer.
+        custom:
+          type: boolean
+          description: Registered by the application rather than by the monitoring.
+    SessionComponents:
+      type: object
+      required: [applicationFactories, messagesStores, messagesLoggers, sessionsPlugins]
+      properties:
+        applicationFactories:
+          type: array
+          description: For fixApplicationFactoryInstanceId, each with the ids it takes as fixApplicationInstanceId.
+          items:
+            type: object
+            required: [instanceId, applicationIds]
+            properties:
+              instanceId:
+                type: string
+              applicationIds:
+                type: array
+                items:
+                  type: string
+        messagesStores:
+          type: array
+          description: For fixMessageStoreInstanceId.
+          items:
+            type: string
+        messagesLoggers:
+          type: array
+          description: For fixMessageLoggerInstanceId.
+          items:
+            type: string
+        sessionsPlugins:
+          type: array
+          description: For fixSessionPluginsInstanceIds, whose keys are the plugin types.
+          items:
+            type: object
+            required: [instanceId, pluginTypes]
+            properties:
+              instanceId:
+                type: string
+              pluginTypes:
+                type: array
+                description: Full class names, as the settings key them.
+                items:
+                  type: string
+    SessionSettings:
+      type: object
+      description: A session settings document, described by GET /v1/schemas/session-settings.
+    ApplicationSetting:
+      type: object
+      required: [id, secret]
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        secret:
+          type: boolean
+          description: Its value is masked in the session's settings.
+    Components:
+      type: object
+      required: [messagesLoggers, sessionsPlugins]
+      properties:
+        messagesLoggers:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmitterSettings'
+        sessionsPlugins:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/EmitterSettings'
+              - type: object
+                required: [pluginTypes]
+                properties:
+                  pluginTypes:
+                    type: array
+                    description: The plugin types it serves, a wrapper's delegates included.
+                    items:
+                      type: string
+    EmitterSettings:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: The settings' simple class name.
+      additionalProperties: true
+    ResetRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [LOGOUT_LOGON_RESET_NUM_FLAG, RESET_SEQUENCE, RESET_SEQUENCE_IN_SESSION]
+    SeqNumsRequest:
+      type: object
+      description: Either may be left out.
+      properties:
+        incoming:
+          type: integer
+          format: int64
+        outgoing:
+          type: integer
+          format: int64
+    ActivateRequest:
+      type: object
+      required: [config]
+      properties:
+        config:
+          type: string
+          description: The config to switch to, the session's main one or a backup.
+    SendMessageRequest:
+      type: object
+      required: [messages, separator]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          example: [35=B|148=hello|]
+        separator:
+          type: string
+          minLength: 1
+          maxLength: 1
+          description: The field separator used in the messages, such as SOH or |.
+        possDup:
+          type: boolean
+          default: false

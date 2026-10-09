@@ -70,6 +70,11 @@ public class TestingFixSessionsSettingsStore extends FixSessionsSettingsStore.Ab
     }
 
     @Override
+    public boolean isPersistent() {
+        return false;
+    }
+
+    @Override
     protected void startMe() {
         // nothing to do
     }

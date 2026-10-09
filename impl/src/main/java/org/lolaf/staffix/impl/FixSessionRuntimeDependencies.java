@@ -35,6 +35,7 @@ import java.util.concurrent.ExecutorService;
 @Value
 public class FixSessionRuntimeDependencies {
 
+    String engineId;
     FixMessagesStore fixMessagesStore;
     FixMessagesLogger fixMessagesLogger;
     FixApplicationFactory fixApplicationFactory;

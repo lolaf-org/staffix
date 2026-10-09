@@ -88,7 +88,7 @@ class TestMessagesCoreLogger {
         };
         MessagesCoreLogger logger = new MessagesCoreLogger(settings) {
             @Override
-            public Logger instanciateLogger(String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+            public Logger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
                 return testLogger;
             }
 
@@ -104,7 +104,7 @@ class TestMessagesCoreLogger {
         };
 
         FixSessionId sessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
-        coreLogger = logger.getLogger("test", sessionId, mock(MessageTypeRegistry.class));
+        coreLogger = logger.getLogger("engine", "test", sessionId, mock(MessageTypeRegistry.class));
     }
 
     @Test

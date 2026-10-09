@@ -36,6 +36,7 @@ import static org.mockito.Mockito.*;
  * DefaultApplVerID (1137) field collided, in the index-addressed received-field collection, with an application
  * dictionary field, so the acceptor spuriously rejected the logon with "EncryptMethod (98) not found".
  */
+@SuppressWarnings("java:S2699")
 class TestFixtWithFix44Dictionary extends AbstractFixTests {
 
     @Override

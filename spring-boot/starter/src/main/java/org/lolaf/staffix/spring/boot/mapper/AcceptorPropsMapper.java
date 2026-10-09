@@ -40,7 +40,8 @@ public class AcceptorPropsMapper {
                 .ioWorkersGroup(IoWorkersGroupPropsMapper.newInstance(p.getIoWorkers(), instanceId, ctx))
                 .messageExecutorSettings(MessageExecutorPropsMapper.toSettings(p.getMessageExecutor(), instanceId))
                 .ioSettings(IoSettingsPropsMapper.toSettings(p.getIoSettings()))
-                .shutdownMaxDelay(p.getShutdownMaxDelay());
+                .shutdownMaxDelay(p.getShutdownMaxDelay())
+                .logonTimeout(p.getLogonTimeout());
         if (p.getAcceptorIoWorkers() != null) {
             b.acceptorIoWorkerGroup(IoWorkersGroupPropsMapper.newInstance(p.getAcceptorIoWorkers(), instanceId + "-acceptor", ctx));
         }

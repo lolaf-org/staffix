@@ -90,7 +90,7 @@ class OtlpGrpcSpanExporterIntegrationTest {
         assertThat(server.lastReceived().getHeaders().get("content-type")).startsWith("application/grpc");
 
         byte[] framed = server.lastReceived().getBody().toByteArray();
-        assertThat(framed.length).isGreaterThan(GrpcFraming.HEADER_LENGTH);
+        assertThat(framed).hasSizeGreaterThan(GrpcFraming.HEADER_LENGTH);
         assertThat(GrpcFraming.messageLength(framed, 0))
                 .as("a marshalled ExportTraceServiceRequest, framed as gRPC requires")
                 .isEqualTo(framed.length - GrpcFraming.HEADER_LENGTH);

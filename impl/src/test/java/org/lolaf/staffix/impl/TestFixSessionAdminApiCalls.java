@@ -31,6 +31,7 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+@SuppressWarnings("java:S2699")
 class TestFixSessionAdminApiCalls extends AbstractFixTests {
 
 
@@ -124,7 +125,7 @@ class TestFixSessionAdminApiCalls extends AbstractFixTests {
     @Test
     void testLogoutMethodAllowsSessionToBeLoggedInAgain() {
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
 
         fixInitiatorSession.logon();
 
@@ -150,35 +151,12 @@ class TestFixSessionAdminApiCalls extends AbstractFixTests {
 
         fixAcceptorSession.logoutPermanently(null);
 
-        connectFixInitiatorAndAcceptor();
+        startFixInitiatorAndAcceptor();
         rejectedLogonEndsDialling();
 
         fixInitiatorSession.logon();
 
         awaitSingleRejectedLogon("Logon rejected, session not setup to accept login requests for now");
-    }
-
-    @Test
-    void testLogonRejectedIfAcceptorDoesNotAcceptCurrentlyLogon() {
-
-        startFixAcceptor();
-
-        fixAcceptorSession.disconnect("permanent disconnect");
-
-        connectFixInitiatorAndAcceptor();
-
-        fixInitiatorSession.logon();
-
-        // at least once, not exactly once: an acceptor that refuses the connection outright never settles the
-        // initiator, which dials again every connectionRetry and is dropped again. Pinning the run to one attempt as
-        // the rejection tests do is not on either - there is no rejection callback to end the dialling from, and
-        // ending it on the disconnection would race the logon that re-arms it. What the scenario is about is that
-        // the connection ends with nothing of the session layer having run, which the negative checks below state
-        await().untilAsserted(() -> verify(fixInitiatorApplication, atLeastOnce()).onDisconnected(any()));
-        verify(fixInitiatorApplication, never()).onLogon(any(), any());
-        verify(fixInitiatorApplication, never()).onLogout(any(), any(), any());
-        verify(fixAcceptorApplication, never()).validateLogon(any(), any(), any());
-        verify(fixAcceptorApplication, never()).onLogon(any(), any());
     }
 
     /**

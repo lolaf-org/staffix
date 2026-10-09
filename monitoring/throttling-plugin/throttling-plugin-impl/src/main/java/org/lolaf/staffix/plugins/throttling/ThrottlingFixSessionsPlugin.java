@@ -19,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
@@ -74,10 +76,16 @@ public final class ThrottlingFixSessionsPlugin<C extends PluginContext>
     }
 
     @Override
-    public Optional<FixSessionPlugin<C, Object>> onSessionCreated(String fixInstanceId, FixSession fixSession,
+    public boolean requiresTimeMeasurement(FixSessionId fixSessionId, FixSessionSettings fixSessionSettings) {
+        // Admission reuses the engine-provided timestamps, so they must always be captured.
+        return true;
+    }
+
+    @Override
+    public Optional<FixSessionPlugin<C, Object>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession,
                                                                   Collection<MessageType> incomingMessageTypes,
                                                                   Collection<MessageType> outgoingMessageTypes) {
-        return delegate.onSessionCreated(fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes)
+        return delegate.onSessionCreated(fixEngineId, fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes)
                 .map(sessionPlugin -> new ThrottlingFixSessionPlugin<>(sessionPlugin,
                         settings.getMaxReceivedMessages(), settings.getMaxSentMessages(), windowNanos));
     }

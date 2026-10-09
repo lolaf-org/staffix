@@ -164,6 +164,11 @@ class FixSessionsSettingsStoreListenersTest {
         }
 
         @Override
+        public boolean isPersistent() {
+            return false;
+        }
+
+        @Override
         protected void startMe() {
             // nothing to start
         }

@@ -85,10 +85,10 @@ public class OtelTracing extends Startable.SimpleStartable<OtelTracing> implemen
     }
 
     @Override
-    public Optional<FixSessionPlugin<FixTracer, Span>> onSessionCreated(String fixInstanceId, FixSession fixSession,
+    public Optional<FixSessionPlugin<FixTracer, Span>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession,
                                                                         Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
         return Optional.of(sessionTracers.computeIfAbsent(fixSession.getFixSessionId(), sid ->
-                new FixSessionPluginImpl(newTracerInstance(), sessionTracers::remove, fixInstanceId, fixSession, otelTracingSettings)));
+                new FixSessionPluginImpl(newTracerInstance(), sessionTracers::remove, fixEngineId, fixInstanceId, fixSession, otelTracingSettings)));
     }
 
     @Override
@@ -162,7 +162,7 @@ public class OtelTracing extends Startable.SimpleStartable<OtelTracing> implemen
 
     // for tests
     FixTracer getTracer(FixSession fixSession) {
-        return onSessionCreated(null, fixSession, null, null).orElseThrow().getPluginContext().orElseThrow();
+        return onSessionCreated(null, null, fixSession, null, null).orElseThrow().getPluginContext().orElseThrow();
     }
 
     @Override
@@ -189,6 +189,7 @@ public class OtelTracing extends Startable.SimpleStartable<OtelTracing> implemen
         private final Optional<FixTracer> tracer;
         private final FixTracerImpl fixTracerImpl;
         private final Consumer<FixSessionId> sessionRemovedConsumer;
+        private final String fixEngineId;
         private final String fixInstanceId;
         private final FixSessionId fixSessionId;
         private final FixField w3cTraceField;
@@ -196,12 +197,13 @@ public class OtelTracing extends Startable.SimpleStartable<OtelTracing> implemen
         private Span messageDecodedSpan;
         private Scope spanScope;
 
-        FixSessionPluginImpl(Tracer tracer, Consumer<FixSessionId> sessionRemovedConsumer, String fixInstanceId, FixSession fixSession,
+        FixSessionPluginImpl(Tracer tracer, Consumer<FixSessionId> sessionRemovedConsumer, String fixEngineId, String fixInstanceId, FixSession fixSession,
                              OtelTracingSettings settings) {
             this.fixTracerImpl = new FixTracerImpl(tracer);
             this.tracer = Optional.of(fixTracerImpl);
             this.sessionRemovedConsumer = sessionRemovedConsumer;
             this.fixSessionId = fixSession.getFixSessionId();
+            this.fixEngineId = fixEngineId;
             this.fixInstanceId = fixInstanceId;
             this.w3cTraceField = settings.isW3cTracePropagationEnabled()
                     ? fixSession.getFieldsRegistry().addUserDefinedField(settings.getW3cTraceFieldCode(), FieldType.STRING, FieldLocation.BODY) : null;
@@ -236,10 +238,11 @@ public class OtelTracing extends Startable.SimpleStartable<OtelTracing> implemen
         public void onMessageDecodingStarted(MessageType messageType, long localReceiveTimeInNanos, UTCTime localReceiveTime) {
             messageDecodedSpan = fixTracerImpl.spanBuilder("fix-msg-decoding")
                     .setAttribute(NetworkAttributes.NETWORK_PROTOCOL_NAME, "fix")
-                    .setAttribute(FixMonitoringAttributes.FIX_INSTANCE_ID, fixInstanceId)
-                    .setAttribute(FixMonitoringAttributes.FIX_SESSION_NAME, fixSessionId.getName())
-                    .setAttribute(FixMonitoringAttributes.FIX_SESSION_GROUP, fixSessionId.getGroup())
-                    .setAttribute(FixMonitoringAttributes.FIX_MESSAGE_TYPE, messageType.code()).startSpan();
+                    .setAttribute(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), fixEngineId)
+                    .setAttribute(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey(), fixInstanceId)
+                    .setAttribute(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
+                    .setAttribute(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey(), fixSessionId.getGroup())
+                    .setAttribute(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(), messageType.code()).startSpan();
             spanScope = messageDecodedSpan.makeCurrent();
         }
 

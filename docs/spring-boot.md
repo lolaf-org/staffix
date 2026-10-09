@@ -69,6 +69,8 @@ public FixApplication acceptorApp() {
 }
 ```
 
+The session speaks that bean's dictionary, `getDictionaryId()`, so its `fix-version` must be the dictionary's.
+
 ---
 
 ## Acceptors and initiators
@@ -99,8 +101,9 @@ staffix.initiators.primary.backup-targets[0].connect-addresses[0]=dr-host:17001
 
 `main-target` is the session the initiator runs when it starts. `backup-targets` are sessions it can be
 [switched to through the Admin API](runtime-administration.md#switching-an-initiator-to-a-backup); it never switches
-on its own. Every target needs its own session settings in a sessions settings store, and its own session id: the same
-session on another host is one more entry in its `connect-addresses`.
+on its own. The main target needs session settings in a sessions settings store; a backup runs on them under its own
+session id and must have none of its own. The same session on another host is one more entry in its
+`connect-addresses`.
 
 `select-strategy` and `idle-strategy` are the latency knobs from
 [Tuning for latency](tuning-for-latency.md#2-choose-where-the-cpu-goes), as enum names rather than constructed
@@ -118,10 +121,22 @@ rather than creating their own.
 ```properties
 staffix.admin-api-jmx.domain=com.example.trading
 
+staffix.admin-api-http.port=8686
+staffix.admin-api-http.ssl-bundle=admin
+staffix.admin-api-http.announce-url=https://staffix-admin.example.com
+staffix.admin-api-http.announce-username=engine
+staffix.admin-api-http.announce-password=${STAFFIX_ADMIN_ENGINE_PASSWORD}
+staffix.admin-api-http.announce-ssl-bundle=console-trust
+
 management.endpoints.web.exposure.include=fix-sessions,health,info
 staffix.actuator.enabled=true
 staffix.actuator.fix-session-state-contributes-to-health-status=true
 ```
+
+`staffix-admin-api-http-spring-boot` serves the admin API over HTTP and announces the engine to the staffix admin
+console; `ssl-bundle` names a Spring Boot SSL bundle to serve HTTPS with, `announce-ssl-bundle` one whose truststore
+trusts the console's certificate (the JVM's default otherwise), and the other settings are in
+[Runtime administration](runtime-administration.md#http-for-the-staffix-admin-console).
 
 The actuator module adds a `fix-sessions` endpoint and can fold session state into the health status; see
 [Runtime administration](runtime-administration.md#spring-boot) before turning that on.

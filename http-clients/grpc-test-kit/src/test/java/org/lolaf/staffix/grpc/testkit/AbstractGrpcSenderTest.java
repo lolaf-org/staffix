@@ -43,6 +43,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * quietly disagreeing - the HTTP kit caught exactly that between the JDK client and the other two, where
  * one appended a per-request header that the others replaced.
  */
+@SuppressWarnings("java:S2699")
 public abstract class AbstractGrpcSenderTest {
 
     protected static final byte[] PAYLOAD =

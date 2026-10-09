@@ -167,6 +167,11 @@ public final class QuickstartExample {
         }
 
         @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
         public List<FixMessageDecoder> setup(FixSessionSettings settings, FixSession session,
                                              Set<MessageType> encodedMessagesTypes) {
             // declare what this side sends, and return a decoder per message type it receives
@@ -231,6 +236,11 @@ public final class QuickstartExample {
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
         }
 
         @Override

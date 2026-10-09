@@ -66,12 +66,13 @@ the plugin**, and point `dictionaryFile` at the resource with a `classpath:` pre
 ```
 
 The goal runs at `generate-sources` and adds the generated sources to the compilation, so `mvn compile` is enough.
-The dictionary is only read at build time: the artifact is not a dependency of your project and does not reach your
-runtime classpath.
+The dictionary artifact is only read at build time and is not a dependency of your project; the generated package
+carries a copy of the dictionary itself (see below).
 
 - **`packageName`** is yours to choose. The examples in these guides use `org.lolaf.staffix.fix44`.
-- **`dictionaryId`** names the dictionary to the engine. It defaults to `default`, which is what a session uses
-  unless its settings name another, see [your own dictionary](#generating-a-package-from-your-own-dictionary).
+- **`dictionaryId`** names the dictionary to the engine. It defaults to `default`. An application returns it, with
+  the version, from `FixApplication.getDictionaryId()`, see
+  [your own dictionary](#generating-a-package-from-your-own-dictionary).
 - **`dictionaryFile`** also takes a file path, relative to the project, for a dictionary you keep yourself.
 - **`testSources`** set to `true` generates into the test sources instead, for encoders only your tests use. Set
   `resourcesOutputDirectory` to `${project.build.testOutputDirectory}` with it, or the registrations the generator
@@ -116,6 +117,9 @@ For a message like QuoteRequest, in `org.lolaf.staffix.fix44`:
 - **enum classes** for fields the dictionary enumerates, so `Side.SideValues.BUY` rather than `'1'`.
 - **registries**, published through the ServiceLoader SPI, so the engine finds the right field and message-type
   metadata for the version a session speaks.
+- **the dictionary**, as the resource `staffix-dictionaries/<dictionaryId>-<version>.xml` (`FIXT.1.1.xml` for the
+  session layer), so an admin tool such as the [HTTP admin API](runtime-administration.md#http-for-the-staffix-admin-console)
+  decodes a session's messages with exactly the dictionary it runs.
 
 Encoders come from the session so they are bound to it:
 
@@ -144,7 +148,7 @@ dictionary carries deprecated elements with nothing to distinguish them, so noth
 
 Nothing stops an engine hosting FIX 4.2 and FIX 4.4 sessions at once: generate both, one execution each with its own
 `packageName`, and give each session the matching `FixSessionId`. The registries are per-version and resolved through the SPI, so the right metadata follows
-the session.
+the session. An application speaks one version, so each version needs its own application.
 
 What each session must not share is its *instance ids* if it needs its own store, logger or application, see
 [Configuring a session](configuring-sessions.md#wiring-the-session-to-the-engine).
@@ -222,8 +226,9 @@ from a file in your project as well as from the classpath:
 </plugin>
 ```
 
-`dictionaryId` is how a session selects it: set `FixSessionSettings.dictionaryId("counterparty-a")` and that
-session decodes with your dictionary while others keep the default. See the
+`dictionaryId` is how an application selects it: return `FixDictionaryId.of("counterparty-a",
+FixRegularVersion.VERSION_44)` from `FixApplication.getDictionaryId()` and every session bound to that application
+speaks your dictionary, while applications returning the default keep it. See the
 [plugin's own README](../fix-packages/fix-encoders-generator-maven-plugin/README.md) for the full option list.
 
 Two companion plugins serve the same pipeline, and the rest of this guide covers them: the **Orchestra dictionary

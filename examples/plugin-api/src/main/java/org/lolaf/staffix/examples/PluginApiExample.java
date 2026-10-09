@@ -18,10 +18,7 @@ package org.lolaf.staffix.examples;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.lolaf.staffix.api.FixAcceptor;
-import org.lolaf.staffix.api.FixEngine;
-import org.lolaf.staffix.api.FixEngineBuilder;
-import org.lolaf.staffix.api.FixInitiator;
+import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
@@ -176,6 +173,11 @@ public class PluginApiExample extends FixExamplesBase implements Callable<Intege
         }
 
         @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
         public List<FixMessageDecoder> setup(FixSessionSettings settings, FixSession session,
                                              Set<MessageType> encodedMessagesTypes) {
             // this declaration is what the plugin reads to decide it wants this session
@@ -240,6 +242,11 @@ public class PluginApiExample extends FixExamplesBase implements Callable<Intege
         @Override
         public FixApiVersion getFixApiVersion() {
             return FixApiVersion.of(FixRegularVersion.VERSION_44);
+        }
+
+        @Override
+        public FixDictionaryId getDictionaryId() {
+            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
         }
 
         @Override

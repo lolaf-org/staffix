@@ -17,7 +17,6 @@ package org.lolaf.staffix.spring.boot.actuator;
 
 import lombok.Getter;
 import org.lolaf.staffix.api.session.FixSession;
-import org.lolaf.staffix.api.session.FixSessionState;
 import org.lolaf.staffix.api.time.UTCTime;
 
 /**
@@ -34,7 +33,6 @@ public final class ActuatorSessionStats {
     private long bytesReceived;
     private long bytesSent;
 
-    private FixSessionState state = FixSessionState.DISCONNECTED;
     private volatile long lastEventEpochMillis = System.currentTimeMillis();
     private volatile long lastLogonEpochMillis;
     private volatile long lastLogoutEpochMillis;
@@ -48,14 +46,12 @@ public final class ActuatorSessionStats {
         long now = System.currentTimeMillis();
         lastLogonEpochMillis = now;
         lastEventEpochMillis = now;
-        state = FixSessionState.LOGGED_IN;
     }
 
     void onLogout() {
         long now = System.currentTimeMillis();
         lastLogoutEpochMillis = now;
         lastEventEpochMillis = now;
-        state = FixSessionState.LOGGED_OUT;
     }
 
     void onMessageReceived(int payloadSize, UTCTime localReceiveTime) {

@@ -80,15 +80,15 @@ class TestFixSessionMonitoring extends AbstractFixTests {
         super.setup();
         initiatorFixSessionMonitoringManager = mock(FixSessionsMonitoringManager.class);
         initiatorFixSessionEventsListener = mock(FixSessionPlugin.class);
-        when(initiatorFixSessionEventsListener.requiresTimeMeasurement()).thenReturn(true);
+        when(initiatorFixSessionMonitoringManager.requiresTimeMeasurement(any(), any())).thenReturn(true);
         when(initiatorFixSessionMonitoringManager.matchesPluginClass(FixSessionsMonitoringManager.class)).thenReturn(true);
-        doReturn(Optional.of(initiatorFixSessionEventsListener)).when(initiatorFixSessionMonitoringManager).onSessionCreated(anyString(), any(), any(), any());
+        doReturn(Optional.of(initiatorFixSessionEventsListener)).when(initiatorFixSessionMonitoringManager).onSessionCreated(anyString(), anyString(), any(), any(), any());
 
         acceptorFixSessionMonitoringManager = mock(FixSessionsMonitoringManager.class);
         acceptorFixSessionEventsListener = mock(FixSessionPlugin.class);
-        when(acceptorFixSessionEventsListener.requiresTimeMeasurement()).thenReturn(true);
+        when(acceptorFixSessionMonitoringManager.requiresTimeMeasurement(any(), any())).thenReturn(true);
         when(acceptorFixSessionMonitoringManager.matchesPluginClass(FixSessionsMonitoringManager.class)).thenReturn(true);
-        doReturn(Optional.of(acceptorFixSessionEventsListener)).when(acceptorFixSessionMonitoringManager).onSessionCreated(anyString(), any(), any(), any());
+        doReturn(Optional.of(acceptorFixSessionEventsListener)).when(acceptorFixSessionMonitoringManager).onSessionCreated(anyString(), anyString(), any(), any(), any());
 
         initiatorFixEngine.stop(Deadline.unlimited());
         initiatorFixEngine = initiatorFixEngineBuilder
@@ -119,13 +119,13 @@ class TestFixSessionMonitoring extends AbstractFixTests {
             verify(acceptorFixSessionEventsListener).onLogon();
             verify(initiatorFixSessionEventsListener).onLogon();
         });
-        verify(initiatorFixSessionMonitoringManager).onSessionCreated(anyString(), any(),
+        verify(initiatorFixSessionMonitoringManager).onSessionCreated(anyString(), anyString(), any(),
                 Mockito.assertArg((Consumer<Collection<MessageType>>) messageTypes ->
                         assertThat(messageTypes).containsExactly(MessageTypes.ExecutionReport)),
                 Mockito.assertArg((Consumer<Collection<MessageType>>) messageTypes ->
                         assertThat(messageTypes).containsExactly(MessageTypes.NewOrderSingle)));
 
-        verify(acceptorFixSessionMonitoringManager).onSessionCreated(anyString(), any(),
+        verify(acceptorFixSessionMonitoringManager).onSessionCreated(anyString(), anyString(), any(),
                 Mockito.assertArg((Consumer<Collection<MessageType>>) messageTypes ->
                         assertThat(messageTypes).containsExactly(MessageTypes.NewOrderSingle)),
                 Mockito.assertArg((Consumer<Collection<MessageType>>) messageTypes ->
@@ -134,7 +134,7 @@ class TestFixSessionMonitoring extends AbstractFixTests {
 
     @Test
     void testLogonLogoutEventsAreDispatched() {
-        MessageTypeRegistry mtr = MessageTypeRegistry.Registry.getInstance(FixDictionaryId.of(FixDictionaryId.DEFAULT_ID, FixRegularVersion.VERSION_44));
+        MessageTypeRegistry mtr = MessageTypeRegistry.Registry.getInstance(FixDictionaryId.of(FixRegularVersion.VERSION_44));
 
         logonClient();
 

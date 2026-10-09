@@ -36,4 +36,7 @@ mv "jmh-result-OtlpTracingExportBenchmark-${DATE}.json" results
 taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc OtlpGrpcSenderBenchmark
 mv jmh-result.json "jmh-result-OtlpGrpcSenderBenchmark-${DATE}.json"
 mv "jmh-result-OtlpGrpcSenderBenchmark-${DATE}.json" results
+taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc AdminApiStatusBenchmark
+mv jmh-result.json "jmh-result-AdminApiStatusBenchmark-${DATE}.json"
+mv "jmh-result-AdminApiStatusBenchmark-${DATE}.json" results
 #"$JAVA" -jar target/benchmarks.jar -rf json -prof gc -prof jfr

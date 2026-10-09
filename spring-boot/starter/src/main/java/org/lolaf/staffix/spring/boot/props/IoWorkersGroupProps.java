@@ -16,8 +16,6 @@
 package org.lolaf.staffix.spring.boot.props;
 
 import lombok.Data;
-import org.lolaf.betty.api.io.IOWorker;
-import org.lolaf.betty.api.io.IOWorkerLoadBalancer;
 
 import java.time.Duration;
 import java.util.ArrayList;

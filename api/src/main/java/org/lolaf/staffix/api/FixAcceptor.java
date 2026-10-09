@@ -71,7 +71,8 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
     void broadcast(FixMessageEncoder<?> encoder, UTCTime sendingTime, Predicate<FixSession> fixSessionPredicate, boolean connectedSessionsOnly);
 
     /**
-     * The settings of every session configured on this acceptor.
+     * A snapshot of the settings of every session configured on this acceptor: a later change in its settings store
+     * shows in the next call, not in a set already returned.
      */
     Set<FixSessionSettings> getConfiguredSessionsSettings();
 
@@ -200,8 +201,7 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
     }
 
     /**
-     * The session's desired state is DISCONNECTED: it must not be up at all, so the connection is refused before
-     * anything of the session layer runs on it.
+     * The session is stopping, so the connection is refused before anything of the session layer runs on it.
      */
     class SessionNotAcceptingConnectionsException extends RejectedSessionException {
 
@@ -211,8 +211,8 @@ public interface FixAcceptor extends Startable<FixAcceptor> {
 
         @Override
         public boolean shouldSendLogout() {
-            // a session refusing to be up cannot answer: sending a Logout is the session layer this connection is
-            // being refused, and the peer is meant to see nothing but the connection going
+            // a stopping session cannot answer: sending a Logout is the session layer this connection is being
+            // refused, and the peer is meant to see nothing but the connection going
             return false;
         }
     }
