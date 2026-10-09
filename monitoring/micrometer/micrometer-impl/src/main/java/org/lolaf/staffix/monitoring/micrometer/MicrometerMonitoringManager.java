@@ -24,11 +24,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.monitoring.*;
 import org.lolaf.staffix.api.msg.MessageType;
-import org.lolaf.staffix.api.session.FixSession;
-import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionStatus;
-import org.lolaf.staffix.api.session.RttMeasurement;
+import org.lolaf.staffix.api.session.*;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.PluginContext;
@@ -81,12 +77,14 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
 
     private final MicrometerMonitoringManagerSettings settings;
     private final Map<FixSessionId, FixSessionEventsListenerImpl> listeners;
+    private final Map<FixSessionId, Gauge> destroyedSessionsStatus;
     private final List<FixMeterDescriptor> builtInMeters;
     private MeterRegistry meterRegistry;
 
     public MicrometerMonitoringManager(MicrometerMonitoringManagerSettings settings) {
         this.settings = settings;
         this.listeners = new ConcurrentHashMap<>();
+        this.destroyedSessionsStatus = new ConcurrentHashMap<>();
         this.builtInMeters = builtInMeters(settings);
     }
 
@@ -134,6 +132,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         settings.getStoppingMeterRegistryConsumer().accept(meterRegistry);
         meterRegistry.close();
+        destroyedSessionsStatus.clear();
     }
 
     @Override
@@ -145,8 +144,19 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     @Override
     public Optional<FixSessionPlugin<FixSessionsMonitoringContext, Void>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
         return Optional.of(listeners.computeIfAbsent(fixSession.getFixSessionId(),
-                fid -> new FixSessionEventsListenerImpl(fixEngineId, fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes, meterRegistry, settings,
-                        builtInMeters, this::onSessionDestroyed)));
+                fid -> {
+                    removeDestroyedSessionStatus(fid);
+                    return new FixSessionEventsListenerImpl(fixEngineId, fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes, meterRegistry, settings,
+                            builtInMeters, this::onSessionDestroyed);
+                }));
+    }
+
+    // registering the same meter id again would hand back the frozen gauge instead of a live one
+    private void removeDestroyedSessionStatus(FixSessionId fixSessionId) {
+        Gauge sessionStatus = destroyedSessionsStatus.remove(fixSessionId);
+        if (sessionStatus != null) {
+            meterRegistry.remove(sessionStatus);
+        }
     }
 
     @Override
@@ -163,6 +173,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         FixSessionEventsListenerImpl l = listeners.remove(fixSession);
         if (l != null) {
             l.destroy(meterRegistry);
+            destroyedSessionsStatus.put(fixSession, l.sessionStatus);
         }
     }
 
@@ -191,6 +202,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         private final List<FixMeterDescriptor> builtInMeters;
         private final Map<String, FixMeterDescriptor> customMeters;
         private final Tags sessionTags;
+        private boolean destroyed;
 
         FixSessionEventsListenerImpl(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes,
                                      Collection<MessageType> outgoingMessageTypes, MeterRegistry meterRegistry, MicrometerMonitoringManagerSettings micrometerMonitoringManagerSettings,
@@ -210,7 +222,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey(), fixSessionId.getGroup()));
             this.sessionTags = tags;
             // pulled at each export: the schedule changes the status with no event to push it on
-            this.sessionStatus = Gauge.builder(SESSION_LOGON_STATUS, fixSession, session -> session.getStatus().getCode())
+            this.sessionStatus = Gauge.builder(SESSION_LOGON_STATUS, fixSession, this::statusCode)
                     .strongReference(true)
                     .description(LOGON_STATUS_DESCRIPTION)
                     .tags(tags).register(meterRegistry);
@@ -400,8 +412,16 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             onSessionDestroyed.accept(fixInstanceId, fixSessionId);
         }
 
+        private double statusCode(FixSession fixSession) {
+            return (destroyed ? FixSessionStatus.LOGGED_OUT_BY_OPERATOR : fixSession.getStatus()).getCode();
+        }
+
+        /**
+         * Keeps the status gauge, frozen at logged out by an operator, so that a push registry's final publish on close
+         * reports the session down rather than its last sampled status.
+         */
         void destroy(MeterRegistry meterRegistry) {
-            meterRegistry.remove(sessionStatus);
+            destroyed = true;
             timersForSession.values().forEach(timer -> timer.destroy(meterRegistry));
             gaugesForSession.values().forEach(gauge -> meterRegistry.remove(gauge.meter));
             if (readsTimersPerMsgType != null) {

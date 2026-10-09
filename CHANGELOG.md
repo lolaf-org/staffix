@@ -14,152 +14,82 @@ between releases. A section is written when the version it belongs to is being c
 carries the right number and date the first time and the workflow's check has exactly one heading it
 could mean.
 
-## [0.9.1] - 2026-10-01
+## [0.9.1] - 2026-10-09
 
 ### Added
 
-- `AdminApi.getAcceptorsSessions()` lists each acceptor with the sessions it accepts, the counterpart of
-  `getInitiatorsTargets()`, so an administration tool can tell which acceptor a session belongs to.
-- An HTTP admin API (`staffix-admin-api-http-impl`, and `staffix-admin-api-http-spring-boot` for Spring Boot) serves
-  every session's state, settings and operations as JSON, over HTTP or HTTPS, behind a bearer token (and, optionally, a read-only one
-  for monitoring tools), and announces the engine to the
+- **An HTTP admin API** (`staffix-admin-api-http-impl`, and `staffix-admin-api-http-spring-boot` for Spring Boot)
+  serves every session's state, settings, meters and operations as JSON over HTTP or HTTPS, behind a bearer token
+  and an optional read-only one. It announces the engine to the
   [staffix admin console](https://github.com/lolaf-org/staffix-admin), which can then monitor and operate it.
-- A generated FIX package now carries its dictionary as `staffix-dictionaries/<dictionaryId>-<version>.xml`, so the
-  HTTP admin API can serve it and the console decodes a session's messages with the dictionary that session runs.
-- Metrics, FIX message logs and traces carry `fix.eid`, the engine's id, so a session can be told apart from a
-  same-named one in another engine. The Grafana dashboard filters by engine, and its FIX logs panel follows the
-  engine, group and session selectors.
-- The monitoring stack in `monitoring/grafana` runs Loki 3.7.8 and indexes `fix.eid`, `fix.sg` and `fix.sn`, so a log
-  query for one engine, group or session reads only that session's logs instead of scanning them all.
-- **The HTTP admin API edits sessions**: `GET schemas/session-settings` describes a session's settings document,
-  `GET` / `PUT` / `DELETE sessions/{group}/{name}/settings` read, replace and remove a session's settings,
-  `POST session-settings-stores/{id}/sessions` adds one, and `sessions/{group}/{name}/application-settings` lists the
-  application settings its application declares. `settings` now answers that document, with the session's stored
-  values rather than the Java settings class's fields; secret values are masked and kept when sent back masked.
-- **`AdminApi` adds, updates and removes a session's settings** in the store that holds them
-  (`addFixSessionSettings`, `updateFixSessionSettings`, `removeFixSessionSettings`), tells which store holds a session
-  and whether that store keeps changes across a restart, and lists the application settings a session's application
-  declares. An update may change the session's CompIDs; a name already used in the engine is refused.
-- **An application can declare a session setting secret** with `FixApplicationSessionSettingDescriptor.secret(id,
-  description)`, such as a Logon password: the HTTP admin API never shows its value, whatever its name.
-- **Adding or updating a session's settings refuses an application factory, application, message store, messages
-  logger or session plugin the engine does not have**, instead of accepting settings the session then fails to start
-  with.
-- **An application publishes gauges with its session's metrics**: `FixSessionsMonitoringContext.getGauge(id,
-  description, tags)` gives a gauge the application sets or adds to, from any thread and without allocating, and
-  `getGauge(id, description, tags, supplier)` one read from the supplier at each export, for a value the application
-  already holds. Both are listed among the session's meters.
-- **A session's monitoring describes the meters it publishes**: `FixSessionsMonitoringContext.getMeterDescriptors()`
-  lists the built-in meters switched on and the custom timers the application obtained from `getTimer`, each with
-  its description, the tags that split it into series and whether quantiles can be computed;
-  `AdminApi.getFixSessionMeters()` and the HTTP admin API's `GET meters` and `GET sessions/{group}/{name}/meters`
-  serve them. The built-in meters' descriptions now say exactly what each one measures.
-- **An admin tool can offer a session's components to choose from**: `AdminApi.getFixSessionComponents()` and the
-  HTTP admin API's `GET session-components` list the application factories with the applications each serves, the
-  message stores, the messages loggers and the session plugins with the plugin types they serve, under the ids a
-  session's settings name them by.
-- **`AdminApi.sendFixMessages` sends several messages in order** on a session. It stops at the first one the session
-  refuses, those before it having gone out, and the error says which one it was ("Message 2 of 3: ...").
-- **`FixSession.getStatus()` says where a session stands for an operator**: `LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`
-  (held logged out, whatever its schedule), `LOGGED_OUT_OUTSIDE_SESSION_TIME` (a planned pause) or
-  `LOGGED_OUT_INSIDE_SESSION_TIME` (meant to be up and is not, the one to alert on). The HTTP admin API's `GET status`
-  reports it as each session's `status`.
+- **Sessions can be added, edited and removed at runtime**, through `AdminApi` or the HTTP admin API, in the settings
+  store that holds them. Settings naming a component the engine does not have are refused up front.
+- **`AdminApi` lists what an admin tool needs**: each acceptor's sessions (`getAcceptorsSessions()`), the components a
+  session can use (`getFixSessionComponents()`), and each session's meters (`getFixSessionMeters()`).
+- **`AdminApi.sendFixMessages` sends several messages in order**, stopping at the first one the session refuses.
+- **`FixSession.getStatus()`** tells an operator where a session stands: `LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`,
+  `LOGGED_OUT_OUTSIDE_SESSION_TIME` (a planned pause) or `LOGGED_OUT_INSIDE_SESSION_TIME` (the one to alert on).
+- **An application can declare a session setting secret**, such as a Logon password, with
+  `FixApplicationSessionSettingDescriptor.secret(id, description)`; the HTTP admin API never shows its value.
+- **An application can publish gauges** with its session's metrics, through `FixSessionsMonitoringContext.getGauge`.
+- **Metrics, logs and traces carry the engine's id** (`fix.eid`), so same-named sessions in different engines can be
+  told apart. The Grafana dashboard filters by engine, and Loki indexes engine, group and session.
+- **A generated FIX package ships its dictionary**, so the admin console can decode a session's messages.
 
 ### Changed
 
-- **A session is identified by its group and its name.** A session name is unique only within its group, so two
-  counterparties can each have a `trading` session. `FixSessionId` exposes `getName()` (formerly `getId()`, and
-  `.name(...)` on its builder) and `getQualifiedName()`, `group.name`, which is unique in the engine. Session
-  settings files and Spring Boot properties say `name` instead of `id`, and a session without a group belongs to
-  `default`.
-- **Stored state and files are named after the qualified name**, for example `alpha.trading.bin` for the file
-  message store, and the same key in the JDBC store, the async store queues, the file logger and the session
-  settings files.
-- **Monitoring attributes follow the same naming:** `fix.sn` (session name) and `fix.sg` (group)
-- **A custom `FixMessagesLogger` receives the engine's id:** `getLogger(fixEngineId, fixInstanceId, fixSessionId,
-  messageTypeRegistry)`.
-- **A `FixSessionsPlugin` receives the engine's id:** `onSessionCreated(fixEngineId, fixInstanceId, fixSession,
-  incomingMessageTypes, outgoingMessageTypes)`.
-- **Management endpoints include the group:** one session is at `/actuator/fix-sessions/{group}/{name}`, the
-  health details are keyed `group.name`, and each JMX session bean name has a `group` key.
-- **Session settings files say `withinSessionTimeCheckInterval`** under `sessionScheduleSettings`, the name the
-  Java settings and the Spring Boot properties already use, instead of `withinSessionCheckInterval`.
-- **The session settings JSON schema describes every field and gives its default**, so an editor shows what a
-  setting does and what it is when left out.
-- **A custom `FixSessionsMonitoringContext` implements `getMeterDescriptors()`** (the meters created through it) **and
-  both `getGauge` methods**.
-- **A custom `FixApplicationFactory` implements `getApplicationIds()`**: the application ids its `getInstance`
-  accepts. It may also override `getDictionaryId(applicationId)`, which the engine uses to check settings without
-  binding an application; the default asks `getInstance`.
-- **A custom `FixSessionsSettingsStore` implements `isPersistent()`**: whether a change made through it survives a
-  restart.
-- **`FixInitiatorTargets` names the main target and the backups** (`getMainTarget()`, `getBackupTargets()`);
-  `getTargets()` still lists them all, main first.
-- **The HTTP admin API's `POST sessions/{group}/{name}/messages` takes a list**, `messages`, instead of a single
-  `message`, and sends them in order.
-- **A message sent through the admin API may start or end with whitespace**, such as the line break of a message
-  pasted from a log; it is ignored instead of making the message invalid.
-- **A `FixApplication` declares the dictionary it speaks** with `getDictionaryId()`, for example
-  `FixDictionaryId.of(FixDictionaryId.DEFAULT_ID, FixRegularVersion.VERSION_44)`, and its sessions use it. A session
-  whose FIX version, or for FIXT its DefaultApplVerID, is not the application's is refused when its settings are
-  added or updated, when its initiator is created and when it starts, instead of failing at its first message. A
-  FIXT backup target is accepted when its DefaultApplVerID is the main target's version.
-- **The session settings document has its own module, `staffix-sessions-settings-document`**: the model a session
-  file is read into, with its JSON schema, for tools that read or write session settings outside the file store.
-  The schema is published from it (classifier `schema`) rather than from `staffix-sessions-settings-store-file-impl`.
-- **An initiator that is to stay logged out no longer connects.** Logged out with `logoutPermanently()` (the admin
-  API's logout) or configured `desiredSessionState: LOGGED_OUT`, it used to dial and hold a connection without ever
-  logging on, which an acceptor with a logon timeout dropped and the initiator dialed again, over and over. It now
-  waits, and dials again when `logon()` is called.
-- **The desired state has its own type, `FixSessionDesiredState`, with two values: `LOGGED_IN` and `LOGGED_OUT`.**
-  `FixSession.getDesiredState()`, `FixSessionSettings.desiredSessionState`, session settings files, the in-memory
-  store's Spring Boot properties and the HTTP admin API use it. `CONNECTED` and `DISCONNECTED` are gone, and a
-  settings file naming them is refused: use `LOGGED_OUT`. An acceptor held logged out now always answers a Logon with
-  a Logout giving the reason, where `DISCONNECTED` closed the connection without a word; the peer's next Logon
-  then carries the next MsgSeqNum, as after any Logout.
-- **`FixSessionState` is no longer public**: `FixSession.isLoggedIn()` and `isConnected()` tell where a connection is,
-  and `getStatus()` where the session stands.
-- **The `session.logon.state` gauge is now `session.logon.status`** and exports the session's status as a code: 1
-  logged in, 0 logged out inside session time, 2 logged out outside session time, 3 logged out by an operator. A
-  query for `== 1` still means logged in; the Grafana dashboard in `monitoring/grafana` shows the four.
-- **The actuator reports `logonStatus` instead of `state`**, in the `fix-sessions` endpoint and the health details.
-  The health is DOWN exactly when a session is `LOGGED_OUT_INSIDE_SESSION_TIME`, as before.
+- **A session is identified by its group and its name**, so two counterparties can each have a `trading` session.
+  `FixSessionId.getId()` is now `getName()`, and `getQualifiedName()` returns `group.name`. Settings files and Spring
+  Boot properties say `name` instead of `id`; a session without a group belongs to `default`.
+- **The group appears everywhere a session is named**: stored state and log files (`alpha.trading.bin`), monitoring
+  attributes (`fix.sg`, `fix.sn`), actuator paths (`/actuator/fix-sessions/{group}/{name}`), health keys and JMX
+  bean names.
+- **A `FixApplication` declares its dictionary** with `getDictionaryId()`, and its sessions use it. A session whose
+  FIX version does not match is refused when configured or started, instead of failing at its first message.
+- **An initiator held logged out no longer connects.** It used to dial and hold a connection without logging on, which
+  an acceptor kept dropping. It now waits for `logon()`.
+- **The desired state is `FixSessionDesiredState`, with only `LOGGED_IN` and `LOGGED_OUT`.** `CONNECTED` and
+  `DISCONNECTED` are gone: use `LOGGED_OUT`. An acceptor held logged out now answers a Logon with a Logout giving the
+  reason, instead of silently closing the connection.
+- **`FixSessionState` is no longer public**: use `isLoggedIn()`, `isConnected()` and `getStatus()`.
+- **The `session.logon.state` gauge is now `session.logon.status`**: 1 logged in, 0 logged out inside session time,
+  2 outside session time, 3 by an operator. The actuator reports `logonStatus` instead of `state`.
+- **Custom extensions have new methods to implement**: `FixMessagesLogger.getLogger` and
+  `FixSessionsPlugin.onSessionCreated` receive the engine's id, `FixApplicationFactory` implements
+  `getApplicationIds()`, `FixSessionsSettingsStore` implements `isPersistent()`, and `FixSessionsMonitoringContext`
+  implements `getMeterDescriptors()` and both `getGauge` methods.
+- **`FixInitiatorTargets` names the main target and the backups** (`getMainTarget()`, `getBackupTargets()`).
+- **Session settings files say `withinSessionTimeCheckInterval`** instead of `withinSessionCheckInterval`, like the
+  Java and Spring Boot settings.
+- **The session settings JSON schema documents every field and its default**, and is now published from
+  `staffix-sessions-settings-document` (classifier `schema`).
+- **The HTTP admin API's `POST .../messages` takes a list** (`messages`), and surrounding whitespace in a sent
+  message is ignored.
 
 ### Removed
 
-- **The `dictionaryId` session setting**, in `FixSessionSettings`, session settings files and the in-memory store's
-  Spring Boot properties: a session speaks its application's dictionary. A settings file that still sets it is
-  refused.
-- `AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`, which
-  behaves the same.
-- **`FixSession.disconnect(String)`**: use `logoutPermanently(String)`, which now does the same.
+- **The `dictionaryId` session setting**: a session speaks its application's dictionary. A settings file that still
+  sets it is refused.
+- **`FixSession.disconnect(String)`**: use `logoutPermanently(String)`.
+- **`AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`**, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`.
 
 ### Fixed
 
-- Two sessions with the same name in different groups no longer share stored state, log files, metrics, JMX beans
-  or health entries; before, they overwrote each other.
-- Reading an acceptor's sessions while its settings store reloads (`getConfiguredSessionsSettings()`, the admin
-  API) could fail or return a partial list. `getConfiguredSessionsSettings()` now returns a snapshot.
-- An update a file settings store refuses, such as a change to a value a `${...}` placeholder sets, no longer leaves
-  the store holding the refused settings while the session and the file keep the old ones.
-- A session could fail to start with "Fix session application settings ... is missing" although its configuration
-  gave the setting, when the application described that setting only after the configuration was read.
-- An application from the Spring application factory could miss its `destroy()` call at shutdown, or the shutdown
-  could fail, when sessions were being created on several threads at once.
-- The error for a session naming an unknown message store listed the session settings stores instead of the message
-  stores to choose from.
-- `FixSession.isWithinSessionTime()` kept its last answer while the session was disconnected: a session down when
-  its window closed still read as within session time, and one down when it opened as outside it, until it connected
-  again. It now follows the schedule while disconnected too, and so do the HTTP admin API's session status and the
-  actuator's health.
-- An acceptor kept a connection that never sent a Logon open for as long as the client liked, so any client reaching
-  the port could hold sockets open. It now closes one that sends no Logon within `FixAcceptorBuilder.logonTimeout`,
-  10 seconds by default (`staffix.acceptors.<name>.logon-timeout` with Spring Boot, zero to never close it).
-- An acceptor refused a Logon that reached it in several TCP segments as an unknown session, which a slow link, a
-  proxy or a client writing in pieces can cause. It now waits for the whole Logon.
-- A Logon whose validation (`FixApplication.validateLogon`) finished after its connection had closed could log on the
-  session's next connection, whatever that connection's own Logon said. The outcome of a validation now applies only to
-  the connection that sent the Logon.
+- Two sessions with the same name in different groups overwrote each other's stored state, logs, metrics, JMX beans
+  and health entries.
+- Listing an acceptor's sessions while its settings store reloaded could fail or return a partial list.
+- A settings update the file store refused could leave the store out of step with the session and the file.
+- A session could fail to start with "Fix session application settings ... is missing" although the setting was
+  configured.
+- The Spring application factory could miss an application's `destroy()` call, or fail at shutdown, when sessions
+  were created concurrently.
+- The error for an unknown message store listed the settings stores instead of the message stores.
+- `isWithinSessionTime()` froze while a session was disconnected, so its status and health were wrong until it
+  reconnected.
+- An acceptor kept a connection that never sent a Logon open indefinitely. It now closes it after
+  `FixAcceptorBuilder.logonTimeout`, 10 seconds by default.
+- An acceptor refused a Logon split across several TCP segments as an unknown session.
+- A Logon validated after its connection closed could log on the session's next connection.
 
 ## [0.9.0] - 2026-09-30
 

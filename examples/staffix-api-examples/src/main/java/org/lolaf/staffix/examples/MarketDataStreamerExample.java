@@ -121,9 +121,9 @@ public class MarketDataStreamerExample extends FixExamplesBase implements Callab
         }
 
         Profiling.startProfilingIfNeeded(profilingOptions, QuoteRequestExample.class);
-        registerShutdownHook(initiators, null, fixAcceptor);
+        registerShutdownHook(initiators, null, fixAcceptor, fixEngine);
         LockSupport.parkNanos(exampleDuration.toNanos());
-        shutdown(initiators, null, fixAcceptor);
+        shutdown(initiators, null, fixAcceptor, fixEngine);
         return 0;
     }
 

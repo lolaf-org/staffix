@@ -25,6 +25,7 @@ import org.apache.logging.log4j.LogManager;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.ss.IdleStrategySelectStrategy;
 import org.lolaf.betty.api.ss.WakeupSelectStrategy;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.BusySpinIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
@@ -88,6 +89,7 @@ import java.util.regex.Pattern;
 @Slf4j
 class FixExamplesBase {
 
+    static final Duration ENGINE_STOP_TIMEOUT = Duration.ofSeconds(10);
     static final String ACCEPTOR = "ACCEPTOR";
     static final String INITIATOR = "INITIATOR";
 
@@ -258,10 +260,10 @@ class FixExamplesBase {
         });
     }
 
-    protected static void registerShutdownHook(List<FixInitiator> initiators, WheelTimer throttlingTimer, FixAcceptor fixAcceptor) {
+    protected static void registerShutdownHook(List<FixInitiator> initiators, WheelTimer throttlingTimer, FixAcceptor fixAcceptor, FixEngine fixEngine) {
         Thread shutdown = new Thread(() -> {
             try {
-                shutdown(initiators, throttlingTimer, fixAcceptor);
+                shutdown(initiators, throttlingTimer, fixAcceptor, fixEngine);
             } finally {
                 LogManager.shutdown();
             }
@@ -271,7 +273,7 @@ class FixExamplesBase {
         Runtime.getRuntime().addShutdownHook(shutdown);
     }
 
-    protected static void shutdown(List<FixInitiator> initiators, WheelTimer throttlingTimer, FixAcceptor fixAcceptor) {
+    protected static void shutdown(List<FixInitiator> initiators, WheelTimer throttlingTimer, FixAcceptor fixAcceptor, FixEngine fixEngine) {
         if (fixAcceptor.isStarted()) {
             log.info("Shutting down {} initiators and 1 acceptor", initiators.size());
             shutdownInitiators(initiators);
@@ -279,6 +281,7 @@ class FixExamplesBase {
             fixAcceptor.stop();
             log.info("Acceptor stopped");
             stopThrottlingTimer(throttlingTimer);
+            fixEngine.stop(Deadline.of(ENGINE_STOP_TIMEOUT));
             log.info("Engine fully stopped");
         }
     }

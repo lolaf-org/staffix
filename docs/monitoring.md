@@ -55,6 +55,8 @@ interesting about a FIX engine measured in microseconds.
 
 Every session also publishes the `session.logon.status` gauge, its `FixSession.getStatus()` as a code: 1 logged in,
 0 logged out inside session time (the one to alert on), 2 logged out outside session time, 3 logged out by an operator.
+A stopped session reads 3 until the engine stops, so a push registry's final publish reports it logged out. A pull
+registry such as Prometheus gets no final value: alert on the target being down instead.
 
 `clockOffsetEnabled` and `rttLatencyEnabled` publish the `session.rtt` timer and the `session.clock.offset` gauge
 from the session's own continuous line measurement; see [Network monitoring](network-monitoring.md). They need

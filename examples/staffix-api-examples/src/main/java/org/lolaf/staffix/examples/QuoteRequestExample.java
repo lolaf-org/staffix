@@ -107,9 +107,9 @@ public class QuoteRequestExample extends FixExamplesBase implements Callable<Int
         }
 
         Profiling.startProfilingIfNeeded(profilingOptions, QuoteRequestExample.class);
-        registerShutdownHook(initiators, throttlingTimer, fixAcceptor);
+        registerShutdownHook(initiators, throttlingTimer, fixAcceptor, fixEngine);
         LockSupport.parkNanos(exampleDuration.toNanos());
-        shutdown(initiators, throttlingTimer, fixAcceptor);
+        shutdown(initiators, throttlingTimer, fixAcceptor, fixEngine);
         return 0;
     }
 

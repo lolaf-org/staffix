@@ -19,6 +19,7 @@ import io.opentelemetry.api.trace.Span;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.timer.MutableTimeout;
 import org.lolaf.ringos.timer.Timeout;
 import org.lolaf.ringos.timer.WheelTimer;
@@ -129,6 +130,7 @@ public class MetricsLogsTracesExample extends FixExamplesBase implements Callabl
         shutdownInitiators(initiators);
         LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(1));
         fixAcceptor.stop();
+        fixEngine.stop(Deadline.of(ENGINE_STOP_TIMEOUT));
         return 0;
     }
 

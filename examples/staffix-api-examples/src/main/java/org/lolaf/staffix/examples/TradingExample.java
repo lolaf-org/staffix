@@ -103,9 +103,9 @@ public class TradingExample extends FixExamplesBase implements Callable<Integer>
         }
 
         Profiling.startProfilingIfNeeded(profilingOptions, TradingExample.class);
-        registerShutdownHook(initiators, throttlingTimer, fixAcceptor);
+        registerShutdownHook(initiators, throttlingTimer, fixAcceptor, fixEngine);
         LockSupport.parkNanos(exampleDuration.toNanos());
-        shutdown(initiators, throttlingTimer, fixAcceptor);
+        shutdown(initiators, throttlingTimer, fixAcceptor, fixEngine);
         return 0;
     }
 

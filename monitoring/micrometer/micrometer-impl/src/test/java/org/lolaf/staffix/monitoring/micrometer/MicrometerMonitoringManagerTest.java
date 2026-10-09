@@ -15,10 +15,13 @@
  */
 package org.lolaf.staffix.monitoring.micrometer;
 
+import io.micrometer.core.instrument.Clock;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.core.instrument.step.StepMeterRegistry;
+import io.micrometer.core.instrument.step.StepRegistryConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
@@ -35,6 +38,7 @@ import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -194,13 +198,74 @@ class MicrometerMonitoringManagerTest {
         // When
         listener.onSessionDestroyed("fix-instance-1", fixSessionId);
 
-        // Then - metrics should be removed
+        // Then - metrics should be removed, the status kept as logged out
         assertThat(meterRegistry.find(SESSION_LOGON_STATUS)
-                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).gauge()).isNull();
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).gauge().value())
+                .isEqualTo(FixSessionStatus.LOGGED_OUT_BY_OPERATOR.getCode());
         assertThat(meterRegistry.find(MESSAGES_READ_LATENCY)
                 .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).timer()).isNull();
         assertThat(meterRegistry.find(MESSAGES_WRITE_LATENCY)
                 .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).timer()).isNull();
+    }
+
+    @Test
+    void theFinalPublishOnCloseReportsADestroyedSessionLoggedOut() {
+        RecordingStepMeterRegistry pushRegistry = new RecordingStepMeterRegistry();
+        meterRegistry = pushRegistry;
+        when(fixSession.getStatus()).thenReturn(FixSessionStatus.LOGGED_IN);
+        monitoringManager.start();
+        FixSessionPlugin<?, ?> listener =
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+
+        listener.onSessionDestroyed("fix-instance-1", fixSessionId);
+        monitoringManager.stop(Deadline.unlimited());
+
+        assertThat(pushRegistry.publishedStatuses).containsExactly((double) FixSessionStatus.LOGGED_OUT_BY_OPERATOR.getCode());
+    }
+
+    @Test
+    void aRecreatedSessionReportsItsLiveStatus() {
+        monitoringManager.start();
+        FixSessionPlugin<?, ?> listener =
+                monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+        listener.onSessionDestroyed("fix-instance-1", fixSessionId);
+        when(fixSession.getStatus()).thenReturn(FixSessionStatus.LOGGED_IN);
+
+        monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+
+        assertThat(meterRegistry.find(SESSION_LOGON_STATUS).gauges())
+                .singleElement()
+                .extracting(Gauge::value)
+                .isEqualTo((double) FixSessionStatus.LOGGED_IN.getCode());
+    }
+
+    private static final class RecordingStepMeterRegistry extends StepMeterRegistry {
+
+        private final List<Double> publishedStatuses = new ArrayList<>();
+
+        RecordingStepMeterRegistry() {
+            super(new StepRegistryConfig() {
+                @Override
+                public String prefix() {
+                    return "recording";
+                }
+
+                @Override
+                public String get(String key) {
+                    return null;
+                }
+            }, Clock.SYSTEM);
+        }
+
+        @Override
+        protected void publish() {
+            find(SESSION_LOGON_STATUS).gauges().forEach(gauge -> publishedStatuses.add(gauge.value()));
+        }
+
+        @Override
+        protected TimeUnit getBaseTimeUnit() {
+            return TimeUnit.SECONDS;
+        }
     }
 
     @Test

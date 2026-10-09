@@ -135,9 +135,9 @@ public class PluginApiExample extends FixExamplesBase implements Callable<Intege
         }
 
         Profiling.startProfilingIfNeeded(profilingOptions, PluginApiExample.class);
-        registerShutdownHook(initiators, null, fixAcceptor);
+        registerShutdownHook(initiators, null, fixAcceptor, fixEngine);
         LockSupport.parkNanos(exampleDuration.toNanos());
-        shutdown(initiators, null, fixAcceptor);
+        shutdown(initiators, null, fixAcceptor, fixEngine);
         return 0;
     }
 
