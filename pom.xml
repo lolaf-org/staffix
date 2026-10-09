@@ -99,6 +99,8 @@
         <postgresql.version>42.7.13</postgresql.version>
         <hikaricp.version>7.1.0</hikaricp.version>
         <micrometer.version>1.17.1</micrometer.version>
+        <!-- at least the gencode version of opentelemetry-proto; declared in each module that pulls it, so it wins -->
+        <protobuf-java.version>4.36.2</protobuf-java.version>
         <okhttp.version>5.5.0</okhttp.version>
         <okio.version>3.18.2</okio.version>
         <jetty.version>12.1.13</jetty.version>

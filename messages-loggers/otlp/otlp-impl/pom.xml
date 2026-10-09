@@ -41,6 +41,11 @@
             <version>1.11.1-alpha</version>
         </dependency>
         <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>${protobuf-java.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.lolaf.ringos</groupId>
             <artifactId>ringos-lib-api</artifactId>
             <version>${ringos.version}</version>

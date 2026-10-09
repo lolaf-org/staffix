@@ -69,6 +69,9 @@ could mean.
   `staffix-sessions-settings-document` (classifier `schema`).
 - **The HTTP admin API's `POST .../messages` takes a list** (`messages`), and surrounding whitespace in a sent
   message is ignored.
+- **The OTLP messages logger needs protobuf-java 4.36.2 or later**, which it and the Micrometer OTLP module now
+  bring. A Spring Boot 4.1.1 application downgrades it to 4.35.1, and the logger then fails to load: set the
+  `protobuf-java.version` property to 4.36.2.
 
 ### Removed
 
@@ -94,6 +97,8 @@ could mean.
   `FixAcceptorBuilder.logonTimeout`, 10 seconds by default.
 - An acceptor refused a Logon split across several TCP segments as an unknown session.
 - A Logon validated after its connection closed could log on the session's next connection.
+- When the engine stops, the last `session.logon.status` value a push registry (OTLP, Datadog...) receives is 3,
+  logged out, instead of the session's last sampled status.
 
 ## [0.9.0] - 2026-09-30
 

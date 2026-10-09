@@ -36,5 +36,11 @@
             <artifactId>micrometer-registry-otlp</artifactId>
             <version>${micrometer.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>${protobuf-java.version}</version>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
 </project>
