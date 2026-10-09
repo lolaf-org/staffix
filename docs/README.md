@@ -24,19 +24,3 @@ one command and is the shortest path to a working session. Then come back here.
 | [Spring Boot](spring-boot.md) | How do I declare the whole engine in `application.properties`? |
 | [Performance](performance.md) | What are the measured latency and allocation figures, and how is that latency achieved? |
 | [Compared to other FIX engines](comparisons.md) | How does Staffix differ from QuickFIX/J and Artio, and when should I pick one of them instead? |
-
-## How to read the API
-
-Three ideas explain most of Staffix's shape:
-
-**A message is a stream of fields, not an object.** That is the "Streaming API for FIX" the name is built on: a
-decoder declares once which tags it wants, and a field nobody asked for is stepped over rather than parsed. See
-[Decoding a message](decoding-messages.md).
-
-**Everything pluggable is an interface plus a settings object.** Stores, loggers, application factories, session
-settings stores, admin exporters and monitoring plugins all follow the same pattern: a `…Settings` builder handed to
-`FixEngineBuilder`, and an implementation chosen by which jar is on the classpath.
-
-**Instances are addressed by id.** You register a store as `instanceId("acceptor")`, and a session says
-`fixMessageStoreInstanceId("acceptor")`. That indirection is what lets one engine run an acceptor and an initiator
-with entirely different persistence, logging and applications, which is exactly what the quickstart does.

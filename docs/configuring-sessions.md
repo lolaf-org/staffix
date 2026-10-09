@@ -35,6 +35,10 @@ counterparties can each have a `trading` session; `getQualifiedName()` (`group.n
 
 ## Wiring the session to the engine
 
+Every pluggable component (store, logger, application factory, settings store, admin exporter, monitoring plugin)
+follows the same pattern: a `…Settings` builder handed to `FixEngineBuilder`, and an implementation chosen by which
+jar is on the classpath.
+
 A session does not hold a store or an application; it holds the **instance id** of one. You register components on
 the engine under an id, and the session names the id it wants:
 
