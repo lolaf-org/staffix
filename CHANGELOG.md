@@ -54,6 +54,10 @@ could mean.
 - **`FixSessionState` is no longer public**: use `isLoggedIn()`, `isConnected()` and `getStatus()`.
 - **The `session.logon.state` gauge is now `session.logon.status`**: 1 logged in, 0 logged out inside session time,
   2 outside session time, 3 by an operator. The actuator reports `logonStatus` instead of `state`.
+- **Shorter message attributes, the same on metrics and logs**: `fix.msg.type` is now `fix.mt` and `fix.msg.dir` is
+  now `fix.md`, with `i` or `o` instead of `in` or `out`. OTLP message
+  logs carry `fix.md` instead of `fix.log.type`, so one filter selects a direction in both; a session event carries
+  no `fix.md`. `FixMessageDirection` lists its values for tools reading them.
 - **Custom extensions have new methods to implement**: `FixMessagesLogger.getLogger` and
   `FixSessionsPlugin.onSessionCreated` receive the engine's id, `FixApplicationFactory` implements
   `getApplicationIds()`, `FixSessionsSettingsStore` implements `isPersistent()`, and `FixSessionsMonitoringContext`

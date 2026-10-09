@@ -236,9 +236,9 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             boolean encodingLatencyEnabled = micrometerMonitoringManagerSettings.isEncodingLatencyEnabled();
             this.encodingTimersPerMsgType = encodingLatencyEnabled ? new IndexableMap<>(MessageType.class) : null;
             this.pluginContext = Optional.of(this);
-            registerTimers("in", fixInstanceId, fixSessionId, meterRegistry, micrometerMonitoringManagerSettings,
+            registerTimers(FixMessageDirection.IN.getValue(), fixInstanceId, fixSessionId, meterRegistry, micrometerMonitoringManagerSettings,
                     incomingMessageTypes, readLatencyEnabled, writeLatencyEnabled, decodingLatencyEnabled, encodingLatencyEnabled);
-            registerTimers("out", fixInstanceId, fixSessionId, meterRegistry, micrometerMonitoringManagerSettings,
+            registerTimers(FixMessageDirection.OUT.getValue(), fixInstanceId, fixSessionId, meterRegistry, micrometerMonitoringManagerSettings,
                     outgoingMessageTypes, readLatencyEnabled, writeLatencyEnabled, decodingLatencyEnabled, encodingLatencyEnabled);
 
             this.rttTimer = micrometerMonitoringManagerSettings.isRttLatencyEnabled()

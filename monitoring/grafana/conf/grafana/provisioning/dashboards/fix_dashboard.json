@@ -437,8 +437,8 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "histogram_quantile(0.50, sum by (le, fix_sg, fix_sn, fix_msg_type) (rate(messages_read_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
-          "legendFormat": "p50 · {{fix_msg_type}} · {{fix_sg}}.{{fix_sn}}",
+          "expr": "histogram_quantile(0.50, sum by (le, fix_sg, fix_sn, fix_mt) (rate(messages_read_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
+          "legendFormat": "p50 · {{fix_mt}} · {{fix_sg}}.{{fix_sn}}",
           "refId": "A"
         },
         {
@@ -446,8 +446,8 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, fix_sg, fix_sn, fix_msg_type) (rate(messages_read_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
-          "legendFormat": "p95 · {{fix_msg_type}} · {{fix_sg}}.{{fix_sn}}",
+          "expr": "histogram_quantile(0.95, sum by (le, fix_sg, fix_sn, fix_mt) (rate(messages_read_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
+          "legendFormat": "p95 · {{fix_mt}} · {{fix_sg}}.{{fix_sn}}",
           "refId": "B"
         },
         {
@@ -455,8 +455,8 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, fix_sg, fix_sn, fix_msg_type) (rate(messages_read_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
-          "legendFormat": "p99 · {{fix_msg_type}} · {{fix_sg}}.{{fix_sn}}",
+          "expr": "histogram_quantile(0.99, sum by (le, fix_sg, fix_sn, fix_mt) (rate(messages_read_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
+          "legendFormat": "p99 · {{fix_mt}} · {{fix_sg}}.{{fix_sn}}",
           "refId": "C"
         }
       ],
@@ -554,8 +554,8 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "histogram_quantile(0.50, sum by (le, fix_sg, fix_sn, fix_msg_type) (rate(messages_write_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
-          "legendFormat": "p50 · {{fix_msg_type}} · {{fix_sg}}.{{fix_sn}}",
+          "expr": "histogram_quantile(0.50, sum by (le, fix_sg, fix_sn, fix_mt) (rate(messages_write_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
+          "legendFormat": "p50 · {{fix_mt}} · {{fix_sg}}.{{fix_sn}}",
           "refId": "A"
         },
         {
@@ -563,8 +563,8 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, fix_sg, fix_sn, fix_msg_type) (rate(messages_write_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
-          "legendFormat": "p95 · {{fix_msg_type}} · {{fix_sg}}.{{fix_sn}}",
+          "expr": "histogram_quantile(0.95, sum by (le, fix_sg, fix_sn, fix_mt) (rate(messages_write_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
+          "legendFormat": "p95 · {{fix_mt}} · {{fix_sg}}.{{fix_sn}}",
           "refId": "B"
         },
         {
@@ -572,8 +572,8 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, fix_sg, fix_sn, fix_msg_type) (rate(messages_write_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
-          "legendFormat": "p99 · {{fix_msg_type}} · {{fix_sg}}.{{fix_sn}}",
+          "expr": "histogram_quantile(0.99, sum by (le, fix_sg, fix_sn, fix_mt) (rate(messages_write_latency_bucket{fix_sn=~\"$name\"}[$__rate_interval])))",
+          "legendFormat": "p99 · {{fix_mt}} · {{fix_sg}}.{{fix_sn}}",
           "refId": "C"
         }
       ],
@@ -671,8 +671,8 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "sum by (fix_sg, fix_sn, fix_msg_dir, fix_msg_type) (rate(messages_read_latency_count{fix_sn=~\"$name\"}[1m]))",
-          "legendFormat": "{{fix_sg}}.{{fix_sn}} {{fix_msg_dir}} {{fix_msg_type}}",
+          "expr": "sum by (fix_sg, fix_sn, fix_md, fix_mt) (rate(messages_read_latency_count{fix_sn=~\"$name\"}[1m]))",
+          "legendFormat": "{{fix_sg}}.{{fix_sn}} {{fix_md}} {{fix_mt}}",
           "refId": "A"
         }
       ],
@@ -770,8 +770,8 @@
             "type": "prometheus",
             "uid": "prometheusUID"
           },
-          "expr": "sum by (fix_sg, fix_sn, fix_msg_dir, fix_msg_type) (rate(messages_write_latency_count{fix_sn=~\"$name\"}[1m]))",
-          "legendFormat": "{{fix_sg}}.{{fix_sn}} {{fix_msg_dir}} {{fix_msg_type}}",
+          "expr": "sum by (fix_sg, fix_sn, fix_md, fix_mt) (rate(messages_write_latency_count{fix_sn=~\"$name\"}[1m]))",
+          "legendFormat": "{{fix_sg}}.{{fix_sn}} {{fix_md}} {{fix_mt}}",
           "refId": "A"
         }
       ],

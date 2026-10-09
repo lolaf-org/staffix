@@ -185,8 +185,8 @@ class TestOtlpMessagesLogger {
 
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test outgoing)");
-            assertLogMessageReceived("fix.log.type: Str(out)");
-            assertLogMessageReceived("fix.msg.type: Str(OUT_MSG)");
+            assertLogMessageReceived("fix.md: Str(o)");
+            assertLogMessageReceived("fix.mt: Str(OUT_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("fix.sn: Str(testSid)");
             assertLogMessageReceived("fix.sg: Str(default)");
@@ -194,8 +194,8 @@ class TestOtlpMessagesLogger {
         });
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test incoming)");
-            assertLogMessageReceived("fix.log.type: Str(in)");
-            assertLogMessageReceived("fix.msg.type: Str(IN_MSG)");
+            assertLogMessageReceived("fix.md: Str(i)");
+            assertLogMessageReceived("fix.mt: Str(IN_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("fix.sn: Str(testSid)");
             assertLogMessageReceived("fix.sg: Str(default)");
@@ -203,7 +203,6 @@ class TestOtlpMessagesLogger {
         });
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test event)");
-            assertLogMessageReceived("fix.log.type: Str(event)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("fix.sn: Str(testSid)");
             assertLogMessageReceived("fix.sg: Str(default)");
@@ -211,7 +210,6 @@ class TestOtlpMessagesLogger {
         });
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test event with params)");
-            assertLogMessageReceived("fix.log.type: Str(event)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("fix.sn: Str(testSid)");
             assertLogMessageReceived("fix.sg: Str(default)");
@@ -266,8 +264,8 @@ class TestOtlpMessagesLogger {
         logger.logIncoming(UTCTime.of(Instant.ofEpochMilli(1000000)), messageTypeIn, ByteBuffer.wrap("test incoming message".getBytes()));
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test incoming message)");
-            assertLogMessageReceived("fix.log.type: Str(in)");
-            assertLogMessageReceived("fix.msg.type: Str(IN_MSG)");
+            assertLogMessageReceived("fix.md: Str(i)");
+            assertLogMessageReceived("fix.mt: Str(IN_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("fix.sn: Str(testSid)");
             assertLogMessageReceived("fix.sg: Str(default)");
@@ -277,8 +275,8 @@ class TestOtlpMessagesLogger {
         logger.logIncoming(UTCTime.of(Instant.ofEpochMilli(1000001)), messageTypeIn, ByteBuffer.wrap("test incoming message2".getBytes()));
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test incoming message2)");
-            assertLogMessageReceived("fix.log.type: Str(in)");
-            assertLogMessageReceived("fix.msg.type: Str(IN_MSG)");
+            assertLogMessageReceived("fix.md: Str(i)");
+            assertLogMessageReceived("fix.mt: Str(IN_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("fix.sn: Str(testSid)");
             assertLogMessageReceived("fix.sg: Str(default)");
@@ -292,8 +290,8 @@ class TestOtlpMessagesLogger {
 
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test outgoing message)");
-            assertLogMessageReceived("fix.log.type: Str(out)");
-            assertLogMessageReceived("fix.msg.type: Str(OUT_MSG)");
+            assertLogMessageReceived("fix.md: Str(o)");
+            assertLogMessageReceived("fix.mt: Str(OUT_MSG)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("fix.sn: Str(testSid)");
             assertLogMessageReceived("fix.sg: Str(default)");
@@ -307,10 +305,10 @@ class TestOtlpMessagesLogger {
 
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test event)");
-            assertLogMessageReceived("fix.log.type: Str(event)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
+        assertThat(receivedOutputFromCollector).noneMatch(logLine -> logLine.contains("fix.md"));
     }
 
     @Test
@@ -322,10 +320,10 @@ class TestOtlpMessagesLogger {
 
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test|event|replaced|)");
-            assertLogMessageReceived("fix.log.type: Str(event)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
+        assertThat(receivedOutputFromCollector).noneMatch(logLine -> logLine.contains("fix.md"));
     }
 
     @Test
@@ -334,11 +332,11 @@ class TestOtlpMessagesLogger {
 
         Awaitility.await().untilAsserted(() -> {
             assertLogMessageReceived("Body: Str(test event param1 param2)");
-            assertLogMessageReceived("fix.log.type: Str(event)");
             assertLogMessageReceived("service.name: Str(test)");
             assertLogMessageReceived("fix.sn: Str(testSid)");
             assertLogMessageReceived("fix.sg: Str(default)");
             assertLogMessageReceived("Timestamp: 1970-01-01 00:16:40 +0000 UTC");
         });
+        assertThat(receivedOutputFromCollector).noneMatch(logLine -> logLine.contains("fix.md"));
     }
 }

@@ -37,7 +37,7 @@ public class FixMeterDescriptor {
     String description;
     /**
      * Tags beyond the session's own ({@link FixMonitoringAttributes}), which split the meter into several series,
-     * such as {@code fix.msg.type}.
+     * such as {@code fix.mt}.
      */
     @Singular
     List<String> tagKeys;

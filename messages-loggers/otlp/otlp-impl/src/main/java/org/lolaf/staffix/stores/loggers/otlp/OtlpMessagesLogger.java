@@ -33,6 +33,7 @@ import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.http.FastByteArrayOutputStream;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
+import org.lolaf.staffix.api.monitoring.FixMessageDirection;
 import org.lolaf.staffix.api.monitoring.FixMonitoringAttributes;
 import org.lolaf.staffix.api.monitoring.FixMonitoringConstants;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -105,9 +106,8 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
          */
         private static final String LOGS_SERVICE_EXPORT_METHOD = "/opentelemetry.proto.collector.logs.v1.LogsService/Export";
 
-        private static final KeyValue INCOMING_LOG = createKeyValue(FixMonitoringAttributes.FIX_LOG_TYPE.getKey(), "in");
-        private static final KeyValue OUTGOING_LOG = createKeyValue(FixMonitoringAttributes.FIX_LOG_TYPE.getKey(), "out");
-        private static final KeyValue EVENT_LOG = createKeyValue(FixMonitoringAttributes.FIX_LOG_TYPE.getKey(), "event");
+        private static final KeyValue INCOMING = createKeyValue(FixMonitoringAttributes.FIX_MESSAGE_DIRECTION.getKey(), FixMessageDirection.IN.getValue());
+        private static final KeyValue OUTGOING = createKeyValue(FixMonitoringAttributes.FIX_MESSAGE_DIRECTION.getKey(), FixMessageDirection.OUT.getValue());
 
         private final OtlpMessagesLoggerSettings settings;
         private final OtlpLogsTransport transport;
@@ -237,14 +237,14 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
                 LogEvent le = logEvents[i];
                 switch (le.getLogEventType()) {
                     case OUTGOING_MSG:
-                        addToLoggingBatch(le.getLogTime(), OUTGOING_LOG, le.getMessageType(), le.getMessage());
+                        addToLoggingBatch(le.getLogTime(), OUTGOING, le.getMessageType(), le.getMessage());
                         break;
                     case INCOMING_MSG:
-                        addToLoggingBatch(le.getLogTime(), INCOMING_LOG, le.getMessageType(), le.getMessage());
+                        addToLoggingBatch(le.getLogTime(), INCOMING, le.getMessageType(), le.getMessage());
                         break;
                     case EVENT:
                     case EVENT_WITH_PARAMS:
-                        addToLoggingBatch(le.getLogTime(), EVENT_LOG, null, le.getMessage());
+                        addToLoggingBatch(le.getLogTime(), null, null, le.getMessage());
                         break;
                 }
             }
@@ -252,26 +252,28 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
 
         @Override
         public void logIncoming(UTCTime logTime, MessageType messageType, ByteBuffer message) {
-            addToLoggingBatch(logTime, INCOMING_LOG, messageType, message);
+            addToLoggingBatch(logTime, INCOMING, messageType, message);
         }
 
         @Override
         public void logOutgoing(UTCTime logTime, MessageType messageType, ByteBuffer message) {
-            addToLoggingBatch(logTime, OUTGOING_LOG, messageType, message);
+            addToLoggingBatch(logTime, OUTGOING, messageType, message);
         }
 
         @Override
         public void logEvent(UTCTime eventTime, String event) {
-            addToLoggingBatch(eventTime, EVENT_LOG, null, ByteBuffer.wrap(event.getBytes(SerDe.CHARSET)));
+            addToLoggingBatch(eventTime, null, null, ByteBuffer.wrap(event.getBytes(SerDe.CHARSET)));
         }
 
-        private void addToLoggingBatch(UTCTime logTime, KeyValue logType, MessageType messageType, ByteBuffer message) {
+        private void addToLoggingBatch(UTCTime logTime, KeyValue direction, MessageType messageType, ByteBuffer message) {
             PooledLogRecord pooledLogRecord = getPooledLogRecord();
             LogRecord.Builder logRecordBuilder = pooledLogRecord.getLogRecord();
             logRecordBuilder.setSeverityNumber(SeverityNumber.SEVERITY_NUMBER_INFO)
-                    .setTimeUnixNano(logTime.toEpochNanos())
-                    .addAttributes(logType);
+                    .setTimeUnixNano(logTime.toEpochNanos());
             pooledLogRecord.setBody(message, fieldDelimiterReplacementChar);
+            if (direction != null) {
+                logRecordBuilder.addAttributes(direction);
+            }
             if (messageType != null) {
                 KeyValue messageTypeAttribute = messageTypeCache.get(messageType);
                 if (messageTypeAttribute != null) {

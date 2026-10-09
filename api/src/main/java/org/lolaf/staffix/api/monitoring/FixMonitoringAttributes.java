@@ -47,16 +47,12 @@ public enum FixMonitoringAttributes {
     /**
      * The message's MsgType(35) value, e.g. {@code D}.
      */
-    FIX_MESSAGE_TYPE("fix.msg.type"),
+    FIX_MESSAGE_TYPE("fix.mt"),
     /**
-     * Whether the message was received or sent: {@code in} or {@code out}.
+     * Whether the message was received or sent, one of {@link FixMessageDirection}. A message log record without it is
+     * a session event.
      */
-    FIX_MESSAGE_DIRECTION("fix.msg.dir"),
-    /**
-     * What a message log record holds: a message received ({@code in}), sent ({@code out}), or a session
-     * {@code event}.
-     */
-    FIX_LOG_TYPE("fix.log.type");
+    FIX_MESSAGE_DIRECTION("fix.md");
 
     /**
      * As it appears on the wire, e.g. {@code fix.eid}.
