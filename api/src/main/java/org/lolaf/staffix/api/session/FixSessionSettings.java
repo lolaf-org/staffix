@@ -604,12 +604,24 @@ public class FixSessionSettings {
         @Builder
         public static class ScheduleEntry {
 
+            /**
+             * The day the window opens on.
+             */
             @NonNull
             DayOfWeek startDay;
+            /**
+             * The day it closes on.
+             */
             @NonNull
             DayOfWeek endDay;
+            /**
+             * The open.
+             */
             @NonNull
             LocalTime startTime;
+            /**
+             * The close.
+             */
             @NonNull
             LocalTime endTime;
 
