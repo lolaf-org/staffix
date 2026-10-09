@@ -570,10 +570,8 @@ public class FixSessionSettings {
         private Duration outsideSessionTimePreTriggerDelay = Duration.ofSeconds(2);
 
         /**
-         * The zone the schedule's times are read in - the venue's, not the engine's.
-         * <p>
-         * Defaults to the JVM's, which is rarely what is wanted for a venue in another country, and never what is
-         * wanted if the two observe daylight saving on different dates.
+         * The zone the schedule's times are read in: the venue's, not the engine's. The JVM default is rarely right
+         * for a venue abroad, and never when the two observe daylight saving on different dates.
          */
         @Builder.Default
         private TimeZone timeZone = TimeZone.getDefault();
@@ -585,108 +583,62 @@ public class FixSessionSettings {
         private Duration withinSessionTimeCheckInterval = Duration.ofSeconds(1);
 
         /**
-         * The days the session keeps trading windows: it opens at {@link ScheduleEntry#startTime} and closes at
-         * {@link ScheduleEntry#endTime}, logging out and staying down until the next open.
-         * <p>
-         * A day covered by a {@link NonStopScheduleEntry} must not be covered here - a day is either windowed or
-         * non-stop, never both.
+         * Trading windows: the session logs out at each close and stays down until the next open. A day must not
+         * also be covered by a {@link NonStopScheduleEntry}.
          */
         @Singular
         private List<ScheduleEntry> sessionSchedules;
 
         /**
-         * The days the session runs non-stop: it is up for the whole of the day and restarts its sequence numbers at
-         * {@link NonStopScheduleEntry#sequenceResetTime} through the section 4.4.2 exchange - both ends back to 1
-         * over the live connection, with nothing logged out and no connection dropped.
-         * <p>
-         * Deliberately not spelled as a {@link ScheduleEntry} whose start and end are equal, which is how some
-         * engines say it: staffix rejects such an entry as a zero-duration typo, and it would read as a mistake
-         * rather than as a session that never closes. A day listed here has no open and no close, only a point at
-         * which the numbering starts again.
-         * <p>
-         * Consecutive non-stop days are contiguous - midnight between them is not a close - and a non-stop day is
-         * contiguous with a neighbouring window that runs up to or starts at that midnight. A day named by neither
-         * list is a day the session is down. Both lists empty is the default: a session with no schedule at all,
-         * always up and never resetting on a timer.
+         * Days the session stays up around the clock, contiguous with neighbouring non-stop days and adjacent windows.
+         * Not spelled as a {@link ScheduleEntry} with equal start and end, which staffix rejects as a zero-length
+         * typo. A day in neither list is down; both lists empty means always up, with no timed reset.
          */
         @Singular
         private List<NonStopScheduleEntry> nonStopSchedules;
 
         /**
-         * One trading window, from a day and time to a later day and time in the schedule's zone. It may span midnight,
-         * or the weekend.
+         * One trading window in the schedule's zone; it may span midnight or the weekend.
          */
         @Value
         @Builder
         public static class ScheduleEntry {
 
-            /**
-             * The day the window opens on.
-             */
             @NonNull
             DayOfWeek startDay;
-            /**
-             * The day it closes on.
-             */
             @NonNull
             DayOfWeek endDay;
-            /**
-             * The open.
-             */
             @NonNull
             LocalTime startTime;
-            /**
-             * The close.
-             */
             @NonNull
             LocalTime endTime;
 
         }
 
         /**
-         * One day on which the session stays up around the clock, optionally restarting its sequence numbers at
-         * {@link #sequenceResetTime} through the section 4.4.2 exchange.
-         * <p>
-         * Held per day rather than once per session so that counterparties who agreed on a different roll time for
-         * different days - or on the roles changing hands between them, or on rolling on some days and not others -
-         * can say so.
+         * One non-stop day, optionally resetting sequence numbers through the section 4.4.2 exchange without logging
+         * out. Per day so the roll time and initiator can differ between days.
          */
         @Value
         @Builder
         public static class NonStopScheduleEntry {
 
             /**
-             * The day this entry describes. At most one entry per day.
+             * At most one entry per day.
              */
             @NonNull
             DayOfWeek dayOfWeek;
 
             /**
-             * The time of day, in the schedule's {@link SessionScheduleSettings#timeZone}, at which the numbering
-             * restarts, or null on a day that is non-stop and does not roll.
-             * <p>
-             * Nullable because the two things an entry says are independent: that the day never closes, and that the
-             * numbering restarts on it. A session rolling weekly rather than daily - up around the clock all week,
-             * resetting on the Sunday alone - has six days of the first without the second, and there is no time of
-             * day that expresses "no reset". Naming an hour the deployment is quiet is not the same statement: it
-             * still rolls, it just rolls where nobody was looking.
-             * <p>
-             * Null and {@link #initiatesReset} go together: an entry states both or neither, which
-             * {@code FixSessionSettingsValidator} enforces. A day with a time and no role would have no one to
-             * perform the roll it asks for, and a role with no time is the shape a forgotten time leaves behind.
+             * When the numbering restarts, in the schedule's zone, or null on a day that does not roll (a weekly roll
+             * leaves six non-stop days without one). Set together with {@link #initiatesReset} or not at all.
              */
             LocalTime sequenceResetTime;
 
             /**
-             * True when this end sends the section 4.4.2 Logon(35=A) at the appointed time, false when it waits for
-             * the peer's and only acknowledges, and null on a day that does not roll at all.
-             * <p>
-             * Boxed rather than primitive so that "not stated" is distinguishable from "awaits": a primitive would
-             * default to false and quietly leave a rolling day that nobody rolls. Mandatory wherever
-             * {@link #sequenceResetTime} is set, because section 4.4.2 has the counterparties agree between
-             * themselves which peer initiates and nothing about that agreement is visible on the wire, so staffix has
-             * nothing to derive a default from: both ends initiating puts two resets on the wire at once, and neither
-             * initiating leaves the numbering running for ever.
+             * Whether this end sends the section 4.4.2 Logon or waits for the peer's; null on a day that does not roll.
+             * Required with {@link #sequenceResetTime}: the initiator is a bilateral agreement staffix cannot infer, and
+             * a primitive default of false would silently leave a roll nobody performs.
              */
             Boolean initiatesReset;
         }
