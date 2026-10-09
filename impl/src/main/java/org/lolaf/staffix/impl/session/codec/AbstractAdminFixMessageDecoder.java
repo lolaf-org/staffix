@@ -19,6 +19,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.DecodingException;
+import org.lolaf.staffix.api.codec.WrongSeqNumException;
 import org.lolaf.staffix.api.fields.FieldsRegistry;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
@@ -27,15 +28,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.codec.decoders.DecodedFixMessageDecoder;
-import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.impl.session.FixSessionStateComponent;
-import org.lolaf.staffix.impl.session.FixSessionLayerComponents;
-import org.lolaf.staffix.impl.session.CodecsComponent;
-import org.lolaf.staffix.impl.session.OutgoingMessagesComponent;
-import org.lolaf.staffix.impl.session.LogonLogoutComponent;
-import org.lolaf.staffix.impl.session.MessageRejectsComponent;
-import org.lolaf.staffix.impl.session.ResendRecovery;
-import org.lolaf.staffix.impl.session.RetransmissionComponent;
+import org.lolaf.staffix.impl.session.*;
 
 import java.util.concurrent.Executor;
 
@@ -146,8 +139,10 @@ public abstract class AbstractAdminFixMessageDecoder extends DecodedFixMessageDe
         }
         // in case of logout received it can happen with a wrong seq num from other side..
         FixSessionImpl fixSessionImpl = getFixSession();
-        log.error("Failed to decode admin message type {} on session {}, disconnecting", getMessageType().code(), fixSession.getFixSessionId(), decodingException);
-        fixSessionImpl.logEvent("Failed to decode admin message type %s with error: %s, abnormal situation disconnecting", getMessageType().code(), decodingException.getMessage());
+        if (!(decodingException instanceof WrongSeqNumException)) {
+            log.error("Failed to decode admin message type {} on session {}, disconnecting", getMessageType().code(), fixSession.getFixSessionId(), decodingException);
+            fixSessionImpl.logEvent("Failed to decode admin message type %s with error: %s, abnormal situation disconnecting", getMessageType().code(), decodingException.getMessage());
+        }
         fixSessionImpl.disconnect();
 
     }
