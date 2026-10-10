@@ -22,6 +22,9 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
@@ -40,10 +43,14 @@ import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 import org.lolaf.staffix.tests.TestingFixSessionMonitoringManagerSettings;
 
 import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +61,7 @@ class TestFixEngineSessionsSettingsWrites {
             FixApplicationSessionSettingDescriptor.of("writes.account", "The account orders are booked to");
 
     private final ControllableSettingsStore store = new ControllableSettingsStore(STORE_ID);
+    private final TestingFixAlertsPublisherSettings alertsPublisher = TestingFixAlertsPublisherSettings.builder().build();
     private FixEngine fixEngine;
     private AdminApi adminApi;
 
@@ -83,7 +91,7 @@ class TestFixEngineSessionsSettingsWrites {
                         .application(InstanceProvider.DEFAULT_INSTANCE_ID, application)
                         .build())
                 .fixSessionsSettingsStore(new ControllableSettingsStore.Settings(store))
-                .fixAlertsPublisher(TestingFixAlertsPublisherSettings.builder().build())
+                .fixAlertsPublisher(alertsPublisher)
                 .fixSessionsPlugin(TestingFixSessionMonitoringManagerSettings.builder()
                         .instanceId("metrics")
                         .mock(monitoring)
@@ -283,6 +291,24 @@ class TestFixEngineSessionsSettingsWrites {
 
         assertThat(store.getSettings()).isEmpty();
         assertThatThrownBy(() -> adminApi.getIncomingSeqNum(alpha.getFixSessionId())).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void aSessionsProbesAreEvaluatedAndClearedWhenTheSessionIsRemoved() {
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+        FixSession session = adminApi.getManagedFixSessions().stream()
+                .filter(s -> s.getFixSessionId().equals(alpha.getFixSessionId()))
+                .findFirst().orElseThrow();
+
+        session.getProbes().add(Probe.builder().name("queue").description("Orders waiting")
+                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).build());
+        await().atMost(Duration.ofSeconds(5)).until(() -> !alertsPublisher.getEvents().isEmpty());
+        adminApi.removeFixSessionSettings(alpha.getFixSessionId(), FixSession.FixSessionType.ACCEPTOR);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alertsPublisher.getEvents())
+                .extracting(AlertEvent::getType, AlertEvent::getFixSessionId)
+                .containsExactly(tuple(AlertEvent.Type.RAISED, alpha.getFixSessionId()), tuple(AlertEvent.Type.CLEARED, alpha.getFixSessionId())));
     }
 
     @Test

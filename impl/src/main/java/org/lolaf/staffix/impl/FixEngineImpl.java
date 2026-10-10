@@ -36,9 +36,12 @@ import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
+import org.lolaf.staffix.impl.alerting.ProbesManager;
+import org.lolaf.staffix.impl.session.FixSessionImpl;
 import org.lolaf.staffix.impl.session.FixSessionRegistryImpl;
 import org.lolaf.staffix.impl.session.FixSessionSettingsValidator;
 
+import java.time.Clock;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -61,6 +64,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private final List<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final List<FixMessagesLogger> fixMessagesLoggers;
     private final List<FixAlertsPublisher> fixAlertsPublishers;
+    private final ProbesManager probesManager;
     private final List<FixSessionsPlugin<?>> fixSessionsPlugins;
     private final List<FixApplicationFactory> fixApplicationFactories;
     @Getter
@@ -102,6 +106,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         this.fixMessagesLoggers = fixEngineBuilder.getFixMessagesLoggers().stream().map(FixMessagesLoggerSettings::instance).collect(Collectors.toList());
         ensureUniqueInstanceIdsAreProvided(fixEngineBuilder.getFixAlertsPublishers(), "FixAlertsPublishers");
         this.fixAlertsPublishers = fixEngineBuilder.getFixAlertsPublishers().stream().map(FixAlertsPublisherSettings::instance).collect(Collectors.toList());
+        this.probesManager = new ProbesManager(fixEngineBuilder.getInstanceId(), Clock.systemUTC());
         this.adminApiExporter = fixEngineBuilder.getAdminApiExporter() != null ? fixEngineBuilder.getAdminApiExporter().instance() : null;
         this.initiators = new ConcurrentHashMap<>();
         this.acceptors = new ConcurrentHashMap<>();
@@ -139,6 +144,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
+        probesManager.stop(stopDeadline);
         if (adminApiExporter != null) {
             adminApiExporter.shutdown(stopDeadline);
         }
@@ -211,6 +217,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         });
         fixMessagesLoggers.forEach(Startable::start);
         fixAlertsPublishers.forEach(Startable::start);
+        probesManager.start();
         if (adminApiExporter != null) {
             adminApiExporter.export(this);
         }
@@ -551,12 +558,17 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Override
     public void onSessionRegistered(FixSession fixSession) {
         fixSessionRegistry.register(fixSession);
+        if (fixSession instanceof FixSessionImpl) {
+            FixSessionImpl fixSessionImpl = (FixSessionImpl) fixSession;
+            probesManager.register(fixSessionImpl, fixSessionImpl.getProbes(), fixSessionImpl.getAlertsPublisher());
+        }
         sessionLifecycleListeners.forEach(l -> l.onSessionRegistered(fixSession));
     }
 
     @Override
     public void onSessionUnregistered(FixSession fixSession) {
         fixSessionRegistry.unregister(fixSession);
+        probesManager.unregister(fixSession);
         sessionLifecycleListeners.forEach(l -> l.onSessionUnregistered(fixSession));
     }
 

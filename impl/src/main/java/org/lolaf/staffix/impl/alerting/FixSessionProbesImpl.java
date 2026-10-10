@@ -18,49 +18,61 @@ package org.lolaf.staffix.impl.alerting;
 import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.alerting.Probe;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
- * Copy on write: probes are added or removed rarely, while the evaluation reads them every tick without locking.
+ * Copy on write: probes are added or removed rarely, while the evaluation reads them every tick without locking or
+ * allocating.
  */
 public final class FixSessionProbesImpl implements FixSessionProbes {
 
-    private volatile List<Probe> probes = List.of();
+    private static final Probe[] NO_PROBES = new Probe[0];
+
+    private volatile Probe[] probes = NO_PROBES;
 
     @Override
     public synchronized void add(Probe probe) {
-        if (find(probe.getName()) != null) {
+        if (indexOf(probe.getName()) >= 0) {
             throw new IllegalArgumentException("A probe named " + probe.getName() + " already exists in this session");
         }
-        List<Probe> updated = new ArrayList<>(probes);
-        updated.add(probe);
-        probes = List.copyOf(updated);
+        Probe[] updated = Arrays.copyOf(probes, probes.length + 1);
+        updated[probes.length] = probe;
+        probes = updated;
     }
 
     @Override
     public synchronized boolean remove(String name) {
-        Probe probe = find(name);
-        if (probe == null) {
+        int index = indexOf(name);
+        if (index < 0) {
             return false;
         }
-        List<Probe> updated = new ArrayList<>(probes);
-        updated.remove(probe);
-        probes = List.copyOf(updated);
+        Probe[] updated = new Probe[probes.length - 1];
+        System.arraycopy(probes, 0, updated, 0, index);
+        System.arraycopy(probes, index + 1, updated, index, updated.length - index);
+        probes = updated;
         return true;
     }
 
     @Override
     public List<Probe> list() {
+        return List.of(probes);
+    }
+
+    /**
+     * Never modified, replaced on every change, so a caller can tell a change by reference.
+     */
+    Probe[] array() {
         return probes;
     }
 
-    private Probe find(String name) {
-        for (Probe probe : probes) {
-            if (probe.getName().equals(name)) {
-                return probe;
+    private int indexOf(String name) {
+        Probe[] current = probes;
+        for (int i = 0; i < current.length; i++) {
+            if (current[i].getName().equals(name)) {
+                return i;
             }
         }
-        return null;
+        return -1;
     }
 }

@@ -22,6 +22,7 @@ import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
@@ -111,6 +112,8 @@ public class FixSessionImpl implements FixSession {
     private final ReentrantLock ownershipHandover;
     @Getter
     private final FixSessionProbesImpl probes;
+    @Getter
+    private final FixAlertsPublisher alertsPublisher;
     @SuppressWarnings("java:S3077")
     private volatile Thread offlineOwnerThread;
     @Getter
@@ -133,6 +136,7 @@ public class FixSessionImpl implements FixSession {
         this.wiring = new SessionWiring(this, fixInstanceId, fixSessionSettings, fixSessionRuntimeDependencies,
                 scheduledExecutorService, ioSettings, messageExecutorsRuntime, providedClock);
         this.probes = new FixSessionProbesImpl();
+        this.alertsPublisher = fixSessionRuntimeDependencies.getFixAlertsPublisher();
         this.ownershipHandover = new ReentrantLock();
         this.fixSessionId = wiring.fixSessionId;
         this.fixApplication = wiring.fixApplication;
