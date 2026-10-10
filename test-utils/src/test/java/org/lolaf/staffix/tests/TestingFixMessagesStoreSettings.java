@@ -17,6 +17,7 @@ package org.lolaf.staffix.tests;
 
 import lombok.Builder;
 import lombok.Getter;
+import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
@@ -35,5 +36,10 @@ public class TestingFixMessagesStoreSettings implements FixMessagesStoreSettings
 
     @Builder.Default
     private BiPredicate<MessageType, ByteBuffer> messageFilter = (messageType, direction) -> false;
+
+    /**
+     * Added to each session the store is asked for, when set.
+     */
+    private Probe probe;
 
 }

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
@@ -46,6 +47,8 @@ class TestAsyncMessagesLogger {
 
     private static final int DEFAULT_LOG_BYTE_BUFFER_SIZE = 8;
     private static final String TEST_LOGGER_STORE_DESCRIPTION = "test logger store description";
+
+    private final FixSessionProbes probes = mock(FixSessionProbes.class);
 
     AsyncMessagesLogger asyncMessagesLogger;
     FixMessagesLogger.Logger logger;
@@ -120,7 +123,7 @@ class TestAsyncMessagesLogger {
         messageTypeRegistry = mock(MessageTypeRegistry.class);
         when(messageTypeRegistry.find(anyInt())).thenReturn(messageType);
 
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, probes);
     }
 
     @AfterEach
@@ -129,6 +132,11 @@ class TestAsyncMessagesLogger {
             asyncLogger.stop(Deadline.immediate());
         }
         asyncMessagesLogger.stop(Deadline.immediate());
+    }
+
+    @Test
+    void addsItsQueueSizeProbeToTheSession() {
+        verify(probes).add(argThat(probe -> probe.getName().equals("async-logger-queue")));
     }
 
     @Test
@@ -233,7 +241,7 @@ class TestAsyncMessagesLogger {
                 .build();
         asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings);
         asyncMessagesLogger.start();
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, probes);
         asyncLogger.start();
 
         verify(batchingLogger).isUnderlyingStorageResourceAvailable();
@@ -281,7 +289,7 @@ class TestAsyncMessagesLogger {
                 .build();
         asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings);
         asyncMessagesLogger.start();
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, probes);
         asyncLogger.start();
 
         String logMessage = "test";

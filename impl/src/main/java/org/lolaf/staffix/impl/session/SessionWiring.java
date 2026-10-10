@@ -40,6 +40,7 @@ import org.lolaf.staffix.codec.decoders.FixTMessageTypeRegistry;
 import org.lolaf.staffix.impl.ApplicationDictionary;
 import org.lolaf.staffix.impl.FailSafeFixApplication;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
+import org.lolaf.staffix.impl.alerting.FixSessionProbesImpl;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.executor.SessionMessageExecutors;
 import org.lolaf.staffix.impl.session.codec.*;
@@ -80,7 +81,7 @@ final class SessionWiring {
     final SessionMessageExecutors messageExecutors;
     final ExecutorService disconnectedSessionsExecutor;
 
-    SessionWiring(FixSessionImpl fixSession, String fixInstanceId, FixSessionSettings settings,
+    SessionWiring(FixSessionImpl fixSession, String fixInstanceId, FixSessionSettings settings, FixSessionProbesImpl probes,
                   FixSessionRuntimeDependencies runtimeDependencies, ScheduledExecutorService scheduler,
                   IOSettings ioSettings, MessageExecutorsRuntime messageExecutorsRuntime, Clock providedClock) {
         this.fixSessionId = settings.getFixSessionId();
@@ -102,10 +103,10 @@ final class SessionWiring {
                 settings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR),
                 settings.getDesiredSessionState(), scheduleManager);
         this.components = new FixSessionLayerComponents();
-        this.messagesStore = new FailSafeFixSessionMessagesStore(runtimeDependencies.getFixMessagesStore().getStore(fixSessionId));
+        this.messagesStore = new FailSafeFixSessionMessagesStore(runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes));
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
         this.messagesLogger = runtimeDependencies.getFixMessagesLogger() != null
-                ? runtimeDependencies.getFixMessagesLogger().getLogger(runtimeDependencies.getEngineId(), fixInstanceId, fixSessionId, messageTypeRegistry)
+                ? runtimeDependencies.getFixMessagesLogger().getLogger(runtimeDependencies.getEngineId(), fixInstanceId, fixSessionId, messageTypeRegistry, probes)
                 : VoidMessageLogger.getInstance();
         this.messageExecutors = messageExecutorsRuntime.newSessionExecutors();
         this.disconnectedSessionsExecutor = runtimeDependencies.getDisconnectedSessionsExecutor();

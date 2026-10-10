@@ -59,6 +59,8 @@ import static org.mockito.Mockito.when;
 class TestFixEngineSessionsSettingsWrites {
 
     private static final String STORE_ID = "test-store";
+    private static final Probe STORE_PROBE = Probe.builder().name("store-probe").description("Contributed by the store")
+            .evaluator(Optional::empty).build();
     private static final FixApplicationSessionSettingDescriptor ACCOUNT =
             FixApplicationSessionSettingDescriptor.of("writes.account", "The account orders are booked to");
 
@@ -88,6 +90,7 @@ class TestFixEngineSessionsSettingsWrites {
         fixEngine = FixEngineBuilder.builder()
                 .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
                         .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
+                        .probe(STORE_PROBE)
                         .build())
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder()
                         .application(InstanceProvider.DEFAULT_INSTANCE_ID, application)
@@ -311,6 +314,17 @@ class TestFixEngineSessionsSettingsWrites {
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alertsPublisher.getEvents())
                 .extracting(AlertEvent::getType, AlertEvent::getFixSessionId)
                 .containsExactly(tuple(AlertEvent.Type.RAISED, alpha.getFixSessionId()), tuple(AlertEvent.Type.CLEARED, alpha.getFixSessionId())));
+    }
+
+    @Test
+    void aSessionCarriesTheProbesItsStoreContributes() {
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+
+        FixSession session = adminApi.getManagedFixSessions().stream()
+                .filter(s -> s.getFixSessionId().equals(alpha.getFixSessionId()))
+                .findFirst().orElseThrow();
+        assertThat(session.getProbes().list()).contains(STORE_PROBE);
     }
 
     @Test

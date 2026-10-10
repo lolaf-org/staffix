@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
@@ -47,6 +48,8 @@ import static org.mockito.Mockito.*;
 class TestAsyncMessagesStore {
 
     private static final String TEST_MESSAGE_STORE_DESCRIPTION = "test message store description";
+
+    private final FixSessionProbes probes = mock(FixSessionProbes.class);
 
     AsyncMessagesStore asyncMessagesStore;
     AsyncMessageStore asyncMessageStore;
@@ -87,7 +90,12 @@ class TestAsyncMessagesStore {
         asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
         asyncMessagesStore.start();
 
-        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
+    }
+
+    @Test
+    void addsItsQueueSizeProbeToTheSession() {
+        verify(probes).add(argThat(probe -> probe.getName().equals("async-store-queue")));
     }
 
     @Test
@@ -171,7 +179,7 @@ class TestAsyncMessagesStore {
 
         asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
         asyncMessagesStore.start();
-        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
         asyncMessageStore.start();
 
         verify(batchingFixSessionMessagesStore).isUnderlyingStorageResourceAvailable();
@@ -217,7 +225,7 @@ class TestAsyncMessagesStore {
 
         asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
         asyncMessagesStore.start();
-        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
         asyncMessageStore.start();
 
         asyncMessageStore.storeMessageSent(1L, testMessage);
@@ -259,7 +267,7 @@ class TestAsyncMessagesStore {
 
         asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
         asyncMessagesStore.start();
-        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
         asyncMessageStore.start();
 
         asyncMessageStore.resetSequenceNumbers();
@@ -311,7 +319,7 @@ class TestAsyncMessagesStore {
 
         asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
         asyncMessagesStore.start();
-        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
         asyncMessageStore.start();
 
         for (int i = 1; i <= 5; i++) {
@@ -354,7 +362,7 @@ class TestAsyncMessagesStore {
                 .build();
         asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
         asyncMessagesStore.start();
-        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
 
         AtomicBoolean blockWrites = new AtomicBoolean();
         CountDownLatch writeReleased = new CountDownLatch(1);
@@ -524,7 +532,7 @@ class TestAsyncMessagesStore {
                 .build();
         asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
         asyncMessagesStore.start();
-        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId);
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
         asyncMessageStore.start();
     }
 

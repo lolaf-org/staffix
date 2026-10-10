@@ -19,6 +19,7 @@ import lombok.Getter;
 import lombok.Value;
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 
@@ -29,7 +30,7 @@ import java.util.List;
 /**
  * Where a session's outbound messages and sequence numbers are kept, so a restart can serve a ResendRequest.
  *
- * <p>One store serves many sessions, which is why {@link #getStore(FixSessionId)} exists: the per-session view
+ * <p>One store serves many sessions, which is why {@link #getStore(FixSessionId, FixSessionProbes)} exists: the per-session view
  * is what the session layer holds, while the store owns the file, connection or map underneath.
  */
 public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessagesStore> {
@@ -38,8 +39,9 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
      * Gets a store instance of a given fix session
      *
      * @param fixSessionId the fix session id
+     * @param probes       the session's probes, where a store adds what is worth watching, such as a queue depth
      */
-    FixSessionMessagesStore getStore(FixSessionId fixSessionId);
+    FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes);
 
     /**
      * What an entry in an asynchronous store's queue records, with the byte it is written as.

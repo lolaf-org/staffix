@@ -19,7 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.time.Duration;
 import java.util.*;
@@ -62,12 +61,12 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         }
     }
 
-    public synchronized void registerBatching(FixSessionId fixSessionId, PersistentQueue<T> messagesQueue, Consumer<T[]> eventsConsumer,
+    public synchronized void registerBatching(PersistentQueue<T> messagesQueue, Consumer<T[]> eventsConsumer,
                                               AsyncEventSerde<T> asyncEventSerde, Class<T> eventClass) {
         if (nextRegisterIndex >= asyncStoreThreads.length) {
             nextRegisterIndex = 0;
         }
-        asyncStoreThreads[nextRegisterIndex++].registerBatching(asyncStoreSettings, fixSessionId, messagesQueue, eventsConsumer, asyncEventSerde, eventClass);
+        asyncStoreThreads[nextRegisterIndex++].registerBatching(asyncStoreSettings, messagesQueue, eventsConsumer, asyncEventSerde, eventClass);
     }
 
     public synchronized void unregisterBatching(Consumer<T[]> eventsConsumer) {
@@ -78,12 +77,12 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         }
     }
 
-    public synchronized void register(FixSessionId fixSessionId, PersistentQueue<T> messagesQueue, Consumer<T> eventsConsumer,
+    public synchronized void register(PersistentQueue<T> messagesQueue, Consumer<T> eventsConsumer,
                                       AsyncEventSerde<T> asyncEventSerde) {
         if (nextRegisterIndex >= asyncStoreThreads.length) {
             nextRegisterIndex = 0;
         }
-        asyncStoreThreads[nextRegisterIndex++].register(asyncStoreSettings, fixSessionId, messagesQueue, eventsConsumer, asyncEventSerde);
+        asyncStoreThreads[nextRegisterIndex++].register(messagesQueue, eventsConsumer, asyncEventSerde);
     }
 
     public synchronized void unregister(Consumer<T> eventsConsumer) {
@@ -125,10 +124,10 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             this.threadOperationsCounter = new AtomicLong();
         }
 
-        private void register(AsyncStoreSettings asyncStoreSettings, FixSessionId fixSessionId, PersistentQueue<T> messagesQueue, Consumer<T> eventsConsumer,
+        private void register(PersistentQueue<T> messagesQueue, Consumer<T> eventsConsumer,
                               AsyncEventSerde<T> asyncEventSerde) {
             registrations.computeIfAbsent(eventsConsumer,
-                    c -> new Registration<>(asyncStoreSettings, fixSessionId, messagesQueue, c,
+                    c -> new Registration<>(messagesQueue, c,
                             asyncEventInstanceProvider.instanciateAsyncEvent(null), asyncEventSerde));
             registrationsArray = registrations.values().toArray(new Registration[0]);
         }
@@ -152,10 +151,10 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             }
         }
 
-        private void registerBatching(AsyncStoreSettings asyncStoreSettings, FixSessionId fixSessionId, PersistentQueue<T> messagesQueue, Consumer<T[]> eventsConsumer,
+        private void registerBatching(AsyncStoreSettings asyncStoreSettings, PersistentQueue<T> messagesQueue, Consumer<T[]> eventsConsumer,
                                       AsyncEventSerde<T> asyncEventSerde, Class<T> eventClass) {
             batchingRegistrations.computeIfAbsent(eventsConsumer,
-                    c -> new BatchingRegistration<>(asyncStoreSettings, fixSessionId, messagesQueue, c, asyncEventInstanceProvider, asyncEventSerde, eventClass));
+                    c -> new BatchingRegistration<>(asyncStoreSettings, messagesQueue, c, asyncEventInstanceProvider, asyncEventSerde, eventClass));
             batchingRegistrationsArray = batchingRegistrations.values().toArray(new BatchingRegistration[0]);
         }
 
@@ -218,12 +217,10 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
                 Registration<T>[] localRegistrationsArray = registrationsArray;
                 for (Registration<T> r : localRegistrationsArray) {
                     readOperations += r.readAndNotifyEvent(maxEventsProcessingPerStore);
-                    r.evaluateQueueSizeThreshold(now);
                 }
                 BatchingRegistration<T>[] localBatchingRegistrationsArray = batchingRegistrationsArray;
                 for (BatchingRegistration<T> r : localBatchingRegistrationsArray) {
                     readOperations += r.readAndNotifyEvents(now);
-                    r.evaluateQueueSizeThreshold(now);
                 }
                 threadOperationsCounter.getAndIncrement();
                 idleStrategy.idle(readOperations);
@@ -232,42 +229,11 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
 
         private static class AbstractRegistration<T extends AsyncEvent> {
             final PersistentQueue<T> messagesQueue;
-            private final QueueSizeThresholdsListener queueSizeThresholdsListener;
-            private final AsyncStoreSettings.QueueSizeThresholdsSettings queueSizeThresholdsSettings;
-            private final FixSessionId fixSessionId;
-            private final long evaluationIntervalInMillis;
             private final AtomicBoolean activeRegistration;
-            private QueueSizeThresholdsListener.QueueSizeThreshold currentQueueSizeThreshold;
-            private long nextThresholdNotification;
 
-            public AbstractRegistration(PersistentQueue<T> messagesQueue, FixSessionId fixSessionId, AsyncStoreSettings asyncStoreSettings) {
+            public AbstractRegistration(PersistentQueue<T> messagesQueue) {
                 this.messagesQueue = messagesQueue;
-                this.fixSessionId = fixSessionId;
-                this.currentQueueSizeThreshold = QueueSizeThresholdsListener.QueueSizeThreshold.NORMAL;
-                this.queueSizeThresholdsListener = asyncStoreSettings.getQueueSizeThresholdsListener();
-                this.queueSizeThresholdsSettings = asyncStoreSettings.getQueueSizeThresholdsSettings();
-                this.evaluationIntervalInMillis = queueSizeThresholdsSettings.getEvaluationInterval().toMillis();
-                this.nextThresholdNotification = System.currentTimeMillis() + evaluationIntervalInMillis;
                 this.activeRegistration = new AtomicBoolean(true);
-            }
-
-            void evaluateQueueSizeThreshold(long now) {
-                int queueSize = messagesQueue.getSize();
-                if (queueSize >= queueSizeThresholdsSettings.getCritical()) {
-                    triggerThresholdsIfNeeded(queueSizeThresholdsSettings.getCritical(), queueSize, now, QueueSizeThresholdsListener.QueueSizeThreshold.CRITICAL, true);
-                } else if (queueSize >= queueSizeThresholdsSettings.getWarn()) {
-                    triggerThresholdsIfNeeded(queueSizeThresholdsSettings.getWarn(), queueSize, now, QueueSizeThresholdsListener.QueueSizeThreshold.WARNING, true);
-                } else if (queueSize <= queueSizeThresholdsSettings.getNormal()) {
-                    triggerThresholdsIfNeeded(queueSizeThresholdsSettings.getNormal(), queueSize, now, QueueSizeThresholdsListener.QueueSizeThreshold.NORMAL, false);
-                }
-            }
-
-            private void triggerThresholdsIfNeeded(int thresholdValue, int queueSize, long now, QueueSizeThresholdsListener.QueueSizeThreshold threshold, boolean checkNextThresholdNotification) {
-                if (!currentQueueSizeThreshold.equals(threshold) || (checkNextThresholdNotification && nextThresholdNotification < now)) {
-                    nextThresholdNotification = now + evaluationIntervalInMillis;
-                    currentQueueSizeThreshold = threshold;
-                    queueSizeThresholdsListener.onQueueSizeThresholdReached(fixSessionId, threshold, thresholdValue, queueSize);
-                }
             }
 
             void onUnregistered() {
@@ -284,9 +250,9 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             private final AsyncEventSerde<T> asyncEventSerde;
             private final T asyncEvent;
 
-            public Registration(AsyncStoreSettings asyncStoreSettings, FixSessionId fixSessionId, PersistentQueue<T> messagesQueue, Consumer<T> eventsConsumer,
+            public Registration(PersistentQueue<T> messagesQueue, Consumer<T> eventsConsumer,
                                 T asyncEvent, AsyncEventSerde<T> asyncEventSerde) {
-                super(messagesQueue, fixSessionId, asyncStoreSettings);
+                super(messagesQueue);
                 this.eventsConsumer = eventsConsumer;
                 this.asyncEventSerde = asyncEventSerde;
                 this.asyncEvent = asyncEvent;
@@ -312,10 +278,10 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             private final AsyncEventSerde<T> asyncEventSerde;
             private long lastFlushTimeStamp;
 
-            public BatchingRegistration(AsyncStoreSettings asyncStoreSettings, FixSessionId fixSessionId,
+            public BatchingRegistration(AsyncStoreSettings asyncStoreSettings,
                                         PersistentQueue<T> messagesQueue, Consumer<T[]> eventsConsumer, AsyncEventInstanceProvider<T> asyncEventInstanceProvider,
                                         AsyncEventSerde<T> asyncEventSerde, Class<T> eventClass) {
-                super(messagesQueue, fixSessionId, asyncStoreSettings);
+                super(messagesQueue);
                 this.eventsConsumer = eventsConsumer;
                 this.eventsBatchingCount = asyncStoreSettings.getEventsBatching();
                 this.batchingFlushIntervalInMillis = asyncStoreSettings.getBatchingFlushInterval().toMillis();

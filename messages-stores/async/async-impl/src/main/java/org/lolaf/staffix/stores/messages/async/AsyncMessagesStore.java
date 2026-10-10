@@ -17,6 +17,7 @@ package org.lolaf.staffix.stores.messages.async;
 
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
@@ -37,7 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AsyncMessagesStore extends Startable.SimpleStartable<FixMessagesStore> implements FixMessagesStore {
 
     private final AsyncMessagesStoreSettings asyncMessagesStoreSettings;
-    private final Map<FixSessionId, FixSessionMessagesStore> contexts;
+    private final Map<FixSessionId, AsyncMessageStore> contexts;
     private final FixMessagesStore wrappedFixMessagesStore;
     private final AsyncStoreThreads<AsyncStoreEvent> asyncStoreThreads;
     private final AsyncEventInstanceProvider<AsyncStoreEvent> asyncEventInstanceProvider;
@@ -54,9 +55,11 @@ public class AsyncMessagesStore extends Startable.SimpleStartable<FixMessagesSto
     }
 
     @Override
-    public FixSessionMessagesStore getStore(FixSessionId fixSessionId) {
-        return contexts.computeIfAbsent(fixSessionId, sid -> new AsyncMessageStore(wrappedFixMessagesStore.getStore(fixSessionId),
+    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {
+        AsyncMessageStore store = contexts.computeIfAbsent(fixSessionId, sid -> new AsyncMessageStore(wrappedFixMessagesStore.getStore(fixSessionId, probes),
                 fixSessionId, asyncMessagesStoreSettings, asyncStoreThreads, asyncEventInstanceProvider));
+        probes.add(store.getQueueSizeProbe());
+        return store;
     }
 
     @Override
