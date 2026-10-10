@@ -138,6 +138,10 @@ console; `ssl-bundle` names a Spring Boot SSL bundle to serve HTTPS with, `annou
 trusts the console's certificate (the JVM's default otherwise), and the other settings are in
 [Runtime administration](runtime-administration.md#http-for-the-staffix-admin-console).
 
+`staffix-alerts-publisher-slf4j-spring-boot` logs alerts, declared as
+`staffix.alerts-publishers-slf4j.instances.<key>.*` and named by a session's `fix-alerts-publisher-instance-id`; see
+[Alerting](alerting.md#the-slf4j-publisher).
+
 The actuator module adds a `fix-sessions` endpoint and can fold session state into the health status; see
 [Runtime administration](runtime-administration.md#spring-boot) before turning that on.
 
@@ -168,6 +172,7 @@ wired separately. `staffix-spring-boot-spi` defines the contribution points:
 |-------------|-------------|
 | `FixMessagesStoreSettingsContributor` | a message store |
 | `FixMessagesLoggerSettingsContributor` | a message logger |
+| `FixAlertsPublisherSettingsContributor` | an alerts publisher |
 | `FixSessionsSettingsStoreSettingsContributor` | a session settings store |
 | `FixSessionsPluginSettingsContributor` | a session plugin |
 | `AdminApiExporterSettingsContributor` | an admin API exporter |

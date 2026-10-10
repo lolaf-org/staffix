@@ -167,7 +167,8 @@ process crash rather than dying with the buffer that held it.
 
 **The guarantee to understand:** wrapping a JDBC store in the async decorator means a slow database costs you queue
 depth, not round-trip time. A watchdog tracks the backing store's health and keeps queueing through an outage instead
-of pushing the failure back onto the session.
+of pushing the failure back onto the session. Probes on the session raise an alert while the backing store is down
+and when the queue grows too deep; see [Alerting](alerting.md#built-in-probes).
 
 **And the trade:** a store answers resend requests, so a message still in the queue is a message not yet in the
 database. A resend first waits, up to `findWaitForEmptyQueueTimeout`, for every pending write to land. If they have not

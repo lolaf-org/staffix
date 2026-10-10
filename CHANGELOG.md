@@ -35,6 +35,17 @@ could mean.
 - **Metrics, logs and traces carry the engine's id** (`fix.eid`), so same-named sessions in different engines can be
   told apart. The Grafana dashboard filters by engine, and Loki indexes engine, group and session.
 - **A generated FIX package ships its dictionary**, so the admin console can decode a session's messages.
+- **Alerting.** The engine checks each session's probes every second and tells an alerts publisher when an alert is
+  raised, changes level, is still ongoing (if the probe asks for reminders) or clears. Levels are `WARNING`, `MAJOR`
+  and `CRITICAL`. A session names its publisher with `fixAlertsPublisherInstanceId`, and an application adds its own
+  probes with `FixSession.getProbes()`. See the [Alerting](docs/alerting.md) guide and `examples/alerting`.
+- **A session that stays down inside its session time raises a critical alert**, after `sessionDownAlertDelay`
+  (10 seconds by default; zero turns it off). An operator logout or being outside session time never raises it.
+- **An SLF4J alerts publisher** (`staffix-alerts-publisher-slf4j-impl`, and
+  `staffix-alerts-publisher-slf4j-spring-boot` for Spring Boot) logs every alert change, at warn or error while it
+  lasts and info once cleared.
+- **The async store and async logger raise alerts** when their queue grows too deep, and while what they write to
+  is unavailable.
 
 ### Changed
 
@@ -62,6 +73,12 @@ could mean.
   `FixSessionsPlugin.onSessionCreated` receive the engine's id, `FixApplicationFactory` implements
   `getApplicationIds()`, `FixSessionsSettingsStore` implements `isPersistent()`, and `FixSessionsMonitoringContext`
   implements `getMeterDescriptors()` and both `getGauge` methods.
+- **Custom message stores and loggers receive the session's probes**: `FixMessagesStore.getStore` and
+  `FixMessagesLogger.getLogger` take a `FixSessionProbes`, so a store or logger can raise alerts on the session it
+  serves. A wrapper passes it on to the store or logger it wraps.
+- **The async store's queue thresholds are one depth per alert level**: `QueueSizeThresholdsSettings.thresholds`,
+  by default `WARNING` from 250, `MAJOR` from 1000 and `CRITICAL` from 5000, replaces `normal`, `warn` and
+  `critical`. The alert clears as soon as the queue is back below the lowest threshold.
 - **`FixInitiatorTargets` names the main target and the backups** (`getMainTarget()`, `getBackupTargets()`).
 - **Session settings files say `withinSessionTimeCheckInterval`** instead of `withinSessionCheckInterval`, like the
   Java and Spring Boot settings.
@@ -79,6 +96,9 @@ could mean.
   sets it is refused.
 - **`FixSession.disconnect(String)`**: use `logoutPermanently(String)`.
 - **`AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`**, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`.
+- **The async store's `queueSizeThresholdsListener` and `storeUnderlyingResourceStateListener`**, with
+  `QueueSizeThresholdsListener` and `StoreUnderlyingResourceStateListener`: the same conditions are now alerts,
+  delivered through the session's alerts publisher.
 
 ### Fixed
 
