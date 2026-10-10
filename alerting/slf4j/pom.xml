@@ -17,6 +17,7 @@
 
     <modules>
         <module>slf4j-impl</module>
+        <module>slf4j-spring-boot</module>
     </modules>
 
 </project>
