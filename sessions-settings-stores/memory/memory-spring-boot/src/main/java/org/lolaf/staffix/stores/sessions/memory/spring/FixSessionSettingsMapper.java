@@ -179,6 +179,9 @@ public class FixSessionSettingsMapper {
         if (p.getDisconnectMessagesFlushDeadline() != null) {
             b.disconnectMessagesFlushDeadline(p.getDisconnectMessagesFlushDeadline());
         }
+        if (p.getSessionDownAlertDelay() != null) {
+            b.sessionDownAlertDelay(p.getSessionDownAlertDelay());
+        }
         if (p.getCancelOnDisconnect() != null) {
             FixSessionSettings.CancelOnDisconnectSettings.CancelOnDisconnectSettingsBuilder<?, ?> cb = FixSessionSettings.CancelOnDisconnectSettings.builder();
             FixSessionSettingsProps.CodProps c = p.getCancelOnDisconnect();

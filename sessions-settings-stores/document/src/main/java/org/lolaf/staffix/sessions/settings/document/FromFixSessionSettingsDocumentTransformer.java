@@ -104,6 +104,7 @@ public class FromFixSessionSettingsDocumentTransformer {
         mergeValidationSettings(settings, builder);
         mergeIfNeeded(settings::getTestingMode, builder::testingMode);
         mergeIfNeeded(settings::getDisconnectMessagesFlushDeadline, builder::disconnectMessagesFlushDeadline);
+        mergeIfNeeded(settings::getSessionDownAlertDelay, builder::sessionDownAlertDelay);
         mergeCancelOnDisconnectSettings(settings, builder);
         mergeRttMeasurementSettings(settings, builder);
         mergeIfNeeded(settings::isMessageEncodersDirectByteBuffers, builder::messageEncodersDirectByteBuffers);

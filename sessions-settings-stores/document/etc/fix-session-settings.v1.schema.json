@@ -615,6 +615,20 @@
       "description" : "The precision SendingTime(52) is written to. Microseconds by default; a counterparty that cannot parse sub-second digits needs TimeUnit.SECONDS.",
       "default" : "MICROSECONDS"
     },
+    "sessionDownAlertDelay" : {
+      "anyOf" : [ {
+        "type" : "string",
+        "format" : "duration",
+        "pattern" : "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+        "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ],
+      "description" : "How long the session may stay logged out inside its session time before its built-in session-down probe raises a critical alert; Duration.ZERO turns the probe off. Short enough to catch an outage, long enough to ride out a reconnect.",
+      "default" : "PT10S"
+    },
     "sessionScheduleSettings" : {
       "type" : "object",
       "properties" : {

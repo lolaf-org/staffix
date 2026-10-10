@@ -83,6 +83,7 @@ public class FixSessionSettingsDocument {
     private ValidationSettings validationSettings;
     private Boolean testingMode;
     private Duration disconnectMessagesFlushDeadline;
+    private Duration sessionDownAlertDelay;
     @Valid
     private CancelOnDisconnectSettings cancelOnDisconnectSettings;
     @Valid

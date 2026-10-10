@@ -40,6 +40,7 @@ import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.codec.decoders.FixMessageParser;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
 import org.lolaf.staffix.impl.alerting.FixSessionProbesImpl;
+import org.lolaf.staffix.impl.alerting.SessionDownEvaluator;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.executor.SessionMessageExecutors;
 import org.lolaf.staffix.impl.threading.ExternalThread;
@@ -136,6 +137,7 @@ public class FixSessionImpl implements FixSession {
         this.wiring = new SessionWiring(this, fixInstanceId, fixSessionSettings, fixSessionRuntimeDependencies,
                 scheduledExecutorService, ioSettings, messageExecutorsRuntime, providedClock);
         this.probes = new FixSessionProbesImpl();
+        SessionDownEvaluator.probe(this, fixSessionSettings.getSessionDownAlertDelay()).ifPresent(probes::add);
         this.alertsPublisher = fixSessionRuntimeDependencies.getFixAlertsPublisher();
         this.ownershipHandover = new ReentrantLock();
         this.fixSessionId = wiring.fixSessionId;

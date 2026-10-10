@@ -209,6 +209,12 @@ public class FixSessionSettingsProps {
     private Duration disconnectMessagesFlushDeadline;
 
     /**
+     * How long the session may stay logged out inside its session time before its session-down probe raises a
+     * critical alert. 10 seconds by default; zero turns the probe off.
+     */
+    private Duration sessionDownAlertDelay;
+
+    /**
      * When the session is expected to be up, in the venue's own time zone.
      */
     @NestedConfigurationProperty

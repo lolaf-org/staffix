@@ -246,6 +246,14 @@ public class FixSessionSettings {
     private Duration disconnectMessagesFlushDeadline = Duration.ofSeconds(2);
 
     /**
+     * How long the session may stay logged out inside its session time before its built-in {@code session-down}
+     * probe raises a critical alert; {@link Duration#ZERO} turns the probe off. Short enough to catch an outage, long
+     * enough to ride out a reconnect.
+     */
+    @Builder.Default
+    private Duration sessionDownAlertDelay = Duration.ofSeconds(10);
+
+    /**
      * When the session is expected to be up, in the venue's own time zone.
      */
     @Builder.Default

@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
@@ -37,6 +38,7 @@ import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
+import org.lolaf.staffix.impl.alerting.SessionDownEvaluator;
 import org.lolaf.staffix.tests.TestingFixAlertsPublisherSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
@@ -309,6 +311,22 @@ class TestFixEngineSessionsSettingsWrites {
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alertsPublisher.getEvents())
                 .extracting(AlertEvent::getType, AlertEvent::getFixSessionId)
                 .containsExactly(tuple(AlertEvent.Type.RAISED, alpha.getFixSessionId()), tuple(AlertEvent.Type.CLEARED, alpha.getFixSessionId())));
+    }
+
+    @Test
+    void aSessionWaitingForItsPeerInsideSessionTimeRaisesSessionDown() {
+        FixSessionSettings alpha = session("alpha", "ALPHA").toBuilder()
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
+                .sessionDownAlertDelay(Duration.ofSeconds(1))
+                .build();
+
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alertsPublisher.getEvents()).singleElement().satisfies(event -> {
+            assertThat(event.getType()).isEqualTo(AlertEvent.Type.RAISED);
+            assertThat(event.getProbeName()).isEqualTo(SessionDownEvaluator.PROBE_NAME);
+            assertThat(event.getAlert().getLevel()).isEqualTo(AlertLevel.CRITICAL);
+        }));
     }
 
     @Test

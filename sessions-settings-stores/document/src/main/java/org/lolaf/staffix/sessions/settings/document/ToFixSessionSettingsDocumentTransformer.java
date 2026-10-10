@@ -87,6 +87,7 @@ public class ToFixSessionSettingsDocumentTransformer {
         mergeValidationSettings(settings, builder);
         mergeIfNeeded(settings::isTestingMode, builder::testingMode);
         mergeIfNeeded(settings::getDisconnectMessagesFlushDeadline, builder::disconnectMessagesFlushDeadline);
+        mergeIfNeeded(settings::getSessionDownAlertDelay, builder::sessionDownAlertDelay);
         mergeCancelOnDisconnectSettings(settings, builder);
         mergeRttMeasurementSettings(settings, builder);
         mergeSessionScheduleSettings(settings, builder);
