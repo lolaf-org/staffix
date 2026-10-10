@@ -21,11 +21,15 @@ import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.ProbesListener;
+import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.session.FixSession;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -47,13 +51,15 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
 
     private final String engineId;
     private final Clock clock;
+    private final ProbesListener listener;
     private volatile SessionProbesEvaluation[] sessions = new SessionProbesEvaluation[0];
     private volatile ScheduledExecutorService scheduler;
     private long tick;
 
-    public ProbesManager(String engineId, Clock clock) {
+    public ProbesManager(String engineId, Clock clock, ProbesListener listener) {
         this.engineId = engineId;
         this.clock = clock;
+        this.listener = listener;
     }
 
     private static int indexOf(SessionProbesEvaluation[] evaluations, FixSession fixSession) {
@@ -67,11 +73,13 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
 
     public synchronized void register(FixSession fixSession, FixSessionProbesImpl probes, FixAlertsPublisher publisher) {
         SessionProbesEvaluation[] updated = Arrays.copyOf(sessions, sessions.length + 1);
-        updated[sessions.length] = new SessionProbesEvaluation(fixSession, probes, publisher);
+        updated[sessions.length] = new SessionProbesEvaluation(fixSession, probes, publisher, listener);
         sessions = updated;
+        probes.attach(fixSession.getFixSessionId(), listener);
     }
 
-    public void unregister(FixSession fixSession) {
+    public void unregister(FixSession fixSession, FixSessionProbesImpl probes) {
+        probes.detach();
         SessionProbesEvaluation evaluation = remove(fixSession);
         ScheduledExecutorService current = scheduler;
         if (evaluation == null || current == null) {
@@ -91,6 +99,18 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
         SessionProbesEvaluation[] local = sessions;
         int index = indexOf(local, fixSession);
         return index < 0 ? List.of() : local[index].getStates();
+    }
+
+    public List<SessionProbeState> getActiveAlerts() {
+        List<SessionProbeState> active = new ArrayList<>();
+        for (SessionProbesEvaluation session : sessions) {
+            for (ProbeState state : session.getStates()) {
+                if (state.getAlert().isPresent()) {
+                    active.add(new SessionProbeState(session.getFixSession().getFixSessionId(), state));
+                }
+            }
+        }
+        return Collections.unmodifiableList(active);
     }
 
     @Override

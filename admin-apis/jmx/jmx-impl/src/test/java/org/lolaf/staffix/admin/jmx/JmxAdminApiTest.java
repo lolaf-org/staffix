@@ -15,6 +15,10 @@
  */
 package org.lolaf.staffix.admin.jmx;
 
+import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.ProbesListener;
+import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
@@ -312,6 +316,29 @@ class JmxAdminApiTest {
         @Override
         public List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId) {
             return List.of();
+        }
+
+        @Override
+        public List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId) {
+            return List.of();
+        }
+
+        @Override
+        public List<ProbeState> getProbeStates(FixSessionId fixSessionId) {
+            return List.of();
+        }
+
+        @Override
+        public List<SessionProbeState> getActiveAlerts() {
+            return List.of();
+        }
+
+        @Override
+        public void addProbesListener(ProbesListener listener) {
+        }
+
+        @Override
+        public void removeProbesListener(ProbesListener listener) {
         }
 
         @Override

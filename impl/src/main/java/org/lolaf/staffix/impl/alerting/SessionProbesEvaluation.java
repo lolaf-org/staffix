@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.alerting.AlertEvent;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.session.FixSession;
 
 import java.util.ArrayList;
@@ -41,13 +42,16 @@ final class SessionProbesEvaluation {
     private final FixSession fixSession;
     private final FixSessionProbesImpl probes;
     private final FixAlertsPublisher publisher;
+    private final ProbesListener listener;
     private Probe[] evaluatedProbes = NO_PROBES;
     private volatile ProbeEvaluation[] evaluations = NO_EVALUATIONS;
 
-    SessionProbesEvaluation(FixSession fixSession, FixSessionProbesImpl probes, FixAlertsPublisher publisher) {
+    SessionProbesEvaluation(FixSession fixSession, FixSessionProbesImpl probes, FixAlertsPublisher publisher,
+                            ProbesListener listener) {
         this.fixSession = fixSession;
         this.probes = probes;
         this.publisher = publisher;
+        this.listener = listener;
     }
 
     private static ProbeEvaluation find(ProbeEvaluation[] evaluations, Probe probe) {
@@ -66,14 +70,14 @@ final class SessionProbesEvaluation {
         }
         ProbeEvaluation[] local = evaluations;
         for (ProbeEvaluation probeEvaluation : local) {
-            publish(probeEvaluation.evaluateIfDue(tick, nowMillis));
+            publish(probeEvaluation, probeEvaluation.evaluateIfDue(tick, nowMillis));
         }
     }
 
     void clearAll(long nowMillis) {
         ProbeEvaluation[] local = evaluations;
         for (ProbeEvaluation probeEvaluation : local) {
-            publish(probeEvaluation.clear(nowMillis));
+            publish(probeEvaluation, probeEvaluation.clear(nowMillis));
         }
         evaluations = NO_EVALUATIONS;
         evaluatedProbes = NO_PROBES;
@@ -107,14 +111,14 @@ final class SessionProbesEvaluation {
         }
         for (ProbeEvaluation probeEvaluation : previous) {
             if (find(updated, probeEvaluation.getProbe()) == null) {
-                publish(probeEvaluation.clear(nowMillis));
+                publish(probeEvaluation, probeEvaluation.clear(nowMillis));
             }
         }
         evaluatedProbes = current;
         evaluations = updated;
     }
 
-    private void publish(AlertEvent event) {
+    private void publish(ProbeEvaluation probeEvaluation, AlertEvent event) {
         if (event == null) {
             return;
         }
@@ -122,6 +126,9 @@ final class SessionProbesEvaluation {
             publisher.publish(event);
         } catch (Exception e) {
             log.warn("Alerts publisher {} failed to publish {}", publisher.getInstanceId(), event, e);
+        }
+        if (event.getType() != AlertEvent.Type.REMINDED) {
+            listener.onAlertTransition(fixSession.getFixSessionId(), probeEvaluation.state());
         }
     }
 }

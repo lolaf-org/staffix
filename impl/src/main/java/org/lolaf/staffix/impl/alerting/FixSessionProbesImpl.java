@@ -17,19 +17,24 @@ package org.lolaf.staffix.impl.alerting;
 
 import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbesListener;
+import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.util.Arrays;
 import java.util.List;
 
 /**
  * Copy on write: probes are added or removed rarely, while the evaluation reads them every tick without locking or
- * allocating.
+ * allocating. The listener is told under the same lock as the change, so it never sees two changes out of order.
  */
 public final class FixSessionProbesImpl implements FixSessionProbes {
 
     private static final Probe[] NO_PROBES = new Probe[0];
 
     private volatile Probe[] probes = NO_PROBES;
+    private FixSessionId listenedSessionId;
+    private ProbesListener listener;
 
     @Override
     public synchronized void add(Probe probe) {
@@ -39,6 +44,9 @@ public final class FixSessionProbesImpl implements FixSessionProbes {
         Probe[] updated = Arrays.copyOf(probes, probes.length + 1);
         updated[probes.length] = probe;
         probes = updated;
+        if (listener != null) {
+            listener.onProbeAdded(listenedSessionId, ProbeDefinition.of(probe));
+        }
     }
 
     @Override
@@ -51,12 +59,40 @@ public final class FixSessionProbesImpl implements FixSessionProbes {
         System.arraycopy(probes, 0, updated, 0, index);
         System.arraycopy(probes, index + 1, updated, index, updated.length - index);
         probes = updated;
+        if (listener != null) {
+            listener.onProbeRemoved(listenedSessionId, name);
+        }
         return true;
     }
 
     @Override
     public List<Probe> list() {
         return List.of(probes);
+    }
+
+    /**
+     * Tells the listener about every probe already present, then about each change.
+     */
+    synchronized void attach(FixSessionId fixSessionId, ProbesListener probesListener) {
+        listenedSessionId = fixSessionId;
+        listener = probesListener;
+        for (Probe probe : probes) {
+            listener.onProbeAdded(fixSessionId, ProbeDefinition.of(probe));
+        }
+    }
+
+    /**
+     * Tells the listener every probe is gone, and stops telling it anything.
+     */
+    synchronized void detach() {
+        if (listener == null) {
+            return;
+        }
+        for (Probe probe : probes) {
+            listener.onProbeRemoved(listenedSessionId, probe.getName());
+        }
+        listener = null;
+        listenedSessionId = null;
     }
 
     /**
