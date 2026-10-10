@@ -89,6 +89,11 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-alerts-publisher-slf4j-spring-boot</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-messages-logger-async-spring-boot</artifactId>
             <version>${project.version}</version>
         </dependency>
