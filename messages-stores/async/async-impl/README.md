@@ -166,10 +166,12 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
     - Unregisters from background thread processing
     - Continues queuing incoming store operations
     - Starts a watchdog thread checking availability every 5 seconds
+    - Raises a `MAJOR` alert on the session's `async-store-resource` probe, naming the unavailable resource
 
 2. When the underlying store becomes available:
     - The watchdog reregisters with background threads
     - Queued operations are processed
+    - The alert clears once the operations that failed are replayed
     - Normal operation resumes
 
 3. On startup, if messages are queued from a previous crash:

@@ -21,18 +21,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
-import org.lolaf.staffix.stores.core.async.StoreUnderlyingResourceStateListener;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,7 +60,6 @@ class TestAsyncMessagesStore {
     AsyncMessagesStoreSettings asyncMessagesStoreSettings;
     ByteBuffer testMessage;
     BiPredicate<MessageType, ByteBuffer> messageFilter;
-    StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener;
 
     private static FixMessagesStore.BatchingFixSessionMessagesStore getBatchingFixSessionMessagesStoreMock() {
         FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
@@ -68,7 +69,6 @@ class TestAsyncMessagesStore {
 
     @BeforeEach
     void setup() {
-        storeUnderlyingResourceStateListener = mock(StoreUnderlyingResourceStateListener.class);
         testMessage = ByteBuffer.wrap("test".getBytes());
         fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "sender", "target");
         messageStore = mock(FixMessagesStore.FixSessionMessagesStore.class);
@@ -80,7 +80,6 @@ class TestAsyncMessagesStore {
         asyncMessagesStoreSettings = AsyncMessagesStoreSettings.builder()
                 .asyncStoreSettings(AsyncStoreSettings.builder()
                         .asyncQueueDirectory("./target/" + System.currentTimeMillis())
-                        .storeUnderlyingResourceStateListener(storeUnderlyingResourceStateListener)
                         .build())
                 .wrappedFixMessagesStoreSettings(TestingFixMessagesStoreSettings.builder()
                         .testingFixSessionMessagesStore(messageStore)
@@ -94,8 +93,9 @@ class TestAsyncMessagesStore {
     }
 
     @Test
-    void addsItsQueueSizeProbeToTheSession() {
+    void addsItsProbesToTheSession() {
         verify(probes).add(argThat(probe -> probe.getName().equals("async-store-queue")));
+        verify(probes).add(argThat(probe -> probe.getName().equals("async-store-resource")));
     }
 
     @Test
@@ -126,7 +126,7 @@ class TestAsyncMessagesStore {
         asyncMessageStore.start();
 
         verify(messageStore).isUnderlyingStorageResourceAvailable();
-        verify(storeUnderlyingResourceStateListener).onStoreStateUp(fixSessionId, TEST_MESSAGE_STORE_DESCRIPTION);
+        assertThat(resourceDownAlert()).isEmpty();
 
         asyncMessageStore.storeMessageSent(1L, testMessage);
 
@@ -144,21 +144,22 @@ class TestAsyncMessagesStore {
         // the watchdog is started from the catch around the failing storeMessageSent call, so seeing that call does
         // not mean it is up yet
         await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isFalse());
-        // awaited: the listener is told the resource is down after the write that discovered it, which is what the
-        // await above waits for
-        await().untilAsserted(() -> verify(storeUnderlyingResourceStateListener)
-                .onStoreStateDown(fixSessionId, TEST_MESSAGE_STORE_DESCRIPTION));
+        assertThat(resourceDownAlert()).hasValueSatisfying(alert -> {
+            assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
+            assertThat(alert.getMessage()).contains(TEST_MESSAGE_STORE_DESCRIPTION);
+        });
 
         reset(messageStore);
-        reset(storeUnderlyingResourceStateListener);
         when(messageStore.isUnderlyingStorageResourceAvailable()).thenReturn(true);
         await().untilAsserted(() -> verify(messageStore).storeMessageSent(2L, testMessage2));
         // and symmetrically it stops itself only after replaying, in UnderlyingResourceWatchContext
         // .checkUnderlyingResourceState, so the replay just observed does not mean it is down yet
         await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
-        // awaited, for the same reason as the down notification above
-        await().untilAsserted(() -> verify(storeUnderlyingResourceStateListener)
-                .onStoreStateUp(fixSessionId, TEST_MESSAGE_STORE_DESCRIPTION));
+        assertThat(resourceDownAlert()).isEmpty();
+    }
+
+    private Optional<Alert> resourceDownAlert() {
+        return asyncMessageStore.getResourceDownProbe().getEvaluator().evaluate();
     }
 
     @Test

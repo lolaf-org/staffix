@@ -59,6 +59,7 @@ public class AsyncMessagesStore extends Startable.SimpleStartable<FixMessagesSto
         AsyncMessageStore store = contexts.computeIfAbsent(fixSessionId, sid -> new AsyncMessageStore(wrappedFixMessagesStore.getStore(fixSessionId, probes),
                 fixSessionId, asyncMessagesStoreSettings, asyncStoreThreads, asyncEventInstanceProvider));
         probes.add(store.getQueueSizeProbe());
+        probes.add(store.getResourceDownProbe());
         return store;
     }
 

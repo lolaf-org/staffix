@@ -106,12 +106,6 @@ public class AsyncStoreSettings {
     @Builder.Default
     private QueueSizeThresholdsSettings queueSizeThresholdsSettings = QueueSizeThresholdsSettings.builder().build();
 
-    /**
-     * Underlying resource state changes listener
-     */
-    @Builder.Default
-    private StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener = StoreUnderlyingResourceStateListener.VoidStoreUnderlyingResourceStateListener.getInstance();
-
     @Getter
     @Builder(toBuilder = true)
     public static class QueueSizeThresholdsSettings {

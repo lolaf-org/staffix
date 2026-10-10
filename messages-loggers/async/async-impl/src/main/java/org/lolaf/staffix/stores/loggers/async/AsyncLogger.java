@@ -50,7 +50,6 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
     @Getter
     private final Probe queueSizeProbe;
     private final UnderlyingResourceWatchContext<AsyncLogEvent> underlyingResourceWatchContext;
-    private final StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener;
 
     AsyncLogger(FixMessagesLogger.Logger wrappedLogger, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
                 AsyncMessagesLoggerSettings asyncMessagesLoggerSettings, AsyncStoreThreads<AsyncLogEvent> asyncLoggersThreads,
@@ -70,12 +69,15 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
         this.messagesQueue = new PersistentQueue<>(fixSessionId);
         this.queueSizeProbe = QueueSizeEvaluator.probe("async-logger-queue", "Messages waiting in the async logger queue to be logged",
                 messagesQueue, asyncMessagesLoggerSettings.getAsyncStoreSettings().getQueueSizeThresholdsSettings());
-        this.storeUnderlyingResourceStateListener = new StoreUnderlyingResourceStateListener.FailSafeStoreUnderlyingResourceStateListener(
-                asyncMessagesLoggerSettings.getAsyncStoreSettings().getStoreUnderlyingResourceStateListener());
         this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::onAsyncLogEvents,
                 this::onAsyncLogEvent, wrappedLogger::isUnderlyingStorageResourceAvailable, wrappedLogger.getClass().getSimpleName(),
                 asyncMessagesLoggerSettings.getUnderlyingLoggerResourceWatchTaskCheckDelay(), this::unregisterEventsHandlingFromAsyncLoggersThreads,
-                this::registerEventsHandlingFromAsyncLoggersThreads, storeUnderlyingResourceStateListener, fixSessionId);
+                this::registerEventsHandlingFromAsyncLoggersThreads,
+                "async-logger-resource", "Availability of the logger the async logger writes to");
+    }
+
+    Probe getResourceDownProbe() {
+        return underlyingResourceWatchContext.getResourceDownProbe();
     }
 
     @Override
@@ -102,7 +104,6 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
         messagesQueue.start(asyncMessagesLoggerSettings.getAsyncStoreSettings(), "logs");
         wrappedLogger.start();
         if (wrappedLogger.isUnderlyingStorageResourceAvailable()) {
-            storeUnderlyingResourceStateListener.onStoreStateUp(fixSessionId, wrappedLogger.getUnderlyingStorageResourceDescription());
             registerEventsHandlingFromAsyncLoggersThreads();
             flushMessageOnStartupIfNeeded();
         } else {

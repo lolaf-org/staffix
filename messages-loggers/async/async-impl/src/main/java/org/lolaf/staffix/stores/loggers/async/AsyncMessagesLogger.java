@@ -61,6 +61,7 @@ public class AsyncMessagesLogger extends Startable.SimpleStartable<FixMessagesLo
                 wrappedFixMessagesLogger.getLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry, probes),
                 fixSessionId, messageTypeRegistry, asyncMessagesLoggerSettings, asyncStoreThreads, asyncEventInstanceProvider));
         probes.add(logger.getQueueSizeProbe());
+        probes.add(logger.getResourceDownProbe());
         return logger;
     }
 

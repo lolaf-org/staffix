@@ -47,7 +47,6 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private final Probe queueSizeProbe;
     private final UnderlyingResourceWatchContext<AsyncStoreEvent> underlyingResourceWatchContext;
     private final FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] batchedSentFixMessages;
-    private final StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener;
     private final AtomicLong outgoingSequenceNumber;
     private final AtomicLong incomingSequenceNumber;
     private final AtomicLong processedEvents;
@@ -70,15 +69,18 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         this.batchedSentFixMessages = isBatchingEnabled()
                 ? new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[asyncMessagesStoreSettings.getAsyncStoreSettings().getEventsBatching()]
                 : null;
-        this.storeUnderlyingResourceStateListener = new StoreUnderlyingResourceStateListener.FailSafeStoreUnderlyingResourceStateListener(
-                asyncMessagesStoreSettings.getAsyncStoreSettings().getStoreUnderlyingResourceStateListener());
         this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::onAsyncStoreEvents,
                 this::onAsyncStoreEvent, wrappedStore::isUnderlyingStorageResourceAvailable, wrappedStore.getClass().getSimpleName(),
                 asyncMessagesStoreSettings.getUnderlyingStoreResourceWatchTaskCheckDelay(), this::unregisterEventsHandlingFromAsyncLoggersThreads,
-                this::registerEventsHandlingFromAsyncLoggersThreads, storeUnderlyingResourceStateListener, fixSessionId);
+                this::registerEventsHandlingFromAsyncLoggersThreads,
+                "async-store-resource", "Availability of the store the async store persists to");
         outgoingSequenceNumber = new AtomicLong(1);
         incomingSequenceNumber = new AtomicLong(1);
         processedEvents = new AtomicLong();
+    }
+
+    Probe getResourceDownProbe() {
+        return underlyingResourceWatchContext.getResourceDownProbe();
     }
 
     private void onAsyncStoreEvent(AsyncStoreEvent event) {
@@ -180,7 +182,6 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         messagesQueue.start(asyncMessagesStoreSettings.getAsyncStoreSettings(), "fix-messages");
         if (wrappedStore.isUnderlyingStorageResourceAvailable()) {
             wrappedStore.start();
-            storeUnderlyingResourceStateListener.onStoreStateUp(fixSessionId, wrappedStore.getUnderlyingStorageResourceDescription());
             registerEventsHandlingFromAsyncLoggersThreads();
             if (asyncMessagesStoreSettings.getFlushPendingMessagesOnStartupDelay() != null) {
                 flushMessagesIfNeeded(Deadline.of(asyncMessagesStoreSettings.getFlushPendingMessagesOnStartupDelay()));
