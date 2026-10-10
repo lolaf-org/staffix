@@ -18,6 +18,7 @@
     <modules>
         <module>quickstart</module>
         <module>plugin-api</module>
+        <module>alerting</module>
         <module>examples-core</module>
         <module>advanced-monitoring</module>
         <module>staffix-api-examples</module>
