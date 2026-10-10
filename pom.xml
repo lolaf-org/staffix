@@ -68,6 +68,7 @@
         <module>messages-stores</module>
         <module>http-clients</module>
         <module>messages-loggers</module>
+        <module>alerting</module>
         <module>sessions-settings-stores</module>
         <module>monitoring</module>
         <module>admin-apis</module>
