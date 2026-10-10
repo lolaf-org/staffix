@@ -50,6 +50,10 @@ You get an MBean per session exposing `logon()`, `logout()`, `reset(String reset
 `setIncomingSeqNum(long)`, `getOutgoingSeqNum()`, `setOutgoingSeqNum(long)` and `getFixSessionId()`, plus an
 engine-level MBean. Any JMX client (JConsole, VisualVM, your monitoring agent) can drive them.
 
+The session MBean's `Probes` and `ProbeStates` attributes list its [probes](alerting.md) and where each stood at its
+last evaluation; the engine-level MBean's `ActiveAlerts` lists every probe in alert across the engine. Levels are
+strings, times ISO-8601.
+
 The engine-level MBean names a session by its full `toString()` form, `alpha.trading:VERSION_44:SENDER->TARGET`, in
 both `getInitiatorsTargets()` and `switchInitiatorSession(String)`: a session name is unique only within its group.
 Copy the string from the first into the second.

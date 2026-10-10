@@ -15,6 +15,8 @@
  */
 package org.lolaf.staffix.admin.jmx;
 
+import java.util.List;
+
 /**
  * Per-session JMX management surface. One bean is exposed for each session managed by the engine's initiators and
  * acceptors; the session is identified by the bean's {@code ObjectName} (its {@code group}, {@code session} and
@@ -51,4 +53,44 @@ public interface FixSessionMXBean {
     long getOutgoingSeqNum();
 
     void setOutgoingSeqNum(long seqNum);
+
+    /**
+     * The session's probes, in the order they were added.
+     */
+    List<Probe> getProbes();
+
+    /**
+     * Where each probe stood at its last evaluation; a probe not evaluated yet is absent.
+     */
+    List<ProbeStatus> getProbeStates();
+
+    /**
+     * Intervals are ISO-8601 durations, the reminder absent for a probe that publishes transitions only.
+     */
+    interface Probe {
+
+        String getName();
+
+        String getDescription();
+
+        String getEvaluationInterval();
+
+        String getReminderInterval();
+    }
+
+    /**
+     * Level, message and since are absent while the probe is normal; times are ISO-8601 instants.
+     */
+    interface ProbeStatus {
+
+        String getProbe();
+
+        String getLevel();
+
+        String getMessage();
+
+        String getSince();
+
+        String getLastEvaluation();
+    }
 }

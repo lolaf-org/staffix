@@ -15,10 +15,15 @@
  */
 package org.lolaf.staffix.admin.jmx;
 
+import lombok.Value;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * The per-session MBean: state, sequence numbers, and the operations that change them.
@@ -90,5 +95,46 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
     @Override
     public void setOutgoingSeqNum(long seqNum) {
         delegate.setOutgoingSeqNum(fixSessionId, seqNum);
+    }
+
+    @Override
+    public List<Probe> getProbes() {
+        return delegate.getProbeDefinitions(fixSessionId).stream()
+                .map(probe -> new ProbeImpl(probe.getName(), probe.getDescription(), probe.getEvaluationInterval().toString(),
+                        probe.getReminderInterval().map(Object::toString).orElse(null)))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ProbeStatus> getProbeStates() {
+        return delegate.getProbeStates(fixSessionId).stream()
+                .map(FixSessionMBeanImpl::status)
+                .collect(Collectors.toList());
+    }
+
+    private static ProbeStatus status(ProbeState state) {
+        Alert alert = state.getAlert().orElse(null);
+        return new ProbeStatusImpl(state.getProbeName(),
+                alert == null ? null : alert.getLevel().name(),
+                alert == null ? null : alert.getMessage(),
+                state.getSince().map(Object::toString).orElse(null),
+                state.getLastEvaluation().toString());
+    }
+
+    @Value
+    private static class ProbeImpl implements Probe {
+        String name;
+        String description;
+        String evaluationInterval;
+        String reminderInterval;
+    }
+
+    @Value
+    private static class ProbeStatusImpl implements ProbeStatus {
+        String probe;
+        String level;
+        String message;
+        String since;
+        String lastEvaluation;
     }
 }

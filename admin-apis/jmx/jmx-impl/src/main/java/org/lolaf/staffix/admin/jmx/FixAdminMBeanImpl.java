@@ -18,8 +18,11 @@ package org.lolaf.staffix.admin.jmx;
 import lombok.Value;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.session.FixSessionId;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -64,6 +67,27 @@ public class FixAdminMBeanImpl implements FixAdminMXBean {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("No initiator has FIX session " + fixSessionId
                         + " as a target, targets are: " + targetIds)));
+    }
+
+    @Override
+    public List<ActiveAlert> getActiveAlerts() {
+        List<ActiveAlert> alerts = new ArrayList<>();
+        for (SessionProbeState active : delegate.getActiveAlerts()) {
+            ProbeState state = active.getProbeState();
+            state.getAlert().ifPresent(alert -> alerts.add(new ActiveAlertImpl(active.getFixSessionId().toString(),
+                    state.getProbeName(), alert.getLevel().name(), alert.getMessage(),
+                    state.getSince().map(Object::toString).orElse(null))));
+        }
+        return alerts;
+    }
+
+    @Value
+    private static class ActiveAlertImpl implements ActiveAlert {
+        String fixSessionId;
+        String probe;
+        String level;
+        String message;
+        String since;
     }
 
     @Value
