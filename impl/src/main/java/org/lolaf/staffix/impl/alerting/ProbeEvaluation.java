@@ -109,6 +109,10 @@ final class ProbeEvaluation {
         return event(AlertEvent.Type.CLEARED, last, nowMillis);
     }
 
+    boolean isInAlert() {
+        return alert != null;
+    }
+
     /**
      * Null until the first evaluation.
      */

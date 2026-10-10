@@ -16,6 +16,9 @@
 package org.lolaf.staffix.admin.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.admin.http.dto.ConfigDescription;
 import org.lolaf.staffix.admin.http.dto.EngineSessions;
 import org.lolaf.staffix.admin.http.dto.FixIdentity;
@@ -42,20 +45,15 @@ import java.util.stream.Collectors;
  * {@link EngineSessions} encoded once, with the sessions and settings it was built from, so a status call can tell
  * it is still current without building it again.
  */
+@Getter
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class SessionsDocument {
 
-    public final String version;
-    public final byte[] json;
-    public final Map<FixSessionId, FixSession> running;
+    private final String version;
+    private final byte[] json;
+    private final Map<FixSessionId, FixSession> running;
+    @Getter(AccessLevel.NONE)
     private final Map<FixSessionId, FixSessionSettings> builtFrom;
-
-    private SessionsDocument(String version, byte[] json, Map<FixSessionId, FixSession> running,
-                             Map<FixSessionId, FixSessionSettings> builtFrom) {
-        this.version = version;
-        this.json = json;
-        this.running = running;
-        this.builtFrom = builtFrom;
-    }
 
     public static SessionsDocument of(AdminApi adminApi, List<FixSession> managed, ObjectMapper mapper) throws IOException {
         Map<FixSessionId, FixSession> running = new HashMap<>();

@@ -24,6 +24,9 @@ import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
@@ -38,6 +41,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -108,11 +112,11 @@ class EngineStatusTest {
     }
 
     private JsonNode status() {
-        return mapper.valueToTree(EngineStatus.of(adminApi, document().running, "v1"));
+        return mapper.valueToTree(EngineStatus.of(adminApi, document().getRunning(), "v1", 7, fixSessionId -> "p-" + fixSessionId.getName()));
     }
 
     private JsonNode sessions() throws Exception {
-        return mapper.readTree(document().json);
+        return mapper.readTree(document().getJson());
     }
 
     private SessionsDocument document() {
@@ -129,9 +133,27 @@ class EngineStatusTest {
         JsonNode trading = status().get("sessions").get(0);
 
         assertThat(trading.toString()).isEqualTo("{\"group\":\"alpha\",\"name\":\"trading\",\"selectedConfig\":\"trading-drp\","
-                + "\"desiredState\":\"LOGGED_IN\",\"status\":\"LOGGED_IN\",\"incomingSeqNum\":12,\"outgoingSeqNum\":34}");
+                + "\"desiredState\":\"LOGGED_IN\",\"status\":\"LOGGED_IN\",\"incomingSeqNum\":12,\"outgoingSeqNum\":34,"
+                + "\"probesVersion\":\"p-trading-drp\"}");
         assertThat(status().get("sessionsVersion").asText()).isEqualTo("v1");
+        assertThat(status().get("alertsVersion").asLong()).isEqualTo(7);
         assertThat(status().get("engineId").asText()).isEqualTo("alpha-engine");
+    }
+
+    @Test
+    void aSessionCarriesTheWorstLevelOfItsOngoingAlerts() {
+        engine();
+        when(adminApi.getActiveAlerts()).thenReturn(List.of(
+                active(TRADING_DRP, Alert.warning("slow")), active(TRADING_DRP, Alert.critical("down")),
+                active(TRADING_DRP, Alert.major("behind"))));
+
+        assertThat(status().get("sessions").get(0).get("alertLevel").asText()).isEqualTo("CRITICAL");
+        assertThat(status().get("sessions").get(1).has("alertLevel")).isFalse();
+    }
+
+    private static SessionProbeState active(FixSessionId fixSessionId, Alert alert) {
+        return new SessionProbeState(fixSessionId, ProbeState.builder().probeName(alert.getMessage()).alert(alert)
+                .since(Instant.EPOCH).lastEvaluation(Instant.EPOCH).build());
     }
 
     @Test
@@ -203,12 +225,12 @@ class EngineStatusTest {
     @Test
     void equalContentHasTheSameVersion() throws Exception {
         engine();
-        String version = document().version;
+        String version = document().getVersion();
 
         engine();
 
-        assertThat(document().version).isEqualTo(version).hasSize(64);
+        assertThat(document().getVersion()).isEqualTo(version).hasSize(64);
         engine(session(TRADING_DRP, FixSession.FixSessionType.INITIATOR, true));
-        assertThat(document().version).isNotEqualTo(version);
+        assertThat(document().getVersion()).isNotEqualTo(version);
     }
 }

@@ -26,6 +26,11 @@ import org.lolaf.staffix.api.admin.AdminApi.ResetFixSessionMode;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.ProbesListener;
+import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
@@ -35,6 +40,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.mockito.ArgumentCaptor;
 
 import java.net.ServerSocket;
 import java.net.URI;
@@ -42,9 +48,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
@@ -164,6 +173,88 @@ class AdminApiEndpointsTest {
                 .header("If-None-Match", etag)
                 .build(), HttpResponse.BodyHandlers.ofString());
         assertThat(unchanged.statusCode()).isEqualTo(304);
+    }
+
+    @Test
+    void aSessionsProbesAreServedWithTheVersionStatusReportsAsTheirETag() throws Exception {
+        when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(ProbeDefinition.builder()
+                .name("order-flow").description("Time since the last order")
+                .evaluationInterval(Duration.ofSeconds(1)).reminderInterval(Duration.ofMinutes(1)).build()));
+
+        HttpResponse<String> probes = call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null);
+
+        assertThat(probes.statusCode()).isEqualTo(200);
+        assertThat(probes.body()).isEqualTo("[{\"name\":\"order-flow\",\"description\":\"Time since the last order\","
+                + "\"evaluationInterval\":\"PT1S\",\"reminderInterval\":\"PT1M\"}]");
+        String etag = probes.headers().firstValue("ETag").orElseThrow();
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"probesVersion\":" + etag);
+        HttpResponse<String> unchanged = client.send(HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port + "/engines/alpha-engine/v1/sessions/alpha/trading/probes"))
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("If-None-Match", etag)
+                .build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(unchanged.statusCode()).isEqualTo(304);
+    }
+
+    @Test
+    void aProbeAddedChangesTheProbesVersion() throws Exception {
+        String before = call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null).headers()
+                .firstValue("ETag").orElseThrow();
+        ProbeDefinition added = ProbeDefinition.builder().name("queue").description("d").evaluationInterval(Duration.ofSeconds(1)).build();
+        when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(added));
+        ArgumentCaptor<ProbesListener> listener = ArgumentCaptor.forClass(ProbesListener.class);
+        verify(adminApi).addProbesListener(listener.capture());
+
+        listener.getValue().onProbeAdded(TRADING, added);
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null).headers()
+                .firstValue("ETag")).isNotEqualTo(Optional.of(before));
+    }
+
+    @Test
+    void probeStatesAndAlertsNameTheSessionAfterItsMainConfig() throws Exception {
+        running(adminApi, TRADING_DRP);
+        ProbeState alerting = ProbeState.builder().probeName("session-down").alert(Alert.critical("down"))
+                .since(Instant.parse("2026-10-10T10:00:00Z")).lastEvaluation(Instant.parse("2026-10-10T10:00:05Z")).build();
+        when(adminApi.getProbeStates(TRADING_DRP)).thenReturn(List.of(alerting));
+        when(adminApi.getActiveAlerts()).thenReturn(List.of(new SessionProbeState(TRADING_DRP, alerting)));
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
+                .isEqualTo("[{\"probe\":\"session-down\",\"level\":\"CRITICAL\",\"message\":\"down\","
+                        + "\"since\":\"2026-10-10T10:00:00Z\",\"lastEvaluation\":\"2026-10-10T10:00:05Z\"}]");
+        assertThat(call("GET", "/engines/alpha-engine/v1/alerts", null).body())
+                .startsWith("{\"engineId\":\"alpha-engine\",\"alertsVersion\":")
+                .endsWith("\"alerts\":[{\"group\":\"alpha\",\"name\":\"trading\",\"selectedConfig\":\"trading-drp\","
+                        + "\"probe\":\"session-down\",\"level\":\"CRITICAL\",\"message\":\"down\",\"since\":\"2026-10-10T10:00:00Z\"}]}");
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"alertLevel\":\"CRITICAL\"");
+    }
+
+    @Test
+    void anAlertTransitionMovesTheAlertsVersion() throws Exception {
+        ArgumentCaptor<ProbesListener> listener = ArgumentCaptor.forClass(ProbesListener.class);
+        verify(adminApi).addProbesListener(listener.capture());
+        long before = alertsVersion();
+
+        listener.getValue().onAlertTransition(TRADING, ProbeState.builder().probeName("queue").lastEvaluation(Instant.EPOCH).build());
+
+        assertThat(alertsVersion()).isEqualTo(before + 1);
+    }
+
+    @Test
+    void theProbesListenerIsRemovedWhenTheExporterShutsDown() {
+        ArgumentCaptor<ProbesListener> listener = ArgumentCaptor.forClass(ProbesListener.class);
+        verify(adminApi).addProbesListener(listener.capture());
+
+        exporters.get(0).shutdown(Deadline.of(Duration.ofSeconds(1)));
+
+        verify(adminApi).removeProbesListener(listener.getValue());
+    }
+
+    private long alertsVersion() throws Exception {
+        String status = call("GET", "/engines/alpha-engine/v1/status", null).body();
+        Matcher version = Pattern.compile("\"alertsVersion\":(\\d+)").matcher(status);
+        assertThat(version.find()).isTrue();
+        return Long.parseLong(version.group(1));
     }
 
     @Test

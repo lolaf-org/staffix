@@ -27,7 +27,6 @@ import org.lolaf.staffix.api.session.FixSession;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -102,15 +101,11 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
     }
 
     public List<SessionProbeState> getActiveAlerts() {
-        List<SessionProbeState> active = new ArrayList<>();
+        List<SessionProbeState> active = null;
         for (SessionProbesEvaluation session : sessions) {
-            for (ProbeState state : session.getStates()) {
-                if (state.getAlert().isPresent()) {
-                    active.add(new SessionProbeState(session.getFixSession().getFixSessionId(), state));
-                }
-            }
+            active = session.addActiveAlerts(active);
         }
-        return Collections.unmodifiableList(active);
+        return active == null ? List.of() : Collections.unmodifiableList(active);
     }
 
     @Override

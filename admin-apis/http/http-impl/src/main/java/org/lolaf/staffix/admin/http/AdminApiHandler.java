@@ -20,6 +20,7 @@ import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.admin.http.dto.Problem;
 import org.lolaf.staffix.admin.http.routes.*;
@@ -48,13 +49,16 @@ public class AdminApiHandler implements HttpHandler {
     private final byte[] fullAuthorization;
     private final byte[] readOnlyAuthorization;
     private final ObjectMapper mapper;
+    @Getter
+    private final ProbesDocuments probesDocuments;
     private final Route[] routes;
 
     AdminApiHandler(AdminApi adminApi, String apiToken, String readOnlyApiToken) {
         this.fullAuthorization = bearer(apiToken);
         this.readOnlyAuthorization = readOnlyApiToken == null ? null : bearer(readOnlyApiToken);
         this.mapper = newObjectMapper();
-        this.routes = routes(adminApi, mapper);
+        this.probesDocuments = new ProbesDocuments(adminApi, mapper);
+        this.routes = routes(adminApi, mapper, probesDocuments);
     }
 
     static ObjectMapper newObjectMapper() {
@@ -66,18 +70,21 @@ public class AdminApiHandler implements HttpHandler {
                 mapper.writeValueAsBytes(new Problem(problem.getStatus(), problem.getMessage())));
     }
 
-    private static Route[] routes(AdminApi adminApi, ObjectMapper mapper) {
+    private static Route[] routes(AdminApi adminApi, ObjectMapper mapper, ProbesDocuments probes) {
         SessionLookup sessions = new SessionLookup(adminApi);
         SessionsDocumentCache documents = new SessionsDocumentCache(adminApi, mapper);
         JsonResponseBuffer json = new JsonResponseBuffer(mapper);
         return new Route[]{
                 new EngineInfoRoute(adminApi, json),
                 new SessionsRoute(documents),
-                new StatusRoute(adminApi, documents, json),
+                new StatusRoute(adminApi, documents, probes, json),
+                new AlertsRoute(adminApi, probes, json),
                 new ComponentsRoute(adminApi, json),
                 new SessionComponentsRoute(adminApi, json),
                 new MetersRoute(adminApi, json),
                 new SessionMetersRoute(adminApi, sessions, json),
+                new SessionProbesRoute(probes, sessions),
+                new SessionProbeStatesRoute(adminApi, sessions, json),
                 new SessionSettingsSchemaRoute(),
                 new SessionSettingsStoresRoute(adminApi, json),
                 new AddSessionRoute(adminApi),

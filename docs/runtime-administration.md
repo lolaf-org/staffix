@@ -104,7 +104,10 @@ state: read `status` again to see it.
 | request, under `v1/` | |
 |---------|---|
 | `GET sessions` | every running session: its configs (for an initiator the main one, then its backups, with the addresses each dials), each config's identity and dictionaries, its messages logger and monitoring plugin instance ids, the session settings store holding it; with a `version`, also its `ETag`, that changes only when the sessions or their settings do |
-| `GET status` | every session's `status` (`LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`, `LOGGED_OUT_OUTSIDE_SESSION_TIME`, `LOGGED_OUT_INSIDE_SESSION_TIME`), running config and sequence numbers, with `sessionsVersion`: fetch `sessions` again when it differs |
+| `GET status` | every session's `status` (`LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`, `LOGGED_OUT_OUTSIDE_SESSION_TIME`, `LOGGED_OUT_INSIDE_SESSION_TIME`), running config, sequence numbers, `probesVersion` and the worst level of its ongoing alerts (`alertLevel`, absent when none), with `sessionsVersion` and `alertsVersion`: fetch `sessions` or `alerts` again when one differs |
+| `GET alerts` | every probe in alert across the engine: session, probe, level, message and since, with the `alertsVersion` it is at least as recent as |
+| `GET sessions/{group}/{name}/probes` | the session's [probes](alerting.md): name, description and intervals; the `ETag` is its `probesVersion` in `status`, which changes only when a probe is added or removed |
+| `GET sessions/{group}/{name}/probes/states` | where each probe stood at its last evaluation: level, message and since while in alert |
 | `GET schemas/session-settings` | the JSON Schema of a session's settings document, every field described, with its default |
 | `GET sessions/{group}/{name}/settings` | the session's settings as a document of that schema; an application setting declared secret, or whose name looks secret, is masked |
 | `PUT sessions/{group}/{name}/settings` | replaces them in the store holding them; the live session restarts on them unless `restartLiveSessionOnUpdate` is off. A masked value keeps the session's. An acceptor session's CompIDs may change; an initiator's id is set by its targets |

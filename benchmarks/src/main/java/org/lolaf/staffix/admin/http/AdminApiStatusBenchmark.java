@@ -67,7 +67,8 @@ public class AdminApiStatusBenchmark {
     @Benchmark
     public byte[] status(EngineState state) throws IOException {
         SessionsDocument document = state.documents.get();
-        return state.mapper.writeValueAsBytes(EngineStatus.of(state.adminApi, document.running, document.version));
+        return state.mapper.writeValueAsBytes(EngineStatus.of(state.adminApi, document.getRunning(), document.getVersion(),
+                state.probes.getAlertsVersion(), fixSessionId -> state.probes.get(fixSessionId).getVersion()));
     }
 
     @Benchmark
@@ -79,10 +80,16 @@ public class AdminApiStatusBenchmark {
     public static class EngineState {
         @Param({"10", "100", "500", "2000"})
         int sessions;
+        /**
+         * PT0S keeps the engine quiet; PT1S puts every session, never connected, in alert before the measurement.
+         */
+        @Param({"PT0S", "PT1S"})
+        String sessionDownAlertDelay;
         FixEngine engine;
         AdminApi adminApi;
         ObjectMapper mapper;
         SessionsDocumentCache documents;
+        ProbesDocuments probes;
         HttpClient client;
         HttpRequest statusRequest;
 
@@ -99,6 +106,7 @@ public class AdminApiStatusBenchmark {
                         .fixSessionId(id)
                         .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                         .fixApplicationInstanceId(id.getQualifiedName())
+                        .sessionDownAlertDelay(Duration.parse(sessionDownAlertDelay))
                         .build());
             }
             engine = FixEngineBuilder.builder()
@@ -116,6 +124,8 @@ public class AdminApiStatusBenchmark {
             adminApi = (AdminApi) engine;
             mapper = AdminApiHandler.newObjectMapper();
             documents = new SessionsDocumentCache(adminApi, mapper);
+            probes = new ProbesDocuments(adminApi, mapper);
+            adminApi.addProbesListener(probes);
             client = HttpClient.newHttpClient();
             statusRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + PORT + "/engines/benchmark/v1/status"))
                     .header("Authorization", "Bearer " + TOKEN)

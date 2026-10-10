@@ -19,12 +19,16 @@ import lombok.Value;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.alerting.AlertLevel;
+import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * The live state of every session, in one response the console polls; what does not change is in
@@ -37,37 +41,61 @@ public class EngineStatus {
      * The version of {@link EngineSessions} these sessions belong to.
      */
     String sessionsVersion;
+    /**
+     * Moves with every alert raised, changed or cleared across the engine; fetch the alerts again when it differs.
+     */
+    long alertsVersion;
     List<SessionStatus> sessions;
 
-    public static EngineStatus of(AdminApi adminApi, Map<FixSessionId, FixSession> running, String sessionsVersion) {
+    /**
+     * @param probesVersions throws {@code IllegalArgumentException} for a session the engine no longer manages
+     */
+    public static EngineStatus of(AdminApi adminApi, Map<FixSessionId, FixSession> running, String sessionsVersion,
+                                  long alertsVersion, Function<FixSessionId, String> probesVersions) {
+        Map<FixSessionId, AlertLevel> alertLevels = worstAlertLevels(adminApi);
         List<SessionStatus> sessions = new ArrayList<>(running.size());
         for (FixInitiatorTargets initiator : adminApi.getInitiatorsTargets()) {
             FixSession session = running.get(initiator.getActiveFixSessionId());
             if (session != null) {
                 String name = initiator.getMainTarget().getFixSessionId().getName();
-                addIfStillManaged(sessions, adminApi, session, name);
+                addIfStillManaged(sessions, adminApi, probesVersions, alertLevels, session, name);
             }
         }
         for (FixAcceptorSessions acceptor : adminApi.getAcceptorsSessions()) {
             for (FixSessionId fixSessionId : acceptor.getFixSessionIds()) {
                 FixSession session = running.get(fixSessionId);
                 if (session != null) {
-                    addIfStillManaged(sessions, adminApi, session, fixSessionId.getName());
+                    addIfStillManaged(sessions, adminApi, probesVersions, alertLevels, session, fixSessionId.getName());
                 }
             }
         }
-        return new EngineStatus(adminApi.getInstanceId(), sessionsVersion, sessions);
+        return new EngineStatus(adminApi.getInstanceId(), sessionsVersion, alertsVersion, sessions);
     }
 
-    private static void addIfStillManaged(List<SessionStatus> sessions, AdminApi adminApi, FixSession session, String name) {
+    private static Map<FixSessionId, AlertLevel> worstAlertLevels(AdminApi adminApi) {
+        List<SessionProbeState> activeAlerts = adminApi.getActiveAlerts();
+        if (activeAlerts.isEmpty()) {
+            return Map.of();
+        }
+        Map<FixSessionId, AlertLevel> levels = new HashMap<>();
+        for (SessionProbeState active : activeAlerts) {
+            active.getProbeState().getAlert().ifPresent(alert ->
+                    levels.merge(active.getFixSessionId(), alert.getLevel(), (a, b) -> a.compareTo(b) >= 0 ? a : b));
+        }
+        return levels;
+    }
+
+    private static void addIfStillManaged(List<SessionStatus> sessions, AdminApi adminApi, Function<FixSessionId, String> probesVersions,
+                                          Map<FixSessionId, AlertLevel> alertLevels, FixSession session, String name) {
         try {
-            sessions.add(status(adminApi, session, name));
+            sessions.add(status(adminApi, probesVersions, alertLevels, session, name));
         } catch (IllegalArgumentException removedSinceListed) {
-            // the seqnum lookups refuse a session unregistered after getManagedFixSessions(); it is gone, skip it
+            // the seqnum and probe lookups refuse a session unregistered after getManagedFixSessions(); it is gone, skip it
         }
     }
 
-    private static SessionStatus status(AdminApi adminApi, FixSession session, String name) {
+    private static SessionStatus status(AdminApi adminApi, Function<FixSessionId, String> probesVersions, Map<FixSessionId, AlertLevel> alertLevels,
+                                        FixSession session, String name) {
         FixSessionId fixSessionId = session.getFixSessionId();
         return SessionStatus.builder()
                 .group(fixSessionId.getGroup())
@@ -77,6 +105,8 @@ public class EngineStatus {
                 .status(session.getStatus())
                 .incomingSeqNum(adminApi.getIncomingSeqNum(fixSessionId))
                 .outgoingSeqNum(adminApi.getOutgoingSeqNum(fixSessionId))
+                .probesVersion(probesVersions.apply(fixSessionId))
+                .alertLevel(alertLevels.get(fixSessionId))
                 .build();
     }
 }

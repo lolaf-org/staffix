@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
+import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.session.FixSession;
 
 import java.util.ArrayList;
@@ -96,6 +97,25 @@ final class SessionProbesEvaluation {
             }
         }
         return Collections.unmodifiableList(states);
+    }
+
+    /**
+     * Allocates nothing for a probe that is not in alert, so a console polling a quiet engine costs next to nothing.
+     */
+    List<SessionProbeState> addActiveAlerts(List<SessionProbeState> active) {
+        ProbeEvaluation[] local = evaluations;
+        for (ProbeEvaluation probeEvaluation : local) {
+            if (probeEvaluation.isInAlert()) {
+                ProbeState state = probeEvaluation.state();
+                if (state != null && state.getAlert().isPresent()) {
+                    if (active == null) {
+                        active = new ArrayList<>();
+                    }
+                    active.add(new SessionProbeState(fixSession.getFixSessionId(), state));
+                }
+            }
+        }
+        return active;
     }
 
     /**
