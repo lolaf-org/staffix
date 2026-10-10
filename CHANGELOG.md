@@ -46,6 +46,12 @@ could mean.
   lasts and info once cleared.
 - **The async store and async logger raise alerts** when their queue grows too deep, and while what they write to
   is unavailable.
+- **Admin tools can see probes and alerts.** `AdminApi` lists a session's probes and where each stands, and the
+  engine's ongoing alerts, and tells a `ProbesListener` when a probe is added or removed and when an alert is raised,
+  changes level or clears. The HTTP admin API serves them (`GET sessions/{group}/{name}/probes`,
+  `GET sessions/{group}/{name}/probes/states`, `GET alerts`), and `status` gives each session's worst ongoing alert
+  level, with versions that tell the console when to fetch probes or alerts again. On JMX, a session's MBean has
+  `Probes` and `ProbeStates`, and the engine's has `ActiveAlerts`.
 
 ### Changed
 
@@ -71,8 +77,9 @@ could mean.
   no `fix.md`. `FixMessageDirection` lists its values for tools reading them.
 - **Custom extensions have new methods to implement**: `FixMessagesLogger.getLogger` and
   `FixSessionsPlugin.onSessionCreated` receive the engine's id, `FixApplicationFactory` implements
-  `getApplicationIds()`, `FixSessionsSettingsStore` implements `isPersistent()`, and `FixSessionsMonitoringContext`
-  implements `getMeterDescriptors()` and both `getGauge` methods.
+  `getApplicationIds()`, `FixSessionsSettingsStore` implements `isPersistent()`, `FixSessionsMonitoringContext`
+  implements `getMeterDescriptors()` and both `getGauge` methods, and `AdminApi` implements
+  `getProbeDefinitions`, `getProbeStates`, `getActiveAlerts`, `addProbesListener` and `removeProbesListener`.
 - **Custom message stores and loggers receive the session's probes**: `FixMessagesStore.getStore` and
   `FixMessagesLogger.getLogger` take a `FixSessionProbes`, so a store or logger can raise alerts on the session it
   serves. A wrapper passes it on to the store or logger it wraps.
