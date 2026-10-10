@@ -120,6 +120,9 @@ public class FixSessionSettingsMapper {
         if (p.getFixMessageLoggerInstanceId() != null) {
             b.fixMessageLoggerInstanceId(p.getFixMessageLoggerInstanceId());
         }
+        if (p.getFixAlertsPublisherInstanceId() != null) {
+            b.fixAlertsPublisherInstanceId(p.getFixAlertsPublisherInstanceId());
+        }
         if (p.getFixSessionPluginsInstanceIds() != null) {
             p.getFixSessionPluginsInstanceIds().forEach((className, instanceId) -> {
                 Class<?> raw;

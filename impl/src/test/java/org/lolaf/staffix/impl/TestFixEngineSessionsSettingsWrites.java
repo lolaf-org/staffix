@@ -34,6 +34,7 @@ import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
+import org.lolaf.staffix.tests.TestingFixAlertsPublisherSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 import org.lolaf.staffix.tests.TestingFixSessionMonitoringManagerSettings;
@@ -82,6 +83,7 @@ class TestFixEngineSessionsSettingsWrites {
                         .application(InstanceProvider.DEFAULT_INSTANCE_ID, application)
                         .build())
                 .fixSessionsSettingsStore(new ControllableSettingsStore.Settings(store))
+                .fixAlertsPublisher(TestingFixAlertsPublisherSettings.builder().build())
                 .fixSessionsPlugin(TestingFixSessionMonitoringManagerSettings.builder()
                         .instanceId("metrics")
                         .mock(monitoring)
@@ -112,6 +114,7 @@ class TestFixEngineSessionsSettingsWrites {
         });
         assertThat(components.getMessagesStores()).containsExactly(InstanceProvider.DEFAULT_INSTANCE_ID);
         assertThat(components.getMessagesLoggers()).isEmpty();
+        assertThat(components.getAlertsPublishers()).containsExactly(InstanceProvider.DEFAULT_INSTANCE_ID);
         assertThat(components.getSessionsPlugins()).singleElement().satisfies(plugin -> {
             assertThat(plugin.getInstanceId()).isEqualTo("metrics");
             assertThat(plugin.getPluginTypes()).containsExactly(FixSessionsMonitoringManager.class);
@@ -180,6 +183,9 @@ class TestFixEngineSessionsSettingsWrites {
                 .fixSessionPluginsInstanceId(FixSessionsMonitoringManager.class, "otlp").build()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unable to match all FIX sessions plugins");
+        assertThatThrownBy(() -> adminApi.addFixSessionSettings(STORE_ID, alpha.toBuilder().fixAlertsPublisherInstanceId("pager").build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("alerts publisher for id 'pager' within: 'default'");
         assertThat(store.getSettings()).isEmpty();
     }
 

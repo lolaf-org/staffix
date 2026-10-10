@@ -66,10 +66,11 @@ FixSessionSettings.builder()
 |---------|---------|-----------------|
 | `fixMessageStoreInstanceId` | `DEFAULT_INSTANCE_ID` | which registered message store persists this session |
 | `fixMessageLoggerInstanceId` | `DEFAULT_INSTANCE_ID` | which registered logger records it |
+| `fixAlertsPublisherInstanceId` | `DEFAULT_INSTANCE_ID` | which registered alerts publisher its probes report to |
 | `fixApplicationFactoryInstanceId` | `DEFAULT_INSTANCE_ID` | which factory produces its application |
 | `fixApplicationInstanceId` | `DEFAULT_INSTANCE_ID` | which application *within* that factory |
 
-The four instance ids default to the same id, so a single-session engine can leave them out. Once an acceptor and an
+The instance ids default to the same id, so a single-session engine can leave them out. Once an acceptor and an
 initiator share a process, set them: this is what keeps their sequence numbers, logs and applications apart.
 
 The FIX dictionary is not a setting: a session speaks its application's, `FixApplication.getDictionaryId()`. A

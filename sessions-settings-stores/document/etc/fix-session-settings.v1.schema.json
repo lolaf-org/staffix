@@ -207,6 +207,17 @@
       "description" : "Whether the Logon carries NextExpectedMsgSeqNum(789), so a sequence gap is settled by the Logon exchange itself rather than by a ResendRequest afterwards (section 4.4.1). On by default; turn it off for a counterparty that rejects the field.",
       "default" : true
     },
+    "fixAlertsPublisherInstanceId" : {
+      "anyOf" : [ {
+        "type" : "string"
+      }, {
+        "type" : "string",
+        "pattern" : ".*\\$\\{[^}]+}.*",
+        "description" : "A ${...} placeholder, resolved when the file is loaded"
+      } ],
+      "description" : "Instance id of the alerts publisher this session's probes report to; see FixAlertsPublisherSettings.getInstanceId().",
+      "default" : "default"
+    },
     "fixApplicationFactoryInstanceId" : {
       "anyOf" : [ {
         "type" : "string"

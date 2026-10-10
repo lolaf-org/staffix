@@ -16,6 +16,7 @@
 package org.lolaf.staffix.impl;
 
 import lombok.Value;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.session.FixSessionRegistry;
@@ -38,6 +39,7 @@ public class FixSessionRuntimeDependencies {
     String engineId;
     FixMessagesStore fixMessagesStore;
     FixMessagesLogger fixMessagesLogger;
+    FixAlertsPublisher fixAlertsPublisher;
     FixApplicationFactory fixApplicationFactory;
     Collection<FixSessionsPlugin<?>> fixSessionsPlugins;
     /**

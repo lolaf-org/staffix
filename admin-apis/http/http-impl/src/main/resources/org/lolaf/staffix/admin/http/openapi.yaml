@@ -743,7 +743,7 @@ components:
           description: Registered by the application rather than by the monitoring.
     SessionComponents:
       type: object
-      required: [applicationFactories, messagesStores, messagesLoggers, sessionsPlugins]
+      required: [applicationFactories, messagesStores, messagesLoggers, alertsPublishers, sessionsPlugins]
       properties:
         applicationFactories:
           type: array
@@ -766,6 +766,11 @@ components:
         messagesLoggers:
           type: array
           description: For fixMessageLoggerInstanceId.
+          items:
+            type: string
+        alertsPublishers:
+          type: array
+          description: For fixAlertsPublisherInstanceId.
           items:
             type: string
         sessionsPlugins:

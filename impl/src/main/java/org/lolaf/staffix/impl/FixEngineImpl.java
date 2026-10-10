@@ -20,6 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.*;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
+import org.lolaf.staffix.api.alerting.VoidAlertsPublisher;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
@@ -57,6 +60,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Getter
     private final List<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final List<FixMessagesLogger> fixMessagesLoggers;
+    private final List<FixAlertsPublisher> fixAlertsPublishers;
     private final List<FixSessionsPlugin<?>> fixSessionsPlugins;
     private final List<FixApplicationFactory> fixApplicationFactories;
     @Getter
@@ -96,6 +100,8 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         this.fixSessionsPlugins = fixEngineBuilder.getFixSessionsPlugins().stream().map(FixSessionsPluginSettings::instance).collect(Collectors.toList());
         ensureUniqueInstanceIdsAreProvided(fixEngineBuilder.getFixMessagesLoggers(), "FixMessagesLoggers");
         this.fixMessagesLoggers = fixEngineBuilder.getFixMessagesLoggers().stream().map(FixMessagesLoggerSettings::instance).collect(Collectors.toList());
+        ensureUniqueInstanceIdsAreProvided(fixEngineBuilder.getFixAlertsPublishers(), "FixAlertsPublishers");
+        this.fixAlertsPublishers = fixEngineBuilder.getFixAlertsPublishers().stream().map(FixAlertsPublisherSettings::instance).collect(Collectors.toList());
         this.adminApiExporter = fixEngineBuilder.getAdminApiExporter() != null ? fixEngineBuilder.getAdminApiExporter().instance() : null;
         this.initiators = new ConcurrentHashMap<>();
         this.acceptors = new ConcurrentHashMap<>();
@@ -154,6 +160,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             }
         });
         fixMessagesLoggers.forEach(s -> s.stop(stopDeadline));
+        fixAlertsPublishers.forEach(s -> s.stop(stopDeadline));
     }
 
     /**
@@ -203,6 +210,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             }
         });
         fixMessagesLoggers.forEach(Startable::start);
+        fixAlertsPublishers.forEach(Startable::start);
         if (adminApiExporter != null) {
             adminApiExporter.export(this);
         }
@@ -211,6 +219,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private FixSessionRuntimeDependencies getDependencies(FixSessionSettings fixSessionSettings) {
         return new FixSessionRuntimeDependencies(getInstanceId(), findMatchAmongstMessagesStores(fixSessionSettings),
                 findMatchAmongstMessagesLoggers(fixSessionSettings),
+                findMatchAmongstAlertsPublishers(fixSessionSettings),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
                 findMatchAmongstPluginsComponent(fixSessionSettings),
                 fixSessionRegistry, disconnectedSessionsExecutor());
@@ -511,6 +520,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 .build()));
         fixMessagesStores.forEach(store -> components.messagesStore(store.getInstanceId()));
         fixMessagesLoggers.forEach(logger -> components.messagesLogger(logger.getInstanceId()));
+        fixAlertsPublishers.forEach(publisher -> components.alertsPublisher(publisher.getInstanceId()));
         fixEngineBuilder.getFixSessionsPlugins().forEach(plugin -> components.sessionsPlugin(FixSessionComponents.SessionsPlugin.builder()
                 .instanceId(plugin.getInstanceId())
                 .pluginTypes(plugin.getPluginTypes())
@@ -613,6 +623,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private void requireResolvableComponents(FixSessionSettings settings) {
         findMatchAmongstMessagesStores(settings);
         findMatchAmongstMessagesLoggers(settings);
+        findMatchAmongstAlertsPublishers(settings);
         findMatchAmongstPluginsComponent(settings);
         FixApplicationFactory factory = findMatchAmongstFixApplicationFactories(settings);
         if (!factory.getApplicationIds().contains(settings.getFixApplicationInstanceId())) {
@@ -655,6 +666,19 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         }
         throw new IllegalArgumentException(String.format("Unable to find any FIX message logger for id '%s' within: '%s'", fixSessionSettings.getFixMessageLoggerInstanceId(),
                 fixMessagesLoggers.stream().map(FixMessagesLogger::getInstanceId).collect(Collectors.joining(","))));
+    }
+
+    private FixAlertsPublisher findMatchAmongstAlertsPublishers(FixSessionSettings fixSessionSettings) {
+        if (fixAlertsPublishers.isEmpty()) {
+            return VoidAlertsPublisher.getInstance();
+        }
+        for (FixAlertsPublisher publisher : fixAlertsPublishers) {
+            if (publisher.getInstanceId().equals(fixSessionSettings.getFixAlertsPublisherInstanceId())) {
+                return publisher;
+            }
+        }
+        throw new IllegalArgumentException(String.format("Unable to find any FIX alerts publisher for id '%s' within: '%s'", fixSessionSettings.getFixAlertsPublisherInstanceId(),
+                fixAlertsPublishers.stream().map(FixAlertsPublisher::getInstanceId).collect(Collectors.joining(","))));
     }
 
     public static class FixEngineFactoryImpl implements FixEngineFactory {

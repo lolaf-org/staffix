@@ -77,6 +77,7 @@ public class FixSessionSettingsDocument {
     private String fixApplicationInstanceId;
     private String fixMessageStoreInstanceId;
     private String fixMessageLoggerInstanceId;
+    private String fixAlertsPublisherInstanceId;
     private Map<String, String> fixSessionPluginsInstanceIds;
     @Valid
     private ValidationSettings validationSettings;

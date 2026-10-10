@@ -274,13 +274,14 @@ class AdminApiEndpointsTest {
                         .instanceId("default").applicationId("drop-copy").applicationId("orders").build())
                 .messagesStore("default")
                 .messagesLogger("clients-otlp")
+                .alertsPublisher("pager")
                 .sessionsPlugin(FixSessionComponents.SessionsPlugin.builder()
                         .instanceId("metrics").pluginType(FixSessionsMonitoringManager.class).build())
                 .build());
 
         assertThat(call("GET", "/engines/alpha-engine/v1/session-components", null).body()).isEqualTo(
                 "{\"applicationFactories\":[{\"instanceId\":\"default\",\"applicationIds\":[\"drop-copy\",\"orders\"]}],"
-                        + "\"messagesStores\":[\"default\"],\"messagesLoggers\":[\"clients-otlp\"],"
+                        + "\"messagesStores\":[\"default\"],\"messagesLoggers\":[\"clients-otlp\"],\"alertsPublishers\":[\"pager\"],"
                         + "\"sessionsPlugins\":[{\"instanceId\":\"metrics\",\"pluginTypes\":[\"org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager\"]}]}");
     }
 

@@ -158,6 +158,11 @@ public class FixSessionSettingsProps {
     private String fixMessageLoggerInstanceId;
 
     /**
+     * Instance id of the alerts publisher this session's probes report to.
+     */
+    private String fixAlertsPublisherInstanceId;
+
+    /**
      * The plugin instance each plugin type uses for this session, keyed by the plugin's class name, for example
      * org.lolaf.staffix.tracing.otlp.OtelTracing.
      */

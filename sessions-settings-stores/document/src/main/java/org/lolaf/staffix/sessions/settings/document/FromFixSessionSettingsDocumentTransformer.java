@@ -90,6 +90,7 @@ public class FromFixSessionSettingsDocumentTransformer {
         mergeIfNeeded(settings::getFixApplicationInstanceId, builder::fixApplicationInstanceId);
         mergeIfNeeded(settings::getFixMessageStoreInstanceId, builder::fixMessageStoreInstanceId);
         mergeIfNeeded(settings::getFixMessageLoggerInstanceId, builder::fixMessageLoggerInstanceId);
+        mergeIfNeeded(settings::getFixAlertsPublisherInstanceId, builder::fixAlertsPublisherInstanceId);
         if (settings.getFixSessionPluginsInstanceIds() != null) {
             settings.getFixSessionPluginsInstanceIds().forEach((k, v) -> {
                 try {

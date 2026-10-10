@@ -33,6 +33,7 @@ fixApplicationFactoryInstanceId: "default"
 fixApplicationInstanceId: "default"
 fixMessageStoreInstanceId: "default"
 fixMessageLoggerInstanceId: "default"
+fixAlertsPublisherInstanceId: "default"
 validationSettings:
   validateChecksum: true
   validateFieldsHaveValues: true
