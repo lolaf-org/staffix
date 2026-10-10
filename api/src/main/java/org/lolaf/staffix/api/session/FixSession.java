@@ -17,6 +17,7 @@ package org.lolaf.staffix.api.session;
 
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.staffix.api.FixEngineBuilder;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
@@ -342,6 +343,12 @@ public interface FixSession {
      * when the logger does not log events.
      */
     void logEvent(String event, Object... params);
+
+    /**
+     * The probes watching this session, which application code adds and removes at runtime; see
+     * {@link org.lolaf.staffix.api.alerting.Probe}.
+     */
+    FixSessionProbes getProbes();
 
     /**
      * Indicates whether a FIX session is operated as an {@link #INITIATOR} (it establishes the connection) or an
