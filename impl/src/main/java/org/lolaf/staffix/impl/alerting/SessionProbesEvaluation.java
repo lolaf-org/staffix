@@ -102,6 +102,25 @@ final class SessionProbesEvaluation {
     }
 
     /**
+     * Readable from any thread. A probe added since the last tick is not evaluated yet, so it cannot be in alert.
+     *
+     * @throws IllegalArgumentException if the session has no such probe
+     */
+    boolean clearAlert(String probeName) {
+        for (ProbeEvaluation probeEvaluation : evaluations) {
+            if (probeEvaluation.getProbe().getName().equals(probeName)) {
+                return probeEvaluation.requestClear();
+            }
+        }
+        for (Probe probe : probes.array()) {
+            if (probe.getName().equals(probeName)) {
+                return false;
+            }
+        }
+        throw new IllegalArgumentException("Session " + fixSession.getFixSessionId() + " has no probe named " + probeName);
+    }
+
+    /**
      * Allocates nothing for a probe that is not in alert, so a console polling a quiet engine costs next to nothing.
      */
     List<SessionProbeState> addActiveAlerts(List<SessionProbeState> active) {
@@ -150,7 +169,7 @@ final class SessionProbesEvaluation {
             log.warn("Alerts publisher {} failed to publish {}", publisher.getInstanceId(), event, e);
         }
         if (event.getType() != AlertEvent.Type.REMINDED) {
-            listener.onAlertTransition(fixSession.getFixSessionId(), probeEvaluation.state());
+            listener.onAlertTransition(fixSession.getFixSessionId(), probeEvaluation.state(event.isClearedManually()));
         }
     }
 }

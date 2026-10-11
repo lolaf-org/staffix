@@ -100,6 +100,23 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
         return index < 0 ? List.of() : local[index].getStates();
     }
 
+    /**
+     * False for a session that is not registered, since none of its probes can be in alert.
+     *
+     * @throws IllegalArgumentException if the session has no such probe
+     */
+    public boolean clearAlert(FixSession fixSession, String probeName) {
+        SessionProbesEvaluation[] local = sessions;
+        int index = indexOf(local, fixSession);
+        if (index >= 0) {
+            return local[index].clearAlert(probeName);
+        }
+        if (fixSession.getProbes().list().stream().noneMatch(probe -> probe.getName().equals(probeName))) {
+            throw new IllegalArgumentException("Session " + fixSession.getFixSessionId() + " has no probe named " + probeName);
+        }
+        return false;
+    }
+
     public List<SessionProbeState> getActiveAlerts() {
         List<SessionProbeState> active = null;
         for (SessionProbesEvaluation session : sessions) {

@@ -206,6 +206,17 @@ class JmxAdminApiTest {
     }
 
     @Test
+    void aSessionsAlertIsClearedThroughTheAdminApi() throws Exception {
+        adminApi.managed.add(session(INITIATOR_SESSION, true));
+        exporter.export(adminApi);
+        FixSessionMXBean proxy = JMX.newMXBeanProxy(mBeanServer, sessionName("init1", "Initiator"), FixSessionMXBean.class);
+
+        assertThat(proxy.clearAlert("order-flow")).isTrue();
+        assertThat(proxy.clearAlert("session-down")).isFalse();
+        assertThat(adminApi.clearedAlerts).hasSize(2).allSatisfy(cleared -> assertThat(cleared).startsWith("init1 "));
+    }
+
+    @Test
     void theEnginesActiveAlertsAreReadableWithTheirSessionIdString() throws Exception {
         adminApi.activeAlerts.add(new SessionProbeState(ACCEPTOR_SESSION, ProbeState.builder().probeName("session-down")
                 .alert(Alert.critical("down")).since(SINCE).lastEvaluation(SINCE).build(), URI.create("https://wiki.example.com/session-down")));
@@ -257,6 +268,7 @@ class JmxAdminApiTest {
         private final List<ProbeDefinition> probeDefinitions = new ArrayList<>();
         private final List<ProbeState> probeStates = new ArrayList<>();
         private final List<SessionProbeState> activeAlerts = new ArrayList<>();
+        private final List<String> clearedAlerts = new ArrayList<>();
         private SessionLifecycleListener lifecycleListener;
 
         @Override
@@ -387,6 +399,12 @@ class JmxAdminApiTest {
         @Override
         public List<SessionProbeState> getActiveAlerts() {
             return activeAlerts;
+        }
+
+        @Override
+        public boolean clearAlert(FixSessionId fixSessionId, String probeName) {
+            clearedAlerts.add(fixSessionId.getName() + " " + probeName);
+            return !"session-down".equals(probeName);
         }
 
         @Override

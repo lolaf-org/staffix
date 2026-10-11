@@ -56,7 +56,7 @@ public class Slf4jAlertsPublisher extends Startable.SimpleStartable<FixAlertsPub
             MDC.put(FIX_SESSION_NAME, fixSessionId.getName());
         }
         try {
-            logger.atLevel(levelOf(event)).log(TEMPLATE, event.getType(), fixSessionId.getQualifiedName(), event.getProbeName(),
+            logger.atLevel(levelOf(event)).log(TEMPLATE, event.isClearedManually() ? "CLEARED manually" : event.getType(), fixSessionId.getQualifiedName(), event.getProbeName(),
                     event.getProbeDescription(), event.getAlert().getLevel(), event.getAlert().getMessage(), event.getSince());
         } finally {
             if (settings.isUseMDC()) {

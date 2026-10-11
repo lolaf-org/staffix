@@ -281,6 +281,19 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void clearingAnAlertAnswers204WhenAccepted409WhenRefusedAnd404ForAnUnknownProbe() throws Exception {
+        when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(
+                ProbeDefinition.builder().name("rejects").description("d").evaluationInterval(Duration.ofSeconds(1)).build(),
+                ProbeDefinition.builder().name("queue").description("d").evaluationInterval(Duration.ofSeconds(1)).build()));
+        when(adminApi.clearAlert(TRADING, "rejects")).thenReturn(true);
+
+        assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/rejects/clear", null).statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/queue/clear", null).statusCode()).isEqualTo(409);
+        assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/unknown/clear", null).statusCode()).isEqualTo(404);
+        verify(adminApi, never()).clearAlert(TRADING, "unknown");
+    }
+
+    @Test
     void aSessionRunningABackupIsStillAddressedByItsName() throws Exception {
         running(adminApi, TRADING_DRP);
 

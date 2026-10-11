@@ -319,6 +319,15 @@ public interface AdminApi extends InstanceIdSupplier {
     List<SessionProbeState> getActiveAlerts();
 
     /**
+     * Asks the probe's evaluator to end its ongoing alert. Once accepted, the alert clears at the next evaluation tick,
+     * published like any other clear but marked as manual.
+     *
+     * @return false when the probe is not in alert, or its evaluator refuses, as a polled condition does
+     * @throws IllegalArgumentException if no initiator or acceptor manages the given session, or it has no such probe
+     */
+    boolean clearAlert(FixSessionId fixSessionId, String probeName);
+
+    /**
      * Registers a listener told about every probe added or removed, and every alert transition, from now on.
      */
     void addProbesListener(ProbesListener listener);

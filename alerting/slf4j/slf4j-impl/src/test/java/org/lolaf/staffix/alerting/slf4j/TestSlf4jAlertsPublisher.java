@@ -58,6 +58,18 @@ class TestSlf4jAlertsPublisher {
     }
 
     @Test
+    void saysWhenAnAlertWasClearedManually() {
+        Slf4jAlertsPublisher publisher = new Slf4jAlertsPublisher(Slf4jAlertsPublisherSettings.builder().build());
+
+        publisher.publish(AlertEvent.builder().type(AlertEvent.Type.CLEARED).engineId("engine").fixSessionId(SESSION_ID)
+                .probeName("queue").probeDescription("Orders waiting").alert(Alert.warning("100 queued")).since(SINCE)
+                .time(SINCE.plusSeconds(5)).clearedManually(true).build());
+
+        assertThat(TestLoggerFactory.getTestLogger(Slf4jAlertsPublisher.class).getLoggingEvents()).singleElement()
+                .satisfies(logged -> assertThat(logged.getFormattedMessage()).startsWith("Alert CLEARED manually on session "));
+    }
+
+    @Test
     void putsTheSessionInTheMdcOnlyWhileLogging() {
         Slf4jAlertsPublisher publisher = new Slf4jAlertsPublisher(Slf4jAlertsPublisherSettings.builder().build());
 

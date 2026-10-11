@@ -96,6 +96,7 @@ public class AdminApiHandler implements HttpHandler {
                 new ApplicationSettingsRoute(adminApi, sessions, json),
                 new LogonRoute(adminApi, sessions),
                 new LogoutRoute(adminApi, sessions),
+                new ClearAlertRoute(adminApi, sessions),
                 new ResetRoute(adminApi, sessions, mapper),
                 new SeqNumsRoute(adminApi, sessions, mapper),
                 new SendMessagesRoute(adminApi, sessions, mapper),

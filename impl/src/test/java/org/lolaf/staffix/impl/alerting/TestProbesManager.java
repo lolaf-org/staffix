@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.alerting.ProbeEvaluator;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
+import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -46,6 +47,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.awaitility.Awaitility.await;
 import static org.lolaf.staffix.api.alerting.AlertEvent.Type.CHANGED;
@@ -152,6 +154,49 @@ class TestProbesManager {
         });
         assertThat(manager.getActiveAlerts()).singleElement()
                 .satisfies(active -> assertThat(active.getRunbookUrl()).contains(runbook));
+    }
+
+    @Test
+    void aManualClearIsPublishedAtTheNextTickWhateverTheIntervalAndMarkedManual() {
+        RaisedAlertEvaluator raised = new RaisedAlertEvaluator();
+        probes.add(Probe.builder().name("rejects").description("d").evaluator(raised)
+                .evaluationInterval(Duration.ofSeconds(10)).build());
+        raised.raise(Alert.major("rejected"));
+        manager.tick();
+        listened.clear();
+
+        assertThat(manager.clearAlert(session, "rejects")).isTrue();
+        manager.tick();
+
+        assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType, AlertEvent::isClearedManually)
+                .containsExactly(tuple(RAISED, false), tuple(CLEARED, true));
+        assertThat(listened).containsExactly("transition orders rejects normal manually");
+        assertThat(manager.getProbeStates(session)).singleElement()
+                .satisfies(state -> assertThat(state.isClearedManually()).isFalse());
+    }
+
+    @Test
+    void aManualClearIsRefusedOutOfAlertAndByAPolledCondition() {
+        probes.add(probe("queue", result::get));
+        manager.tick();
+        assertThat(manager.clearAlert(session, "queue")).isFalse();
+
+        result.set(Optional.of(Alert.warning("100 queued")));
+        manager.tick();
+        assertThat(manager.clearAlert(session, "queue")).isFalse();
+        result.set(Optional.empty());
+        manager.tick();
+
+        assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType, AlertEvent::isClearedManually)
+                .containsExactly(tuple(RAISED, false), tuple(CLEARED, false));
+    }
+
+    @Test
+    void aManualClearOfAnUnknownProbeIsRefusedAsAnError() {
+        probes.add(probe("added", result::get));
+
+        assertThat(manager.clearAlert(session, "added")).isFalse();
+        assertThatThrownBy(() -> manager.clearAlert(session, "unknown")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -356,7 +401,8 @@ class TestProbesManager {
         @Override
         public void onAlertTransition(FixSessionId fixSessionId, ProbeState state) {
             calls.add("transition " + fixSessionId.getName() + " " + state.getProbeName() + " "
-                    + state.getAlert().map(alert -> alert.getLevel().name()).orElse("normal"));
+                    + state.getAlert().map(alert -> alert.getLevel().name()).orElse("normal")
+                    + (state.isClearedManually() ? " manually" : ""));
         }
     }
 

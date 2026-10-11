@@ -114,6 +114,11 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public boolean clearAlert(String probeName) {
+        return delegate.clearAlert(fixSessionId, probeName);
+    }
+
     private static ProbeStatus status(ProbeState state) {
         Alert alert = state.getAlert().orElse(null);
         return new ProbeStatusImpl(state.getProbeName(),

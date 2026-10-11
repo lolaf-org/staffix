@@ -47,6 +47,10 @@ could mean.
   Alertmanager.
 - **A probe can alert only on a condition that lasts**: `withRaiseDelay` on any evaluator holds its first alert back
   until the condition has held for the delay, so a brief blip never alerts.
+- **An operator can clear an alert by hand** from the admin API, over HTTP
+  (`POST sessions/{group}/{name}/probes/{probe}/clear`) or JMX, when the probe's evaluator accepts it: alerts raised
+  from application code or counted by a rate do, a polled condition does not. Publishers are told it was cleared
+  manually.
 - **A flapping probe can keep one alert**: `withClearDelay` on any evaluator clears its alert only once the condition
   has stayed normal for the delay, so a condition that comes and goes does not raise a new alert each time.
 - **A session that stays down inside its session time raises a critical alert**, after `sessionDownAlertDelay`

@@ -20,6 +20,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.session.FixSessionId;
 
+import java.util.List;
+
 @Slf4j
 public final class LogoutRoute extends SessionOperationRoute {
 
@@ -28,7 +30,7 @@ public final class LogoutRoute extends SessionOperationRoute {
     }
 
     @Override
-    void apply(FixSessionId fixSessionId, HttpExchange exchange) {
+    void apply(FixSessionId fixSessionId, HttpExchange exchange, List<String> path) {
         log.info("Admin API: logout {}", fixSessionId.getQualifiedName());
         adminApi.logoutSession(fixSessionId);
     }

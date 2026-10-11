@@ -82,6 +82,10 @@ public class AlertEvent {
      */
     @NonNull
     Instant time;
+    /**
+     * Whether an operator cleared it from the admin, for a {@link Type#CLEARED}; always false otherwise.
+     */
+    boolean clearedManually;
 
     /**
      * The probe's {@link Probe#getRunbookUrl() runbook}, empty when it has none.

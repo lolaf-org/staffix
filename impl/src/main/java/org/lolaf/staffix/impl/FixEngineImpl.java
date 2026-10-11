@@ -568,6 +568,11 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
+    public boolean clearAlert(FixSessionId fixSessionId, String probeName) {
+        return probesManager.clearAlert(managedSession(fixSessionId), probeName);
+    }
+
+    @Override
     public void addProbesListener(ProbesListener listener) {
         probesListeners.add(listener);
     }

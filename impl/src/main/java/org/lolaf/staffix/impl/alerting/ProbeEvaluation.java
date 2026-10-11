@@ -52,6 +52,7 @@ final class ProbeEvaluation {
     private volatile Instant since;
     private volatile Alert alert;
     private volatile long lastEvaluationMillis = NOT_EVALUATED;
+    private volatile boolean manualClearAccepted;
 
     ProbeEvaluation(String engineId, FixSessionId fixSessionId, Probe probe, long firstTick) {
         this.engineId = engineId;
@@ -71,9 +72,11 @@ final class ProbeEvaluation {
      * Returns the event to publish, or null when the evaluation changed nothing worth publishing.
      */
     AlertEvent evaluateIfDue(long tick, long nowMillis) {
-        if (tick < nextEvaluationTick) {
+        boolean manualClear = manualClearAccepted;
+        if (tick < nextEvaluationTick && !manualClear) {
             return null;
         }
+        manualClearAccepted = false;
         nextEvaluationTick = tick + evaluationTicks;
         lastEvaluationMillis = nowMillis;
         Alert previous = alert;
@@ -88,7 +91,7 @@ final class ProbeEvaluation {
         }
         alert = next;
         if (next == null) {
-            return event(AlertEvent.Type.CLEARED, previous, nowMillis);
+            return event(AlertEvent.Type.CLEARED, previous, nowMillis, manualClear);
         }
         if (next.getLevel() != previous.getLevel()) {
             return published(AlertEvent.Type.CHANGED, tick, nowMillis);
@@ -108,7 +111,18 @@ final class ProbeEvaluation {
             return null;
         }
         alert = null;
-        return event(AlertEvent.Type.CLEARED, last, nowMillis);
+        return event(AlertEvent.Type.CLEARED, last, nowMillis, false);
+    }
+
+    /**
+     * Called from any thread; an accepted clear makes the probe due at the next tick, whatever its interval.
+     */
+    boolean requestClear() {
+        if (alert == null || !probe.getEvaluator().clear()) {
+            return false;
+        }
+        manualClearAccepted = true;
+        return true;
     }
 
     boolean isInAlert() {
@@ -119,6 +133,10 @@ final class ProbeEvaluation {
      * Null until the first evaluation.
      */
     ProbeState state() {
+        return state(false);
+    }
+
+    ProbeState state(boolean clearedManually) {
         long lastEvaluation = lastEvaluationMillis;
         if (lastEvaluation == NOT_EVALUATED) {
             return null;
@@ -129,6 +147,7 @@ final class ProbeEvaluation {
                 .alert(current)
                 .since(current == null ? null : since)
                 .lastEvaluation(Instant.ofEpochMilli(lastEvaluation))
+                .clearedManually(clearedManually)
                 .build();
     }
 
@@ -144,10 +163,10 @@ final class ProbeEvaluation {
 
     private AlertEvent published(AlertEvent.Type type, long tick, long nowMillis) {
         lastPublishedTick = tick;
-        return event(type, alert, nowMillis);
+        return event(type, alert, nowMillis, false);
     }
 
-    private AlertEvent event(AlertEvent.Type type, Alert eventAlert, long nowMillis) {
+    private AlertEvent event(AlertEvent.Type type, Alert eventAlert, long nowMillis, boolean clearedManually) {
         return AlertEvent.builder()
                 .type(type)
                 .engineId(engineId)
@@ -159,6 +178,7 @@ final class ProbeEvaluation {
                 .alert(eventAlert)
                 .since(since)
                 .time(Instant.ofEpochMilli(nowMillis))
+                .clearedManually(clearedManually)
                 .build();
     }
 }

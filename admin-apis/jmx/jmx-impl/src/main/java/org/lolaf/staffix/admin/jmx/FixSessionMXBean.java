@@ -66,6 +66,13 @@ public interface FixSessionMXBean {
     List<ProbeStatus> getProbeStates();
 
     /**
+     * Asks the probe's evaluator to end its ongoing alert, which then clears at the next evaluation tick.
+     *
+     * @return false when the probe is not in alert, or its evaluator refuses, as a polled condition does
+     */
+    boolean clearAlert(String probeName);
+
+    /**
      * Intervals are ISO-8601 durations, the reminder absent for a probe that publishes transitions only, and the
      * runbook absent for a probe without one.
      */

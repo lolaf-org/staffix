@@ -39,6 +39,11 @@ public class ProbeState {
     Instant since;
     @NonNull
     Instant lastEvaluation;
+    /**
+     * Whether an operator cleared it from the admin; only ever true on the clear's
+     * {@link ProbesListener#onAlertTransition transition}.
+     */
+    boolean clearedManually;
 
     /**
      * The ongoing alert, empty while the probe is normal.
