@@ -55,4 +55,16 @@ public interface ProbeEvaluator {
     default ProbeEvaluator withRaiseDelay(Duration delay) {
         return delay.isZero() ? this : new RaiseDelayEvaluator(this, delay, System::nanoTime);
     }
+
+    /**
+     * This evaluator, clearing its alert only once it has reported nothing for {@code delay}, so a condition that comes
+     * and goes keeps one alert, with its {@code since}, rather than raising a new one each time. The last alert is
+     * reported while the clear waits; a level change is reported at once and a manual {@link #clear()} skips the delay.
+     * Combines with {@link #withRaiseDelay(Duration)} in either order.
+     *
+     * @param delay zero returns this evaluator unchanged
+     */
+    default ProbeEvaluator withClearDelay(Duration delay) {
+        return delay.isZero() ? this : new ClearDelayEvaluator(this, delay, System::nanoTime);
+    }
 }

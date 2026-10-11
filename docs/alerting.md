@@ -58,6 +58,12 @@ Probe.builder().name("gateway").description("Order gateway connection").evaluato
 Only the first raise waits: a level change while already in alert, and the clear, are reported at once. The alert's
 start time is when it was raised, after the delay, so say the delay in its message.
 
+**To stop a flapping condition from raising again and again**, wrap the evaluator with `withClearDelay`: its alert is
+cleared only once nothing has been reported for the delay, and the last alert stays meanwhile. A condition back within
+the delay keeps the same alert and start time, so no new alert reaches the publishers. A level change is reported at
+once, and calling its `clear()` skips the delay. Both delays combine, in either order:
+`gatewayDown.withRaiseDelay(Duration.ofSeconds(30)).withClearDelay(Duration.ofMinutes(1))`.
+
 **Labels and a runbook URL travel with every alert of the probe.** Labels are for routing and grouping, such as the
 owning team; their names follow Prometheus' label syntax (`[a-zA-Z_][a-zA-Z0-9_]*`) and cannot be one of the names
 that already identify an alert (`AlertLabel`: `alertname`, `engine`, `fixSessionGroup`, `fixSessionName`,
