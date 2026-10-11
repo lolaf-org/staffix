@@ -20,8 +20,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.alerting.slf4j.Slf4jAlertsPublisherSettings;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeEvaluator;
+import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
+import org.lolaf.staffix.api.alerting.RateAlertEvaluator;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
@@ -36,10 +39,12 @@ import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.fix44.encoders.NewOrderSingleEncoder;
 import org.lolaf.staffix.fix44.fields.OrdType;
+import org.lolaf.staffix.fix44.fields.OrderQty;
 import org.lolaf.staffix.fix44.fields.Side;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import picocli.CommandLine;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Callable;
@@ -48,17 +53,25 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
 
 /**
- * An application watching its own business flow with a probe.
+ * An application watching its own business flow with probes.
  * <p>
- * Each initiator sends NewOrderSingle in bursts, with pauses that grow from one burst to the next. The acceptor's
- * application adds an {@code order-flow} probe to its session on logon and removes it on logout: the probe measures
- * the time since the last order, {@code WARNING} after a short silence and {@code MAJOR} after a longer one, and is
- * re-published while it lasts. Its alerts go through the SLF4J alerts publisher the sessions name by instance id, so
- * the log shows each alert raised, changed, reminded and cleared.
+ * Each initiator sends NewOrderSingle in bursts, with pauses that grow from one burst to the next, and every few
+ * bursts one order above the acceptor's quantity limit. The acceptor's application adds three probes to its session
+ * on logon and removes them on logout:
+ * <ul>
+ *     <li>{@code order-flow}, its own evaluator measuring the time since the last order, {@code WARNING} after a
+ *     short silence and {@code MAJOR} after a longer one, re-published while it lasts;</li>
+ *     <li>{@code order-rate}, a {@link RateAlertEvaluator} the decoder records each order on, {@code WARNING} when
+ *     two bursts come close together;</li>
+ *     <li>{@code large-order}, a {@link RaisedAlertEvaluator} the decoder raises on an order above the limit, which
+ *     expires on its own, with labels and a runbook URL a publisher passes on.</li>
+ * </ul>
+ * Their alerts go through the SLF4J alerts publisher the sessions name by instance id, so the log shows each alert
+ * raised, changed, reminded and cleared.
  * <p>
  * Read {@link OrderFlowEvaluator} for what a probe evaluates, then {@link OrderReceivingApplication#onLogon} for how
- * it is added. Every session also carries the engine's built-in {@code session-down} probe, which the same publisher
- * reports.
+ * they are added. Every session also carries the engine's built-in {@code session-down} probe, which the same
+ * publisher reports.
  * <p>
  * Run with -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints --enable-native-access=ALL-UNNAMED --add-opens java.base/jdk.internal.ref=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED
  */
@@ -69,6 +82,8 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
     private static final String ALERTS_PUBLISHER_INSTANCE_ID = "alerts";
     private static final String ORDER_FLOW_PROBE = "order-flow";
+    private static final String ORDER_RATE_PROBE = "order-rate";
+    private static final String LARGE_ORDER_PROBE = "large-order";
 
     @CommandLine.Option(names = "-bs", description = "Orders sent in each burst", defaultValue = "5")
     private int burstSize;
@@ -84,6 +99,15 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
     @CommandLine.Option(names = "-ri", description = "Seconds between two publications of an ongoing alert", defaultValue = "5")
     private long reminderIntervalInSeconds;
+
+    @CommandLine.Option(names = "-rw", description = "Orders within 5s before a rate warning", defaultValue = "8")
+    private int rateWarningOrders;
+
+    @CommandLine.Option(names = "-ql", description = "Order quantity above which an order raises an alert", defaultValue = "10000")
+    private long quantityLimit;
+
+    @CommandLine.Option(names = "-lb", description = "Every how many bursts an order above the limit is sent", defaultValue = "4")
+    private int largeOrderEveryBursts;
 
     @CommandLine.ArgGroup(exclusive = false)
     private ExampleOptions exampleOptions = new ExampleOptions();
@@ -104,8 +128,9 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
         FixEngineBuilder.FixEngineBuilderBuilder<?, ?> engineBuilder = fixEngineBuilder(exampleOptions, true,
                 sid -> new OrderReceivingApplication(Duration.ofSeconds(warningAfterSeconds), Duration.ofSeconds(majorAfterSeconds),
-                        Duration.ofSeconds(reminderIntervalInSeconds)),
-                sid -> new OrderSendingApplication(burstSize, Arrays.stream(pausesInSeconds).mapToObj(Duration::ofSeconds).toArray(Duration[]::new)),
+                        Duration.ofSeconds(reminderIntervalInSeconds), rateWarningOrders, quantityLimit),
+                sid -> new OrderSendingApplication(burstSize, Arrays.stream(pausesInSeconds).mapToObj(Duration::ofSeconds).toArray(Duration[]::new),
+                        largeOrderEveryBursts, quantityLimit * 10),
                 sid -> Collections.emptyMap(),
                 sid -> Collections.emptyMap());
 
@@ -179,7 +204,7 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
     }
 
     /**
-     * Owns the probe for as long as its session is logged on.
+     * Owns the probes for as long as its session is logged on.
      */
     @RequiredArgsConstructor
     private static final class OrderReceivingApplication implements FixApplication {
@@ -187,7 +212,11 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         private final Duration warningAfter;
         private final Duration majorAfter;
         private final Duration reminderInterval;
+        private final int rateWarningOrders;
+        private final long quantityLimit;
         private volatile OrderFlowEvaluator orderFlow;
+        private volatile RateAlertEvaluator orderRate;
+        private volatile RaisedAlertEvaluator largeOrder;
 
         @Override
         public FixApiVersion getFixApiVersion() {
@@ -206,33 +235,62 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         }
 
         /**
-         * A fresh evaluator per logon, so a silence measured before a disconnection is not carried over.
+         * Fresh evaluators per logon, so nothing measured before a disconnection is carried over.
          */
         @Override
         public void onLogon(FixSession session, DecodedFixMessage logon) {
             orderFlow = new OrderFlowEvaluator(warningAfter, majorAfter);
+            orderRate = RateAlertEvaluator.builder()
+                    .window(Duration.ofSeconds(5))
+                    .threshold(AlertLevel.WARNING, rateWarningOrders)
+                    .build();
+            largeOrder = new RaisedAlertEvaluator();
             session.getProbes().add(Probe.builder()
                     .name(ORDER_FLOW_PROBE)
                     .description("Time since the last NewOrderSingle")
                     .evaluator(orderFlow)
                     .reminderInterval(reminderInterval)
                     .build());
-            log.info("Logon acceptor {}, probe {} added", session.getFixSessionId(), ORDER_FLOW_PROBE);
+            session.getProbes().add(Probe.builder()
+                    .name(ORDER_RATE_PROBE)
+                    .description("NewOrderSingle received over the last 5 seconds")
+                    .evaluator(orderRate)
+                    .build());
+            session.getProbes().add(Probe.builder()
+                    .name(LARGE_ORDER_PROBE)
+                    .description("NewOrderSingle above the quantity limit")
+                    .evaluator(largeOrder)
+                    .label("team", "trading_desk")
+                    .runbookUrl(URI.create("https://wiki.example.com/runbooks/large-order"))
+                    .build());
+            log.info("Logon acceptor {}, probes {}, {} and {} added", session.getFixSessionId(), ORDER_FLOW_PROBE,
+                    ORDER_RATE_PROBE, LARGE_ORDER_PROBE);
         }
 
         /**
-         * Removing the probe clears its alert, if one is ongoing: a session nobody can send on is not short of orders.
+         * Removing a probe clears its alert, if one is ongoing: a session nobody can send on is not short of orders.
          */
         @Override
         public void onLogout(FixSession session, String message, DecodedFixMessage logoutMessage) {
             session.getProbes().remove(ORDER_FLOW_PROBE);
-            log.info("Logout acceptor {} : {}, probe {} removed", session.getFixSessionId(), message, ORDER_FLOW_PROBE);
+            session.getProbes().remove(ORDER_RATE_PROBE);
+            session.getProbes().remove(LARGE_ORDER_PROBE);
+            log.info("Logout acceptor {} : {}, probes removed", session.getFixSessionId(), message);
         }
 
-        void onOrder() {
-            OrderFlowEvaluator current = orderFlow;
-            if (current != null) {
-                current.onOrder();
+        /**
+         * On the session thread: recording and raising are cheap enough for it.
+         */
+        void onOrder(double quantity) {
+            OrderFlowEvaluator currentFlow = orderFlow;
+            if (currentFlow == null) {
+                return;
+            }
+            currentFlow.onOrder();
+            orderRate.record();
+            if (quantity > quantityLimit) {
+                largeOrder.raise(Alert.major("order of " + (long) quantity + " above the limit of " + quantityLimit),
+                        Duration.ofSeconds(15));
             }
         }
 
@@ -240,6 +298,7 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         private static final class NewOrderSingleDecoder implements FixMessageDecoder {
 
             private final OrderReceivingApplication application;
+            private double quantity;
 
             @Override
             public MessageType getMessageType() {
@@ -248,24 +307,26 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
             @Override
             public void mapFieldsForDecoding(FixFieldsDecoderMapper mapper, FieldsRegistry fieldsRegistry) {
-                // the order's content does not matter here, only that one arrived
+                mapper.mapDoubleField(OrderQty.get(), value -> quantity = value, 0d);
             }
 
             @Override
             public void onDecoded(FixSession session, boolean possDupFlag, boolean possResend) {
-                application.onOrder();
+                application.onOrder(quantity);
             }
         }
     }
 
     /**
-     * Sends bursts of orders from a thread of its own, pausing longer each time.
+     * Sends bursts of orders from a thread of its own, pausing longer each time, and every few bursts one large order.
      */
     @RequiredArgsConstructor
     private static final class OrderSendingApplication implements FixApplication {
 
         private final int burstSize;
         private final Duration[] pauses;
+        private final int largeOrderEveryBursts;
+        private final long largeOrderQuantity;
         private volatile boolean sending;
 
         @Override
@@ -304,7 +365,11 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
             for (int burst = 0; sending; burst++) {
                 try {
                     for (int i = 0; i < burstSize; i++) {
-                        sendOrder(session);
+                        sendOrder(session, 100);
+                    }
+                    if (burst % largeOrderEveryBursts == largeOrderEveryBursts - 1) {
+                        sendOrder(session, largeOrderQuantity);
+                        log.info("{} sent an order of {}", session.getFixSessionId().getName(), largeOrderQuantity);
                     }
                     Duration pause = pauses[burst % pauses.length];
                     log.info("{} sent {} orders, pausing {}s", session.getFixSessionId().getName(), burstSize, pause.toSeconds());
@@ -320,7 +385,7 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
             }
         }
 
-        private static void sendOrder(FixSession session) {
+        private static void sendOrder(FixSession session, long quantity) {
             // a fresh encoder per message: a reusable one belongs to a single thread, and this one is not the
             // session's I/O thread - see docs/threading-model.md
             NewOrderSingleEncoder order = session.newEncoder(NewOrderSingleEncoder.class);
@@ -330,7 +395,7 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
                     .setSymbol("XAG/USD")
                     .setSide(Side.SideValues.BUY)
                     .setOrdType(OrdType.OrdTypeValues.MARKET)
-                    .setOrderQty(100);
+                    .setOrderQty(quantity);
             session.send(order, null);
         }
     }

@@ -6,7 +6,7 @@ second, and tells a publisher each time one starts, changes or ends. What you do
 dashboard) is the publisher's job.
 
 The runnable version of this guide is [`examples/alerting`](../examples/alerting): an application that adds its own
-probe on logon, with the alerts logged through SLF4J.
+probes on logon (its own evaluator, a rate and alerts raised from code), with the alerts logged through SLF4J.
 
 ---
 
