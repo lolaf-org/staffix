@@ -71,6 +71,24 @@ gateway.clear();
 level, and restarts its expiry while the alert keeps its original start time. Without an expiry, the alert lasts
 until `clear()`. A raise is always reported, even if it is cleared or expires before the next evaluation.
 
+When one occurrence is noise and only a burst is a problem, count the occurrences with a `RateAlertEvaluator`
+instead. It raises the highest level whose count is reached over a sliding window, and clears once the burst has
+aged out of it:
+
+```java
+RateAlertEvaluator rejects = RateAlertEvaluator.builder()
+        .window(Duration.ofMinutes(1))
+        .threshold(AlertLevel.WARNING, 5)
+        .threshold(AlertLevel.MAJOR, 50)
+        .build();
+
+// on any thread, each time an order is rejected
+rejects.record();
+```
+
+The window is counted in about 60 buckets of at least a second, so a count is precise to one bucket; `record()` is
+cheap enough for the session thread. `clear()` forgets the events counted so far.
+
 ## What a publisher is told
 
 A publisher receives an `AlertEvent`: the engine's instance id (a session id is only unique within an engine), the
