@@ -18,7 +18,9 @@ package org.lolaf.staffix.api.alerting;
 
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,5 +75,35 @@ class TestProbe {
     void levelsAreOrderedBySeverity() {
         assertThat(AlertLevel.values()).containsExactly(AlertLevel.WARNING, AlertLevel.MAJOR, AlertLevel.CRITICAL);
         assertThat(Alert.critical("x").getLevel()).isGreaterThan(Alert.major("x").getLevel());
+    }
+
+    @Test
+    void hasNoLabelsAndNoRunbookByDefault() {
+        Probe probe = Probe.builder().name("p").description("d").evaluator(HEALTHY).build();
+
+        assertThat(probe.getLabels()).isEmpty();
+        assertThat(probe.getRunbookUrl()).isNull();
+    }
+
+    @Test
+    void keepsLabelsAndRunbook() {
+        Probe probe = Probe.builder().name("p").description("d").evaluator(HEALTHY)
+                .label("team", "fix_ops").label("venue", "xnas")
+                .runbookUrl(URI.create("https://wiki.example.com/runbooks/p"))
+                .build();
+
+        assertThat(probe.getLabels()).containsExactly(Map.entry("team", "fix_ops"), Map.entry("venue", "xnas"));
+        assertThat(ProbeDefinition.of(probe).getLabels()).isEqualTo(probe.getLabels());
+        assertThat(ProbeDefinition.of(probe).getRunbookUrl()).contains(URI.create("https://wiki.example.com/runbooks/p"));
+    }
+
+    @Test
+    void refusesALabelNameAlertmanagerWouldRejectOrOneThatShadowsTheAlertsIdentity() {
+        Probe.ProbeBuilder builder = Probe.builder().name("p").description("d").evaluator(HEALTHY);
+
+        assertThatThrownBy(() -> builder.label("owning-team", "ops").build()).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> builder.clearLabels().label("1team", "ops").build()).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> builder.clearLabels().label(AlertLabel.SEVERITY.getLabelName(), "low").build())
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("reserved");
     }
 }

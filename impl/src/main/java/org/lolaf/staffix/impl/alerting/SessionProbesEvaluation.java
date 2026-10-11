@@ -113,7 +113,7 @@ final class SessionProbesEvaluation {
                     if (active == null) {
                         active = new ArrayList<>();
                     }
-                    active.add(new SessionProbeState(fixSession.getFixSessionId(), state));
+                    active.add(new SessionProbeState(fixSession.getFixSessionId(), state, probeEvaluation.getProbe().getRunbookUrl()));
                 }
             }
         }

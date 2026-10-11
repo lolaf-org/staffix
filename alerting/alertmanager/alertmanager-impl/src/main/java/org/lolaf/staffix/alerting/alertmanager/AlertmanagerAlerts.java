@@ -17,6 +17,7 @@ package org.lolaf.staffix.alerting.alertmanager;
 
 import lombok.Value;
 import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.AlertLabel;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.time.Duration;
@@ -98,14 +99,14 @@ final class AlertmanagerAlerts {
 
     private PostableAlert toAlert(AlertEvent event) {
         Map<String, String> labels = new LinkedHashMap<>(staticLabels);
-        labels.put("alertname", event.getProbeName());
-        labels.put("engine", event.getEngineId());
-        labels.put("fixSessionGroup", event.getFixSessionId().getGroup());
-        labels.put("fixSessionName", event.getFixSessionId().getName());
-        labels.put("severity", event.getAlert().getLevel().name().toLowerCase(Locale.ROOT));
+        labels.putAll(event.getProbeLabels());
+        for (AlertLabel label : AlertLabel.values()) {
+            labels.put(label.getLabelName(), label.valueFor(event));
+        }
         Map<String, String> annotations = new LinkedHashMap<>();
         annotations.put("summary", event.getAlert().getMessage());
         annotations.put("description", event.getProbeDescription());
+        event.getProbeRunbookUrl().ifPresent(runbook -> annotations.put("runbook_url", runbook.toString()));
         return new PostableAlert(Collections.unmodifiableMap(labels), Collections.unmodifiableMap(annotations),
                 event.getSince(), null);
     }

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.AlertLabel;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -92,7 +93,7 @@ class TestAlertmanagerAlertsPublisher {
         publisher.publish(event(RAISED, Alert.major("down"), Instant.now()));
         await().atMost(Duration.ofSeconds(5)).until(() -> posts.size() >= 3);
         assertThat(posts).allSatisfy(post -> assertThat(post).singleElement()
-                .satisfies(alert -> assertThat(alert.get("labels").get("severity").asText()).isEqualTo("major")));
+                .satisfies(alert -> assertThat(alert.get("labels").get(AlertLabel.SEVERITY.getLabelName()).asText()).isEqualTo("major")));
 
         Instant clearedAt = Instant.now();
         publisher.publish(event(CLEARED, Alert.major("down"), clearedAt));

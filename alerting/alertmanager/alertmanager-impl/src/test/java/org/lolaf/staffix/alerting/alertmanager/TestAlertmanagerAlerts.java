@@ -18,9 +18,11 @@ package org.lolaf.staffix.alerting.alertmanager;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.AlertLabel;
 import org.lolaf.staffix.api.alerting.AlertEvent;
 import org.lolaf.staffix.api.session.FixSessionId;
 
+import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -38,7 +40,7 @@ class TestAlertmanagerAlerts {
     private static final Instant SINCE = Instant.parse("2026-10-11T10:00:00Z");
     private static final Duration RESEND = Duration.ofMinutes(1);
 
-    private final AlertmanagerAlerts alerts = new AlertmanagerAlerts(Map.of("env", "prod", "severity", "ignored"), RESEND);
+    private final AlertmanagerAlerts alerts = new AlertmanagerAlerts(Map.of("env", "prod", AlertLabel.SEVERITY.getLabelName(), "ignored"), RESEND);
 
     static AlertEvent event(AlertEvent.Type type, Alert alert, Instant time) {
         return AlertEvent.builder()
@@ -62,11 +64,11 @@ class TestAlertmanagerAlerts {
         assertThat(posted).singleElement().satisfies(alert -> {
             assertThat(alert.getLabels()).containsExactlyInAnyOrderEntriesOf(Map.of(
                     "env", "prod",
-                    "alertname", "queue",
-                    "engine", "engine",
-                    "fixSessionGroup", SESSION_ID.getGroup(),
-                    "fixSessionName", "orders",
-                    "severity", "warning"));
+                    AlertLabel.ALERT_NAME.getLabelName(), "queue",
+                    AlertLabel.ENGINE.getLabelName(), "engine",
+                    AlertLabel.FIX_SESSION_GROUP.getLabelName(), SESSION_ID.getGroup(),
+                    AlertLabel.FIX_SESSION_NAME.getLabelName(), "orders",
+                    AlertLabel.SEVERITY.getLabelName(), "warning"));
             assertThat(alert.getAnnotations()).containsExactlyInAnyOrderEntriesOf(Map.of(
                     "summary", "100 queued", "description", "Orders waiting"));
             assertThat(alert.getStartsAt()).isEqualTo(SINCE);
@@ -81,7 +83,7 @@ class TestAlertmanagerAlerts {
 
         List<PostableAlert> posted = alerts.apply(List.of(event(CHANGED, Alert.major("1000 queued"), changedAt)), changedAt);
 
-        assertThat(posted).extracting(alert -> alert.getLabels().get("severity"), PostableAlert::getEndsAt)
+        assertThat(posted).extracting(alert -> alert.getLabels().get(AlertLabel.SEVERITY.getLabelName()), PostableAlert::getEndsAt)
                 .containsExactlyInAnyOrder(
                         tuple("major", changedAt.plus(RESEND.multipliedBy(4))),
                         tuple("warning", changedAt));
@@ -122,5 +124,33 @@ class TestAlertmanagerAlerts {
                 event(CLEARED, Alert.warning("100 queued"), now)), now);
 
         assertThat(posted).singleElement().extracting(PostableAlert::getEndsAt).isEqualTo(now);
+    }
+
+    @Test
+    void carriesTheProbesLabelsOverStaticOnesAndItsRunbook() {
+        AlertEvent event = AlertEvent.builder()
+                .type(RAISED)
+                .engineId("engine")
+                .fixSessionId(SESSION_ID)
+                .probeName("queue")
+                .probeDescription("Orders waiting")
+                .alert(Alert.warning("100 queued"))
+                .since(SINCE)
+                .time(SINCE)
+                .probeLabel("env", "uat")
+                .probeLabel("team", "fix_ops")
+                .probeRunbookUrl(URI.create("https://wiki.example.com/runbooks/queue"))
+                .build();
+
+        assertThat(alerts.apply(List.of(event), SINCE)).singleElement().satisfies(alert -> {
+            assertThat(alert.getLabels()).containsEntry("env", "uat").containsEntry("team", "fix_ops");
+            assertThat(alert.getAnnotations()).containsEntry("runbook_url", "https://wiki.example.com/runbooks/queue");
+        });
+    }
+
+    @Test
+    void hasNoRunbookAnnotationWithoutARunbook() {
+        assertThat(alerts.apply(List.of(event(RAISED, Alert.warning("100 queued"), SINCE)), SINCE)).singleElement()
+                .satisfies(alert -> assertThat(alert.getAnnotations()).doesNotContainKey("runbook_url"));
     }
 }

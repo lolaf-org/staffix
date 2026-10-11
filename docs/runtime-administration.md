@@ -51,8 +51,8 @@ You get an MBean per session exposing `logon()`, `logout()`, `reset(String reset
 engine-level MBean. Any JMX client (JConsole, VisualVM, your monitoring agent) can drive them.
 
 The session MBean's `Probes` and `ProbeStates` attributes list its [probes](alerting.md) and where each stood at its
-last evaluation; the engine-level MBean's `ActiveAlerts` lists every probe in alert across the engine. Levels are
-strings, times ISO-8601.
+last evaluation, with each probe's labels and runbook URL; the engine-level MBean's `ActiveAlerts` lists every probe in
+alert across the engine, with its runbook URL. Levels are strings, times ISO-8601.
 
 The engine-level MBean names a session by its full `toString()` form, `alpha.trading:VERSION_44:SENDER->TARGET`, in
 both `getInitiatorsTargets()` and `switchInitiatorSession(String)`: a session name is unique only within its group.
@@ -109,8 +109,8 @@ state: read `status` again to see it.
 |---------|---|
 | `GET sessions` | every running session: its configs (for an initiator the main one, then its backups, with the addresses each dials), each config's identity and dictionaries, its messages logger and monitoring plugin instance ids, the session settings store holding it; with a `version`, also its `ETag`, that changes only when the sessions or their settings do |
 | `GET status` | every session's `status` (`LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`, `LOGGED_OUT_OUTSIDE_SESSION_TIME`, `LOGGED_OUT_INSIDE_SESSION_TIME`), running config, sequence numbers, `probesVersion` and the worst level of its ongoing alerts (`alertLevel`, absent when none), with `sessionsVersion` and `alertsVersion`: fetch `sessions` or `alerts` again when one differs |
-| `GET alerts` | every probe in alert across the engine: session, probe, level, message and since, with the `alertsVersion` it is at least as recent as |
-| `GET sessions/{group}/{name}/probes` | the session's [probes](alerting.md): name, description and intervals; the `ETag` is its `probesVersion` in `status`, which changes only when a probe is added or removed |
+| `GET alerts` | every probe in alert across the engine: session, probe, level, message, since and runbook URL, with the `alertsVersion` it is at least as recent as |
+| `GET sessions/{group}/{name}/probes` | the session's [probes](alerting.md): name, description, intervals, labels and runbook URL; the `ETag` is its `probesVersion` in `status`, which changes only when a probe is added or removed |
 | `GET sessions/{group}/{name}/probes/states` | where each probe stood at its last evaluation: level, message and since while in alert |
 | `GET schemas/session-settings` | the JSON Schema of a session's settings document, every field described, with its default |
 | `GET sessions/{group}/{name}/settings` | the session's settings as a document of that schema; an application setting declared secret, or whose name looks secret, is masked |

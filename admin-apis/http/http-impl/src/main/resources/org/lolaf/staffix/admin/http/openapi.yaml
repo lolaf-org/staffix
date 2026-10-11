@@ -822,7 +822,7 @@ components:
       enum: [WARNING, MAJOR, CRITICAL]
     ProbeDescription:
       type: object
-      required: [name, description, evaluationInterval]
+      required: [name, description, evaluationInterval, labels]
       properties:
         name:
           type: string
@@ -835,6 +835,15 @@ components:
         reminderInterval:
           type: string
           description: ISO-8601 duration an ongoing alert is published again at; absent for transitions only.
+        labels:
+          type: object
+          description: Carried on every alert of the probe for routing and grouping; empty when it has none.
+          additionalProperties:
+            type: string
+        runbookUrl:
+          type: string
+          format: uri
+          description: What to do about the probe's alerts; absent when it has none.
     ProbeStatus:
       type: object
       required: [probe, lastEvaluation]
@@ -888,6 +897,10 @@ components:
         since:
           type: string
           format: date-time
+        runbookUrl:
+          type: string
+          format: uri
+          description: The probe's runbook; absent when it has none.
     SessionComponents:
       type: object
       required: [applicationFactories, messagesStores, messagesLoggers, alertsPublishers, sessionsPlugins]

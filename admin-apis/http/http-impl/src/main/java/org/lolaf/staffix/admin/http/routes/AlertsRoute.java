@@ -58,7 +58,7 @@ public final class AlertsRoute extends JsonRoute {
             Alert alert = state.getAlert().orElseThrow();
             alerts.add(new ActiveAlert(fixSessionId.getGroup(), mainNames.getOrDefault(fixSessionId, fixSessionId.getName()),
                     fixSessionId.getName(), state.getProbeName(), alert.getLevel(), alert.getMessage(),
-                    state.getSince().map(Object::toString).orElse(null)));
+                    state.getSince().map(Object::toString).orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null)));
         }
         return new EngineAlerts(adminApi.getInstanceId(), alertsVersion, alerts);
     }

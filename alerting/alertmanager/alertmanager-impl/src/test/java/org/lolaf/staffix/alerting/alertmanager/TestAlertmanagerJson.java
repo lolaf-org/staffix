@@ -18,6 +18,7 @@ package org.lolaf.staffix.alerting.alertmanager;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.alerting.AlertLabel;
 
 import java.time.Instant;
 import java.util.List;
@@ -30,13 +31,13 @@ class TestAlertmanagerJson {
     @Test
     void escapesWhatJsonRequires() throws Exception {
         Instant startsAt = Instant.parse("2026-10-11T10:00:00Z");
-        PostableAlert alert = new PostableAlert(Map.of("alertname", "queue"),
+        PostableAlert alert = new PostableAlert(Map.of(AlertLabel.ALERT_NAME.getLabelName(), "queue"),
                 Map.of("summary", "a \"quoted\" \\ path\nand\ta control \u0001"), startsAt, startsAt.plusSeconds(60));
 
         JsonNode json = new ObjectMapper().readTree(AlertmanagerJson.encode(List.of(alert, alert)));
 
         assertThat(json).hasSize(2);
-        assertThat(json.get(0).get("labels").get("alertname").asText()).isEqualTo("queue");
+        assertThat(json.get(0).get("labels").get(AlertLabel.ALERT_NAME.getLabelName()).asText()).isEqualTo("queue");
         assertThat(json.get(0).get("annotations").get("summary").asText()).isEqualTo("a \"quoted\" \\ path\nand\ta control \u0001");
         assertThat(json.get(0).get("startsAt").asText()).isEqualTo("2026-10-11T10:00:00Z");
         assertThat(json.get(0).get("endsAt").asText()).isEqualTo("2026-10-11T10:01:00Z");

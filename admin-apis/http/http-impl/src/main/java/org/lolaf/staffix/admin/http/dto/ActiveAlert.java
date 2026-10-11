@@ -46,4 +46,8 @@ public class ActiveAlert {
      * When the alert was raised, as an ISO-8601 instant; kept across level changes.
      */
     String since;
+    /**
+     * The probe's runbook, absent when it has none.
+     */
+    String runbookUrl;
 }

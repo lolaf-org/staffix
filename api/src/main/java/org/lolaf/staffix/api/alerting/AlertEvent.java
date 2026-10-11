@@ -16,12 +16,18 @@
 
 package org.lolaf.staffix.api.alerting;
 
+import lombok.AccessLevel;
 import lombok.Builder;
+import lombok.Getter;
 import lombok.NonNull;
+import lombok.Singular;
 import lombok.Value;
 import org.lolaf.staffix.api.session.FixSessionId;
 
+import java.net.URI;
 import java.time.Instant;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * A change in the alert state of a probe, as handed to a {@link FixAlertsPublisher}. A plain value, so a publisher can
@@ -55,6 +61,13 @@ public class AlertEvent {
     @NonNull
     String probeDescription;
     /**
+     * The probe's {@link Probe#getLabels() labels}, empty when it has none.
+     */
+    @Singular
+    Map<String, String> probeLabels;
+    @Getter(AccessLevel.NONE)
+    URI probeRunbookUrl;
+    /**
      * The alert as it stands; for {@link Type#CLEARED}, the last one before the probe went back to normal.
      */
     @NonNull
@@ -69,6 +82,13 @@ public class AlertEvent {
      */
     @NonNull
     Instant time;
+
+    /**
+     * The probe's {@link Probe#getRunbookUrl() runbook}, empty when it has none.
+     */
+    public Optional<URI> getProbeRunbookUrl() {
+        return Optional.ofNullable(probeRunbookUrl);
+    }
 
     /**
      * What changed in the alert state of the probe.

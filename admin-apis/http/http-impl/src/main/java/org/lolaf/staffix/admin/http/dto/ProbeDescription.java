@@ -18,6 +18,8 @@ package org.lolaf.staffix.admin.http.dto;
 import lombok.Value;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
 
+import java.util.Map;
+
 /**
  * A probe of a session, as it was added; intervals are ISO-8601 durations.
  */
@@ -30,9 +32,15 @@ public class ProbeDescription {
      * Absent for a probe that publishes transitions only.
      */
     String reminderInterval;
+    Map<String, String> labels;
+    /**
+     * Absent for a probe without a runbook.
+     */
+    String runbookUrl;
 
     public static ProbeDescription of(ProbeDefinition probe) {
         return new ProbeDescription(probe.getName(), probe.getDescription(), probe.getEvaluationInterval().toString(),
-                probe.getReminderInterval().map(Object::toString).orElse(null));
+                probe.getReminderInterval().map(Object::toString).orElse(null), probe.getLabels(),
+                probe.getRunbookUrl().map(Object::toString).orElse(null));
     }
 }

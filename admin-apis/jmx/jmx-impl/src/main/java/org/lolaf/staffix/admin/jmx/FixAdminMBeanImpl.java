@@ -76,7 +76,7 @@ public class FixAdminMBeanImpl implements FixAdminMXBean {
             ProbeState state = active.getProbeState();
             state.getAlert().ifPresent(alert -> alerts.add(new ActiveAlertImpl(active.getFixSessionId().toString(),
                     state.getProbeName(), alert.getLevel().name(), alert.getMessage(),
-                    state.getSince().map(Object::toString).orElse(null))));
+                    state.getSince().map(Object::toString).orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null))));
         }
         return alerts;
     }
@@ -88,6 +88,7 @@ public class FixAdminMBeanImpl implements FixAdminMXBean {
         String level;
         String message;
         String since;
+        String runbookUrl;
     }
 
     @Value

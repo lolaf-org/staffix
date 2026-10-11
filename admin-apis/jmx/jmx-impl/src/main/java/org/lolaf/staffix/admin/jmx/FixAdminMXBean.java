@@ -55,7 +55,8 @@ public interface FixAdminMXBean {
     }
 
     /**
-     * A probe in alert, its session in {@code toString()} form; since is an ISO-8601 instant.
+     * A probe in alert, its session in {@code toString()} form; since is an ISO-8601 instant, and the runbook absent
+     * for a probe without one.
      */
     interface ActiveAlert {
 
@@ -68,5 +69,7 @@ public interface FixAdminMXBean {
         String getMessage();
 
         String getSince();
+
+        String getRunbookUrl();
     }
 }

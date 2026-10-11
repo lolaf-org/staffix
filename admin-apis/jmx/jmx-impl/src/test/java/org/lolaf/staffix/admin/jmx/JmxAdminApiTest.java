@@ -42,11 +42,13 @@ import javax.management.MBeanServer;
 import javax.management.MBeanServerFactory;
 import javax.management.ObjectName;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -177,7 +179,8 @@ class JmxAdminApiTest {
     @Test
     void aSessionsProbesAndTheirStatesAreReadable() throws Exception {
         adminApi.probeDefinitions.add(ProbeDefinition.builder().name("order-flow").description("Time since the last order")
-                .evaluationInterval(Duration.ofSeconds(1)).build());
+                .evaluationInterval(Duration.ofSeconds(1)).label("team", "fix_ops")
+                .runbookUrl(URI.create("https://wiki.example.com/order-flow")).build());
         adminApi.probeStates.add(ProbeState.builder().probeName("order-flow").alert(Alert.warning("no order for 4s"))
                 .since(SINCE).lastEvaluation(SINCE.plusSeconds(2)).build());
         adminApi.probeStates.add(ProbeState.builder().probeName("session-down").lastEvaluation(SINCE).build());
@@ -191,6 +194,8 @@ class JmxAdminApiTest {
             assertThat(probe.getDescription()).isEqualTo("Time since the last order");
             assertThat(probe.getEvaluationInterval()).isEqualTo("PT1S");
             assertThat(probe.getReminderInterval()).isNull();
+            assertThat(probe.getLabels()).containsExactly(Map.entry("team", "fix_ops"));
+            assertThat(probe.getRunbookUrl()).isEqualTo("https://wiki.example.com/order-flow");
         });
         assertThat(proxy.getProbeStates()).extracting(FixSessionMXBean.ProbeStatus::getProbe,
                         FixSessionMXBean.ProbeStatus::getLevel, FixSessionMXBean.ProbeStatus::getMessage,
@@ -203,7 +208,7 @@ class JmxAdminApiTest {
     @Test
     void theEnginesActiveAlertsAreReadableWithTheirSessionIdString() throws Exception {
         adminApi.activeAlerts.add(new SessionProbeState(ACCEPTOR_SESSION, ProbeState.builder().probeName("session-down")
-                .alert(Alert.critical("down")).since(SINCE).lastEvaluation(SINCE).build()));
+                .alert(Alert.critical("down")).since(SINCE).lastEvaluation(SINCE).build(), URI.create("https://wiki.example.com/session-down")));
         exporter.export(adminApi);
 
         FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
@@ -214,6 +219,7 @@ class JmxAdminApiTest {
             assertThat(alert.getLevel()).isEqualTo("CRITICAL");
             assertThat(alert.getMessage()).isEqualTo("down");
             assertThat(alert.getSince()).isEqualTo("2026-10-10T10:00:00Z");
+            assertThat(alert.getRunbookUrl()).isEqualTo("https://wiki.example.com/session-down");
         });
     }
 

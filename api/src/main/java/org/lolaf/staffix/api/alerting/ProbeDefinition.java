@@ -19,9 +19,12 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
+import lombok.Singular;
 import lombok.Value;
 
+import java.net.URI;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -47,8 +50,21 @@ public class ProbeDefinition {
      */
     @NonNull
     Duration evaluationInterval;
+    /**
+     * How often an ongoing alert is published again; {@code null} for a probe that publishes transitions only.
+     */
     @Getter(AccessLevel.NONE)
     Duration reminderInterval;
+    /**
+     * The probe's {@link Probe#getLabels() labels}, carried on every alert for routing and grouping.
+     */
+    @Singular
+    Map<String, String> labels;
+    /**
+     * Where an operator reads what to do about the probe's alerts; {@code null} when there is none.
+     */
+    @Getter(AccessLevel.NONE)
+    URI runbookUrl;
 
     /**
      * The definition of a probe as it was added; a probe never changes, so neither does its definition.
@@ -59,6 +75,8 @@ public class ProbeDefinition {
                 .description(probe.getDescription())
                 .evaluationInterval(probe.getEvaluationInterval())
                 .reminderInterval(probe.getReminderInterval())
+                .labels(probe.getLabels())
+                .runbookUrl(probe.getRunbookUrl())
                 .build();
     }
 
@@ -67,5 +85,12 @@ public class ProbeDefinition {
      */
     public Optional<Duration> getReminderInterval() {
         return Optional.ofNullable(reminderInterval);
+    }
+
+    /**
+     * Empty for a probe without a runbook.
+     */
+    public Optional<URI> getRunbookUrl() {
+        return Optional.ofNullable(runbookUrl);
     }
 }

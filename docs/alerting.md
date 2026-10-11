@@ -30,6 +30,8 @@ Probe probe = Probe.builder()
         .evaluator(orderFlowEvaluator)
         .evaluationInterval(Duration.ofSeconds(5))   // default 1s
         .reminderInterval(Duration.ofMinutes(1))     // default none
+        .label("team", "fix_ops")                    // default none
+        .runbookUrl(URI.create("https://wiki.example.com/runbooks/order-flow"))
         .build();
 
 session.getProbes().add(probe);
@@ -55,6 +57,12 @@ Probe.builder().name("gateway").description("Order gateway connection").evaluato
 
 Only the first raise waits: a level change while already in alert, and the clear, are reported at once. The alert's
 start time is when it was raised, after the delay, so say the delay in its message.
+
+**Labels and a runbook URL travel with every alert of the probe.** Labels are for routing and grouping, such as the
+owning team; their names follow Prometheus' label syntax (`[a-zA-Z_][a-zA-Z0-9_]*`) and cannot be one of the names
+that already identify an alert (`AlertLabel`: `alertname`, `engine`, `fixSessionGroup`, `fixSessionName`,
+`severity`). The runbook URL points an operator at what to do. Both are optional, and both are shown by the admin
+API and passed on by the Alertmanager publisher.
 
 **Both intervals are at least one second** (`Probe.MIN_INTERVAL`), and are rounded up to whole seconds: the engine
 ticks once a second and evaluates a probe on the first tick at or after it is due.
@@ -193,8 +201,10 @@ AlertmanagerAlertsPublisherSettings.builder()
 ```
 
 Each alert carries the labels `alertname` (the probe name), `engine` (the engine's instance id), `fixSessionGroup`,
-`fixSessionName` and `severity` (`warning`, `major` or `critical`), plus your static labels, and the annotations
-`summary` (the alert message) and `description` (the probe description). `startsAt` is when the alert was raised.
+`fixSessionName` and `severity` (`warning`, `major` or `critical`), plus the probe's labels and your static labels (a
+probe label wins over a static one of the same name), and the annotations `summary` (the alert message),
+`description` (the probe description) and, when the probe has one, `runbook_url`. `startsAt` is when the alert was
+raised.
 
 A change is posted at once, and every ongoing alert is posted again each `resendInterval` (one minute by default)
 with an `endsAt` four intervals ahead. If the engine stops or crashes, its alerts therefore resolve in Alertmanager

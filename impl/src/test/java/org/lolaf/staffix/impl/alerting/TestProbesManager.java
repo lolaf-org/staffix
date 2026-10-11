@@ -33,11 +33,13 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.tests.TestingFixAlertsPublisher;
 import org.lolaf.staffix.tests.TestingFixAlertsPublisherSettings;
 
+import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -134,6 +136,22 @@ class TestProbesManager {
             assertThat(active.getFixSessionId()).isEqualTo(SESSION_ID);
             assertThat(active.getProbeState().getProbeName()).isEqualTo("alerting");
         });
+    }
+
+    @Test
+    void eventsAndActiveAlertsCarryTheProbesLabelsAndRunbook() {
+        URI runbook = URI.create("https://wiki.example.com/runbooks/gateway");
+        probes.add(Probe.builder().name("gateway").description("d").evaluator(() -> Optional.of(Alert.major("refused")))
+                .label("team", "fix_ops").runbookUrl(runbook).build());
+
+        manager.tick();
+
+        assertThat(publisherSettings.getEvents()).singleElement().satisfies(event -> {
+            assertThat(event.getProbeLabels()).containsExactly(Map.entry("team", "fix_ops"));
+            assertThat(event.getProbeRunbookUrl()).contains(runbook);
+        });
+        assertThat(manager.getActiveAlerts()).singleElement()
+                .satisfies(active -> assertThat(active.getRunbookUrl()).contains(runbook));
     }
 
     @Test

@@ -15,14 +15,17 @@
  */
 package org.lolaf.staffix.api.alerting;
 
-import lombok.NonNull;
-import lombok.Value;
+import lombok.*;
 import org.lolaf.staffix.api.session.FixSessionId;
+
+import java.net.URI;
+import java.util.Optional;
 
 /**
  * A probe's state with the session it belongs to, for engine-wide listings.
  */
 @Value
+@AllArgsConstructor
 public class SessionProbeState {
 
     /**
@@ -32,4 +35,20 @@ public class SessionProbeState {
     FixSessionId fixSessionId;
     @NonNull
     ProbeState probeState;
+    /**
+     * The probe's {@link Probe#getRunbookUrl() runbook}, so an alert listing can link it without reading definitions.
+     */
+    @Getter(AccessLevel.NONE)
+    URI runbookUrl;
+
+    /**
+     * A state whose probe has no runbook.
+     */
+    public SessionProbeState(FixSessionId fixSessionId, ProbeState probeState) {
+        this(fixSessionId, probeState, null);
+    }
+
+    public Optional<URI> getRunbookUrl() {
+        return Optional.ofNullable(runbookUrl);
+    }
 }

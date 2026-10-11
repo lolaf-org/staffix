@@ -154,6 +154,8 @@ final class ProbeEvaluation {
                 .fixSessionId(fixSessionId)
                 .probeName(probe.getName())
                 .probeDescription(probe.getDescription())
+                .probeLabels(probe.getLabels())
+                .probeRunbookUrl(probe.getRunbookUrl())
                 .alert(eventAlert)
                 .since(since)
                 .time(Instant.ofEpochMilli(nowMillis))

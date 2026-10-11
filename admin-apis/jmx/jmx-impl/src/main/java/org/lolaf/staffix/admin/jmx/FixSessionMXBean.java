@@ -16,6 +16,7 @@
 package org.lolaf.staffix.admin.jmx;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Per-session JMX management surface. One bean is exposed for each session managed by the engine's initiators and
@@ -65,7 +66,8 @@ public interface FixSessionMXBean {
     List<ProbeStatus> getProbeStates();
 
     /**
-     * Intervals are ISO-8601 durations, the reminder absent for a probe that publishes transitions only.
+     * Intervals are ISO-8601 durations, the reminder absent for a probe that publishes transitions only, and the
+     * runbook absent for a probe without one.
      */
     interface Probe {
 
@@ -76,6 +78,10 @@ public interface FixSessionMXBean {
         String getEvaluationInterval();
 
         String getReminderInterval();
+
+        Map<String, String> getLabels();
+
+        String getRunbookUrl();
     }
 
     /**
