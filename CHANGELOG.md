@@ -44,6 +44,9 @@ could mean.
 - **An SLF4J alerts publisher** (`staffix-alerts-publisher-slf4j-impl`, and
   `staffix-alerts-publisher-slf4j-spring-boot` for Spring Boot) logs every alert change, at warn or error while it
   lasts and info once cleared.
+- **A Prometheus Alertmanager alerts publisher** (`staffix-alerts-publisher-alertmanager-impl`) sends alerts to one
+  or more Alertmanagers, labelled by engine, session, probe and severity. Ongoing alerts are re-sent every minute, so
+  an engine that stops or crashes has its alerts resolve in Alertmanager on their own.
 - **The async store and async logger raise alerts** when their queue grows too deep, and while what they write to
   is unavailable.
 - **Admin tools can see probes and alerts.** `AdminApi` lists a session's probes and where each stands, and the

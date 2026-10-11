@@ -17,6 +17,7 @@
 
     <modules>
         <module>slf4j</module>
+        <module>alertmanager</module>
     </modules>
 
 </project>

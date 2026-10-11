@@ -131,6 +131,39 @@ staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].fix-alerts-
 staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].session-down-alert-delay=30s
 ```
 
+## The Alertmanager publisher
+
+`staffix-alerts-publisher-alertmanager-impl` posts alerts to Prometheus Alertmanager's `POST /api/v2/alerts`, the
+way a Prometheus server does:
+
+```java
+AlertmanagerAlertsPublisherSettings.builder()
+        .instanceId("alertmanager")
+        .alertmanagerUrl(URI.create("http://alertmanager:9093"))
+        .staticLabel("env", "prod")
+        .build();
+```
+
+Each alert carries the labels `alertname` (the probe name), `engine` (the engine's instance id), `fixSessionGroup`,
+`fixSessionName` and `severity` (`warning`, `major` or `critical`), plus your static labels, and the annotations
+`summary` (the alert message) and `description` (the probe description). `startsAt` is when the alert was raised.
+
+A change is posted at once, and every ongoing alert is posted again each `resendInterval` (one minute by default)
+with an `endsAt` four intervals ahead. If the engine stops or crashes, its alerts therefore resolve in Alertmanager
+on their own within four intervals, and an alert lost in a failed post comes back at the next resend. A cleared alert
+is posted with `endsAt` set to when it cleared, and re-posted for 15 minutes in case that post was lost.
+
+Since Alertmanager tells alerts apart by their labels, a level change resolves the alert at the old severity and
+raises one at the new severity. Route on `severity` rather than relying on one alert changing level.
+
+With several Alertmanagers (a highly available cluster), list each URL: every alert is posted to all of them. Posting
+runs on its own thread, so an Alertmanager that is slow or down never delays the probes; a failure is logged once
+until that Alertmanager answers again.
+
+TLS, a proxy, timeouts and headers such as an `Authorization` go in `httpSenderSettings`, shared by every
+Alertmanager. The JDK HTTP client is used by default; `httpSenderFactory` swaps in another `HttpSender`, such as the
+OkHttp one.
+
 ## Writing a publisher
 
 Implement `FixAlertsPublisher`, give it a settings class implementing `FixAlertsPublisherSettings` (extending
