@@ -142,6 +142,10 @@ trusts the console's certificate (the JVM's default otherwise), and the other se
 `staffix.alerts-publishers-slf4j.instances.<key>.*` and named by a session's `fix-alerts-publisher-instance-id`; see
 [Alerting](alerting.md#the-slf4j-publisher).
 
+`staffix-alerts-publisher-alertmanager-spring-boot` sends alerts to Prometheus Alertmanager, declared as
+`staffix.alerts-publishers-alertmanager.instances.<key>.*`; `ssl-bundle` names a Spring Boot SSL bundle whose
+truststore trusts the Alertmanagers' certificates. See [Alerting](alerting.md#the-alertmanager-publisher).
+
 The actuator module adds a `fix-sessions` endpoint and can fold session state into the health status; see
 [Runtime administration](runtime-administration.md#spring-boot) before turning that on.
 

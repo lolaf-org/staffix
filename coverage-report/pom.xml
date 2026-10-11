@@ -165,6 +165,11 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-alerts-publisher-alertmanager-spring-boot</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-alerts-publisher-slf4j-spring-boot</artifactId>
             <version>${project.version}</version>
         </dependency>

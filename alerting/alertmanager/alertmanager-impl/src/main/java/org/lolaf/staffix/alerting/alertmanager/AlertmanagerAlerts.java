@@ -21,15 +21,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 
 /**
  * The alerts learnt from events, as they are posted: the firing ones, and the resolved ones for
@@ -83,12 +75,7 @@ final class AlertmanagerAlerts {
      */
     List<PostableAlert> all(Instant now) {
         Instant retainedSince = now.minus(RESOLVED_RETENTION);
-        Iterator<PostableAlert> iterator = resolved.values().iterator();
-        while (iterator.hasNext()) {
-            if (iterator.next().getEndsAt().isBefore(retainedSince)) {
-                iterator.remove();
-            }
-        }
+        resolved.values().removeIf(postableAlert -> postableAlert.getEndsAt().isBefore(retainedSince));
         List<PostableAlert> alerts = new ArrayList<>(firing.values());
         alerts.addAll(resolved.values());
         return withFiringEndsAt(alerts, now);

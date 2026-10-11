@@ -17,6 +17,7 @@
 
     <modules>
         <module>alertmanager-impl</module>
+        <module>alertmanager-spring-boot</module>
     </modules>
 
 </project>

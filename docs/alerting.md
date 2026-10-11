@@ -164,6 +164,20 @@ TLS, a proxy, timeouts and headers such as an `Authorization` go in `httpSenderS
 Alertmanager. The JDK HTTP client is used by default; `httpSenderFactory` swaps in another `HttpSender`, such as the
 OkHttp one.
 
+From Spring Boot, add `staffix-alerts-publisher-alertmanager-spring-boot` and declare an instance:
+
+```properties
+staffix.alerts-publishers-alertmanager.instances.ALERTS.urls[0]=https://alertmanager-1:9093
+staffix.alerts-publishers-alertmanager.instances.ALERTS.urls[1]=https://alertmanager-2:9093
+staffix.alerts-publishers-alertmanager.instances.ALERTS.static-labels.env=prod
+staffix.alerts-publishers-alertmanager.instances.ALERTS.headers.Authorization=Basic ...
+staffix.alerts-publishers-alertmanager.instances.ALERTS.ssl-bundle=alertmanager
+staffix.sessions-settings-stores-memory.instances.SHARED.sessions[0].fix-alerts-publisher-instance-id=ALERTS
+```
+
+`resend-interval`, `connect-timeout` and `request-timeout` take a duration, and `http-sender-factory-bean`,
+`proxy-selector-bean` and `authenticator-bean` name a bean.
+
 ## Writing a publisher
 
 Implement `FixAlertsPublisher`, give it a settings class implementing `FixAlertsPublisherSettings` (extending

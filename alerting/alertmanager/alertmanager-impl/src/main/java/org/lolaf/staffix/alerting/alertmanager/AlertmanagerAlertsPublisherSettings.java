@@ -44,6 +44,10 @@ public class AlertmanagerAlertsPublisherSettings extends AbstractFixAlertsPublis
      */
     @Singular
     private final List<URI> alertmanagerUrls;
+    /**
+     * How often every ongoing alert is posted again, one minute by default as in Prometheus. It also bounds how long an
+     * alert outlives an engine that stopped posting: four intervals.
+     */
     @Builder.Default
     private final Duration resendInterval = Duration.ofMinutes(1);
     /**
