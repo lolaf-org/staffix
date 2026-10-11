@@ -17,6 +17,7 @@ package org.lolaf.staffix.impl.alerting;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.alerting.AlertLevel;
+import org.lolaf.staffix.api.alerting.ProbeEvaluator;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionStatus;
 
@@ -31,7 +32,7 @@ class TestSessionDownEvaluator {
 
     private final FixSession session = mock(FixSession.class);
     private final AtomicLong nanoTime = new AtomicLong();
-    private final SessionDownEvaluator evaluator = new SessionDownEvaluator(session, Duration.ofSeconds(10), nanoTime::get);
+    private final ProbeEvaluator evaluator = SessionDownEvaluator.delayed(session, Duration.ofSeconds(10), nanoTime::get);
 
     @Test
     void raisesACriticalAlertOnceDownInsideSessionTimeForLongerThanTheDelay() {

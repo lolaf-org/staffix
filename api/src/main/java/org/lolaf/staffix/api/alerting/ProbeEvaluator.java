@@ -16,6 +16,7 @@
 
 package org.lolaf.staffix.api.alerting;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -41,5 +42,17 @@ public interface ProbeEvaluator {
      */
     default boolean clear() {
         return false;
+    }
+
+    /**
+     * This evaluator, raising its alert only once it has been reported for {@code delay} without a break, so a
+     * condition that comes and goes faster than that never alerts. Only the first raise waits: a level change while
+     * already in alert, and the clear, are reported at once. The alert's {@code since} is when it was raised, after the
+     * delay, so say the delay in the message.
+     *
+     * @param delay zero returns this evaluator unchanged
+     */
+    default ProbeEvaluator withRaiseDelay(Duration delay) {
+        return delay.isZero() ? this : new RaiseDelayEvaluator(this, delay, System::nanoTime);
     }
 }

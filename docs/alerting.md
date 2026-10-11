@@ -45,6 +45,17 @@ evaluates every probe of the engine.
 **An evaluator that throws, or returns `null`, produces a `MAJOR` alert** on its probe naming the reason, so a broken
 probe is visible rather than silent.
 
+**To alert only on a condition that lasts**, wrap the evaluator with `withRaiseDelay`: its alert is raised only once
+reported without a break for the delay, so a condition that comes and goes faster never alerts.
+
+```java
+ProbeEvaluator gatewayDown = () -> gateway.isConnected() ? Optional.empty() : GATEWAY_DOWN;
+Probe.builder().name("gateway").description("Order gateway connection").evaluator(gatewayDown.withRaiseDelay(Duration.ofSeconds(30)))...
+```
+
+Only the first raise waits: a level change while already in alert, and the clear, are reported at once. The alert's
+start time is when it was raised, after the delay, so say the delay in its message.
+
 **Both intervals are at least one second** (`Probe.MIN_INTERVAL`), and are rounded up to whole seconds: the engine
 ticks once a second and evaluates a probe on the first tick at or after it is due.
 

@@ -18,6 +18,7 @@ package org.lolaf.staffix.impl.alerting;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeEvaluator;
+import org.lolaf.staffix.api.alerting.RaiseDelayEvaluator;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionStatus;
 
@@ -26,25 +27,23 @@ import java.util.Optional;
 import java.util.function.LongSupplier;
 
 /**
- * Raised once a session has stayed logged out inside its session time for longer than its delay. An operator logout
- * or the end of the schedule is intended, so it is not an outage.
+ * A session logged out inside its session time, raised by its probe once that has lasted its delay. An operator
+ * logout or the end of the schedule is intended, so it is not an outage.
  */
 public final class SessionDownEvaluator implements ProbeEvaluator {
 
     public static final String PROBE_NAME = "session-down";
-    private static final long NOT_DOWN = Long.MIN_VALUE;
 
     private final FixSession fixSession;
-    private final long delayNanos;
-    private final LongSupplier nanoTime;
     private final Optional<Alert> alert;
-    private long downSinceNanos = NOT_DOWN;
 
-    SessionDownEvaluator(FixSession fixSession, Duration delay, LongSupplier nanoTime) {
+    private SessionDownEvaluator(FixSession fixSession, Duration delay) {
         this.fixSession = fixSession;
-        this.delayNanos = delay.toNanos();
-        this.nanoTime = nanoTime;
         this.alert = Optional.of(Alert.critical("Logged out inside its session time for more than " + delay.toSeconds() + "s"));
+    }
+
+    static ProbeEvaluator delayed(FixSession fixSession, Duration delay, LongSupplier nanoTime) {
+        return new RaiseDelayEvaluator(new SessionDownEvaluator(fixSession, delay), delay, nanoTime);
     }
 
     /**
@@ -57,20 +56,12 @@ public final class SessionDownEvaluator implements ProbeEvaluator {
         return Optional.of(Probe.builder()
                 .name(PROBE_NAME)
                 .description("The session is logged out while its schedule says it should be logged in")
-                .evaluator(new SessionDownEvaluator(fixSession, delay, System::nanoTime))
+                .evaluator(delayed(fixSession, delay, System::nanoTime))
                 .build());
     }
 
     @Override
     public Optional<Alert> evaluate() {
-        if (fixSession.getStatus() != FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME) {
-            downSinceNanos = NOT_DOWN;
-            return Optional.empty();
-        }
-        long now = nanoTime.getAsLong();
-        if (downSinceNanos == NOT_DOWN) {
-            downSinceNanos = now;
-        }
-        return now - downSinceNanos >= delayNanos ? alert : Optional.empty();
+        return fixSession.getStatus() == FixSessionStatus.LOGGED_OUT_INSIDE_SESSION_TIME ? alert : Optional.empty();
     }
 }

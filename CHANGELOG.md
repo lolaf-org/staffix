@@ -42,6 +42,8 @@ could mean.
 - **Raise an alert from application code** with a `RaisedAlertEvaluator`: `raise` an alert when something goes
   wrong, optionally with an expiry, and `clear` it when fixed, from any thread. A `RateAlertEvaluator` raises an
   alert only when events you `record` reach a count over a sliding window, such as five rejects in a minute.
+- **A probe can alert only on a condition that lasts**: `withRaiseDelay` on any evaluator holds its first alert back
+  until the condition has held for the delay, so a brief blip never alerts.
 - **A session that stays down inside its session time raises a critical alert**, after `sessionDownAlertDelay`
   (10 seconds by default; zero turns it off). An operator logout or being outside session time never raises it.
 - **An SLF4J alerts publisher** (`staffix-alerts-publisher-slf4j-impl`, and
