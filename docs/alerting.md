@@ -148,6 +148,7 @@ session from the engine. **Stopping the engine does not**: a shutdown is not the
 | `session-down` | `CRITICAL` | the session has been logged out inside its session time for longer than `sessionDownAlertDelay` |
 | `async-store-queue`, `async-logger-queue` | per threshold | the async store's or logger's queue is deeper than a threshold |
 | `async-store-resource`, `async-logger-resource` | `MAJOR` | what the async store or logger writes to is unavailable |
+| `jdbc-store` | `MAJOR`, `WARNING` for pruning | a JDBC store call failed; cleared once calls succeed for `alertClearDelay` |
 
 `session-down` is on every session. An operator logout or being outside session time never raises it, and the delay
 restarts after each logon. **`sessionDownAlertDelay` defaults to 10 seconds; zero turns the probe off.**
@@ -157,6 +158,11 @@ session using them. The queue probe raises the highest level whose depth is reac
 `QueueSizeThresholdsSettings.thresholds` (by default `WARNING` from 250, `MAJOR` from 1000, `CRITICAL` from 5000),
 measured every `evaluationInterval` (10 seconds by default). The resource probe holds until what failed to be written
 has been replayed. See the [async store README](../messages-stores/async/async-impl/README.md#queue-monitoring).
+
+`jdbc-store` is added by `staffix-messages-store-jdbc-impl` to every session using it. A database outage raises it on
+every session, once each however many calls fail, with the same name, so Alertmanager groups them into one
+notification. Behind the async store, both `async-store-resource` and `jdbc-store` are raised: the second carries the
+database's error.
 
 ## Binding a publisher
 

@@ -47,6 +47,9 @@ could mean.
   Alertmanager.
 - **A probe can alert only on a condition that lasts**: `withRaiseDelay` on any evaluator holds its first alert back
   until the condition has held for the delay, so a brief blip never alerts.
+- **The JDBC messages store raises an alert when the database fails**: a `jdbc-store` probe on each session, raised
+  by a failed call and cleared once calls keep succeeding for `alertClearDelay` (30 seconds by default). However many
+  calls fail, each session gets one alert.
 - **An operator can clear an alert by hand** from the admin API, over HTTP
   (`POST sessions/{group}/{name}/probes/{probe}/clear`) or JMX, when the probe's evaluator accepts it: alerts raised
   from application code or counted by a rate do, a polled condition does not. Publishers are told it was cleared

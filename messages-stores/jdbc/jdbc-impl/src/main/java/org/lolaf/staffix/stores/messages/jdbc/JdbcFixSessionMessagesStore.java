@@ -21,6 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.threading.FastThreadLocal;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
@@ -41,6 +44,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 
+/**
+ * Every failed JDBC call raises the session's {@code jdbc-store} alert, and the next successful one clears it: an
+ * expiry would clear it while an idle session's database is still down.
+ */
 @Slf4j
 @SuppressWarnings("java:S2077")
 class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesStore.FixSessionMessagesStore>
@@ -65,8 +72,12 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final int maxMessagesPerSession;
     private final Duration pruningCheckInterval;
     private final ScheduledExecutorService scheduledExecutorService;
+    private final RaisedAlertEvaluator raisedAlertEvaluator;
+    @Getter(AccessLevel.PACKAGE)
+    private final Probe probe;
     private String findCutoffSeqNumSql;
     private ScheduledFuture<?> pruningTask;
+    private volatile boolean failing;
 
     JdbcFixSessionMessagesStore(JdbcMessageStoreSettings settings, FixSessionId fixSessionId, ScheduledExecutorService scheduledExecutorService) {
         this.cachedInputStreamTL = FastThreadLocal.withInitial(ArrayList::new);
@@ -76,7 +87,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         this.incomingSequenceNumber = new AtomicLong(1);
         this.outgoingSequenceNumber = new AtomicLong(1);
         this.tableName = settings.getTablePrefix().isEmpty() ? "fix_messages" : settings.getTablePrefix() + "_fix_messages";
-
+        this.raisedAlertEvaluator = new RaisedAlertEvaluator();
         this.insertMessageSql = "INSERT INTO " + tableName +
                 " (session_id, sequence_number, message_data) VALUES (?, ?, ?)";
         this.updateIncomingSeqNumSql = "UPDATE " + tableName + "_session_state " +
@@ -91,6 +102,8 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         this.maxMessagesPerSession = settings.getMaxMessagesPerSession();
         this.pruningCheckInterval = settings.getPruningCheckInterval();
         this.scheduledExecutorService = scheduledExecutorService;
+        this.probe = Probe.builder().name("jdbc-store").description("JDBC messages store")
+                .evaluator(raisedAlertEvaluator.withClearDelay(settings.getAlertClearDelay())).build();
     }
 
     @Override
@@ -211,9 +224,10 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             }
             incomingSequenceNumber.set(1);
             outgoingSequenceNumber.set(1);
+            succeeded();
             log.info("Reset sequence numbers for session {}", fixSessionId);
         } catch (SQLException e) {
-            throw new StoreException("Failed to reset sequence numbers for session " + fixSessionId, e);
+            throw failed("Failed to reset sequence numbers", e);
         }
     }
 
@@ -238,8 +252,9 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(updateIncomingSeqNumSql)) {
             updateSequenceNumber(nextIncomingSeqNum, stmt);
+            succeeded();
         } catch (SQLException e) {
-            throw new StoreException("Failed to store incoming sequence number for session " + fixSessionId, e);
+            throw failed("Failed to store incoming sequence number", e);
         }
     }
 
@@ -249,8 +264,9 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(updateOutgoingSeqNumSql)) {
             updateSequenceNumber(nextOutgoingSeqNum, stmt);
+            succeeded();
         } catch (SQLException e) {
-            throw new StoreException("Failed to store outgoing sequence number for session " + fixSessionId, e);
+            throw failed("Failed to store outgoing sequence number", e);
         }
     }
 
@@ -276,8 +292,9 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             long nextOutgoingSeqNum = outgoingSeqNum + 1;
             updateSequenceNumber(nextOutgoingSeqNum, updateSequenceStmt);
             outgoingSequenceNumber.set(nextOutgoingSeqNum);
+            succeeded();
         } catch (SQLException e) {
-            throw new StoreException("Failed to store message for session " + fixSessionId, e);
+            throw failed("Failed to store message", e);
         } finally {
             cachedInputStream.clean();
         }
@@ -298,8 +315,9 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                 stmt.addBatch();
             }
             stmt.executeBatch();
+            succeeded();
         } catch (SQLException e) {
-            throw new StoreException("Failed to store batched messages for session " + fixSessionId, e);
+            throw failed("Failed to store batched messages", e);
         } finally {
             for (int i = 0; i < sentFixMessageCount; i++) {
                 cachedInputStreams.get(i).clean();
@@ -328,8 +346,9 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                     // nothing more to do, the consumer has taken the message
                 }
             }
+            succeeded();
         } catch (SQLException e) {
-            throw new StoreException("Failed to load FIX messages for session " + fixSessionId, e);
+            throw failed("Failed to load FIX messages", e);
         }
     }
 
@@ -345,8 +364,26 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                             deletedCount, fixSessionId, messageCount, maxMessagesPerSession, cutoffSeqNum);
                 }
             }
+            succeeded();
         } catch (Exception e) {
             log.error("Error occurred when pruning old messages for session {}", fixSessionId, e);
+            if (!failing) {
+                failing = true;
+                raisedAlertEvaluator.raise(Alert.warning("Failed to prune old messages: " + e));
+            }
+        }
+    }
+
+    private StoreException failed(String what, SQLException e) {
+        failing = true;
+        raisedAlertEvaluator.raise(Alert.major(what + ": " + e));
+        return new StoreException(what + " for session " + fixSessionId, e);
+    }
+
+    private void succeeded() {
+        if (failing) {
+            failing = false;
+            raisedAlertEvaluator.clear();
         }
     }
 

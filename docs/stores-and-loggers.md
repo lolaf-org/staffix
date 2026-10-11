@@ -97,10 +97,14 @@ build()
 | `tablePrefix`              | `""`               |
 | `maxMessagesPerSession`    | `0` (unlimited)    |
 | `pruningCheckInterval`     | 5 minutes          |
+| `alertClearDelay`          | 30 seconds         |
 | `scheduledExecutorService` | supplied if absent |
 
 Schemas are generated rather than shipped as a fixed `.sql`: the DDL generator plugin produces them for several
 dialects via Hibernate. `maxMessagesPerSession` with `pruningCheckInterval` keeps the table bounded.
+
+Each session gets a `jdbc-store` [probe](alerting.md#built-in-probes): a failed JDBC call raises it, and it clears
+once calls have kept succeeding for `alertClearDelay`.
 
 **A database is on the other side of a network.** Used directly it puts a network round trip inside your FIX round
 trip. Wrap it.

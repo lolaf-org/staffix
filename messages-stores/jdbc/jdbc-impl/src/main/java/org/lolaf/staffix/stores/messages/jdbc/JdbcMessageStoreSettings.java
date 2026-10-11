@@ -83,6 +83,13 @@ public class JdbcMessageStoreSettings implements FixMessagesStoreSettings {
     @Builder.Default
     private final Duration pruningCheckInterval = Duration.ofMinutes(5);
 
+    /**
+     * How long JDBC calls must keep succeeding before the session's {@code jdbc-store} alert clears, so a database
+     * dropping in and out keeps one alert. Zero clears it on the first success.
+     */
+    @Builder.Default
+    private final Duration alertClearDelay = Duration.ofSeconds(30);
+
     public static class Factory implements FixMessagesStoreFactory<JdbcMessageStoreSettings> {
         @Override
         public Class<JdbcMessageStoreSettings> getSettingsClass() {

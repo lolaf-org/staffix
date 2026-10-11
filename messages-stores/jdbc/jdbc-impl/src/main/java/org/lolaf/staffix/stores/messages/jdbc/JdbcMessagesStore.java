@@ -57,8 +57,10 @@ public class JdbcMessagesStore extends Startable.SimpleStartable<FixMessagesStor
 
     @Override
     public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {
-        return sessionStores.computeIfAbsent(fixSessionId,
+        JdbcFixSessionMessagesStore store = (JdbcFixSessionMessagesStore) sessionStores.computeIfAbsent(fixSessionId,
                 sid -> new JdbcFixSessionMessagesStore(settings, fixSessionId, scheduledExecutorService));
+        probes.add(store.getProbe());
+        return store;
     }
 
     @Override

@@ -59,6 +59,7 @@ public class JdbcMessagesStoreContributor implements FixMessagesStoreSettingsCon
         if (p.getTablePrefix() != null) b.tablePrefix(p.getTablePrefix());
         if (p.getMaxMessagesPerSession() != null) b.maxMessagesPerSession(p.getMaxMessagesPerSession());
         if (p.getPruningCheckInterval() != null) b.pruningCheckInterval(p.getPruningCheckInterval());
+        if (p.getAlertClearDelay() != null) b.alertClearDelay(p.getAlertClearDelay());
         return b.build();
     }
 }

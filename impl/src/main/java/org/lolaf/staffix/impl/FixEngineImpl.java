@@ -20,13 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.*;
-import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
-import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
-import org.lolaf.staffix.api.alerting.ProbeDefinition;
-import org.lolaf.staffix.api.alerting.ProbeState;
-import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
-import org.lolaf.staffix.api.alerting.VoidAlertsPublisher;
+import org.lolaf.staffix.api.alerting.*;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
@@ -606,19 +600,15 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Override
     public void onSessionRegistered(FixSession fixSession) {
         fixSessionRegistry.register(fixSession);
-        if (fixSession instanceof FixSessionImpl) {
-            FixSessionImpl fixSessionImpl = (FixSessionImpl) fixSession;
-            probesManager.register(fixSessionImpl, fixSessionImpl.getProbes(), fixSessionImpl.getAlertsPublisher());
-        }
+        FixSessionImpl fixSessionImpl = (FixSessionImpl) fixSession;
+        probesManager.register(fixSessionImpl, fixSessionImpl.getProbes(), fixSessionImpl.getAlertsPublisher());
         sessionLifecycleListeners.forEach(l -> l.onSessionRegistered(fixSession));
     }
 
     @Override
     public void onSessionUnregistered(FixSession fixSession) {
         fixSessionRegistry.unregister(fixSession);
-        if (fixSession instanceof FixSessionImpl) {
-            probesManager.unregister(fixSession, ((FixSessionImpl) fixSession).getProbes());
-        }
+        probesManager.unregister(fixSession, ((FixSessionImpl) fixSession).getProbes());
         sessionLifecycleListeners.forEach(l -> l.onSessionUnregistered(fixSession));
     }
 
