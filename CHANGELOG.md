@@ -39,6 +39,8 @@ could mean.
   raised, changes level, is still ongoing (if the probe asks for reminders) or clears. Levels are `WARNING`, `MAJOR`
   and `CRITICAL`. A session names its publisher with `fixAlertsPublisherInstanceId`, and an application adds its own
   probes with `FixSession.getProbes()`. See the [Alerting](docs/alerting.md) guide and `examples/alerting`.
+- **Raise an alert from application code** with a `RaisedAlertEvaluator`: `raise` an alert when something goes
+  wrong, optionally with an expiry, and `clear` it when fixed, from any thread.
 - **A session that stays down inside its session time raises a critical alert**, after `sessionDownAlertDelay`
   (10 seconds by default; zero turns it off). An operator logout or being outside session time never raises it.
 - **An SLF4J alerts publisher** (`staffix-alerts-publisher-slf4j-impl`, and

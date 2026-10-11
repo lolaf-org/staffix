@@ -32,4 +32,14 @@ public interface ProbeEvaluator {
      * Returns the ongoing problem, or empty when everything is fine.
      */
     Optional<Alert> evaluate();
+
+    /**
+     * Ends the ongoing alert on request, for an operator clearing it from the admin. Refused by default: a polled
+     * condition would only raise it again at the next evaluation.
+     *
+     * @return whether the request was accepted
+     */
+    default boolean clear() {
+        return false;
+    }
 }

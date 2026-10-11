@@ -52,6 +52,25 @@ ticks once a second and evaluates a probe on the first tick at or after it is du
 present throws `IllegalArgumentException`. A session rebuilt after a settings change starts with none of the probes
 an application added, so add them in `FixApplication.setup` or `onLogon`, not once at startup.
 
+### Raising an alert from your own code
+
+For a problem you learn about as it happens, such as a caught exception, use a `RaisedAlertEvaluator` rather than
+writing an evaluator over a field:
+
+```java
+RaisedAlertEvaluator gateway = new RaisedAlertEvaluator();
+session.getProbes().add(Probe.builder().name("gateway").description("Order gateway errors").evaluator(gateway).build());
+
+// in the catch block, on any thread
+gateway.raise(Alert.major("gateway refused: " + reason), Duration.ofMinutes(5));
+// once you know it is fixed
+gateway.clear();
+```
+
+`raise` and `clear` are cheap enough for the session thread. Raising again replaces the alert, even at a lower
+level, and restarts its expiry while the alert keeps its original start time. Without an expiry, the alert lasts
+until `clear()`. A raise is always reported, even if it is cleared or expires before the next evaluation.
+
 ## What a publisher is told
 
 A publisher receives an `AlertEvent`: the engine's instance id (a session id is only unique within an engine), the
