@@ -52,7 +52,8 @@ engine-level MBean. Any JMX client (JConsole, VisualVM, your monitoring agent) c
 
 The session MBean's `Probes` and `ProbeStates` attributes list its [probes](alerting.md) and where each stood at its
 last evaluation, with each probe's labels and runbook URL; the engine-level MBean's `ActiveAlerts` lists every probe in
-alert across the engine, with its runbook URL. Levels are strings, times ISO-8601.
+alert across the engine, with its runbook URL. Levels are strings, times ISO-8601. The session MBean's
+`clearAlert(String probeName)` [clears a probe's alert by hand](alerting.md#clearing-an-alert-by-hand).
 
 The engine-level MBean names a session by its full `toString()` form, `alpha.trading:VERSION_44:SENDER->TARGET`, in
 both `getInitiatorsTargets()` and `switchInitiatorSession(String)`: a session name is unique only within its group.
@@ -112,6 +113,7 @@ state: read `status` again to see it.
 | `GET alerts` | every probe in alert across the engine: session, probe, level, message, since and runbook URL, with the `alertsVersion` it is at least as recent as |
 | `GET sessions/{group}/{name}/probes` | the session's [probes](alerting.md): name, description, intervals, labels and runbook URL; the `ETag` is its `probesVersion` in `status`, which changes only when a probe is added or removed |
 | `GET sessions/{group}/{name}/probes/states` | where each probe stood at its last evaluation: level, message and since while in alert |
+| `POST sessions/{group}/{name}/probes/{probe}/clear` | [clears the probe's alert by hand](alerting.md#clearing-an-alert-by-hand); 409 when it is not in alert or its evaluator refuses |
 | `GET schemas/session-settings` | the JSON Schema of a session's settings document, every field described, with its default |
 | `GET sessions/{group}/{name}/settings` | the session's settings as a document of that schema; an application setting declared secret, or whose name looks secret, is masked |
 | `PUT sessions/{group}/{name}/settings` | replaces them in the store holding them; the live session restarts on them unless `restartLiveSessionOnUpdate` is off. A masked value keeps the session's. An acceptor session's CompIDs may change; an initiator's id is set by its targets |

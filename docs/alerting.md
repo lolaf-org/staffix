@@ -114,6 +114,15 @@ rejects.record();
 The window is counted in about 60 buckets of at least a second, so a count is precise to one bucket; `record()` is
 cheap enough for the session thread. `clear()` forgets the events counted so far.
 
+### Clearing an alert by hand
+
+An operator can clear a probe's alert from the admin API (`AdminApi.clearAlert`, HTTP or JMX). The engine asks the
+probe's evaluator, so only an evaluator that can forget its alert accepts: a `RaisedAlertEvaluator`, a
+`RateAlertEvaluator`, and a `withClearDelay` evaluator whose condition is already back to normal. A polled condition
+refuses, since it would only raise the alert again. Once accepted, the alert clears at the next tick, whatever the
+probe's evaluation interval, and every publisher is told as for any other clear. To accept it in your own evaluator,
+override `clear()`.
+
 ## What a publisher is told
 
 A publisher receives an `AlertEvent`: the engine's instance id (a session id is only unique within an engine), the
@@ -124,7 +133,7 @@ session, the probe's name and description, the alert, since when it is ongoing, 
 | `RAISED` | the probe went from normal to an alert |
 | `CHANGED` | the level changed |
 | `REMINDED` | still ongoing, and the probe has a `reminderInterval` that elapsed |
-| `CLEARED` | back to normal; the event carries the last alert |
+| `CLEARED` | back to normal; the event carries the last alert, and `clearedManually` when an operator cleared it |
 
 **A message change at the same level is not published**, otherwise a probe whose message carries a count would
 publish every second. Opt into `reminderInterval` if an ongoing alert must be repeated.

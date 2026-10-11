@@ -26,9 +26,14 @@ See [Performance](docs/performance.md) for the full measurements and how they ar
 - **Persistence and logging**: in memory, file, JDBC, SLF4J and OTLP, each optionally behind an off-heap async
   handoff that keeps the I/O off the session thread.
 - **Configuration**: in memory or YAML, with a JSON schema your editor validates against.
-- **Administration**: logon, logout, sequence resets and settings reload at runtime, over JMX or HTTP.
+- **Administration**: logon, logout, sequence resets, sending messages, adding, editing and removing sessions,
+  settings reload and switching to a backup, exposed through an SPI, JMX and HTTP impls;
+  see [Runtime administration](docs/runtime-administration.md).
+- **Alerting**: probes on session health and your own conditions, published through an SPI, with SLF4J and Prometheus
+  Alertmanager implementations; see [Alerting](docs/alerting.md).
 - **Monitoring**: Micrometer metrics, OpenTelemetry tracing and Grafana dashboards.
-- **Extension points**: SPIs for stores, loggers, settings stores, admin exporters and session plugins.
+- **Extension points**: SPIs for stores, loggers, settings stores, admin exporters, alerts publishers and session
+  plugins.
 - **Integration**: a plain application factory or a Spring Boot starter.
 - **Runtime**: Java 11 source and target, running on JDK 11 through 25.
 
@@ -82,24 +87,24 @@ The dependencies for a first application are the engine and an implementation of
     <version>${staffix.version}</version>
 </dependency>
 <dependency>
-    <groupId>org.lolaf.staffix</groupId>
-    <artifactId>staffix-application-factory-simple</artifactId>
-    <version>${staffix.version}</version>
+<groupId>org.lolaf.staffix</groupId>
+<artifactId>staffix-application-factory-simple</artifactId>
+<version>${staffix.version}</version>
 </dependency>
 <dependency>
-    <groupId>org.lolaf.staffix</groupId>
-    <artifactId>staffix-messages-store-memory-impl</artifactId>
-    <version>${staffix.version}</version>
+<groupId>org.lolaf.staffix</groupId>
+<artifactId>staffix-messages-store-memory-impl</artifactId>
+<version>${staffix.version}</version>
 </dependency>
 <dependency>
-    <groupId>org.lolaf.staffix</groupId>
-    <artifactId>staffix-sessions-settings-store-memory-impl</artifactId>
-    <version>${staffix.version}</version>
+<groupId>org.lolaf.staffix</groupId>
+<artifactId>staffix-sessions-settings-store-memory-impl</artifactId>
+<version>${staffix.version}</version>
 </dependency>
 <dependency>
-    <groupId>org.lolaf.staffix</groupId>
-    <artifactId>staffix-messages-logger-slf4j-impl</artifactId>
-    <version>${staffix.version}</version>
+<groupId>org.lolaf.staffix</groupId>
+<artifactId>staffix-messages-logger-slf4j-impl</artifactId>
+<version>${staffix.version}</version>
 </dependency>
 ```
 
@@ -107,6 +112,7 @@ The encoders for the FIX version you speak are generated into your build, from t
 `staffix-fix-*` artifact carries:
 
 ```xml
+
 <plugin>
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
@@ -118,7 +124,9 @@ The encoders for the FIX version you speak are generated into your build, from t
     </configuration>
     <executions>
         <execution>
-            <goals><goal>code-generator</goal></goals>
+            <goals>
+                <goal>code-generator</goal>
+            </goals>
         </execution>
     </executions>
     <dependencies>
