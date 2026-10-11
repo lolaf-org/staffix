@@ -20,12 +20,15 @@ import org.hibernate.boot.model.naming.PhysicalNamingStrategy;
 import org.hibernate.engine.jdbc.env.spi.JdbcEnvironment;
 
 /**
- * Physical naming strategy that adds a prefix to table names.
- * The prefix is read from the Hibernate property "staffix.table.prefix".
+ * Physical naming strategy that adds a prefix to table names, as {@code JdbcMessageStoreSettings.tablePrefix} does.
  */
 public class PrefixedPhysicalNamingStrategy implements PhysicalNamingStrategy {
 
-    private String tablePrefix;
+    private final String tablePrefix;
+
+    public PrefixedPhysicalNamingStrategy(String tablePrefix) {
+        this.tablePrefix = tablePrefix;
+    }
 
     @Override
     public Identifier toPhysicalCatalogName(Identifier name, JdbcEnvironment jdbcEnvironment) {
@@ -39,16 +42,7 @@ public class PrefixedPhysicalNamingStrategy implements PhysicalNamingStrategy {
 
     @Override
     public Identifier toPhysicalTableName(Identifier name, JdbcEnvironment jdbcEnvironment) {
-        if (tablePrefix == null) {
-            tablePrefix = System.getProperty("staffix.table.prefix", "");
-        }
-
-        if (tablePrefix.isEmpty()) {
-            return name;
-        }
-
-        String prefixedName = tablePrefix + "_" + name.getText();
-        return Identifier.toIdentifier(prefixedName);
+        return Identifier.toIdentifier(tablePrefix + "_" + name.getText());
     }
 
     @Override

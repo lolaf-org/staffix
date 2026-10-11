@@ -24,6 +24,8 @@ import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.boot.spi.MetadataImplementor;
 import org.hibernate.cfg.JdbcSettings;
+import org.hibernate.mapping.Index;
+import org.hibernate.mapping.Table;
 import org.hibernate.service.ServiceRegistry;
 import org.hibernate.tool.hbm2ddl.SchemaExport;
 import org.hibernate.tool.schema.TargetType;
@@ -114,9 +116,7 @@ public class GenerateDdlMojo extends AbstractMojo {
             registryBuilder.applySetting(JdbcSettings.ALLOW_METADATA_ON_BOOT, "false");
 
             if (tablePrefix != null && !tablePrefix.isEmpty()) {
-                registryBuilder.applySetting("hibernate.physical_naming_strategy",
-                        PrefixedPhysicalNamingStrategy.class.getName());
-                registryBuilder.applySetting("staffix.table.prefix", tablePrefix);
+                registryBuilder.applySetting("hibernate.physical_naming_strategy", new PrefixedPhysicalNamingStrategy(tablePrefix));
             }
 
             ServiceRegistry serviceRegistry = registryBuilder.build();
@@ -127,6 +127,9 @@ public class GenerateDdlMojo extends AbstractMojo {
             metadataSources.addAnnotatedClass(FixMessageSessionState.class);
 
             MetadataImplementor metadata = (MetadataImplementor) metadataSources.buildMetadata();
+            if (tablePrefix != null && !tablePrefix.isEmpty()) {
+                prefixIndexNames(metadata);
+            }
 
             // delete
             File targetFile = new File(outputDirectory, outputFileName);
@@ -162,6 +165,18 @@ public class GenerateDdlMojo extends AbstractMojo {
 
         } catch (Exception e) {
             throw new MojoExecutionException("Failed to generate DDL", e);
+        }
+    }
+
+    /**
+     * Index names are unique per schema on Postgres and Oracle, and no naming strategy sees an explicit one, so two
+     * prefixes sharing a schema would otherwise collide on them.
+     */
+    private void prefixIndexNames(MetadataImplementor metadata) {
+        for (Table table : metadata.collectTableMappings()) {
+            for (Index index : table.getIndexes().values()) {
+                index.setName(tablePrefix + "_" + index.getName());
+            }
         }
     }
 }

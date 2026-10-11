@@ -130,6 +130,9 @@ could mean.
 
 ### Fixed
 
+- The JDBC store's DDL generator plugin ignored `tablePrefix`, so the schema it wrote did not match a store
+  configured with a prefix. The prefix now applies to the tables and their indexes, so several prefixes can share
+  one schema.
 - Two sessions with the same name in different groups overwrote each other's stored state, logs, metrics, JMX beans
   and health entries.
 - Listing an acceptor's sessions while its settings store reloaded could fail or return a partial list.
