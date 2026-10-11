@@ -99,18 +99,10 @@ Then name the version on the session id:
 
 ```java
 FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionId.FixSessionIdBuilder.builder()
-        .
-
-name("initiator-session")
-        .
-
-senderCompID("initiator")
-        .
-
-targetCompID("acceptor")
-        .
-
-build());
+        .name("initiator-session")
+        .senderCompID("initiator")
+        .targetCompID("acceptor")
+        .build());
 ```
 
 `FixRegularVersion` has `VERSION_42`, `VERSION_43`, `VERSION_44`, `VERSION_50`, `VERSION_50_SP1`, `VERSION_50_SP2`

@@ -223,12 +223,8 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
 
 ```java
 asyncStoreSettings(AsyncStoreSettings.builder()
-    .
-
-eventsBatching(0)  // Batching disabled by default (0)
-    .
-
-build())
+    .eventsBatching(0)  // Batching disabled by default (0)
+    .build())
 ```
 
 ### Batching Mode
@@ -241,15 +237,9 @@ build())
 ```java
 asyncStoreSettings(
         AsyncStoreSettings.builder()
-            .
-
-eventsBatching(100)                          // Batch up to 100 events
-            .
-
-batchingFlushInterval(Duration.ofMillis(50)) // Max 50ms when flushing waiting events in the queue
-        .
-
-build())
+            .eventsBatching(100)                          // Batch up to 100 events
+            .batchingFlushInterval(Duration.ofMillis(50)) // Max 50ms when flushing waiting events in the queue
+        .build())
 ```
 
 ## Performance Characteristics

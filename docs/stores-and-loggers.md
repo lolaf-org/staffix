@@ -27,15 +27,9 @@ verified against one shared contract test suite, including one you write yoursel
 
 ```java
 MemoryMessageStoreSettings.builder()
-        .
-
-instanceId("acceptor")
-        .
-
-maxEntriesInMemory(1024)
-        .
-
-build()
+        .instanceId("acceptor")
+        .maxEntriesInMemory(1024)
+        .build()
 ```
 
 | setting              | default          |
@@ -52,15 +46,9 @@ numbers on every logon.
 
 ```java
 FileMessageStoreSettings.builder()
-        .
-
-instanceId("acceptor")
-        .
-
-storageDirectoryPath("/var/lib/staffix/acceptor")
-        .
-
-build()
+        .instanceId("acceptor")
+        .storageDirectoryPath("/var/lib/staffix/acceptor")
+        .build()
 ```
 
 | setting                     | default                 |
@@ -77,18 +65,10 @@ it on and put the store behind the [async wrapper](#taking-io-off-the-session-th
 
 ```java
 JdbcMessageStoreSettings.builder()
-        .
-
-instanceId("acceptor")
-        .
-
-dataSource(myDataSource)
-        .
-
-maxMessagesPerSession(1_000_000)
-        .
-
-build()
+        .instanceId("acceptor")
+        .dataSource(myDataSource)
+        .maxMessagesPerSession(1_000_000)
+        .build()
 ```
 
 | setting                    | default            |
@@ -141,21 +121,11 @@ Chronicle Queue and returns; a background thread performs the database write, th
 
 ```java
 AsyncMessagesStoreSettings.builder()
-        .
-
-wrappedFixMessagesStoreSettings(JdbcMessageStoreSettings.builder()
-                .
-
-instanceId("acceptor")
-                .
-
-dataSource(myDataSource)
-                .
-
-build())
-        .
-
-build()
+        .wrappedFixMessagesStoreSettings(JdbcMessageStoreSettings.builder()
+                .instanceId("acceptor")
+                .dataSource(myDataSource)
+                .build())
+        .build()
 ```
 
 Chronicle's queue is off-heap and memory-mapped, so the handover allocates nothing, and queued work survives a
