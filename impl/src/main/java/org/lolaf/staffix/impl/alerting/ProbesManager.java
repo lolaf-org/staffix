@@ -72,7 +72,7 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
 
     public synchronized void register(FixSession fixSession, FixSessionProbesImpl probes, FixAlertsPublisher publisher) {
         SessionProbesEvaluation[] updated = Arrays.copyOf(sessions, sessions.length + 1);
-        updated[sessions.length] = new SessionProbesEvaluation(fixSession, probes, publisher, listener);
+        updated[sessions.length] = new SessionProbesEvaluation(engineId, fixSession, probes, publisher, listener);
         sessions = updated;
         probes.attach(fixSession.getFixSessionId(), listener);
     }

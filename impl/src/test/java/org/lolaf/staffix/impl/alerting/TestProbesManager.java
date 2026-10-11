@@ -163,6 +163,7 @@ class TestProbesManager {
         assertThat(publisherSettings.getEvents()).extracting(event -> event.getAlert().getMessage())
                 .containsExactly("100 queued", "1000 queued", "1000 queued");
         assertThat(publisherSettings.getEvents()).allSatisfy(event -> {
+            assertThat(event.getEngineId()).isEqualTo("engine");
             assertThat(event.getFixSessionId()).isEqualTo(SESSION_ID);
             assertThat(event.getProbeName()).isEqualTo("queue");
             assertThat(event.getProbeDescription()).isEqualTo("queue description");

@@ -39,6 +39,7 @@ final class SessionProbesEvaluation {
     private static final Probe[] NO_PROBES = new Probe[0];
     private static final ProbeEvaluation[] NO_EVALUATIONS = new ProbeEvaluation[0];
 
+    private final String engineId;
     @Getter
     private final FixSession fixSession;
     private final FixSessionProbesImpl probes;
@@ -47,8 +48,9 @@ final class SessionProbesEvaluation {
     private Probe[] evaluatedProbes = NO_PROBES;
     private volatile ProbeEvaluation[] evaluations = NO_EVALUATIONS;
 
-    SessionProbesEvaluation(FixSession fixSession, FixSessionProbesImpl probes, FixAlertsPublisher publisher,
-                            ProbesListener listener) {
+    SessionProbesEvaluation(String engineId, FixSession fixSession, FixSessionProbesImpl probes,
+                            FixAlertsPublisher publisher, ProbesListener listener) {
+        this.engineId = engineId;
         this.fixSession = fixSession;
         this.probes = probes;
         this.publisher = publisher;
@@ -127,7 +129,7 @@ final class SessionProbesEvaluation {
         ProbeEvaluation[] updated = new ProbeEvaluation[current.length];
         for (int i = 0; i < current.length; i++) {
             ProbeEvaluation kept = find(previous, current[i]);
-            updated[i] = kept != null ? kept : new ProbeEvaluation(fixSession.getFixSessionId(), current[i], tick);
+            updated[i] = kept != null ? kept : new ProbeEvaluation(engineId, fixSession.getFixSessionId(), current[i], tick);
         }
         for (ProbeEvaluation probeEvaluation : previous) {
             if (find(updated, probeEvaluation.getProbe()) == null) {

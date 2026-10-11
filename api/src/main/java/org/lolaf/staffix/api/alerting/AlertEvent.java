@@ -34,6 +34,12 @@ public class AlertEvent {
     @NonNull
     Type type;
     /**
+     * The {@code FixEngineBuilder} instance id, so a system collecting alerts from several engines can tell them apart:
+     * a session id is only unique within an engine.
+     */
+    @NonNull
+    String engineId;
+    /**
      * The session the probe is bound to.
      */
     @NonNull

@@ -54,8 +54,8 @@ an application added, so add them in `FixApplication.setup` or `onLogon`, not on
 
 ## What a publisher is told
 
-A publisher receives an `AlertEvent`: the session, the probe's name and description, the alert, since when it is
-ongoing, and one of four types.
+A publisher receives an `AlertEvent`: the engine's instance id (a session id is only unique within an engine), the
+session, the probe's name and description, the alert, since when it is ongoing, and one of four types.
 
 | type | when |
 |------|------|

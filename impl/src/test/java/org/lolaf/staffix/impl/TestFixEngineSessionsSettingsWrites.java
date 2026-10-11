@@ -92,6 +92,7 @@ class TestFixEngineSessionsSettingsWrites {
         when(monitoring.getInstanceId()).thenReturn("metrics");
         when(monitoring.matchesPluginClass(FixSessionsMonitoringManager.class)).thenReturn(true);
         fixEngine = FixEngineBuilder.builder()
+                .instanceId("engine")
                 .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
                         .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
                         .probe(STORE_PROBE)
@@ -383,6 +384,7 @@ class TestFixEngineSessionsSettingsWrites {
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alertsPublisher.getEvents()).singleElement().satisfies(event -> {
             assertThat(event.getType()).isEqualTo(AlertEvent.Type.RAISED);
+            assertThat(event.getEngineId()).isEqualTo("engine");
             assertThat(event.getProbeName()).isEqualTo(SessionDownEvaluator.PROBE_NAME);
             assertThat(event.getAlert().getLevel()).isEqualTo(AlertLevel.CRITICAL);
         }));

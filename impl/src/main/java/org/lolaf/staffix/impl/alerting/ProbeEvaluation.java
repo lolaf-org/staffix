@@ -37,6 +37,7 @@ final class ProbeEvaluation {
 
     private static final long NOT_EVALUATED = Long.MIN_VALUE;
 
+    private final String engineId;
     private final FixSessionId fixSessionId;
     @Getter
     private final Probe probe;
@@ -52,7 +53,8 @@ final class ProbeEvaluation {
     private volatile Alert alert;
     private volatile long lastEvaluationMillis = NOT_EVALUATED;
 
-    ProbeEvaluation(FixSessionId fixSessionId, Probe probe, long firstTick) {
+    ProbeEvaluation(String engineId, FixSessionId fixSessionId, Probe probe, long firstTick) {
+        this.engineId = engineId;
         this.fixSessionId = fixSessionId;
         this.probe = probe;
         this.evaluationTicks = toTicks(probe.getEvaluationInterval());
@@ -148,6 +150,7 @@ final class ProbeEvaluation {
     private AlertEvent event(AlertEvent.Type type, Alert eventAlert, long nowMillis) {
         return AlertEvent.builder()
                 .type(type)
+                .engineId(engineId)
                 .fixSessionId(fixSessionId)
                 .probeName(probe.getName())
                 .probeDescription(probe.getDescription())

@@ -84,6 +84,7 @@ class TestSlf4jAlertsPublisher {
     private static AlertEvent event(AlertEvent.Type type, Alert alert) {
         return AlertEvent.builder()
                 .type(type)
+                .engineId("engine")
                 .fixSessionId(SESSION_ID)
                 .probeName("queue")
                 .probeDescription("Orders waiting")
