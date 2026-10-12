@@ -134,6 +134,16 @@ public abstract class MessagesCoreLogger extends Startable.SimpleStartable<FixMe
             return wrappedLogger.isStarted();
         }
 
+        @Override
+        public boolean isUnderlyingStorageResourceAvailable() {
+            return wrappedLogger.isUnderlyingStorageResourceAvailable();
+        }
+
+        @Override
+        public String getUnderlyingStorageResourceDescription() {
+            return wrappedLogger.getUnderlyingStorageResourceDescription();
+        }
+
         private ByteBuffer obfuscateLogIfNeeded(ByteBuffer message, MessageType messageType) {
             if (obfuscators == null) {
                 return message;
