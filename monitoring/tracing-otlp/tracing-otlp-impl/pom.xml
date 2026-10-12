@@ -17,7 +17,7 @@
 
     <properties>
         <automatic.module.name>org.lolaf.staffix.tracing.otlp</automatic.module.name>
-        <otel.version>1.66.0</otel.version>
+        <otel.version>1.67.0</otel.version>
     </properties>
 
     <dependencies>
