@@ -84,11 +84,17 @@ public class JdbcMessageStoreSettings implements FixMessagesStoreSettings {
     private final Duration pruningCheckInterval = Duration.ofMinutes(5);
 
     /**
+     * See {@link FixMessagesStoreSettings#getResourceCheckInterval()}.
+     */
+    @Builder.Default
+    private final Duration resourceCheckInterval = DEFAULT_RESOURCE_CHECK_INTERVAL;
+
+    /**
      * How long JDBC calls must keep succeeding before the session's {@code jdbc-store} alert clears, so a database
      * dropping in and out keeps one alert. Zero clears it on the first success.
      */
     @Builder.Default
-    private final Duration alertClearDelay = Duration.ofSeconds(30);
+    private final Duration alertClearDelay = DEFAULT_ALERT_CLEAR_DELAY;
 
     public static class Factory implements FixMessagesStoreFactory<JdbcMessageStoreSettings> {
         @Override

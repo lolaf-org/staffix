@@ -19,6 +19,7 @@ import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.InstanceProvider;
 import org.lolaf.staffix.api.msg.MessageType;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.function.BiPredicate;
 
@@ -29,6 +30,9 @@ import java.util.function.BiPredicate;
  * in clear, and a log of raw FIX would otherwise keep them.
  */
 public interface FixMessagesLoggerSettings extends InstanceProvider<FixMessagesLogger> {
+
+    Duration DEFAULT_RESOURCE_CHECK_INTERVAL = Duration.ofSeconds(5);
+    Duration DEFAULT_ALERT_CLEAR_DELAY = Duration.ofSeconds(30);
 
     /**
      * The obfuscators applied to each logged message. They run on the session's thread unless the logger is
@@ -60,6 +64,22 @@ public interface FixMessagesLoggerSettings extends InstanceProvider<FixMessagesL
      */
     default boolean isLogEvents() {
         return true;
+    }
+
+    /**
+     * How often a logger whose calls fail is checked for its resource coming back. While it is down the engine skips
+     * the logger's calls, rather than block the session on each one. Zero sends every call to the logger.
+     */
+    default Duration getResourceCheckInterval() {
+        return DEFAULT_RESOURCE_CHECK_INTERVAL;
+    }
+
+    /**
+     * How long the logger must keep succeeding before the session's logger alert clears, so a resource dropping in
+     * and out keeps one alert. Zero clears it on the first success.
+     */
+    default Duration getAlertClearDelay() {
+        return DEFAULT_ALERT_CLEAR_DELAY;
     }
 
     @Override

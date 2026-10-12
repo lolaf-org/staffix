@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.function.BiPredicate;
 
 /**
@@ -69,6 +70,16 @@ public class FileMessageStoreSettings implements FixMessagesStoreSettings {
      */
     @Builder.Default
     private BiPredicate<MessageType, ByteBuffer> messageFilter = (messageType, message) -> false;
+    /**
+     * See {@link FixMessagesStoreSettings#getResourceCheckInterval()}.
+     */
+    @Builder.Default
+    private Duration resourceCheckInterval = DEFAULT_RESOURCE_CHECK_INTERVAL;
+    /**
+     * See {@link FixMessagesStoreSettings#getAlertClearDelay()}.
+     */
+    @Builder.Default
+    private Duration alertClearDelay = DEFAULT_ALERT_CLEAR_DELAY;
 
     /**
      * Calculates the required blocks count
