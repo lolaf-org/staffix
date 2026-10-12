@@ -212,8 +212,22 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
             fileChannel = null;
         }
 
+        /**
+         * A full disk or a directory gone read-only, the failures a write to this file can have that do not go away
+         * on their own.
+         */
         @Override
-        public void logEvents(LogEvent[] logEvents, int eventsCount) {
+        public boolean isUnderlyingStorageResourceAvailable() {
+            return logsDir.isDirectory() && logsDir.canWrite() && logsDir.getUsableSpace() > 0;
+        }
+
+        @Override
+        public String getUnderlyingStorageResourceDescription() {
+            return "log directory " + logsDir.getAbsolutePath();
+        }
+
+        @Override
+        public void logEvents(LogEvent[] logEvents, int eventsCount) throws LoggingException {
             for (int i = 0; i < eventsCount; i++) {
                 LogEvent logEvent = logEvents[i];
                 if (logEvent.getLogEventType().equals(LogEventType.INCOMING_MSG)) {
@@ -227,28 +241,36 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
         }
 
         @Override
-        public void logIncoming(UTCTime logTime, MessageType messageType, ByteBuffer message) {
+        public void logIncoming(UTCTime logTime, MessageType messageType, ByteBuffer message) throws LoggingException {
             logMessage(logTime, message, logInPrefix, intermediateIncomingBuffer);
         }
 
         @Override
-        public void logOutgoing(UTCTime logTime, MessageType messageType, ByteBuffer message) {
+        public void logOutgoing(UTCTime logTime, MessageType messageType, ByteBuffer message) throws LoggingException {
             logMessage(logTime, message, logOutPrefix, intermediateOutgoingBuffer);
         }
 
-        private void logMessage(UTCTime logTime, ByteBuffer message, byte[] logPrefix, ByteBuffer intermediateBuffer) {
+        /**
+         * A failed switch to the next file is reported once the message is written to the current one, so it is not
+         * lost to a rename that did not happen.
+         */
+        private void logMessage(UTCTime logTime, ByteBuffer message, byte[] logPrefix, ByteBuffer intermediateBuffer) throws LoggingException {
+            IOException switchFailure = null;
             if (nextFileCompressionTime.compareTo(logTime) < 0) {
                 try {
                     switchToNextLogFile();
                 } catch (IOException e) {
-                    log.error("Failed to switch to next log file", e);
+                    switchFailure = e;
                 }
             }
             try {
                 intermediateBuffer = fillBuffer(logTime, message, logPrefix, intermediateBuffer);
                 logFileAccess.write(intermediateBuffer.array(), intermediateBuffer.position(), intermediateBuffer.remaining());
             } catch (IOException e) {
-                log.error("Failed to write log to file", e);
+                throw new LoggingException("Failed to write to log file " + logFile, e);
+            }
+            if (switchFailure != null) {
+                throw new LoggingException("Failed to switch from log file " + logFile + " to the next one", switchFailure);
             }
         }
 
@@ -271,7 +293,7 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
                 } else if (intermediateBuffer == intermediateOutgoingBuffer) {
                     intermediateOutgoingBuffer = ByteBuffer.allocate(intermediateOutgoingBuffer.capacity() * 2);
                     log.debug("New intermediateOutgoingBuffer size is {}", intermediateOutgoingBuffer.capacity());
-                    return fillBuffer(logTime, message.position(0), logPrefix, intermediateEventBuffer);
+                    return fillBuffer(logTime, message.position(0), logPrefix, intermediateOutgoingBuffer);
                 } else {
                     throw new IllegalStateException("Should never have happened");
                 }
@@ -300,7 +322,7 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
         }
 
         @Override
-        public void logEvent(UTCTime eventTime, String event) {
+        public void logEvent(UTCTime eventTime, String event) throws LoggingException {
             logMessage(eventTime, ByteBuffer.wrap(event.getBytes(SerDe.CHARSET)), logEventPrefix, intermediateEventBuffer);
         }
 

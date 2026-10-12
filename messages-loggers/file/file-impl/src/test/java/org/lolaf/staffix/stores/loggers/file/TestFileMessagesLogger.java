@@ -161,6 +161,42 @@ class TestFileMessagesLogger {
 
     }
 
+    /**
+     * The session's fail-safe wrapper raises the messages-logger alert from what a log call throws: a write failure
+     * kept here would leave the file silently incomplete.
+     */
+    @Test
+    void aFailedWriteIsThrownWithItsCause() throws IOException {
+        logger.stop(Deadline.immediate());
+        fileMessagesLogger.stop(Deadline.immediate());
+        fileMessagesLogger = new FileMessagesLogger(FileMessagesLoggerSettings.builder()
+                .logDirectory(logsDir.getPath())
+                .writeMode("r")
+                .build());
+        fileMessagesLogger.start();
+        logger = fileMessagesLogger.instanciateLogger("engine", "test", fixSessionId, null);
+        Assertions.assertThat(logFile.createNewFile() || logFile.isFile()).isTrue();
+        logger.start();
+
+        Assertions.assertThatThrownBy(() -> logger.logIncoming(logTime, messageType, ByteBuffer.wrap("test log".getBytes())))
+                .isInstanceOf(FixMessagesLogger.LoggingException.class)
+                .hasMessageContaining(logFile.getName())
+                .hasCauseInstanceOf(IOException.class);
+    }
+
+    @Test
+    void aLogDirectoryThatCannotBeWrittenIsUnavailable() {
+        Assertions.assertThat(logger.isUnderlyingStorageResourceAvailable()).isTrue();
+        Assertions.assertThat(logger.getUnderlyingStorageResourceDescription()).contains(logsDir.getName());
+
+        Assertions.assertThat(logsDir.setWritable(false)).isTrue();
+        try {
+            Assertions.assertThat(logger.isUnderlyingStorageResourceAvailable()).isFalse();
+        } finally {
+            logsDir.setWritable(true);
+        }
+    }
+
     @Test
     void testLogIncoming() throws FixMessagesLogger.LoggingException {
         logger.logIncoming(logTime, messageType, ByteBuffer.wrap("test log".getBytes()));

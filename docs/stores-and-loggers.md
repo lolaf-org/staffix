@@ -136,6 +136,9 @@ never receives that message a second time. To lose nothing through an outage, pu
 Both are on every store but the memory one, which cannot fail, and on every logger, with the Spring Boot properties
 `resource-check-interval` and `alert-clear-delay`. Behind the async wrapper, the wrapper's own apply.
 
+The SLF4J logger is the exception: its backend (logback, log4j2) reports a failing appender through its own status
+messages and never to the caller, so staffix cannot see it and raises no alert.
+
 A store you write must keep its sequence numbers in memory: the getters must never fail, and storing a sequence
 number must update it in memory before persisting it, so the session keeps the right numbers while the resource is
 down.
