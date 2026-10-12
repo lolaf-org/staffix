@@ -230,9 +230,11 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     private FixSessionRuntimeDependencies getDependencies(FixSessionSettings fixSessionSettings) {
         FixMessagesStore fixMessagesStore = findMatchAmongstMessagesStores(fixSessionSettings);
+        FixMessagesLogger fixMessagesLogger = findMatchAmongstMessagesLoggers(fixSessionSettings);
         return new FixSessionRuntimeDependencies(getInstanceId(), fixMessagesStore,
                 fixEngineBuilder.getFixMessagesStores().get(fixMessagesStores.indexOf(fixMessagesStore)),
-                findMatchAmongstMessagesLoggers(fixSessionSettings),
+                fixMessagesLogger,
+                fixMessagesLogger == null ? null : fixEngineBuilder.getFixMessagesLoggers().get(fixMessagesLoggers.indexOf(fixMessagesLogger)),
                 findMatchAmongstAlertsPublishers(fixSessionSettings),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
                 findMatchAmongstPluginsComponent(fixSessionSettings),

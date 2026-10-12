@@ -106,9 +106,7 @@ final class SessionWiring {
                 fixSessionId, runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
         probes.add(messagesStore.getProbe());
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
-        this.messagesLogger = runtimeDependencies.getFixMessagesLogger() != null
-                ? runtimeDependencies.getFixMessagesLogger().getLogger(runtimeDependencies.getEngineId(), fixInstanceId, fixSessionId, messageTypeRegistry, probes)
-                : VoidMessageLogger.getInstance();
+        this.messagesLogger = messagesLogger(fixInstanceId, probes, runtimeDependencies);
         this.messageExecutors = messageExecutorsRuntime.newSessionExecutors();
         this.disconnectedSessionsExecutor = runtimeDependencies.getDisconnectedSessionsExecutor();
 
@@ -150,6 +148,18 @@ final class SessionWiring {
         components.register(new SessionTimeWindowComponent(fixSession, fixApplication, state, scheduleManager, settings, scheduler));
         components.register(logonLogout);
         components.register(plugins);
+    }
+
+    private FixMessagesLogger.Logger messagesLogger(String fixInstanceId, FixSessionProbesImpl probes,
+                                                    FixSessionRuntimeDependencies runtimeDependencies) {
+        if (runtimeDependencies.getFixMessagesLogger() == null) {
+            return VoidMessageLogger.getInstance();
+        }
+        FailSafeFixMessagesLogger logger = new FailSafeFixMessagesLogger(runtimeDependencies.getFixMessagesLogger()
+                .getLogger(runtimeDependencies.getEngineId(), fixInstanceId, fixSessionId, messageTypeRegistry, probes),
+                fixSessionId, runtimeDependencies.getFixMessagesLoggerSettings(), runtimeDependencies.getUnderlyingResourceChecker());
+        probes.add(logger.getProbe());
+        return logger;
     }
 
     private static FieldsRegistry fieldsRegistry(FixSessionSettings settings, FixDictionaryId fixDictionaryId, FixSessionId fixSessionId) {
