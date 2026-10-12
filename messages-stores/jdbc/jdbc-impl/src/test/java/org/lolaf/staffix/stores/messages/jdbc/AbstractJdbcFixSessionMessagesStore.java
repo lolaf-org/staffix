@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.messages.jdbc;
 import com.zaxxer.hikari.HikariDataSource;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
@@ -29,12 +30,14 @@ import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 
 
@@ -265,6 +268,81 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
         assertThat(messages.stream().map(FixMessagesStore.FixSessionMessagesStore.StoreMessage::getSeqNum).collect(Collectors.toList()))
                 .as("First retained message should have sequence number 51")
                 .containsExactly(7L, 10L, 15L);
+    }
+
+    /**
+     * A reset the database misses leaves the messages from before it in the table, under the numbers the session then
+     * reuses: the next call to reach the database completes it first, keeping the numbers taken since.
+     */
+    @Test
+    void aResetTheDatabaseMissedIsCompletedByTheNextWrite() throws Exception {
+        FailingDataSource database = startStoreOn(new FailingDataSource(dataSource));
+        storeMessages(3);
+        database.setDown(true);
+
+        assertThatThrownBy(messageStore::resetSequenceNumbers).isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class);
+        assertThatThrownBy(() -> messageStore.storeNextIncomingSeqNum(5L)).isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class);
+        database.setDown(false);
+        messageStore.storeMessageSent(1L, ByteBuffer.wrap("after the reset".getBytes(StandardCharsets.UTF_8)));
+
+        assertThat(messageStore.find(1L, 100L)).extracting(message -> StandardCharsets.UTF_8.decode(message.getMessage()).toString())
+                .containsExactly("after the reset");
+        assertThat(storedSequenceNumbers()).containsExactly(5L, 2L);
+    }
+
+    @Test
+    void aReadAfterAMissedResetSeesNoMessageFromBeforeIt() throws Exception {
+        FailingDataSource database = startStoreOn(new FailingDataSource(dataSource));
+        storeMessages(3);
+        database.setDown(true);
+        assertThatThrownBy(messageStore::resetSequenceNumbers).isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class);
+        database.setDown(false);
+
+        assertThat(messageStore.find(1L, 100L)).isEmpty();
+        assertThat(storedSequenceNumbers()).containsExactly(1L, 1L);
+    }
+
+    /**
+     * Its two statements are one transaction: a reset failing between them changes nothing, then completes whole.
+     */
+    @Test
+    void aResetFailingHalfWayChangesNothing() throws Exception {
+        FailingDataSource database = startStoreOn(new FailingDataSource(dataSource));
+        storeMessages(3);
+        database.setFailingDeletes(true);
+
+        assertThatThrownBy(messageStore::resetSequenceNumbers).isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class);
+
+        assertThat(storedSequenceNumbers()).containsExactly(1L, 4L);
+        assertThat(countMessagesInDatabase(sessionId.getQualifiedName())).isEqualTo(3);
+        database.setFailingDeletes(false);
+        assertThat(messageStore.find(1L, 100L)).isEmpty();
+        assertThat(storedSequenceNumbers()).containsExactly(1L, 1L);
+    }
+
+    private FailingDataSource startStoreOn(FailingDataSource database) {
+        messageStore.stop(Deadline.unlimited());
+        messageStore = new JdbcFixSessionMessagesStore(JdbcMessageStoreSettings.builder().dataSource(database).build(),
+                sessionId, scheduledExecutorService);
+        messageStore.start();
+        return database;
+    }
+
+    private void storeMessages(int count) {
+        for (long seqNum = 1; seqNum <= count; seqNum++) {
+            messageStore.storeMessageSent(seqNum, ByteBuffer.wrap(("before the reset " + seqNum).getBytes(StandardCharsets.UTF_8)));
+        }
+    }
+
+    private List<Long> storedSequenceNumbers() throws SQLException {
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                     "SELECT incoming_seq_num, outgoing_seq_num FROM fix_messages_session_state WHERE session_id = ?")) {
+            stmt.setString(1, sessionId.getQualifiedName());
+            ResultSet rs = stmt.executeQuery();
+            assertThat(rs.next()).isTrue();
+            return List.of(rs.getLong("incoming_seq_num"), rs.getLong("outgoing_seq_num"));
+        }
     }
 
     private void getMessageStoreForPruning(int maxMessagesPerSession) {
