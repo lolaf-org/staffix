@@ -299,7 +299,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     }
 
     @Override
-    public long getNextOutgoingSeqNum() throws StoreException {
+    public long getNextOutgoingSeqNum() {
         return outgoingSequenceNumber.getAndIncrement();
     }
 

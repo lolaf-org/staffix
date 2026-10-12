@@ -89,7 +89,7 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
     }
 
     @Override
-    public long getNextOutgoingSeqNum() throws StoreException {
+    public long getNextOutgoingSeqNum() {
         return outgoingSequenceNumber.getAndIncrement();
     }
 

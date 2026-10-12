@@ -100,7 +100,7 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
     }
 
     @Override
-    public long getNextOutgoingSeqNum() throws StoreException {
+    public long getNextOutgoingSeqNum() {
         return fixSessionMessagesStore.getNextOutgoingSeqNum();
     }
 

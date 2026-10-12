@@ -209,6 +209,8 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     @Override
     public void resetSequenceNumbers() {
+        incomingSequenceNumber.set(1);
+        outgoingSequenceNumber.set(1);
         try (Connection conn = dataSource.getConnection()) {
             String resetSeqNumSql = "UPDATE " + tableName + "_session_state " +
                     "SET incoming_seq_num = 1, outgoing_seq_num = 1 WHERE session_id = ?";
@@ -222,8 +224,6 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                 stmt.setString(1, fixSessionId.getQualifiedName());
                 stmt.executeUpdate();
             }
-            incomingSequenceNumber.set(1);
-            outgoingSequenceNumber.set(1);
             succeeded();
             log.info("Reset sequence numbers for session {}", fixSessionId);
         } catch (SQLException e) {
@@ -242,7 +242,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     }
 
     @Override
-    public long getNextOutgoingSeqNum() throws StoreException {
+    public long getNextOutgoingSeqNum() {
         return outgoingSequenceNumber.getAndIncrement();
     }
 

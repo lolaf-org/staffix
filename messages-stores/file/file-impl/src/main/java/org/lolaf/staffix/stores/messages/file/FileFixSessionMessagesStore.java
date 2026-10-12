@@ -169,7 +169,7 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     }
 
     @Override
-    public long getNextOutgoingSeqNum() throws StoreException {
+    public long getNextOutgoingSeqNum() {
         return outgoingSequenceNumber.getAndIncrement();
     }
 
