@@ -68,6 +68,8 @@ public class FileMessagesLoggerContributor implements FixMessagesLoggerSettingsC
         if (p.getCompressFileTimeUnit() != null) b.compressFileTimeUnit(p.getCompressFileTimeUnit());
         if (p.getCompressFileValue() != null) b.compressFileValue(p.getCompressFileValue());
         if (p.getMaxCompressedFiles() != null) b.maxCompressedFiles(p.getMaxCompressedFiles());
+        if (p.getResourceCheckInterval() != null) b.resourceCheckInterval(p.getResourceCheckInterval());
+        if (p.getAlertClearDelay() != null) b.alertClearDelay(p.getAlertClearDelay());
         BeanRef.<BiFunction<FixSessionId, File, File>>resolveOptional(ctx, p.getLogFileNameBean(), BiFunction.class,
                         "staffix.messages-loggers-file.instances." + mapKey + ".log-file-name-bean")
                 .ifPresent(b::logFileName);

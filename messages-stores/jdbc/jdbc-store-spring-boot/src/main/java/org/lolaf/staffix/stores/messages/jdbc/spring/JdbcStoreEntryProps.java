@@ -47,4 +47,9 @@ public class JdbcStoreEntryProps {
      * How long store calls must keep succeeding before the session's messages-store alert clears.
      */
     private Duration alertClearDelay;
+    /**
+     * How often a store whose resource is down is checked for its return, its calls being skipped meanwhile. Zero
+     * disables the check, so every call reaches the resource.
+     */
+    private Duration resourceCheckInterval;
 }

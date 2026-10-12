@@ -60,6 +60,8 @@ public class Slf4jMessagesLoggerContributor implements FixMessagesLoggerSettings
         if (p.getLogInTemplate() != null) b.logInTemplate(p.getLogInTemplate());
         if (p.getUseMDC() != null) b.useMDC(p.getUseMDC());
         if (p.getMessageFieldsDelimiter() != null) b.messageFieldsDelimiter(p.getMessageFieldsDelimiter());
+        if (p.getResourceCheckInterval() != null) b.resourceCheckInterval(p.getResourceCheckInterval());
+        if (p.getAlertClearDelay() != null) b.alertClearDelay(p.getAlertClearDelay());
         BeanRef.<Function<FixSessionId, String>>resolveOptional(ctx, p.getLoggerNameForFixSessionBean(), Function.class,
                         "staffix.messages-loggers-slf4j.instances." + mapKey + ".logger-name-for-fix-session-bean")
                 .ifPresent(b::loggerNameForFixSession);
