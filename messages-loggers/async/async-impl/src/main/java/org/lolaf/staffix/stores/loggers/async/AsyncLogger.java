@@ -15,15 +15,18 @@
  */
 package org.lolaf.staffix.stores.loggers.async;
 
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.stores.core.async.*;
+import org.lolaf.staffix.stores.core.async.QueueSizeEvaluator;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -44,8 +47,9 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
     private final FixMessagesLogger.BatchingLogger.LogEvent[] batchedMessages;
     private final AsyncLogEventSerde asyncLogEventSerde;
     private final PersistentQueue<AsyncLogEvent> messagesQueue;
+    @Getter
+    private final Probe queueSizeProbe;
     private final UnderlyingResourceWatchContext<AsyncLogEvent> underlyingResourceWatchContext;
-    private final StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener;
 
     AsyncLogger(FixMessagesLogger.Logger wrappedLogger, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
                 AsyncMessagesLoggerSettings asyncMessagesLoggerSettings, AsyncStoreThreads<AsyncLogEvent> asyncLoggersThreads,
@@ -63,12 +67,17 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
                 : null;
         this.asyncLogEventSerde = new AsyncLogEventSerde(messageTypeRegistry, asyncEventInstanceProvider);
         this.messagesQueue = new PersistentQueue<>(fixSessionId);
-        this.storeUnderlyingResourceStateListener = new StoreUnderlyingResourceStateListener.FailSafeStoreUnderlyingResourceStateListener(
-                asyncMessagesLoggerSettings.getAsyncStoreSettings().getStoreUnderlyingResourceStateListener());
+        this.queueSizeProbe = QueueSizeEvaluator.probe("async-logger-queue", "Messages waiting in the async logger queue to be logged",
+                messagesQueue, asyncMessagesLoggerSettings.getAsyncStoreSettings().getQueueSizeThresholdsSettings());
         this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::onAsyncLogEvents,
                 this::onAsyncLogEvent, wrappedLogger::isUnderlyingStorageResourceAvailable, wrappedLogger.getClass().getSimpleName(),
                 asyncMessagesLoggerSettings.getUnderlyingLoggerResourceWatchTaskCheckDelay(), this::unregisterEventsHandlingFromAsyncLoggersThreads,
-                this::registerEventsHandlingFromAsyncLoggersThreads, storeUnderlyingResourceStateListener, fixSessionId);
+                this::registerEventsHandlingFromAsyncLoggersThreads,
+                "async-logger-resource", "Availability of the logger the async logger writes to");
+    }
+
+    Probe getResourceDownProbe() {
+        return underlyingResourceWatchContext.getResourceDownProbe();
     }
 
     @Override
@@ -95,7 +104,6 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
         messagesQueue.start(asyncMessagesLoggerSettings.getAsyncStoreSettings(), "logs");
         wrappedLogger.start();
         if (wrappedLogger.isUnderlyingStorageResourceAvailable()) {
-            storeUnderlyingResourceStateListener.onStoreStateUp(fixSessionId, wrappedLogger.getUnderlyingStorageResourceDescription());
             registerEventsHandlingFromAsyncLoggersThreads();
             flushMessageOnStartupIfNeeded();
         } else {
@@ -153,9 +161,9 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
 
     private void registerEventsHandlingFromAsyncLoggersThreads() {
         if (isBatchingEnabled()) {
-            asyncLoggersThreads.registerBatching(fixSessionId, messagesQueue, batchingEventsConsumer, asyncLogEventSerde, AsyncLogEvent.class);
+            asyncLoggersThreads.registerBatching(messagesQueue, batchingEventsConsumer, asyncLogEventSerde, AsyncLogEvent.class);
         } else {
-            asyncLoggersThreads.register(fixSessionId, messagesQueue, eventsConsumer, asyncLogEventSerde);
+            asyncLoggersThreads.register(messagesQueue, eventsConsumer, asyncLogEventSerde);
         }
     }
 

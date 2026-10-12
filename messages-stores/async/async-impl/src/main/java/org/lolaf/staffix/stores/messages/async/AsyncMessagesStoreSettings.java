@@ -70,6 +70,16 @@ public class AsyncMessagesStoreSettings implements FixMessagesStoreSettings {
      * Wrapped store settings
      */
     private FixMessagesStoreSettings wrappedFixMessagesStoreSettings;
+    /**
+     * See {@link FixMessagesStoreSettings#getResourceCheckInterval()}.
+     */
+    @Builder.Default
+    private Duration resourceCheckInterval = DEFAULT_RESOURCE_CHECK_INTERVAL;
+    /**
+     * See {@link FixMessagesStoreSettings#getAlertClearDelay()}.
+     */
+    @Builder.Default
+    private Duration alertClearDelay = DEFAULT_ALERT_CLEAR_DELAY;
 
     @Override
     public String getInstanceId() {

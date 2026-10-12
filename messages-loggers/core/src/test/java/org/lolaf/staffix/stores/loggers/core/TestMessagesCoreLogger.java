@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.loggers.core;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.logging.LogObfuscator;
@@ -31,6 +32,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.BiPredicate;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class TestMessagesCoreLogger {
@@ -104,7 +106,20 @@ class TestMessagesCoreLogger {
         };
 
         FixSessionId sessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
-        coreLogger = logger.getLogger("engine", "test", sessionId, mock(MessageTypeRegistry.class));
+        coreLogger = logger.getLogger("engine", "test", sessionId, mock(MessageTypeRegistry.class), mock(FixSessionProbes.class));
+    }
+
+    /**
+     * What the session's fail-safe wrapper and the async logger check before skipping or holding log calls: answered
+     * by the wrapper's own defaults, a logger whose endpoint is down was always taken as up.
+     */
+    @Test
+    void reportsTheWrappedLoggersResource() {
+        when(testLogger.isUnderlyingStorageResourceAvailable()).thenReturn(false);
+        when(testLogger.getUnderlyingStorageResourceDescription()).thenReturn("http://collector:4318/v1/logs");
+
+        assertThat(coreLogger.isUnderlyingStorageResourceAvailable()).isFalse();
+        assertThat(coreLogger.getUnderlyingStorageResourceDescription()).isEqualTo("http://collector:4318/v1/logs");
     }
 
     @Test

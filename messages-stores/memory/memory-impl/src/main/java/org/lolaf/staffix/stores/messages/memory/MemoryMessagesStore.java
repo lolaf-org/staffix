@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.messages.memory;
 import lombok.Getter;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
@@ -43,7 +44,7 @@ public class MemoryMessagesStore extends Startable.SimpleStartable<FixMessagesSt
     }
 
     @Override
-    public FixSessionMessagesStore getStore(FixSessionId fixSessionId) {
+    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {
         return memoryFixSessionStoreContext.computeIfAbsent(fixSessionId, sid -> new MemoryFixSessionMessagesStore(settings));
     }
 

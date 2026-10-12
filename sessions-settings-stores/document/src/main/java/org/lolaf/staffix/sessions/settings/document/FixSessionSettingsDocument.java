@@ -77,11 +77,13 @@ public class FixSessionSettingsDocument {
     private String fixApplicationInstanceId;
     private String fixMessageStoreInstanceId;
     private String fixMessageLoggerInstanceId;
+    private String fixAlertsPublisherInstanceId;
     private Map<String, String> fixSessionPluginsInstanceIds;
     @Valid
     private ValidationSettings validationSettings;
     private Boolean testingMode;
     private Duration disconnectMessagesFlushDeadline;
+    private Duration sessionDownAlertDelay;
     @Valid
     private CancelOnDisconnectSettings cancelOnDisconnectSettings;
     @Valid

@@ -38,7 +38,7 @@ abstract class SessionOperationRoute extends Route {
         this.sessions = sessions;
     }
 
-    abstract void apply(FixSessionId fixSessionId, HttpExchange exchange) throws IOException;
+    abstract void apply(FixSessionId fixSessionId, HttpExchange exchange, List<String> path) throws IOException;
 
     @Override
     public final void handle(HttpExchange exchange, List<String> path) throws IOException {
@@ -46,7 +46,7 @@ abstract class SessionOperationRoute extends Route {
         String name = param(path, "name");
         FixSessionId running = sessions.runningConfig(group, name);
         try {
-            apply(running, exchange);
+            apply(running, exchange, path);
         } catch (IllegalArgumentException e) {
             if (!running.equals(sessions.runningConfig(group, name))) {
                 throw new HttpProblemException(409, "Session " + name + " of group " + group

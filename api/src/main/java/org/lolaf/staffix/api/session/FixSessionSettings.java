@@ -19,6 +19,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
@@ -203,6 +204,12 @@ public class FixSessionSettings {
      */
     @Builder.Default
     private String fixMessageLoggerInstanceId = InstanceProvider.DEFAULT_INSTANCE_ID;
+    /**
+     * Instance id of the alerts publisher this session's probes report to; see
+     * {@link FixAlertsPublisherSettings#getInstanceId()}.
+     */
+    @Builder.Default
+    private String fixAlertsPublisherInstanceId = InstanceProvider.DEFAULT_INSTANCE_ID;
 
     /**
      * Instance id of the application this session is bound to, within the selected factory, whose
@@ -237,6 +244,14 @@ public class FixSessionSettings {
      */
     @Builder.Default
     private Duration disconnectMessagesFlushDeadline = Duration.ofSeconds(2);
+
+    /**
+     * How long the session may stay logged out inside its session time before its built-in {@code session-down}
+     * probe raises a critical alert; {@link Duration#ZERO} turns the probe off. Short enough to catch an outage, long
+     * enough to ride out a reconnect.
+     */
+    @Builder.Default
+    private Duration sessionDownAlertDelay = Duration.ofSeconds(10);
 
     /**
      * When the session is expected to be up, in the venue's own time zone.

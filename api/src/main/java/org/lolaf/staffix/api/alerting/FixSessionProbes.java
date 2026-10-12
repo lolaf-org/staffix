@@ -1,0 +1,45 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.lolaf.staffix.api.alerting;
+
+import java.util.List;
+
+/**
+ * The probes of one session, added and removed at runtime from any thread. They live as long as the session: a
+ * session rebuilt after a settings change starts with none, which is why an application adds its probes in
+ * {@link org.lolaf.staffix.api.application.FixApplication#setup}.
+ */
+public interface FixSessionProbes {
+
+    /**
+     * Starts evaluating the probe on the next tick.
+     *
+     * @throws IllegalArgumentException if the session already has a probe of that name
+     */
+    void add(Probe probe);
+
+    /**
+     * Stops evaluating the probe; an alert it had ongoing is published as cleared.
+     *
+     * @return false if the session has no probe of that name
+     */
+    boolean remove(String name);
+
+    /**
+     * The probes in the order they were added, as an immutable snapshot.
+     */
+    List<Probe> list();
+}

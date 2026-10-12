@@ -21,7 +21,6 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.stores.core.async.AsyncEventInstanceProvider;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.stores.core.async.AsyncStoreThreads;
-import org.lolaf.staffix.stores.core.async.StoreUnderlyingResourceStateListener;
 import org.lolaf.staffix.stores.messages.testkit.AbstractFixSessionMessagesStoreTest;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
@@ -39,11 +38,9 @@ class TestAsyncMessagesStoreWithTestKit extends AbstractFixSessionMessagesStoreT
 
     @Override
     protected void beforeSetUp() throws Exception {
-        StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener = mock(StoreUnderlyingResourceStateListener.class);
         asyncMessagesStoreSettings = AsyncMessagesStoreSettings.builder()
                 .asyncStoreSettings(AsyncStoreSettings.builder()
                         .asyncQueueDirectory("./target/" + System.currentTimeMillis())
-                        .storeUnderlyingResourceStateListener(storeUnderlyingResourceStateListener)
                         .build())
                 .wrappedFixMessagesStoreSettings(TestingFixMessagesStoreSettings.builder()
                         .build())

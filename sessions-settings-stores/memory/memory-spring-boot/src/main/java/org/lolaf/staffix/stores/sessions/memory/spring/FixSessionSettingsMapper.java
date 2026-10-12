@@ -120,6 +120,9 @@ public class FixSessionSettingsMapper {
         if (p.getFixMessageLoggerInstanceId() != null) {
             b.fixMessageLoggerInstanceId(p.getFixMessageLoggerInstanceId());
         }
+        if (p.getFixAlertsPublisherInstanceId() != null) {
+            b.fixAlertsPublisherInstanceId(p.getFixAlertsPublisherInstanceId());
+        }
         if (p.getFixSessionPluginsInstanceIds() != null) {
             p.getFixSessionPluginsInstanceIds().forEach((className, instanceId) -> {
                 Class<?> raw;
@@ -175,6 +178,9 @@ public class FixSessionSettingsMapper {
         }
         if (p.getDisconnectMessagesFlushDeadline() != null) {
             b.disconnectMessagesFlushDeadline(p.getDisconnectMessagesFlushDeadline());
+        }
+        if (p.getSessionDownAlertDelay() != null) {
+            b.sessionDownAlertDelay(p.getSessionDownAlertDelay());
         }
         if (p.getCancelOnDisconnect() != null) {
             FixSessionSettings.CancelOnDisconnectSettings.CancelOnDisconnectSettingsBuilder<?, ?> cb = FixSessionSettings.CancelOnDisconnectSettings.builder();

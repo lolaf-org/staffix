@@ -133,7 +133,6 @@ class GenerateDdlMojoTest {
         outputDir.mkdirs();
 
         String tablePrefix = "test";
-        System.setProperty("staffix.table.prefix", tablePrefix);
 
         GenerateDdlMojo mojo = new GenerateDdlMojo();
         setField(mojo, "dialect", "org.hibernate.dialect.MySQLDialect");
@@ -155,10 +154,9 @@ class GenerateDdlMojoTest {
         assertThat(content)
                 .isNotEmpty()
                 .contains("create table " + tablePrefix + "_fix_messages")
-                .contains("create table " + tablePrefix + "_fix_messages_session_state");
-
-        // Cleanup
-        System.clearProperty("staffix.table.prefix");
+                .contains("create table " + tablePrefix + "_fix_messages_session_state")
+                .contains("create index " + tablePrefix + "_idx_session_seq")
+                .doesNotContain("create index idx_");
     }
 
     @Test

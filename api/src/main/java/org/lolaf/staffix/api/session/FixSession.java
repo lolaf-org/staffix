@@ -17,6 +17,7 @@ package org.lolaf.staffix.api.session;
 
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.staffix.api.FixEngineBuilder;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
@@ -175,7 +176,8 @@ public interface FixSession {
      * This is typically a better option to send multiple messages in a row than calling {@link #send(FixMessageEncoder, UTCTime)} in a loop.
      * It will make a better use of tcp window mechanism and BDP vs slightly increased latency.
      * {@link #flush()} must be called at the end to actually send the serialized messages on the FIX session socket.
-     * The implementation must be multi threading access safe
+     * The implementation must be multi threading access safe. Each encoder is in use until its message has been
+     * written, after the {@code flush()}, whatever the calling thread.
      *
      * @param encoder                      the FIX message encoder
      * @param sendingTime                  the message sending time or null to use the system current time
@@ -206,9 +208,14 @@ public interface FixSession {
     <C extends PluginContext> Optional<C> getPluginContext(Class<C> pluginContextClass);
 
     /**
-     * Send the FixMessageEncoder immediately if the methods is called within the IO thread or enqueue the encoder
-     * to be processed and sent over the wire by the IO thread
-     * The implementation must be multi threading access safe
+     * Sends a message, from any thread. The message is numbered and written on the session's IO thread, and stored
+     * instead when the session has no connection.
+     *
+     * <p><b>Called on the IO thread</b> (a {@link #processTask} task, a decoder callback), the encoder is yours again
+     * when this returns, even when the message has to wait: behind a write still going out, while the session recovers
+     * missing messages, or with no connection. <b>Called from another thread</b>, the encoder is in use until the
+     * message has been written: take one per message from a pool, or check {@link FixMessageEncoder#isAvailable()}
+     * before beginning a reusable one again.
      *
      * @param encoder     the FIX message encoder
      * @param sendingTime the message sending time or null to use the system current time
@@ -216,9 +223,8 @@ public interface FixSession {
     void send(FixMessageEncoder<?> encoder, UTCTime sendingTime);
 
     /**
-     * Send the FixMessageEncoder immediately if the methods is called within the IO thread or enqueue the encoder
-     * to be processed and sent over the wire by the IO thread
-     * The implementation must be multi threading access safe
+     * As {@link #send(FixMessageEncoder, UTCTime)}, telling {@code messageSendOperationCallback} whether the message was
+     * sent.
      *
      * @param encoder                      the FIX message encoder
      * @param sendingTime                  the message sending time or null to use the system current time
@@ -342,6 +348,12 @@ public interface FixSession {
      * when the logger does not log events.
      */
     void logEvent(String event, Object... params);
+
+    /**
+     * The probes watching this session, which application code adds and removes at runtime; see
+     * {@link org.lolaf.staffix.api.alerting.Probe}.
+     */
+    FixSessionProbes getProbes();
 
     /**
      * Indicates whether a FIX session is operated as an {@link #INITIATOR} (it establishes the connection) or an

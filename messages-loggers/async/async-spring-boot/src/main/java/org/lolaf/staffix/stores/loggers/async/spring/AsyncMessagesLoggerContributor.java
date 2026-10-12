@@ -62,6 +62,8 @@ public class AsyncMessagesLoggerContributor implements FixMessagesLoggerSettings
                 b.flushPendingMessagesOnStartupDelay(p.getFlushPendingMessagesOnStartupDelay());
             if (p.getLogByteBufferSize() != null) b.logByteBufferSize(p.getLogByteBufferSize());
             if (p.getUseDirectByteBuffer() != null) b.useDirectByteBuffer(p.getUseDirectByteBuffer());
+            if (p.getResourceCheckInterval() != null) b.resourceCheckInterval(p.getResourceCheckInterval());
+            if (p.getAlertClearDelay() != null) b.alertClearDelay(p.getAlertClearDelay());
             registry.put(p.getWraps(), b.build());
         });
     }

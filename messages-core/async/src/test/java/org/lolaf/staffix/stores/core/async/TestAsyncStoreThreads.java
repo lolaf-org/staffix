@@ -25,20 +25,15 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
 
 class TestAsyncStoreThreads {
 
     FixSessionId fixSessionId;
-    QueueSizeThresholdsListener queueSizeThresholdsListener;
     AsyncStoreThreads<TestAsyncEvent> asyncStoreThreads;
     AsyncStoreSettings asyncStoreSettings;
     PersistentQueue<TestAsyncEvent> persistentQueue;
@@ -55,21 +50,9 @@ class TestAsyncStoreThreads {
     @BeforeEach
     void setup() {
         fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "sender", "target");
-        queueSizeThresholdsListener = mock(QueueSizeThresholdsListener.class);
         asyncStoreSettings = AsyncStoreSettings.builder()
                 .asyncQueueDirectory("./target/chronicle-" + System.currentTimeMillis())
-                .queueSizeThresholdsListener(queueSizeThresholdsListener)
                 .readerThreadMaxEventsProcessingPerStore(10)
-                .queueSizeThresholdsSettings(AsyncStoreSettings.QueueSizeThresholdsSettings.builder()
-                        .critical(500)
-                        .warn(300)
-                        .normal(100)
-                        // The reader evaluates the thresholds on the same loop that drains the queue, and only
-                        // notifies once an interval has gone by, so a band is reported only if the queue happens to
-                        // be inside it when a notification is due. Sampling every 50ms rather than every second
-                        // takes tens of samples across the drain instead of one or two, so each band is seen.
-                        .evaluationInterval(Duration.ofMillis(50))
-                        .build())
                 .build();
 
         persistentQueue = new PersistentQueue<>(fixSessionId);
@@ -101,43 +84,18 @@ class TestAsyncStoreThreads {
     }
 
     @Test
-    void testQueueSizeThresholdsAreTriggered() {
+    void aRegisteredQueueIsDrainedIntoItsConsumer() {
         persistentQueue.start(asyncStoreSettings, "test");
         asyncStoreThreads.start();
-
-        // A consumer that costs something to call, which puts a ceiling on how fast the queue can drain that this
-        // test sets rather than the machine it runs on. Left to run flat out the reader empties the 1000 events
-        // below in well under one evaluation interval on a fast box, and the queue is already past CRITICAL - and
-        // sometimes past WARNING too - by the time anything is looked at.
-        Consumer<TestAsyncEvent> slowConsumer = event -> LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
-        asyncStoreThreads.register(fixSessionId, persistentQueue, slowConsumer, asyncEventSerde);
+        AtomicInteger consumed = new AtomicInteger();
+        asyncStoreThreads.register(persistentQueue, event -> consumed.incrementAndGet(), asyncEventSerde);
 
         for (int i = 0; i < 1000; i++) {
             persistentQueue.offer(asyncEventSerde, new TestAsyncEvent(null, "test"));
         }
 
-        // CRITICAL and WARNING are re-notified every evaluationInterval for as long as the queue stays above the
-        // threshold, so how many times they are seen only tells how long the reader took to drain below it, which is a
-        // property of the machine and not of the code under test. Only the fact that each is reached is asserted here.
-        await().untilAsserted(() -> verify(queueSizeThresholdsListener, atLeast(1))
-                .onQueueSizeThresholdReached(eq(fixSessionId), eq(QueueSizeThresholdsListener.QueueSizeThreshold.CRITICAL), anyInt(), anyInt()));
-        await().untilAsserted(() -> verify(queueSizeThresholdsListener, atLeast(1))
-                .onQueueSizeThresholdReached(eq(fixSessionId), eq(QueueSizeThresholdsListener.QueueSizeThreshold.WARNING), anyInt(), anyInt()));
-        // NORMAL, on the other hand, is notified on the transition only (no re-notification), and nothing is offered
-        // past this point, so it is reached exactly once and staying with the default times(1) is timing independent.
-        await().untilAsserted(() -> verify(queueSizeThresholdsListener)
-                .onQueueSizeThresholdReached(eq(fixSessionId), eq(QueueSizeThresholdsListener.QueueSizeThreshold.NORMAL), anyInt(), anyInt()));
-
-        reset(queueSizeThresholdsListener);
-        for (int j = 0; j < 3; j++) {
-            LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(1));
-            for (int i = 0; i < 90; i++) {
-                persistentQueue.offer(asyncEventSerde, new TestAsyncEvent(null, "test"));
-            }
-        }
-
-        verify(queueSizeThresholdsListener, never())
-                .onQueueSizeThresholdReached(eq(fixSessionId), eq(QueueSizeThresholdsListener.QueueSizeThreshold.NORMAL), anyInt(), anyInt());
+        await().untilAsserted(() -> assertThat(consumed).hasValue(1000));
+        assertThat(persistentQueue.isEmpty()).isTrue();
     }
 
     @Test

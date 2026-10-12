@@ -33,8 +33,8 @@ public final class SessionsRoute extends Route {
     @Override
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
         SessionsDocument document = documents.get();
-        if (!notModified(exchange, document.version)) {
-            send(exchange, 200, "application/json", document.json);
+        if (!notModified(exchange, document.getVersion())) {
+            send(exchange, 200, "application/json", document.getJson());
         }
     }
 }

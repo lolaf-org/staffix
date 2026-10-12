@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.admin.http.routes;
 
+import org.lolaf.staffix.admin.http.ProbesDocuments;
 import org.lolaf.staffix.admin.http.SessionsDocument;
 import org.lolaf.staffix.admin.http.dto.EngineStatus;
 import org.lolaf.staffix.api.admin.AdminApi;
@@ -26,16 +27,19 @@ public final class StatusRoute extends JsonRoute {
 
     private final AdminApi adminApi;
     private final SessionsDocumentCache documents;
+    private final ProbesDocuments probes;
 
-    public StatusRoute(AdminApi adminApi, SessionsDocumentCache documents, JsonResponseBuffer json) {
+    public StatusRoute(AdminApi adminApi, SessionsDocumentCache documents, ProbesDocuments probes, JsonResponseBuffer json) {
         super("v1/status", json);
         this.adminApi = adminApi;
         this.documents = documents;
+        this.probes = probes;
     }
 
     @Override
     Object body(List<String> path) throws IOException {
         SessionsDocument document = documents.get();
-        return EngineStatus.of(adminApi, document.running, document.version);
+        return EngineStatus.of(adminApi, document.getRunning(), document.getVersion(), probes.getAlertsVersion(),
+                fixSessionId -> probes.get(fixSessionId).getVersion());
     }
 }

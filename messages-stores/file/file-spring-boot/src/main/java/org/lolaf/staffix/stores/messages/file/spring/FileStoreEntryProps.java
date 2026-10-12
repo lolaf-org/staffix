@@ -18,6 +18,8 @@ package org.lolaf.staffix.stores.messages.file.spring;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
 
+import java.time.Duration;
+
 /**
  * One configured instance of the file message store: its instance id and the settings a session naming that id gets.
  */
@@ -40,4 +42,13 @@ public class FileStoreEntryProps {
      * Whether each write is forced to disk. Safest, and the slowest.
      */
     private Boolean syncWrites;
+    /**
+     * How often a store whose resource is down is checked for its return, its calls being skipped meanwhile. Zero
+     * disables the check, so every call reaches the resource.
+     */
+    private Duration resourceCheckInterval;
+    /**
+     * How long store calls must keep succeeding before the session's messages-store alert clears.
+     */
+    private Duration alertClearDelay;
 }

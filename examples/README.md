@@ -65,6 +65,7 @@ They are [picocli](https://picocli.info) commands, so `--help` lists the options
 | [`staffix-api-examples`](staffix-api-examples) → `TradingExample`            | NewOrderSingle / ExecutionReport, the order-lifecycle path                                                             | [`TradingExample.sh`](staffix-api-examples/TradingExample.sh)                          |
 | [`staffix-api-examples`](staffix-api-examples) → `MarketDataStreamerExample` | MarketDataSnapshotFullRefresh streaming, the highest-volume path                                                       | [`MarkedDataStreamer.sh`](staffix-api-examples/MarkedDataStreamer.sh)                  |
 | [`plugin-api`](plugin-api)                                                   | writing a session plugin: a user-defined field stamped onto every outbound Email, with both applications unaware of it | [`PluginApiExample.sh`](plugin-api/PluginApiExample.sh)                                |
+| [`alerting`](alerting)                                                       | probes an application adds on logon and removes on logout: its own evaluator, a rate and alerts raised from code, logged through SLF4J | [`AlertingExample.sh`](alerting/AlertingExample.sh)                                    |
 | [`file-session-settings`](file-session-settings)                             | sessions declared in YAML files instead of in code: the acceptor's read from a directory, the initiator's from the classpath                                     | [`FileSessionSettingsExample.sh`](file-session-settings/FileSessionSettingsExample.sh) |
 | [`spring-boot-starter-example`](spring-boot-starter-example)                 | acceptor and initiator declared entirely in `application.properties`; you supply only the `FixApplication` beans       | [`SpringBootExample.sh`](spring-boot-starter-example/SpringBootExample.sh)             |
 | [`advanced-monitoring`](advanced-monitoring)                                 | metrics, logs and traces exported over OTLP; pair it with the [Grafana stack](../monitoring/grafana)                   | [`MetricsLogsTracesExample.sh`](advanced-monitoring/MetricsLogsTracesExample.sh)       |
@@ -124,6 +125,39 @@ startup, so a run held at a prompt would begin with its schedule already in the 
 `plugin-api` is the one to read if you want to *extend* the engine rather than use it: `StampingFixSessionsPlugin`
 is a complete `FixSessionsPlugin`, registration and all, in about a hundred lines. It goes with the
 [Session plugins](../docs/session-plugins.md) guide.
+
+`alerting` is the one to read for alerting. Its initiator sends orders in bursts with pauses of 1, 6 and 20 seconds.
+The acceptor's application adds three probes on logon and removes them on logout, which clears an ongoing alert:
+
+- `order-flow`, its own evaluator: `WARNING` after 4 seconds without an order, `MAJOR` after 10, re-published every 5
+  seconds while it lasts;
+- `order-rate`, a `RateAlertEvaluator` recording each order: `WARNING` from 8 orders in 5 seconds, when two bursts
+  come close together;
+- `large-order`, a `RaisedAlertEvaluator` raised on an order above 10000, sent every fourth burst, expiring after 15
+  seconds; it carries a label and a runbook URL.
+
+The SLF4J alerts publisher the sessions name logs every change:
+
+```
+14.648 [WARN ] Alert RAISED on session acceptor.acceptor-session-1, probe order-flow (...): WARNING no order for more than 4s
+16.642 [INFO ] Alert CLEARED on session acceptor.acceptor-session-1, probe order-flow (...): WARNING no order for more than 4s
+20.642 [WARN ] Alert RAISED on session acceptor.acceptor-session-1, probe order-flow (...): WARNING no order for more than 4s
+25.642 [WARN ] Alert REMINDED on session acceptor.acceptor-session-1, probe order-flow (...): WARNING no order for more than 4s
+26.642 [ERROR] Alert CHANGED on session acceptor.acceptor-session-1, probe order-flow (...): MAJOR no order for more than 10s
+31.642 [ERROR] Alert REMINDED on session acceptor.acceptor-session-1, probe order-flow (...): MAJOR no order for more than 10s
+36.642 [INFO ] Alert CLEARED on session acceptor.acceptor-session-1, probe order-flow (...): MAJOR no order for more than 10s
+```
+
+and the other two:
+
+```
+48.778 [WARN ] Alert RAISED on session acceptor.acceptor-session-1, probe order-rate (...): WARNING 10 in the last 5s, WARNING from 8
+14.642 [ERROR] Alert RAISED on session acceptor.acceptor-session-1, probe large-order (...): MAJOR order of 100000 above the limit of 10000
+29.642 [INFO ] Alert CLEARED on session acceptor.acceptor-session-1, probe large-order (...): MAJOR order of 100000 above the limit of 10000
+```
+
+`-ws`, `-ms`, `-ri`, `-p` and `-bs` change the thresholds, the reminder interval, the pauses and the burst size;
+`-rw`, `-ql` and `-lb` the rate threshold, the quantity limit and how often a large order is sent.
 
 `staffix-api-examples` also ships [`ToastMyCpuExample.sh`](staffix-api-examples/ToastMyCpuExample.sh): `TradingExample`
 with the message store and logger set to `VOID` and low-latency mode on, which is the configuration to run when you

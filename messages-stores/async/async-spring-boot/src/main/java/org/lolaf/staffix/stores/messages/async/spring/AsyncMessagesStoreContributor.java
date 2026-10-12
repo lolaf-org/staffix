@@ -64,6 +64,8 @@ public class AsyncMessagesStoreContributor implements FixMessagesStoreSettingsCo
                 b.findWaitForEmptyQueueTimeout(p.getFindWaitForEmptyQueueTimeout());
             if (p.getMessageByteBufferSize() != null) b.messageByteBufferSize(p.getMessageByteBufferSize());
             if (p.getUseDirectByteBuffer() != null) b.useDirectByteBuffer(p.getUseDirectByteBuffer());
+            if (p.getResourceCheckInterval() != null) b.resourceCheckInterval(p.getResourceCheckInterval());
+            if (p.getAlertClearDelay() != null) b.alertClearDelay(p.getAlertClearDelay());
             registry.put(p.getWraps(), b.build());
         });
     }

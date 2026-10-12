@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.TestingClock;
 import org.lolaf.staffix.api.FixDictionaryId;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.DecodingException;
 import org.lolaf.staffix.api.codec.FixMessageEncoderFactory;
@@ -67,7 +68,7 @@ class TestDecodedFixMessageDecoder {
                 .build();
 
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                new TestingLogger().getLogger("engine", "test", fixSessionId, messageTypeRegistry), validationSettings,
+                new TestingLogger().getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(FixSessionProbes.class)), validationSettings,
                 TestingClock.get(), mock(FixMessageParserEventsListener.class));
     }
 

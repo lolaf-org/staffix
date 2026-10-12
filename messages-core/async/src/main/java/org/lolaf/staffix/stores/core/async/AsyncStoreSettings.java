@@ -25,9 +25,11 @@ import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.ringos.idling.TimerSlackAwareBackoffIdleStrategy;
 import org.lolaf.ringos.threading.FastThreadLocalThread;
+import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
@@ -99,42 +101,21 @@ public class AsyncStoreSettings {
     private int readerThreadMaxEventsProcessingPerStore = 1024;
 
     /**
-     * Queue size thresholds settings
+     * The depths at which the queue's probe raises and clears its alert; see {@link QueueSizeEvaluator}.
      */
     @Builder.Default
     private QueueSizeThresholdsSettings queueSizeThresholdsSettings = QueueSizeThresholdsSettings.builder().build();
-
-    /**
-     * Queue size thresholds changes listener
-     */
-    @Builder.Default
-    private QueueSizeThresholdsListener queueSizeThresholdsListener = QueueSizeThresholdsListener.VoidQueueSizeThresholdsListener.getInstance();
-
-    /**
-     * Underlying resource state changes listener
-     */
-    @Builder.Default
-    private StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener = StoreUnderlyingResourceStateListener.VoidStoreUnderlyingResourceStateListener.getInstance();
 
     @Getter
     @Builder(toBuilder = true)
     public static class QueueSizeThresholdsSettings {
 
         /**
-         * The depth considered healthy.
+         * The depth from which each level is raised; the highest level reached wins, and the alert clears below the
+         * lowest threshold.
          */
         @Builder.Default
-        private int normal = 10;
-        /**
-         * The depth at which the queue is reported as growing.
-         */
-        @Builder.Default
-        private int warn = 100;
-        /**
-         * The depth at which it is reported as not keeping up.
-         */
-        @Builder.Default
-        private int critical = 1000;
+        private Map<AlertLevel, Integer> thresholds = Map.of(AlertLevel.WARNING, 250, AlertLevel.MAJOR, 1000, AlertLevel.CRITICAL, 5000);
 
         /**
          * How often the depth is measured.

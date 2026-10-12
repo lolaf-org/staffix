@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.messages.jdbc;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 
@@ -55,7 +56,7 @@ public class JdbcMessagesStore extends Startable.SimpleStartable<FixMessagesStor
     }
 
     @Override
-    public FixSessionMessagesStore getStore(FixSessionId fixSessionId) {
+    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {
         return sessionStores.computeIfAbsent(fixSessionId,
                 sid -> new JdbcFixSessionMessagesStore(settings, fixSessionId, scheduledExecutorService));
     }

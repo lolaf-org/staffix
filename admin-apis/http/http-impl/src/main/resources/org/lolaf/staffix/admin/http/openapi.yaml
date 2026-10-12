@@ -176,6 +176,97 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/sessions/{group}/{name}/probes:
+    get:
+      summary: The session's probes, which change only when one is added or removed
+      operationId: getSessionProbes
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The session's probes, in the order they were added.
+          headers:
+            ETag:
+              description: The probes' version, quoted; the same as probesVersion in the status.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProbeDescription'
+        '304':
+          description: Unchanged since the ETag sent in If-None-Match.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sessions/{group}/{name}/probes/states:
+    get:
+      summary: Where each of the session's probes stood at its last evaluation
+      operationId: getSessionProbeStates
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '200':
+          description: One state per probe evaluated at least once.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProbeStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sessions/{group}/{name}/probes/{probe}/clear:
+    post:
+      summary: Clears the probe's ongoing alert, when its evaluator accepts it
+      description: The alert clears at the engine's next evaluation tick, published as manually cleared. A probe whose
+        condition is polled refuses, since it would only raise the alert again.
+      operationId: clearAlert
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+        - name: probe
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/alerts:
+    get:
+      summary: Every probe in alert across the engine
+      description: Fetch it again when alertsVersion in the status differs from the one held.
+      operationId: getAlerts
+      responses:
+        '200':
+          description: The engine's ongoing alerts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineAlerts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/session-settings-stores/{storeId}/reload:
     post:
       summary: Reloads a session settings store, starting, stopping or restarting the sessions it changed
@@ -634,13 +725,17 @@ components:
             $ref: '#/components/schemas/DictionaryRef'
     EngineStatus:
       type: object
-      required: [engineId, sessionsVersion, sessions]
+      required: [engineId, sessionsVersion, alertsVersion, sessions]
       properties:
         engineId:
           type: string
         sessionsVersion:
           type: string
           description: The version of the sessions document these sessions belong to; fetch it again when it differs.
+        alertsVersion:
+          type: integer
+          format: int64
+          description: Moves with every alert raised, changed or cleared; fetch the alerts again when it differs.
         sessions:
           type: array
           items:
@@ -674,6 +769,11 @@ components:
         outgoingSeqNum:
           type: integer
           format: int64
+        probesVersion:
+          type: string
+          description: The version of the session's probes; fetch them again when it differs.
+        alertLevel:
+          $ref: '#/components/schemas/AlertLevel'
     FixIdentity:
       type: object
       required: [fixVersion, sender, target]
@@ -741,9 +841,94 @@ components:
         custom:
           type: boolean
           description: Registered by the application rather than by the monitoring.
+    AlertLevel:
+      type: string
+      description: The worst first. Absent where nothing is wrong; new levels may be added.
+      enum: [WARNING, MAJOR, CRITICAL]
+    ProbeDescription:
+      type: object
+      required: [name, description, evaluationInterval, labels]
+      properties:
+        name:
+          type: string
+          description: Unique within the session.
+        description:
+          type: string
+        evaluationInterval:
+          type: string
+          description: ISO-8601 duration, such as PT1S.
+        reminderInterval:
+          type: string
+          description: ISO-8601 duration an ongoing alert is published again at; absent for transitions only.
+        labels:
+          type: object
+          description: Carried on every alert of the probe for routing and grouping; empty when it has none.
+          additionalProperties:
+            type: string
+        runbookUrl:
+          type: string
+          format: uri
+          description: What to do about the probe's alerts; absent when it has none.
+    ProbeStatus:
+      type: object
+      required: [probe, lastEvaluation]
+      properties:
+        probe:
+          type: string
+        level:
+          $ref: '#/components/schemas/AlertLevel'
+        message:
+          type: string
+          description: The ongoing problem; absent while the probe is normal.
+        since:
+          type: string
+          format: date-time
+          description: When the ongoing alert was raised, kept across level changes.
+        lastEvaluation:
+          type: string
+          format: date-time
+    EngineAlerts:
+      type: object
+      required: [engineId, alertsVersion, alerts]
+      properties:
+        engineId:
+          type: string
+        alertsVersion:
+          type: integer
+          format: int64
+          description: These alerts are at least as recent as this version.
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActiveAlert'
+    ActiveAlert:
+      type: object
+      required: [group, name, selectedConfig, probe, level, message, since]
+      properties:
+        group:
+          type: string
+        name:
+          type: string
+          description: The main config's name, unique within the group.
+        selectedConfig:
+          type: string
+          description: The config the alert was raised on.
+        probe:
+          type: string
+        level:
+          $ref: '#/components/schemas/AlertLevel'
+        message:
+          type: string
+        since:
+          type: string
+          format: date-time
+        runbookUrl:
+          type: string
+          format: uri
+          description: The probe's runbook; absent when it has none.
     SessionComponents:
       type: object
-      required: [applicationFactories, messagesStores, messagesLoggers, sessionsPlugins]
+      required: [applicationFactories, messagesStores, messagesLoggers, alertsPublishers, sessionsPlugins]
       properties:
         applicationFactories:
           type: array
@@ -766,6 +951,11 @@ components:
         messagesLoggers:
           type: array
           description: For fixMessageLoggerInstanceId.
+          items:
+            type: string
+        alertsPublishers:
+          type: array
+          description: For fixAlertsPublisherInstanceId.
           items:
             type: string
         sessionsPlugins:

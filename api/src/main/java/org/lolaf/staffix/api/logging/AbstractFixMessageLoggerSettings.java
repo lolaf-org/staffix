@@ -21,6 +21,7 @@ import lombok.Singular;
 import lombok.experimental.SuperBuilder;
 import org.lolaf.staffix.api.msg.MessageType;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.function.BiPredicate;
 
@@ -65,4 +66,14 @@ public class AbstractFixMessageLoggerSettings implements FixMessagesLoggerSettin
      */
     @Builder.Default
     private BiPredicate<MessageType, FixMessagesLogger.LogEventType> messageFilter = (messageType, logeventType) -> false;
+    /**
+     * See {@link FixMessagesLoggerSettings#getResourceCheckInterval()}.
+     */
+    @Builder.Default
+    private Duration resourceCheckInterval = DEFAULT_RESOURCE_CHECK_INTERVAL;
+    /**
+     * See {@link FixMessagesLoggerSettings#getAlertClearDelay()}.
+     */
+    @Builder.Default
+    private Duration alertClearDelay = DEFAULT_ALERT_CLEAR_DELAY;
 }

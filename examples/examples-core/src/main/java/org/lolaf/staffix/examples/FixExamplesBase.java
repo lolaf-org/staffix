@@ -33,6 +33,7 @@ import org.lolaf.ringos.idling.WaitNotifyIdleStrategy;
 import org.lolaf.ringos.threading.FastThreadLocalThread;
 import org.lolaf.ringos.timer.WheelTimer;
 import org.lolaf.staffix.admin.jmx.JmxAdminApiSettings;
+import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
@@ -57,7 +58,6 @@ import org.lolaf.staffix.monitoring.micrometer.otlp.OtlpMicrometerMonitoringMana
 import org.lolaf.staffix.plugins.async.AsyncFixSessionsPluginSettings;
 import org.lolaf.staffix.plugins.throttling.ThrottlingFixSessionsPluginSettings;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
-import org.lolaf.staffix.stores.core.async.QueueSizeThresholdsListener;
 import org.lolaf.staffix.stores.loggers.async.AsyncMessagesLoggerSettings;
 import org.lolaf.staffix.stores.loggers.file.FileMessagesLoggerSettings;
 import org.lolaf.staffix.stores.loggers.otlp.OtlpMessagesLoggerSettings;
@@ -461,7 +461,7 @@ class FixExamplesBase {
         }
         return AsyncMessagesLoggerSettings.builder()
                 .wrappedLoggerSettings(loggerSettings)
-                .asyncStoreSettings(getAsyncStoreSettings("Fix logs").toBuilder().readerThreadsCount(asyncReaderThreadsCount).build())
+                .asyncStoreSettings(getAsyncStoreSettings().toBuilder().readerThreadsCount(asyncReaderThreadsCount).build())
                 .useDirectByteBuffer(true)
                 .build();
     }
@@ -501,22 +501,19 @@ class FixExamplesBase {
         }
         return AsyncMessagesStoreSettings.builder()
                 .wrappedFixMessagesStoreSettings(settings)
-                .asyncStoreSettings(getAsyncStoreSettings("Fix messages").toBuilder().readerThreadsCount(asyncReaderThreadsCount).build())
+                .asyncStoreSettings(getAsyncStoreSettings().toBuilder().readerThreadsCount(asyncReaderThreadsCount).build())
                 .useDirectByteBuffer(true)
                 .build();
     }
 
-    private AsyncStoreSettings getAsyncStoreSettings(String prefix) {
+    private AsyncStoreSettings getAsyncStoreSettings() {
         return AsyncStoreSettings.builder()
                 .asyncQueueDirectory("./target/async-queue/")
                 .rollCycleProvider(sid -> RollCycles.FAST_HOURLY)
                 .eventsBatching(1024)
                 .queueSizeThresholdsSettings(AsyncStoreSettings.QueueSizeThresholdsSettings.builder()
-                        .normal(100)
-                        .warn(2000)
-                        .critical(4000)
+                        .thresholds(Map.of(AlertLevel.WARNING, 2000, AlertLevel.CRITICAL, 4000))
                         .build())
-                .queueSizeThresholdsListener(new QueueSizeThresholdsListener.LoggingQueueSizeThresholdsListener(prefix))
                 .batchingFlushInterval(Duration.ofMillis(250))
                 .build();
     }

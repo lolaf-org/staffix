@@ -23,6 +23,11 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.ProbesListener;
+import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
@@ -37,14 +42,18 @@ import javax.management.MBeanServer;
 import javax.management.MBeanServerFactory;
 import javax.management.ObjectName;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +63,7 @@ class JmxAdminApiTest {
     private static final FixSessionId INITIATOR_SESSION = FixSessionId.of("init1", FixRegularVersion.VERSION_44, "S1", "T1");
     private static final FixSessionId BACKUP_SESSION = FixSessionId.of("backup1", FixRegularVersion.VERSION_44, "S1_DR", "T1_DR");
     private static final FixSessionId ACCEPTOR_SESSION = FixSessionId.of("acc1", FixRegularVersion.VERSION_44, "S2", "T2");
+    private static final Instant SINCE = Instant.parse("2026-10-10T10:00:00Z");
     private MBeanServer mBeanServer;
     private RecordingAdminApi adminApi;
     private JmxAdminApi exporter;
@@ -166,6 +176,64 @@ class JmxAdminApiTest {
                 .hasMessageContaining(BACKUP_SESSION.toString());
     }
 
+    @Test
+    void aSessionsProbesAndTheirStatesAreReadable() throws Exception {
+        adminApi.probeDefinitions.add(ProbeDefinition.builder().name("order-flow").description("Time since the last order")
+                .evaluationInterval(Duration.ofSeconds(1)).label("team", "fix_ops")
+                .runbookUrl(URI.create("https://wiki.example.com/order-flow")).build());
+        adminApi.probeStates.add(ProbeState.builder().probeName("order-flow").alert(Alert.warning("no order for 4s"))
+                .since(SINCE).lastEvaluation(SINCE.plusSeconds(2)).build());
+        adminApi.probeStates.add(ProbeState.builder().probeName("session-down").lastEvaluation(SINCE).build());
+        exporter.export(adminApi);
+        adminApi.lifecycleListener.onSessionRegistered(session(INITIATOR_SESSION, true));
+
+        FixSessionMXBean proxy = JMX.newMXBeanProxy(mBeanServer, sessionName("init1", "Initiator"), FixSessionMXBean.class);
+
+        assertThat(proxy.getProbes()).singleElement().satisfies(probe -> {
+            assertThat(probe.getName()).isEqualTo("order-flow");
+            assertThat(probe.getDescription()).isEqualTo("Time since the last order");
+            assertThat(probe.getEvaluationInterval()).isEqualTo("PT1S");
+            assertThat(probe.getReminderInterval()).isNull();
+            assertThat(probe.getLabels()).containsExactly(Map.entry("team", "fix_ops"));
+            assertThat(probe.getRunbookUrl()).isEqualTo("https://wiki.example.com/order-flow");
+        });
+        assertThat(proxy.getProbeStates()).extracting(FixSessionMXBean.ProbeStatus::getProbe,
+                        FixSessionMXBean.ProbeStatus::getLevel, FixSessionMXBean.ProbeStatus::getMessage,
+                        FixSessionMXBean.ProbeStatus::getSince, FixSessionMXBean.ProbeStatus::getLastEvaluation)
+                .containsExactly(
+                        tuple("order-flow", "WARNING", "no order for 4s", "2026-10-10T10:00:00Z", "2026-10-10T10:00:02Z"),
+                        tuple("session-down", null, null, null, "2026-10-10T10:00:00Z"));
+    }
+
+    @Test
+    void aSessionsAlertIsClearedThroughTheAdminApi() throws Exception {
+        adminApi.managed.add(session(INITIATOR_SESSION, true));
+        exporter.export(adminApi);
+        FixSessionMXBean proxy = JMX.newMXBeanProxy(mBeanServer, sessionName("init1", "Initiator"), FixSessionMXBean.class);
+
+        assertThat(proxy.clearAlert("order-flow")).isTrue();
+        assertThat(proxy.clearAlert("session-down")).isFalse();
+        assertThat(adminApi.clearedAlerts).hasSize(2).allSatisfy(cleared -> assertThat(cleared).startsWith("init1 "));
+    }
+
+    @Test
+    void theEnginesActiveAlertsAreReadableWithTheirSessionIdString() throws Exception {
+        adminApi.activeAlerts.add(new SessionProbeState(ACCEPTOR_SESSION, ProbeState.builder().probeName("session-down")
+                .alert(Alert.critical("down")).since(SINCE).lastEvaluation(SINCE).build(), URI.create("https://wiki.example.com/session-down")));
+        exporter.export(adminApi);
+
+        FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
+
+        assertThat(proxy.getActiveAlerts()).singleElement().satisfies(alert -> {
+            assertThat(alert.getFixSessionId()).isEqualTo(ACCEPTOR_SESSION.toString());
+            assertThat(alert.getProbe()).isEqualTo("session-down");
+            assertThat(alert.getLevel()).isEqualTo("CRITICAL");
+            assertThat(alert.getMessage()).isEqualTo("down");
+            assertThat(alert.getSince()).isEqualTo("2026-10-10T10:00:00Z");
+            assertThat(alert.getRunbookUrl()).isEqualTo("https://wiki.example.com/session-down");
+        });
+    }
+
     private static FixInitiatorTargets initiatorTargets() {
         InetSocketAddress address = new InetSocketAddress("localhost", 1);
         return FixInitiatorTargets.builder()
@@ -197,6 +265,10 @@ class JmxAdminApiTest {
         private final List<String> sentFixMessages = new ArrayList<>();
         private final List<FixInitiatorTargets> initiatorsTargets = new ArrayList<>();
         private final List<FixSessionId> switchedTo = new ArrayList<>();
+        private final List<ProbeDefinition> probeDefinitions = new ArrayList<>();
+        private final List<ProbeState> probeStates = new ArrayList<>();
+        private final List<SessionProbeState> activeAlerts = new ArrayList<>();
+        private final List<String> clearedAlerts = new ArrayList<>();
         private SessionLifecycleListener lifecycleListener;
 
         @Override
@@ -312,6 +384,35 @@ class JmxAdminApiTest {
         @Override
         public List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId) {
             return List.of();
+        }
+
+        @Override
+        public List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId) {
+            return probeDefinitions;
+        }
+
+        @Override
+        public List<ProbeState> getProbeStates(FixSessionId fixSessionId) {
+            return probeStates;
+        }
+
+        @Override
+        public List<SessionProbeState> getActiveAlerts() {
+            return activeAlerts;
+        }
+
+        @Override
+        public boolean clearAlert(FixSessionId fixSessionId, String probeName) {
+            clearedAlerts.add(fixSessionId.getName() + " " + probeName);
+            return !"session-down".equals(probeName);
+        }
+
+        @Override
+        public void addProbesListener(ProbesListener listener) {
+        }
+
+        @Override
+        public void removeProbesListener(ProbesListener listener) {
         }
 
         @Override

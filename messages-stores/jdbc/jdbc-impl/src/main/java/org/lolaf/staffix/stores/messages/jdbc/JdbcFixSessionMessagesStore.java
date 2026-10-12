@@ -65,8 +65,11 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final int maxMessagesPerSession;
     private final Duration pruningCheckInterval;
     private final ScheduledExecutorService scheduledExecutorService;
+    private final String resetSql;
+    private final String deleteAllMessagesSql;
     private String findCutoffSeqNumSql;
     private ScheduledFuture<?> pruningTask;
+    private boolean resetPending;
 
     JdbcFixSessionMessagesStore(JdbcMessageStoreSettings settings, FixSessionId fixSessionId, ScheduledExecutorService scheduledExecutorService) {
         this.cachedInputStreamTL = FastThreadLocal.withInitial(ArrayList::new);
@@ -76,7 +79,8 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         this.incomingSequenceNumber = new AtomicLong(1);
         this.outgoingSequenceNumber = new AtomicLong(1);
         this.tableName = settings.getTablePrefix().isEmpty() ? "fix_messages" : settings.getTablePrefix() + "_fix_messages";
-
+        this.resetSql = "UPDATE " + tableName + "_session_state SET incoming_seq_num = ?, outgoing_seq_num = ? WHERE session_id = ?";
+        this.deleteAllMessagesSql = "DELETE FROM " + tableName + " WHERE session_id = ?";
         this.insertMessageSql = "INSERT INTO " + tableName +
                 " (session_id, sequence_number, message_data) VALUES (?, ?, ?)";
         this.updateIncomingSeqNumSql = "UPDATE " + tableName + "_session_state " +
@@ -194,26 +198,60 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         return messageFilter.test(messageType, message);
     }
 
+    /**
+     * A reset the database could not take is completed by the next call that reaches it, before anything else: until
+     * then the table still holds the messages from before the reset, under the numbers the session now reuses.
+     */
     @Override
     public void resetSequenceNumbers() {
+        incomingSequenceNumber.set(1);
+        outgoingSequenceNumber.set(1);
+        resetPending = true;
         try (Connection conn = dataSource.getConnection()) {
-            String resetSeqNumSql = "UPDATE " + tableName + "_session_state " +
-                    "SET incoming_seq_num = 1, outgoing_seq_num = 1 WHERE session_id = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(resetSeqNumSql)) {
-                stmt.setString(1, fixSessionId.getQualifiedName());
-                stmt.executeUpdate();
-            }
-
-            String deleteAllSql = "DELETE FROM " + tableName + " WHERE session_id = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(deleteAllSql)) {
-                stmt.setString(1, fixSessionId.getQualifiedName());
-                stmt.executeUpdate();
-            }
-            incomingSequenceNumber.set(1);
-            outgoingSequenceNumber.set(1);
-            log.info("Reset sequence numbers for session {}", fixSessionId);
+            completePendingResetIfNeeded(conn);
         } catch (SQLException e) {
-            throw new StoreException("Failed to reset sequence numbers for session " + fixSessionId, e);
+            throw failed("Failed to reset sequence numbers", e);
+        }
+    }
+
+    /**
+     * Stores the current numbers rather than 1, so a reset completed late keeps those taken since.
+     */
+    private void completePendingResetIfNeeded(Connection conn) throws SQLException {
+        if (!resetPending) {
+            return;
+        }
+        synchronized (this) {
+            if (!resetPending) {
+                return;
+            }
+            boolean autoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try (PreparedStatement reset = conn.prepareStatement(resetSql);
+                 PreparedStatement deleteAll = conn.prepareStatement(deleteAllMessagesSql)) {
+                reset.setLong(1, incomingSequenceNumber.get());
+                reset.setLong(2, outgoingSequenceNumber.get());
+                reset.setString(3, fixSessionId.getQualifiedName());
+                reset.executeUpdate();
+                deleteAll.setString(1, fixSessionId.getQualifiedName());
+                deleteAll.executeUpdate();
+                conn.commit();
+                resetPending = false;
+                log.info("Reset sequence numbers for session {}", fixSessionId);
+            } catch (SQLException e) {
+                rollbackQuietly(conn);
+                throw e;
+            } finally {
+                conn.setAutoCommit(autoCommit);
+            }
+        }
+    }
+
+    private void rollbackQuietly(Connection conn) {
+        try {
+            conn.rollback();
+        } catch (SQLException e) {
+            log.debug("Failed to roll back the reset of session {}", fixSessionId, e);
         }
     }
 
@@ -228,7 +266,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     }
 
     @Override
-    public long getNextOutgoingSeqNum() throws StoreException {
+    public long getNextOutgoingSeqNum() {
         return outgoingSequenceNumber.getAndIncrement();
     }
 
@@ -237,9 +275,10 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         incomingSequenceNumber.set(nextIncomingSeqNum);
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(updateIncomingSeqNumSql)) {
+            completePendingResetIfNeeded(conn);
             updateSequenceNumber(nextIncomingSeqNum, stmt);
         } catch (SQLException e) {
-            throw new StoreException("Failed to store incoming sequence number for session " + fixSessionId, e);
+            throw failed("Failed to store incoming sequence number", e);
         }
     }
 
@@ -248,9 +287,10 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         outgoingSequenceNumber.set(nextOutgoingSeqNum);
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(updateOutgoingSeqNumSql)) {
+            completePendingResetIfNeeded(conn);
             updateSequenceNumber(nextOutgoingSeqNum, stmt);
         } catch (SQLException e) {
-            throw new StoreException("Failed to store outgoing sequence number for session " + fixSessionId, e);
+            throw failed("Failed to store outgoing sequence number", e);
         }
     }
 
@@ -270,14 +310,14 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         try (Connection conn = dataSource.getConnection();
              PreparedStatement insert = conn.prepareStatement(insertMessageSql);
              PreparedStatement updateSequenceStmt = conn.prepareStatement(updateOutgoingSeqNumSql)) {
-
+            completePendingResetIfNeeded(conn);
             storeMessage(outgoingSeqNum, message, insert, cachedInputStream);
             insert.executeUpdate();
             long nextOutgoingSeqNum = outgoingSeqNum + 1;
             updateSequenceNumber(nextOutgoingSeqNum, updateSequenceStmt);
             outgoingSequenceNumber.set(nextOutgoingSeqNum);
         } catch (SQLException e) {
-            throw new StoreException("Failed to store message for session " + fixSessionId, e);
+            throw failed("Failed to store message", e);
         } finally {
             cachedInputStream.clean();
         }
@@ -291,7 +331,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         }
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(insertMessageSql)) {
-
+            completePendingResetIfNeeded(conn);
             for (int i = 0; i < sentFixMessageCount; i++) {
                 SentFixMessage sfm = sentFixMessages[i];
                 storeMessage(sfm.getSequenceNumber(), sfm.getMessage(), stmt, cachedInputStreams.get(i));
@@ -299,7 +339,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             }
             stmt.executeBatch();
         } catch (SQLException e) {
-            throw new StoreException("Failed to store batched messages for session " + fixSessionId, e);
+            throw failed("Failed to store batched messages", e);
         } finally {
             for (int i = 0; i < sentFixMessageCount; i++) {
                 cachedInputStreams.get(i).clean();
@@ -317,7 +357,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     public void find(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(selectMessagesSql)) {
-
+            completePendingResetIfNeeded(conn);
             stmt.setString(1, fixSessionId.getQualifiedName());
             stmt.setLong(2, startSequenceNumber);
             stmt.setLong(3, stopSequenceNumber);
@@ -329,7 +369,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                 }
             }
         } catch (SQLException e) {
-            throw new StoreException("Failed to load FIX messages for session " + fixSessionId, e);
+            throw failed("Failed to load FIX messages", e);
         }
     }
 
@@ -346,8 +386,12 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                 }
             }
         } catch (Exception e) {
-            log.error("Error occurred when pruning old messages for session {}", fixSessionId, e);
+            log.warn("Error occurred when pruning old messages for session {}", fixSessionId, e);
         }
+    }
+
+    private StoreException failed(String what, SQLException e) {
+        return new StoreException(what + " for session " + fixSessionId, e);
     }
 
     private Long findCutoffSequenceNumber(long excessCount) throws SQLException {

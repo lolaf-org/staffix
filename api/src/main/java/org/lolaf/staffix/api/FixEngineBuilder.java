@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.Singular;
 import lombok.experimental.SuperBuilder;
 import org.lolaf.staffix.api.admin.AdminApiExporterSettings;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
@@ -65,6 +66,12 @@ public class FixEngineBuilder implements InstanceProvider<FixEngine> {
      */
     @Singular
     private List<FixMessagesLoggerSettings> fixMessagesLoggers;
+    /**
+     * The alerts publishers available to sessions, named the same way. Without any, alerts are evaluated but go
+     * nowhere.
+     */
+    @Singular
+    private List<FixAlertsPublisherSettings> fixAlertsPublishers;
     /**
      * The application factories available to sessions, named the same way.
      */

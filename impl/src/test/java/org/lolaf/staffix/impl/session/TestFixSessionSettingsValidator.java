@@ -289,6 +289,26 @@ class TestFixSessionSettingsValidator {
     }
 
     @Test
+    void rejectsANegativeSessionDownAlertDelay() {
+        FixSessionSettings settings = validSettings()
+                .sessionDownAlertDelay(Duration.ofSeconds(-1))
+                .build();
+
+        assertThatThrownBy(() -> FixSessionSettingsValidator.validate(settings))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sessionDownAlertDelay");
+    }
+
+    @Test
+    void acceptsAZeroSessionDownAlertDelayWhichTurnsTheProbeOff() {
+        FixSessionSettings settings = validSettings()
+                .sessionDownAlertDelay(Duration.ZERO)
+                .build();
+
+        assertThatCode(() -> FixSessionSettingsValidator.validate(settings)).doesNotThrowAnyException();
+    }
+
+    @Test
     void rejectsNonPositiveCodTimeoutWindow() {
         FixSessionSettings settings = validSettings()
                 .cancelOnDisconnectSettings(FixSessionSettings.CancelOnDisconnectSettings.builder()

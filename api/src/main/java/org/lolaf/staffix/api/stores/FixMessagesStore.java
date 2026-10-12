@@ -19,6 +19,7 @@ import lombok.Getter;
 import lombok.Value;
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 
@@ -29,7 +30,7 @@ import java.util.List;
 /**
  * Where a session's outbound messages and sequence numbers are kept, so a restart can serve a ResendRequest.
  *
- * <p>One store serves many sessions, which is why {@link #getStore(FixSessionId)} exists: the per-session view
+ * <p>One store serves many sessions, which is why {@link #getStore(FixSessionId, FixSessionProbes)} exists: the per-session view
  * is what the session layer holds, while the store owns the file, connection or map underneath.
  */
 public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessagesStore> {
@@ -38,8 +39,9 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
      * Gets a store instance of a given fix session
      *
      * @param fixSessionId the fix session id
+     * @param probes       the session's probes, where a store adds what is worth watching, such as a queue depth
      */
-    FixSessionMessagesStore getStore(FixSessionId fixSessionId);
+    FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes);
 
     /**
      * What an entry in an asynchronous store's queue records, with the byte it is written as.
@@ -140,34 +142,39 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
         boolean filter(MessageType messageType, ByteBuffer message) throws StoreException;
 
         /**
-         * Resets the sequence numbers to 1
+         * Resets the sequence numbers to 1, in memory before persisting, so a failed write still leaves the getters
+         * right.
          */
         void resetSequenceNumbers() throws StoreException;
 
         /**
-         * Gets the current incoming sequence number
+         * The next expected incoming sequence number. Must be read from memory and never fail: the session relies on
+         * it for every message, including while the storage resource is down.
          */
-        long getIncomingSeqNum() throws StoreException;
+        long getIncomingSeqNum();
 
         /**
-         * Gets the current outgoing sequence number
+         * The next outgoing sequence number. Must be read from memory and never fail, as {@link #getIncomingSeqNum()}.
          */
-        long getOutgoingSeqNum() throws StoreException;
+        long getOutgoingSeqNum();
 
         /**
-         * Gets the next outgoing sequence number (getOutgoingSeqNum + 1), implementations must increment the variable holding the counter
+         * Returns {@link #getOutgoingSeqNum()} and increments the in-memory counter, reserving the number for the
+         * message being sent. Must never fail, as {@link #getIncomingSeqNum()}.
          */
-        long getNextOutgoingSeqNum() throws StoreException;
+        long getNextOutgoingSeqNum();
 
         /**
-         * Store the next expected incoming sequence number
+         * Store the next expected incoming sequence number, in memory before persisting, so a failed write still
+         * leaves {@link #getIncomingSeqNum()} right.
          *
          * @param nextIncomingSeqNum the sequence number of the next expected incoming message
          */
         void storeNextIncomingSeqNum(long nextIncomingSeqNum) throws StoreException;
 
         /**
-         * Store the next outgoing sequence number
+         * Store the next outgoing sequence number, in memory before persisting, so a failed write still leaves
+         * {@link #getOutgoingSeqNum()} right.
          *
          * @param nextOutgoingSeqNum the sequence number of the next outgoing message
          */
@@ -175,7 +182,7 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
 
         /**
          * Store a sent message into the store context, the implement MUST also increment the stored outgoing sequence number by 1,
-         * equivalent of calling @{link #storeNextOutgoingSeqNum(outgoingSeqNum+1)}
+         * equivalent of calling {@link #storeNextOutgoingSeqNum(long) storeNextOutgoingSeqNum(outgoingSeqNum + 1)}
          *
          * @param outgoingSeqNum the sequence number of this outgoing message
          * @param message        the message content, reference to this buffer CANNOT be kept in the store

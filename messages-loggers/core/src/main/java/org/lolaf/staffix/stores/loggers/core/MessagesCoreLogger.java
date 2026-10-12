@@ -19,6 +19,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.logging.LogObfuscator;
@@ -60,7 +61,8 @@ public abstract class MessagesCoreLogger extends Startable.SimpleStartable<FixMe
     }
 
     @Override
-    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
+    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
+                            FixSessionProbes probes) {
         return loggers.computeIfAbsent(fixSessionId, sid -> new LoggerWrapperImpl(
                 fixSessionId, instanciateLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry), messageTypeFilter, obfuscators, this::cleanupLoggerFromCache));
     }
@@ -130,6 +132,16 @@ public abstract class MessagesCoreLogger extends Startable.SimpleStartable<FixMe
         @Override
         public boolean isStarted() {
             return wrappedLogger.isStarted();
+        }
+
+        @Override
+        public boolean isUnderlyingStorageResourceAvailable() {
+            return wrappedLogger.isUnderlyingStorageResourceAvailable();
+        }
+
+        @Override
+        public String getUnderlyingStorageResourceDescription() {
+            return wrappedLogger.getUnderlyingStorageResourceDescription();
         }
 
         private ByteBuffer obfuscateLogIfNeeded(ByteBuffer message, MessageType messageType) {

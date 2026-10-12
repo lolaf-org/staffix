@@ -40,6 +40,8 @@ public class FileMessagesStoreContributor implements FixMessagesStoreSettingsCon
         if (p.getBlocksCount() != null) b.blocksCount(p.getBlocksCount());
         if (p.getBlockSize() != null) b.blockSize(p.getBlockSize());
         if (p.getSyncWrites() != null) b.syncWrites(p.getSyncWrites());
+        if (p.getResourceCheckInterval() != null) b.resourceCheckInterval(p.getResourceCheckInterval());
+        if (p.getAlertClearDelay() != null) b.alertClearDelay(p.getAlertClearDelay());
         return b.build();
     }
 

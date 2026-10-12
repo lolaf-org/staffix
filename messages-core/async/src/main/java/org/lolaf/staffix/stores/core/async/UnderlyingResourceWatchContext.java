@@ -15,13 +15,15 @@
  */
 package org.lolaf.staffix.stores.core.async;
 
-import lombok.RequiredArgsConstructor;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.Probe;
 
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -31,10 +33,9 @@ import java.util.function.Consumer;
 
 /**
  * Tracks whether the wrapped resource is up, so a consumer can retry rather than discard what it could not
- * write, and the application can be told the store is down.
+ * write. Its probe raises a {@code MAJOR} alert while the resource is down, until what was waiting is replayed.
  */
 @Slf4j
-@RequiredArgsConstructor
 public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Startable.SimpleStartable<UnderlyingResourceWatchContext<T>> {
 
     private final Consumer<T[]> asyncLogEventsToReplayConsumer;
@@ -44,15 +45,33 @@ public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Starta
     private final Duration underlyingResourceWatchTaskCheckDelay;
     private final Runnable startCallback;
     private final Runnable resourceBackUpCallback;
-    private final StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener;
-    private final FixSessionId fixSessionId;
+    @Getter
+    private final Probe resourceDownProbe;
 
+    private volatile Optional<Alert> resourceDownAlert = Optional.empty();
     private ScheduledExecutorService underlyingResourceStateExecutorService;
     private ScheduledFuture<?> watchDogTask;
     private T[] asyncLogEventsToReplay;
     private T asyncLogEventToReplay;
     private String failedUnderlyingStoreDescription;
 
+    public UnderlyingResourceWatchContext(Consumer<T[]> asyncLogEventsToReplayConsumer, Consumer<T> asyncLogEventToReplayConsumer,
+                                          BooleanSupplier underlyingStorageResourceAvailable, String name,
+                                          Duration underlyingResourceWatchTaskCheckDelay, Runnable startCallback,
+                                          Runnable resourceBackUpCallback, String probeName, String probeDescription) {
+        this.asyncLogEventsToReplayConsumer = asyncLogEventsToReplayConsumer;
+        this.asyncLogEventToReplayConsumer = asyncLogEventToReplayConsumer;
+        this.underlyingStorageResourceAvailable = underlyingStorageResourceAvailable;
+        this.name = name;
+        this.underlyingResourceWatchTaskCheckDelay = underlyingResourceWatchTaskCheckDelay;
+        this.startCallback = startCallback;
+        this.resourceBackUpCallback = resourceBackUpCallback;
+        this.resourceDownProbe = Probe.builder()
+                .name(probeName)
+                .description(probeDescription)
+                .evaluator(() -> resourceDownAlert)
+                .build();
+    }
 
     public void startWatchDog(T[] asyncLogEventsToReplay, T asyncLogEventToReplay, String failedUnderlyingStoreDescription) {
         this.asyncLogEventsToReplay = asyncLogEventsToReplay;
@@ -63,7 +82,7 @@ public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Starta
 
     @Override
     protected void startMe() throws StartStopException {
-        storeUnderlyingResourceStateListener.onStoreStateDown(fixSessionId, failedUnderlyingStoreDescription);
+        resourceDownAlert = Optional.of(Alert.major(name + " underlying resource '" + failedUnderlyingStoreDescription + "' is unavailable"));
         startCallback.run();
         underlyingResourceStateExecutorService = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, name + "-underlying-resource-state-watchdog"));
         long delay = underlyingResourceWatchTaskCheckDelay.toMillis();
@@ -79,12 +98,12 @@ public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Starta
         asyncLogEventsToReplay = null;
         asyncLogEventToReplay = null;
         failedUnderlyingStoreDescription = null;
+        resourceDownAlert = Optional.empty();
     }
 
     private void checkUnderlyingResourceState() {
         if (underlyingStorageResourceAvailable.getAsBoolean()) {
             log.info("{} underlying resource is back up", name);
-            storeUnderlyingResourceStateListener.onStoreStateUp(fixSessionId, failedUnderlyingStoreDescription);
             if (asyncLogEventToReplay != null) {
                 asyncLogEventToReplayConsumer.accept(asyncLogEventToReplay);
             }

@@ -32,6 +32,7 @@ fixApplicationFactoryInstanceId: "default"
 fixApplicationInstanceId: "default"
 fixMessageStoreInstanceId: "default"
 fixMessageLoggerInstanceId: "default"
+fixAlertsPublisherInstanceId: "default"
 validationSettings:
   validateChecksum: true
   validateFieldsHaveValues: true
@@ -46,6 +47,7 @@ validationSettings:
   validateDuplicateTags: false
 testingMode: false
 disconnectMessagesFlushDeadline: "PT2S"
+sessionDownAlertDelay: "PT10S"
 cancelOnDisconnectSettings:
   enabled: false
   cancelOnDisconnectType: "CANCEL_ON_DISCONNECT_OR_LOGOUT"

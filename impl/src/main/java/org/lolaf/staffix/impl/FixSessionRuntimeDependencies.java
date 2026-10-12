@@ -16,11 +16,15 @@
 package org.lolaf.staffix.impl;
 
 import lombok.Value;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
+import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSessionRegistry;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
+import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
+import org.lolaf.staffix.impl.session.UnderlyingResourceChecker;
 
 import java.util.Collection;
 import java.util.concurrent.ExecutorService;
@@ -37,7 +41,10 @@ public class FixSessionRuntimeDependencies {
 
     String engineId;
     FixMessagesStore fixMessagesStore;
+    FixMessagesStoreSettings fixMessagesStoreSettings;
     FixMessagesLogger fixMessagesLogger;
+    FixMessagesLoggerSettings fixMessagesLoggerSettings;
+    FixAlertsPublisher fixAlertsPublisher;
     FixApplicationFactory fixApplicationFactory;
     Collection<FixSessionsPlugin<?>> fixSessionsPlugins;
     /**
@@ -49,5 +56,9 @@ public class FixSessionRuntimeDependencies {
      * has one. Shared with every other session of the engine.
      */
     ExecutorService disconnectedSessionsExecutor;
+    /**
+     * The engine's thread checking whether a failing store or logger is back. Shared with every other session.
+     */
+    UnderlyingResourceChecker underlyingResourceChecker;
 
 }

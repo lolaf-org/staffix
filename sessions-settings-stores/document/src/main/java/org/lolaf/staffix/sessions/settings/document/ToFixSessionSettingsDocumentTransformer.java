@@ -79,6 +79,7 @@ public class ToFixSessionSettingsDocumentTransformer {
         mergeIfNeeded(settings::getFixApplicationInstanceId, builder::fixApplicationInstanceId);
         mergeIfNeeded(settings::getFixMessageStoreInstanceId, builder::fixMessageStoreInstanceId);
         mergeIfNeeded(settings::getFixMessageLoggerInstanceId, builder::fixMessageLoggerInstanceId);
+        mergeIfNeeded(settings::getFixAlertsPublisherInstanceId, builder::fixAlertsPublisherInstanceId);
         if (settings.getFixSessionPluginsInstanceIds() != null && !settings.getFixSessionPluginsInstanceIds().isEmpty()) {
             builder.fixSessionPluginsInstanceIds(settings.getFixSessionPluginsInstanceIds().entrySet().stream()
                     .collect(toMap(e -> e.getKey().getName(), Map.Entry::getValue)));
@@ -86,6 +87,7 @@ public class ToFixSessionSettingsDocumentTransformer {
         mergeValidationSettings(settings, builder);
         mergeIfNeeded(settings::isTestingMode, builder::testingMode);
         mergeIfNeeded(settings::getDisconnectMessagesFlushDeadline, builder::disconnectMessagesFlushDeadline);
+        mergeIfNeeded(settings::getSessionDownAlertDelay, builder::sessionDownAlertDelay);
         mergeCancelOnDisconnectSettings(settings, builder);
         mergeRttMeasurementSettings(settings, builder);
         mergeSessionScheduleSettings(settings, builder);

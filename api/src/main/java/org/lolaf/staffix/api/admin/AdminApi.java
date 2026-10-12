@@ -16,6 +16,10 @@
 package org.lolaf.staffix.api.admin;
 
 import org.lolaf.staffix.api.InstanceIdSupplier;
+import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.ProbesListener;
+import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
@@ -294,6 +298,44 @@ public interface AdminApi extends InstanceIdSupplier {
      * @return one entry per acceptor; empty if the engine has none
      */
     List<FixAcceptorSessions> getAcceptorsSessions();
+
+    /**
+     * The probes of the session, in the order they were added.
+     *
+     * @throws IllegalArgumentException if no initiator or acceptor manages the given session
+     */
+    List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId);
+
+    /**
+     * Where each probe of the session stood at its last evaluation; a probe not evaluated yet is absent.
+     *
+     * @throws IllegalArgumentException if no initiator or acceptor manages the given session
+     */
+    List<ProbeState> getProbeStates(FixSessionId fixSessionId);
+
+    /**
+     * The probes in alert, across every session of the engine.
+     */
+    List<SessionProbeState> getActiveAlerts();
+
+    /**
+     * Asks the probe's evaluator to end its ongoing alert. Once accepted, the alert clears at the next evaluation tick,
+     * published like any other clear but marked as manual.
+     *
+     * @return false when the probe is not in alert, or its evaluator refuses, as a polled condition does
+     * @throws IllegalArgumentException if no initiator or acceptor manages the given session, or it has no such probe
+     */
+    boolean clearAlert(FixSessionId fixSessionId, String probeName);
+
+    /**
+     * Registers a listener told about every probe added or removed, and every alert transition, from now on.
+     */
+    void addProbesListener(ProbesListener listener);
+
+    /**
+     * Stops telling a listener registered with {@link #addProbesListener}; a call already under way still completes.
+     */
+    void removeProbesListener(ProbesListener listener);
 
     /**
      * Registers a listener notified whenever a session is added to or removed from the set of managed sessions, so that

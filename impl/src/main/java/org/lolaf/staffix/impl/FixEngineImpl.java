@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.*;
+import org.lolaf.staffix.api.alerting.*;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
@@ -33,9 +34,14 @@ import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
+import org.lolaf.staffix.impl.alerting.ProbesListeners;
+import org.lolaf.staffix.impl.alerting.ProbesManager;
+import org.lolaf.staffix.impl.session.FixSessionImpl;
 import org.lolaf.staffix.impl.session.FixSessionRegistryImpl;
 import org.lolaf.staffix.impl.session.FixSessionSettingsValidator;
+import org.lolaf.staffix.impl.session.UnderlyingResourceChecker;
 
+import java.time.Clock;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -57,6 +63,9 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Getter
     private final List<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final List<FixMessagesLogger> fixMessagesLoggers;
+    private final List<FixAlertsPublisher> fixAlertsPublishers;
+    private final ProbesManager probesManager;
+    private final ProbesListeners probesListeners;
     private final List<FixSessionsPlugin<?>> fixSessionsPlugins;
     private final List<FixApplicationFactory> fixApplicationFactories;
     @Getter
@@ -72,6 +81,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private volatile List<FixInitiatorTargets> initiatorsTargets = List.of();
     private volatile List<FixAcceptorSessions> acceptorsSessions = List.of();
     private ExecutorService selfManagedDisconnectedSessionsExecutor;
+    private UnderlyingResourceChecker underlyingResourceChecker;
 
     FixEngineImpl(FixEngineBuilder fixEngineBuilder) {
         this.fixEngineBuilder = fixEngineBuilder;
@@ -96,6 +106,10 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         this.fixSessionsPlugins = fixEngineBuilder.getFixSessionsPlugins().stream().map(FixSessionsPluginSettings::instance).collect(Collectors.toList());
         ensureUniqueInstanceIdsAreProvided(fixEngineBuilder.getFixMessagesLoggers(), "FixMessagesLoggers");
         this.fixMessagesLoggers = fixEngineBuilder.getFixMessagesLoggers().stream().map(FixMessagesLoggerSettings::instance).collect(Collectors.toList());
+        ensureUniqueInstanceIdsAreProvided(fixEngineBuilder.getFixAlertsPublishers(), "FixAlertsPublishers");
+        this.fixAlertsPublishers = fixEngineBuilder.getFixAlertsPublishers().stream().map(FixAlertsPublisherSettings::instance).collect(Collectors.toList());
+        this.probesListeners = new ProbesListeners();
+        this.probesManager = new ProbesManager(fixEngineBuilder.getInstanceId(), Clock.systemUTC(), probesListeners);
         this.adminApiExporter = fixEngineBuilder.getAdminApiExporter() != null ? fixEngineBuilder.getAdminApiExporter().instance() : null;
         this.initiators = new ConcurrentHashMap<>();
         this.acceptors = new ConcurrentHashMap<>();
@@ -133,6 +147,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
+        probesManager.stop(stopDeadline);
         if (adminApiExporter != null) {
             adminApiExporter.shutdown(stopDeadline);
         }
@@ -144,6 +159,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         onAcceptorSessionsChanged();
         refreshSessionAdminControls();
         stopSelfManagedDisconnectedSessionsExecutor(stopDeadline);
+        underlyingResourceChecker.stop();
 
         fixSessionsSettingsStores.forEach(s -> s.stop(stopDeadline));
         fixApplicationFactories.forEach(s -> s.stop(stopDeadline));
@@ -154,6 +170,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             }
         });
         fixMessagesLoggers.forEach(s -> s.stop(stopDeadline));
+        fixAlertsPublishers.forEach(s -> s.stop(stopDeadline));
     }
 
     /**
@@ -183,6 +200,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     protected void startMe() throws StartStopException {
+        underlyingResourceChecker = new UnderlyingResourceChecker(getInstanceId());
         if (fixEngineBuilder.getDisconnectedSessionsExecutor() == null) {
             selfManagedDisconnectedSessionsExecutor = Executors.newSingleThreadExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "staffix-offline-sessions-" + getInstanceId());
@@ -203,17 +221,24 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             }
         });
         fixMessagesLoggers.forEach(Startable::start);
+        fixAlertsPublishers.forEach(Startable::start);
+        probesManager.start();
         if (adminApiExporter != null) {
             adminApiExporter.export(this);
         }
     }
 
     private FixSessionRuntimeDependencies getDependencies(FixSessionSettings fixSessionSettings) {
-        return new FixSessionRuntimeDependencies(getInstanceId(), findMatchAmongstMessagesStores(fixSessionSettings),
-                findMatchAmongstMessagesLoggers(fixSessionSettings),
+        FixMessagesStore fixMessagesStore = findMatchAmongstMessagesStores(fixSessionSettings);
+        FixMessagesLogger fixMessagesLogger = findMatchAmongstMessagesLoggers(fixSessionSettings);
+        return new FixSessionRuntimeDependencies(getInstanceId(), fixMessagesStore,
+                fixEngineBuilder.getFixMessagesStores().get(fixMessagesStores.indexOf(fixMessagesStore)),
+                fixMessagesLogger,
+                fixMessagesLogger == null ? null : fixEngineBuilder.getFixMessagesLoggers().get(fixMessagesLoggers.indexOf(fixMessagesLogger)),
+                findMatchAmongstAlertsPublishers(fixSessionSettings),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
                 findMatchAmongstPluginsComponent(fixSessionSettings),
-                fixSessionRegistry, disconnectedSessionsExecutor());
+                fixSessionRegistry, disconnectedSessionsExecutor(), underlyingResourceChecker);
     }
 
     @Override
@@ -511,6 +536,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 .build()));
         fixMessagesStores.forEach(store -> components.messagesStore(store.getInstanceId()));
         fixMessagesLoggers.forEach(logger -> components.messagesLogger(logger.getInstanceId()));
+        fixAlertsPublishers.forEach(publisher -> components.alertsPublisher(publisher.getInstanceId()));
         fixEngineBuilder.getFixSessionsPlugins().forEach(plugin -> components.sessionsPlugin(FixSessionComponents.SessionsPlugin.builder()
                 .instanceId(plugin.getInstanceId())
                 .pluginTypes(plugin.getPluginTypes())
@@ -520,12 +546,53 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     public List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId) {
-        return findControl(fixSessionId).getManagedFixSessions().stream()
-                .filter(session -> session.getFixSessionId().equals(fixSessionId))
-                .findFirst()
+        return findManagedSession(fixSessionId)
                 .flatMap(session -> session.getPluginContext(FixSessionsMonitoringContext.class))
                 .map(FixSessionsMonitoringContext::getMeterDescriptors)
                 .orElse(List.of());
+    }
+
+    @Override
+    public List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId) {
+        return managedSession(fixSessionId).getProbes().list().stream()
+                .map(ProbeDefinition::of)
+                .collect(Collectors.toUnmodifiableList());
+    }
+
+    @Override
+    public List<ProbeState> getProbeStates(FixSessionId fixSessionId) {
+        return probesManager.getProbeStates(managedSession(fixSessionId));
+    }
+
+    @Override
+    public List<SessionProbeState> getActiveAlerts() {
+        return probesManager.getActiveAlerts();
+    }
+
+    @Override
+    public boolean clearAlert(FixSessionId fixSessionId, String probeName) {
+        return probesManager.clearAlert(managedSession(fixSessionId), probeName);
+    }
+
+    @Override
+    public void addProbesListener(ProbesListener listener) {
+        probesListeners.add(listener);
+    }
+
+    @Override
+    public void removeProbesListener(ProbesListener listener) {
+        probesListeners.remove(listener);
+    }
+
+    private Optional<FixSession> findManagedSession(FixSessionId fixSessionId) {
+        return findControl(fixSessionId).getManagedFixSessions().stream()
+                .filter(session -> session.getFixSessionId().equals(fixSessionId))
+                .findFirst();
+    }
+
+    private FixSession managedSession(FixSessionId fixSessionId) {
+        return findManagedSession(fixSessionId)
+                .orElseThrow(() -> new IllegalArgumentException("No initiator or acceptor manages session " + fixSessionId));
     }
 
     @Override
@@ -541,12 +608,15 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Override
     public void onSessionRegistered(FixSession fixSession) {
         fixSessionRegistry.register(fixSession);
+        FixSessionImpl fixSessionImpl = (FixSessionImpl) fixSession;
+        probesManager.register(fixSessionImpl, fixSessionImpl.getProbes(), fixSessionImpl.getAlertsPublisher());
         sessionLifecycleListeners.forEach(l -> l.onSessionRegistered(fixSession));
     }
 
     @Override
     public void onSessionUnregistered(FixSession fixSession) {
         fixSessionRegistry.unregister(fixSession);
+        probesManager.unregister(fixSession, ((FixSessionImpl) fixSession).getProbes());
         sessionLifecycleListeners.forEach(l -> l.onSessionUnregistered(fixSession));
     }
 
@@ -613,6 +683,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private void requireResolvableComponents(FixSessionSettings settings) {
         findMatchAmongstMessagesStores(settings);
         findMatchAmongstMessagesLoggers(settings);
+        findMatchAmongstAlertsPublishers(settings);
         findMatchAmongstPluginsComponent(settings);
         FixApplicationFactory factory = findMatchAmongstFixApplicationFactories(settings);
         if (!factory.getApplicationIds().contains(settings.getFixApplicationInstanceId())) {
@@ -655,6 +726,19 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         }
         throw new IllegalArgumentException(String.format("Unable to find any FIX message logger for id '%s' within: '%s'", fixSessionSettings.getFixMessageLoggerInstanceId(),
                 fixMessagesLoggers.stream().map(FixMessagesLogger::getInstanceId).collect(Collectors.joining(","))));
+    }
+
+    private FixAlertsPublisher findMatchAmongstAlertsPublishers(FixSessionSettings fixSessionSettings) {
+        if (fixAlertsPublishers.isEmpty()) {
+            return VoidAlertsPublisher.getInstance();
+        }
+        for (FixAlertsPublisher publisher : fixAlertsPublishers) {
+            if (publisher.getInstanceId().equals(fixSessionSettings.getFixAlertsPublisherInstanceId())) {
+                return publisher;
+            }
+        }
+        throw new IllegalArgumentException(String.format("Unable to find any FIX alerts publisher for id '%s' within: '%s'", fixSessionSettings.getFixAlertsPublisherInstanceId(),
+                fixAlertsPublishers.stream().map(FixAlertsPublisher::getInstanceId).collect(Collectors.joining(","))));
     }
 
     public static class FixEngineFactoryImpl implements FixEngineFactory {

@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.FixInitiatorBuilder;
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -43,8 +44,10 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
      * @param fixInstanceId       the fix instance id ({@link FixInitiatorBuilder#getInstanceId()} or {@link FixAcceptorBuilder#getInstanceId()} )
      * @param fixSessionId        the fix protocol session id
      * @param messageTypeRegistry the messages type registry used by the session, useful for making messages filtering
+     * @param probes              the session's probes, where a logger adds what is worth watching, such as a queue depth
      */
-    Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry);
+    Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
+                     FixSessionProbes probes);
 
     /**
      * What a log entry records: a message in, a message out, or a session event.
@@ -229,5 +232,11 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
      */
     class LoggingException extends Exception {
 
+        public LoggingException() {
+        }
+
+        public LoggingException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

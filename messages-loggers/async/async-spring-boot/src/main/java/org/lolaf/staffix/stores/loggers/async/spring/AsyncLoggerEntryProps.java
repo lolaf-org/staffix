@@ -54,4 +54,13 @@ public class AsyncLoggerEntryProps {
      * Whether the buffers entries are read into are off-heap. True by default.
      */
     private Boolean useDirectByteBuffer;
+    /**
+     * How often a logger whose resource is down is checked for its return, its calls being skipped meanwhile. Zero
+     * disables the check, so every call reaches the resource.
+     */
+    private Duration resourceCheckInterval;
+    /**
+     * How long logger calls must keep succeeding before the session's messages-logger alert clears.
+     */
+    private Duration alertClearDelay;
 }

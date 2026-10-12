@@ -157,6 +157,7 @@ public class FixSessionSettingsValidator {
         requirePositive(violations, settings.getLogInOrOutResponseTimeout(), "logInOrOutResponseTimeout");
         requirePositive(violations, settings.getDisconnectMessagesFlushDeadline(), "disconnectMessagesFlushDeadline");
         requireNonNegative(violations, settings.getResendRequestResponseTimeout(), "resendRequestResponseTimeout");
+        requireNonNegative(violations, settings.getSessionDownAlertDelay(), "sessionDownAlertDelay");
     }
 
     private static void validateCancelOnDisconnect(FixSessionSettings settings, List<String> violations) {

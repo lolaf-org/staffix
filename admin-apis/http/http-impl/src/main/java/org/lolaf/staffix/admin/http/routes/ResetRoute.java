@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.io.IOException;
+import java.util.List;
 
 @Slf4j
 public final class ResetRoute extends SessionOperationRoute {
@@ -35,7 +36,7 @@ public final class ResetRoute extends SessionOperationRoute {
     }
 
     @Override
-    void apply(FixSessionId fixSessionId, HttpExchange exchange) throws IOException {
+    void apply(FixSessionId fixSessionId, HttpExchange exchange, List<String> path) throws IOException {
         ResetRequest reset = mapper.readValue(exchange.getRequestBody(), ResetRequest.class);
         log.info("Admin API: reset {} with {}", fixSessionId.getQualifiedName(), reset.getMode());
         adminApi.resetSession(fixSessionId, reset.getMode());

@@ -15,13 +15,16 @@
  */
 package org.lolaf.staffix.stores.messages.async;
 
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.stores.core.async.*;
+import org.lolaf.staffix.stores.core.async.QueueSizeEvaluator;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -40,9 +43,10 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private final Consumer<AsyncStoreEvent[]> batchingEventsConsumer;
     private final AsyncStoreEventSerde asyncStoreEventSerde;
     private final PersistentQueue<AsyncStoreEvent> messagesQueue;
+    @Getter
+    private final Probe queueSizeProbe;
     private final UnderlyingResourceWatchContext<AsyncStoreEvent> underlyingResourceWatchContext;
     private final FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] batchedSentFixMessages;
-    private final StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener;
     private final AtomicLong outgoingSequenceNumber;
     private final AtomicLong incomingSequenceNumber;
     private final AtomicLong processedEvents;
@@ -60,18 +64,23 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         this.batchingEventsConsumer = this::onAsyncStoreEvents;
         this.asyncStoreEventSerde = new AsyncStoreEventSerde(asyncEventInstanceProvider);
         this.messagesQueue = new PersistentQueue<>(fixSessionId);
+        this.queueSizeProbe = QueueSizeEvaluator.probe("async-store-queue", "Messages waiting in the async store queue to be persisted",
+                messagesQueue, asyncMessagesStoreSettings.getAsyncStoreSettings().getQueueSizeThresholdsSettings());
         this.batchedSentFixMessages = isBatchingEnabled()
                 ? new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[asyncMessagesStoreSettings.getAsyncStoreSettings().getEventsBatching()]
                 : null;
-        this.storeUnderlyingResourceStateListener = new StoreUnderlyingResourceStateListener.FailSafeStoreUnderlyingResourceStateListener(
-                asyncMessagesStoreSettings.getAsyncStoreSettings().getStoreUnderlyingResourceStateListener());
         this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::onAsyncStoreEvents,
                 this::onAsyncStoreEvent, wrappedStore::isUnderlyingStorageResourceAvailable, wrappedStore.getClass().getSimpleName(),
                 asyncMessagesStoreSettings.getUnderlyingStoreResourceWatchTaskCheckDelay(), this::unregisterEventsHandlingFromAsyncLoggersThreads,
-                this::registerEventsHandlingFromAsyncLoggersThreads, storeUnderlyingResourceStateListener, fixSessionId);
+                this::registerEventsHandlingFromAsyncLoggersThreads,
+                "async-store-resource", "Availability of the store the async store persists to");
         outgoingSequenceNumber = new AtomicLong(1);
         incomingSequenceNumber = new AtomicLong(1);
         processedEvents = new AtomicLong();
+    }
+
+    Probe getResourceDownProbe() {
+        return underlyingResourceWatchContext.getResourceDownProbe();
     }
 
     private void onAsyncStoreEvent(AsyncStoreEvent event) {
@@ -173,7 +182,6 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         messagesQueue.start(asyncMessagesStoreSettings.getAsyncStoreSettings(), "fix-messages");
         if (wrappedStore.isUnderlyingStorageResourceAvailable()) {
             wrappedStore.start();
-            storeUnderlyingResourceStateListener.onStoreStateUp(fixSessionId, wrappedStore.getUnderlyingStorageResourceDescription());
             registerEventsHandlingFromAsyncLoggersThreads();
             if (asyncMessagesStoreSettings.getFlushPendingMessagesOnStartupDelay() != null) {
                 flushMessagesIfNeeded(Deadline.of(asyncMessagesStoreSettings.getFlushPendingMessagesOnStartupDelay()));
@@ -240,9 +248,9 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
 
     private void registerEventsHandlingFromAsyncLoggersThreads() {
         if (isBatchingEnabled()) {
-            asyncStoreThreads.registerBatching(fixSessionId, messagesQueue, batchingEventsConsumer, asyncStoreEventSerde, AsyncStoreEvent.class);
+            asyncStoreThreads.registerBatching(messagesQueue, batchingEventsConsumer, asyncStoreEventSerde, AsyncStoreEvent.class);
         } else {
-            asyncStoreThreads.register(fixSessionId, messagesQueue, eventsConsumer, asyncStoreEventSerde);
+            asyncStoreThreads.register(messagesQueue, eventsConsumer, asyncStoreEventSerde);
         }
     }
 
@@ -291,7 +299,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     }
 
     @Override
-    public long getNextOutgoingSeqNum() throws StoreException {
+    public long getNextOutgoingSeqNum() {
         return outgoingSequenceNumber.getAndIncrement();
     }
 

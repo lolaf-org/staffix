@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.InstanceProvider;
 import org.lolaf.staffix.api.msg.MessageType;
 
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.function.BiPredicate;
 
 /**
@@ -31,11 +32,30 @@ import java.util.function.BiPredicate;
  */
 public interface FixMessagesStoreSettings extends InstanceProvider<FixMessagesStore> {
 
+    Duration DEFAULT_RESOURCE_CHECK_INTERVAL = Duration.ofSeconds(5);
+    Duration DEFAULT_ALERT_CLEAR_DELAY = Duration.ofSeconds(30);
+
     /**
      * Returns true for an outgoing message that is not stored, such as market data that will never be resent. Such a
      * message cannot be replayed on a ResendRequest.
      */
     BiPredicate<MessageType, ByteBuffer> getMessageFilter();
+
+    /**
+     * How often a store whose calls fail is checked for its resource coming back. While it is down the engine skips
+     * the store's calls, rather than block the session on each one. Zero sends every call to the store.
+     */
+    default Duration getResourceCheckInterval() {
+        return DEFAULT_RESOURCE_CHECK_INTERVAL;
+    }
+
+    /**
+     * How long the store must keep succeeding before the session's store alert clears, so a resource dropping in and
+     * out keeps one alert. Zero clears it on the first success.
+     */
+    default Duration getAlertClearDelay() {
+        return DEFAULT_ALERT_CLEAR_DELAY;
+    }
 
     @Override
     default FixMessagesStore instance() {

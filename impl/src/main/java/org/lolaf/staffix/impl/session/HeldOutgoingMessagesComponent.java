@@ -64,7 +64,8 @@ class HeldOutgoingMessagesComponent implements FixSessionLayerComponent {
                 return false;
             }
             if (heldOutgoingMessages.size() < fixSessionSettings.getMaxOutgoingMessagesHeldDuringRecovery()) {
-                heldOutgoingMessages.add(HeldOutgoingMessage.of(encoder, sendingTime, messageSendOperationCallback, param1, param2));
+                heldOutgoingMessages.add(HeldOutgoingMessage.of(outgoingMessages.detach(encoder), sendingTime,
+                        messageSendOperationCallback, param1, param2));
                 return true;
             }
             fixSession.logEvent("Refusing to send %s, already holding %s application messages while recovering",
@@ -117,8 +118,9 @@ class HeldOutgoingMessagesComponent implements FixSessionLayerComponent {
     }
 
     /**
-     * An application message handed over while a retransmission this session asked for was under way, kept whole -
-     * encoder included, so that no MsgSeqNum(34) is spent on it - until the recovery is over.
+     * An application message handed over while a retransmission this session asked for was under way, kept unencoded
+     * until the recovery is over so that no MsgSeqNum(34) is spent on it, in an encoder the session owns so that the
+     * application's is free at once.
      * <p>
      * Held by {@link HeldOutgoingMessagesComponent} in the order the application sent them, and handed back when the
      * session is synchronized again. Only ever allocated on that path: a session that never loses a message never builds

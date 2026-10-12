@@ -34,6 +34,8 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.time.UTCTime;
+import org.lolaf.staffix.codec.encoders.DetachedFixMessageEncoder;
+import org.lolaf.staffix.codec.encoders.FixMessageEncoderImpl;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -65,6 +67,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
     private final RingBuffer<FixSessionFixMessageContext> messageSendingContexts;
     private final RingBuffer<FixSessionBufferedFixMessageContext> bufferMessageSendingContexts;
     private final List<FixSessionFixMessageContext> bufferedMessageSendingContexts;
+    private final RingBuffer<DetachedFixMessageEncoder> detachedEncoders;
     private final IOWriter.MessageSentCallback<FixSessionFixMessageContext> messageSentCallback = this::messageSentCallback;
     private final IOWriter.MessageSentCallback<FixSessionBufferedFixMessageContext> bufferedMessageSentCallback = this::bufferedMessagesSentCallback;
     private IntFunction<ByteBuffer> byteBufferBorrower = ByteBuffer::allocate;
@@ -93,6 +96,8 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
             bufferMessageSendingContexts.offer(new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts, fixSession));
         }
         this.bufferedMessageSendingContexts = new ArrayList<>(messageSendingContexts.getSize());
+        // filled as carriers come back, so a session whose sends never wait never builds one
+        this.detachedEncoders = RingBufferFactory.build(accessType, ioSettings.getTasksRingBufferSize());
     }
 
     int getWriteTasksQueueCapacity() {
@@ -171,7 +176,8 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         IOSession ioSession = fixSession.currentIOSession();
         // only a session with no connection hands the send over
         if (ioSession == null && !fixSession.isWithinSessionOwnerThread(null)) {
-            fixSession.runOnSessionOwnerThread(() -> send(encoder, sendingTime, messageSendOperationCallback, param1, param2), null);
+            FixMessageEncoder<?> detached = detach(encoder);
+            fixSession.runOnSessionOwnerThread(() -> send(detached, sendingTime, messageSendOperationCallback, param1, param2), null);
             return;
         }
         FixSessionFixMessageContext ctx = takeMessageSendingContext(ioSession);
@@ -181,6 +187,27 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         } else {
             completeWithoutConnection(ctx);
         }
+    }
+
+    /**
+     * Moves a message whose send has to wait out of the caller's encoder, which is then ended as a sent one is, so the
+     * caller can begin the next message at once. An encoder the session cannot read the pending message from, or one
+     * it already owns, is kept until sent instead.
+     */
+    FixMessageEncoder<?> detach(FixMessageEncoder<?> encoder) {
+        if (!(encoder instanceof FixMessageEncoderImpl) || encoder instanceof DetachedFixMessageEncoder) {
+            return encoder;
+        }
+        DetachedFixMessageEncoder carrier = detachedEncoders.poll();
+        if (carrier == null) {
+            carrier = new DetachedFixMessageEncoder(released -> detachedEncoders.offer((DetachedFixMessageEncoder) released));
+        }
+        ((FixMessageEncoderImpl<?>) encoder).transferPendingMessageTo(carrier);
+        if (!encoder.isReusable()) {
+            encoder.destroy();
+        }
+        encoder.release();
+        return carrier;
     }
 
     /**
@@ -249,7 +276,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
 
     private FixSessionFixMessageContext newMessageSendingContext() {
         return new FixSessionFixMessageContext(fixSessionMessagesStore::getNextOutgoingSeqNum, fixApplication,
-                sendingTimeAccuracy, clock, fixSession, fixSessionId, messageSendingContexts);
+                sendingTimeAccuracy, clock, fixSession, fixSessionId, messageSendingContexts, this::detach);
     }
 
     private void messageSentCallback(ByteBuffer message, Exception sendingError, FixSessionFixMessageContext context) {

@@ -19,6 +19,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.AlertLevel;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
@@ -26,12 +29,12 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
-import org.lolaf.staffix.stores.core.async.StoreUnderlyingResourceStateListener;
 import org.lolaf.staffix.tests.TestingFixMessagesLoggerSettings;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
@@ -47,6 +50,8 @@ class TestAsyncMessagesLogger {
     private static final int DEFAULT_LOG_BYTE_BUFFER_SIZE = 8;
     private static final String TEST_LOGGER_STORE_DESCRIPTION = "test logger store description";
 
+    private final FixSessionProbes probes = mock(FixSessionProbes.class);
+
     AsyncMessagesLogger asyncMessagesLogger;
     FixMessagesLogger.Logger logger;
     AsyncLogger asyncLogger;
@@ -55,7 +60,6 @@ class TestAsyncMessagesLogger {
     UTCTime logTime;
     AsyncMessagesLoggerSettings asyncMessagesLoggerSettings;
     MessageTypeRegistry messageTypeRegistry;
-    StoreUnderlyingResourceStateListener storeUnderlyingResourceStateListener;
 
     private static ByteBuffer assertLogEquals(String log) {
         return argThat(byteBuffer -> {
@@ -93,7 +97,6 @@ class TestAsyncMessagesLogger {
 
     @BeforeEach
     void setup() {
-        storeUnderlyingResourceStateListener = mock(StoreUnderlyingResourceStateListener.class);
         fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "sender", "target");
         logger = mock(FixMessagesLogger.Logger.class);
         when(logger.isUnderlyingStorageResourceAvailable()).thenReturn(true);
@@ -103,7 +106,6 @@ class TestAsyncMessagesLogger {
         asyncMessagesLoggerSettings = AsyncMessagesLoggerSettings.builder()
                 .asyncStoreSettings(AsyncStoreSettings.builder()
                         .asyncQueueDirectory("./target/" + System.currentTimeMillis())
-                        .storeUnderlyingResourceStateListener(storeUnderlyingResourceStateListener)
                         .build())
                 .wrappedLoggerSettings(TestingFixMessagesLoggerSettings.builder()
                         .testingLogger(logger)
@@ -120,7 +122,7 @@ class TestAsyncMessagesLogger {
         messageTypeRegistry = mock(MessageTypeRegistry.class);
         when(messageTypeRegistry.find(anyInt())).thenReturn(messageType);
 
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, probes);
     }
 
     @AfterEach
@@ -129,6 +131,12 @@ class TestAsyncMessagesLogger {
             asyncLogger.stop(Deadline.immediate());
         }
         asyncMessagesLogger.stop(Deadline.immediate());
+    }
+
+    @Test
+    void addsItsProbesToTheSession() {
+        verify(probes).add(argThat(probe -> probe.getName().equals("async-logger-queue")));
+        verify(probes).add(argThat(probe -> probe.getName().equals("async-logger-resource")));
     }
 
     @Test
@@ -169,7 +177,7 @@ class TestAsyncMessagesLogger {
         asyncLogger.start();
 
         verify(logger).isUnderlyingStorageResourceAvailable();
-        verify(storeUnderlyingResourceStateListener).onStoreStateUp(fixSessionId, TEST_LOGGER_STORE_DESCRIPTION);
+        assertThat(resourceDownAlert()).isEmpty();
 
         String testLog = "test message log";
 
@@ -187,16 +195,22 @@ class TestAsyncMessagesLogger {
         // the watchdog is started from the catch around the failing logIncoming call, so seeing that call does not mean
         // it is up yet
         await().untilAsserted(() -> assertThat(asyncLogger.hasInactiveUnderlyingResourceWatchDog()).isFalse());
-        await().untilAsserted(() -> verify(storeUnderlyingResourceStateListener).onStoreStateDown(fixSessionId, TEST_LOGGER_STORE_DESCRIPTION));
+        assertThat(resourceDownAlert()).hasValueSatisfying(alert -> {
+            assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
+            assertThat(alert.getMessage()).contains(TEST_LOGGER_STORE_DESCRIPTION);
+        });
 
         reset(logger);
-        reset(storeUnderlyingResourceStateListener);
         when(logger.isUnderlyingStorageResourceAvailable()).thenReturn(true);
         await().untilAsserted(() -> verify(logger).logIncoming(eq(logTime), eq(messageType), assertLogEquals(testLog2)));
         // and symmetrically it stops itself only after replaying, in UnderlyingResourceWatchContext
         // .checkUnderlyingResourceState, so the replay just observed does not mean it is down yet
         await().untilAsserted(() -> assertThat(asyncLogger.hasInactiveUnderlyingResourceWatchDog()).isTrue());
-        await().untilAsserted(() -> verify(storeUnderlyingResourceStateListener).onStoreStateUp(fixSessionId, TEST_LOGGER_STORE_DESCRIPTION));
+        assertThat(resourceDownAlert()).isEmpty();
+    }
+
+    private Optional<Alert> resourceDownAlert() {
+        return asyncLogger.getResourceDownProbe().getEvaluator().evaluate();
     }
 
     @Test
@@ -233,7 +247,7 @@ class TestAsyncMessagesLogger {
                 .build();
         asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings);
         asyncMessagesLogger.start();
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, probes);
         asyncLogger.start();
 
         verify(batchingLogger).isUnderlyingStorageResourceAvailable();
@@ -281,7 +295,7 @@ class TestAsyncMessagesLogger {
                 .build();
         asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings);
         asyncMessagesLogger.start();
-        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry);
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, probes);
         asyncLogger.start();
 
         String logMessage = "test";

@@ -35,9 +35,56 @@ could mean.
 - **Metrics, logs and traces carry the engine's id** (`fix.eid`), so same-named sessions in different engines can be
   told apart. The Grafana dashboard filters by engine, and Loki indexes engine, group and session.
 - **A generated FIX package ships its dictionary**, so the admin console can decode a session's messages.
+- **Alerting.** The engine checks each session's probes every second and tells an alerts publisher when an alert is
+  raised, changes level, is still ongoing (if the probe asks for reminders) or clears. Levels are `WARNING`, `MAJOR`
+  and `CRITICAL`. A session names its publisher with `fixAlertsPublisherInstanceId`, and an application adds its own
+  probes with `FixSession.getProbes()`. See the [Alerting](docs/alerting.md) guide and `examples/alerting`.
+- **Raise an alert from application code** with a `RaisedAlertEvaluator`: `raise` an alert when something goes
+  wrong, optionally with an expiry, and `clear` it when fixed, from any thread. A `RateAlertEvaluator` raises an
+  alert only when events you `record` reach a count over a sliding window, such as five rejects in a minute.
+- **Probes can carry labels and a runbook URL**, passed on with every alert: labels for routing and grouping (such as
+  the owning team), the runbook URL for what to do. Both are shown by the admin API, HTTP and JMX, and sent to
+  Alertmanager.
+- **A probe can alert only on a condition that lasts**: `withRaiseDelay` on any evaluator holds its first alert back
+  until the condition has held for the delay, so a brief blip never alerts.
+- **Every messages store and logger raises an alert when it fails**, whatever its implementation: a `messages-store`
+  and a `messages-logger` probe on each session. A failed call raises a `WARNING`. Once what the store or logger
+  writes to is found down, the alert turns `MAJOR` and the session stops waiting on it: sent messages are not stored,
+  resend requests log the session out, and nothing is logged, until a check every `resourceCheckInterval` (5 seconds by
+  default) finds it back. The alert clears once calls keep succeeding for `alertClearDelay` (30 seconds by default).
+  Both are settings of every store but the memory one and of every logger, with Spring Boot properties. However many
+  calls fail, each session gets one alert. See
+  [When a store or logger fails](docs/stores-and-loggers.md#when-a-store-or-logger-fails).
+- **An operator can clear an alert by hand** from the admin API, over HTTP
+  (`POST sessions/{group}/{name}/probes/{probe}/clear`) or JMX, when the probe's evaluator accepts it: alerts raised
+  from application code or counted by a rate do, a polled condition does not. Publishers are told it was cleared
+  manually.
+- **A flapping probe can keep one alert**: `withClearDelay` on any evaluator clears its alert only once the condition
+  has stayed normal for the delay, so a condition that comes and goes does not raise a new alert each time.
+- **A session that stays down inside its session time raises a critical alert**, after `sessionDownAlertDelay`
+  (10 seconds by default; zero turns it off). An operator logout or being outside session time never raises it.
+- **An SLF4J alerts publisher** (`staffix-alerts-publisher-slf4j-impl`, and
+  `staffix-alerts-publisher-slf4j-spring-boot` for Spring Boot) logs every alert change, at warn or error while it
+  lasts and info once cleared.
+- **A Prometheus Alertmanager alerts publisher** (`staffix-alerts-publisher-alertmanager-impl`, and
+  `staffix-alerts-publisher-alertmanager-spring-boot` for Spring Boot) sends alerts to one or more Alertmanagers,
+  labelled by engine, session, probe and severity. Ongoing alerts are re-sent every minute, so an engine that stops
+  or crashes has its alerts resolve in Alertmanager on their own.
+- **The async store and async logger raise alerts** when their queue grows too deep, and while what they write to
+  is unavailable.
+- **Admin tools can see probes and alerts.** `AdminApi` lists a session's probes and where each stands, and the
+  engine's ongoing alerts, and tells a `ProbesListener` when a probe is added or removed and when an alert is raised,
+  changes level or clears. The HTTP admin API serves them (`GET sessions/{group}/{name}/probes`,
+  `GET sessions/{group}/{name}/probes/states`, `GET alerts`), and `status` gives each session's worst ongoing alert
+  level, with versions that tell the console when to fetch probes or alerts again. On JMX, a session's MBean has
+  `Probes` and `ProbeStates`, and the engine's has `ActiveAlerts`.
 
 ### Changed
 
+- **A messages store you write must keep its sequence numbers in memory.** `getIncomingSeqNum()`,
+  `getOutgoingSeqNum()` and `getNextOutgoingSeqNum()` no longer declare `StoreException` and must never fail, and
+  storing a sequence number or resetting them must update them in memory before persisting, so a session keeps the
+  right numbers while the storage is down.
 - **A session is identified by its group and its name**, so two counterparties can each have a `trading` session.
   `FixSessionId.getId()` is now `getName()`, and `getQualifiedName()` returns `group.name`. Settings files and Spring
   Boot properties say `name` instead of `id`; a session without a group belongs to `default`.
@@ -60,8 +107,15 @@ could mean.
   no `fix.md`. `FixMessageDirection` lists its values for tools reading them.
 - **Custom extensions have new methods to implement**: `FixMessagesLogger.getLogger` and
   `FixSessionsPlugin.onSessionCreated` receive the engine's id, `FixApplicationFactory` implements
-  `getApplicationIds()`, `FixSessionsSettingsStore` implements `isPersistent()`, and `FixSessionsMonitoringContext`
-  implements `getMeterDescriptors()` and both `getGauge` methods.
+  `getApplicationIds()`, `FixSessionsSettingsStore` implements `isPersistent()`, `FixSessionsMonitoringContext`
+  implements `getMeterDescriptors()` and both `getGauge` methods, and `AdminApi` implements
+  `getProbeDefinitions`, `getProbeStates`, `getActiveAlerts`, `addProbesListener` and `removeProbesListener`.
+- **Custom message stores and loggers receive the session's probes**: `FixMessagesStore.getStore` and
+  `FixMessagesLogger.getLogger` take a `FixSessionProbes`, so a store or logger can raise alerts on the session it
+  serves. A wrapper passes it on to the store or logger it wraps.
+- **The async store's queue thresholds are one depth per alert level**: `QueueSizeThresholdsSettings.thresholds`,
+  by default `WARNING` from 250, `MAJOR` from 1000 and `CRITICAL` from 5000, replaces `normal`, `warn` and
+  `critical`. The alert clears as soon as the queue is back below the lowest threshold.
 - **`FixInitiatorTargets` names the main target and the backups** (`getMainTarget()`, `getBackupTargets()`).
 - **Session settings files say `withinSessionTimeCheckInterval`** instead of `withinSessionCheckInterval`, like the
   Java and Spring Boot settings.
@@ -79,9 +133,15 @@ could mean.
   sets it is refused.
 - **`FixSession.disconnect(String)`**: use `logoutPermanently(String)`.
 - **`AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`**, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`.
+- **The async store's `queueSizeThresholdsListener` and `storeUnderlyingResourceStateListener`**, with
+  `QueueSizeThresholdsListener` and `StoreUnderlyingResourceStateListener`: the same conditions are now alerts,
+  delivered through the session's alerts publisher.
 
 ### Fixed
 
+- The JDBC store's DDL generator plugin ignored `tablePrefix`, so the schema it wrote did not match a store
+  configured with a prefix. The prefix now applies to the tables and their indexes, so several prefixes can share
+  one schema.
 - Two sessions with the same name in different groups overwrote each other's stored state, logs, metrics, JMX beans
   and health entries.
 - Listing an acceptor's sessions while its settings store reloaded could fail or return a partial list.

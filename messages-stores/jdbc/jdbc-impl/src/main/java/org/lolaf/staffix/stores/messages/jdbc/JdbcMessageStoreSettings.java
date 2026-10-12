@@ -83,6 +83,18 @@ public class JdbcMessageStoreSettings implements FixMessagesStoreSettings {
     @Builder.Default
     private final Duration pruningCheckInterval = Duration.ofMinutes(5);
 
+    /**
+     * See {@link FixMessagesStoreSettings#getResourceCheckInterval()}.
+     */
+    @Builder.Default
+    private final Duration resourceCheckInterval = DEFAULT_RESOURCE_CHECK_INTERVAL;
+
+    /**
+     * See {@link FixMessagesStoreSettings#getAlertClearDelay()}.
+     */
+    @Builder.Default
+    private final Duration alertClearDelay = DEFAULT_ALERT_CLEAR_DELAY;
+
     public static class Factory implements FixMessagesStoreFactory<JdbcMessageStoreSettings> {
         @Override
         public Class<JdbcMessageStoreSettings> getSettingsClass() {

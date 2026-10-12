@@ -487,6 +487,70 @@ class TestFixMessagesSending extends AbstractFixTests {
         assertMessageReceived(decodedAcceptorMessages, Subject.get(), "sent-after-reconnect");
     }
 
+    /**
+     * A send while disconnected is handed to the session's owner, in an encoder the session owns: the caller's reusable
+     * encoder is free when {@code send} returns, and each message is stored with its own content.
+     */
+    @Test
+    void aReusableEncoderSentWhileDisconnectedIsFreeWhenSendReturns() {
+        logonClient();
+        fixInitiatorSession.logoutPermanently("sending while down");
+        await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
+        long firstSeqNum = getFixMessagesStore(ConnectorType.INITIATOR).getOutgoingSeqNum();
+        EmailEncoder reusable = fixInitiatorSession.newEncoder(EmailEncoder.class).asReusable();
+
+        reusable.begin().setSubject("first-while-down");
+        fixInitiatorSession.send(reusable, null);
+        assertThat(reusable.isAvailable()).isTrue();
+        reusable.begin().setSubject("second-while-down");
+        fixInitiatorSession.send(reusable, null);
+
+        await().untilAsserted(() -> assertThat(getFixMessagesStore(ConnectorType.INITIATOR).getOutgoingSeqNum())
+                .isEqualTo(firstSeqNum + 2));
+        assertThat(storedMessage(firstSeqNum)).contains("first-while-down");
+        assertThat(storedMessage(firstSeqNum + 1)).contains("second-while-down");
+    }
+
+    /**
+     * A send on the IO thread queued behind a write the socket has only partly taken, its peer not reading, is moved to
+     * an encoder the session owns: the caller's reusable encoder is free when {@code send} returns.
+     */
+    @Test
+    void aReusableEncoderQueuedBehindAPartialWriteIsFreeWhenSendReturns() throws Exception {
+        logonClient();
+        CountDownLatch peerReading = new CountDownLatch(1);
+        fixAcceptorSession.processTask(() -> awaitUninterruptibly(peerReading));
+        EmailEncoder reusable = fixInitiatorSession.newEncoder(EmailEncoder.class).asReusable();
+        CompletableFuture<Boolean> availableWhenSendReturned = new CompletableFuture<>();
+        String filler = "x".repeat(1500);
+
+        fixInitiatorSession.processTask(() -> {
+            try {
+                IOSession connection = ((FixSessionImpl) fixInitiatorSession).currentIOSession();
+                for (int i = 0; i < 100_000 && connection.waitForAllMessagesSent(Deadline.immediate()); i++) {
+                    EmailEncoder fill = fixInitiatorSession.newEncoder(EmailEncoder.class);
+                    fill.begin().setSubject(filler);
+                    fixInitiatorSession.send(fill, null);
+                }
+                reusable.begin().setSubject("queued-behind-a-partial-write");
+                fixInitiatorSession.send(reusable, null);
+                availableWhenSendReturned.complete(reusable.isAvailable());
+            } catch (RuntimeException e) {
+                availableWhenSendReturned.completeExceptionally(e);
+            }
+        });
+
+        boolean available;
+        try {
+            available = availableWhenSendReturned.get(10, TimeUnit.SECONDS);
+        } finally {
+            peerReading.countDown();
+        }
+        // asserted once everything is delivered, so the engines never stop with megabytes still in flight
+        assertMessageReceived(decodedAcceptorMessages, Subject.get(), "queued-behind-a-partial-write");
+        assertThat(available).isTrue();
+    }
+
     private String storedMessage(long seqNum) {
         StringBuilder found = new StringBuilder();
         getFixMessagesStore(ConnectorType.INITIATOR).find(seqNum, seqNum, (storedSeqNum, message) -> {

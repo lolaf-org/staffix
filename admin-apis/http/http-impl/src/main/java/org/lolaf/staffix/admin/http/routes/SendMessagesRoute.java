@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.io.IOException;
+import java.util.List;
 
 @Slf4j
 public final class SendMessagesRoute extends SessionOperationRoute {
@@ -36,7 +37,7 @@ public final class SendMessagesRoute extends SessionOperationRoute {
     }
 
     @Override
-    void apply(FixSessionId fixSessionId, HttpExchange exchange) throws IOException {
+    void apply(FixSessionId fixSessionId, HttpExchange exchange, List<String> path) throws IOException {
         SendMessageRequest send = mapper.readValue(exchange.getRequestBody(), SendMessageRequest.class);
         if (send.getMessages().isEmpty()) {
             throw new HttpProblemException(400, "No message to send");

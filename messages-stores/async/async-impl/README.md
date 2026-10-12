@@ -102,26 +102,19 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
 
 ### Queue Monitoring
 
-Monitor queue depth with thresholds and callbacks:
+Each session's queue is watched by a probe named `async-store-queue`, reported through the session's alerts
+publisher at the highest level whose depth threshold is reached (by default `WARNING` from 250, `MAJOR` from 1000,
+`CRITICAL` from 5000), cleared below the lowest threshold.
 
 ```java
 AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
         .asyncStoreSettings(AsyncStoreSettings.builder()
                 .asyncQueueDirectory("./chronicle-queue")
                 .queueSizeThresholdsSettings(AsyncStoreSettings.QueueSizeThresholdsSettings.builder()
-                        .normal(10)                                  // < 10 messages is normal
-                        .warn(100)                                   // 10-100 is warning
-                        .critical(1000)                              // > 100 is critical
-                        .evaluationInterval(Duration.ofSeconds(5))   // Check every 5 seconds
+                        .thresholds(Map.of(AlertLevel.WARNING, 100,   // warning from 100
+                                AlertLevel.CRITICAL, 1000))           // critical from 1000
+                        .evaluationInterval(Duration.ofSeconds(5))   // checked every 5 seconds
                         .build())
-                .queueSizeThresholdsListener(new QueueSizeThresholdsListener() {
-                    @Override
-                    public void onThresholdReached(FixSessionId sessionId, ThresholdLevel level, long queueSize) {
-                        log.warn("Session {} queue at {} level with {} pending messages",
-                                sessionId, level, queueSize);
-                        // Trigger alerts, metrics, throttling, etc.
-                    }
-                })
                 .build())
         .wrappedFixMessagesStoreSettings(jdbcSettings)
         .build();
@@ -173,15 +166,21 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
     - Unregisters from background thread processing
     - Continues queuing incoming store operations
     - Starts a watchdog thread checking availability every 5 seconds
+    - Raises a `MAJOR` alert on the session's `async-store-resource` probe, naming the unavailable resource
 
 2. When the underlying store becomes available:
     - The watchdog reregisters with background threads
     - Queued operations are processed
+    - The alert clears once the operations that failed are replayed
     - Normal operation resumes
 
 3. On startup, if messages are queued from a previous crash:
     - Waits up to 2 minutes to flush them
     - Logs progress and remaining count
+
+A failure of the async store itself, such as a full disk under its queue, is handled like any store's: it raises the
+session's `messages-store` alert, and the async store's `resourceCheckInterval` and `alertClearDelay` apply, not the
+wrapped store's. See [When a store or logger fails](../../../docs/stores-and-loggers.md#when-a-store-or-logger-fails).
 
 ## Configuration Reference
 
@@ -193,6 +192,8 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
 | `wrappedFixMessagesStoreSettings`            | FixMessagesStoreSettings | *Required* | Settings for the wrapped store (JDBC, file, etc.)   |
 | `underlyingStoreResourceWatchTaskCheckDelay` | Duration                 | 2 seconds  | How often to check if failed storage is back online |
 | `flushPendingMessagesOnStartupDelay`         | Duration                 | 60 seconds | Max time to flush pending messages on startup       |
+| `resourceCheckInterval`                      | Duration                 | 5 seconds  | How often the async store is checked once it fails  |
+| `alertClearDelay`                            | Duration                 | 30 seconds | How long before the `messages-store` alert clears   |
 | `logByteBufferSize`                          | int                      | 2048       | Buffer size for message data                        |
 | `useDirectByteBuffer`                        | boolean                  | true       | Use direct (off-heap) buffers for zero-copy I/O     |
 
@@ -209,17 +210,14 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
 | `rollCycleProvider`                       | Function<FixSessionId, RollCycle> | FAST_HOURLY           | Chronicle Queue roll cycle per session        |
 | `builderConfigurer`                       | BiConsumer                        | (no-op)               | Customize Chronicle Queue builder per session |
 | `threadFactory`                           | ThreadFactory                     | FastThreadLocalThread | Factory for reader threads                    |
-| `queueSizeThresholdsSettings`             | QueueSizeThresholdsSettings       | See below             | Queue depth monitoring thresholds             |
-| `queueSizeThresholdsListener`             | QueueSizeThresholdsListener       | (no-op)               | Callback for threshold violations             |
+| `queueSizeThresholdsSettings`             | QueueSizeThresholdsSettings       | See below             | Queue depth alert thresholds                  |
 
 ### QueueSizeThresholdsSettings
 
-| Parameter            | Type     | Default    | Description                      |
-|----------------------|----------|------------|----------------------------------|
-| `normal`             | int      | 10         | Queue size considered normal     |
-| `warn`               | int      | 100        | Warning threshold                |
-| `critical`           | int      | 1000       | Critical threshold               |
-| `evaluationInterval` | Duration | 10 seconds | How often to evaluate queue size |
+| Parameter            | Type                    | Default                                    | Description                                 |
+|----------------------|-------------------------|--------------------------------------------|---------------------------------------------|
+| `thresholds`         | Map<AlertLevel,Integer> | WARNING 250, MAJOR 1000, CRITICAL 5000     | Depth from which each level is raised       |
+| `evaluationInterval` | Duration                | 10 seconds                                 | How often the probe measures the depth      |
 
 ## Batching vs Non-Batching Mode
 
@@ -231,12 +229,8 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
 
 ```java
 asyncStoreSettings(AsyncStoreSettings.builder()
-    .
-
-eventsBatching(0)  // Batching disabled by default (0)
-    .
-
-build())
+    .eventsBatching(0)  // Batching disabled by default (0)
+    .build())
 ```
 
 ### Batching Mode
@@ -249,15 +243,9 @@ build())
 ```java
 asyncStoreSettings(
         AsyncStoreSettings.builder()
-            .
-
-eventsBatching(100)                          // Batch up to 100 events
-            .
-
-batchingFlushInterval(Duration.ofMillis(50)) // Max 50ms when flushing waiting events in the queue
-        .
-
-build())
+            .eventsBatching(100)                          // Batch up to 100 events
+            .batchingFlushInterval(Duration.ofMillis(50)) // Max 50ms when flushing waiting events in the queue
+        .build())
 ```
 
 ## Performance Characteristics
@@ -301,12 +289,12 @@ messagesStore.stop(Deadline.of(Duration.ofSeconds(30)));
 
 ## Monitoring and Observability
 
-see QueueSizeThresholdsListener interface and AsyncMessagesStoreSettings.queueSizeThresholdsListener()
+Queue depth alerts come from the `async-store-queue` probe, see [Queue Monitoring](#queue-monitoring).
 
 ### Check Queue Status
 
 ```java
-AsyncMessageStore sessionStore = (AsyncMessageStore) messagesStore.getStore(sessionId);
+AsyncMessageStore sessionStore = (AsyncMessageStore) messagesStore.getStore(sessionId, probes);
 
 long offersCount = sessionStore.getQueueOffersCount();  // Total messages queued
 long pollsCount = sessionStore.getQueuePollsCount();    // Total messages processed
@@ -356,8 +344,7 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
                 .eventsBatching(50)
                 .batchingFlushInterval(Duration.ofMillis(100))
                 .queueSizeThresholdsSettings(AsyncStoreSettings.QueueSizeThresholdsSettings.builder()
-                        .warn(500)
-                        .critical(2000)
+                        .thresholds(Map.of(AlertLevel.WARNING, 500, AlertLevel.CRITICAL, 2000))
                         .build())
                 .build())
         .wrappedFixMessagesStoreSettings(jdbcSettings)

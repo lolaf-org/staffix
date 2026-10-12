@@ -17,6 +17,7 @@ package org.lolaf.staffix.tests;
 
 import lombok.AllArgsConstructor;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
@@ -27,7 +28,10 @@ public class TestingFixMessagesStore extends Startable.VoidStartable<FixMessages
     private final TestingFixMessagesStoreSettings settings;
 
     @Override
-    public FixSessionMessagesStore getStore(FixSessionId fixSessionId) {
+    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {
+        if (settings.getProbe() != null) {
+            probes.add(settings.getProbe());
+        }
         return settings.getTestingFixSessionMessagesStore();
     }
 

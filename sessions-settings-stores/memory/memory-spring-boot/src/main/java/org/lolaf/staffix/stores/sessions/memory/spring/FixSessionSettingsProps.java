@@ -158,6 +158,11 @@ public class FixSessionSettingsProps {
     private String fixMessageLoggerInstanceId;
 
     /**
+     * Instance id of the alerts publisher this session's probes report to.
+     */
+    private String fixAlertsPublisherInstanceId;
+
+    /**
      * The plugin instance each plugin type uses for this session, keyed by the plugin's class name, for example
      * org.lolaf.staffix.tracing.otlp.OtelTracing.
      */
@@ -202,6 +207,12 @@ public class FixSessionSettingsProps {
      * default.
      */
     private Duration disconnectMessagesFlushDeadline;
+
+    /**
+     * How long the session may stay logged out inside its session time before its session-down probe raises a
+     * critical alert. 10 seconds by default; zero turns the probe off.
+     */
+    private Duration sessionDownAlertDelay;
 
     /**
      * When the session is expected to be up, in the venue's own time zone.

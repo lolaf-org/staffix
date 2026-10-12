@@ -114,7 +114,7 @@ public class TestingFixSessionMessagesStore implements FixMessagesStore.FixSessi
     }
 
     @Override
-    public long getNextOutgoingSeqNum() throws StoreException {
+    public long getNextOutgoingSeqNum() {
         refuseIfStopped("getNextOutgoingSeqNum");
         return outgoingSequenceNumber.getAndIncrement();
     }

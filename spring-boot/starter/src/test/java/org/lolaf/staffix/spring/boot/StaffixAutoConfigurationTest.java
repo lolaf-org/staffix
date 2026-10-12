@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.FixAcceptor;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
+import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -29,6 +31,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.spring.boot.spi.FixMessagesStoreSettingsContributor;
 import org.lolaf.staffix.spring.boot.spi.StaffixApplicationFactoryConstants;
 import org.lolaf.staffix.spring.boot.testfixtures.CountingSingleThreadExecutor;
+import org.lolaf.staffix.spring.boot.testfixtures.TestAlertsPublisherContributor;
 import org.lolaf.staffix.spring.boot.testfixtures.TestLoggerContributor;
 import org.lolaf.staffix.spring.boot.testfixtures.TestSessionsSettingsStoreContributor;
 import org.lolaf.staffix.spring.boot.testfixtures.TestStoreContributor;
@@ -64,6 +67,11 @@ class StaffixAutoConfigurationTest {
      */
     private static final FixSessionId NEVER_CONNECTED_SESSION_ID =
             FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_2");
+    /**
+     * Never connected either, with a short session down delay so it raises an alert during the run.
+     */
+    private static final FixSessionId ALERTING_SESSION_ID =
+            FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_3");
 
     @Autowired
     private FixEngine fixEngine;
@@ -89,6 +97,9 @@ class StaffixAutoConfigurationTest {
 
     @Autowired
     private CountingSingleThreadExecutor offlineSessionsExecutor;
+
+    @Autowired
+    private TestAlertsPublisherContributor alertsPublisherContributor;
 
     @Test
     void initiatorLogsOnToAcceptor() {
@@ -123,6 +134,17 @@ class StaffixAutoConfigurationTest {
 
         Awaitility.await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() -> assertThat(offlineSessionsExecutor.getExecutedTasksCount()).isPositive());
+    }
+
+    @Test
+    void aContributedAlertsPublisherReceivesTheSessionsAlerts() {
+        Awaitility.await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(alertsPublisherContributor.getSettings().getEvents())
+                        .anySatisfy(event -> {
+                            assertThat(event.getFixSessionId()).isEqualTo(ALERTING_SESSION_ID);
+                            assertThat(event.getType()).isEqualTo(AlertEvent.Type.RAISED);
+                            assertThat(event.getProbeName()).isEqualTo("session-down");
+                        }));
     }
 
     @Test
@@ -204,6 +226,11 @@ class StaffixAutoConfigurationTest {
         }
 
         @Bean
+        TestAlertsPublisherContributor alertsPublisher() {
+            return new TestAlertsPublisherContributor(FixAlertsPublisherSettings.DEFAULT_INSTANCE_ID);
+        }
+
+        @Bean
         TestSessionsSettingsStoreContributor sessionsStoreContributor() {
             FixSessionSettings acceptorSession = FixSessionSettings.builder()
                     .fixSessionId(ACCEPTOR_SESSION_ID)
@@ -232,8 +259,12 @@ class StaffixAutoConfigurationTest {
                     .fixApplicationInstanceId("acceptorApp")
                     .resetSeqNumOnLogon(true)
                     .build();
+            FixSessionSettings alertingSession = neverConnectedSession.toBuilder()
+                    .fixSessionId(ALERTING_SESSION_ID)
+                    .sessionDownAlertDelay(Duration.ofSeconds(1))
+                    .build();
             return new TestSessionsSettingsStoreContributor("ACCEPTOR",
-                    List.of(acceptorSession, initiatorSession, neverConnectedSession));
+                    List.of(acceptorSession, initiatorSession, neverConnectedSession, alertingSession));
         }
     }
 }

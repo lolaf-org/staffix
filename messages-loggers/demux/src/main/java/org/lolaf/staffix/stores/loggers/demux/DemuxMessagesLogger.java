@@ -17,6 +17,7 @@ package org.lolaf.staffix.stores.loggers.demux;
 
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -59,8 +60,9 @@ public class DemuxMessagesLogger extends Startable.SimpleStartable<FixMessagesLo
     }
 
     @Override
-    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
-        List<Logger> wrappedLoggers = loggers.stream().map(l -> l.getLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry)).collect(Collectors.toList());
+    public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
+                            FixSessionProbes probes) {
+        List<Logger> wrappedLoggers = loggers.stream().map(l -> l.getLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry, probes)).collect(Collectors.toList());
         if (wrappedLoggers.stream().allMatch(BatchingLogger.class::isInstance)) {
             return new BatchingLoggerImpl(wrappedLoggers);
         }

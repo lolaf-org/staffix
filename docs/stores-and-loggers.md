@@ -27,15 +27,9 @@ verified against one shared contract test suite, including one you write yoursel
 
 ```java
 MemoryMessageStoreSettings.builder()
-        .
-
-instanceId("acceptor")
-        .
-
-maxEntriesInMemory(1024)
-        .
-
-build()
+        .instanceId("acceptor")
+        .maxEntriesInMemory(1024)
+        .build()
 ```
 
 | setting              | default          |
@@ -52,15 +46,9 @@ numbers on every logon.
 
 ```java
 FileMessageStoreSettings.builder()
-        .
-
-instanceId("acceptor")
-        .
-
-storageDirectoryPath("/var/lib/staffix/acceptor")
-        .
-
-build()
+        .instanceId("acceptor")
+        .storageDirectoryPath("/var/lib/staffix/acceptor")
+        .build()
 ```
 
 | setting                     | default                 |
@@ -77,18 +65,10 @@ it on and put the store behind the [async wrapper](#taking-io-off-the-session-th
 
 ```java
 JdbcMessageStoreSettings.builder()
-        .
-
-instanceId("acceptor")
-        .
-
-dataSource(myDataSource)
-        .
-
-maxMessagesPerSession(1_000_000)
-        .
-
-build()
+        .instanceId("acceptor")
+        .dataSource(myDataSource)
+        .maxMessagesPerSession(1_000_000)
+        .build()
 ```
 
 | setting                    | default            |
@@ -101,6 +81,9 @@ build()
 
 Schemas are generated rather than shipped as a fixed `.sql`: the DDL generator plugin produces them for several
 dialects via Hibernate. `maxMessagesPerSession` with `pruningCheckInterval` keeps the table bounded.
+
+**Keep the pool's connection timeout short.** While the database is down, the first failed call and every sequence
+number update wait for it on the session thread; see [When a store or logger fails](#when-a-store-or-logger-fails).
 
 **A database is on the other side of a network.** Used directly it puts a network round trip inside your FIX round
 trip. Wrap it.
@@ -129,6 +112,39 @@ The quickstart uses the SLF4J logger with both directions on, which is why you c
 
 ---
 
+## When a store or logger fails
+
+A store or logger failure never reaches the session, which keeps trading. The engine logs it and raises the session's
+`messages-store` or `messages-logger` [alert](alerting.md#built-in-probes), then checks, off the session thread,
+whether the store's or logger's resource is available. If it is down, until a check every `resourceCheckInterval` finds
+it back:
+
+- **a store does not store the messages sent**, so nothing waits on it, and a resend request logs the session out,
+  since it cannot be answered. Sequence number updates still reach the store, and each waits for it: the session
+  relies on them.
+- **a logger skips every call.**
+
+A sent message that was not stored is gap filled if the peer later asks for it again: the peer stays in sequence but
+never receives that message a second time. To lose nothing through an outage, put the store behind the
+[async wrapper](#taking-io-off-the-session-thread), which queues to local disk and replays once the resource is back.
+
+| setting                 | default    | what it is for                                                                     |
+|-------------------------|------------|------------------------------------------------------------------------------------|
+| `resourceCheckInterval` | 5 seconds  | how often a resource found down is checked; zero turns it off and every call waits |
+| `alertClearDelay`       | 30 seconds | how long calls must keep succeeding before the alert clears                        |
+
+Both are on every store but the memory one, which cannot fail, and on every logger, with the Spring Boot properties
+`resource-check-interval` and `alert-clear-delay`. Behind the async wrapper, the wrapper's own apply.
+
+The SLF4J logger is the exception: its backend (logback, log4j2) reports a failing appender through its own status
+messages and never to the caller, so staffix cannot see it and raises no alert.
+
+A store you write must keep its sequence numbers in memory: the getters must never fail, and storing a sequence
+number must update it in memory before persisting it, so the session keeps the right numbers while the resource is
+down.
+
+---
+
 ## Taking I/O off the session thread
 
 Both `AsyncMessagesStoreSettings` and `AsyncMessagesLoggerSettings` are **decorators**: they wrap another store or
@@ -137,21 +153,11 @@ Chronicle Queue and returns; a background thread performs the database write, th
 
 ```java
 AsyncMessagesStoreSettings.builder()
-        .
-
-wrappedFixMessagesStoreSettings(JdbcMessageStoreSettings.builder()
-                .
-
-instanceId("acceptor")
-                .
-
-dataSource(myDataSource)
-                .
-
-build())
-        .
-
-build()
+        .wrappedFixMessagesStoreSettings(JdbcMessageStoreSettings.builder()
+                .instanceId("acceptor")
+                .dataSource(myDataSource)
+                .build())
+        .build()
 ```
 
 Chronicle's queue is off-heap and memory-mapped, so the handover allocates nothing, and queued work survives a
@@ -167,7 +173,8 @@ process crash rather than dying with the buffer that held it.
 
 **The guarantee to understand:** wrapping a JDBC store in the async decorator means a slow database costs you queue
 depth, not round-trip time. A watchdog tracks the backing store's health and keeps queueing through an outage instead
-of pushing the failure back onto the session.
+of pushing the failure back onto the session. Probes on the session raise an alert while the backing store is down
+and when the queue grows too deep; see [Alerting](alerting.md#built-in-probes).
 
 **And the trade:** a store answers resend requests, so a message still in the queue is a message not yet in the
 database. A resend first waits, up to `findWaitForEmptyQueueTimeout`, for every pending write to land. If they have not

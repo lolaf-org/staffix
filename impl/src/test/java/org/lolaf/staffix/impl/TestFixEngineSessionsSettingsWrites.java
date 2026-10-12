@@ -22,6 +22,13 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.AlertLevel;
+import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
@@ -34,25 +41,35 @@ import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
+import org.lolaf.staffix.impl.alerting.SessionDownEvaluator;
+import org.lolaf.staffix.tests.TestingFixAlertsPublisherSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 import org.lolaf.staffix.tests.TestingFixSessionMonitoringManagerSettings;
 
 import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class TestFixEngineSessionsSettingsWrites {
 
     private static final String STORE_ID = "test-store";
+    private static final Probe STORE_PROBE = Probe.builder().name("store-probe").description("Contributed by the store")
+            .evaluator(Optional::empty).build();
     private static final FixApplicationSessionSettingDescriptor ACCOUNT =
             FixApplicationSessionSettingDescriptor.of("writes.account", "The account orders are booked to");
 
     private final ControllableSettingsStore store = new ControllableSettingsStore(STORE_ID);
+    private final TestingFixAlertsPublisherSettings alertsPublisher = TestingFixAlertsPublisherSettings.builder().build();
     private FixEngine fixEngine;
     private AdminApi adminApi;
 
@@ -75,13 +92,16 @@ class TestFixEngineSessionsSettingsWrites {
         when(monitoring.getInstanceId()).thenReturn("metrics");
         when(monitoring.matchesPluginClass(FixSessionsMonitoringManager.class)).thenReturn(true);
         fixEngine = FixEngineBuilder.builder()
+                .instanceId("engine")
                 .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
                         .testingFixSessionMessagesStore(new TestingFixSessionMessagesStore())
+                        .probe(STORE_PROBE)
                         .build())
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder()
                         .application(InstanceProvider.DEFAULT_INSTANCE_ID, application)
                         .build())
                 .fixSessionsSettingsStore(new ControllableSettingsStore.Settings(store))
+                .fixAlertsPublisher(alertsPublisher)
                 .fixSessionsPlugin(TestingFixSessionMonitoringManagerSettings.builder()
                         .instanceId("metrics")
                         .mock(monitoring)
@@ -112,6 +132,7 @@ class TestFixEngineSessionsSettingsWrites {
         });
         assertThat(components.getMessagesStores()).containsExactly(InstanceProvider.DEFAULT_INSTANCE_ID);
         assertThat(components.getMessagesLoggers()).isEmpty();
+        assertThat(components.getAlertsPublishers()).containsExactly(InstanceProvider.DEFAULT_INSTANCE_ID);
         assertThat(components.getSessionsPlugins()).singleElement().satisfies(plugin -> {
             assertThat(plugin.getInstanceId()).isEqualTo("metrics");
             assertThat(plugin.getPluginTypes()).containsExactly(FixSessionsMonitoringManager.class);
@@ -180,6 +201,9 @@ class TestFixEngineSessionsSettingsWrites {
                 .fixSessionPluginsInstanceId(FixSessionsMonitoringManager.class, "otlp").build()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unable to match all FIX sessions plugins");
+        assertThatThrownBy(() -> adminApi.addFixSessionSettings(STORE_ID, alpha.toBuilder().fixAlertsPublisherInstanceId("pager").build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("alerts publisher for id 'pager' within: 'default'");
         assertThat(store.getSettings()).isEmpty();
     }
 
@@ -277,6 +301,93 @@ class TestFixEngineSessionsSettingsWrites {
 
         assertThat(store.getSettings()).isEmpty();
         assertThatThrownBy(() -> adminApi.getIncomingSeqNum(alpha.getFixSessionId())).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void aSessionsProbesAreEvaluatedAndClearedWhenTheSessionIsRemoved() {
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+        FixSession session = adminApi.getManagedFixSessions().stream()
+                .filter(s -> s.getFixSessionId().equals(alpha.getFixSessionId()))
+                .findFirst().orElseThrow();
+
+        session.getProbes().add(Probe.builder().name("queue").description("Orders waiting")
+                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).build());
+        await().atMost(Duration.ofSeconds(5)).until(() -> !alertsPublisher.getEvents().isEmpty());
+        adminApi.removeFixSessionSettings(alpha.getFixSessionId(), FixSession.FixSessionType.ACCEPTOR);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alertsPublisher.getEvents())
+                .extracting(AlertEvent::getType, AlertEvent::getFixSessionId)
+                .containsExactly(tuple(AlertEvent.Type.RAISED, alpha.getFixSessionId()), tuple(AlertEvent.Type.CLEARED, alpha.getFixSessionId())));
+    }
+
+    @Test
+    void theAdminApiListsASessionsProbesTheirStatesAndTheEnginesActiveAlerts() {
+        List<String> added = new CopyOnWriteArrayList<>();
+        List<ProbeState> transitions = new CopyOnWriteArrayList<>();
+        adminApi.addProbesListener(new ProbesListener() {
+            @Override
+            public void onProbeAdded(FixSessionId fixSessionId, ProbeDefinition probe) {
+                added.add(probe.getName());
+            }
+
+            @Override
+            public void onProbeRemoved(FixSessionId fixSessionId, String probeName) {
+            }
+
+            @Override
+            public void onAlertTransition(FixSessionId fixSessionId, ProbeState state) {
+                transitions.add(state);
+            }
+        });
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+        FixSession session = adminApi.getManagedFixSessions().stream()
+                .filter(s -> s.getFixSessionId().equals(alpha.getFixSessionId()))
+                .findFirst().orElseThrow();
+
+        session.getProbes().add(Probe.builder().name("queue").description("Orders waiting")
+                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).build());
+
+        assertThat(adminApi.getProbeDefinitions(alpha.getFixSessionId())).extracting(ProbeDefinition::getName)
+                .containsExactlyElementsOf(added).contains(SessionDownEvaluator.PROBE_NAME, "queue");
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(adminApi.getActiveAlerts())
+                .singleElement().satisfies(active -> {
+                    assertThat(active.getFixSessionId()).isEqualTo(alpha.getFixSessionId());
+                    assertThat(active.getProbeState().getProbeName()).isEqualTo("queue");
+                }));
+        assertThat(adminApi.getProbeStates(alpha.getFixSessionId())).extracting(ProbeState::getProbeName).contains("queue");
+        assertThat(transitions).extracting(ProbeState::getProbeName).containsExactly("queue");
+        assertThatThrownBy(() -> adminApi.getProbeStates(session("beta", "BETA").getFixSessionId()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void aSessionCarriesTheProbesItsStoreContributes() {
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+
+        FixSession session = adminApi.getManagedFixSessions().stream()
+                .filter(s -> s.getFixSessionId().equals(alpha.getFixSessionId()))
+                .findFirst().orElseThrow();
+        assertThat(session.getProbes().list()).contains(STORE_PROBE);
+    }
+
+    @Test
+    void aSessionWaitingForItsPeerInsideSessionTimeRaisesSessionDown() {
+        FixSessionSettings alpha = session("alpha", "ALPHA").toBuilder()
+                .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
+                .sessionDownAlertDelay(Duration.ofSeconds(1))
+                .build();
+
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alertsPublisher.getEvents()).singleElement().satisfies(event -> {
+            assertThat(event.getType()).isEqualTo(AlertEvent.Type.RAISED);
+            assertThat(event.getEngineId()).isEqualTo("engine");
+            assertThat(event.getProbeName()).isEqualTo(SessionDownEvaluator.PROBE_NAME);
+            assertThat(event.getAlert().getLevel()).isEqualTo(AlertLevel.CRITICAL);
+        }));
     }
 
     @Test

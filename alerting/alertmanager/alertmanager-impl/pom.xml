@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-alerts-publisher-alertmanager-parent</artifactId>
+        <version>0.9.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>staffix-alerts-publisher-alertmanager-impl</artifactId>
+
+    <name>Staffix Alertmanager Alerts Publisher</name>
+    <description>
+        Sends the alerts raised by session probes to Prometheus Alertmanager.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.alerting.alertmanager</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-http-client-jdk</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -11,23 +11,23 @@ one, and bringing a dictionary of your own.
 
 Each application-layer artifact holds one dictionary, as a resource at the root of the jar, and no code:
 
-| artifact | speaks | dictionary resource |
-|----------|--------|---------------------|
-| `staffix-fix-42` | FIX 4.2 | `FIX42.xml` |
-| `staffix-fix-43` | FIX 4.3 | `FIX43.xml` |
-| `staffix-fix-44` | FIX 4.4 | `FIX44.xml` |
-| `staffix-fix-50` | FIX 5.0 | `FIX50.xml` |
-| `staffix-fix-50sp1` | FIX 5.0 SP1 | `FIX50SP1.xml` |
-| `staffix-fix-50sp2` | FIX 5.0 SP2 | `FIX50SP2.xml` |
-| `staffix-fix-latest` | FIX Latest | `fix-latest-minimal.xml` |
+| artifact             | speaks      | dictionary resource      |
+|----------------------|-------------|--------------------------|
+| `staffix-fix-42`     | FIX 4.2     | `FIX42.xml`              |
+| `staffix-fix-43`     | FIX 4.3     | `FIX43.xml`              |
+| `staffix-fix-44`     | FIX 4.4     | `FIX44.xml`              |
+| `staffix-fix-50`     | FIX 5.0     | `FIX50.xml`              |
+| `staffix-fix-50sp1`  | FIX 5.0 SP1 | `FIX50SP1.xml`           |
+| `staffix-fix-50sp2`  | FIX 5.0 SP2 | `FIX50SP2.xml`           |
+| `staffix-fix-latest` | FIX Latest  | `fix-latest-minimal.xml` |
 
 The FIXT.1.1 session layer is the exception: `staffix-fixt-11` ships its encoders and registries already generated,
 in `org.lolaf.staffix.fixt11`, since every FIX 5.0+ session needs the same ones.
 
 ### Why the encoders are not shipped
 
-- **Size.** Maven Central strictly limits artifact size, and a full FIX package is large: the complete FIX
-  Latest alone generates some 20,000 classes.
+- **Size.** Maven Central limits artifact size since end of 2026, and a full FIX package is large: the complete FIX
+  Latest alone generates 10MB jars.
 - **You rarely need all of it.** Most applications use a handful of messages. A dictionary of your own, stripped of
   the messages you do not use, generates less code, builds faster and keeps your API to what you actually speak.
   See [Cutting a dictionary from an orchestration](#cutting-a-dictionary-from-an-orchestration) and
@@ -41,6 +41,7 @@ Add `staffix-fix-encoders-generator-maven-plugin` to your build, with the dictio
 the plugin**, and point `dictionaryFile` at the resource with a `classpath:` prefix:
 
 ```xml
+
 <plugin>
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
@@ -52,7 +53,9 @@ the plugin**, and point `dictionaryFile` at the resource with a `classpath:` pre
     </configuration>
     <executions>
         <execution>
-            <goals><goal>code-generator</goal></goals>
+            <goals>
+                <goal>code-generator</goal>
+            </goals>
         </execution>
     </executions>
     <dependencies>
@@ -84,6 +87,7 @@ dictionary, and the application dictionary carries only business messages. A FIX
 empty `<header>` for exactly this reason.
 
 ```xml
+
 <dependency>
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-fixt-11</artifactId>
@@ -118,7 +122,8 @@ For a message like QuoteRequest, in `org.lolaf.staffix.fix44`:
 - **registries**, published through the ServiceLoader SPI, so the engine finds the right field and message-type
   metadata for the version a session speaks.
 - **the dictionary**, as the resource `staffix-dictionaries/<dictionaryId>-<version>.xml` (`FIXT.1.1.xml` for the
-  session layer), so an admin tool such as the [HTTP admin API](runtime-administration.md#http-for-the-staffix-admin-console)
+  session layer), so an admin tool such as
+  the [HTTP admin API](runtime-administration.md#http-for-the-staffix-admin-console)
   decodes a session's messages with exactly the dictionary it runs.
 
 Encoders come from the session so they are bound to it:
@@ -147,7 +152,8 @@ dictionary carries deprecated elements with nothing to distinguish them, so noth
 ## Running more than one version in one engine
 
 Nothing stops an engine hosting FIX 4.2 and FIX 4.4 sessions at once: generate both, one execution each with its own
-`packageName`, and give each session the matching `FixSessionId`. The registries are per-version and resolved through the SPI, so the right metadata follows
+`packageName`, and give each session the matching `FixSessionId`. The registries are per-version and resolved through
+the SPI, so the right metadata follows
 the session. An application speaks one version, so each version needs its own application.
 
 What each session must not share is its *instance ids* if it needs its own store, logger or application, see
@@ -208,6 +214,7 @@ Counterparty-specific dictionaries are common in FIX, and the encoders generator
 from a file in your project as well as from the classpath:
 
 ```xml
+
 <plugin>
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
@@ -220,7 +227,9 @@ from a file in your project as well as from the classpath:
     </configuration>
     <executions>
         <execution>
-            <goals><goal>code-generator</goal></goals>
+            <goals>
+                <goal>code-generator</goal>
+            </goals>
         </execution>
     </executions>
 </plugin>
@@ -248,6 +257,7 @@ The plugin depends on `staffix-fix-orchestra`, which carries the latest publishe
 otherwise. So a cut needs no orchestration of your own:
 
 ```xml
+
 <plugin>
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-fix-orchestra-dictionary-generator-maven-plugin</artifactId>
@@ -261,7 +271,9 @@ otherwise. So a cut needs no orchestration of your own:
     <executions>
         <execution>
             <phase>initialize</phase>
-            <goals><goal>generate</goal></goals>
+            <goals>
+                <goal>generate</goal>
+            </goals>
         </execution>
     </executions>
 </plugin>
@@ -287,7 +299,8 @@ Three more are worth knowing:
 - **`includeDeprecated`** keeps what was already deprecated at the cut, and is on by default: deprecated means "do not
   use this in new work", not withdrawn, and the field has to stay so that a peer still sending it can be decoded.
   Turning it off is the deliberate act of not generating encoders for what the standard tells you not to use.
-- **`includeMessagesFile`** names a file, or a `classpath:` resource, listing the messages to keep, one per line by name (`NewOrderSingle`) or by
+- **`includeMessagesFile`** names a file, or a `classpath:` resource, listing the messages to keep, one per line by name
+  (`NewOrderSingle`) or by
   msgType (`D`), with `#` for comments. Left out, every message of the cut is kept. It earns its place on a wide cut
   such as FIX Latest, where one message expands into hundreds of classes once its groups and components are expanded,
   and an entry naming a message the cut does not hold fails the build rather than being ignored.
@@ -322,6 +335,7 @@ The sanitizer removes only what the dictionary itself never refers to: component
 nothing references. It logs what it removed, and runs before generation in the same build:
 
 ```xml
+
 <plugin>
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-fix-dictionary-sanitizer-maven-plugin</artifactId>
@@ -329,7 +343,9 @@ nothing references. It logs what it removed, and runs before generation in the s
     <executions>
         <execution>
             <phase>generate-sources</phase>
-            <goals><goal>sanitize</goal></goals>
+            <goals>
+                <goal>sanitize</goal>
+            </goals>
             <configuration>
                 <inputFile>${project.basedir}/src/main/dictionaries/MYFIX44.xml</inputFile>
                 <outputFile>${project.build.directory}/dictionaries/MYFIX44-sanitized.xml</outputFile>
@@ -353,7 +369,7 @@ Two options exist because "unreferenced" is not always the same as "unused":
   MsgSeqNum, SenderCompID, TargetCompID, SendingTime, CheckSum and ApplVerID below them. Nothing references them
   there, so without this they are all removed and the generated package quietly loses field classes its 4.4 sibling
   has.
-- **`sanitizeMsgTypeField`** prunes MsgType(35)'s enumerated values to the messages this dictionary defines. It
+- **`sanitizeMsgTypeField`** prunes MsgType (35)'s enumerated values to the messages this dictionary defines. It
   defaults to true, and you want it false whenever the session layer lives in FIXT.1.1: the session message types are
   legal on the wire but defined elsewhere, so pruning them here leaves the value list contradicting `fixt-11`.
 
@@ -362,4 +378,5 @@ with `sanitizeMsgTypeField` off and the session fields named in `keepFields`.
 
 Sanitizing is the second of two cuts, and the smaller one. The first is choosing which messages to generate at all,
 which is the message list in [FIX Latest](#fix-latest) above. Cut the message list to what you trade, then sanitize
-what that leaves. [Tuning for latency](tuning-for-latency.md#4-ship-a-dictionary-that-holds-only-what-you-use) explains why both matter at runtime.
+what that leaves. [Tuning for latency](tuning-for-latency.md#4-ship-a-dictionary-that-holds-only-what-you-use) explains
+why both matter at runtime.

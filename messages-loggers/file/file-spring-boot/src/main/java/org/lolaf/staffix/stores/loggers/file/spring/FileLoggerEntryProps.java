@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.loggers.file.spring;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -82,4 +83,13 @@ public class FileLoggerEntryProps {
      * default names the file after the session's qualified name, {@code group.name}.
      */
     private String logFileNameBean;
+    /**
+     * How often a logger whose resource is down is checked for its return, its calls being skipped meanwhile. Zero
+     * disables the check, so every call reaches the resource.
+     */
+    private Duration resourceCheckInterval;
+    /**
+     * How long logger calls must keep succeeding before the session's messages-logger alert clears.
+     */
+    private Duration alertClearDelay;
 }

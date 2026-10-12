@@ -41,6 +41,8 @@ public class FixSessionComponents {
     @Singular
     List<String> messagesLoggers;
     @Singular
+    List<String> alertsPublishers;
+    @Singular
     List<SessionsPlugin> sessionsPlugins;
 
     @Value

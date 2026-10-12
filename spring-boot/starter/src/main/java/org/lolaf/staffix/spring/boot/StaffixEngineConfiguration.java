@@ -18,6 +18,7 @@ package org.lolaf.staffix.spring.boot;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.admin.AdminApiExporterSettings;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
@@ -35,11 +36,11 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Assembles the engine itself, gathering the stores, loggers, plugins and admin APIs each integration module
- * contributed through the SPI.
+ * Assembles the engine itself, gathering the stores, loggers, alerts publishers, plugins and admin APIs each
+ * integration module contributed through the SPI.
  *
  * <p>Which contributors are present is decided by what is on the classpath, which is how adding a module is all
- * it takes to make its store or logger nameable from configuration.
+ * it takes to make its store, logger or publisher nameable from configuration.
  */
 @Configuration(proxyBeanMethods = false)
 public class StaffixEngineConfiguration {
@@ -51,6 +52,7 @@ public class StaffixEngineConfiguration {
                                                     ObjectProvider<FixSessionsSettingsStoreSettingsContributor> sessionsSettingsStoreContributors,
                                                     ObjectProvider<FixMessagesLoggerSettingsContributor> loggerContributors,
                                                     ObjectProvider<FixMessagesStoreSettingsContributor> storeContributors,
+                                                    ObjectProvider<FixAlertsPublisherSettingsContributor> alertsPublisherContributors,
                                                     ObjectProvider<FixSessionsPluginSettingsContributor> pluginContributors,
                                                     ObjectProvider<AdminApiExporterSettingsContributor> adminContributors,
                                                     ObjectProvider<FixSessionSettingsPostProcessor> sessionSettingsPostProcessors) {
@@ -100,6 +102,12 @@ public class StaffixEngineConfiguration {
                 .sorted(Comparator.comparingInt(FixMessagesLoggerSettingsContributor::order))
                 .forEach(c -> c.contribute(loggers));
         loggers.values().forEach(b::fixMessagesLogger);
+
+        Map<String, FixAlertsPublisherSettings> alertsPublishers = new LinkedHashMap<>();
+        alertsPublisherContributors.orderedStream()
+                .sorted(Comparator.comparingInt(FixAlertsPublisherSettingsContributor::order))
+                .forEach(c -> c.contribute(alertsPublishers));
+        alertsPublishers.values().forEach(b::fixAlertsPublisher);
 
         Map<String, FixSessionsPluginSettings<?>> plugins = new LinkedHashMap<>();
         pluginContributors.orderedStream()

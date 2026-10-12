@@ -72,6 +72,8 @@ public class OtlpMessagesLoggerContributor implements FixMessagesLoggerSettingsC
         if (p.getLogsBufferSize() != null) b.logsBufferSize(p.getLogsBufferSize());
         if (p.getPooledLogsByteBufferSize() != null) b.pooledLogsByteBufferSize(p.getPooledLogsByteBufferSize());
         if (p.getFixMessageFieldsDelimiter() != null) b.fixMessageFieldsDelimiter(p.getFixMessageFieldsDelimiter());
+        if (p.getResourceCheckInterval() != null) b.resourceCheckInterval(p.getResourceCheckInterval());
+        if (p.getAlertClearDelay() != null) b.alertClearDelay(p.getAlertClearDelay());
 
         String path = "staffix.messages-loggers-otlp.instances." + mapKey;
         if (p.getTransport() != null) b.transport(p.getTransport());

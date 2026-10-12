@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.io.IOException;
+import java.util.List;
 
 @Slf4j
 public final class SeqNumsRoute extends SessionOperationRoute {
@@ -35,7 +36,7 @@ public final class SeqNumsRoute extends SessionOperationRoute {
     }
 
     @Override
-    void apply(FixSessionId fixSessionId, HttpExchange exchange) throws IOException {
+    void apply(FixSessionId fixSessionId, HttpExchange exchange, List<String> path) throws IOException {
         SeqNumsRequest seqNums = mapper.readValue(exchange.getRequestBody(), SeqNumsRequest.class);
         log.info("Admin API: set seqnums of {} to incoming {}, outgoing {}",
                 fixSessionId.getQualifiedName(), seqNums.getIncoming(), seqNums.getOutgoing());

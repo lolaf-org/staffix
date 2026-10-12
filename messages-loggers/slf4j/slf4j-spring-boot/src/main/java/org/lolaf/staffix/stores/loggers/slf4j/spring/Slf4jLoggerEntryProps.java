@@ -18,6 +18,8 @@ package org.lolaf.staffix.stores.loggers.slf4j.spring;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
 
+import java.time.Duration;
+
 /**
  * One configured instance of the SLF4J message logger: its instance id and the settings a session naming that id gets.
  */
@@ -65,4 +67,13 @@ public class Slf4jLoggerEntryProps {
      * Spring bean name of Function from FixSessionId to String that derives the SLF4J logger name per session.
      */
     private String loggerNameForFixSessionBean;
+    /**
+     * How often a logger whose resource is down is checked for its return, its calls being skipped meanwhile. Zero
+     * disables the check, so every call reaches the resource.
+     */
+    private Duration resourceCheckInterval;
+    /**
+     * How long logger calls must keep succeeding before the session's messages-logger alert clears.
+     */
+    private Duration alertClearDelay;
 }

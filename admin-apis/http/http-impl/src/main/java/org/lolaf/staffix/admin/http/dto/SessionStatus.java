@@ -17,6 +17,7 @@ package org.lolaf.staffix.admin.http.dto;
 
 import lombok.Builder;
 import lombok.Value;
+import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionStatus;
 
@@ -42,4 +43,12 @@ public class SessionStatus {
     FixSessionStatus status;
     long incomingSeqNum;
     long outgoingSeqNum;
+    /**
+     * The version of the session's probe definitions; fetch them again when it differs.
+     */
+    String probesVersion;
+    /**
+     * The worst level among the session's ongoing alerts, absent when none is.
+     */
+    AlertLevel alertLevel;
 }
