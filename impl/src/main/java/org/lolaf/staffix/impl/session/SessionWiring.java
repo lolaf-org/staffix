@@ -29,7 +29,6 @@ import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
@@ -74,7 +73,7 @@ final class SessionWiring {
     final MessageTypeRegistry messageTypeRegistry;
     final Clock clock;
     final FixSessionLayerComponents components;
-    final FixMessagesStore.FixSessionMessagesStore messagesStore;
+    final FailSafeFixSessionMessagesStore messagesStore;
     final FixMessagesLogger.Logger messagesLogger;
     final FixAdminMessagesCodec adminMessagesCodec;
     final FixMessageParser messageParser;
@@ -103,7 +102,9 @@ final class SessionWiring {
                 settings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR),
                 settings.getDesiredSessionState(), scheduleManager);
         this.components = new FixSessionLayerComponents();
-        this.messagesStore = new FailSafeFixSessionMessagesStore(runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes));
+        this.messagesStore = new FailSafeFixSessionMessagesStore(runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes),
+                fixSessionId, runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
+        probes.add(messagesStore.getProbe());
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
         this.messagesLogger = runtimeDependencies.getFixMessagesLogger() != null
                 ? runtimeDependencies.getFixMessagesLogger().getLogger(runtimeDependencies.getEngineId(), fixInstanceId, fixSessionId, messageTypeRegistry, probes)

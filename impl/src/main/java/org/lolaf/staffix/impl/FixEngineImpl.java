@@ -39,6 +39,7 @@ import org.lolaf.staffix.impl.alerting.ProbesManager;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
 import org.lolaf.staffix.impl.session.FixSessionRegistryImpl;
 import org.lolaf.staffix.impl.session.FixSessionSettingsValidator;
+import org.lolaf.staffix.impl.session.UnderlyingResourceChecker;
 
 import java.time.Clock;
 import java.util.*;
@@ -80,6 +81,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private volatile List<FixInitiatorTargets> initiatorsTargets = List.of();
     private volatile List<FixAcceptorSessions> acceptorsSessions = List.of();
     private ExecutorService selfManagedDisconnectedSessionsExecutor;
+    private UnderlyingResourceChecker underlyingResourceChecker;
 
     FixEngineImpl(FixEngineBuilder fixEngineBuilder) {
         this.fixEngineBuilder = fixEngineBuilder;
@@ -157,6 +159,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         onAcceptorSessionsChanged();
         refreshSessionAdminControls();
         stopSelfManagedDisconnectedSessionsExecutor(stopDeadline);
+        underlyingResourceChecker.stop();
 
         fixSessionsSettingsStores.forEach(s -> s.stop(stopDeadline));
         fixApplicationFactories.forEach(s -> s.stop(stopDeadline));
@@ -197,6 +200,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     protected void startMe() throws StartStopException {
+        underlyingResourceChecker = new UnderlyingResourceChecker(getInstanceId());
         if (fixEngineBuilder.getDisconnectedSessionsExecutor() == null) {
             selfManagedDisconnectedSessionsExecutor = Executors.newSingleThreadExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "staffix-offline-sessions-" + getInstanceId());
@@ -225,12 +229,14 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     private FixSessionRuntimeDependencies getDependencies(FixSessionSettings fixSessionSettings) {
-        return new FixSessionRuntimeDependencies(getInstanceId(), findMatchAmongstMessagesStores(fixSessionSettings),
+        FixMessagesStore fixMessagesStore = findMatchAmongstMessagesStores(fixSessionSettings);
+        return new FixSessionRuntimeDependencies(getInstanceId(), fixMessagesStore,
+                fixEngineBuilder.getFixMessagesStores().get(fixMessagesStores.indexOf(fixMessagesStore)),
                 findMatchAmongstMessagesLoggers(fixSessionSettings),
                 findMatchAmongstAlertsPublishers(fixSessionSettings),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
                 findMatchAmongstPluginsComponent(fixSessionSettings),
-                fixSessionRegistry, disconnectedSessionsExecutor());
+                fixSessionRegistry, disconnectedSessionsExecutor(), underlyingResourceChecker);
     }
 
     @Override

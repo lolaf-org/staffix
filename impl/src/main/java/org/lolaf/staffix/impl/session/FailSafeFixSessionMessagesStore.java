@@ -15,29 +15,63 @@
  */
 package org.lolaf.staffix.impl.session;
 
-import lombok.Value;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
+import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
 import java.nio.ByteBuffer;
 
 /**
- * Wraps a session's message store so a storage failure is reported rather than thrown into the session.
+ * Wraps a session's message store so a storage failure is reported rather than thrown into the session, and raises
+ * the session's {@code messages-store} alert, so every store has one without implementing it.
  *
  * <p>A store that is down is a serious condition but not necessarily a fatal one; ending the session would
- * guarantee the outage becomes an outage for the counterparty too.
+ * guarantee the outage becomes an outage for the counterparty too. Its message writes are skipped while its resource
+ * is down, so the session is not blocked on each one: they are not stored either way. Sequence number writes always
+ * reach the store, which updates its in-memory counters before persisting them, and the session reads those back.
  */
 @Slf4j
-@Value
 public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSessionMessagesStore {
 
-    FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
+    static final String PROBE_NAME = "messages-store";
+
+    private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
+    private final FixSessionId fixSessionId;
+    private final RaisedAlertEvaluator alertEvaluator;
+    private final UnderlyingResourceBreaker breaker;
+    @Getter
+    private final Probe probe;
+    private volatile boolean failing;
+    private volatile String lastFailure;
+
+    public FailSafeFixSessionMessagesStore(FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore, FixSessionId fixSessionId,
+                                           FixMessagesStoreSettings settings, UnderlyingResourceChecker checker) {
+        this.fixSessionMessagesStore = fixSessionMessagesStore;
+        this.fixSessionId = fixSessionId;
+        this.alertEvaluator = new RaisedAlertEvaluator();
+        this.breaker = UnderlyingResourceBreaker.of("Messages store of FIX session " + fixSessionId,
+                fixSessionMessagesStore::isUnderlyingStorageResourceAvailable,
+                fixSessionMessagesStore::getUnderlyingStorageResourceDescription, settings.getResourceCheckInterval(),
+                checker, this::raiseResourceDown);
+        this.probe = Probe.builder().name(PROBE_NAME).description("Messages store")
+                .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).build();
+    }
 
     @Override
     public boolean isUnderlyingStorageResourceAvailable() {
         return fixSessionMessagesStore.isUnderlyingStorageResourceAvailable();
+    }
+
+    @Override
+    public String getUnderlyingStorageResourceDescription() {
+        return fixSessionMessagesStore.getUnderlyingStorageResourceDescription();
     }
 
     @Override
@@ -49,8 +83,9 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
     public void resetSequenceNumbers() {
         try {
             fixSessionMessagesStore.resetSequenceNumbers();
+            succeeded();
         } catch (Exception ex) {
-            log.error("Failed to call resetSequenceNumbers() on FixSessionMessagesStore {}", fixSessionMessagesStore.getClass().getSimpleName(), ex);
+            failed("resetSequenceNumbers()", ex);
         }
     }
 
@@ -73,8 +108,9 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
     public void storeNextIncomingSeqNum(long nextIncomingSeqNum) {
         try {
             fixSessionMessagesStore.storeNextIncomingSeqNum(nextIncomingSeqNum);
+            succeeded();
         } catch (Exception ex) {
-            log.error("Failed to call storeNextIncomingSeqNum() on FixSessionMessagesStore {}", fixSessionMessagesStore.getClass().getSimpleName(), ex);
+            failed("storeNextIncomingSeqNum()", ex);
         }
     }
 
@@ -82,35 +118,46 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
     public void storeNextOutgoingSeqNum(long nextOutgoingSeqNum) {
         try {
             fixSessionMessagesStore.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
+            succeeded();
         } catch (Exception ex) {
-            log.error("Failed to call storeNextOutgoingSeqNum() on FixSessionMessagesStore {}", fixSessionMessagesStore.getClass().getSimpleName(), ex);
+            failed("storeNextOutgoingSeqNum()", ex);
         }
     }
 
     @Override
     public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
+        if (skipped()) {
+            return;
+        }
         try {
             fixSessionMessagesStore.storeMessageSent(outgoingSeqNum, message);
+            succeeded();
         } catch (Exception ex) {
-            log.error("Failed to call storeMessageSent() on FixSessionMessagesStore {}", fixSessionMessagesStore.getClass().getSimpleName(), ex);
+            failed("storeMessageSent()", ex);
         }
     }
 
     @Override
     public void find(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
+        if (skipped()) {
+            throw new StoreException("Messages store '" + getUnderlyingStorageResourceDescription() + "' of FIX session "
+                    + fixSessionId + " is down");
+        }
         try {
             fixSessionMessagesStore.find(startSequenceNumber, stopSequenceNumber, consumer);
+            succeeded();
         } catch (StoreException ex) {
-            log.error("Failed to call find() on FixSessionMessagesStore {}", fixSessionMessagesStore.getClass().getSimpleName(), ex);
+            failed("find()", ex);
             throw ex;
         } catch (Exception ex) {
-            log.error("Failed to call find() on FixSessionMessagesStore {}", fixSessionMessagesStore.getClass().getSimpleName(), ex);
+            failed("find()", ex);
             throw new StoreException("Failed to call find() on FixSessionMessagesStore " + fixSessionMessagesStore.getClass().getSimpleName(), ex);
         }
     }
 
     @Override
     public FixMessagesStore.FixSessionMessagesStore stop(Deadline stopDeadline) throws StartStopException {
+        breaker.stop();
         return fixSessionMessagesStore.stop(stopDeadline);
     }
 
@@ -122,5 +169,34 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
     @Override
     public boolean isStarted() {
         return fixSessionMessagesStore.isStarted();
+    }
+
+    private boolean skipped() {
+        if (breaker.isOpen()) {
+            breaker.callSkipped();
+            return true;
+        }
+        return false;
+    }
+
+    private void succeeded() {
+        if (failing) {
+            failing = false;
+            alertEvaluator.clear();
+        }
+    }
+
+    private void failed(String call, Exception ex) {
+        log.error("Failed to call {} on FixSessionMessagesStore {} for FIX session {}", call,
+                fixSessionMessagesStore.getClass().getSimpleName(), fixSessionId, ex);
+        failing = true;
+        lastFailure = call + " failed: " + ex;
+        alertEvaluator.raise(Alert.warning(lastFailure));
+        breaker.callFailed();
+    }
+
+    private void raiseResourceDown() {
+        alertEvaluator.raise(Alert.major("'" + getUnderlyingStorageResourceDescription() + "' is down, sent messages are not stored; "
+                + lastFailure));
     }
 }

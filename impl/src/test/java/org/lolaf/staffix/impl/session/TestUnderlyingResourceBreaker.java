@@ -41,7 +41,7 @@ class TestUnderlyingResourceBreaker {
     }
 
     private UnderlyingResourceBreaker breaker(Duration checkInterval) {
-        return new UnderlyingResourceBreaker("Test store", () -> {
+        return UnderlyingResourceBreaker.of("Test store", () -> {
             checks.incrementAndGet();
             return available.get();
         }, () -> "test resource", checkInterval, checker, opened::incrementAndGet);
@@ -67,8 +67,8 @@ class TestUnderlyingResourceBreaker {
 
         breaker.callFailed();
 
-        await().until(breaker::isOpen);
-        assertThat(opened).hasValue(1);
+        await().until(() -> opened.get() == 1);
+        assertThat(breaker.isOpen()).isTrue();
         await().until(() -> checks.get() >= 3);
         assertThat(breaker.isOpen()).isTrue();
 
@@ -85,7 +85,7 @@ class TestUnderlyingResourceBreaker {
     void failuresWhileACheckIsPendingScheduleNoOtherCheck() throws InterruptedException {
         CountDownLatch checkStarted = new CountDownLatch(1);
         CountDownLatch releaseCheck = new CountDownLatch(1);
-        UnderlyingResourceBreaker breaker = new UnderlyingResourceBreaker("Test store", () -> {
+        UnderlyingResourceBreaker breaker = UnderlyingResourceBreaker.of("Test store", () -> {
             checks.incrementAndGet();
             checkStarted.countDown();
             awaitQuietly(releaseCheck);
@@ -103,20 +103,13 @@ class TestUnderlyingResourceBreaker {
     }
 
     @Test
-    void aZeroIntervalNeverChecksNorOpens() {
-        UnderlyingResourceBreaker breaker = breaker(Duration.ZERO);
-        available.set(false);
-
-        breaker.callFailed();
-
-        await().pollDelay(CHECK_INTERVAL.multipliedBy(3)).until(() -> true);
-        assertThat(checks).hasValue(0);
-        assertThat(breaker.isOpen()).isFalse();
+    void aZeroIntervalDisablesIt() {
+        assertThat(breaker(Duration.ZERO)).isSameAs(UnderlyingResourceBreaker.DISABLED);
     }
 
     @Test
     void aThrowingAvailabilityCheckCountsAsDown() {
-        UnderlyingResourceBreaker breaker = new UnderlyingResourceBreaker("Test store", () -> {
+        UnderlyingResourceBreaker breaker = UnderlyingResourceBreaker.of("Test store", () -> {
             throw new IllegalStateException("check failed");
         }, () -> "test resource", CHECK_INTERVAL, checker, opened::incrementAndGet);
 
