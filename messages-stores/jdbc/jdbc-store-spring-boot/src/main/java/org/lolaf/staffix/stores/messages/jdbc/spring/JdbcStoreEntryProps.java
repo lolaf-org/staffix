@@ -44,7 +44,7 @@ public class JdbcStoreEntryProps {
      */
     private Duration pruningCheckInterval;
     /**
-     * How long JDBC calls must keep succeeding before the session's jdbc-store alert clears.
+     * How long store calls must keep succeeding before the session's messages-store alert clears.
      */
     private Duration alertClearDelay;
 }
