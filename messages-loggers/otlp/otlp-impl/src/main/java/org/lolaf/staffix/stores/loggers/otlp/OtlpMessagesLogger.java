@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.stores.loggers.otlp;
 
-import org.lolaf.staffix.api.serde.SerDe;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.PooledBytesString;
 import io.opentelemetry.proto.common.v1.AnyValue;
@@ -38,6 +37,7 @@ import org.lolaf.staffix.api.monitoring.FixMonitoringAttributes;
 import org.lolaf.staffix.api.monitoring.FixMonitoringConstants;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
+import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.collections.IndexableMap;
@@ -53,6 +53,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Ships every message to an OpenTelemetry collector as an OTLP log record, over HTTP or gRPC.
@@ -125,9 +126,12 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
         private final byte fieldDelimiterReplacementChar;
         private final String fixEngineId;
         private final String fixInstanceId;
+        private final AtomicReference<IOException> unreportedFlushFailure;
         private ScheduledFuture<?> scheduledFlush;
         private long totalLogsSent = 0;
         private long cacheHitCount;
+        private long logsDroppedSinceFailing;
+        private boolean failing;
 
         public LoggerImpl(OtlpMessagesLoggerSettings settings, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
                           ScheduledExecutorService logsFlushingExecutorService, String fixEngineId, String fixInstanceId) {
@@ -135,6 +139,7 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
             this.fixEngineId = fixEngineId;
             this.fixInstanceId = fixInstanceId;
             this.settings = settings;
+            this.unreportedFlushFailure = new AtomicReference<>();
             // The endpoint, the method and the content type belong to the logger, not to whoever
             // configured the sender: it publishes protobuf, to its own OTLP logs endpoint, and nowhere
             // else. gRPC addresses a method rather than a path, so the two differ in how they say it.
@@ -203,8 +208,13 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
             return endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint;
         }
 
+        /**
+         * Sends a test log, under the lock of the flush, whose buffer it writes into. A success also clears a failure
+         * not yet reported, so a session whose log calls are skipped while the endpoint is down does not report it
+         * once the endpoint is back.
+         */
         @Override
-        public boolean isUnderlyingStorageResourceAvailable() {
+        public synchronized boolean isUnderlyingStorageResourceAvailable() {
             ScopeLogs.Builder scopeLogs = ScopeLogs.newBuilder()
                     .addLogRecords(LogRecord.newBuilder()
                             .setSeverityNumber(SeverityNumber.SEVERITY_NUMBER_INFO)
@@ -220,6 +230,7 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
                 LogsData.newBuilder().addResourceLogs(logsBuilder.build()).build()
                         .writeTo(outputBuffer.reset());
                 transport.send(outputBuffer.getBuffer(), outputBuffer.getWriteOffset());
+                unreportedFlushFailure.set(null);
                 return true;
             } catch (IOException e) {
                 return false;
@@ -232,7 +243,8 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
         }
 
         @Override
-        public void logEvents(LogEvent[] logEvents, int eventsCount) {
+        public void logEvents(LogEvent[] logEvents, int eventsCount) throws LoggingException {
+            reportFlushFailureIfNeeded();
             for (int i = 0; i < eventsCount; i++) {
                 LogEvent le = logEvents[i];
                 switch (le.getLogEventType()) {
@@ -251,18 +263,28 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
         }
 
         @Override
-        public void logIncoming(UTCTime logTime, MessageType messageType, ByteBuffer message) {
+        public void logIncoming(UTCTime logTime, MessageType messageType, ByteBuffer message) throws LoggingException {
+            reportFlushFailureIfNeeded();
             addToLoggingBatch(logTime, INCOMING, messageType, message);
         }
 
         @Override
-        public void logOutgoing(UTCTime logTime, MessageType messageType, ByteBuffer message) {
+        public void logOutgoing(UTCTime logTime, MessageType messageType, ByteBuffer message) throws LoggingException {
+            reportFlushFailureIfNeeded();
             addToLoggingBatch(logTime, OUTGOING, messageType, message);
         }
 
         @Override
-        public void logEvent(UTCTime eventTime, String event) {
+        public void logEvent(UTCTime eventTime, String event) throws LoggingException {
+            reportFlushFailureIfNeeded();
             addToLoggingBatch(eventTime, null, null, ByteBuffer.wrap(event.getBytes(SerDe.CHARSET)));
+        }
+
+        private void reportFlushFailureIfNeeded() throws LoggingException {
+            IOException failure = unreportedFlushFailure.getAndSet(null);
+            if (failure != null) {
+                throw new LoggingException("Failed to send logs to OTLP endpoint " + otlpEndpoint, failure);
+            }
         }
 
         private void addToLoggingBatch(UTCTime logTime, KeyValue direction, MessageType messageType, ByteBuffer message) {
@@ -321,15 +343,31 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
                 }
                 transport.send(outputBuffer.getBuffer(), outputBuffer.getWriteOffset());
                 totalLogsSent += processedLogRecords;
+                if (failing) {
+                    failing = false;
+                    log.info("OTLP endpoint {} of session {} is back, {} log records were dropped while it was not",
+                            otlpEndpoint, getFixSessionId(), logsDroppedSinceFailing);
+                    logsDroppedSinceFailing = 0;
+                }
                 if (log.isDebugEnabled()) {
                     log.debug("Flushing to OTLP endpoint {} log records, total {}", processedLogRecords, totalLogsSent);
                 }
             } catch (IOException e) {
-                log.error("Failed to send logs to OTLP endpoint", e);
+                flushFailed(e, processedLogRecords);
             } finally {
                 scopeLogsBuilder.clearLogRecords();
                 resourceLogsBuilder.clearScopeLogs();
                 logsDataBuilder.clearResourceLogs();
+            }
+        }
+
+        private void flushFailed(IOException failure, int droppedLogRecords) {
+            unreportedFlushFailure.set(failure);
+            logsDroppedSinceFailing += droppedLogRecords;
+            if (!failing) {
+                failing = true;
+                log.warn("Failed to send logs to OTLP endpoint {} of session {}, log records are dropped until it is back: {}",
+                        otlpEndpoint, getFixSessionId(), failure.toString());
             }
         }
 
@@ -338,7 +376,7 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
             scheduledFlush.cancel(false);
             flushLogs();
             transport.close();
-            double hitRatio = totalLogsSent > 0 ? cacheHitCount * 100 / totalLogsSent : 100;
+            double hitRatio = totalLogsSent > 0 ? (double) (cacheHitCount * 100) / totalLogsSent : 100;
             log.info("OTLP logger for session {} stopped with a total of {} logs sent and a log buffer cache hit ratio of {}%", getFixSessionId(), totalLogsSent, hitRatio);
             totalLogsSent = cacheHitCount = 0;
             pooledLogRecords.clear();

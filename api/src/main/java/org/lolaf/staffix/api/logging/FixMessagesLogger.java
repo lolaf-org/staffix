@@ -232,5 +232,11 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
      */
     class LoggingException extends Exception {
 
+        public LoggingException() {
+        }
+
+        public LoggingException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }
