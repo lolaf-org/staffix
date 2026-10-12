@@ -148,7 +148,7 @@ session from the engine. **Stopping the engine does not**: a shutdown is not the
 | `session-down` | `CRITICAL` | the session has been logged out inside its session time for longer than `sessionDownAlertDelay` |
 | `async-store-queue`, `async-logger-queue` | per threshold | the async store's or logger's queue is deeper than a threshold |
 | `async-store-resource`, `async-logger-resource` | `MAJOR` | what the async store or logger writes to is unavailable |
-| `jdbc-store` | `MAJOR`, `WARNING` for pruning | a JDBC store call failed; cleared once calls succeed for `alertClearDelay` |
+| `messages-store`, `messages-logger` | `WARNING`, then `MAJOR` | a store or logger call failed, then its resource was found down |
 
 `session-down` is on every session. An operator logout or being outside session time never raises it, and the delay
 restarts after each logon. **`sessionDownAlertDelay` defaults to 10 seconds; zero turns the probe off.**
@@ -159,10 +159,14 @@ session using them. The queue probe raises the highest level whose depth is reac
 measured every `evaluationInterval` (10 seconds by default). The resource probe holds until what failed to be written
 has been replayed. See the [async store README](../messages-stores/async/async-impl/README.md#queue-monitoring).
 
-`jdbc-store` is added by `staffix-messages-store-jdbc-impl` to every session using it. A database outage raises it on
-every session, once each however many calls fail, with the same name, so Alertmanager groups them into one
-notification. Behind the async store, both `async-store-resource` and `jdbc-store` are raised: the second carries the
-database's error.
+`messages-store` and `messages-logger` are on every session that has a store or a logger, whatever its
+implementation. A failed call raises `WARNING`, carrying the call and the error, and has the engine check whether the
+store's or logger's resource is available. If it is not, the alert turns `MAJOR` and the calls are skipped until it is
+back; see [When a store or logger fails](stores-and-loggers.md#when-a-store-or-logger-fails). The alert clears once
+calls have kept succeeding for `alertClearDelay` (30 seconds by default). A database outage raises it on every session
+using that database, once each however many calls fail, with the same name, so Alertmanager groups them into one
+notification. Behind the async store or logger, the async probes report the outage of what it writes to, and these two
+report failures of the async queue itself, such as a full disk.
 
 ## Binding a publisher
 

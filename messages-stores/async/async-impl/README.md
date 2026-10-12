@@ -178,6 +178,10 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
     - Waits up to 2 minutes to flush them
     - Logs progress and remaining count
 
+A failure of the async store itself, such as a full disk under its queue, is handled like any store's: it raises the
+session's `messages-store` alert, and the async store's `resourceCheckInterval` and `alertClearDelay` apply, not the
+wrapped store's. See [When a store or logger fails](../../../docs/stores-and-loggers.md#when-a-store-or-logger-fails).
+
 ## Configuration Reference
 
 ### AsyncMessagesStoreSettings
@@ -188,6 +192,8 @@ AsyncMessagesStoreSettings asyncSettings = AsyncMessagesStoreSettings.builder()
 | `wrappedFixMessagesStoreSettings`            | FixMessagesStoreSettings | *Required* | Settings for the wrapped store (JDBC, file, etc.)   |
 | `underlyingStoreResourceWatchTaskCheckDelay` | Duration                 | 2 seconds  | How often to check if failed storage is back online |
 | `flushPendingMessagesOnStartupDelay`         | Duration                 | 60 seconds | Max time to flush pending messages on startup       |
+| `resourceCheckInterval`                      | Duration                 | 5 seconds  | How often the async store is checked once it fails  |
+| `alertClearDelay`                            | Duration                 | 30 seconds | How long before the `messages-store` alert clears   |
 | `logByteBufferSize`                          | int                      | 2048       | Buffer size for message data                        |
 | `useDirectByteBuffer`                        | boolean                  | true       | Use direct (off-heap) buffers for zero-copy I/O     |
 

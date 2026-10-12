@@ -77,14 +77,13 @@ JdbcMessageStoreSettings.builder()
 | `tablePrefix`              | `""`               |
 | `maxMessagesPerSession`    | `0` (unlimited)    |
 | `pruningCheckInterval`     | 5 minutes          |
-| `alertClearDelay`          | 30 seconds         |
 | `scheduledExecutorService` | supplied if absent |
 
 Schemas are generated rather than shipped as a fixed `.sql`: the DDL generator plugin produces them for several
 dialects via Hibernate. `maxMessagesPerSession` with `pruningCheckInterval` keeps the table bounded.
 
-Each session gets a `jdbc-store` [probe](alerting.md#built-in-probes): a failed JDBC call raises it, and it clears
-once calls have kept succeeding for `alertClearDelay`.
+**Keep the pool's connection timeout short.** While the database is down, the first failed call and every sequence
+number update wait for it on the session thread; see [When a store or logger fails](#when-a-store-or-logger-fails).
 
 **A database is on the other side of a network.** Used directly it puts a network round trip inside your FIX round
 trip. Wrap it.
@@ -110,6 +109,36 @@ Registered the same way, selected per session by `fixMessageLoggerInstanceId`.
 | `AsyncMessagesLoggerSettings` | wraps any of them, see below                                                          |
 
 The quickstart uses the SLF4J logger with both directions on, which is why you can watch the session come up.
+
+---
+
+## When a store or logger fails
+
+A store or logger failure never reaches the session, which keeps trading. The engine logs it and raises the session's
+`messages-store` or `messages-logger` [alert](alerting.md#built-in-probes), then checks, off the session thread,
+whether the store's or logger's resource is available. If it is down, until a check every `resourceCheckInterval` finds
+it back:
+
+- **a store does not store the messages sent**, so nothing waits on it, and a resend request logs the session out,
+  since it cannot be answered. Sequence number updates still reach the store, and each waits for it: the session
+  relies on them.
+- **a logger skips every call.**
+
+A sent message that was not stored is gap filled if the peer later asks for it again: the peer stays in sequence but
+never receives that message a second time. To lose nothing through an outage, put the store behind the
+[async wrapper](#taking-io-off-the-session-thread), which queues to local disk and replays once the resource is back.
+
+| setting                 | default    | what it is for                                                                     |
+|-------------------------|------------|------------------------------------------------------------------------------------|
+| `resourceCheckInterval` | 5 seconds  | how often a resource found down is checked; zero turns it off and every call waits |
+| `alertClearDelay`       | 30 seconds | how long calls must keep succeeding before the alert clears                        |
+
+Both are on every store but the memory one, which cannot fail, and on every logger, with the Spring Boot properties
+`resource-check-interval` and `alert-clear-delay`. Behind the async wrapper, the wrapper's own apply.
+
+A store you write must keep its sequence numbers in memory: the getters must never fail, and storing a sequence
+number must update it in memory before persisting it, so the session keeps the right numbers while the resource is
+down.
 
 ---
 

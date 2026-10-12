@@ -47,9 +47,14 @@ could mean.
   Alertmanager.
 - **A probe can alert only on a condition that lasts**: `withRaiseDelay` on any evaluator holds its first alert back
   until the condition has held for the delay, so a brief blip never alerts.
-- **The JDBC messages store raises an alert when the database fails**: a `jdbc-store` probe on each session, raised
-  by a failed call and cleared once calls keep succeeding for `alertClearDelay` (30 seconds by default). However many
-  calls fail, each session gets one alert.
+- **Every messages store and logger raises an alert when it fails**, whatever its implementation: a `messages-store`
+  and a `messages-logger` probe on each session. A failed call raises a `WARNING`. Once what the store or logger
+  writes to is found down, the alert turns `MAJOR` and the session stops waiting on it: sent messages are not stored,
+  resend requests log the session out, and nothing is logged, until a check every `resourceCheckInterval` (5 seconds by
+  default) finds it back. The alert clears once calls keep succeeding for `alertClearDelay` (30 seconds by default).
+  Both are settings of every store but the memory one and of every logger, with Spring Boot properties. However many
+  calls fail, each session gets one alert. See
+  [When a store or logger fails](docs/stores-and-loggers.md#when-a-store-or-logger-fails).
 - **An operator can clear an alert by hand** from the admin API, over HTTP
   (`POST sessions/{group}/{name}/probes/{probe}/clear`) or JMX, when the probe's evaluator accepts it: alerts raised
   from application code or counted by a rate do, a polled condition does not. Publishers are told it was cleared
@@ -76,6 +81,10 @@ could mean.
 
 ### Changed
 
+- **A messages store you write must keep its sequence numbers in memory.** `getIncomingSeqNum()`,
+  `getOutgoingSeqNum()` and `getNextOutgoingSeqNum()` no longer declare `StoreException` and must never fail, and
+  storing a sequence number or resetting them must update them in memory before persisting, so a session keeps the
+  right numbers while the storage is down.
 - **A session is identified by its group and its name**, so two counterparties can each have a `trading` session.
   `FixSessionId.getId()` is now `getName()`, and `getQualifiedName()` returns `group.name`. Settings files and Spring
   Boot properties say `name` instead of `id`; a session without a group belongs to `default`.
