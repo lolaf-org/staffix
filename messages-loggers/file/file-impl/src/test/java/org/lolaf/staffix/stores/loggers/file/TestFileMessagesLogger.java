@@ -38,6 +38,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.zip.GZIPInputStream;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 class TestFileMessagesLogger {
 
     FileMessagesLogger fileMessagesLogger;
@@ -90,7 +92,7 @@ class TestFileMessagesLogger {
         logger.start();
         logger.logIncoming(logTime, messageType, ByteBuffer.wrap("test log".getBytes()));
 
-        Assertions.assertThat(logFile).isFile().content().isEqualTo("test initial log" + expectedLogTime + " <-: test log\n");
+        assertThat(logFile).isFile().content().isEqualTo("test initial log" + expectedLogTime + " <-: test log\n");
     }
 
     @Test
@@ -132,7 +134,7 @@ class TestFileMessagesLogger {
         Awaitility.await().untilAsserted(() -> {
             File parent = logFile.getParentFile();
             File[] gz = parent.listFiles((dir, name) -> name.endsWith(".gz"));
-            Assertions.assertThat(gz).isNotEmpty().hasSize(expected);
+            assertThat(gz).isNotEmpty().hasSize(expected);
         });
     }
 
@@ -146,7 +148,7 @@ class TestFileMessagesLogger {
 
         logger.logIncoming(logTime, messageType, ByteBuffer.wrap("test log compressed".getBytes()));
 
-        Assertions.assertThat(logFile).isFile().content().isEqualTo(newExpectedLogTime + " <-: test log compressed\n");
+        assertThat(logFile).isFile().content().isEqualTo(newExpectedLogTime + " <-: test log compressed\n");
 
         assertCompressLogsFilesCount(1);
 
@@ -157,7 +159,7 @@ class TestFileMessagesLogger {
         in.close();
         gzFileIn.close();
 
-        Assertions.assertThat(new String(content)).isEqualTo(expectedLogTime + " <-: test log\n" + expectedLogTime + " <-: test log2\n");
+        assertThat(new String(content)).isEqualTo(expectedLogTime + " <-: test log\n" + expectedLogTime + " <-: test log2\n");
 
     }
 
@@ -175,7 +177,7 @@ class TestFileMessagesLogger {
                 .build());
         fileMessagesLogger.start();
         logger = fileMessagesLogger.instanciateLogger("engine", "test", fixSessionId, null);
-        Assertions.assertThat(logFile.createNewFile() || logFile.isFile()).isTrue();
+        assertThat(logFile.createNewFile() || logFile.isFile()).isTrue();
         logger.start();
 
         Assertions.assertThatThrownBy(() -> logger.logIncoming(logTime, messageType, ByteBuffer.wrap("test log".getBytes())))
@@ -186,12 +188,12 @@ class TestFileMessagesLogger {
 
     @Test
     void aLogDirectoryThatCannotBeWrittenIsUnavailable() {
-        Assertions.assertThat(logger.isUnderlyingStorageResourceAvailable()).isTrue();
-        Assertions.assertThat(logger.getUnderlyingStorageResourceDescription()).contains(logsDir.getName());
+        assertThat(logger.isUnderlyingStorageResourceAvailable()).isTrue();
+        assertThat(logger.getUnderlyingStorageResourceDescription()).contains(logsDir.getName());
 
-        Assertions.assertThat(logsDir.setWritable(false)).isTrue();
+        assertThat(logsDir.setWritable(false)).isTrue();
         try {
-            Assertions.assertThat(logger.isUnderlyingStorageResourceAvailable()).isFalse();
+            assertThat(logger.isUnderlyingStorageResourceAvailable()).isFalse();
         } finally {
             logsDir.setWritable(true);
         }
@@ -201,32 +203,32 @@ class TestFileMessagesLogger {
     void testLogIncoming() throws FixMessagesLogger.LoggingException {
         logger.logIncoming(logTime, messageType, ByteBuffer.wrap("test log".getBytes()));
 
-        Assertions.assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " <-: test log\n");
+        assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " <-: test log\n");
 
         logger.logIncoming(logTime, messageType, ByteBuffer.wrap("test log2".getBytes()));
 
-        Assertions.assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " <-: test log\n" + expectedLogTime + " <-: test log2\n");
+        assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " <-: test log\n" + expectedLogTime + " <-: test log2\n");
     }
 
     @Test
     void testLogOutgoing() throws FixMessagesLogger.LoggingException {
         logger.logOutgoing(logTime, messageType, ByteBuffer.wrap("test log".getBytes()));
 
-        Assertions.assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " ->: test log\n");
+        assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " ->: test log\n");
 
         logger.logOutgoing(logTime, messageType, ByteBuffer.wrap("test log2".getBytes()));
 
-        Assertions.assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " ->: test log\n" + expectedLogTime + " ->: test log2\n");
+        assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " ->: test log\n" + expectedLogTime + " ->: test log2\n");
     }
 
     @Test
     void testLogEvent() throws FixMessagesLogger.LoggingException {
         logger.logEvent(logTime, "test event");
 
-        Assertions.assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " EVENT: test event\n");
+        assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " EVENT: test event\n");
 
         logger.logEvent(logTime, "test event %s", "param1");
 
-        Assertions.assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " EVENT: test event\n" + expectedLogTime + " EVENT: test event param1\n");
+        assertThat(logFile).isFile().content().isEqualTo(expectedLogTime + " EVENT: test event\n" + expectedLogTime + " EVENT: test event param1\n");
     }
 }
