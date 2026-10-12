@@ -29,6 +29,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -162,6 +163,38 @@ class TestFailSafeFixSessionMessagesStore {
         await().pollDelay(CHECK_INTERVAL.multipliedBy(3)).until(() -> true);
         failSafe.storeNextIncomingSeqNum(3);
         verify(store).storeNextIncomingSeqNum(3);
+        assertThat(alertLevel(failSafe)).isEmpty();
+    }
+
+    /**
+     * A busy session: a call succeeds between the failure and the check finding the resource down, which clears the
+     * warning before the breaker raises its major alert. That alert must still clear once the resource is back.
+     */
+    @Test
+    void theAlertRaisedWhenTheResourceIsFoundDownClearsOnceItIsBack() throws Exception {
+        FailSafeFixSessionMessagesStore failSafe = failSafe(CHECK_INTERVAL);
+        CountDownLatch checkStarted = new CountDownLatch(1);
+        CountDownLatch checkAnswers = new CountDownLatch(1);
+        available.set(false);
+        when(store.isUnderlyingStorageResourceAvailable()).thenAnswer(invocation -> {
+            checkStarted.countDown();
+            checkAnswers.await();
+            return available.get();
+        });
+        doThrow(new FixSessionMessagesStore.StoreException("connection timeout")).doNothing()
+                .when(store).storeMessageSent(anyLong(), any());
+
+        failSafe.storeMessageSent(1, MESSAGE);
+        checkStarted.await();
+        failSafe.storeMessageSent(2, MESSAGE);
+        checkAnswers.countDown();
+        await().until(() -> alertLevel(failSafe).equals(Optional.of(AlertLevel.MAJOR)));
+
+        available.set(true);
+        await().untilAsserted(() -> {
+            failSafe.storeMessageSent(3, MESSAGE);
+            verify(store).storeMessageSent(3, MESSAGE);
+        });
         assertThat(alertLevel(failSafe)).isEmpty();
     }
 

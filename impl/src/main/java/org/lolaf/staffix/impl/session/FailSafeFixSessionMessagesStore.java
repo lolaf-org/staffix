@@ -48,6 +48,7 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
     private final UnderlyingResourceBreaker breaker;
     @Getter
     private final Probe probe;
+    private final Object alertLock;
     private volatile boolean failing;
     private volatile String lastFailure;
 
@@ -62,6 +63,7 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
                 checker, this::raiseResourceDown);
         this.probe = Probe.builder().name(PROBE_NAME).description("Messages store")
                 .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).build();
+        this.alertLock = new Object();
     }
 
     @Override
@@ -181,22 +183,36 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
 
     private void succeeded() {
         if (failing) {
-            failing = false;
-            alertEvaluator.clear();
+            synchronized (alertLock) {
+                if (failing) {
+                    failing = false;
+                    alertEvaluator.clear();
+                }
+            }
         }
     }
 
     private void failed(String call, Exception ex) {
         log.error("Failed to call {} on FixSessionMessagesStore {} for FIX session {}", call,
                 fixSessionMessagesStore.getClass().getSimpleName(), fixSessionId, ex);
-        failing = true;
         lastFailure = call + " failed: " + ex;
-        alertEvaluator.raise(Alert.warning(lastFailure));
+        raise(Alert.warning(lastFailure));
         breaker.callFailed();
     }
 
     private void raiseResourceDown() {
-        alertEvaluator.raise(Alert.major("'" + getUnderlyingStorageResourceDescription() + "' is down, sent messages are not stored; "
+        raise(Alert.major("'" + getUnderlyingStorageResourceDescription() + "' is down, sent messages are not stored; "
                 + lastFailure));
+    }
+
+    /**
+     * The only place an alert is raised, so that {@code failing} always says whether one is: the breaker raises from
+     * its own thread while a successful call may be clearing.
+     */
+    private void raise(Alert alert) {
+        synchronized (alertLock) {
+            failing = true;
+            alertEvaluator.raise(alert);
+        }
     }
 }
