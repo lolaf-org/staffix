@@ -547,7 +547,7 @@ public abstract class FixMessageEncoderImpl<T extends FixMessageEncoder<?>> impl
 
     private ByteBuffer resizeAndCleanBufferIfNeeded(ByteBuffer toIncreaseSizeBuffer) {
         ByteBuffer increasedSizeBuffer = increaseByteBufferSize(toIncreaseSizeBuffer);
-        UnsafeOperationsApi.ifAvailableDo(UnsafeOperations::invokeCleanerIfNeeded, increasedSizeBuffer);
+        UnsafeOperationsApi.ifAvailableDo(UnsafeOperations::invokeCleanerIfNeeded, toIncreaseSizeBuffer);
         return increasedSizeBuffer;
     }
 

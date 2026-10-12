@@ -130,6 +130,31 @@ class TestFixMessageEncoderImpl {
         testMessageEncoding();
     }
 
+    /**
+     * Growing a direct buffer used to free the enlarged buffer instead of the one it replaced, so every write after the
+     * first growth went into freed native memory: a JVM crash, or another message's bytes. Many encoders each growing
+     * through several resizes make that show up as a crash or a wrong message rather than pass by luck.
+     */
+    @Test
+    void testDirectBuffersGrownSeveralTimesKeepTheMessage() {
+        String value = "x".repeat(1500);
+        String expected = null;
+        for (int i = 0; i < 200; i++) {
+            TestingEncoder growing = new TestingEncoder(getMessageType(), ByteBuffer::allocateDirect, 8, 8, 8);
+            growing.begin();
+            for (int field = 0; field < 4; field++) {
+                growing.addString(FixField.of(58, FieldType.STRING, FieldLocation.BODY), value);
+            }
+            String encoded = getEncodedMessageToString(growing.encode(ByteBuffer::allocate, 1, getFixSessionId("sender", "target"),
+                    mock(FixApplication.class), TimeUnit.MICROSECONDS, TestingClock.get().now(), null));
+            if (expected == null) {
+                expected = encoded;
+                Assertions.assertThat(encoded).contains("58=" + value + "\u0001").hasSizeGreaterThan(4 * value.length());
+            }
+            Assertions.assertThat(encoded).isEqualTo(expected);
+        }
+    }
+
     private static class TestingEncoder extends FixMessageEncoderImpl<TestingEncoder> {
 
         public TestingEncoder(MessageType messageType, IntFunction<ByteBuffer> allocator, int headerBufferCapacity, int bodyBufferCapacity, int trailerBufferCapacity) {
