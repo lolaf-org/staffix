@@ -30,7 +30,9 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.ResendRequestRange;
 import org.lolaf.staffix.api.time.UTCTime;
+import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.encoders.TradingSessionStatusRequestEncoder;
+import org.lolaf.staffix.fix44.encoders.group.NoLinesOfTextEncoder;
 import org.lolaf.staffix.fix44.fields.*;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.tests.FixMessageFields;
@@ -38,6 +40,7 @@ import org.lolaf.staffix.tests.RawFixSocketClient;
 import org.lolaf.staffix.tests.TestingLogger;
 
 import java.time.Duration;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
@@ -1115,6 +1118,95 @@ class TestFixMessagesResends extends AbstractFixTests {
                 .filter(new HashSet<>(expected)::contains))
                 .as("every message handed over around the end of the recovery must arrive, in order")
                 .containsExactlyElementsOf(expected));
+    }
+
+    /**
+     * A message handed over during a recovery is held in an encoder the session owns, so the application's reusable
+     * encoder is free when {@code send} returns: a periodic sender reusing one encoder carries on through a recovery,
+     * and each message goes out with its own content once it is over.
+     */
+    @Test
+    void aReusableEncoderIsFreeAtOnceWhileItsMessageIsHeldDuringARecovery() {
+        logonClient();
+        sendMessagesAndCutConnection(ConnectorType.INITIATOR, i -> fixInitiatorSession.send(encodeTestMessage(i), null));
+        clearApplicationsInvocations();
+        AtomicReference<Throwable> heldSendsFailure = sendTwoHeldMessagesOnOneReusableEncoder();
+        when(fixInitiatorApplication.onResendRequest(any(), any(), any())).thenReturn(true);
+
+        reconnect(ConnectorType.INITIATOR);
+
+        awaitResendRequestCompleted(fixAcceptorApplication);
+        assertMessageReceived(decodedInitiatorMessages, EmailThreadID.get(), "held-1");
+        assertMessageReceived(decodedInitiatorMessages, EmailThreadID.get(), "held-2");
+        assertThat(heldSendsFailure.get()).isNull();
+    }
+
+    /**
+     * The connection closing before the recovery is over ends the holding too: the held messages are sent while
+     * disconnected, which stores them, each with its own content.
+     */
+    @Test
+    void messagesHeldOnOneReusableEncoderAreStoredWhenTheConnectionClosesDuringTheRecovery() {
+        logonClient();
+        sendMessagesAndCutConnection(ConnectorType.INITIATOR, i -> fixInitiatorSession.send(encodeTestMessage(i), null));
+        clearApplicationsInvocations();
+        AtomicReference<Throwable> heldSendsFailure = sendTwoHeldMessagesOnOneReusableEncoder();
+        CountDownLatch retransmissionStarted = new CountDownLatch(1);
+        CountDownLatch connectionCut = new CountDownLatch(1);
+        when(fixInitiatorApplication.onResendRequest(any(), any(), any())).thenAnswer(invocation -> {
+            retransmissionStarted.countDown();
+            connectionCut.await();
+            return true;
+        });
+        long firstHeldSeqNum = getFixMessagesStore(ConnectorType.ACCEPTOR).getOutgoingSeqNum();
+
+        reconnect(ConnectorType.INITIATOR);
+        await().until(() -> retransmissionStarted.getCount() == 0);
+        fixAcceptorSession.logoutPermanently("closing during the recovery");
+        await().untilAsserted(() -> assertThat(fixAcceptorSession.isConnected()).isFalse());
+        connectionCut.countDown();
+
+        await().untilAsserted(() -> assertThat(storedMessages(ConnectorType.ACCEPTOR, firstHeldSeqNum))
+                .anyMatch(message -> message.contains("\u0001164=held-1\u0001"))
+                .anyMatch(message -> message.contains("\u0001164=held-2\u0001")));
+        assertThat(heldSendsFailure.get()).isNull();
+    }
+
+    /**
+     * Sends two messages on one reusable encoder the moment the recovery starts, both held: the second begins the
+     * encoder again right after the first send returns.
+     */
+    private AtomicReference<Throwable> sendTwoHeldMessagesOnOneReusableEncoder() {
+        EmailEncoder reusable = fixAcceptorSession.newEncoder(EmailEncoder.class).asReusable();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        doAnswer(invocation -> {
+            try {
+                fixAcceptorSession.send(fillEmail(reusable, "held-1"), null);
+                fixAcceptorSession.send(fillEmail(reusable, "held-2"), null);
+            } catch (RuntimeException e) {
+                failure.set(e);
+            }
+            return null;
+        }).when(fixAcceptorApplication).onResendRequestInitiated(any(FixSession.class), anyLong(), anyLong());
+        return failure;
+    }
+
+    private List<String> storedMessages(ConnectorType connectorType, long fromSeqNum) {
+        List<String> messages = new CopyOnWriteArrayList<>();
+        getFixMessagesStore(connectorType).find(fromSeqNum, Long.MAX_VALUE, (seqNum, message) -> {
+            byte[] bytes = new byte[message.remaining()];
+            message.duplicate().get(bytes);
+            messages.add(new String(bytes, StandardCharsets.US_ASCII));
+            return true;
+        });
+        return messages;
+    }
+
+    private static EmailEncoder fillEmail(EmailEncoder encoder, String threadId) {
+        encoder.begin().setEmailType(EmailType.EmailTypeValues.NEW).setEmailThreadID(threadId).setSubject(threadId);
+        NoLinesOfTextEncoder lines = encoder.addNoLinesOfText(1);
+        lines.setText("text");
+        return encoder;
     }
 
     @ParameterizedTest

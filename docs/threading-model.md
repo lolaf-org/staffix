@@ -57,13 +57,12 @@ and any per-session scratch space need no synchronisation at all. That is why `a
 
 ## Sending, and the one asymmetry worth knowing
 
-`send()` behaves differently depending on where you call it from:
+`send()` behaves differently depending on where you call it from.
 
-> Send the FixMessageEncoder immediately if the method is called within the IO thread, or enqueue the encoder to be
-> processed and sent over the wire by the IO thread.
-
-**On the I/O thread** the message is encoded and written inline. Nothing is queued, so a reusable encoder is free
-again as soon as `send` returns, and the quickstart's acceptor relies on exactly this.
+**On the I/O thread** the message is usually encoded and written inline. When it has to wait, behind a write the
+socket has not fully taken, while the session recovers missing messages, or with no connection, the session copies it
+into an encoder of its own. Either way **a reusable encoder is free again as soon as `send` returns**, and the
+quickstart's acceptor relies on exactly this.
 
 **Off the I/O thread** the call enqueues a write task. Two consequences:
 

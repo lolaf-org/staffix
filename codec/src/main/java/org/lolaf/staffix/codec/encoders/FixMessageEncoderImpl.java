@@ -87,15 +87,15 @@ public abstract class FixMessageEncoderImpl<T extends FixMessageEncoder<?>> impl
     private static final FixField SENDING_TIME = FixField.of(CoreFields.SENDING_TIME, FieldType.UTCTIMESTAMP, FieldLocation.HEADER);
 
     private final IntFunction<ByteBuffer> allocator;
-    private final MessageType messageType;
+    private MessageType messageType;
     private final ByteArraysCache byteArraysCache;
     private final Supplier<FixFieldsEncoder> headersAppender;
     private final Supplier<FixFieldsEncoder> bodyAppender;
     private final Supplier<FixFieldsEncoder> trailerAppender;
     private final T thisInstance;
     private final Consumer<FixMessageEncoder<?>> releaser;
-    private final FixMessageEncodingListener encodingListener;
-    private final Clock clock;
+    private FixMessageEncodingListener encodingListener;
+    private Clock clock;
     private boolean reusable;
     private Object[] pluginEncodingState;
     private ByteBuffer bodyBuffer;
@@ -242,6 +242,39 @@ public abstract class FixMessageEncoderImpl<T extends FixMessageEncoder<?>> impl
         copyBuffer(other.getEncodedBody().flip());
         checksumSum += other.getEncodedBodyChecksum();
         return thisInstance;
+    }
+
+    /**
+     * Moves the message begun on this encoder, not yet encoded, to {@code carrier}, which then encodes it exactly as
+     * this one would have, reporting to the same encoding listener. This encoder is left as it is, for the caller to
+     * release: what lets a send that has to wait give the caller's encoder back at once.
+     *
+     * @throws IllegalStateException if no message has been begun on this encoder
+     */
+    public void transferPendingMessageTo(DetachedFixMessageEncoder carrier) {
+        if (fieldScope != FieldScope.BODY) {
+            throw new IllegalStateException("No message begun on encoder " + getClass().getSimpleName() + ":" + hashCode());
+        }
+        FixMessageEncoderImpl<?> target = carrier;
+        target.messageType = messageType;
+        target.encodingListener = encodingListener;
+        target.clock = clock;
+        target.encodingStartTimeInNanos = encodingStartTimeInNanos;
+        target.checksumSum = checksumSum;
+        target.fieldScope = FieldScope.BODY;
+        target.headerBuffer.clear();
+        target.trailerBuffer.clear();
+        ByteBuffer body = bodyBuffer.duplicate().flip();
+        if (target.bodyBuffer.capacity() < body.remaining()) {
+            target.bodyBuffer = target.allocator.apply(body.remaining());
+        }
+        target.bodyBuffer.clear().put(body);
+        if (pluginEncodingState == null) {
+            target.pluginEncodingState = null;
+        } else {
+            Object[] state = target.pluginEncodingState(pluginEncodingState.length);
+            System.arraycopy(pluginEncodingState, 0, state, 0, pluginEncodingState.length);
+        }
     }
 
     private void copyBuffer(ByteBuffer buffer) {

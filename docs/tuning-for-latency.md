@@ -119,8 +119,8 @@ For fields that must become objects, `ObjectInstanceStrategy` decides the alloca
 ## 7. Reuse encoders
 
 `session.newEncoder(X.class).asReusable()` gives an encoder you fill in and send repeatedly instead of building a new
-one per message. Inside a decoder's `onDecoded` you are on the session's I/O thread and the message goes straight to
-the socket, which is what makes reuse safe there, and the quickstart's acceptor does exactly this.
+one per message. Inside a decoder's `onDecoded` you are on the session's I/O thread, where the encoder is yours again
+as soon as `send` returns, which is what makes reuse safe there, and the quickstart's acceptor does exactly this.
 
 Sessions also expose a pool via `newEncodersPool()` for the paths where a single reusable instance will not do.
 

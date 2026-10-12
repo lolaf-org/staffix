@@ -42,7 +42,9 @@ public interface FixMessageEncoder<T extends FixMessageEncoder<?>> extends FixFi
     T begin();
 
     /**
-     * Return an encoder reusable after it has been sent, its destroy method will never be called after being sent
+     * Return an encoder reusable after it has been sent, its destroy method will never be called after being sent.
+     * When it is free again depends on the thread that sent it, see
+     * {@link org.lolaf.staffix.api.session.FixSession#send(FixMessageEncoder, UTCTime)}.
      */
     T asReusable();
 

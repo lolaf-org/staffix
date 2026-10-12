@@ -34,6 +34,7 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntFunction;
 import java.util.function.LongSupplier;
+import java.util.function.UnaryOperator;
 
 @RequiredArgsConstructor
 @Getter(AccessLevel.PACKAGE)
@@ -46,6 +47,7 @@ class FixSessionFixMessageContext implements IOWriter.ByteBufferBuilder, Releasa
     private final FixSession fixSession;
     private final FixSessionId fixSessionId;
     private final RingBuffer<FixSessionFixMessageContext> ctxPool;
+    private final UnaryOperator<FixMessageEncoder<?>> detacher;
 
     private IntFunction<ByteBuffer> allocator;
     @Getter
@@ -99,6 +101,15 @@ class FixSessionFixMessageContext implements IOWriter.ByteBufferBuilder, Releasa
             sendingTime = clock.now();
         }
         return message = encoder.encode(allocator, outgoingSeqNum, fixSessionId, fixApplication, sendingTimeAccuracy, sendingTime, fixSession);
+    }
+
+    /**
+     * Queued behind a write still going out: the message moves to an encoder the session owns, so the caller's is
+     * free when {@code send} returns.
+     */
+    @Override
+    public void onQueued() {
+        encoder = detacher.apply(encoder);
     }
 
     @Override
