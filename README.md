@@ -10,8 +10,8 @@
 **Streaming API for FIX**: a FIX engine for Java that treats latency as a correctness property.
 
 Staffix is a full FIX protocol implementation for Java 11 and up: session layer, type-safe message encoders for every
-FIX version from 4.2 to FIX Latest, persistence, logging, monitoring and administration. It is an ordinary library: in
-your process, on your threads, with no media driver and no second process to operate.
+FIX version from 4.2 to FIX Latest, persistence, logging, monitoring and administration. It is an ordinary library: it
+runs in your process and on your threads, with nothing else to deploy or operate.
 
 - **19.5 µs round trip**, against QuickFIX/J's 37.1 on identical settings, and 11.2 µs busy-spinning
 - **Under one byte allocated per message**, against QuickFIX/J's sixteen kilobytes
@@ -43,18 +43,25 @@ The FIX engine is not a peripheral. It is the first thing every tick touches on 
 order touches on the way out: it sits inside your tick-to-trade twice, and there is no path around it.
 
 You can spend months tuning a trading system: lock-free structures, allocation-free hot paths, GC pauses hunted down,
-threads pinned to cores. Then you put QuickFIX/J at the boundary, and every message goes through something that
-allocates sixteen kilobytes and adds eighteen microseconds per round trip, its garbage landing in the heap you tuned.
+threads pinned to cores. Then you put a FIX engine built without latency in mind at the boundary, and every message
+goes through something that allocates kilobytes and adds tens of microseconds per round trip, its garbage landing in
+the heap you tuned.
 **A low-latency system with a high-latency FIX engine at its edge is not a low-latency system.**
 
-In open source Java, you currently have to choose. **QuickFIX/J is a library, and it is not low latency**: it was
-designed when a millisecond was a small number, and no tuning removes the garbage. **Artio is low latency, and it is not
-a library**: it is an Aeron deployment, with a media driver, an archive and log directories to operate. Both are good at
-what they are; see [Compared to other FIX engines](docs/comparisons.md) for the evidence.
+Open source Java has two production-grade FIX engines, QuickFIX/J and Artio, and each makes you give up something.
+**QuickFIX/J is a library, but it is not low latency**: it was designed when a millisecond was a small number, and no
+tuning removes its garbage. **Artio is low latency, but it is not a library**: it runs on Aeron, which brings a media
+driver, an archive and log directories to operate beside your application. Both are good at what they were built for;
+see [Compared to other FIX engines](docs/comparisons.md) for the evidence.
 
-**Staffix closes that gap: a true low-latency FIX engine that is an ordinary Java library.** A dependency, in your
-process, on your threads, built to one rule: **the hot path is a budget, and every cycle spent there has to justify
-itself.** A new validation either costs nothing when switched off, or it does not ship.
+That is one gap; the other opens the day you go live. Neither engine goes much beyond the protocol: QuickFIX/J stops at
+JMX beans and Artio at an engine API and Aeron counters, so the metrics, alerts and runtime administration a production
+desk relies on are yours to build and wire in.
+
+**Staffix closes both gaps: a true low-latency FIX engine that is an ordinary Java library, ready to operate.** It does
+not allocate while parsing or encoding a message, and every optional check is off by default, costs nothing until you
+turn it on, and documents what turning it on costs. Metrics, tracing, alerting and an admin API come with it, each
+pluggable and kept off the message path.
 
 ## Getting started
 
@@ -80,31 +87,30 @@ up with full monitoring.
 The dependencies for a first application are the engine and an implementation of each pluggable part:
 
 ```xml
-
 <dependency>
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-impl</artifactId>
     <version>${staffix.version}</version>
 </dependency>
 <dependency>
-<groupId>org.lolaf.staffix</groupId>
-<artifactId>staffix-application-factory-simple</artifactId>
-<version>${staffix.version}</version>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-application-factory-simple</artifactId>
+    <version>${staffix.version}</version>
 </dependency>
 <dependency>
-<groupId>org.lolaf.staffix</groupId>
-<artifactId>staffix-messages-store-memory-impl</artifactId>
-<version>${staffix.version}</version>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-messages-store-memory-impl</artifactId>
+    <version>${staffix.version}</version>
 </dependency>
 <dependency>
-<groupId>org.lolaf.staffix</groupId>
-<artifactId>staffix-sessions-settings-store-memory-impl</artifactId>
-<version>${staffix.version}</version>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-sessions-settings-store-memory-impl</artifactId>
+    <version>${staffix.version}</version>
 </dependency>
 <dependency>
-<groupId>org.lolaf.staffix</groupId>
-<artifactId>staffix-messages-logger-slf4j-impl</artifactId>
-<version>${staffix.version}</version>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-messages-logger-slf4j-impl</artifactId>
+    <version>${staffix.version}</version>
 </dependency>
 ```
 
@@ -112,7 +118,6 @@ The encoders for the FIX version you speak are generated into your build, from t
 `staffix-fix-*` artifact carries:
 
 ```xml
-
 <plugin>
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>

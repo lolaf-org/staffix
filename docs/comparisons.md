@@ -39,8 +39,6 @@ Ordinary things to ask of a FIX engine, each of which you would otherwise build 
   whatever your credential store takes is time the session spends blocked.
 - **Obfuscation on the logging path**: a `LogObfuscator` decides what a logged message may carry, so account
   identifiers and client data need not land in the log verbatim. QuickFIX/J writes the raw message.
-- **Settings reload without a restart**: `AdminApi.reloadFixSessionsSettingsStore` re-reads a settings store and adds
-  or removes sessions accordingly. QuickFIX/J reads its settings when it starts.
 - **Warmup before the open**: [`jvm-warmup`](../jvm-warmup) drives a full loopback session over a message carrying one
   field of every type the codec knows, so the whole path (parser, encoders, session state machine, and your own store,
   logger and plugins) is compiled before the first real order rather than the open being served interpreted.
@@ -57,12 +55,30 @@ Micrometer timers, OpenTelemetry tracing with W3C propagation, OTLP export and G
 sampled or moved onto its own thread, because metrics are not worth latency. QuickFIX/J ships a JMX exporter and nothing
 else in the engine itself.
 
+### Administration and alerting
+
+QuickFIX/J's JMX beans let an operator log a session on or off, reset it and set its sequence numbers. Staffix's
+`AdminApi` does the same, and covers what running sessions in production asks for beyond that:
+
+- **Sessions added, edited and removed while the engine runs**, written to the settings store that holds them (memory,
+  YAML files or a database table), and a reload that applies a change made outside the engine. QuickFIX/J reads its
+  settings when it starts: it can create a session from code or from an acceptor template, but does not keep it.
+- **Switching an initiator to a backup by hand**, and back, for a planned failover. See
+  [Switching an initiator to a backup](runtime-administration.md#switching-an-initiator-to-a-backup).
+- **A status that says whether to act**: logged in, logged out by an operator, outside session time, or down inside it,
+  the only one worth paging on.
+- **Alerts**, raised by probes on each session (down inside its session time, a failing store or logger, an async queue
+  growing) and on your application's own conditions, and published to SLF4J or Prometheus Alertmanager. See
+  [Alerting](alerting.md). QuickFIX/J has none.
+- **HTTP as well as JMX**: the same API is served over an authenticated HTTP API, which the
+  [staffix admin console](https://github.com/lolaf-org/staffix-admin) drives to monitor and operate every engine.
+
 ### Extending it
 
 Both engines let you write your own message store. Staffix also publishes the contract suite that holds yours to the
 same standard as the ones that ship (`staffix-messages-store-test-kit`); QuickFIX/J's equivalent tests never leave its
 own repository. Staffix adds session plugins (attach to every message of a session from outside the application, to
-measure it, audit it or add a field on the way out) and an admin SPI, so the operational surface is not tied to JMX.
+measure it, audit it or add a field on the way out) and an admin SPI, so the operational surface is not tied to JMX or HTTP.
 
 ### FIX protocol conformance
 
@@ -109,6 +125,10 @@ priming round trip to stop a lost first message wedging the first measured itera
 what running on Aeron requires, and every line of it is buying something. But it is the difference between adding a
 dependency and adopting a platform, and that is worth knowing at the start rather than discovering halfway in. Staffix
 and QuickFIX/J are both, in this respect, just jars.
+
+Operating it is also left to you. Artio offers an engine API, to list sessions and reset their sequence numbers, and
+Aeron counters; exporting metrics, raising alerts and giving operators a console are yours to build. Staffix ships them,
+as described [above](#administration-and-alerting).
 
 Three honest qualifications on the latency numbers:
 
