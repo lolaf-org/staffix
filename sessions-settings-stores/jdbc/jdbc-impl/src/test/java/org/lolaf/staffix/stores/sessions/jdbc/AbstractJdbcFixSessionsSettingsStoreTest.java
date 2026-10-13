@@ -46,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 abstract class AbstractJdbcFixSessionsSettingsStoreTest {
 
     private static final String ENGINE = "engine-a";
+    private static final String STORE = "test";
 
     private HikariDataSource dataSource;
 
@@ -86,9 +87,13 @@ abstract class AbstractJdbcFixSessionsSettingsStoreTest {
     }
 
     private JdbcFixSessionsSettingsStore newStore(String engineId) {
+        return newStore(engineId, STORE);
+    }
+
+    private JdbcFixSessionsSettingsStore newStore(String engineId, String storeInstanceId) {
         JdbcFixSessionsSettingsStore store = (JdbcFixSessionsSettingsStore) new JdbcFixSessionsSettingsStore.JdbcStoreFactoryImpl()
                 .newInstance(JdbcSessionsSettingsStoreSettings.builder()
-                        .instanceId("test")
+                        .instanceId(storeInstanceId)
                         .dataSource(dataSource)
                         .build());
         store.bind(engineId);
@@ -227,11 +232,27 @@ abstract class AbstractJdbcFixSessionsSettingsStoreTest {
     }
 
     @Test
+    void storesOfOneEngineSharingTheTableSeeOnlyTheirOwnSessions() {
+        FixSessionSettings alpha = session("alpha");
+        FixSessionSettings beta = session("beta");
+        JdbcFixSessionsSettingsStore acceptors = newStore(ENGINE, "acceptors");
+        acceptors.start();
+        acceptors.add(alpha);
+        JdbcFixSessionsSettingsStore initiators = newStore(ENGINE, "initiators");
+        initiators.start();
+        initiators.add(beta);
+
+        JdbcFixSessionsSettingsStore acceptorsAgain = newStore(ENGINE, "acceptors");
+        acceptorsAgain.start();
+        assertThat(acceptorsAgain.getSettings()).containsExactly(alpha);
+    }
+
+    @Test
     void rowWrittenByANewerStaffixIsRefusedNamingIt() throws SQLException {
         insertRow("desk.alpha", "{\"schemaVersion\": 99}");
 
         assertThatThrownBy(this::startedStore)
-                .hasMessageContaining("fix_sessions_settings row engine-a/desk.alpha")
+                .hasMessageContaining("fix_sessions_settings row engine-a/test/desk.alpha")
                 .hasMessageContaining("written by a newer staffix");
     }
 
@@ -249,7 +270,7 @@ abstract class AbstractJdbcFixSessionsSettingsStoreTest {
         insertRow("desk.beta", json);
 
         assertThatThrownBy(this::startedStore)
-                .hasMessageContaining("row engine-a/desk.beta is keyed desk.beta INITIATOR")
+                .hasMessageContaining("row engine-a/test/desk.beta is keyed desk.beta INITIATOR")
                 .hasMessageContaining("holds the settings of desk.alpha");
     }
 
@@ -266,12 +287,14 @@ abstract class AbstractJdbcFixSessionsSettingsStoreTest {
     private void insertRow(String qualifiedName, String settings) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement insert = connection.prepareStatement("INSERT INTO fix_sessions_settings"
-                     + " (engine_id, qualified_name, session_type, settings, version, updated_at) VALUES (?, ?, ?, ?, 1, ?)")) {
+                     + " (engine_id, store_instance_id, qualified_name, session_type, settings, version, updated_at)"
+                     + " VALUES (?, ?, ?, ?, ?, 1, ?)")) {
             insert.setString(1, ENGINE);
-            insert.setString(2, qualifiedName);
-            insert.setString(3, "INITIATOR");
-            insert.setString(4, settings);
-            insert.setTimestamp(5, Timestamp.from(Instant.now()));
+            insert.setString(2, STORE);
+            insert.setString(3, qualifiedName);
+            insert.setString(4, "INITIATOR");
+            insert.setString(5, settings);
+            insert.setTimestamp(6, Timestamp.from(Instant.now()));
             insert.executeUpdate();
         }
     }

@@ -239,9 +239,10 @@ JdbcSessionsSettingsStoreSettings.builder()
 ```
 
 Each row holds one session's settings as a JSON document: the same document as a YAML session file, with the same
-`schemaVersion`, written in JSON. A row is keyed by the engine's instance id and the session's `group.name`, so
-several engines can share one table and each sees only its own sessions. **Give each engine a fixed instance id**
-(`FixEngineBuilder.instanceId`): an engine started under another id finds none of its sessions.
+`schemaVersion`, written in JSON. A row is keyed by the engine's instance id, the store's instance id and the
+session's `group.name`, so several engines, and several stores of one engine, can share one table, each seeing only
+its own sessions. **Give each engine and each store a fixed instance id**: started under another id, they find none of
+their sessions.
 
 **Create the table with the DDL plugin**, which writes the script for your database:
 

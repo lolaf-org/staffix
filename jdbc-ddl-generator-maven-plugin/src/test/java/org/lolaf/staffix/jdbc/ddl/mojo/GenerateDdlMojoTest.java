@@ -301,7 +301,7 @@ class GenerateDdlMojoTest {
         assertThat(content)
                 .contains("create table tenant_fix_sessions_settings")
                 .contains(settingsColumn)
-                .contains("primary key (engine_id, qualified_name)")
+                .contains("primary key (engine_id, store_instance_id, qualified_name)")
                 .doesNotContain("fix_messages");
     }
 

@@ -38,8 +38,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
- * Keeps each session's settings document as JSON in one row of {@code fix_sessions_settings}, keyed by the engine id
- * and the session's qualified name, so engines sharing the table each see only their own sessions.
+ * Keeps each session's settings document as JSON in one row of {@code fix_sessions_settings}, keyed by the engine id,
+ * this store's instance id and the session's qualified name, so the stores and engines sharing the table each see
+ * only their own sessions.
  *
  * <p>Every write checks the row's {@code version}: a change made meanwhile by another writer fails the write instead
  * of being overwritten, and the store keeps its previous state.
@@ -165,11 +166,13 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     }
 
     private Map<FixSessionId, Row> readRows() {
-        String sql = "SELECT qualified_name, session_type, settings, version FROM " + tableName + " WHERE engine_id = ?";
+        String sql = "SELECT qualified_name, session_type, settings, version FROM " + tableName
+                + " WHERE engine_id = ? AND store_instance_id = ?";
         Map<FixSessionId, Row> rows = new HashMap<>();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement select = connection.prepareStatement(sql)) {
             select.setString(1, getEngineId());
+            select.setString(2, instanceId);
             try (ResultSet resultSet = select.executeQuery()) {
                 while (resultSet.next()) {
                     Row row = toRow(resultSet);
@@ -178,14 +181,14 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
                 }
             }
         } catch (SQLException e) {
-            throw failed("read the sessions of engine " + getEngineId() + " from", e);
+            throw failed("read the sessions of engine " + getEngineId() + " and store " + instanceId + " from", e);
         }
         return rows;
     }
 
     private Row toRow(ResultSet resultSet) throws SQLException {
         String qualifiedName = resultSet.getString("qualified_name");
-        String source = tableName + " row " + getEngineId() + "/" + qualifiedName;
+        String source = tableName + " row " + getEngineId() + "/" + instanceId + "/" + qualifiedName;
         FixSessionSettingsDocument document = read(resultSet.getString("settings"), source);
         FixSessionSettingsDocumentValidator.validate(document, source);
         FixSessionSettings settings = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(document);
@@ -220,14 +223,16 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
 
     private void insert(FixSessionSettings settings) {
         String sql = "INSERT INTO " + tableName
-                + " (engine_id, qualified_name, session_type, settings, version, updated_at) VALUES (?, ?, ?, ?, 1, ?)";
+                + " (engine_id, store_instance_id, qualified_name, session_type, settings, version, updated_at)"
+                + " VALUES (?, ?, ?, ?, ?, 1, ?)";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement insert = connection.prepareStatement(sql)) {
             insert.setString(1, getEngineId());
-            insert.setString(2, settings.getFixSessionId().getQualifiedName());
-            insert.setString(3, settings.getFixSessionType().name());
-            insert.setString(4, write(settings));
-            insert.setTimestamp(5, Timestamp.from(Instant.now()));
+            insert.setString(2, instanceId);
+            insert.setString(3, settings.getFixSessionId().getQualifiedName());
+            insert.setString(4, settings.getFixSessionType().name());
+            insert.setString(5, write(settings));
+            insert.setTimestamp(6, Timestamp.from(Instant.now()));
             insert.executeUpdate();
         } catch (SQLException e) {
             throw failed("insert FIX session " + settings.getFixSessionId() + " into", e);
@@ -237,7 +242,7 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
 
     private void update(FixSessionSettings settings, long version) {
         String sql = "UPDATE " + tableName + " SET session_type = ?, settings = ?, version = ?, updated_at = ?"
-                + " WHERE engine_id = ? AND qualified_name = ? AND version = ?";
+                + " WHERE engine_id = ? AND store_instance_id = ? AND qualified_name = ? AND version = ?";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement update = connection.prepareStatement(sql)) {
             update.setString(1, settings.getFixSessionType().name());
@@ -245,8 +250,9 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
             update.setLong(3, version + 1);
             update.setTimestamp(4, Timestamp.from(Instant.now()));
             update.setString(5, getEngineId());
-            update.setString(6, settings.getFixSessionId().getQualifiedName());
-            update.setLong(7, version);
+            update.setString(6, instanceId);
+            update.setString(7, settings.getFixSessionId().getQualifiedName());
+            update.setLong(8, version);
             if (update.executeUpdate() == 0) {
                 throw new IllegalStateException("FIX session " + settings.getFixSessionId() + " changed in " + tableName
                         + " since it was read at version " + version + "; reload the store and apply the change again");
@@ -258,11 +264,12 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     }
 
     private void delete(FixSessionId fixSessionId) {
-        String sql = "DELETE FROM " + tableName + " WHERE engine_id = ? AND qualified_name = ?";
+        String sql = "DELETE FROM " + tableName + " WHERE engine_id = ? AND store_instance_id = ? AND qualified_name = ?";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement delete = connection.prepareStatement(sql)) {
             delete.setString(1, getEngineId());
-            delete.setString(2, fixSessionId.getQualifiedName());
+            delete.setString(2, instanceId);
+            delete.setString(3, fixSessionId.getQualifiedName());
             delete.executeUpdate();
         } catch (SQLException e) {
             throw failed("delete FIX session " + fixSessionId + " from", e);

@@ -24,7 +24,7 @@ import java.io.Serializable;
 import java.time.Instant;
 
 /**
- * The {@code fix_sessions_settings} row: one session's settings, owned by one engine.
+ * The {@code fix_sessions_settings} row: one session's settings, held by one store of one engine.
  */
 @Entity
 @Table(name = "fix_sessions_settings")
@@ -65,6 +65,11 @@ public class FixSessionSettingsRow {
 
         @Column(name = "engine_id", nullable = false, length = 255)
         private String engineId;
+
+        // Hibernate orders key columns by property name: this one sorts between the two others, so the key starts with
+        // the engine and the store, which every query of the store filters on
+        @Column(name = "store_instance_id", nullable = false, length = 255)
+        private String instanceId;
 
         @Column(name = "qualified_name", nullable = false, length = 255)
         private String qualifiedName;
