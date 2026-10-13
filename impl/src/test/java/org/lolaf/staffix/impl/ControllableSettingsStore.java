@@ -41,6 +41,10 @@ class ControllableSettingsStore extends FixSessionsSettingsStore.AbstractFixSess
         this.instanceId = instanceId;
     }
 
+    String boundEngineId() {
+        return getEngineId();
+    }
+
     void setSource(FixSessionSettings... settings) {
         this.source = new HashSet<>(Set.of(settings));
     }

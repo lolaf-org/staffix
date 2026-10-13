@@ -99,6 +99,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         }
         ensureUniqueInstanceIdsAreProvided(fixEngineBuilder.getFixSessionsSettingsStores(), "FixSessionsSettingsStores");
         this.fixSessionsSettingsStores = fixEngineBuilder.getFixSessionsSettingsStores().stream().map(FixSessionsSettingsStoreSettings::instance).collect(Collectors.toList());
+        fixSessionsSettingsStores.forEach(store -> store.bind(fixEngineBuilder.getInstanceId()));
         if (fixSessionsSettingsStores.isEmpty()) {
             throw new IllegalStateException(PROVIDE_AT_LEAST_ONE + FixSessionsSettingsStoreSettings.class.getSimpleName());
         }

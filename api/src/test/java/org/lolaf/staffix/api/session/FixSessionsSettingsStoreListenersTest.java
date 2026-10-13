@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * What a store owes a listener that reacts to the very notification it is being given.
@@ -119,6 +120,32 @@ class FixSessionsSettingsStoreListenersTest {
         public void onUpdatedSession(FixSessionSettings oldSettings, FixSessionSettings newSettings) {
             updatedSessions.add(newSettings);
         }
+    }
+
+    @Test
+    void bindingTwiceToTheSameEngineIsAccepted() {
+        InMemoryStore store = new InMemoryStore();
+        store.bind("engine-a");
+        store.bind("engine-a");
+
+        assertThat(store.getEngineId()).isEqualTo("engine-a");
+    }
+
+    @Test
+    void bindingToAnotherEngineIsRefused() {
+        InMemoryStore store = new InMemoryStore();
+        store.bind("engine-a");
+
+        assertThatThrownBy(() -> store.bind("engine-b"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already bound to engine engine-a");
+    }
+
+    @Test
+    void engineIdOfAnUnboundStoreIsRefused() {
+        assertThatThrownBy(() -> new InMemoryStore().getEngineId())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not bound to an engine");
     }
 
     private static class InMemoryStore extends FixSessionsSettingsStore.AbstractFixSessionSettingsStore {

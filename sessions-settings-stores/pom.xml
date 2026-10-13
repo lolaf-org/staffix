@@ -19,6 +19,7 @@
         <module>document</module>
         <module>memory</module>
         <module>file</module>
+        <module>jdbc</module>
     </modules>
 
 </project>

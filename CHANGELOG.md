@@ -18,149 +18,85 @@ could mean.
 
 ### Added
 
-- **An HTTP admin API** (`staffix-admin-api-http-impl`, and `staffix-admin-api-http-spring-boot` for Spring Boot)
-  serves every session's state, settings, meters and operations as JSON over HTTP or HTTPS, behind a bearer token
-  and an optional read-only one. It announces the engine to the
-  [staffix admin console](https://github.com/lolaf-org/staffix-admin), which can then monitor and operate it.
-- **Sessions can be added, edited and removed at runtime**, through `AdminApi` or the HTTP admin API, in the settings
-  store that holds them. Settings naming a component the engine does not have are refused up front.
-- **`AdminApi` lists what an admin tool needs**: each acceptor's sessions (`getAcceptorsSessions()`), the components a
-  session can use (`getFixSessionComponents()`), and each session's meters (`getFixSessionMeters()`).
-- **`AdminApi.sendFixMessages` sends several messages in order**, stopping at the first one the session refuses.
-- **`FixSession.getStatus()`** tells an operator where a session stands: `LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`,
-  `LOGGED_OUT_OUTSIDE_SESSION_TIME` (a planned pause) or `LOGGED_OUT_INSIDE_SESSION_TIME` (the one to alert on).
-- **An application can declare a session setting secret**, such as a Logon password, with
-  `FixApplicationSessionSettingDescriptor.secret(id, description)`; the HTTP admin API never shows its value.
-- **An application can publish gauges** with its session's metrics, through `FixSessionsMonitoringContext.getGauge`.
+- **An HTTP admin API** (`staffix-admin-api-http-impl`, `staffix-admin-api-http-spring-boot`) serves every session's
+  state, settings, meters and operations as JSON, behind a bearer token, for the
+  [staffix admin console](https://github.com/lolaf-org/staffix-admin).
+- **Sessions can be added, edited and removed at runtime**, through `AdminApi` or the HTTP admin API.
+- **`AdminApi` lists an acceptor's sessions, the components a session can use and each session's meters**, and
+  `sendFixMessages` sends several messages in order.
+- **`FixSession.getStatus()`** says whether a session is logged in, or logged out by an operator, outside session time
+  or inside it.
+- **Secret session settings**, declared with `FixApplicationSessionSettingDescriptor.secret`, are never shown by the
+  HTTP admin API.
+- **An application can publish gauges** through `FixSessionsMonitoringContext.getGauge`.
 - **Metrics, logs and traces carry the engine's id** (`fix.eid`), so same-named sessions in different engines can be
-  told apart. The Grafana dashboard filters by engine, and Loki indexes engine, group and session.
+  told apart.
 - **A generated FIX package ships its dictionary**, so the admin console can decode a session's messages.
-- **Alerting.** The engine checks each session's probes every second and tells an alerts publisher when an alert is
-  raised, changes level, is still ongoing (if the probe asks for reminders) or clears. Levels are `WARNING`, `MAJOR`
-  and `CRITICAL`. A session names its publisher with `fixAlertsPublisherInstanceId`, and an application adds its own
-  probes with `FixSession.getProbes()`. See the [Alerting](docs/alerting.md) guide and `examples/alerting`.
-- **Raise an alert from application code** with a `RaisedAlertEvaluator`: `raise` an alert when something goes
-  wrong, optionally with an expiry, and `clear` it when fixed, from any thread. A `RateAlertEvaluator` raises an
-  alert only when events you `record` reach a count over a sliding window, such as five rejects in a minute.
-- **Probes can carry labels and a runbook URL**, passed on with every alert: labels for routing and grouping (such as
-  the owning team), the runbook URL for what to do. Both are shown by the admin API, HTTP and JMX, and sent to
-  Alertmanager.
-- **A probe can alert only on a condition that lasts**: `withRaiseDelay` on any evaluator holds its first alert back
-  until the condition has held for the delay, so a brief blip never alerts.
-- **Every messages store and logger raises an alert when it fails**, whatever its implementation: a `messages-store`
-  and a `messages-logger` probe on each session. A failed call raises a `WARNING`. Once what the store or logger
-  writes to is found down, the alert turns `MAJOR` and the session stops waiting on it: sent messages are not stored,
-  resend requests log the session out, and nothing is logged, until a check every `resourceCheckInterval` (5 seconds by
-  default) finds it back. The alert clears once calls keep succeeding for `alertClearDelay` (30 seconds by default).
-  Both are settings of every store but the memory one and of every logger, with Spring Boot properties. However many
-  calls fail, each session gets one alert. See
-  [When a store or logger fails](docs/stores-and-loggers.md#when-a-store-or-logger-fails).
-- **An operator can clear an alert by hand** from the admin API, over HTTP
-  (`POST sessions/{group}/{name}/probes/{probe}/clear`) or JMX, when the probe's evaluator accepts it: alerts raised
-  from application code or counted by a rate do, a polled condition does not. Publishers are told it was cleared
-  manually.
-- **A flapping probe can keep one alert**: `withClearDelay` on any evaluator clears its alert only once the condition
-  has stayed normal for the delay, so a condition that comes and goes does not raise a new alert each time.
-- **A session that stays down inside its session time raises a critical alert**, after `sessionDownAlertDelay`
-  (10 seconds by default; zero turns it off). An operator logout or being outside session time never raises it.
-- **An SLF4J alerts publisher** (`staffix-alerts-publisher-slf4j-impl`, and
-  `staffix-alerts-publisher-slf4j-spring-boot` for Spring Boot) logs every alert change, at warn or error while it
-  lasts and info once cleared.
-- **A Prometheus Alertmanager alerts publisher** (`staffix-alerts-publisher-alertmanager-impl`, and
-  `staffix-alerts-publisher-alertmanager-spring-boot` for Spring Boot) sends alerts to one or more Alertmanagers,
-  labelled by engine, session, probe and severity. Ongoing alerts are re-sent every minute, so an engine that stops
-  or crashes has its alerts resolve in Alertmanager on their own.
-- **The async store and async logger raise alerts** when their queue grows too deep, and while what they write to
-  is unavailable.
-- **Admin tools can see probes and alerts.** `AdminApi` lists a session's probes and where each stands, and the
-  engine's ongoing alerts, and tells a `ProbesListener` when a probe is added or removed and when an alert is raised,
-  changes level or clears. The HTTP admin API serves them (`GET sessions/{group}/{name}/probes`,
-  `GET sessions/{group}/{name}/probes/states`, `GET alerts`), and `status` gives each session's worst ongoing alert
-  level, with versions that tell the console when to fetch probes or alerts again. On JMX, a session's MBean has
-  `Probes` and `ProbeStates`, and the engine's has `ActiveAlerts`.
+- **Alerting.** Each session's probes are checked every second and their alerts sent to an alerts publisher. An
+  application adds its own probes and raises its own alerts, by hand or on a rate of events; a probe can wait before
+  raising, hold an alert through flapping, and carry labels and a runbook URL. See [Alerting](docs/alerting.md).
+- **Built-in alerts** when a messages store or logger fails, when an async queue grows too deep, and when a session
+  stays down inside its session time. A store or logger found down is skipped until it comes back, rather than
+  blocking the session. See [When a store or logger fails](docs/stores-and-loggers.md#when-a-store-or-logger-fails).
+- **An operator can clear an alert by hand**, over HTTP or JMX.
+- **SLF4J and Prometheus Alertmanager alerts publishers**, each with a Spring Boot module.
+- **Admin tools can see probes and alerts**, through `AdminApi`, the HTTP admin API and JMX.
+- **A JDBC session settings store** (`staffix-sessions-settings-store-jdbc-impl`,
+  `staffix-sessions-settings-store-jdbc-spring-boot`) keeps sessions in a database table that several engines can
+  share. See [The JDBC store](docs/session-settings-stores.md#the-jdbc-store).
 
 ### Changed
 
-- **A messages store you write must keep its sequence numbers in memory.** `getIncomingSeqNum()`,
-  `getOutgoingSeqNum()` and `getNextOutgoingSeqNum()` no longer declare `StoreException` and must never fail, and
-  storing a sequence number or resetting them must update them in memory before persisting, so a session keeps the
-  right numbers while the storage is down.
 - **A session is identified by its group and its name**, so two counterparties can each have a `trading` session.
-  `FixSessionId.getId()` is now `getName()`, and `getQualifiedName()` returns `group.name`. Settings files and Spring
-  Boot properties say `name` instead of `id`; a session without a group belongs to `default`.
-- **The group appears everywhere a session is named**: stored state and log files (`alpha.trading.bin`), monitoring
-  attributes (`fix.sg`, `fix.sn`), actuator paths (`/actuator/fix-sessions/{group}/{name}`), health keys and JMX
-  bean names.
-- **A `FixApplication` declares its dictionary** with `getDictionaryId()`, and its sessions use it. A session whose
-  FIX version does not match is refused when configured or started, instead of failing at its first message.
-- **An initiator held logged out no longer connects.** It used to dial and hold a connection without logging on, which
-  an acceptor kept dropping. It now waits for `logon()`.
-- **The desired state is `FixSessionDesiredState`, with only `LOGGED_IN` and `LOGGED_OUT`.** `CONNECTED` and
-  `DISCONNECTED` are gone: use `LOGGED_OUT`. An acceptor held logged out now answers a Logon with a Logout giving the
-  reason, instead of silently closing the connection.
+  `FixSessionId.getId()` is now `getName()`, settings say `name` instead of `id`, and the group appears wherever a
+  session is named: files, metrics, actuator paths, JMX.
+- **A `FixApplication` declares its dictionary** with `getDictionaryId()`; a session whose FIX version does not match
+  is refused when configured.
+- **An initiator held logged out no longer connects**; it waits for `logon()`.
+- **The desired state is `FixSessionDesiredState`, `LOGGED_IN` or `LOGGED_OUT`.** `CONNECTED` and `DISCONNECTED` are
+  gone, and an acceptor held logged out answers a Logon with a Logout.
 - **`FixSessionState` is no longer public**: use `isLoggedIn()`, `isConnected()` and `getStatus()`.
-- **The `session.logon.state` gauge is now `session.logon.status`**: 1 logged in, 0 logged out inside session time,
-  2 outside session time, 3 by an operator. The actuator reports `logonStatus` instead of `state`.
-- **Shorter message attributes, the same on metrics and logs**: `fix.msg.type` is now `fix.mt` and `fix.msg.dir` is
-  now `fix.md`, with `i` or `o` instead of `in` or `out`. OTLP message
-  logs carry `fix.md` instead of `fix.log.type`, so one filter selects a direction in both; a session event carries
-  no `fix.md`. `FixMessageDirection` lists its values for tools reading them.
-- **Custom extensions have new methods to implement**: `FixMessagesLogger.getLogger` and
-  `FixSessionsPlugin.onSessionCreated` receive the engine's id, `FixApplicationFactory` implements
-  `getApplicationIds()`, `FixSessionsSettingsStore` implements `isPersistent()`, `FixSessionsMonitoringContext`
-  implements `getMeterDescriptors()` and both `getGauge` methods, and `AdminApi` implements
-  `getProbeDefinitions`, `getProbeStates`, `getActiveAlerts`, `addProbesListener` and `removeProbesListener`.
-- **Custom message stores and loggers receive the session's probes**: `FixMessagesStore.getStore` and
-  `FixMessagesLogger.getLogger` take a `FixSessionProbes`, so a store or logger can raise alerts on the session it
-  serves. A wrapper passes it on to the store or logger it wraps.
-- **The async store's queue thresholds are one depth per alert level**: `QueueSizeThresholdsSettings.thresholds`,
-  by default `WARNING` from 250, `MAJOR` from 1000 and `CRITICAL` from 5000, replaces `normal`, `warn` and
-  `critical`. The alert clears as soon as the queue is back below the lowest threshold.
-- **`FixInitiatorTargets` names the main target and the backups** (`getMainTarget()`, `getBackupTargets()`).
-- **Session settings files say `withinSessionTimeCheckInterval`** instead of `withinSessionCheckInterval`, like the
-  Java and Spring Boot settings.
-- **The session settings JSON schema documents every field and its default**, and is now published from
+- **The `session.logon.state` gauge is now `session.logon.status`**, and the actuator reports `logonStatus`.
+- **Message attributes are shorter and the same on metrics and logs**: `fix.mt` and `fix.md` (`i` or `o`).
+- **Custom extensions have new methods to implement**: the engine's id and the session's probes are passed to
+  messages stores, loggers and session plugins; settings stores implement `isPersistent()` and `bind(engineId)` (done
+  for you by `AbstractFixSessionSettingsStore`); and messages stores must keep their sequence numbers in memory, never
+  failing to return them.
+- **The async store's queue thresholds are one depth per alert level** (`QueueSizeThresholdsSettings.thresholds`).
+- **`FixInitiatorTargets` names the main target and the backups.**
+- **Session settings files say `withinSessionTimeCheckInterval`**, like the Java and Spring Boot settings.
+- **The session settings JSON schema documents every field and its default**, and ships in
   `staffix-sessions-settings-document` (classifier `schema`).
-- **The HTTP admin API's `POST .../messages` takes a list** (`messages`), and surrounding whitespace in a sent
-  message is ignored.
-- **The OTLP messages logger needs protobuf-java 4.36.2 or later**, which it and the Micrometer OTLP module now
-  bring. A Spring Boot 4.1.1 application downgrades it to 4.35.1, and the logger then fails to load: set the
-  `protobuf-java.version` property to 4.36.2.
+- **The HTTP admin API's `POST .../messages` takes a list.**
+- **The DDL generator plugin is now `staffix-jdbc-ddl-generator-maven-plugin`**, and its required `schema` parameter
+  picks the store: `MESSAGES` or `SESSIONS_SETTINGS`.
+- **The OTLP messages logger needs protobuf-java 4.36.2 or later.** Spring Boot 4.1.1 downgrades it: set
+  `protobuf-java.version` to 4.36.2.
 
 ### Removed
 
-- **The `dictionaryId` session setting**: a session speaks its application's dictionary. A settings file that still
-  sets it is refused.
+- **The `dictionaryId` session setting**: a session speaks its application's dictionary.
 - **`FixSession.disconnect(String)`**: use `logoutPermanently(String)`.
-- **`AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`**, a misspelling: use `LOGOUT_LOGON_RESET_NUM_FLAG`.
-- **The async store's `queueSizeThresholdsListener` and `storeUnderlyingResourceStateListener`**, with
-  `QueueSizeThresholdsListener` and `StoreUnderlyingResourceStateListener`: the same conditions are now alerts,
-  delivered through the session's alerts publisher.
+- **`AdminApi.ResetFixSessionMode.LOGOUT_LOGON_REST_NUM_FLAG`**: use `LOGOUT_LOGON_RESET_NUM_FLAG`.
+- **The async store's queue and resource listeners**: the same conditions are now alerts.
 
 ### Fixed
 
-- The JDBC store's DDL generator plugin ignored `tablePrefix`, so the schema it wrote did not match a store
-  configured with a prefix. The prefix now applies to the tables and their indexes, so several prefixes can share
-  one schema.
-- Two sessions with the same name in different groups overwrote each other's stored state, logs, metrics, JMX beans
-  and health entries.
-- Listing an acceptor's sessions while its settings store reloaded could fail or return a partial list.
-- A settings update the file store refused could leave the store out of step with the session and the file.
-- A session could fail to start with "Fix session application settings ... is missing" although the setting was
-  configured.
-- The Spring application factory could miss an application's `destroy()` call, or fail at shutdown, when sessions
-  were created concurrently.
-- The error for an unknown message store listed the settings stores instead of the message stores.
-- `isWithinSessionTime()` froze while a session was disconnected, so its status and health were wrong until it
-  reconnected.
-- An acceptor kept a connection that never sent a Logon open indefinitely. It now closes it after
-  `FixAcceptorBuilder.logonTimeout`, 10 seconds by default.
-- An acceptor refused a Logon split across several TCP segments as an unknown session.
+- The DDL generator plugin ignored `tablePrefix`.
+- Two sessions with the same name in different groups overwrote each other's state, logs and metrics.
+- Listing an acceptor's sessions during a settings reload could fail or return a partial list.
+- A settings update the file store refused could leave the store out of step with the file.
+- A session could fail to start with "Fix session application settings ... is missing" although it was configured.
+- The Spring application factory could miss an application's `destroy()` call when sessions were created
+  concurrently.
+- The error for an unknown message store listed the settings stores.
+- A disconnected session's status and health were wrong until it reconnected.
+- An acceptor kept a connection that never sent a Logon open forever; it now closes it after
+  `FixAcceptorBuilder.logonTimeout`.
+- An acceptor refused a Logon split across several TCP segments.
 - A Logon validated after its connection closed could log on the session's next connection.
-- When the engine stops, the last `session.logon.status` value a push registry (OTLP, Datadog...) receives is 3,
-  logged out, instead of the session's last sampled status.
-- The OTLP messages logger could send a session event (connected, disconnected, sequence reset...) marked as an
-  incoming or outgoing message, and a message with its direction or message type twice.
+- When the engine stopped, a push metrics registry could keep the session's last status instead of logged out.
+- The OTLP messages logger could mislabel a session event as a message, or repeat a message's attributes.
 
 ## [0.9.0] - 2026-09-30
 

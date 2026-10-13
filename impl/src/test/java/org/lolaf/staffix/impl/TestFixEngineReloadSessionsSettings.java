@@ -80,6 +80,13 @@ class TestFixEngineReloadSessionsSettings {
     }
 
     @Test
+    void engineBindsItsStoresToItsInstanceId() {
+        String engineId = adminApi().getInstanceId();
+
+        assertThat(store.boundEngineId()).isEqualTo(engineId);
+    }
+
+    @Test
     void reloadAddsSessionsDiscoveredInTheBackingSource() {
         FixSessionsSettingsStore.Listener listener = mock(FixSessionsSettingsStore.Listener.class);
         store.register(listener);

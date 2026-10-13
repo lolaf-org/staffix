@@ -65,6 +65,7 @@
         <module>application-factories</module>
         <module>spring-boot</module>
         <module>messages-core</module>
+        <module>jdbc-ddl-generator-maven-plugin</module>
         <module>messages-stores</module>
         <module>http-clients</module>
         <module>messages-loggers</module>

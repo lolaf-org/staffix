@@ -25,7 +25,7 @@ See [Performance](docs/performance.md) for the full measurements and how they ar
 - **Session layer**: initiator and acceptor, resend handling, gap fill, heartbeats, cancel-on-disconnect.
 - **Persistence and logging**: in memory, file, JDBC, SLF4J and OTLP, each optionally behind an off-heap async
   handoff that keeps the I/O off the session thread.
-- **Configuration**: in memory or YAML, with a JSON schema your editor validates against.
+- **Configuration**: in memory, YAML files or a database table, with a JSON schema your editor validates against.
 - **Administration**: logon, logout, sequence resets, sending messages, adding, editing and removing sessions,
   settings reload and switching to a backup, exposed through an SPI, JMX and HTTP impls;
   see [Runtime administration](docs/runtime-administration.md).

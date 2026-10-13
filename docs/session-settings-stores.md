@@ -4,12 +4,13 @@ A settings store holds the `FixSessionSettings` of the sessions an engine runs. 
 session](configuring-sessions.md) covers what goes into those settings. This guide covers where they are kept, and how
 they reach the engine.
 
-Two stores ship with Staffix:
+Three stores ship with Staffix:
 
 | store | module | settings come from | changes are written back |
 |-------|--------|--------------------|--------------------------|
 | memory | `staffix-sessions-settings-store-memory-impl` | Java, or Spring properties | no, kept in memory only |
 | file | `staffix-sessions-settings-store-file-impl` | YAML files, in a directory or at URIs | to the directory, never to URIs |
+| JDBC | `staffix-sessions-settings-store-jdbc-impl` | a database table, one row per session | to the table |
 
 ---
 
@@ -225,11 +226,61 @@ system-property and environment resolvers and before Spring's own `Environment`.
 
 ---
 
+## The JDBC store
+
+The sessions are rows of a `fix_sessions_settings` table, reached through a `DataSource` you supply:
+
+```java
+JdbcSessionsSettingsStoreSettings.builder()
+        .instanceId("ACCEPTOR")
+        .dataSource(dataSource)
+        .tablePrefix("desk") // optional: the table is then desk_fix_sessions_settings
+        .build();
+```
+
+Each row holds one session's settings as a JSON document: the same document as a YAML session file, with the same
+`schemaVersion`, written in JSON. A row is keyed by the engine's instance id and the session's `group.name`, so
+several engines can share one table and each sees only its own sessions. **Give each engine a fixed instance id**
+(`FixEngineBuilder.instanceId`): an engine started under another id finds none of its sessions.
+
+**Create the table with the DDL plugin**, which writes the script for your database:
+
+```xml
+<plugin>
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-jdbc-ddl-generator-maven-plugin</artifactId>
+    <version>${staffix.version}</version>
+    <configuration>
+        <schema>SESSIONS_SETTINGS</schema>
+        <dialect>org.hibernate.dialect.PostgreSQLDialect</dialect>
+        <tablePrefix>desk</tablePrefix>
+    </configuration>
+</plugin>
+```
+
+`mvn staffix-jdbc-ddl:generate-ddl` then writes `target/generated-ddl/schema.sql`.
+
+**Two writers cannot overwrite each other.** Every row carries a version that each write checks and increments. When
+another engine or a person changed the row since this store read it, an `update` fails with an error saying so and the
+store keeps what it had; [reload](runtime-administration.md#reloading-settings) it and apply the change again. A
+`remove` always deletes the row.
+
+**A row edited directly in the database reaches a running engine on its next reload.** A row the store cannot read,
+such as invalid JSON, a document written by a newer Staffix, or a row whose key does not match the session it holds,
+fails the start or the reload with an error naming that row.
+
+### Under Spring Boot
+
+The JDBC store is declared under `staffix.sessions-settings-stores-jdbc.instances.<name>`, with `.data-source-bean`
+naming the `DataSource` bean (required) and an optional `.table-prefix`.
+
+---
+
 ## Changing settings on a running engine
 
-Both stores accept `add`, `update` and `remove` while the engine runs, and the engine's acceptors and initiators react
+Every store accepts `add`, `update` and `remove` while the engine runs, and the engine's acceptors and initiators react
 to them. `reloadFixSessionsSettingsStore(instanceId)` re-reads a store and applies the difference the same way, which
-is how an edited YAML file reaches a running engine. A changed session may be restarted and a removed one
+is how an edited YAML file or table row reaches a running engine. A changed session may be restarted and a removed one
 disconnected: [Runtime administration](runtime-administration.md#reloading-settings) covers the reload, and
 [Configuring a session](configuring-sessions.md#when-settings-change-under-a-running-session) the settings that decide
 how each session takes it.
@@ -238,7 +289,7 @@ how each session takes it.
 
 ## Writing your own store
 
-When sessions live somewhere neither store reads, such as a database or a configuration service, write a store. A
+When sessions live somewhere no store reads, such as a configuration service, write a store. A
 store is plugged in like every other Staffix component: a settings class, a factory found through `ServiceLoader`,
 and an instance id.
 
@@ -287,6 +338,7 @@ public class DbSessionsSettingsStore extends FixSessionsSettingsStore.AbstractFi
 | method | contract |
 |--------|----------|
 | `startMe()` | fill what `getSettings()` returns: acceptors and initiators read it as soon as the store has started |
+| `getEngineId()` | the instance id of the engine the store serves, known from before `startMe()`: a backing source several engines share keeps their sessions apart by it |
 | `getSettings()` | the sessions the store currently manages |
 | `find(id, type)` | match on the `FixSessionId` **and** the `FixSessionType`, since one id may exist on both sides |
 | `load()` | read the backing source and return what is there, **without** changing `getSettings()` or notifying anyone: on a reload, the engine compares the result with `getSettings()` and applies the difference through `add`, `remove` and `update` |

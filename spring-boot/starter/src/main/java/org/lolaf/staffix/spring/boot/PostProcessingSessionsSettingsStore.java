@@ -83,6 +83,11 @@ final class PostProcessingSessionsSettingsStore implements FixSessionsSettingsSt
     }
 
     @Override
+    public void bind(String engineId) {
+        delegate.bind(engineId);
+    }
+
+    @Override
     public void register(Listener listener) {
         delegate.register(listener);
     }

@@ -103,6 +103,15 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
     boolean isPersistent();
 
     /**
+     * Called by the engine once, right after building the store and before {@link #start()}: a store several engines
+     * share, such as a database, keeps each engine's sessions apart by it.
+     *
+     * @param engineId the engine's {@link org.lolaf.staffix.api.FixEngineBuilder#getInstanceId() instance id}
+     * @throws IllegalStateException if the store is already bound to another engine
+     */
+    void bind(String engineId);
+
+    /**
      * Registers a listener to be notified of changes to the managed settings.
      *
      * @param listener the listener to register
@@ -157,6 +166,28 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
     abstract class AbstractFixSessionSettingsStore extends Startable.SimpleStartable<FixSessionsSettingsStore> implements FixSessionsSettingsStore {
 
         private final Set<Listener> listeners = new HashSet<>();
+        private String engineId;
+
+        @Override
+        public void bind(String engineId) {
+            Objects.requireNonNull(engineId, "engineId");
+            if (this.engineId != null && !this.engineId.equals(engineId)) {
+                throw new IllegalStateException(getInstanceId() + " is already bound to engine " + this.engineId
+                        + ", not " + engineId);
+            }
+            this.engineId = engineId;
+        }
+
+        /**
+         * @return the id the engine {@link #bind bound} this store to
+         * @throws IllegalStateException if it has not been bound yet
+         */
+        protected String getEngineId() {
+            if (engineId == null) {
+                throw new IllegalStateException(getInstanceId() + " is not bound to an engine");
+            }
+            return engineId;
+        }
 
         /**
          * @return the live set of registered listeners, for subclasses that need to notify them directly

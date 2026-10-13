@@ -10,13 +10,12 @@
 
     <name>Staffix JDBC Message Store (Parent)</name>
     <description>
-        The JDBC message store, its Spring Boot auto-configuration, and the plugin that generates its schema.
+        The JDBC message store and its Spring Boot auto-configuration.
     </description>
 
     <artifactId>staffix-messages-store-jdbc-parent</artifactId>
 
     <modules>
-        <module>ddl-generator-plugin</module>
         <module>jdbc-impl</module>
         <module>jdbc-store-spring-boot</module>
     </modules>

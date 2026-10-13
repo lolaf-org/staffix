@@ -83,11 +83,13 @@
 
     <build>
         <plugins>
-            <!-- DDL Generator Plugin -->
             <plugin>
                 <groupId>org.lolaf.staffix</groupId>
-                <artifactId>staffix-messages-store-jdbc-ddl-generator-maven-plugin</artifactId>
+                <artifactId>staffix-jdbc-ddl-generator-maven-plugin</artifactId>
                 <version>${project.version}</version>
+                <configuration>
+                    <schema>MESSAGES</schema>
+                </configuration>
                 <executions>
                     <execution>
                         <id>generate-postgresql-ddl</id>
