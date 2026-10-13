@@ -33,6 +33,7 @@ import org.lolaf.ringos.idling.WaitNotifyIdleStrategy;
 import org.lolaf.ringos.threading.FastThreadLocalThread;
 import org.lolaf.ringos.timer.WheelTimer;
 import org.lolaf.staffix.admin.jmx.JmxAdminApiSettings;
+import org.lolaf.staffix.alerting.slf4j.Slf4jAlertsPublisherSettings;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -92,6 +93,7 @@ class FixExamplesBase {
     static final Duration ENGINE_STOP_TIMEOUT = Duration.ofSeconds(10);
     static final String ACCEPTOR = "ACCEPTOR";
     static final String INITIATOR = "INITIATOR";
+    static final String ALERTS_PUBLISHER = "alerts";
 
     private static final Pattern SECRET_OPTION = Pattern.compile("(?i).*(auth|password|secret|token|credential).*");
 
@@ -321,6 +323,7 @@ class FixExamplesBase {
                 .fixMessagesStore(getFixMessagesStoreSettings(options, INITIATOR, 1))
                 .fixMessagesLogger(getLoggerSettings(options, ACCEPTOR, options.getClientsCount()))
                 .fixMessagesLogger(getLoggerSettings(options, INITIATOR, 1))
+                .fixAlertsPublisher(Slf4jAlertsPublisherSettings.builder().instanceId(ALERTS_PUBLISHER).build())
                 .fixApplicationFactory(acceptorAppFactoryBuilder.build())
                 .fixApplicationFactory(initiatorAppFactoryBuilder.build())
                 .fixSessionsSettingsStore(acceptorSessionsSettingsBuilder.build())
@@ -396,6 +399,7 @@ class FixExamplesBase {
                 .fixApplicationSessionSettings(fixApplicationSessionSettings.apply(sid))
                 .fixMessageStoreInstanceId(targetInstancesId)
                 .fixMessageLoggerInstanceId(targetInstancesId)
+                .fixAlertsPublisherInstanceId(ALERTS_PUBLISHER)
                 .fixApplicationFactoryInstanceId(targetInstancesId)
                 .fixApplicationInstanceId(sid.getQualifiedName())
                 .resetSeqNumOnLogon(resetSequenceOnLogon);

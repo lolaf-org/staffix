@@ -17,7 +17,6 @@ package org.lolaf.staffix.examples;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.lolaf.staffix.alerting.slf4j.Slf4jAlertsPublisherSettings;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLevel;
@@ -26,7 +25,6 @@ import org.lolaf.staffix.api.alerting.ProbeEvaluator;
 import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
 import org.lolaf.staffix.api.alerting.RateAlertEvaluator;
 import org.lolaf.staffix.api.application.FixApplication;
-import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.fields.FieldsRegistry;
@@ -50,7 +48,6 @@ import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
-import java.util.function.Function;
 
 /**
  * An application watching its own business flow with probes.
@@ -66,7 +63,7 @@ import java.util.function.Function;
  *     <li>{@code large-order}, a {@link RaisedAlertEvaluator} the decoder raises on an order above the limit, which
  *     expires on its own, with labels and a runbook URL a publisher passes on.</li>
  * </ul>
- * Their alerts go through the SLF4J alerts publisher the sessions name by instance id, so the log shows each alert
+ * Their alerts go through the SLF4J alerts publisher every example engine registers, so the log shows each alert
  * raised, changed, reminded and cleared.
  * <p>
  * Read {@link OrderFlowEvaluator} for what a probe evaluates, then {@link OrderReceivingApplication#onLogon} for how
@@ -80,7 +77,6 @@ import java.util.function.Function;
         description = "A probe watching the order flow, its alerts logged through SLF4J", showDefaultValues = true)
 public class AlertingExample extends FixExamplesBase implements Callable<Integer> {
 
-    private static final String ALERTS_PUBLISHER_INSTANCE_ID = "alerts";
     private static final String ORDER_FLOW_PROBE = "order-flow";
     private static final String ORDER_RATE_PROBE = "order-rate";
     private static final String LARGE_ORDER_PROBE = "large-order";
@@ -126,20 +122,13 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
         waitForUserInput(log);
 
-        FixEngineBuilder.FixEngineBuilderBuilder<?, ?> engineBuilder = fixEngineBuilder(exampleOptions, true,
+        FixEngine fixEngine = fixEngineBuilder(exampleOptions, true,
                 sid -> new OrderReceivingApplication(Duration.ofSeconds(warningAfterSeconds), Duration.ofSeconds(majorAfterSeconds),
                         Duration.ofSeconds(reminderIntervalInSeconds), rateWarningOrders, quantityLimit),
                 sid -> new OrderSendingApplication(burstSize, Arrays.stream(pausesInSeconds).mapToObj(Duration::ofSeconds).toArray(Duration[]::new),
                         largeOrderEveryBursts, quantityLimit * 10),
                 sid -> Collections.emptyMap(),
-                sid -> Collections.emptyMap());
-
-        // Registered on the engine like a store or a logger, and named by the sessions in getFixSessionSetting.
-        engineBuilder.fixAlertsPublisher(Slf4jAlertsPublisherSettings.builder()
-                .instanceId(ALERTS_PUBLISHER_INSTANCE_ID)
-                .build());
-
-        FixEngine fixEngine = engineBuilder.build().instance().start();
+                sid -> Collections.emptyMap()).build().instance().start();
 
         FixAcceptor fixAcceptor = fixEngine.newAcceptor(getFixAcceptorBuilder(exampleOptions).build()).start();
 
@@ -154,17 +143,6 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         LockSupport.parkNanos(exampleDuration.toNanos());
         shutdown(initiators, null, fixAcceptor, fixEngine);
         return 0;
-    }
-
-    @Override
-    public FixSessionSettings getFixSessionSetting(FixSessionId sid, FixSession.FixSessionType sessionType,
-                                                   String targetInstancesId, boolean resetSequenceOnLogon,
-                                                   Function<FixSessionId, Map<FixApplicationSessionSettingDescriptor, String>> fixApplicationSessionSettings,
-                                                   ExampleOptions options) {
-        return super.getFixSessionSetting(sid, sessionType, targetInstancesId, resetSequenceOnLogon,
-                        fixApplicationSessionSettings, options).toBuilder()
-                .fixAlertsPublisherInstanceId(ALERTS_PUBLISHER_INSTANCE_ID)
-                .build();
     }
 
     /**
