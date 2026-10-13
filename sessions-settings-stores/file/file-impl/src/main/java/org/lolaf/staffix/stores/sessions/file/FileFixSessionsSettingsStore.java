@@ -26,6 +26,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.*;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocument;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentMapper;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentUpgrader;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentValidator;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsJsonSchema;
 import org.lolaf.staffix.sessions.settings.document.FromFixSessionSettingsDocumentTransformer;
@@ -246,7 +247,8 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
 
     // Through the tree rather than straight to the type, so a ${...} placeholder can stand in a field of
     // any type; readValue keeps FAIL_ON_TRAILING_TOKENS, which readTree would not.
-    private RetainedYaml readRetaining(JsonNode raw, String source) throws IOException {
+    private RetainedYaml readRetaining(JsonNode read, String source) throws IOException {
+        JsonNode raw = FixSessionSettingsDocumentUpgrader.upgrade(read, source);
         JsonNode resolved = YamlPlaceholderResolver.resolve(raw, configValueResolvers, source);
         return new RetainedYaml(raw, resolved, mapper.treeToValue(resolved, FixSessionSettingsDocument.class));
     }

@@ -3,6 +3,7 @@
 # unset in a session file are taken from these defaults), demonstrating the
 # default.yaml merge feature of the YAML file session settings store.
 # yaml-language-server: $schema=../fix-session-settings.v1.schema.json
+schemaVersion: 1
 fixSessionId:
   fixVersion: "FIX.4.4"
   group: "example-group"

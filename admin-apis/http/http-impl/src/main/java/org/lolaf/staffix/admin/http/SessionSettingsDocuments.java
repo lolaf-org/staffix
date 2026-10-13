@@ -16,6 +16,7 @@
 package org.lolaf.staffix.admin.http;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -66,7 +67,8 @@ public final class SessionSettingsDocuments {
      * @throws HttpProblemException 400 when the document is invalid
      */
     public static FixSessionSettings read(InputStream body, FixSessionSettings current) throws IOException {
-        FixSessionSettingsDocument document = MAPPER.readValue(body, FixSessionSettingsDocument.class);
+        FixSessionSettingsDocument document = MAPPER.treeToValue(upgrade(MAPPER.readValue(body, JsonNode.class)),
+                FixSessionSettingsDocument.class);
         restoreMaskedSecrets(document, current);
         try {
             FixSessionSettingsDocumentValidator.validate(document, "the request");
@@ -76,6 +78,14 @@ public final class SessionSettingsDocuments {
                     ? settings
                     : settings.toBuilder().allowedCertificates(current.getAllowedCertificates()).build();
         } catch (RuntimeException e) {
+            throw new HttpProblemException(400, "Invalid session settings: " + e.getMessage());
+        }
+    }
+
+    private static JsonNode upgrade(JsonNode document) {
+        try {
+            return FixSessionSettingsDocumentUpgrader.upgrade(document, "the request");
+        } catch (IllegalArgumentException e) {
             throw new HttpProblemException(400, "Invalid session settings: " + e.getMessage());
         }
     }

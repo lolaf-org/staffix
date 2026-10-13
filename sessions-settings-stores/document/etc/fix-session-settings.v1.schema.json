@@ -610,6 +610,11 @@
       },
       "description" : "Continuous network RTT and remote clock-offset measurement settings.\n\nWhen enabled (non-null RttMeasurementSettings.getProbeInterval()), the session emits TestRequest probes at that interval and uses the matching Heartbeat responses (with the remote SendingTime in tag 52) to compute a smoothed RTT and remote-vs-local clock offset. Heartbeat-driven TestRequests issued by the existing heartbeat machinery are also fed into the estimator regardless of this setting."
     },
+    "schemaVersion" : {
+      "type" : "integer",
+      "const" : 1,
+      "description" : "The version of the document's shape: a document of an earlier version is upgraded when read, one of a later version refused."
+    },
     "sendingTimeAccuracy" : {
       "$ref" : "#/$defs/TimeUnit",
       "description" : "The precision SendingTime(52) is written to. Microseconds by default; a counterparty that cannot parse sub-second digits needs TimeUnit.SECONDS.",
@@ -952,5 +957,5 @@
       "description" : "What this session checks on every inbound message. Each check costs something on the message path, which is why most are off."
     }
   },
-  "required" : [ "fixSessionId", "fixSessionType" ]
+  "required" : [ "fixSessionId", "fixSessionType", "schemaVersion" ]
 }

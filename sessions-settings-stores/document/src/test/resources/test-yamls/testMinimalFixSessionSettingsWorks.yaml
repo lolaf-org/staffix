@@ -1,4 +1,5 @@
 ---
+schemaVersion: 1
 fixSessionId:
   name: "testMinimalFixSessionSettingsWorks"
   fixVersion: "FIX.4.4"

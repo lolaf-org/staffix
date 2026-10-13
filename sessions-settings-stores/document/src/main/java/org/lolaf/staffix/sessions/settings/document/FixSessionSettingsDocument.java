@@ -44,6 +44,17 @@ import java.util.concurrent.TimeUnit;
 @AllArgsConstructor
 public class FixSessionSettingsDocument {
 
+    /**
+     * The {@link #schemaVersion} this staffix writes, and the latest it reads.
+     */
+    public static final int CURRENT_SCHEMA_VERSION = 1;
+
+    /**
+     * The version of the document's shape: a document of an earlier version is upgraded when read, one of a later
+     * version refused.
+     */
+    @NotNull
+    private Integer schemaVersion;
     @Valid
     @NotNull
     private FixSessionId fixSessionId;

@@ -44,7 +44,8 @@ class TestUriSessionSettingsSources {
     File tempDir;
 
     private static String session(String id) {
-        return "fixSessionId:\n"
+        return "schemaVersion: 1\n"
+                + "fixSessionId:\n"
                 + "  name: \"" + id + "\"\n"
                 + "  senderCompID: \"SENDER\"\n"
                 + "  targetCompID: \"TARGET-" + id + "\"\n"
@@ -67,7 +68,7 @@ class TestUriSessionSettingsSources {
 
     @Test
     void mergesTheDefaultsNamedByAUri() throws IOException {
-        URI defaults = write("default.yaml", "logInOrOutResponseTimeout: \"PT45S\"\n");
+        URI defaults = write("default.yaml", "schemaVersion: 1\nlogInOrOutResponseTimeout: \"PT45S\"\n");
         URI one = write("one.yaml", session("one"));
 
         assertThat(load(defaults, one)).singleElement()
@@ -77,8 +78,8 @@ class TestUriSessionSettingsSources {
 
     @Test
     void refusesTwoDefaultsSources() throws IOException {
-        URI first = write("a/default.yaml", "logInOrOutResponseTimeout: \"PT45S\"\n");
-        URI second = write("b/default.yaml", "logInOrOutResponseTimeout: \"PT30S\"\n");
+        URI first = write("a/default.yaml", "schemaVersion: 1\nlogInOrOutResponseTimeout: \"PT45S\"\n");
+        URI second = write("b/default.yaml", "schemaVersion: 1\nlogInOrOutResponseTimeout: \"PT30S\"\n");
 
         assertThatThrownBy(() -> load(first, second, write("one.yaml", session("one"))))
                 .isInstanceOf(IllegalStateException.class)

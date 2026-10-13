@@ -162,6 +162,17 @@ class TestFixSessionSettingsJsonSchema {
     }
 
     @Test
+    void schemaVersionIsRequiredAndPinnedToTheCurrentOne() throws IOException {
+        JsonNode schema = new ObjectMapper().readTree(generateSchema());
+
+        assertThat(schema.get("required").toString()).contains("schemaVersion");
+        JsonNode schemaVersion = schema.path("properties").path("schemaVersion");
+        assertThat(schemaVersion.path("const").intValue()).isEqualTo(FixSessionSettingsDocument.CURRENT_SCHEMA_VERSION);
+        assertThat(schemaVersion.has("anyOf")).isFalse();
+        assertThat(schemaVersion.has("default")).isFalse();
+    }
+
+    @Test
     void durationFieldsAreConstrainedByPattern() throws IOException {
         JsonNode schema = new ObjectMapper().readTree(generateSchema());
 

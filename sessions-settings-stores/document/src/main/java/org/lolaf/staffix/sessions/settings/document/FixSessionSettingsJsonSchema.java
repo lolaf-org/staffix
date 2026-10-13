@@ -37,7 +37,8 @@ public class FixSessionSettingsJsonSchema {
      * The conventional file name under which the schema is written alongside the session files, and the name of the
      * resource inside this module's jar.
      */
-    public static final String SCHEMA_FILE_NAME = "fix-session-settings.v1.schema.json";
+    public static final String SCHEMA_FILE_NAME = "fix-session-settings.v" + FixSessionSettingsDocument.CURRENT_SCHEMA_VERSION
+            + ".schema.json";
 
     /**
      * Opens the schema generated at build time and packaged in this module's jar, next to this class. The name is
@@ -55,7 +56,8 @@ public class FixSessionSettingsJsonSchema {
      * The schema of a document whose values are all resolved, which no {@code ${...}} placeholder may stand in: what
      * the HTTP admin API serves and accepts.
      */
-    public static final String RESOLVED_SCHEMA_FILE_NAME = "fix-session-settings-resolved.v1.schema.json";
+    public static final String RESOLVED_SCHEMA_FILE_NAME = "fix-session-settings-resolved.v"
+            + FixSessionSettingsDocument.CURRENT_SCHEMA_VERSION + ".schema.json";
 
     /**
      * As {@link #openPackagedSchema()}, for {@link #RESOLVED_SCHEMA_FILE_NAME}.

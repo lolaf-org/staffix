@@ -81,6 +81,7 @@ The sessions are YAML files, one session per file:
 
 ```yaml
 # yaml-language-server: $schema=fix-session-settings.v1.schema.json
+schemaVersion: 1
 fixSessionId:
   name: "acceptor-initiator1"
   fixVersion: "FIX.4.4"
@@ -148,6 +149,11 @@ the session's own entry winning.
 
 **Reading is strict.** An unknown field, an unknown enum value or trailing content fails the load and names the file,
 so a typo is an error rather than a silently missing setting. The merged result is then validated.
+
+**Every file declares `schemaVersion: 1`**, `default.yaml` included: the version of the file's layout. A file without
+it, or with a version newer than the running staffix knows, is refused. A file of an older version is upgraded as it is
+read, and written back at the current version, so a future release can change the layout without breaking your files.
+The same goes for a document sent to the [HTTP admin API](runtime-administration.md).
 
 ### The JSON schema
 

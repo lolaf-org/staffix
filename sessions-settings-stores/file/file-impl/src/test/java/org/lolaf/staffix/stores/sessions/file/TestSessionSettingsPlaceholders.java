@@ -237,7 +237,7 @@ class TestSessionSettingsPlaceholders {
     @Test
     void resolvesAPlaceholderInTheDefaultsFile() throws IOException {
         System.setProperty(PROPERTY, "PT45S");
-        writeDefaults("logInOrOutResponseTimeout: \"${sysprop:" + PROPERTY + "}\"\n");
+        writeDefaults("schemaVersion: 1\nlogInOrOutResponseTimeout: \"${sysprop:" + PROPERTY + "}\"\n");
         writeSessionWithoutTimeout("SENDER");
 
         assertThat(load()).singleElement()
@@ -252,7 +252,7 @@ class TestSessionSettingsPlaceholders {
     @Test
     void doesNotLeakADefaultsPlaceholderIntoASessionFile() throws IOException {
         System.setProperty(PROPERTY, "PT45S");
-        writeDefaults("logInOrOutResponseTimeout: \"${sysprop:" + PROPERTY + "}\"\n");
+        writeDefaults("schemaVersion: 1\nlogInOrOutResponseTimeout: \"${sysprop:" + PROPERTY + "}\"\n");
         writeSessionWithoutTimeout("SENDER");
 
         FileFixSessionsSettingsStore store = store(List.of());
@@ -325,7 +325,8 @@ class TestSessionSettingsPlaceholders {
     }
 
     private void writeSessionWith(String extraYaml) throws IOException {
-        String yaml = "fixSessionId:\n"
+        String yaml = "schemaVersion: 1\n"
+                + "fixSessionId:\n"
                 + "  name: \"SENDER\"\n"
                 + "  senderCompID: \"SENDER\"\n"
                 + "  targetCompID: \"TARGET\"\n"
@@ -340,7 +341,8 @@ class TestSessionSettingsPlaceholders {
     }
 
     private void writeSessionWithoutTimeout(String id) throws IOException {
-        String yaml = "fixSessionId:\n"
+        String yaml = "schemaVersion: 1\n"
+                + "fixSessionId:\n"
                 + "  name: \"" + id + "\"\n"
                 + "  senderCompID: \"SENDER\"\n"
                 + "  targetCompID: \"TARGET\"\n"
@@ -372,7 +374,8 @@ class TestSessionSettingsPlaceholders {
     }
 
     private void writeSession(String id, String timeout) throws IOException {
-        String yaml = "fixSessionId:\n"
+        String yaml = "schemaVersion: 1\n"
+                + "fixSessionId:\n"
                 + "  name: \"" + id + "\"\n"
                 + "  senderCompID: \"SENDER\"\n"
                 + "  targetCompID: \"TARGET\"\n"

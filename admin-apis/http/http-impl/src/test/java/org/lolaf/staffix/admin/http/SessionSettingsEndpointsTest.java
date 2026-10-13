@@ -138,6 +138,7 @@ class SessionSettingsEndpointsTest {
     void settingsAreTheSessionsDocumentWithSecretsMasked() throws Exception {
         JsonNode settings = settingsOf("drop-copy");
 
+        assertThat(settings.path("schemaVersion").intValue()).isEqualTo(1);
         assertThat(settings.at("/fixSessionId/name").asText()).isEqualTo("drop-copy");
         assertThat(settings.path("logInOrOutResponseTimeout").asText()).isEqualTo("PT10S");
         assertThat(settings.at("/fixApplicationSessionSettings/endpoints.logon").asText()).isEqualTo(SessionSettingsDocuments.MASK);
@@ -169,6 +170,10 @@ class SessionSettingsEndpointsTest {
         ObjectNode settings = (ObjectNode) settingsOf("drop-copy");
 
         assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings.deepCopy().put("unknown", 1).toString()).statusCode())
+                .isEqualTo(400);
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings.deepCopy().put("schemaVersion", 2).toString()).statusCode())
+                .isEqualTo(400);
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings.deepCopy().without("schemaVersion").toString()).statusCode())
                 .isEqualTo(400);
         settings.remove("fixSessionId");
         assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings.toString()).statusCode()).isEqualTo(400);

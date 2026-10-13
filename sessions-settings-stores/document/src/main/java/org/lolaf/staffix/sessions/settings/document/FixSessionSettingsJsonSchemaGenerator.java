@@ -133,6 +133,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
         SchemaGeneratorConfig config = configBuilder.build();
         ObjectNode schema = new SchemaGenerator(config).generateSchema(FixSessionSettingsDocument.class);
         enumerateFixVersions(schema);
+        pinSchemaVersion(schema);
         if (placeholders) {
             widenScalarsForPlaceholders(schema);
         }
@@ -182,7 +183,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
 
     private static boolean isWidenableScalar(ObjectNode node) {
         JsonNode type = node.get("type");
-        return type != null && type.isTextual() && !node.has("enum")
+        return type != null && type.isTextual() && !node.has("enum") && !node.has("const")
                 && SCALAR_TYPES.contains(type.textValue());
     }
 
@@ -202,6 +203,11 @@ public class FixSessionSettingsJsonSchemaGenerator {
         fixVersion.remove("minLength");
         ArrayNode versions = fixVersion.putArray("enum");
         Arrays.stream(FixRegularVersion.values()).map(FixRegularVersion::toString).forEach(versions::add);
+    }
+
+    private static void pinSchemaVersion(ObjectNode schema) {
+        ((ObjectNode) schema.path("properties").path(FixSessionSettingsDocumentUpgrader.SCHEMA_VERSION))
+                .put("const", FixSessionSettingsDocument.CURRENT_SCHEMA_VERSION);
     }
 
     private static SettingsJavadoc readJavadoc(List<Path> sourceRoots) throws IOException {
@@ -226,7 +232,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
         ObjectNode defaults = FixSessionSettingsDocumentMapper.configure(new ObjectMapper())
                 .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
                 .valueToTree(ToFixSessionSettingsDocumentTransformer.toDocument(unset));
-        defaults.remove(List.of("fixSessionId", "fixSessionType"));
+        defaults.remove(List.of(FixSessionSettingsDocumentUpgrader.SCHEMA_VERSION, "fixSessionId", "fixSessionType"));
         defaults.with("sessionScheduleSettings").remove("timeZone");
         return defaults;
     }

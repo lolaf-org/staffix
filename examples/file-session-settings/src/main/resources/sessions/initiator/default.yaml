@@ -9,6 +9,7 @@
 # Note the field is a Duration, not a String: placeholders are resolved on the
 # parsed file before it is bound, so they work in a field of any type.
 # yaml-language-server: $schema=../fix-session-settings.v1.schema.json
+schemaVersion: 1
 fixSessionId:
   fixVersion: "FIX.4.4"
   group: "example-group"

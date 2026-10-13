@@ -41,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TestFixSessionSettingsValidationAndSchema {
 
     private static final String VALID_SESSION = String.join("\n",
+            "schemaVersion: 1",
             "fixSessionId:",
             "  name: \"test\"",
             "  fixVersion: \"FIX.4.4\"",
@@ -76,7 +77,7 @@ class TestFixSessionSettingsValidationAndSchema {
 
     @Test
     void missingRequiredSessionIdFailsWithReadableError() throws IOException {
-        writeSessionFile("bad.yaml", "fixApplicationInstanceId: \"default\"\n");
+        writeSessionFile("bad.yaml", "schemaVersion: 1\nfixApplicationInstanceId: \"default\"\n");
 
         FileFixSessionsSettingsStore store = newStore();
         assertThatThrownBy(store::start)
@@ -86,8 +87,39 @@ class TestFixSessionSettingsValidationAndSchema {
     }
 
     @Test
+    void fileWithoutSchemaVersionIsRefused() throws IOException {
+        writeSessionFile("unversioned.yaml", VALID_SESSION.replace("schemaVersion: 1\n", ""));
+
+        assertThatThrownBy(newStore()::start)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unversioned.yaml has no schemaVersion");
+    }
+
+    @Test
+    void fileOfANewerSchemaVersionIsRefused() throws IOException {
+        writeSessionFile("newer.yaml", VALID_SESSION.replace("schemaVersion: 1", "schemaVersion: 2"));
+
+        assertThatThrownBy(newStore()::start)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("written by a newer staffix");
+    }
+
+    @Test
+    void writtenFileDeclaresTheSchemaVersion() throws IOException {
+        writeSessionFile("session.yaml", VALID_SESSION);
+        FileFixSessionsSettingsStore store = newStore();
+        store.start();
+
+        store.onUpdate(store.getSettings().iterator().next().toBuilder().testingMode(true).build());
+
+        assertThat(new String(Files.readAllBytes(new File(tempDir, "session.yaml").toPath()), StandardCharsets.UTF_8))
+                .contains("schemaVersion: 1");
+    }
+
+    @Test
     void blankRequiredCompIdFailsValidation() throws IOException {
         writeSessionFile("bad.yaml", String.join("\n",
+                "schemaVersion: 1",
                 "fixSessionId:",
                 "  fixVersion: \"FIX.4.4\"",
                 "  senderCompID: \"SENDER\"",
