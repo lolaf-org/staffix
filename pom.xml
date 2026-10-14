@@ -4,7 +4,7 @@
 
     <groupId>org.lolaf.staffix</groupId>
     <artifactId>staffix-parent</artifactId>
-    <version>0.9.1</version>
+    <version>0.9.2-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <inceptionYear>2024-2026</inceptionYear>
@@ -45,7 +45,7 @@
              and a token is an HTTPS credential. -->
         <developerConnection>scm:git:https://github.com/lolaf-org/staffix.git</developerConnection>
         <url>https://github.com/lolaf-org/staffix</url>
-        <tag>v0.9.1</tag>
+        <tag>HEAD</tag>
     </scm>
 
     <issueManagement>
@@ -87,7 +87,7 @@
             ${maven.multiModuleProjectDirectory}/coverage-report/target/site/jacoco-aggregate/jacoco.xml
         </sonar.coverage.jacoco.xmlReportPaths>
         <!-- Reproducible builds. -->
-        <project.build.outputTimestamp>2026-10-14T18:52:37Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2026-10-14T19:04:26Z</project.build.outputTimestamp>
         <maven.compiler.release>11</maven.compiler.release>
 
         <ringos.version>0.9.1</ringos.version>

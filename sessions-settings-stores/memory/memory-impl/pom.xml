@@ -4,7 +4,7 @@
     <parent>
         <groupId>org.lolaf.staffix</groupId>
         <artifactId>staffix-sessions-settings-store-memory-parent</artifactId>
-        <version>0.9.1</version>
+        <version>0.9.2-SNAPSHOT</version>
     </parent>
     <artifactId>staffix-sessions-settings-store-memory-impl</artifactId>
 
