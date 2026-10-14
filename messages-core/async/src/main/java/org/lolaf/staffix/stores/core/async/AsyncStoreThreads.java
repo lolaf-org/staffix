@@ -145,6 +145,11 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         }
 
         private void waitForNextOperationByThread(long lastThreadOperationsCount) {
+            // the reader thread unregisters itself when its consumer starts a watchdog: its counter cannot tick until it
+            // returns, and the inactive flag already keeps it off the queue once it does
+            if (Thread.currentThread() == thread) {
+                return;
+            }
             Duration maxWaitTime = Duration.ofSeconds(1);
             if (!Deadline.of(maxWaitTime).waitAsLongAs(() -> threadOperationsCounter.get() == lastThreadOperationsCount)) {
                 log.warn("Abnormal AysncStoreThread unregistration state, next operation done by thread is not seen within {}", maxWaitTime);

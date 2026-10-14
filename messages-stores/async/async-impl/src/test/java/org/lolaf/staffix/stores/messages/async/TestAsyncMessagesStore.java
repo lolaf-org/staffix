@@ -158,6 +158,28 @@ class TestAsyncMessagesStore {
         assertThat(resourceDownAlert()).isEmpty();
     }
 
+    @Test
+    void testResourceDownDoesNotStallOtherSessionsOfTheReaderThread() {
+        AsyncMessageStore otherSessionStore = (AsyncMessageStore) asyncMessagesStore.getStore(
+                FixSessionId.of("other", FixRegularVersion.VERSION_44, "sender", "target"), probes);
+        asyncMessageStore.start();
+        otherSessionStore.start();
+        try {
+            when(messageStore.isUnderlyingStorageResourceAvailable()).thenReturn(false);
+            doThrow(new IllegalStateException("test exception")).when(messageStore).storeMessageSent(eq(1L), any());
+
+            asyncMessageStore.storeMessageSent(1L, testMessage);
+            await().pollInterval(Duration.ofMillis(10)).untilAsserted(() -> verify(messageStore).storeMessageSent(1L, testMessage));
+            otherSessionStore.storeMessageSent(2L, testMessage);
+
+            // starting the watchdog used to hold the shared reader thread for a second
+            await().atMost(Duration.ofMillis(500)).pollInterval(Duration.ofMillis(10))
+                    .untilAsserted(() -> verify(messageStore).storeMessageSent(2L, testMessage));
+        } finally {
+            otherSessionStore.stop(Deadline.immediate());
+        }
+    }
+
     private Optional<Alert> resourceDownAlert() {
         return asyncMessageStore.getResourceDownProbe().getEvaluator().evaluate();
     }
