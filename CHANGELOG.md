@@ -14,7 +14,7 @@ between releases. A section is written when the version it belongs to is being c
 carries the right number and date the first time and the workflow's check has exactly one heading it
 could mean.
 
-## [0.9.1] - 2026-10-09
+## [0.9.1] - 2026-10-14
 
 ### Added
 
@@ -65,6 +65,7 @@ could mean.
 - **The async store's queue thresholds are one depth per alert level** (`QueueSizeThresholdsSettings.thresholds`).
 - **`FixInitiatorTargets` names the main target and the backups.**
 - **Session settings files say `withinSessionTimeCheckInterval`**, like the Java and Spring Boot settings.
+- **Session settings files must declare `schemaVersion: 1`**: add it to each YAML file, `default.yaml` included.
 - **The session settings JSON schema documents every field and its default**, and ships in
   `staffix-sessions-settings-document` (classifier `schema`).
 - **The HTTP admin API's `POST .../messages` takes a list.**
@@ -97,6 +98,11 @@ could mean.
 - A Logon validated after its connection closed could log on the session's next connection.
 - When the engine stopped, a push metrics registry could keep the session's last status instead of logged out.
 - The OTLP messages logger could mislabel a session event as a message, or repeat a message's attributes.
+- When an async store's or logger's database went down, every other session sharing its reader thread stopped
+  persisting for a second.
+- The async store and logger could lose messages around a database outage: a write failing just as the database came
+  back, or a replay failing while it was still unstable, was dropped instead of retried.
+- Stopping the engine while an async store's database was down could leak a thread.
 
 ## [0.9.0] - 2026-09-30
 
