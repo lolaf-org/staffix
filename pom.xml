@@ -506,6 +506,7 @@
                                 <excludeArtifact>staffix-examples-advanced-monitoring</excludeArtifact>
                                 <excludeArtifact>staffix-examples-file-session-settings</excludeArtifact>
                                 <excludeArtifact>staffix-examples-spring-boot-starter</excludeArtifact>
+                                <excludeArtifact>staffix-examples-alerting</excludeArtifact>
                             </excludeArtifacts>
                         </configuration>
                     </plugin>
