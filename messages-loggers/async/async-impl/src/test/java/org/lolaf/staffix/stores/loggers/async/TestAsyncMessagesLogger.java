@@ -247,15 +247,35 @@ class TestAsyncMessagesLogger {
     }
 
     @Test
+    void testWriteFailingWithTheResourceUpIsReplayed() throws FixMessagesLogger.LoggingException {
+        asyncLogger.stop(Deadline.immediate());
+        asyncMessagesLogger.stop(Deadline.immediate());
+        asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings.toBuilder()
+                .underlyingLoggerResourceWatchTaskCheckDelay(Duration.ofMillis(50))
+                .build());
+        asyncMessagesLogger.start();
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, probes);
+        AtomicInteger failingWrites = new AtomicInteger(1);
+        doAnswer(i -> {
+            if (failingWrites.getAndDecrement() > 0) {
+                throw new IllegalStateException("test exception");
+            }
+            return null;
+        }).when(logger).logIncoming(any(), any(), any());
+        asyncLogger.start();
+
+        String testLog = "test message log";
+        asyncLogger.logIncoming(logTime, messageType, serializeLog(testLog));
+
+        await().untilAsserted(() -> verify(logger, times(2)).logIncoming(eq(logTime), eq(messageType), assertLogEquals(testLog)));
+        await().untilAsserted(() -> assertThat(asyncLogger.hasInactiveUnderlyingResourceWatchDog()).isTrue());
+    }
+
+    @Test
     void testWriteFailingAfterStopDoesNotStartAWatchdog() throws Exception {
         asyncLogger.start();
         CountDownLatch writeStarted = new CountDownLatch(1);
         CountDownLatch writeReleased = new CountDownLatch(1);
-        AtomicBoolean resourceCheckedAfterRelease = new AtomicBoolean();
-        when(logger.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> {
-            resourceCheckedAfterRelease.set(writeReleased.getCount() == 0);
-            return false;
-        });
         doAnswer(i -> {
             writeStarted.countDown();
             writeReleased.await();
@@ -267,8 +287,7 @@ class TestAsyncMessagesLogger {
         asyncLogger.stop(Deadline.immediate());
         writeReleased.countDown();
 
-        await().untilTrue(resourceCheckedAfterRelease);
-        await().during(Duration.ofMillis(200)).atMost(Duration.ofSeconds(1))
+        await().during(Duration.ofMillis(500)).atMost(Duration.ofSeconds(1))
                 .until(asyncLogger::hasInactiveUnderlyingResourceWatchDog);
         assertThat(watchdogThreads()).isEmpty();
     }

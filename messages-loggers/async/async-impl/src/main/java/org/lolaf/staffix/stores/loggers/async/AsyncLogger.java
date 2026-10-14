@@ -70,7 +70,7 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
         this.queueSizeProbe = QueueSizeEvaluator.probe("async-logger-queue", "Messages waiting in the async logger queue to be logged",
                 messagesQueue, asyncMessagesLoggerSettings.getAsyncStoreSettings().getQueueSizeThresholdsSettings());
         this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::replayAsyncLogEvents,
-                this::writeEvent, wrappedLogger::isUnderlyingStorageResourceAvailable, wrappedLogger.getClass().getSimpleName(),
+                this::replayAsyncLogEvent, wrappedLogger::isUnderlyingStorageResourceAvailable, wrappedLogger.getClass().getSimpleName(),
                 asyncMessagesLoggerSettings.getUnderlyingLoggerResourceWatchTaskCheckDelay(), () -> unregisterEventsHandlingFromAsyncLoggersThreads(Deadline.immediate()),
                 this::onUnderlyingResourceBackUp,
                 "async-logger-resource", "Availability of the logger the async logger writes to");
@@ -182,26 +182,82 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
         return !underlyingResourceWatchContext.isStarted();
     }
 
+    private void onAsyncLogEvent(AsyncLogEvent asyncLogEvent) {
+        try {
+            if (!writeEvent(asyncLogEvent)) {
+                keepForReplay(null, asyncLogEvent);
+            }
+        } finally {
+            asyncLogEvent.release();
+        }
+    }
+
     private void onAsyncLogEvents(AsyncLogEvent[] asyncLogEvents) {
         try {
             if (!writeEvents(asyncLogEvents)) {
-                if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
-                    startUnderlyingResourceWatchdog(asyncLogEvents, null);
-                } else {
-                    log.error("Unable to keep messages for a replay for FIX session {}, stopped or already replaying: messages are lost", fixSessionId);
-                }
+                keepForReplay(asyncLogEvents, null);
             }
         } finally {
             release(asyncLogEvents);
         }
     }
 
+    /**
+     * Even when the resource reports up: a write can fail on a connection that died in an outage just ended.
+     */
+    private void keepForReplay(AsyncLogEvent[] asyncLogEvents, AsyncLogEvent asyncLogEvent) {
+        if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
+            startUnderlyingResourceWatchdog(asyncLogEvents, asyncLogEvent);
+        } else {
+            lost("stopped or already replaying");
+        }
+    }
+
+    private boolean replayAsyncLogEvent(AsyncLogEvent asyncLogEvent) {
+        return writeEvent(asyncLogEvent) || dropUnlessResourceDown();
+    }
+
     private boolean replayAsyncLogEvents(AsyncLogEvent[] asyncLogEvents) {
-        if (!writeEvents(asyncLogEvents)) {
+        if (writeEvents(asyncLogEvents) || dropUnlessResourceDown()) {
+            release(asyncLogEvents);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean dropUnlessResourceDown() {
+        if (!wrappedLogger.isUnderlyingStorageResourceAvailable()) {
             return false;
         }
-        release(asyncLogEvents);
+        lost("the replay failed with the resource up");
         return true;
+    }
+
+    private void lost(String reason) {
+        log.error("Logs lost for FIX session {}, {}", fixSessionId, reason);
+    }
+
+    private boolean writeEvent(AsyncLogEvent asyncLogEvent) {
+        try {
+            switch (asyncLogEvent.getLogEventType()) {
+                case INCOMING_MSG:
+                    wrappedLogger.logIncoming(asyncLogEvent.getLogTime(), asyncLogEvent.getMessageType(), asyncLogEvent.getMessage());
+                    break;
+                case OUTGOING_MSG:
+                    wrappedLogger.logOutgoing(asyncLogEvent.getLogTime(), asyncLogEvent.getMessageType(), asyncLogEvent.getMessage());
+                    break;
+                case EVENT:
+                    wrappedLogger.logEvent(asyncLogEvent.getLogTime(), asyncLogEvent.getEvent());
+                    break;
+                case EVENT_WITH_PARAMS:
+                    wrappedLogger.logEvent(asyncLogEvent.getLogTime(), asyncLogEvent.getEvent(), asyncLogEvent.getEventParams());
+                    break;
+            }
+            return true;
+        } catch (Exception ex) {
+            log.error("Failed to log a message for FIX session {}", fixSessionId, ex);
+            return false;
+        }
     }
 
     private boolean writeEvents(AsyncLogEvent[] asyncLogEvents) {
@@ -227,14 +283,11 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
             if (eventsCount > 0) {
                 batchingWrappedLogger.logEvents(batchedMessages, eventsCount);
             }
+            return true;
         } catch (Exception ex) {
-            if (!batchingWrappedLogger.isUnderlyingStorageResourceAvailable()) {
-                log.error("Failed to process log message batching for FIX session {}", fixSessionId, ex);
-                return false;
-            }
-            log.error("Failed to process log message batching for FIX session {}, messages are lost", fixSessionId, ex);
+            log.error("Failed to log a batch of messages for FIX session {}", fixSessionId, ex);
+            return false;
         }
-        return true;
     }
 
     private static void release(AsyncLogEvent[] asyncLogEvents) {
@@ -244,46 +297,6 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
             }
             e.release();
         }
-    }
-
-    private void onAsyncLogEvent(AsyncLogEvent asyncLogEvent) {
-        try {
-            if (!writeEvent(asyncLogEvent)) {
-                if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
-                    startUnderlyingResourceWatchdog(null, asyncLogEvent);
-                } else {
-                    log.error("Unable to keep message for a replay for FIX session {}, stopped or already replaying: message is lost", fixSessionId);
-                }
-            }
-        } finally {
-            asyncLogEvent.release();
-        }
-    }
-
-    private boolean writeEvent(AsyncLogEvent asyncLogEvent) {
-        try {
-            switch (asyncLogEvent.getLogEventType()) {
-                case INCOMING_MSG:
-                    wrappedLogger.logIncoming(asyncLogEvent.getLogTime(), asyncLogEvent.getMessageType(), asyncLogEvent.getMessage());
-                    break;
-                case OUTGOING_MSG:
-                    wrappedLogger.logOutgoing(asyncLogEvent.getLogTime(), asyncLogEvent.getMessageType(), asyncLogEvent.getMessage());
-                    break;
-                case EVENT:
-                    wrappedLogger.logEvent(asyncLogEvent.getLogTime(), asyncLogEvent.getEvent());
-                    break;
-                case EVENT_WITH_PARAMS:
-                    wrappedLogger.logEvent(asyncLogEvent.getLogTime(), asyncLogEvent.getEvent(), asyncLogEvent.getEventParams());
-                    break;
-            }
-        } catch (Exception ex) {
-            if (!wrappedLogger.isUnderlyingStorageResourceAvailable()) {
-                log.error("Failed to process log message for FIX session {}", fixSessionId, ex);
-                return false;
-            }
-            log.error("Failed to process log message for FIX session {}, message is lost", fixSessionId, ex);
-        }
-        return true;
     }
 
     @Override

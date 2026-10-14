@@ -70,7 +70,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                 ? new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[asyncMessagesStoreSettings.getAsyncStoreSettings().getEventsBatching()]
                 : null;
         this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::replayAsyncStoreEvents,
-                this::writeEvent, wrappedStore::isUnderlyingStorageResourceAvailable, wrappedStore.getClass().getSimpleName(),
+                this::replayAsyncStoreEvent, wrappedStore::isUnderlyingStorageResourceAvailable, wrappedStore.getClass().getSimpleName(),
                 asyncMessagesStoreSettings.getUnderlyingStoreResourceWatchTaskCheckDelay(), () -> unregisterEventsHandlingFromAsyncLoggersThreads(Deadline.immediate()),
                 this::onUnderlyingResourceBackUp,
                 "async-store-resource", "Availability of the store the async store persists to");
@@ -86,16 +86,57 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private void onAsyncStoreEvent(AsyncStoreEvent event) {
         try {
             if (!writeEvent(event)) {
-                if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
-                    startUnderlyingResourceWatchdog(null, event);
-                } else {
-                    processedEvents.incrementAndGet();
-                    log.error("Unable to keep message for a replay for FIX session {}, stopped or already replaying: message is lost", fixSessionId);
-                }
+                keepForReplay(null, event, 1);
             }
         } finally {
             event.release();
         }
+    }
+
+    private void onAsyncStoreEvents(AsyncStoreEvent[] asyncStoreEvents) {
+        try {
+            if (!writeEvents(asyncStoreEvents)) {
+                keepForReplay(asyncStoreEvents, null, batchSize(asyncStoreEvents));
+            }
+        } finally {
+            release(asyncStoreEvents);
+        }
+    }
+
+    /**
+     * Even when the resource reports up: a write can fail on a connection that died in an outage just ended.
+     */
+    private void keepForReplay(AsyncStoreEvent[] asyncStoreEvents, AsyncStoreEvent asyncStoreEvent, int eventsCount) {
+        if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
+            startUnderlyingResourceWatchdog(asyncStoreEvents, asyncStoreEvent);
+        } else {
+            lost(eventsCount, "stopped or already replaying");
+        }
+    }
+
+    private boolean replayAsyncStoreEvent(AsyncStoreEvent event) {
+        return writeEvent(event) || dropUnlessResourceDown(1);
+    }
+
+    private boolean replayAsyncStoreEvents(AsyncStoreEvent[] asyncStoreEvents) {
+        if (writeEvents(asyncStoreEvents) || dropUnlessResourceDown(batchSize(asyncStoreEvents))) {
+            release(asyncStoreEvents);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean dropUnlessResourceDown(int eventsCount) {
+        if (!wrappedStore.isUnderlyingStorageResourceAvailable()) {
+            return false;
+        }
+        lost(eventsCount, "the replay failed with the resource up");
+        return true;
+    }
+
+    private void lost(int eventsCount, String reason) {
+        processedEvents.addAndGet(eventsCount);
+        log.error("{} messages lost for FIX session {}, {}", eventsCount, fixSessionId, reason);
     }
 
     private boolean writeEvent(AsyncStoreEvent event) {
@@ -114,38 +155,12 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                     wrappedStore.resetSequenceNumbers();
                     break;
             }
+            processedEvents.incrementAndGet();
+            return true;
         } catch (Exception ex) {
-            if (!wrappedStore.isUnderlyingStorageResourceAvailable()) {
-                log.error("Failed to process message storage for FIX session {}", fixSessionId, ex);
-                return false;
-            }
-            log.error("Failed to process message storage for FIX session {}, message is lost", fixSessionId, ex);
-        }
-        processedEvents.incrementAndGet();
-        return true;
-    }
-
-    private void onAsyncStoreEvents(AsyncStoreEvent[] asyncStoreEvents) {
-        try {
-            if (!writeEvents(asyncStoreEvents)) {
-                if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
-                    startUnderlyingResourceWatchdog(asyncStoreEvents, null);
-                } else {
-                    processedEvents.addAndGet(batchSize(asyncStoreEvents));
-                    log.error("Unable to keep messages for a replay for FIX session {}, stopped or already replaying: messages are lost", fixSessionId);
-                }
-            }
-        } finally {
-            release(asyncStoreEvents);
-        }
-    }
-
-    private boolean replayAsyncStoreEvents(AsyncStoreEvent[] asyncStoreEvents) {
-        if (!writeEvents(asyncStoreEvents)) {
+            log.error("Failed to store a message for FIX session {}", fixSessionId, ex);
             return false;
         }
-        release(asyncStoreEvents);
-        return true;
     }
 
     private boolean writeEvents(AsyncStoreEvent[] asyncStoreEvents) {
@@ -185,15 +200,11 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                 batchingWrappedStore.storeNextIncomingSeqNum(storeIncomingSeqNum);
             }
             processedEvents.addAndGet(batchSize);
+            return true;
         } catch (Exception ex) {
-            if (!batchingWrappedStore.isUnderlyingStorageResourceAvailable()) {
-                log.error("Failed to process log message batching for FIX session {}", fixSessionId, ex);
-                return false;
-            }
-            log.error("Failed to process log message batching for FIX session {}, messages are lost", fixSessionId, ex);
-            processedEvents.addAndGet(batchSize(asyncStoreEvents));
+            log.error("Failed to store a batch of messages for FIX session {}", fixSessionId, ex);
+            return false;
         }
-        return true;
     }
 
     private static int batchSize(AsyncStoreEvent[] asyncStoreEvents) {

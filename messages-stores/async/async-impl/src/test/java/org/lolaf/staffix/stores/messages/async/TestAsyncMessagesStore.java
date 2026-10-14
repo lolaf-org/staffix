@@ -216,15 +216,45 @@ class TestAsyncMessagesStore {
     }
 
     @Test
+    void testWriteFailingWithTheResourceUpIsReplayed() {
+        AtomicInteger failingWrites = new AtomicInteger(1);
+        doAnswer(i -> {
+            if (failingWrites.getAndDecrement() > 0) {
+                throw new IllegalStateException("test exception");
+            }
+            return null;
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        recreateStore(0);
+        asyncMessageStore.start();
+
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+
+        await().untilAsserted(() -> verify(messageStore, times(2)).storeMessageSent(1L, testMessage));
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
+        assertThat(asyncMessageStore.pendingWrites()).isZero();
+    }
+
+    @Test
+    void testWriteFailingAgainOnReplayWithTheResourceUpIsDropped() {
+        doThrow(new IllegalStateException("test exception")).when(messageStore).storeMessageSent(eq(1L), any());
+        recreateStore(0);
+        asyncMessageStore.start();
+        ByteBuffer testMessage2 = ByteBuffer.wrap("test2".getBytes());
+
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        await().untilAsserted(() -> verify(messageStore, times(2)).storeMessageSent(1L, testMessage));
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
+        asyncMessageStore.storeMessageSent(2L, testMessage2);
+
+        await().untilAsserted(() -> verify(messageStore).storeMessageSent(2L, testMessage2));
+        await().untilAsserted(() -> assertThat(asyncMessageStore.pendingWrites()).isZero());
+    }
+
+    @Test
     void testWriteFailingAfterStopDoesNotStartAWatchdog() throws InterruptedException {
         asyncMessageStore.start();
         CountDownLatch writeStarted = new CountDownLatch(1);
         CountDownLatch writeReleased = new CountDownLatch(1);
-        AtomicBoolean resourceCheckedAfterRelease = new AtomicBoolean();
-        when(messageStore.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> {
-            resourceCheckedAfterRelease.set(writeReleased.getCount() == 0);
-            return false;
-        });
         doAnswer(i -> {
             writeStarted.countDown();
             writeReleased.await();
@@ -236,8 +266,7 @@ class TestAsyncMessagesStore {
         asyncMessageStore.stop(Deadline.immediate());
         writeReleased.countDown();
 
-        await().untilTrue(resourceCheckedAfterRelease);
-        await().during(Duration.ofMillis(200)).atMost(Duration.ofSeconds(1))
+        await().during(Duration.ofMillis(500)).atMost(Duration.ofSeconds(1))
                 .until(asyncMessageStore::hasInactiveUnderlyingResourceWatchDog);
     }
 
