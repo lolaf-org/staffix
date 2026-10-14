@@ -4,7 +4,7 @@
     <parent>
         <groupId>org.lolaf.staffix</groupId>
         <artifactId>staffix-fix-packages-parent</artifactId>
-        <version>0.9.1-SNAPSHOT</version>
+        <version>0.9.1</version>
     </parent>
 
     <artifactId>staffix-fix-50sp2</artifactId>

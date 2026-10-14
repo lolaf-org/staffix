@@ -4,7 +4,7 @@
     <parent>
         <groupId>org.lolaf.staffix</groupId>
         <artifactId>staffix-parent</artifactId>
-        <version>0.9.1-SNAPSHOT</version>
+        <version>0.9.1</version>
     </parent>
 
     <artifactId>staffix-spring-boot-parent</artifactId>
