@@ -69,8 +69,8 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         this.batchedSentFixMessages = isBatchingEnabled()
                 ? new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[asyncMessagesStoreSettings.getAsyncStoreSettings().getEventsBatching()]
                 : null;
-        this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::onAsyncStoreEvents,
-                this::onAsyncStoreEvent, wrappedStore::isUnderlyingStorageResourceAvailable, wrappedStore.getClass().getSimpleName(),
+        this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::replayAsyncStoreEvents,
+                this::writeEvent, wrappedStore::isUnderlyingStorageResourceAvailable, wrappedStore.getClass().getSimpleName(),
                 asyncMessagesStoreSettings.getUnderlyingStoreResourceWatchTaskCheckDelay(), this::unregisterEventsHandlingFromAsyncLoggersThreads,
                 this::registerEventsHandlingFromAsyncLoggersThreads,
                 "async-store-resource", "Availability of the store the async store persists to");
@@ -84,6 +84,21 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     }
 
     private void onAsyncStoreEvent(AsyncStoreEvent event) {
+        try {
+            if (!writeEvent(event)) {
+                if (hasInactiveUnderlyingResourceWatchDog()) {
+                    startUnderlyingResourceWatchdog(null, event);
+                } else {
+                    processedEvents.incrementAndGet();
+                    log.error("Underlying resource state watchdog already running for FIX session {}, message is lost", fixSessionId);
+                }
+            }
+        } finally {
+            event.release();
+        }
+    }
+
+    private boolean writeEvent(AsyncStoreEvent event) {
         try {
             switch (event.getStoreEvent()) {
                 case STORE_MESSAGE:
@@ -99,23 +114,43 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                     wrappedStore.resetSequenceNumbers();
                     break;
             }
-            processedEvents.incrementAndGet();
         } catch (Exception ex) {
-            if (!wrappedStore.isUnderlyingStorageResourceAvailable() && hasInactiveUnderlyingResourceWatchDog()) {
+            if (!wrappedStore.isUnderlyingStorageResourceAvailable()) {
                 log.error("Failed to process message storage for FIX session {}", fixSessionId, ex);
-                startUnderlyingResourceWatchdog(null, event);
-            } else {
-                processedEvents.incrementAndGet();
-                log.error("Failed to process message storage for FIX session {}, message is lost", fixSessionId, ex);
+                return false;
             }
-        } finally {
-            event.release();
+            log.error("Failed to process message storage for FIX session {}, message is lost", fixSessionId, ex);
         }
+        processedEvents.incrementAndGet();
+        return true;
     }
 
     private void onAsyncStoreEvents(AsyncStoreEvent[] asyncStoreEvents) {
-        boolean batchProcessed = true;
         try {
+            if (!writeEvents(asyncStoreEvents)) {
+                if (hasInactiveUnderlyingResourceWatchDog()) {
+                    startUnderlyingResourceWatchdog(asyncStoreEvents, null);
+                } else {
+                    processedEvents.addAndGet(batchSize(asyncStoreEvents));
+                    log.error("Underlying resource state watchdog already running for FIX session {}, messages are lost", fixSessionId);
+                }
+            }
+        } finally {
+            release(asyncStoreEvents);
+        }
+    }
+
+    private boolean replayAsyncStoreEvents(AsyncStoreEvent[] asyncStoreEvents) {
+        if (!writeEvents(asyncStoreEvents)) {
+            return false;
+        }
+        release(asyncStoreEvents);
+        return true;
+    }
+
+    private boolean writeEvents(AsyncStoreEvent[] asyncStoreEvents) {
+        try {
+            int batchSize = 0;
             int eventsCount = 0;
             long storeOutgoingSeqNum = -1;
             long storeIncomingSeqNum = -1;
@@ -123,6 +158,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                 if (e == null) {
                     break;
                 }
+                batchSize++;
                 switch (e.getStoreEvent()) {
                     case STORE_MESSAGE:
                         batchedSentFixMessages[eventsCount++] = e;
@@ -148,26 +184,32 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
             if (storeIncomingSeqNum != -1) {
                 batchingWrappedStore.storeNextIncomingSeqNum(storeIncomingSeqNum);
             }
+            processedEvents.addAndGet(batchSize);
         } catch (Exception ex) {
-            if (!batchingWrappedStore.isUnderlyingStorageResourceAvailable() && hasInactiveUnderlyingResourceWatchDog()) {
+            if (!batchingWrappedStore.isUnderlyingStorageResourceAvailable()) {
                 log.error("Failed to process log message batching for FIX session {}", fixSessionId, ex);
-                startUnderlyingResourceWatchdog(asyncStoreEvents, null);
-                batchProcessed = false;
-            } else {
-                log.error("Failed to process log message batching for FIX session {}, messages are lost", fixSessionId, ex);
+                return false;
             }
-        } finally {
-            int batchSize = 0;
-            for (AsyncStoreEvent e : asyncStoreEvents) {
-                if (e == null) {
-                    break;
-                }
-                batchSize++;
-                e.release();
+            log.error("Failed to process log message batching for FIX session {}, messages are lost", fixSessionId, ex);
+            processedEvents.addAndGet(batchSize(asyncStoreEvents));
+        }
+        return true;
+    }
+
+    private static int batchSize(AsyncStoreEvent[] asyncStoreEvents) {
+        int batchSize = 0;
+        while (batchSize < asyncStoreEvents.length && asyncStoreEvents[batchSize] != null) {
+            batchSize++;
+        }
+        return batchSize;
+    }
+
+    private static void release(AsyncStoreEvent[] asyncStoreEvents) {
+        for (AsyncStoreEvent e : asyncStoreEvents) {
+            if (e == null) {
+                break;
             }
-            if (batchProcessed) {
-                processedEvents.addAndGet(batchSize);
-            }
+            e.release();
         }
     }
 
@@ -352,7 +394,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         }
     }
 
-    private long pendingWrites() {
+    long pendingWrites() {
         return messagesQueue.offersCount() - processedEvents.get();
     }
 }

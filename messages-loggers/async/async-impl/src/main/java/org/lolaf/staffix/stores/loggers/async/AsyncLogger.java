@@ -69,8 +69,8 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
         this.messagesQueue = new PersistentQueue<>(fixSessionId);
         this.queueSizeProbe = QueueSizeEvaluator.probe("async-logger-queue", "Messages waiting in the async logger queue to be logged",
                 messagesQueue, asyncMessagesLoggerSettings.getAsyncStoreSettings().getQueueSizeThresholdsSettings());
-        this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::onAsyncLogEvents,
-                this::onAsyncLogEvent, wrappedLogger::isUnderlyingStorageResourceAvailable, wrappedLogger.getClass().getSimpleName(),
+        this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::replayAsyncLogEvents,
+                this::writeEvent, wrappedLogger::isUnderlyingStorageResourceAvailable, wrappedLogger.getClass().getSimpleName(),
                 asyncMessagesLoggerSettings.getUnderlyingLoggerResourceWatchTaskCheckDelay(), this::unregisterEventsHandlingFromAsyncLoggersThreads,
                 this::registerEventsHandlingFromAsyncLoggersThreads,
                 "async-logger-resource", "Availability of the logger the async logger writes to");
@@ -177,6 +177,28 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
 
     private void onAsyncLogEvents(AsyncLogEvent[] asyncLogEvents) {
         try {
+            if (!writeEvents(asyncLogEvents)) {
+                if (hasInactiveUnderlyingResourceWatchDog()) {
+                    startUnderlyingResourceWatchdog(asyncLogEvents, null);
+                } else {
+                    log.error("Underlying resource state watchdog already running for FIX session {}, messages are lost", fixSessionId);
+                }
+            }
+        } finally {
+            release(asyncLogEvents);
+        }
+    }
+
+    private boolean replayAsyncLogEvents(AsyncLogEvent[] asyncLogEvents) {
+        if (!writeEvents(asyncLogEvents)) {
+            return false;
+        }
+        release(asyncLogEvents);
+        return true;
+    }
+
+    private boolean writeEvents(AsyncLogEvent[] asyncLogEvents) {
+        try {
             int eventsCount = 0;
             for (AsyncLogEvent e : asyncLogEvents) {
                 if (e == null) {
@@ -199,23 +221,39 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
                 batchingWrappedLogger.logEvents(batchedMessages, eventsCount);
             }
         } catch (Exception ex) {
-            if (!batchingWrappedLogger.isUnderlyingStorageResourceAvailable() && hasInactiveUnderlyingResourceWatchDog()) {
+            if (!batchingWrappedLogger.isUnderlyingStorageResourceAvailable()) {
                 log.error("Failed to process log message batching for FIX session {}", fixSessionId, ex);
-                startUnderlyingResourceWatchdog(asyncLogEvents, null);
-            } else {
-                log.error("Failed to process log message batching for FIX session {}, messages are lost", fixSessionId, ex);
+                return false;
             }
-        } finally {
-            for (AsyncLogEvent e : asyncLogEvents) {
-                if (e == null) {
-                    break;
-                }
-                e.release();
+            log.error("Failed to process log message batching for FIX session {}, messages are lost", fixSessionId, ex);
+        }
+        return true;
+    }
+
+    private static void release(AsyncLogEvent[] asyncLogEvents) {
+        for (AsyncLogEvent e : asyncLogEvents) {
+            if (e == null) {
+                break;
             }
+            e.release();
         }
     }
 
     private void onAsyncLogEvent(AsyncLogEvent asyncLogEvent) {
+        try {
+            if (!writeEvent(asyncLogEvent)) {
+                if (hasInactiveUnderlyingResourceWatchDog()) {
+                    startUnderlyingResourceWatchdog(null, asyncLogEvent);
+                } else {
+                    log.error("Underlying resource state watchdog already running for FIX session {}, message is lost", fixSessionId);
+                }
+            }
+        } finally {
+            asyncLogEvent.release();
+        }
+    }
+
+    private boolean writeEvent(AsyncLogEvent asyncLogEvent) {
         try {
             switch (asyncLogEvent.getLogEventType()) {
                 case INCOMING_MSG:
@@ -232,15 +270,13 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
                     break;
             }
         } catch (Exception ex) {
-            if (!wrappedLogger.isUnderlyingStorageResourceAvailable() && hasInactiveUnderlyingResourceWatchDog()) {
+            if (!wrappedLogger.isUnderlyingStorageResourceAvailable()) {
                 log.error("Failed to process log message for FIX session {}", fixSessionId, ex);
-                startUnderlyingResourceWatchdog(null, asyncLogEvent);
-            } else {
-                log.error("Failed to process log message for FIX session {}, message is lost", fixSessionId, ex);
+                return false;
             }
-        } finally {
-            asyncLogEvent.release();
+            log.error("Failed to process log message for FIX session {}, message is lost", fixSessionId, ex);
         }
+        return true;
     }
 
     @Override

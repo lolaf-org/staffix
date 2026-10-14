@@ -36,6 +36,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -207,6 +209,40 @@ class TestAsyncMessagesLogger {
         // .checkUnderlyingResourceState, so the replay just observed does not mean it is down yet
         await().untilAsserted(() -> assertThat(asyncLogger.hasInactiveUnderlyingResourceWatchDog()).isTrue());
         assertThat(resourceDownAlert()).isEmpty();
+    }
+
+    @Test
+    void testFailedReplayIsRetried() throws FixMessagesLogger.LoggingException {
+        asyncLogger.stop(Deadline.immediate());
+        asyncMessagesLogger.stop(Deadline.immediate());
+        asyncMessagesLogger = new AsyncMessagesLogger(asyncMessagesLoggerSettings.toBuilder()
+                .underlyingLoggerResourceWatchTaskCheckDelay(Duration.ofMillis(50))
+                .build());
+        asyncMessagesLogger.start();
+        asyncLogger = (AsyncLogger) asyncMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, probes);
+
+        AtomicBoolean available = new AtomicBoolean(true);
+        AtomicInteger failingWrites = new AtomicInteger(2);
+        when(logger.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> available.get());
+        doAnswer(i -> {
+            if (failingWrites.getAndDecrement() > 0) {
+                available.set(false);
+                throw new IllegalStateException("test exception");
+            }
+            return null;
+        }).when(logger).logIncoming(any(), any(), any());
+        asyncLogger.start();
+
+        String testLog = "test message log";
+        asyncLogger.logIncoming(logTime, messageType, serializeLog(testLog));
+
+        await().untilAsserted(() -> assertThat(asyncLogger.hasInactiveUnderlyingResourceWatchDog()).isFalse());
+        available.set(true);
+        await().until(() -> failingWrites.get() <= 0 && !available.get());
+        available.set(true);
+
+        await().untilAsserted(() -> verify(logger, times(3)).logIncoming(eq(logTime), eq(messageType), assertLogEquals(testLog)));
+        await().untilAsserted(() -> assertThat(asyncLogger.hasInactiveUnderlyingResourceWatchDog()).isTrue());
     }
 
     private Optional<Alert> resourceDownAlert() {

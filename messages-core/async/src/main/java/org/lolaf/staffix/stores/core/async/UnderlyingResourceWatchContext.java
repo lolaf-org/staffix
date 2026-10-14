@@ -29,7 +29,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * Tracks whether the wrapped resource is up, so a consumer can retry rather than discard what it could not
@@ -38,8 +38,8 @@ import java.util.function.Consumer;
 @Slf4j
 public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Startable.SimpleStartable<UnderlyingResourceWatchContext<T>> {
 
-    private final Consumer<T[]> asyncLogEventsToReplayConsumer;
-    private final Consumer<T> asyncLogEventToReplayConsumer;
+    private final Predicate<T[]> asyncLogEventsReplayer;
+    private final Predicate<T> asyncLogEventReplayer;
     private final BooleanSupplier underlyingStorageResourceAvailable;
     private final String name;
     private final Duration underlyingResourceWatchTaskCheckDelay;
@@ -55,12 +55,15 @@ public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Starta
     private T asyncLogEventToReplay;
     private String failedUnderlyingStoreDescription;
 
-    public UnderlyingResourceWatchContext(Consumer<T[]> asyncLogEventsToReplayConsumer, Consumer<T> asyncLogEventToReplayConsumer,
+    /**
+     * The replayers return false when the resource went down again, so the events are kept for the next check.
+     */
+    public UnderlyingResourceWatchContext(Predicate<T[]> asyncLogEventsReplayer, Predicate<T> asyncLogEventReplayer,
                                           BooleanSupplier underlyingStorageResourceAvailable, String name,
                                           Duration underlyingResourceWatchTaskCheckDelay, Runnable startCallback,
                                           Runnable resourceBackUpCallback, String probeName, String probeDescription) {
-        this.asyncLogEventsToReplayConsumer = asyncLogEventsToReplayConsumer;
-        this.asyncLogEventToReplayConsumer = asyncLogEventToReplayConsumer;
+        this.asyncLogEventsReplayer = asyncLogEventsReplayer;
+        this.asyncLogEventReplayer = asyncLogEventReplayer;
         this.underlyingStorageResourceAvailable = underlyingStorageResourceAvailable;
         this.name = name;
         this.underlyingResourceWatchTaskCheckDelay = underlyingResourceWatchTaskCheckDelay;
@@ -103,15 +106,29 @@ public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Starta
 
     private void checkUnderlyingResourceState() {
         if (underlyingStorageResourceAvailable.getAsBoolean()) {
+            if (!replayed()) {
+                log.warn("{} underlying resource reported back up but the replay failed, retrying in {}", name, underlyingResourceWatchTaskCheckDelay);
+                return;
+            }
             log.info("{} underlying resource is back up", name);
-            if (asyncLogEventToReplay != null) {
-                asyncLogEventToReplayConsumer.accept(asyncLogEventToReplay);
-            }
-            if (asyncLogEventsToReplay != null) {
-                asyncLogEventsToReplayConsumer.accept(asyncLogEventsToReplay);
-            }
             stop(Deadline.immediate());
             resourceBackUpCallback.run();
         }
+    }
+
+    private boolean replayed() {
+        if (asyncLogEventToReplay != null) {
+            if (!asyncLogEventReplayer.test(asyncLogEventToReplay)) {
+                return false;
+            }
+            asyncLogEventToReplay = null;
+        }
+        if (asyncLogEventsToReplay != null) {
+            if (!asyncLogEventsReplayer.test(asyncLogEventsToReplay)) {
+                return false;
+            }
+            asyncLogEventsToReplay = null;
+        }
+        return true;
     }
 }

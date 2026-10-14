@@ -180,6 +180,80 @@ class TestAsyncMessagesStore {
         }
     }
 
+    @Test
+    void testFailedReplayIsRetried() {
+        FlappingResource resource = new FlappingResource();
+        when(messageStore.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> resource.available.get());
+        doAnswer(i -> resource.write()).when(messageStore).storeMessageSent(anyLong(), any());
+        recreateStore(0);
+        asyncMessageStore.start();
+
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+
+        resource.replayFailsOnceThenSucceeds(asyncMessageStore);
+        await().untilAsserted(() -> verify(messageStore, times(3)).storeMessageSent(1L, testMessage));
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
+        assertThat(asyncMessageStore.pendingWrites()).isZero();
+    }
+
+    @Test
+    void testFailedBatchReplayIsRetried() {
+        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
+        FlappingResource resource = new FlappingResource();
+        when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> resource.available.get());
+        doAnswer(i -> resource.write()).when(batchingFixSessionMessagesStore).storeSentFixMessages(any(), anyInt());
+        messageStore = batchingFixSessionMessagesStore;
+        recreateStore(1);
+        asyncMessageStore.start();
+
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+
+        resource.replayFailsOnceThenSucceeds(asyncMessageStore);
+        assertBatchingMessageProcessed(3, 1, 1, batchingFixSessionMessagesStore, testMessage);
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
+        assertThat(asyncMessageStore.pendingWrites()).isZero();
+    }
+
+    private void recreateStore(int eventsBatching) {
+        asyncMessageStore.stop(Deadline.immediate());
+        asyncMessagesStore.stop(Deadline.immediate());
+        asyncMessagesStoreSettings = asyncMessagesStoreSettings.toBuilder()
+                .underlyingStoreResourceWatchTaskCheckDelay(Duration.ofMillis(50))
+                .asyncStoreSettings(asyncMessagesStoreSettings.getAsyncStoreSettings().toBuilder()
+                        .eventsBatching(eventsBatching)
+                        .build())
+                .wrappedFixMessagesStoreSettings(TestingFixMessagesStoreSettings.builder()
+                        .testingFixSessionMessagesStore(messageStore)
+                        .build())
+                .build();
+        asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
+        asyncMessagesStore.start();
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
+    }
+
+    /**
+     * Fails the first two writes, each taking the resource down: the original write and the first replay.
+     */
+    private static class FlappingResource {
+        final AtomicBoolean available = new AtomicBoolean(true);
+        final AtomicInteger failingWrites = new AtomicInteger(2);
+
+        Object write() {
+            if (failingWrites.getAndDecrement() > 0) {
+                available.set(false);
+                throw new IllegalStateException("test exception");
+            }
+            return null;
+        }
+
+        void replayFailsOnceThenSucceeds(AsyncMessageStore store) {
+            await().untilAsserted(() -> assertThat(store.hasInactiveUnderlyingResourceWatchDog()).isFalse());
+            available.set(true);
+            await().until(() -> failingWrites.get() <= 0 && !available.get());
+            available.set(true);
+        }
+    }
+
     private Optional<Alert> resourceDownAlert() {
         return asyncMessageStore.getResourceDownProbe().getEvaluator().evaluate();
     }
