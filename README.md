@@ -37,6 +37,14 @@ See [Performance](docs/performance.md) for the full measurements and how they ar
 - **Integration**: a plain application factory or a Spring Boot starter.
 - **Runtime**: Java 11 source and target, running on JDK 11 through 25.
 
+## Admin console
+
+[staffix-admin](https://github.com/lolaf-org/staffix-admin) is a web console for staffix engines. It shows every
+session of every engine at a glance, controls them (logon, logout, sequence numbers, switching to a backup), edits
+their settings, sends messages, and reads their availability, metrics and FIX logs from your Prometheus, Loki,
+Elasticsearch or ClickHouse backends. Logged messages are decoded with the remote session's own dictionary, and an
+order can be traced across sessions and engines.
+
 ## Why another FIX engine
 
 The FIX engine is not a peripheral. It is the first thing every tick touches on the way in and the last thing every
