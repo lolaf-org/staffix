@@ -26,6 +26,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.ToLongFunction;
 
 /**
  * The consumer threads draining the queue into the wrapped store or logger.
@@ -37,6 +38,9 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
     private final AsyncStoreSettings asyncStoreSettings;
     private int nextRegisterIndex;
 
+    /**
+     * Creates {@code readerThreadsCount} reader threads, named after {@code instanceId}, which run only once started.
+     */
     public AsyncStoreThreads(AsyncStoreSettings asyncStoreSettings, String instanceId,
                              AsyncEventInstanceProvider<T> asyncEventInstanceProvider) {
         this.asyncStoreSettings = asyncStoreSettings;
@@ -61,6 +65,11 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         }
     }
 
+    /**
+     * Assigns the queue to the next reader thread in turn, for good: a write blocking there delays every queue sharing
+     * it. The consumer gets up to {@code eventsBatching} events, the array null-terminated when fewer, once that many
+     * are waiting or the flush interval has passed. It must release each event, which returns it to the pool.
+     */
     public synchronized void registerBatching(PersistentQueue<T> messagesQueue, Consumer<T[]> eventsConsumer,
                                               AsyncEventSerde<T> asyncEventSerde, Class<T> eventClass) {
         if (nextRegisterIndex >= asyncStoreThreads.length) {
@@ -69,14 +78,18 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         asyncStoreThreads[nextRegisterIndex++].registerBatching(asyncStoreSettings, messagesQueue, eventsConsumer, asyncEventSerde, eventClass);
     }
 
-    public synchronized void unregisterBatching(Consumer<T[]> eventsConsumer) {
-        for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
-            if (asyncStoreThread.unRegisterBatching(eventsConsumer)) {
-                break;
-            }
-        }
+    /**
+     * Returns false when the reader thread is still inside {@code eventsConsumer} once {@code deadline} expires (waiting
+     * at least a second): the caller must then expect a late call into it.
+     */
+    public boolean unregisterBatching(Consumer<T[]> eventsConsumer, Deadline deadline) {
+        return removeAndAwait(t -> t.unRegisterBatching(eventsConsumer), deadline);
     }
 
+    /**
+     * Assigns the queue to the next reader thread in turn, for good: a write blocking there delays every queue sharing
+     * it. The event handed to the consumer is reused once it returns, so it must not be kept.
+     */
     public synchronized void register(PersistentQueue<T> messagesQueue, Consumer<T> eventsConsumer,
                                       AsyncEventSerde<T> asyncEventSerde) {
         if (nextRegisterIndex >= asyncStoreThreads.length) {
@@ -85,13 +98,31 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         asyncStoreThreads[nextRegisterIndex++].register(messagesQueue, eventsConsumer, asyncEventSerde);
     }
 
-    public synchronized void unregister(Consumer<T> eventsConsumer) {
-        for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
-            if (asyncStoreThread.unRegister(eventsConsumer)) {
-                break;
+    /**
+     * Returns false when the reader thread is still inside {@code eventsConsumer} once {@code deadline} expires (waiting
+     * at least a second): the caller must then expect a late call into it.
+     */
+    public boolean unregister(Consumer<T> eventsConsumer, Deadline deadline) {
+        return removeAndAwait(t -> t.unRegister(eventsConsumer), deadline);
+    }
+
+    private boolean removeAndAwait(ToLongFunction<AsyncStoreThread<T>> unRegister, Deadline deadline) {
+        AsyncStoreThread<T> owner = null;
+        long operationsCountAtRemoval = NOT_REGISTERED;
+        synchronized (this) {
+            for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
+                operationsCountAtRemoval = unRegister.applyAsLong(asyncStoreThread);
+                if (operationsCountAtRemoval != NOT_REGISTERED) {
+                    owner = asyncStoreThread;
+                    break;
+                }
             }
         }
+        return owner == null || owner.awaitNextOperation(operationsCountAtRemoval, deadline);
     }
+
+    private static final long NOT_REGISTERED = -1;
+    private static final Duration MIN_UNREGISTRATION_WAIT = Duration.ofSeconds(1);
 
     private static class AsyncStoreThread<T extends AsyncEvent> implements Runnable {
 
@@ -104,9 +135,9 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         private final IdleStrategy idleStrategy;
         private final ThreadFactory threadFactory;
         private final String threadName;
-        private Registration<T>[] registrationsArray;
-        private BatchingRegistration<T>[] batchingRegistrationsArray;
-        private Thread thread;
+        private volatile Registration<T>[] registrationsArray;
+        private volatile BatchingRegistration<T>[] batchingRegistrationsArray;
+        private volatile Thread thread;
 
         public AsyncStoreThread(String instanceId, int instance, IdleStrategy idleStrategy,
                                 int maxEventsProcessingPerStore, AsyncEventInstanceProvider<T> asyncEventInstanceProvider,
@@ -132,28 +163,27 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             registrationsArray = registrations.values().toArray(new Registration[0]);
         }
 
-        boolean unRegister(Consumer<T> eventsConsumer) {
+        long unRegister(Consumer<T> eventsConsumer) {
             Registration<T> registration = registrations.remove(eventsConsumer);
-            if (registration != null) {
-                long lastThreadOperationsCount = threadOperationsCounter.get();
-                registration.onUnregistered();
-                registrationsArray = registrations.values().toArray(new Registration[0]);
-                waitForNextOperationByThread(lastThreadOperationsCount);
-                return true;
+            if (registration == null) {
+                return NOT_REGISTERED;
             }
-            return false;
+            registration.onUnregistered();
+            long operationsCount = threadOperationsCounter.get();
+            registrationsArray = registrations.values().toArray(new Registration[0]);
+            return operationsCount;
         }
 
-        private void waitForNextOperationByThread(long lastThreadOperationsCount) {
+        boolean awaitNextOperation(long operationsCountAtRemoval, Deadline deadline) {
+            Thread readerThread = thread;
             // the reader thread unregisters itself when its consumer starts a watchdog: its counter cannot tick until it
             // returns, and the inactive flag already keeps it off the queue once it does
-            if (Thread.currentThread() == thread) {
-                return;
+            if (readerThread == null || readerThread == Thread.currentThread() || !readerThread.isAlive()) {
+                return true;
             }
-            Duration maxWaitTime = Duration.ofSeconds(1);
-            if (!Deadline.of(maxWaitTime).waitAsLongAs(() -> threadOperationsCounter.get() == lastThreadOperationsCount)) {
-                log.warn("Abnormal AysncStoreThread unregistration state, next operation done by thread is not seen within {}", maxWaitTime);
-            }
+            Deadline waitDeadline = deadline.getRemainingTime().compareTo(MIN_UNREGISTRATION_WAIT) < 0
+                    ? Deadline.of(MIN_UNREGISTRATION_WAIT) : deadline;
+            return waitDeadline.waitAsLongAs(() -> threadOperationsCounter.get() == operationsCountAtRemoval);
         }
 
         private void registerBatching(AsyncStoreSettings asyncStoreSettings, PersistentQueue<T> messagesQueue, Consumer<T[]> eventsConsumer,
@@ -163,25 +193,17 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             batchingRegistrationsArray = batchingRegistrations.values().toArray(new BatchingRegistration[0]);
         }
 
-        boolean unRegisterBatching(Consumer<T[]> eventsConsumer) {
+        long unRegisterBatching(Consumer<T[]> eventsConsumer) {
             BatchingRegistration<T> registration = batchingRegistrations.remove(eventsConsumer);
-            if (registration != null) {
-                long lastThreadOperationsCount = threadOperationsCounter.get();
-                registration.onUnregistered();
-                batchingRegistrationsArray = batchingRegistrations.values().toArray(new BatchingRegistration[0]);
-                waitForNextOperationByThread(lastThreadOperationsCount);
-                return true;
+            if (registration == null) {
+                return NOT_REGISTERED;
             }
-            return false;
+            registration.onUnregistered();
+            long operationsCount = threadOperationsCounter.get();
+            batchingRegistrationsArray = batchingRegistrations.values().toArray(new BatchingRegistration[0]);
+            return operationsCount;
         }
 
-        /**
-         * The running flag is raised here rather than by {@link #run()}: the new thread can take a while to be
-         * scheduled on a loaded machine, and a {@link #stop} landing in that window used to be undone by run()'s own
-         * {@code set(true)}, leaving a thread looping on a flag nobody clears again and a join() that never returns.
-         * Comparing and setting also makes a second start a no-op, where testing the flag let two threads be created
-         * and only the second one be kept, so the first could never be stopped.
-         */
         void start() {
             if (running.compareAndSet(false, true)) {
                 thread = threadFactory.newThread(this);
@@ -191,10 +213,6 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             }
         }
 
-        /**
-         * Mirrors {@link #start()}: lowering the flag with a compare and set makes stopping a thread that was never
-         * started, or stopping twice, a no-op instead of joining or interrupting a thread that is not there.
-         */
         void stop(Deadline stopDeadline) {
             if (!running.compareAndSet(true, false)) {
                 return;

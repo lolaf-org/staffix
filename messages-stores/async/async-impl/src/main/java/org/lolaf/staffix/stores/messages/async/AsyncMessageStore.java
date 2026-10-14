@@ -71,8 +71,8 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                 : null;
         this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::replayAsyncStoreEvents,
                 this::writeEvent, wrappedStore::isUnderlyingStorageResourceAvailable, wrappedStore.getClass().getSimpleName(),
-                asyncMessagesStoreSettings.getUnderlyingStoreResourceWatchTaskCheckDelay(), this::unregisterEventsHandlingFromAsyncLoggersThreads,
-                this::registerEventsHandlingFromAsyncLoggersThreads,
+                asyncMessagesStoreSettings.getUnderlyingStoreResourceWatchTaskCheckDelay(), () -> unregisterEventsHandlingFromAsyncLoggersThreads(Deadline.immediate()),
+                this::onUnderlyingResourceBackUp,
                 "async-store-resource", "Availability of the store the async store persists to");
         outgoingSequenceNumber = new AtomicLong(1);
         incomingSequenceNumber = new AtomicLong(1);
@@ -86,11 +86,11 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private void onAsyncStoreEvent(AsyncStoreEvent event) {
         try {
             if (!writeEvent(event)) {
-                if (hasInactiveUnderlyingResourceWatchDog()) {
+                if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
                     startUnderlyingResourceWatchdog(null, event);
                 } else {
                     processedEvents.incrementAndGet();
-                    log.error("Underlying resource state watchdog already running for FIX session {}, message is lost", fixSessionId);
+                    log.error("Unable to keep message for a replay for FIX session {}, stopped or already replaying: message is lost", fixSessionId);
                 }
             }
         } finally {
@@ -128,11 +128,11 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private void onAsyncStoreEvents(AsyncStoreEvent[] asyncStoreEvents) {
         try {
             if (!writeEvents(asyncStoreEvents)) {
-                if (hasInactiveUnderlyingResourceWatchDog()) {
+                if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
                     startUnderlyingResourceWatchdog(asyncStoreEvents, null);
                 } else {
                     processedEvents.addAndGet(batchSize(asyncStoreEvents));
-                    log.error("Underlying resource state watchdog already running for FIX session {}, messages are lost", fixSessionId);
+                    log.error("Unable to keep messages for a replay for FIX session {}, stopped or already replaying: messages are lost", fixSessionId);
                 }
             }
         } finally {
@@ -248,22 +248,29 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     @Override
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         flushMessagesIfNeeded(stopDeadline);
+        // unregistering first lets a write that fails meanwhile start its watchdog before it is stopped below
+        if (!unregisterEventsHandlingFromAsyncLoggersThreads(stopDeadline)) {
+            log.warn("Async messages store for FIX session {} stops while its reader thread is still writing to it, a write it fails will be lost", fixSessionId);
+        }
         if (underlyingResourceWatchContext.isStarted()) {
             log.warn("AsyncMessageStore shutdown with an underlying resource state active watchdog for FIX session {}", fixSessionId);
             underlyingResourceWatchContext.stop(stopDeadline);
         }
-        unregisterEventsHandlingFromAsyncLoggersThreads();
 
         wrappedStore.stop(stopDeadline);
         messagesQueue.stop();
         log.info("Async messages store for FIX session {} stopped", fixSessionId);
     }
 
-    private void unregisterEventsHandlingFromAsyncLoggersThreads() {
-        if (isBatchingEnabled()) {
-            asyncStoreThreads.unregisterBatching(batchingEventsConsumer);
-        } else {
-            asyncStoreThreads.unregister(eventsConsumer);
+    private boolean unregisterEventsHandlingFromAsyncLoggersThreads(Deadline deadline) {
+        return isBatchingEnabled()
+                ? asyncStoreThreads.unregisterBatching(batchingEventsConsumer, deadline)
+                : asyncStoreThreads.unregister(eventsConsumer, deadline);
+    }
+
+    private void onUnderlyingResourceBackUp() {
+        if (isStarted()) {
+            registerEventsHandlingFromAsyncLoggersThreads();
         }
     }
 

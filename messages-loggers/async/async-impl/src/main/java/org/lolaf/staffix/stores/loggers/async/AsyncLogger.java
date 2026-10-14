@@ -71,8 +71,8 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
                 messagesQueue, asyncMessagesLoggerSettings.getAsyncStoreSettings().getQueueSizeThresholdsSettings());
         this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::replayAsyncLogEvents,
                 this::writeEvent, wrappedLogger::isUnderlyingStorageResourceAvailable, wrappedLogger.getClass().getSimpleName(),
-                asyncMessagesLoggerSettings.getUnderlyingLoggerResourceWatchTaskCheckDelay(), this::unregisterEventsHandlingFromAsyncLoggersThreads,
-                this::registerEventsHandlingFromAsyncLoggersThreads,
+                asyncMessagesLoggerSettings.getUnderlyingLoggerResourceWatchTaskCheckDelay(), () -> unregisterEventsHandlingFromAsyncLoggersThreads(Deadline.immediate()),
+                this::onUnderlyingResourceBackUp,
                 "async-logger-resource", "Availability of the logger the async logger writes to");
     }
 
@@ -119,22 +119,29 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
                 log.warn("Unable to flush AsyncLogger queue within given deadline for FIX session {}", fixSessionId);
             }
         }
+        // unregistering first lets a write that fails meanwhile start its watchdog before it is stopped below
+        if (!unregisterEventsHandlingFromAsyncLoggersThreads(stopDeadline)) {
+            log.warn("Async logger for FIX session {} stops while its reader thread is still writing to it, a write it fails will be lost", fixSessionId);
+        }
         if (underlyingResourceWatchContext.isStarted()) {
             log.warn("AsyncLogger shutdown with an logger underlying resource state active watchdog for FIX session {}", fixSessionId);
             underlyingResourceWatchContext.stop(stopDeadline);
         }
-        unregisterEventsHandlingFromAsyncLoggersThreads();
 
         wrappedLogger.stop(stopDeadline);
         messagesQueue.stop();
         log.info("Async logger store for FIX session {} stopped", fixSessionId);
     }
 
-    private void unregisterEventsHandlingFromAsyncLoggersThreads() {
-        if (isBatchingEnabled()) {
-            asyncLoggersThreads.unregisterBatching(batchingEventsConsumer);
-        } else {
-            asyncLoggersThreads.unregister(eventsConsumer);
+    private boolean unregisterEventsHandlingFromAsyncLoggersThreads(Deadline deadline) {
+        return isBatchingEnabled()
+                ? asyncLoggersThreads.unregisterBatching(batchingEventsConsumer, deadline)
+                : asyncLoggersThreads.unregister(eventsConsumer, deadline);
+    }
+
+    private void onUnderlyingResourceBackUp() {
+        if (isStarted()) {
+            registerEventsHandlingFromAsyncLoggersThreads();
         }
     }
 
@@ -178,10 +185,10 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
     private void onAsyncLogEvents(AsyncLogEvent[] asyncLogEvents) {
         try {
             if (!writeEvents(asyncLogEvents)) {
-                if (hasInactiveUnderlyingResourceWatchDog()) {
+                if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
                     startUnderlyingResourceWatchdog(asyncLogEvents, null);
                 } else {
-                    log.error("Underlying resource state watchdog already running for FIX session {}, messages are lost", fixSessionId);
+                    log.error("Unable to keep messages for a replay for FIX session {}, stopped or already replaying: messages are lost", fixSessionId);
                 }
             }
         } finally {
@@ -242,10 +249,10 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
     private void onAsyncLogEvent(AsyncLogEvent asyncLogEvent) {
         try {
             if (!writeEvent(asyncLogEvent)) {
-                if (hasInactiveUnderlyingResourceWatchDog()) {
+                if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
                     startUnderlyingResourceWatchdog(null, asyncLogEvent);
                 } else {
-                    log.error("Underlying resource state watchdog already running for FIX session {}, message is lost", fixSessionId);
+                    log.error("Unable to keep message for a replay for FIX session {}, stopped or already replaying: message is lost", fixSessionId);
                 }
             }
         } finally {

@@ -35,6 +35,7 @@ import org.mockito.Mockito;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -212,6 +213,61 @@ class TestAsyncMessagesStore {
         assertBatchingMessageProcessed(3, 1, 1, batchingFixSessionMessagesStore, testMessage);
         await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
         assertThat(asyncMessageStore.pendingWrites()).isZero();
+    }
+
+    @Test
+    void testWriteFailingAfterStopDoesNotStartAWatchdog() throws InterruptedException {
+        asyncMessageStore.start();
+        CountDownLatch writeStarted = new CountDownLatch(1);
+        CountDownLatch writeReleased = new CountDownLatch(1);
+        AtomicBoolean resourceCheckedAfterRelease = new AtomicBoolean();
+        when(messageStore.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> {
+            resourceCheckedAfterRelease.set(writeReleased.getCount() == 0);
+            return false;
+        });
+        doAnswer(i -> {
+            writeStarted.countDown();
+            writeReleased.await();
+            throw new IllegalStateException("test exception");
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        writeStarted.await();
+        asyncMessageStore.stop(Deadline.immediate());
+        writeReleased.countDown();
+
+        await().untilTrue(resourceCheckedAfterRelease);
+        await().during(Duration.ofMillis(200)).atMost(Duration.ofSeconds(1))
+                .until(asyncMessageStore::hasInactiveUnderlyingResourceWatchDog);
+    }
+
+    @Test
+    void testStoreStartsWhileAnotherWaitsForItsReaderThreadToLeave() throws Exception {
+        asyncMessageStore.start();
+        CountDownLatch writeStarted = new CountDownLatch(1);
+        CountDownLatch writeReleased = new CountDownLatch(1);
+        doAnswer(i -> {
+            writeStarted.countDown();
+            writeReleased.await();
+            return null;
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        AsyncMessageStore otherSessionStore = (AsyncMessageStore) asyncMessagesStore.getStore(
+                FixSessionId.of("other", FixRegularVersion.VERSION_44, "sender", "target"), probes);
+        try {
+            asyncMessageStore.storeMessageSent(1L, testMessage);
+            writeStarted.await();
+            CompletableFuture<?> stopping = CompletableFuture.runAsync(() -> asyncMessageStore.stop(Deadline.immediate()));
+            await().until(() -> !asyncMessageStore.isStarted());
+
+            long startNanos = System.nanoTime();
+            otherSessionStore.start();
+
+            assertThat(Duration.ofNanos(System.nanoTime() - startNanos)).isLessThan(Duration.ofMillis(500));
+            assertThat(stopping).isNotDone();
+        } finally {
+            writeReleased.countDown();
+            otherSessionStore.stop(Deadline.immediate());
+        }
     }
 
     private void recreateStore(int eventsBatching) {

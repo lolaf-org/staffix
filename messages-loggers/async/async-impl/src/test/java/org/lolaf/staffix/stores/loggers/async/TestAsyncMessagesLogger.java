@@ -35,6 +35,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -243,6 +244,33 @@ class TestAsyncMessagesLogger {
 
         await().untilAsserted(() -> verify(logger, times(3)).logIncoming(eq(logTime), eq(messageType), assertLogEquals(testLog)));
         await().untilAsserted(() -> assertThat(asyncLogger.hasInactiveUnderlyingResourceWatchDog()).isTrue());
+    }
+
+    @Test
+    void testWriteFailingAfterStopDoesNotStartAWatchdog() throws Exception {
+        asyncLogger.start();
+        CountDownLatch writeStarted = new CountDownLatch(1);
+        CountDownLatch writeReleased = new CountDownLatch(1);
+        AtomicBoolean resourceCheckedAfterRelease = new AtomicBoolean();
+        when(logger.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> {
+            resourceCheckedAfterRelease.set(writeReleased.getCount() == 0);
+            return false;
+        });
+        doAnswer(i -> {
+            writeStarted.countDown();
+            writeReleased.await();
+            throw new IllegalStateException("test exception");
+        }).when(logger).logIncoming(any(), any(), any());
+
+        asyncLogger.logIncoming(logTime, messageType, serializeLog("test message log"));
+        writeStarted.await();
+        asyncLogger.stop(Deadline.immediate());
+        writeReleased.countDown();
+
+        await().untilTrue(resourceCheckedAfterRelease);
+        await().during(Duration.ofMillis(200)).atMost(Duration.ofSeconds(1))
+                .until(asyncLogger::hasInactiveUnderlyingResourceWatchDog);
+        assertThat(watchdogThreads()).isEmpty();
     }
 
     private Optional<Alert> resourceDownAlert() {
