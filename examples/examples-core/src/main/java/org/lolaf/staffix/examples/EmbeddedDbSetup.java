@@ -27,10 +27,13 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -44,6 +47,8 @@ public class EmbeddedDbSetup {
                         .withDatabaseName("staffix-examples")
                         .withUsername("example")
                         .withPassword("example");
+        // a random host port changes when the container restarts, and the pool would never find the database again
+        postgres.setPortBindings(List.of(freePort() + ":" + PostgreSQLContainer.POSTGRESQL_PORT));
         postgres.start();
 
         log.info("PostgreSQL started: {}", postgres.getJdbcUrl());
@@ -60,6 +65,14 @@ public class EmbeddedDbSetup {
             throw new IllegalStateException();
         }
         return dataSource;
+    }
+
+    private static int freePort() {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static void initializeDbSchema(DataSource dataSource) throws SQLException {
