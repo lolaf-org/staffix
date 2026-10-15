@@ -485,6 +485,7 @@
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
+                            <checksums>required</checksums>
                             <!-- Upload and validate, then wait for a human: a published version can never
                                  be replaced or reused. -->
                             <autoPublish>false</autoPublish>
