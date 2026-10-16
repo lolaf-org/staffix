@@ -16,6 +16,7 @@
 package org.lolaf.staffix.buildtools.metadata;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.metadata.ComponentKind;
 
 import java.io.IOException;
 import java.net.URL;
@@ -33,7 +34,8 @@ class TestComponentScanner {
 
     @Test
     void findsPublicConcreteClassesOfAnnotatedKindsAndSkipsUnloadableOnes() throws IOException {
-        try (URLClassLoader loader = new URLClassLoader(new URL[]{TEST_CLASSES.toUri().toURL()},
+        URL staffixApi = ComponentKind.class.getProtectionDomain().getCodeSource().getLocation();
+        try (URLClassLoader loader = new URLClassLoader(new URL[]{TEST_CLASSES.toUri().toURL(), staffixApi},
                 ClassLoader.getPlatformClassLoader())) {
             List<Component> components = ComponentScanner.scan(TEST_CLASSES, loader);
 

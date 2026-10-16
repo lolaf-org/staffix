@@ -59,12 +59,19 @@ public class ComponentScanner {
     }
 
     static Optional<String> kind(Class<?> type) {
-        Optional<String> declared = annotation(type, COMPONENT_KIND).map(kind -> (String) value(kind, "value"));
-        if (declared.isPresent()) {
-            return declared;
+        return kindType(type).flatMap(kindType -> annotation(kindType, COMPONENT_KIND))
+                .map(kind -> (String) value(kind, "value"));
+    }
+
+    /**
+     * The supertype carrying {@code @ComponentKind}, where the facts about the whole kind are declared.
+     */
+    static Optional<Class<?>> kindType(Class<?> type) {
+        if (annotation(type, COMPONENT_KIND).isPresent()) {
+            return Optional.of(type);
         }
         return Stream.concat(Stream.ofNullable(type.getSuperclass()), Stream.of(type.getInterfaces()))
-                .map(ComponentScanner::kind)
+                .map(ComponentScanner::kindType)
                 .flatMap(Optional::stream)
                 .findFirst();
     }

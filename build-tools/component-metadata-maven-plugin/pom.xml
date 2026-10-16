@@ -27,6 +27,12 @@
             <version>${jackson.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.jspecify</groupId>
             <artifactId>jspecify</artifactId>
             <version>${jspecify.version}</version>

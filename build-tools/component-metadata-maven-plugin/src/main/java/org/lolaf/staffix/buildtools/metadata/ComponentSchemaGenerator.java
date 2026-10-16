@@ -198,12 +198,22 @@ public class ComponentSchemaGenerator {
         ObjectNode staffix = NODES.objectNode();
         staffix.put("kind", component.getKind());
         staffix.put("artifact", groupId + ":" + artifactId);
+        ComponentScanner.kindType(type).flatMap(kind -> ComponentScanner.annotation(kind, METADATA + "SelectedBy"))
+                .ifPresent(selectedBy -> {
+                    ObjectNode selection = staffix.putObject("selectedBy");
+                    selection.put("sessionSetting", (String) ComponentScanner.value(selectedBy, "sessionSetting"));
+                    selection.put("whenUnnamed", ((Enum<?>) ComponentScanner.value(selectedBy, "whenUnnamed")).name());
+                    selection.put("whenUnknown", ((Enum<?>) ComponentScanner.value(selectedBy, "whenUnknown")).name());
+                });
         fields(type).stream().filter(field -> annotation(field.getAnnotations(), METADATA + "Wrapped").isPresent())
                 .findFirst().ifPresent(field -> staffix.put("instanceIdFrom", field.getName()));
-        ComponentScanner.annotation(type, METADATA + "RequiresJvmFlags").ifPresent(flags -> {
-            ArrayNode sets = staffix.putArray("jvmFlags");
-            Stream.of((Object[]) ComponentScanner.value(flags, "value")).map(set -> ((Enum<?>) set).name())
-                    .forEach(sets::add);
+        ComponentScanner.annotation(type, METADATA + "RequiresJvmFlags").ifPresent(requires -> {
+            ArrayNode flags = staffix.putArray("jvmFlags");
+            Stream.of((Object[]) ComponentScanner.value(requires, "value"))
+                    .flatMap(set -> ((List<?>) invoke(set, "getFlags")).stream())
+                    .map(String.class::cast)
+                    .distinct()
+                    .forEach(flags::add);
         });
         ComponentScanner.annotation(type, METADATA + "RequiresArtifact").ifPresent(requires -> {
             ArrayNode oneOf = staffix.putArray("requiresOneOf");
@@ -218,6 +228,14 @@ public class ComponentSchemaGenerator {
             });
         }
         return staffix;
+    }
+
+    private static Object invoke(Object target, String method) {
+        try {
+            return target.getClass().getMethod(method).invoke(target);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Unable to call " + method + " on " + target, e);
+        }
     }
 
     private static Optional<Set<String>> pluginClasses(Object settings) {

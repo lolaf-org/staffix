@@ -16,7 +16,10 @@
 package org.lolaf.staffix.buildtools.metadata.fixture.generate;
 
 import org.lolaf.staffix.api.metadata.ComponentKind;
+import org.lolaf.staffix.api.metadata.SelectedBy;
 
 @ComponentKind("fixture-store")
+@SelectedBy(sessionSetting = "fixtureStoreInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
+        whenUnknown = SelectedBy.WhenUnknown.REFUSED)
 public interface StoreSettings {
 }
