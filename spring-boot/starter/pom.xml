@@ -47,7 +47,6 @@
             <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-impl</artifactId>
             <version>${project.version}</version>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
