@@ -121,6 +121,10 @@
             <field name="ApplQueueDepth" required="N"/>
             <field name="ApplQueueResolution" required="N"/>
         </message>
+        <message name="BusinessMessageReject" msgtype="j" msgcat="app">
+            <field name="RefMsgType" required="Y"/>
+            <field name="Text" required="N"/>
+        </message>
     </messages>
     <components>
         <component name="Instrument">

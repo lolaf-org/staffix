@@ -199,8 +199,7 @@ public class CodeGenerator {
                 throw new IllegalStateException(e);
             }
 
-            if (message.getAttribute("msgcat").equals("admin")) {
-                // do not generate encoders for admin messages
+            if (!hasEncoder(message)) {
                 continue;
             }
 
@@ -250,6 +249,14 @@ public class CodeGenerator {
             processTemplate(groupPackageDir, entry.getKey(), getTemplate(ve, "fixGroupEncoder.vm"), context);
         }
         return encoderInfos;
+    }
+
+    /**
+     * Admin messages are the session layer's to send, and so is BusinessMessageReject: the session encodes its own, and
+     * an application sends one through {@code FixSession.sendBusinessMessageReject}.
+     */
+    private static boolean hasEncoder(Element message) {
+        return !message.getAttribute("msgcat").equals("admin") && !message.getAttribute("msgtype").equals("j");
     }
 
     private static boolean referencesDeprecated(List<Field> fieldsList, List<Group> groupsList) {

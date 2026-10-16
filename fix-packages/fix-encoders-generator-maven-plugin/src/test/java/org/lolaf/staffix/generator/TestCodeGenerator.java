@@ -71,6 +71,22 @@ class TestCodeGenerator {
     }
 
     /**
+     * The session encodes its own BusinessMessageReject and an application sends one through the session, so the
+     * package has no encoder for it; the message type and its fields are still generated, so it is still decoded.
+     */
+    @Test
+    void testBusinessMessageRejectHasNoEncoderButIsStillDecoded() throws Exception {
+        File generated = generate("FIX44-test.xml", "bmr");
+
+        Assertions.assertThat(new File(generated, "encoders/BusinessMessageRejectEncoder.java")).doesNotExist();
+        Assertions.assertThat(read(generated, "encoders/FixMessageEncoderFactoryImpl.java"))
+                .doesNotContain("BusinessMessageReject");
+        Assertions.assertThat(read(generated, "msg/MessageTypes.java")).contains("BusinessMessageReject(\"j\")");
+        Assertions.assertThat(new File("./target/gen-bmr-resources",
+                "VERSION_44.test-dict-FIX.4.4.BusinessMessageReject.fieldsInfo")).exists();
+    }
+
+    /**
      * A dictionary that says nothing about deprecation produces code that says nothing about it either.
      * <p>
      * This is what lets the hand written QuickFIX dictionaries go on being read by a generator that now knows about
