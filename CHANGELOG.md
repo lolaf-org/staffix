@@ -14,6 +14,32 @@ between releases. A section is written when the version it belongs to is being c
 carries the right number and date the first time and the workflow's check has exactly one heading it
 could mean.
 
+## [0.9.2] - WIP
+
+### Changed
+
+- **FIX 4.3 treats BusinessMessageReject as an application message**, as every other FIX version does. A business
+  reject the session sends now goes through `onMessageEncoding` rather than `onAdminMessageEncoding`.
+- **Generated FIX packages no longer contain a `BusinessMessageRejectEncoder`**: send a business reject with
+  `FixSession.sendBusinessMessageReject`.
+- **A dictionary cut from Orchestra keeps BusinessMessageReject** whatever `includeMessagesFile` lists, since the
+  session layer needs it.
+
+### Removed
+
+- **`FixSessionId.invert()`**.
+
+### Fixed
+
+- An initiator could log on with its SenderCompID and TargetCompID swapped, and be refused as an unknown session,
+  when an acceptor in the same JVM had created the opposite session first, as a loopback test does.
+- A session whose dictionary lacks BusinessMessageReject, or any session message, failed to start with a
+  `NullPointerException`; it is now refused with an error naming the missing message and the dictionary.
+- A project depending only on `staffix-spring-boot-starter` failed to start with "Unable to find any SPI instance" for
+  `FixEngineBuilder`: the starter now brings the engine, as the Spring Boot guide says.
+- An async messages store or logger configured in Java without a queue directory, or without what it wraps, failed with
+  a `NullPointerException`; it is now refused with an error saying what is missing.
+
 ## [0.9.1] - 2026-10-14
 
 ### Added

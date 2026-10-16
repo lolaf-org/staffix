@@ -433,7 +433,8 @@
                                 <exclude>**/lombok.config</exclude>
                                 <exclude>**/.env</exclude>
                                 <exclude>**/.env.example</exclude>
-                                <exclude>claude-plugin/**/reference-project/**</exclude>
+                                <exclude>claude-plugin/**/reference-projects/**</exclude>
+                                <exclude>claude-plugin/dictionaries/**</exclude>
                                 <exclude>**/*.ini</exclude>
                             </excludes>
                         </licenseSet>

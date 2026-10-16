@@ -1,6 +1,7 @@
 package com.example.fixclient.environment;
 
 import org.lolaf.staffix.api.FixEngineBuilder;
+import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.stores.loggers.async.AsyncMessagesLoggerSettings;
 import org.lolaf.staffix.stores.loggers.file.FileMessagesLoggerSettings;
 import org.lolaf.staffix.stores.messages.file.FileMessageStoreSettings;
@@ -20,6 +21,9 @@ public class ProdEnvironment implements StaffixEnvironment {
                         .storageDirectoryPath(dataDirectory.resolve("store").toString())
                         .build())
                 .fixMessagesLogger(AsyncMessagesLoggerSettings.builder()
+                        .asyncStoreSettings(AsyncStoreSettings.builder()
+                                .asyncQueueDirectory(dataDirectory.resolve("log-queue").toString())
+                                .build())
                         .wrappedLoggerSettings(FileMessagesLoggerSettings.builder()
                                 .logDirectory(dataDirectory.resolve("log").toString())
                                 .build())

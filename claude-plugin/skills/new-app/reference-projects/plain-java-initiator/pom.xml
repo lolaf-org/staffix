@@ -16,8 +16,9 @@
         <assertj.version>3.27.7</assertj.version>
         <awaitility.version>4.3.0</awaitility.version>
         <mockito.version>5.24.0</mockito.version>
-        <!-- staffix's zero-allocation clock and string decoding need jdk.internal.misc -->
-        <staffix.jvm.args>--add-opens java.base/jdk.internal.misc=ALL-UNNAMED</staffix.jvm.args>
+        <!-- @Contended padding, staffix's zero-allocation clock and decoding, and Chronicle Queue behind the async
+             store and logger: without them staffix falls back to slower paths and Chronicle fails to start -->
+        <staffix.jvm.args>-XX:-RestrictContended -XX:ContendedPaddingWidth=64 --enable-native-access=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/jdk.internal.ref=ALL-UNNAMED --add-exports java.base/jdk.internal.ref=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.base/java.nio.channels.spi=ALL-UNNAMED</staffix.jvm.args>
         <fix.dictionary>${project.build.directory}/dictionaries/fix-dictionary.xml</fix.dictionary>
     </properties>
 
