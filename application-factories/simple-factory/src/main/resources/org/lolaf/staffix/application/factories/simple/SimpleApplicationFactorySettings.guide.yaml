@@ -1,0 +1,6 @@
+summary: >-
+  Maps application ids to FixApplication instances in plain Java. A session's fixApplicationInstanceId names the
+  application it runs.
+production:
+  - >-
+    Make each session's FIX version the one of its application's dictionary.

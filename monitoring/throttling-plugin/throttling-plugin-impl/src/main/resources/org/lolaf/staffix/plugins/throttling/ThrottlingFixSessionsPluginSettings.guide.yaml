@@ -1,0 +1,8 @@
+summary: >-
+  Wraps a session plugin and samples its per-message callbacks, so it sees representative numbers rather than every
+  message at peak throughput. Pick it when complete counts are not needed.
+production:
+  - >-
+    Sessions keep naming the wrapped plugin: the wrapper takes over its instance id and plugin class.
+  - >-
+    Combine with the async plugin to get what remains off the message path.

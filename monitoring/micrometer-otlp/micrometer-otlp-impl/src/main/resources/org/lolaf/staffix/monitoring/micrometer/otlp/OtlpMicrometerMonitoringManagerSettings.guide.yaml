@@ -1,0 +1,23 @@
+summary: >-
+  Session metrics through Micrometer, pushed to an OpenTelemetry collector. Pick it when the metrics go to a collector
+  rather than to a registry the application already exposes.
+production:
+  - >-
+    Take otlpEndpointUrl from an environment variable.
+  - >-
+    Set baseTimeUnit to microseconds: the default unit quantises away most of what a FIX engine's latencies show.
+  - >-
+    Set service.name and service.instance.id in the resource attributes.
+  - >-
+    Bind JVM metrics to the same registry in startedMeterRegistryConsumer.
+  - >-
+    Put it behind the async plugin to keep the timers off the message path.
+proving:
+  - >-
+    Stand an in-process HTTP server in for the collector, stop the engine, then await a request on /v1/metrics: metrics
+    are pushed every step and when the engine stops. A closed port only proves the application starts.
+failures:
+  - symptom: >-
+      session.rtt and session.clock.offset never report.
+    fix: >-
+      They need rttMeasurementSettings.probeInterval set on the session.

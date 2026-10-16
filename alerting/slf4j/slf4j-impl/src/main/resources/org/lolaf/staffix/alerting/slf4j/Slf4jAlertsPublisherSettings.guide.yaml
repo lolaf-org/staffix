@@ -1,0 +1,9 @@
+summary: >-
+  Logs one line per alert event: WARN for a warning, ERROR for major and critical, INFO when cleared. Pick it for
+  development, or when log-based alerting already watches the application's logs.
+production:
+  - >-
+    Register it as default, or name it from every session: once any publisher is registered, a session naming none uses
+    default.
+  - >-
+    Route or silence one session's alerts with loggerNameForFixSession.

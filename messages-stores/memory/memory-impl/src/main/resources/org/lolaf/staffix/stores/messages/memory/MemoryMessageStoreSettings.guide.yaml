@@ -1,0 +1,10 @@
+summary: >-
+  Keeps outgoing messages and sequence numbers in memory, so nothing survives a restart. Pick it for development, tests,
+  benchmarks, and sessions that reset sequence numbers on every logon; where a restart must resume the sequence, use the
+  file store, or JDBC behind the async store.
+behaviour:
+  - >-
+    maxEntriesInMemory bounds what a resend can be answered from; 0 keeps nothing, which the benchmarks use to measure
+    the protocol path alone.
+  - >-
+    It cannot fail, so it has no resource check and raises no store alert.

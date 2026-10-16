@@ -1,0 +1,23 @@
+summary: >-
+  Traces each session's messages and exports the spans to an OpenTelemetry collector. With W3C propagation, a trace
+  follows an order across firms in a user-defined FIX field.
+production:
+  - >-
+    Take otlpEndpointUrl from an environment variable.
+  - >-
+    Add one sender of the schema's requiresOneOf: the HTTP one unless the collector only speaks gRPC. Both are used as
+    named, without an -impl suffix.
+  - >-
+    Set service.name in the resource attributes.
+proving:
+  - >-
+    Stand an in-process HTTP server in for the collector and await a request on /v1/traces.
+failures:
+  - symptom: >-
+      The start fails with "No HttpSenderProvider found".
+    fix: >-
+      No sender is on the classpath: add one of the schema's requiresOneOf.
+  - symptom: >-
+      With W3C propagation, incoming messages are rejected for an unknown field.
+    fix: >-
+      Set allowUserDefinedFields(true) in the session's validation settings.

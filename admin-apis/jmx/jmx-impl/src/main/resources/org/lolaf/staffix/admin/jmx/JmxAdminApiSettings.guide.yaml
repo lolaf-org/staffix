@@ -1,0 +1,10 @@
+summary: >-
+  Exposes the admin operations as MBeans: one per session (logon, logout, reset, sequence numbers, probes) and one for
+  the engine. Pick it when operations use JConsole, VisualVM or a JMX monitoring agent.
+production:
+  - >-
+    Set jmxDomain to the application's own domain.
+behaviour:
+  - >-
+    The engine MBean names a session by its full form, group.name:VERSION_44:SENDER->TARGET: copy it from
+    getInitiatorsTargets() into switchInitiatorSession.

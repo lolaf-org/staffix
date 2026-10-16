@@ -1,0 +1,28 @@
+summary: >-
+  Exports messages and session events as OpenTelemetry logs to a collector, so they land beside metrics and traces and
+  correlate with them.
+production:
+  - >-
+    Take otlpEndpointUrl from an environment variable; over HTTP, /v1/logs is appended when missing.
+  - >-
+    For an HTTPS collector, set httpSenderFactory to OkHttpSender::new and add staffix-http-client-okhttp: the JDK
+    client is the default only because it needs nothing on the classpath, and it costs the most over TLS.
+  - >-
+    Set service.name in resourceAttributes.
+  - >-
+    Size logsBufferSize, a power of two, to the sessions' peak message rate per flush.
+  - >-
+    Set fixMessageFieldsDelimiter only behind the async logger: it copies every message.
+proving:
+  - >-
+    Stand an in-process HTTP server in for the collector and await a request on /v1/logs holding a message the test
+    sent.
+failures:
+  - symptom: >-
+      The start fails, naming the OkHttp and Jetty clients, with the GRPC transport.
+    fix: >-
+      gRPC needs grpcSenderFactory from staffix-http-client-okhttp or staffix-http-client-jetty: the JDK client cannot
+      read gRPC trailers.
+behaviour:
+  - >-
+    A collector that is down never stops the session; the logs it misses are lost.

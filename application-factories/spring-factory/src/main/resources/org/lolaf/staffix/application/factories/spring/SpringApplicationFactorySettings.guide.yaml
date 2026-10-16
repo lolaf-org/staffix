@@ -1,0 +1,6 @@
+summary: >-
+  Resolves each session's application from the Spring context. Registered by the Spring Boot starter, never declared by
+  hand: a session's fix-application-instance-id is the bean name of a FixApplication.
+production:
+  - >-
+    Make each session's fix-version the one of its application bean's dictionary.

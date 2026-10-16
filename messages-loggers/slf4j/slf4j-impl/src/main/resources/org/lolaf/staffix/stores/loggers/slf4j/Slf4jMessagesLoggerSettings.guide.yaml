@@ -1,0 +1,14 @@
+summary: >-
+  Logs messages and session events into the application's logging. The logger to start with, in every environment.
+production:
+  - >-
+    Set messageFieldsDelimiter to '|' for readable lines.
+  - >-
+    Route by session in the logging configuration: the session's group and name are in the MDC as fixSessionGroup and
+    fixSessionName.
+  - >-
+    Put it behind the async logger once logging shows in a latency profile.
+behaviour:
+  - >-
+    Its backend reports a failing appender only through its own status messages, so staffix sees no failure and raises
+    no alert for it.

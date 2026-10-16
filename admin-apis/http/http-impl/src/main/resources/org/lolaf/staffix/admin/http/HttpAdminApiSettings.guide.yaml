@@ -1,0 +1,15 @@
+summary: >-
+  Serves the admin API as JSON over HTTP and announces the engine to a staffix admin console, which then shows and
+  drives its sessions. Pick it when operations use the staffix admin console.
+production:
+  - >-
+    Serve HTTPS with sslContext and announce to an https console: the token travels with every request, and the API can
+    send messages on the sessions.
+  - >-
+    Leave apiToken unset to keep it random, known only to the console the engine is announced to; set readOnlyApiToken
+    for monitoring tools that must not operate sessions.
+  - >-
+    Take the console URL, user and password from environment variables; set advertisedUrl behind a proxy or a NAT.
+behaviour:
+  - >-
+    A failed announcement is logged and retried; it never stops the engine.

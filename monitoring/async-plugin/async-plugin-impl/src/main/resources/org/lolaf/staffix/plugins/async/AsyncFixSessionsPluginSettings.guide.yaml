@@ -1,0 +1,16 @@
+summary: >-
+  Wraps a session plugin, such as metrics or tracing, and replays its per-message callbacks on a consumer thread pool,
+  off the message path. An in-memory ring buffer per session, not Chronicle: no JVM flags, nothing on disk.
+production:
+  - >-
+    Sessions keep naming the wrapped plugin: the wrapper takes over its instance id and plugin class.
+  - >-
+    Keep queueSize a power of two.
+  - >-
+    Combine with throttling: throttle to reduce the volume, then wrap that in async.
+failures:
+  - symptom: >-
+      Dashboards show gaps under load.
+    fix: >-
+      With DROP, the default, a full queue discards samples rather than slow the session: grow queueSize, add consumer
+      threads, or throttle first.

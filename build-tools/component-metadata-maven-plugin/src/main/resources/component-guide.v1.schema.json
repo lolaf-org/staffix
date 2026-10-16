@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "staffix:component-guide:v1",
+  "title": "Staffix component guide",
+  "description": "What a skill configuring a component needs beyond its settings, written as <settings class>.guide.yaml beside the class and shipped in the component's schema as x-staffix.guide. Never what that schema already holds: defaults, required settings, JVM flags, artifacts, selection rules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary"],
+  "properties": {
+    "summary": {
+      "$ref": "#/$defs/text",
+      "description": "What the component is, and when to pick it."
+    },
+    "production": {
+      "$ref": "#/$defs/entries",
+      "description": "Advice for a production setup."
+    },
+    "proving": {
+      "$ref": "#/$defs/entries",
+      "description": "How a test proves the component works."
+    },
+    "failures": {
+      "type": "array",
+      "minItems": 1,
+      "description": "What the user sees when something is wrong, and what to do about it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symptom", "fix"],
+        "properties": {
+          "symptom": {
+            "$ref": "#/$defs/text",
+            "description": "What the user sees: an error message, a test passing with the component broken, a lost sequence."
+          },
+          "fix": {
+            "$ref": "#/$defs/text",
+            "description": "The cause, and what to do about it."
+          }
+        }
+      }
+    },
+    "behaviour": {
+      "$ref": "#/$defs/entries",
+      "description": "How the component behaves at runtime, for the user to know when it is handed over."
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/text"
+      }
+    }
+  }
+}

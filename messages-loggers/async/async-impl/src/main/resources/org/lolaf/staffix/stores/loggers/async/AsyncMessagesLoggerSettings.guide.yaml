@@ -1,0 +1,20 @@
+summary: >-
+  Wraps another logger and moves its work off the session thread, through a Chronicle Queue on local disk. Wrap any
+  logger that shows in latency: file, OTLP, demux.
+production:
+  - >-
+    Sessions keep naming the wrapped logger: the wrapper takes over its instance id.
+  - >-
+    Put asyncQueueDirectory under the application's data directory: the queue keeps pending lines across a restart.
+proving:
+  - >-
+    After the round trip, await what the wrapped logger wrote; the queue directory alone proves nothing.
+failures:
+  - symptom: >-
+      The start fails with an error from Chronicle Queue (net.openhft).
+    fix: >-
+      Add the Chronicle JVM flags of the schema's jvmFlags to surefire's argLine, the Spring Boot plugin's jvmArguments,
+      exec's arguments and the run command.
+behaviour:
+  - >-
+    The async-logger-queue and async-logger-resource alerts report a queue growing deep and the wrapped logger down.

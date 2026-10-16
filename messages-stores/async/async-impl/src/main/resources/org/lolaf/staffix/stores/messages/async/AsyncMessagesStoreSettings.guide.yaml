@@ -1,0 +1,31 @@
+summary: >-
+  Wraps another store and moves its writes off the session thread, through a Chronicle Queue on local disk. Wrap any
+  store whose writes show in latency, and always a JDBC one.
+production:
+  - >-
+    Sessions keep naming the wrapped store: the wrapper takes over its instance id.
+  - >-
+    Put asyncQueueDirectory under the application's data directory: the queue keeps pending writes across a restart, and
+    start waits for them.
+  - >-
+    Size messageByteBufferSize to the largest message the sessions exchange.
+proving:
+  - >-
+    After the round trip, await what the wrapped store wrote; the queue directory alone proves nothing.
+failures:
+  - symptom: >-
+      The start fails with an error from Chronicle Queue (net.openhft).
+    fix: >-
+      Add the Chronicle JVM flags of the schema's jvmFlags to surefire's argLine, the Spring Boot plugin's jvmArguments,
+      exec's arguments and the run command.
+  - symptom: >-
+      The session logs out on a resend request.
+    fix: >-
+      The pending writes did not reach the wrapped store within findWaitForEmptyQueueTimeout, or it is down: fix the
+      wrapped store; the peer asks again on its next logon.
+behaviour:
+  - >-
+    A resend first waits for every pending write to reach the wrapped store, so it never answers from an incomplete
+    store.
+  - >-
+    The async-store-queue and async-store-resource alerts report a queue growing deep and the wrapped store down.

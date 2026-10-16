@@ -1,0 +1,17 @@
+summary: >-
+  Keeps outgoing messages and sequence numbers in files on local disk. The store for a single process whose sequence
+  recovery matters.
+production:
+  - >-
+    Put storageDirectoryPath under the application's data directory, from an environment variable, never a constant.
+  - >-
+    Keep syncWrites on: it is what makes the store durable. If its cost shows in latency, put the store behind the async
+    store rather than turning it off.
+proving:
+  - >-
+    After the round trip, await files in storageDirectoryPath holding a message the test sent.
+failures:
+  - symptom: >-
+      Every session restarts at sequence 1 after the store was introduced or replaced.
+    fix: >-
+      A new store starts empty. Switch stores at a sequence reset agreed with the counterparty.

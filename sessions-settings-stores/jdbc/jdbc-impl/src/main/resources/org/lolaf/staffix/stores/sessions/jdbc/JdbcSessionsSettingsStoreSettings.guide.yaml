@@ -1,0 +1,25 @@
+summary: >-
+  Keeps each session's settings as a JSON document in a database row. Pick it when several engines share their session
+  configuration, or when sessions are managed from a database.
+production:
+  - >-
+    Give the engine and the store fixed instance ids: rows are keyed by both.
+  - >-
+    Generate the table with staffix-jdbc-ddl-generator-maven-plugin, schema SESSIONS_SETTINGS; its tablePrefix must
+    match the store's.
+failures:
+  - symptom: >-
+      The engine starts with none of its sessions.
+    fix: >-
+      The engine or the store runs under another instance id than the one the rows were written with.
+  - symptom: >-
+      An update fails, saying the row changed.
+    fix: >-
+      Another engine or a person changed it since this store read it: reload, then apply the change again.
+  - symptom: >-
+      The start or a reload fails naming a row.
+    fix: >-
+      The row cannot be read: invalid JSON, a document from a newer staffix, or a key that does not match its session.
+behaviour:
+  - >-
+    A row edited in the database reaches a running engine on its next reload.

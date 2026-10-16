@@ -1,0 +1,8 @@
+summary: >-
+  Keeps messages in a table.
+proving:
+  - >-
+    Await rows: a failing store never stops the session.
+failures:
+  - symptom: The table stays empty.
+    fix: Await rows in the test.

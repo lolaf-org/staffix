@@ -1,0 +1,9 @@
+summary: >-
+  Feeds every message to several loggers at once, such as SLF4J for operations and OTLP for the collector. Pick it when
+  one destination is not enough.
+production:
+  - >-
+    It takes logger instances, not their settings, so it is built in Java; it has no Spring Boot module.
+  - >-
+    Put the demux behind the async logger rather than each logger behind its own: the loggers it feeds run in turn on
+    the calling thread.

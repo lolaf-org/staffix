@@ -1,0 +1,21 @@
+summary: >-
+  Posts alerts to Prometheus Alertmanager, the way a Prometheus server does. Pick it when Alertmanager already routes
+  the team's pages.
+production:
+  - >-
+    List every Alertmanager of a highly available cluster, from environment variables: each alert is posted to all of
+    them.
+  - >-
+    Put TLS, a proxy, timeouts and an Authorization header in httpSenderSettings.
+  - >-
+    Add an env static label so routes can tell environments apart.
+  - >-
+    Register it as default, or name it from every session: once any publisher is registered, a session naming none uses
+    default.
+  - >-
+    Route on severity: a level change resolves the alert at the old severity and raises a new one.
+behaviour:
+  - >-
+    An engine that stops or crashes has its alerts resolved by Alertmanager within four resend intervals.
+  - >-
+    Posting runs on its own thread: an Alertmanager that is slow or down never delays the probes.

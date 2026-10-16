@@ -1,0 +1,12 @@
+summary: >-
+  Holds sessions declared in code, or in Spring Boot properties, where it is the default store. Pick it for tests and
+  for sessions built from the application's own configuration.
+production:
+  - >-
+    Use defaultFixSessionSettings for what every session shares; on a map field the last write wins, so check the
+    session's own entry before setting one.
+behaviour:
+  - >-
+    Changes made at runtime are kept in memory only, and a reload changes nothing.
+  - >-
+    An acceptor targets stores by instance id; with none named, it uses the store whose id is default.

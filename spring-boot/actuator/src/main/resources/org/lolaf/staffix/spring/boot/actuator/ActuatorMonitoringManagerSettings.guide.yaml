@@ -1,0 +1,15 @@
+summary: >-
+  Collects what the fix-sessions actuator endpoint and the health indicator report. Never configured by hand: the
+  actuator module registers it and attaches it to every session, and staffix.actuator.enabled=false turns both off.
+production:
+  - >-
+    Expose the endpoint with management.endpoints.web.exposure.include=fix-sessions,health,info.
+  - >-
+    Feed staffix.actuator.fix-session-state-contributes-to-health-status to a readiness check, never a liveness one: a
+    counterparty outage is not a reason to restart the application.
+failures:
+  - symptom: >-
+      A session is refused for naming a plugin id the engine does not register, in a profile without that plugin.
+    fix: >-
+      With the actuator on the classpath a plugin is always registered, so an unknown plugin id is refused in every
+      profile: register the plugin there under the same id, or stop naming it from the shared sessions.

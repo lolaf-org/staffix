@@ -1,0 +1,18 @@
+summary: >-
+  Writes messages and session events straight to one file per session, without a logging framework, rolled and
+  compressed on a period. Pick it for a raw FIX audit trail kept apart from the application's logs.
+production:
+  - >-
+    Put logDirectory under the application's data directory, from an environment variable.
+  - >-
+    Set the compression period and maxCompressedFiles to the retention the audit requires.
+  - >-
+    Put it behind the async logger: each line is otherwise a file write on the session thread.
+proving:
+  - >-
+    After the round trip, await the session's file in logDirectory holding a message the test sent.
+failures:
+  - symptom: >-
+      The round trip test passes, but no file is written.
+    fix: >-
+      A failing logger never stops the session: await the file, and read the logger's alert for the cause.

@@ -14,6 +14,8 @@
     </description>
     <properties>
         <automatic.module.name>org.lolaf.staffix.buildtools.metadata</automatic.module.name>
+        <!-- json-schema-validator 3 needs Java 17; this plugin only runs in the build, which already needs 17. -->
+        <maven.compiler.release>17</maven.compiler.release>
     </properties>
     <dependencies>
         <dependency>
@@ -25,6 +27,16 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>3.0.8</version>
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>

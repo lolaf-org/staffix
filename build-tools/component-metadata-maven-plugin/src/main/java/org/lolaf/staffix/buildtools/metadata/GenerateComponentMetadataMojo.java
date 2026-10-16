@@ -26,6 +26,7 @@ import org.apache.maven.project.MavenProject;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,13 +36,12 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
  * Describes each component of the module in {@code META-INF/staffix/components/}, packaged in its jar: a JSON Schema of
- * its settings, and the {@code <settings class>.guide.md} written beside the class, when there is one.
+ * its settings, holding the {@code <settings class>.guide.yaml} written beside the class, which the jar then leaves out.
  */
 @Mojo(name = "generate-component-metadata", defaultPhase = LifecyclePhase.PROCESS_CLASSES,
         requiresDependencyResolution = ResolutionScope.COMPILE, threadSafe = true)
@@ -88,17 +88,17 @@ public class GenerateComponentMetadataMojo extends AbstractMojo {
         Class<?> type = component.getSettingsClass();
         Path schema = outputDirectory.resolve(type.getName() + ".v" + ComponentSchemaGenerator.FORMAT_VERSION
                 + ".schema.json");
-        Files.write(schema, (JSON.writeValueAsString(generator.generate(component, project.getGroupId(),
-                project.getArtifactId())) + "\n").getBytes(StandardCharsets.UTF_8));
-        getLog().info("Described " + component.getKind() + " " + type.getName());
-        Path guide = classesDirectory.toPath().resolve(type.getName().replace('.', '/') + ".guide.md");
+        ObjectNode description = generator.generate(component, project.getGroupId(), project.getArtifactId());
+        Path guide = classesDirectory.toPath().resolve(type.getName().replace('.', '/') + ".guide.yaml");
         if (Files.isRegularFile(guide)) {
-            Files.copy(guide, outputDirectory.resolve(type.getName() + ".guide.md"),
-                    StandardCopyOption.REPLACE_EXISTING);
+            ((ObjectNode) description.get("x-staffix")).set("guide", ComponentGuide.read(guide));
+            Files.delete(guide);
         } else {
             getLog().warn("No guide for " + type.getName() + ": write " + type.getSimpleName()
-                    + ".guide.md in src/main/resources beside it");
+                    + ".guide.yaml in src/main/resources beside it");
         }
+        Files.write(schema, (JSON.writeValueAsString(description) + "\n").getBytes(StandardCharsets.UTF_8));
+        getLog().info("Described " + component.getKind() + " " + type.getName());
     }
 
     private URL[] compileClasspath() throws MojoExecutionException {

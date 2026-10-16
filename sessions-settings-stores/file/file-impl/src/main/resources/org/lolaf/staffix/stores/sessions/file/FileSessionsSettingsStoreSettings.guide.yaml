@@ -1,0 +1,29 @@
+summary: >-
+  Reads sessions from YAML files, one per session, with a shared default.yaml. Pick it when sessions are edited by
+  operators or deployed as files beside the application.
+production:
+  - >-
+    Use a directory when runtime changes must be written back to the files; a list of URIs is read-only. Set exactly one
+    of the two.
+  - >-
+    Write values that differ per environment as ${env:NAME:default} placeholders, valid in fields of any type.
+  - >-
+    Declare schemaVersion: 1 in every file, and opt into editor completion with # yaml-language-server:
+    $schema=fix-session-settings.v1.schema.json.
+failures:
+  - symptom: >-
+      A classpath: URI fails to load.
+    fix: >-
+      There is no classpath: prefix: resolve the resource with getResource(...).toURI().
+  - symptom: >-
+      The load fails naming a file.
+    fix: >-
+      Reading is strict: an unknown field, an unknown enum value or a missing schemaVersion fails it.
+  - symptom: >-
+      Changing a setting through the store is refused.
+    fix: >-
+      The value comes from a placeholder, so its source owns it: change the environment instead.
+behaviour:
+  - >-
+    A reload restarts changed sessions and disconnects removed ones, unless they set restartLiveSessionOnUpdate and
+    disconnectOnRemove to false.

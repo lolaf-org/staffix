@@ -1,0 +1,12 @@
+summary: >-
+  Session metrics published to a MeterRegistry the application supplies, such as the Prometheus one it exposes. Pick it
+  when the application already has a registry; for a collector, use the OTLP variant.
+production:
+  - >-
+    Supply the registry with meterRegistrySupplier.
+  - >-
+    Enable only the timers needed: each costs a measurement on the message path.
+  - >-
+    Put it behind the async plugin to keep the timers off the message path.
+  - >-
+    Alert on the session.logon.status gauge: 0 is logged out inside session time.

@@ -1,0 +1,43 @@
+summary: >-
+  Keeps outgoing messages and sequence numbers in a database table. Pick it when persistence must be shared or
+  queryable, always behind the async store.
+production:
+  - >-
+    Wrap it in the async store: used directly, every write puts a network round trip inside the FIX round trip, while
+    behind it a slow or down database costs queue depth, not latency.
+  - >-
+    Generate the schema with staffix-jdbc-ddl-generator-maven-plugin (org.lolaf.staffix, goal generate-ddl, schema
+    MESSAGES), one execution per dialect, with createDropStatements false for the script the user applies. Its
+    tablePrefix must match the store's.
+  - >-
+    Use a pool with a short connection timeout (HikariCP, about 1 s), the URL, user and password from environment
+    variables, and the database driver at runtime scope.
+  - >-
+    Bound the table with maxMessagesPerSession.
+proving:
+  - >-
+    After the round trip, await rows in fix_messages.
+  - >-
+    On H2, run the H2 script once with RUNSCRIPT FROM '<script>' on a jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1 database,
+    never through the URL's INIT.
+failures:
+  - symptom: >-
+      The round trip test passes, but the table stays empty.
+    fix: >-
+      A failing store never stops the session. Await rows in fix_messages, and read the store's alert or log for the
+      cause.
+  - symptom: >-
+      On H2, what the store wrote disappears.
+    fix: >-
+      The URL's INIT reruns the script on every connection and drops the tables: run it once with RUNSCRIPT.
+  - symptom: >-
+      The generated script drops the tables before creating them.
+    fix: >-
+      createDropStatements is on: turn it off for the script the user applies.
+behaviour:
+  - >-
+    While the database is down, the first failed call and every sequence number update wait for the pool's connection
+    timeout on the session thread.
+  - >-
+    Behind the async store, a message is on the wire before it is in the database: the queue survives a crash, but it is
+    not a committed transaction.
