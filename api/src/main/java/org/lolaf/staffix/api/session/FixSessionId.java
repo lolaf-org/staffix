@@ -109,24 +109,6 @@ public class FixSessionId implements IntSupplier {
     @Getter
     private final String qualifiedName;
     private int index;
-    private FixSessionId inverted;
-
-    private FixSessionId(FixVersion fixVersion, String name, String group, ApplVerID defaultApplVerID, FieldAndValuePair senderCompID, FieldAndValuePair senderSubID,
-                         FieldAndValuePair senderLocationID, FieldAndValuePair targetCompID, FieldAndValuePair targetSubID, FieldAndValuePair targetLocationID) {
-        this.fixVersion = fixVersion;
-        this.name = name;
-        this.group = group;
-        this.defaultApplVerID = defaultApplVerID;
-        this.senderCompID = senderCompID;
-        this.senderSubID = senderSubID;
-        this.senderLocationID = senderLocationID;
-        this.targetCompID = targetCompID;
-        this.targetSubID = targetSubID;
-        this.targetLocationID = targetLocationID;
-        this.serializedLen = calculateSerializedLen();
-        this.qualifiedName = escapeForQualifiedName(this.group) + "." + escapeForQualifiedName(this.name);
-        this.toString = createToString();
-    }
 
     private FixSessionId(FixVersion fixVersion, ApplVerID defaultApplVerID, FixSessionIdBuilder fixSessionIdBuilder) {
         if (fixVersion == null) {
@@ -266,17 +248,6 @@ public class FixSessionId implements IntSupplier {
             }
         }
         return escaped.toString();
-    }
-
-    /**
-     * The same session seen from the counterparty: sender and target swapped. Cached, so it costs nothing after the
-     * first call.
-     */
-    public FixSessionId invert() {
-        if (inverted == null) {
-            inverted = getFromCache(new FixSessionId(fixVersion, name, group, defaultApplVerID, targetCompID, targetSubID, targetLocationID, senderCompID, senderSubID, senderLocationID));
-        }
-        return inverted;
     }
 
     /**

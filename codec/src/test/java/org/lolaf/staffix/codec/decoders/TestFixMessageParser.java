@@ -135,8 +135,8 @@ class TestFixMessageParser {
      * standard header otherwise matching what the session expects.
      */
     private static String thirdPartyRoutedMessage(String onBehalfOfCompId, String deliverToCompId) {
-        return fixMessage("35=A", "34=1", "49=SENDER_TEST", "115=" + onBehalfOfCompId, "128=" + deliverToCompId,
-                "52=20241013-19:07:17.861", "56=TARGET_TEST", "98=0", "108=30", "141=Y");
+        return fixMessage("35=A", "34=1", "49=TARGET_TEST", "115=" + onBehalfOfCompId, "128=" + deliverToCompId,
+                "52=20241013-19:07:17.861", "56=SENDER_TEST", "98=0", "108=30", "141=Y");
     }
 
     /**
@@ -1490,7 +1490,7 @@ class TestFixMessageParser {
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
                 fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(FixSessionProbes.class)), validationSettings, TestingClock.get(), fixMessageParserEventsListener);
 
-        String message = "8=FIX.4.49=8335=A34=149=TARGET_TEST52=20241013-19:07:17.86156=SENDER_TEST98=0108=30141=Y10=249";
+        String message = "8=FIX.4.49=8335=A34=149=SENDER_TEST52=20241013-19:07:17.86156=TARGET_TEST98=0108=30141=Y10=249";
         ByteBuffer bb = ByteBuffer.wrap(message.getBytes());
 
         FixMessageDecoder decoder = mock(FixMessageDecoder.class);
@@ -1499,12 +1499,12 @@ class TestFixMessageParser {
 
         assertThat(messageRejects).hasSize(2);
 
-        assertThat(messageRejects.get(0).getMessage()).isEqualTo("Wrong SENDER_COMP_ID, expecting SENDER_TEST but got TARGET_TEST");
+        assertThat(messageRejects.get(0).getMessage()).isEqualTo("Wrong SENDER_COMP_ID, expecting TARGET_TEST but got SENDER_TEST");
         assertThat(messageRejects.get(0).getRefTagId()).isEqualTo(49);
         assertThat(messageRejects.get(0).getBusinessRejectReasonCode()).isNull();
         assertThat(messageRejects.get(0).getSessionRejectReasonCode()).isEqualTo(SessionRejectReasonCodes.COMPID_PROBLEM);
 
-        assertThat(messageRejects.get(1).getMessage()).isEqualTo("Wrong TARGET_COMP_ID, expecting TARGET_TEST but got SENDER_TEST");
+        assertThat(messageRejects.get(1).getMessage()).isEqualTo("Wrong TARGET_COMP_ID, expecting SENDER_TEST but got TARGET_TEST");
         assertThat(messageRejects.get(1).getRefTagId()).isEqualTo(56);
         assertThat(messageRejects.get(1).getBusinessRejectReasonCode()).isNull();
         assertThat(messageRejects.get(1).getSessionRejectReasonCode()).isEqualTo(SessionRejectReasonCodes.COMPID_PROBLEM);
@@ -1515,7 +1515,7 @@ class TestFixMessageParser {
     void testMatchingSenderAndTargetCompIdAccepted() throws DecodingException {
         // swapping the two CompID values keeps the byte multiset intact, so BodyLength and checksum stay valid
         // while 49/56 now carry what the session expects
-        String message = "8=FIX.4.49=8335=A34=149=SENDER_TEST52=20241013-19:07:17.86156=TARGET_TEST98=0108=30141=Y10=249";
+        String message = "8=FIX.4.49=8335=A34=149=TARGET_TEST52=20241013-19:07:17.86156=SENDER_TEST98=0108=30141=Y10=249";
 
         fixMessageParser = parserWith(validationSettings.toBuilder().validateCompId(true).build());
         FixMessageDecoder decoder = mock(FixMessageDecoder.class);
@@ -1530,7 +1530,7 @@ class TestFixMessageParser {
     @Test
     void testWrongSenderOrTargetCompIdToleratedWhenValidationDisabled() throws DecodingException {
         // 49/56 hold the opposite of what the session expects, but validateCompId is off in the default settings
-        String message = "8=FIX.4.49=8335=A34=149=TARGET_TEST52=20241013-19:07:17.86156=SENDER_TEST98=0108=30141=Y10=249";
+        String message = "8=FIX.4.49=8335=A34=149=SENDER_TEST52=20241013-19:07:17.86156=TARGET_TEST98=0108=30141=Y10=249";
 
         FixMessageDecoder decoder = mock(FixMessageDecoder.class);
         fixMessageParser.parseMessages(ByteBuffer.wrap(message.getBytes()), getFixMessageDecoderFunction(decoder));
@@ -1610,8 +1610,8 @@ class TestFixMessageParser {
                 .build());
         FixMessageDecoder decoder = mock(FixMessageDecoder.class);
 
-        String swappedSenderAndTarget = fixMessage("35=A", "34=1", "49=TARGET_TEST", "115=FIRM_A",
-                "52=20241013-19:07:17.861", "56=SENDER_TEST", "98=0", "108=30", "141=Y");
+        String swappedSenderAndTarget = fixMessage("35=A", "34=1", "49=SENDER_TEST", "115=FIRM_A",
+                "52=20241013-19:07:17.861", "56=TARGET_TEST", "98=0", "108=30", "141=Y");
         fixMessageParser.parseMessages(ByteBuffer.wrap(swappedSenderAndTarget.getBytes()), getFixMessageDecoderFunction(decoder));
 
         verify(decoder).onDecoded(any(FixSession.class), eq(false), eq(false));

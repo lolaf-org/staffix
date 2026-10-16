@@ -100,6 +100,10 @@ public class FixMessageParser {
     private final int expectedBeginStringHash;
     private int lastMessageEnd;
 
+    /**
+     * @param fixSessionId the receiving session's own id: a message it accepts carries the id's TargetCompID in
+     *                     SenderCompID(49) and its SenderCompID in TargetCompID(56)
+     */
     public FixMessageParser(FixSessionId fixSessionId,
                             MessageTypeRegistry messageTypeRegistry,
                             FieldsRegistry fieldsRegistry,
@@ -128,8 +132,8 @@ public class FixMessageParser {
                 || (expectedOnBehalfOfCompIds != null && !expectedOnBehalfOfCompIds.isEmpty())
                 || (expectedDeliverToCompIds != null && !expectedDeliverToCompIds.isEmpty());
         this.compIdValidator = anyCompIdCheck
-                ? new CompIdValidator(validationSettings.isValidateCompId(), fixSessionId.getSenderCompID().getValue(),
-                fixSessionId.getTargetCompID().getValue(), expectedOnBehalfOfCompIds, expectedDeliverToCompIds) : null;
+                ? new CompIdValidator(validationSettings.isValidateCompId(), fixSessionId.getTargetCompID().getValue(),
+                fixSessionId.getSenderCompID().getValue(), expectedOnBehalfOfCompIds, expectedDeliverToCompIds) : null;
         this.garbledMessageDetector = validationSettings.isDetectGarbledMessages() ?
                 ActiveGarbledMessageDetector.INSTANCE : VoidGarbledMessageDetector.INSTANCE;
         byte[] beginStringBytes = validationSettings.isValidateBeginString() ? fixSessionId.getFixVersion().getBeginString() : null;
@@ -561,14 +565,14 @@ public class FixMessageParser {
         switch (fieldTag) {
             case CoreFields.TARGET_COMP_ID:
                 return String.format("Wrong TARGET_COMP_ID, expecting %s but got %s",
-                        messageParsingState.getFixSessionId().getTargetCompID().getValue(), received);
+                        messageParsingState.getFixSessionId().getSenderCompID().getValue(), received);
             case CoreFields.ON_BEHALF_OF_COMP_ID:
                 return String.format("Wrong ON_BEHALF_OF_COMP_ID, %s is not an expected value for this session", received);
             case CoreFields.DELIVER_TO_COMP_ID:
                 return String.format("Wrong DELIVER_TO_COMP_ID, %s is not an expected value for this session", received);
             default:
                 return String.format("Wrong SENDER_COMP_ID, expecting %s but got %s",
-                        messageParsingState.getFixSessionId().getSenderCompID().getValue(), received);
+                        messageParsingState.getFixSessionId().getTargetCompID().getValue(), received);
         }
     }
 

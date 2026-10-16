@@ -127,7 +127,7 @@ final class SessionWiring {
         IncomingMessagesComponent incomingMessages = new IncomingMessagesComponent(fixSession, components, state, messagesStore,
                 retransmission, messageRejects);
         // after the component that answers it: the parser reports what it decoded straight to the sequence rules
-        this.messageParser = new FixMessageParser(fixSessionId.invert(), messageTypeRegistry, fieldsRegistry, messagesLogger,
+        this.messageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, messagesLogger,
                 settings.getValidationSettings(), clock, incomingMessages);
         AdminOperationsComponent adminOperations = new AdminOperationsComponent(fixSession, state, settings, adminMessagesCodec, messagesStore,
                 messageTypeRegistry, fieldsRegistry, clock, sendingTimeAccuracy, fixSessionId, logonLogout);

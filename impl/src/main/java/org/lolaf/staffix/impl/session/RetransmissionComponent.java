@@ -235,7 +235,7 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
      */
     private FixMessageParser outOfSequenceMessagesParser() {
         if (outOfSequenceMessagesParser == null) {
-            outOfSequenceMessagesParser = new FixMessageParser(fixSessionId.invert(), messageTypeRegistry, fieldsRegistry,
+            outOfSequenceMessagesParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
                     fixMessagesLogger, fixSessionSettings.getValidationSettings(), clock, incomingMessages);
         }
         return outOfSequenceMessagesParser;
