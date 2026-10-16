@@ -85,8 +85,7 @@ final class ClientSimulator {
     }
 
     void sendNewOrderSingle(String clOrdId) {
-        NewOrderSingleEncoder order = application.session.newEncoder(NewOrderSingleEncoder.class);
-        application.session.send(order.begin()
+        application.session.send(application.newOrderSingleEncoder.begin()
                 .setClOrdID(clOrdId)
                 .setSymbol("EUR/USD")
                 .setSide(Side.SideValues.BUY)
@@ -109,6 +108,7 @@ final class ClientSimulator {
 
         private final List<String> executionReports = new CopyOnWriteArrayList<>();
         private volatile FixSession session;
+        private NewOrderSingleEncoder newOrderSingleEncoder;
 
         @Override
         public FixApiVersion getFixApiVersion() {
@@ -124,6 +124,7 @@ final class ClientSimulator {
         public List<FixMessageDecoder> setup(FixSessionSettings settings, FixSession session,
                                              Set<MessageType> encodedMessagesTypes) {
             encodedMessagesTypes.add(MessageTypes.NewOrderSingle);
+            newOrderSingleEncoder = session.newEncoder(NewOrderSingleEncoder.class).asReusable();
             return List.of(new ExecutionReportDecoder(executionReports));
         }
 

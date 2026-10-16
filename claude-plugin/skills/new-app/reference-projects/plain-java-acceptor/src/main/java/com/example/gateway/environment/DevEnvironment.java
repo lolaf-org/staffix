@@ -5,7 +5,7 @@ import org.lolaf.staffix.stores.loggers.slf4j.Slf4jMessagesLoggerSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 
 /**
- * Nothing on disk and every message logged: sequence numbers reset on each logon, see the session file.
+ * Nothing on disk and every message logged.
  */
 public class DevEnvironment implements StaffixEnvironment {
 

@@ -44,6 +44,13 @@ Copy the file to `src/main/dictionaries/` unchanged, so the provider's next vers
 version from its root element (`<fix major="4" minor="4">`; `servicepack` for 5.0 SP1/SP2) and give it a
 `dictionaryId` named after the provider. Generate from it directly, or from a sanitized copy under `target/`.
 
+Only an Orchestra cut takes a message list, so every message of the provider's file is generated: the messages the
+user chose decide the code, not the package. Say so in the README; removing messages means editing a copy by hand,
+which the provider's next file would undo.
+
+Every engine of the project speaks this `dictionaryId`, the test's counterparty simulator included: the package
+registers no default dictionary.
+
 Grep it for `msgtype="j"`. If BusinessMessageReject is missing, staffix refuses the session: tell the user, and add
 the message from the shipped dictionary of the same version, saying so in the project README.
 
@@ -53,9 +60,13 @@ The session layer is FIXT.1.1:
 
 - add `staffix-fixt-11` as a dependency of the project;
 - for a cut, sanitize with `sanitizeMsgTypeField` false and `keepFields` BeginString, BodyLength, MsgType, MsgSeqNum,
-  SenderCompID, TargetCompID, SendingTime, CheckSum and ApplVerID (as `fix-packages/fix-latest/pom.xml` in staffix);
+  SenderCompID, TargetCompID, SendingTime, CheckSum and ApplVerID;
 - declare the session as FIXT: in YAML `fixVersion: "FIX.5.0-SP2"` with `fixTSession: true`; in Spring properties
-  `fix-version=FIXT_11` with `default-appl-ver-id=VERSION_50_SP2`; in Java
-  `FixSessionId.ofFIXT11(name, FixApplVerID.FIX50SP2, sender, target)`.
+  `...sessions[0].fix-session-id.fix-version=FIXT_11` with `...sessions[0].fix-session-id.default-appl-ver-id=VERSION_50_SP2`
+  (the same pair under an initiator's `main-target.fix-session-id`); in Java
+  `FixSessionId.ofFIXT11(name, FixApplVerID.FIX50SP2, sender, target)`;
+- the application speaks the application version, not FIXT: `getFixApiVersion()` returns
+  `FixApiVersion.of(FixRegularVersion.VERSION_50_SP2)` and `getDictionaryId()` `FixDictionaryId.of(VERSION_50_SP2)`.
 
-No reference project covers FIX 5.0+ yet: the generated project's tests are what prove it, so run them.
+No reference project covers FIX 5.0+, but a generated Spring acceptor on FIX 5.0 SP2 passed its round trip with
+these settings.

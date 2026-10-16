@@ -23,7 +23,8 @@ Everything this skill needs ships with it, under `${CLAUDE_PLUGIN_ROOT}`:
 ## 1. Ask what to build
 
 Ask with the AskUserQuestion tool, a few questions at a time, each with a recommended default. Skip what the user's
-request already answers.
+request already answers. Without the tool (a non-interactive run), take the answers from the request and the
+defaults, and list the defaults taken when handing over.
 
 1. **Role**: initiator (connects to a counterparty), acceptor (counterparties connect to it), or both in one engine.
 2. **Wiring**: plain Java, or Spring Boot (Java 17).
@@ -43,9 +44,11 @@ request already answers.
 
 ## 2. Build it
 
-1. Copy the reference project matching role and wiring (both roles: the initiator project with an acceptor added
-   from `plain-java-acceptor`; a Spring acceptor: `spring-boot-initiator` with a `staffix.acceptors.<name>` block,
-   see `docs/spring-boot.md`). Rename the groupId, artifactId, package and classes after what the application does.
+1. Start from the reference project matching role and wiring (both roles: the initiator project with an acceptor
+   added from `plain-java-acceptor`; a Spring acceptor: `spring-boot-initiator` with a `staffix.acceptors.<name>`
+   block, see `project-rules.md`). Read each of its files and write it into the project with the Write tool, renamed
+   after what the application does (groupId, artifactId, package, classes): the plugin is outside the project, so a
+   shell `cp` from it may need an approval the user is not there to give.
 2. Set up the dictionary as `dictionary-setup.md` says for the user's case, with the chosen messages in
    `messages.txt`.
 3. Run `mvn generate-sources`, then write the application against the generated classes: a decoder per received
@@ -55,8 +58,10 @@ request already answers.
    secret from an environment variable.
 5. Adapt the tests: the counterparty simulator speaks the chosen messages, and the round trip runs in dev and in
    prod.
-6. Write a README: what the application does, how to run it in dev and in prod (with the JVM flags), every
-   environment variable with its default, how to add a counterparty, and where the dictionary comes from.
+6. Write a README: what the application does, how to run it (`mvn exec:exec` in plain Java, `mvn spring-boot:run`
+   with Spring Boot, both already passing the JVM flags; `STAFFIX_ENV=prod` or `SPRING_PROFILES_ACTIVE=prod` for
+   prod), every environment variable with its default, how to add a counterparty, and where the dictionary comes
+   from.
 7. Run `mvn verify`. Fix what fails, reading the docs rather than guessing, until it passes.
 
 ## 3. Hand over

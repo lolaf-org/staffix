@@ -48,11 +48,15 @@ session holds.
 
 Registered with `fixSessionsPlugin(...)` and named per session in `fixSessionPluginsInstanceIds`, keyed by plugin
 class: `org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager` for metrics,
-`org.lolaf.staffix.tracing.otlp.OtelTracing` for tracing. Doc: `docs/monitoring.md`.
+`org.lolaf.staffix.tracing.otlp.OtelTracing` for tracing. In a session file that is a map under
+`fixSessionPluginsInstanceIds`, the class name as key; in Spring properties
+`...sessions[0].fix-session-plugins-instance-ids.[org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager]=<id>`.
+A session naming a plugin the engine does not register runs without it, so dev can share the session with prod.
+Doc: `docs/monitoring.md`.
 
 | plugin | artifact | Java settings | Spring prefix | notes |
 | :- | :- | :- | :- | :- |
-| Micrometer, OTLP export | `staffix-monitoring-micrometer-otlp` | `monitoring.micrometer.otlp.OtlpMicrometerMonitoringManagerSettings` | `staffix.monitoring.otlp.instances.<id>` | `otlpEndpointUrl`; set `baseTimeUnit` to microseconds |
+| Micrometer, OTLP export (*proven* by a generated project) | `staffix-monitoring-micrometer-otlp` | `monitoring.micrometer.otlp.OtlpMicrometerMonitoringManagerSettings` | `staffix.monitoring.otlp.instances.<id>` | `otlpEndpointUrl`; set `baseTimeUnit` to microseconds |
 | Micrometer, own registry | `staffix-monitoring-micrometer` | `monitoring.micrometer.MicrometerMonitoringManagerSettings` | `staffix.monitoring.instances.<id>`, `staffix.monitoring.meter-registry-bean` | e.g. a Prometheus registry the application exposes |
 | OpenTelemetry tracing | `staffix-monitoring-tracing-otlp` | `tracing.otlp.OtelTracingSettings` | `staffix.tracing.otel.instances.<id>` | W3C propagation needs `allowUserDefinedFields` in the session's validation settings |
 | async wrapper | `staffix-monitoring-async-plugin` | `plugins.async.AsyncFixSessionsPluginSettings` | `staffix.async-plugin.instances.<id>.wraps` | keeps monitoring off the message path; drops samples when full |
