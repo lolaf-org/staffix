@@ -16,6 +16,8 @@
 package org.lolaf.staffix.plugins.async.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.plugins.async.AsyncFixSessionsPluginSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -28,6 +30,7 @@ import java.util.Map;
  * key contributed by any other sessions-plugin contributor (micrometer, tracing, ...); the async
  * wrapper defers that plugin's fire-and-forget callbacks onto a dedicated consumer thread pool.
  */
+@ConfiguresComponent(AsyncFixSessionsPluginSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.async-plugin")
 public class AsyncPluginProps {

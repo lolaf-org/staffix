@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.messages.jdbc.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.messages.jdbc.JdbcMessageStoreSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -28,6 +30,7 @@ import java.util.Map;
  * {@code data-source-bean} field names a Spring bean of type {@link javax.sql.DataSource}
  * that the contributor resolves from the application context at startup.
  */
+@ConfiguresComponent(JdbcMessageStoreSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.messages-stores-jdbc")
 public class JdbcMessagesStoreProps {

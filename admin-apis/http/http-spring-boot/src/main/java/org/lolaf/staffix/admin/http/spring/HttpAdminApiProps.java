@@ -16,6 +16,8 @@
 package org.lolaf.staffix.admin.http.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.admin.http.HttpAdminApiSettings;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
@@ -25,6 +27,7 @@ import java.time.Duration;
  *
  * <p>Bound from {@code staffix.admin-api-http.*}.
  */
+@ConfiguresComponent(HttpAdminApiSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.admin-api-http")
 public class HttpAdminApiProps {

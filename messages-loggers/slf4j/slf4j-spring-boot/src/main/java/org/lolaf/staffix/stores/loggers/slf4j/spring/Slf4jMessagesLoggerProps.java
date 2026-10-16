@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.loggers.slf4j.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.loggers.slf4j.Slf4jMessagesLoggerSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -28,6 +30,7 @@ import java.util.Map;
  * top-level namespace (rather than nested under {@code staffix.messages-loggers}) to avoid
  * colliding with the legacy {@code Map<String, MessagesLoggerProps>} binding in the starter.
  */
+@ConfiguresComponent(Slf4jMessagesLoggerSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.messages-loggers-slf4j")
 public class Slf4jMessagesLoggerProps {

@@ -16,11 +16,14 @@
 package org.lolaf.staffix.spring.boot.actuator.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.spring.boot.actuator.ActuatorMonitoringManagerSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * The Actuator integration's {@code staffix.*} properties.
  */
+@ConfiguresComponent(ActuatorMonitoringManagerSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.actuator")
 public class ActuatorMonitoringProps {

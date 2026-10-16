@@ -16,6 +16,8 @@
 package org.lolaf.staffix.monitoring.micrometer.otlp.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.monitoring.micrometer.otlp.OtlpMicrometerMonitoringManagerSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ import java.util.Map;
 /**
  * The {@code staffix.*} properties for the OTLP meter registry.
  */
+@ConfiguresComponent(OtlpMicrometerMonitoringManagerSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.monitoring.otlp")
 public class OtlpMicrometerMonitoringProps {

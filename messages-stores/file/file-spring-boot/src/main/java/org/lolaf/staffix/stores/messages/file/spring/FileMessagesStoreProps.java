@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.messages.file.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.messages.file.FileMessageStoreSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -26,6 +28,7 @@ import java.util.Map;
  *
  * <p>Bound from {@code staffix.messages-stores-file.instances.<key>.*}.
  */
+@ConfiguresComponent(FileMessageStoreSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.messages-stores-file")
 public class FileMessagesStoreProps {

@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.messages.async.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.messages.async.AsyncMessagesStoreSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -29,6 +31,7 @@ import java.util.Map;
  * The async wrapper replaces the wrapped entry in the registry; the wrapped store's
  * {@code instance-id} stays in effect (the wrapper itself has no separate instance id).
  */
+@ConfiguresComponent(AsyncMessagesStoreSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.messages-stores-async")
 public class AsyncMessagesStoreProps {

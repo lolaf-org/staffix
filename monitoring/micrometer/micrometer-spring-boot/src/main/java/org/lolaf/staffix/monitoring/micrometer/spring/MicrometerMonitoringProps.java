@@ -16,6 +16,8 @@
 package org.lolaf.staffix.monitoring.micrometer.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.monitoring.micrometer.MicrometerMonitoringManagerSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ import java.util.Map;
 /**
  * The {@code staffix.*} properties for the Micrometer monitoring plugin.
  */
+@ConfiguresComponent(MicrometerMonitoringManagerSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.monitoring")
 public class MicrometerMonitoringProps {

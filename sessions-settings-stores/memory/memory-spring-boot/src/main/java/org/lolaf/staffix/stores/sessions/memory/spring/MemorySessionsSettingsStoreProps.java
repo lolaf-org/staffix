@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.sessions.memory.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ import java.util.Map;
 /**
  * The {@code staffix.*} properties for the in-memory session settings store.
  */
+@ConfiguresComponent(MemorySessionsSettingsStoreSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.sessions-settings-stores-memory")
 public class MemorySessionsSettingsStoreProps {

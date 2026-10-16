@@ -16,6 +16,8 @@
 package org.lolaf.staffix.alerting.slf4j.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.alerting.slf4j.Slf4jAlertsPublisherSettings;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ import java.util.Map;
 /**
  * Properties for SLF4J alerts publishers, bound from {@code staffix.alerts-publishers-slf4j.instances.<key>.*}.
  */
+@ConfiguresComponent(Slf4jAlertsPublisherSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.alerts-publishers-slf4j")
 public class Slf4jAlertsPublisherProps {

@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.sessions.jdbc.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.sessions.jdbc.JdbcSessionsSettingsStoreSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ import java.util.Map;
 /**
  * The {@code staffix.*} properties for the JDBC session settings store.
  */
+@ConfiguresComponent(JdbcSessionsSettingsStoreSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.sessions-settings-stores-jdbc")
 public class JdbcSessionsSettingsStoreProps {

@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.messages.memory.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -28,6 +30,7 @@ import java.util.Map;
  * top-level namespace so each store impl module owns its config space and the starter has
  * no compile-time knowledge of the impls.
  */
+@ConfiguresComponent(MemoryMessageStoreSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.messages-stores-memory")
 public class MemoryMessagesStoreProps {

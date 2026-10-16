@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.loggers.file.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.loggers.file.FileMessagesLoggerSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -26,6 +28,7 @@ import java.util.Map;
  *
  * <p>Bound from {@code staffix.messages-loggers-file.instances.<key>.*}.
  */
+@ConfiguresComponent(FileMessagesLoggerSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.messages-loggers-file")
 public class FileMessagesLoggerProps {

@@ -16,6 +16,8 @@
 package org.lolaf.staffix.admin.jmx.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.admin.jmx.JmxAdminApiSettings;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -23,6 +25,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>Bound from {@code staffix.admin-api-jmx.*}.
  */
+@ConfiguresComponent(JmxAdminApiSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.admin-api-jmx")
 public class JmxAdminApiProps {

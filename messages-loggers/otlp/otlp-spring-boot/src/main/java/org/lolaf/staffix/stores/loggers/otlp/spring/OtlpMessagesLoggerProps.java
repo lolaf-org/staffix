@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.loggers.otlp.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.loggers.otlp.OtlpMessagesLoggerSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -26,6 +28,7 @@ import java.util.Map;
  *
  * <p>Bound from {@code staffix.messages-loggers-otlp.instances.<key>.*}.
  */
+@ConfiguresComponent(OtlpMessagesLoggerSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.messages-loggers-otlp")
 public class OtlpMessagesLoggerProps {

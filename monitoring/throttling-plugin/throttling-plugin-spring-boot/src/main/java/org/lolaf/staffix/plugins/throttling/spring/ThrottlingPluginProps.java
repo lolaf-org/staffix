@@ -16,6 +16,8 @@
 package org.lolaf.staffix.plugins.throttling.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.plugins.throttling.ThrottlingFixSessionsPluginSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -28,6 +30,7 @@ import java.util.Map;
  * key contributed by any other sessions-plugin contributor (micrometer, tracing, ...); the throttling
  * wrapper rate-limits that plugin's per-message callbacks so it is not overwhelmed at peak throughput.
  */
+@ConfiguresComponent(ThrottlingFixSessionsPluginSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.throttling-plugin")
 public class ThrottlingPluginProps {

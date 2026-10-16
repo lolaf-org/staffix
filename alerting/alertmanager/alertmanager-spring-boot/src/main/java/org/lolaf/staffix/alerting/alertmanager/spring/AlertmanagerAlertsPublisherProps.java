@@ -16,6 +16,8 @@
 package org.lolaf.staffix.alerting.alertmanager.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.alerting.alertmanager.AlertmanagerAlertsPublisherSettings;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ import java.util.Map;
 /**
  * Properties for Alertmanager alerts publishers, bound from {@code staffix.alerts-publishers-alertmanager.instances.<key>.*}.
  */
+@ConfiguresComponent(AlertmanagerAlertsPublisherSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.alerts-publishers-alertmanager")
 public class AlertmanagerAlertsPublisherProps {

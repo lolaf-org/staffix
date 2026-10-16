@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.loggers.async.spring;
 
 import lombok.Data;
+import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.stores.loggers.async.AsyncMessagesLoggerSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.LinkedHashMap;
@@ -27,6 +29,7 @@ import java.util.Map;
  * <p>Bound from {@code staffix.messages-loggers-async.instances.<key>.*}. Each entry's
  * {@code wraps} field is a key contributed by any other logger contributor (slf4j, file, otlp).
  */
+@ConfiguresComponent(AsyncMessagesLoggerSettings.class)
 @Data
 @ConfigurationProperties(prefix = "staffix.messages-loggers-async")
 public class AsyncMessagesLoggerProps {
