@@ -71,6 +71,13 @@ abstract class AbstractFixClientApplicationTest {
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(executionReports).containsExactly("order-1:0"));
+        thenWhatTheEnvironmentWroteHoldsTheOrder();
+    }
+
+    /**
+     * Nothing to check by default: dev keeps its messages in memory and logs them through SLF4J.
+     */
+    void thenWhatTheEnvironmentWroteHoldsTheOrder() {
     }
 
     private static int freePort() throws IOException {
