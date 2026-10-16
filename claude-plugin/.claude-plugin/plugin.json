@@ -1,0 +1,14 @@
+{
+  "name": "staffix",
+  "displayName": "Staffix",
+  "version": "0.9.2-SNAPSHOT",
+  "description": "Create a staffix FIX application, or migrate a QuickFIX/J application to staffix",
+  "author": {
+    "name": "lolaf.org",
+    "url": "https://lolaf.org"
+  },
+  "homepage": "https://lolaf.org",
+  "repository": "https://github.com/lolaf-org/staffix",
+  "license": "Apache-2.0",
+  "keywords": ["fix", "fix-protocol", "quickfixj", "java", "trading"]
+}

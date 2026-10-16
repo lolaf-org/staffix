@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/lolaf-org/staffix/v0.9.1/sessions-settings-stores/document/etc/fix-session-settings.v1.schema.json
+schemaVersion: 1
+fixSessionId:
+  name: "order-entry"
+  fixVersion: "FIX.4.4"
+  senderCompID: "${env:FIX_SENDER_COMP_ID:CLIENT}"
+  targetCompID: "${env:FIX_TARGET_COMP_ID:BROKER}"
+fixSessionType: "INITIATOR"
+fixApplicationInstanceId: "order-entry"
+resetSeqNumOnLogon: "${env:FIX_RESET_SEQ_NUM_ON_LOGON:true}"

@@ -1,0 +1,4 @@
+NewOrderSingle
+ExecutionReport
+# required by the session layer
+BusinessMessageReject
