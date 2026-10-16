@@ -6,7 +6,9 @@ holds the settings, their defaults and what each costs.
 
 Artifacts are `org.lolaf.staffix:<artifact>-impl` in plain Java and `<artifact>-spring-boot` with Spring Boot, at the
 staffix version; a name marked *full* is used as it is. With Spring Boot declare the `-spring-boot` artifact only: it
-brings the `-impl`, and declaring the impl yourself (worse, in test scope) can hide it from the autoconfiguration.
+brings the `-impl`, and an impl declared again, above all in test scope, hides it from the autoconfiguration, which
+then skips the component without a word. The engine is the exception: staffix 0.9.1's starter does not bring
+`staffix-impl`, so declare it beside the starter.
 
 Components marked *proven* run in a reference project; for the others, the generated prod test is the proof.
 
