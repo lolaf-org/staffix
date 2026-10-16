@@ -18,10 +18,13 @@ package org.lolaf.staffix.api.alerting;
 
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.metadata.SelectedBy;
 
 /**
  * Settings for an alerts publisher, resolved through the {@link Factory} SPI.
  */
+@SelectedBy(sessionSetting = "fixAlertsPublisherInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
+        whenUnknown = SelectedBy.WhenUnknown.REFUSED_ONCE_ANY_REGISTERED)
 public interface FixAlertsPublisherSettings extends InstanceProvider<FixAlertsPublisher> {
 
     @Override
