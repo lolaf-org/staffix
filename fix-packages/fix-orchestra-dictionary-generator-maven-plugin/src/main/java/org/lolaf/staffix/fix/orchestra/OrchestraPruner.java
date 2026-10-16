@@ -54,6 +54,7 @@ public final class OrchestraPruner {
      * As {@code FixDictionaryEmitter} spells it, which is what decides where the session layer is written.
      */
     private static final String SESSION_CATEGORY = "Session";
+    private static final String BUSINESS_MESSAGE_REJECT_MSG_TYPE = "j";
 
     private final OrchestraRepository repository;
     private final VersionCut cut;
@@ -124,10 +125,10 @@ public final class OrchestraPruner {
      * have held: an entry naming a message that exists in FIX Latest and not at a FIX.4.4 cut is a mistake worth a
      * failed build, and matching before the cut would let it pass as a message silently removed a moment later.
      * <p>
-     * Session messages are kept whatever the list says. Which application messages a package is about is a choice;
-     * whether it can log on is not, and up to FIX.4.4 the session layer belongs to this dictionary rather than to
-     * FIXT.1.1. A list is written to name the business vocabulary, so a FIX.4.2 one would leave out Logon and
-     * Heartbeat without ever meaning to, and produce a dictionary that cannot open a session.
+     * Session messages are kept whatever the list says, and so is BusinessMessageReject, which the session layer
+     * sends and receives from FIX.4.2 though Orchestra files it under Common. Which application messages a package is
+     * about is a choice; whether it can run a session is not. A list names the business vocabulary, so it would leave
+     * them out without ever meaning to, and produce a dictionary that cannot open a session.
      */
     private void removeMessagesNotSelected() {
         if (selection == null) {
@@ -141,10 +142,15 @@ public final class OrchestraPruner {
         }
         unmatchedMessages.addAll(selection.unmatchedIn(messages));
         for (Element message : messages) {
-            if (!selection.keeps(message) && !SESSION_CATEGORY.equals(message.getAttribute("category"))) {
+            if (!selection.keeps(message) && !isNeededBySessionLayer(message)) {
                 remove(message, Reason.NOT_SELECTED, "fixr:message");
             }
         }
+    }
+
+    private static boolean isNeededBySessionLayer(Element message) {
+        return SESSION_CATEGORY.equals(message.getAttribute("category"))
+                || BUSINESS_MESSAGE_REJECT_MSG_TYPE.equals(message.getAttribute("msgType"));
     }
 
     private Map<String, String> codeSetDatatypes() {

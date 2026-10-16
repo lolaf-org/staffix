@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  BusinessMessageReject filed under Common, as the published repositories file it, beside a session message and two
+  application messages: the session layer needs it whatever a message list names.
+-->
+<fixr:repository xmlns:fixr="http://fixprotocol.io/2020/orchestra/repository" name="Fixture" version="Fixture_EP300">
+    <fixr:fields>
+        <fixr:field id="1" name="Account" type="String" added="FIX.2.7"/>
+        <fixr:field id="58" name="Text" type="String" added="FIX.2.7"/>
+        <fixr:field id="34" name="MsgSeqNum" type="SeqNum" added="FIX.2.7"/>
+        <fixr:field id="10" name="CheckSum" type="String" added="FIX.2.7"/>
+    </fixr:fields>
+
+    <fixr:components>
+        <fixr:component id="1024" name="StandardHeader" category="Session" added="FIX.4.0">
+            <fixr:fieldRef id="34" presence="required" added="FIX.4.0"/>
+        </fixr:component>
+        <fixr:component id="1025" name="StandardTrailer" category="Session" added="FIX.4.0">
+            <fixr:fieldRef id="10" presence="required" added="FIX.4.0"/>
+        </fixr:component>
+    </fixr:components>
+
+    <fixr:messages>
+        <fixr:message id="11" name="Logon" msgType="A" category="Session" added="FIX.2.7">
+            <fixr:structure>
+                <fixr:componentRef id="1024" presence="required" added="FIX.2.7"/>
+                <fixr:componentRef id="1025" presence="required" added="FIX.2.7"/>
+            </fixr:structure>
+        </fixr:message>
+        <fixr:message id="12" name="BusinessMessageReject" msgType="j" category="Common" added="FIX.4.2">
+            <fixr:structure>
+                <fixr:fieldRef id="58" added="FIX.4.2"/>
+            </fixr:structure>
+        </fixr:message>
+        <fixr:message id="13" name="AppMessage" msgType="ZX" category="Common" added="FIX.4.2">
+            <fixr:structure>
+                <fixr:fieldRef id="1" added="FIX.4.2"/>
+            </fixr:structure>
+        </fixr:message>
+        <fixr:message id="14" name="OtherAppMessage" msgType="ZW" category="Common" added="FIX.4.2">
+            <fixr:structure>
+                <fixr:fieldRef id="1" added="FIX.4.2"/>
+            </fixr:structure>
+        </fixr:message>
+    </fixr:messages>
+</fixr:repository>

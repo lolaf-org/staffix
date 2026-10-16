@@ -223,8 +223,8 @@ public class DictionaryGeneratorMojo extends AbstractMojo {
                 int kept = repository.elementsByTagName("fixr:message").size();
                 int dropped = report.count(PruneReport.Reason.NOT_SELECTED, "fixr:message");
                 getLog().info("Kept " + kept + " of the " + (kept + dropped) + " messages of this cut, from "
-                        + includeMessagesFile + " - session messages are kept whatever it says, and "
-                        + "written to the dictionary only where the session layer belongs to it");
+                        + includeMessagesFile + " - whatever it says, session messages are kept, and written only where the "
+                        + "session layer belongs to this dictionary, and BusinessMessageReject is kept and written");
             }
             getLog().info("Removed " + report.total() + " elements");
             for (String line : report.describe().split(System.lineSeparator())) {

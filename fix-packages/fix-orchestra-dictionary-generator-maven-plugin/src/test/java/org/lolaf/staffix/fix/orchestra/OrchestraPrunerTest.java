@@ -270,6 +270,20 @@ public class OrchestraPrunerTest {
     }
 
     /**
+     * The session layer sends and receives BusinessMessageReject from FIX.4.2, but Orchestra files it under Common, so
+     * a list naming the business vocabulary would drop it and leave a dictionary no session can run on.
+     */
+    @Test
+    public void testBusinessMessageRejectSurvivesASelectionThatDoesNotNameIt() throws Exception {
+        OrchestraRepository repository = fixture("orchestration-business-message-reject-fixture.xml");
+        PruneReport report = new OrchestraPruner(repository, VersionCut.of(OrchestraVersion.of("FIX.4.4"), 0), true,
+                MessageSelection.of("AppMessage")).prune();
+
+        assertEquals(List.of("Logon", "BusinessMessageReject", "AppMessage"), namesOf(repository, "fixr:message"));
+        assertEquals("OtherAppMessage", 1, report.count(PruneReport.Reason.NOT_SELECTED, "fixr:message"));
+    }
+
+    /**
      * The selection is read against the messages the cut left, not against the repository as published: LatestMessage
      * came at EP300, so asking a 4.4 cut for it is a mistake rather than a message that happens not to be there.
      */
