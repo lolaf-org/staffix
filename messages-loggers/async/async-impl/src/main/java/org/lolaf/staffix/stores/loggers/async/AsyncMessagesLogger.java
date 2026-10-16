@@ -43,6 +43,7 @@ public class AsyncMessagesLogger extends Startable.SimpleStartable<FixMessagesLo
     private final AsyncEventInstanceProvider<AsyncLogEvent> asyncEventInstanceProvider;
 
     protected AsyncMessagesLogger(AsyncMessagesLoggerSettings asyncMessagesLoggerSettings) {
+        requireComplete(asyncMessagesLoggerSettings);
         this.asyncMessagesLoggerSettings = asyncMessagesLoggerSettings;
         boolean directByteBuffer = asyncMessagesLoggerSettings.isUseDirectByteBuffer();
         int logBufferSize = asyncMessagesLoggerSettings.getLogByteBufferSize();
@@ -52,6 +53,17 @@ public class AsyncMessagesLogger extends Startable.SimpleStartable<FixMessagesLo
         this.asyncStoreThreads = new AsyncStoreThreads<>(asyncMessagesLoggerSettings.getAsyncStoreSettings(), asyncMessagesLoggerSettings.getInstanceId(), asyncEventInstanceProvider);
         this.loggers = new ConcurrentHashMap<>();
         this.wrappedFixMessagesLogger = asyncMessagesLoggerSettings.getWrappedLoggerSettings().instance();
+    }
+
+    private static void requireComplete(AsyncMessagesLoggerSettings settings) {
+        if (settings.getWrappedLoggerSettings() == null) {
+            throw new IllegalArgumentException("Async messages logger: wrappedLoggerSettings is required, the logger "
+                    + "the queue hands the messages to");
+        }
+        if (settings.getAsyncStoreSettings() == null || settings.getAsyncStoreSettings().getAsyncQueueDirectory() == null) {
+            throw new IllegalArgumentException("Async messages logger " + settings.getInstanceId() + ": asyncStoreSettings "
+                    + "with an asyncQueueDirectory is required, the directory of the queue in front of the wrapped logger");
+        }
     }
 
     @Override

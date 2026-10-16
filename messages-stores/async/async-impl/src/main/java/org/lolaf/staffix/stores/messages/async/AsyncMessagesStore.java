@@ -44,6 +44,7 @@ public class AsyncMessagesStore extends Startable.SimpleStartable<FixMessagesSto
     private final AsyncEventInstanceProvider<AsyncStoreEvent> asyncEventInstanceProvider;
 
     protected AsyncMessagesStore(AsyncMessagesStoreSettings asyncMessagesStoreSettings) {
+        requireComplete(asyncMessagesStoreSettings);
         this.asyncMessagesStoreSettings = asyncMessagesStoreSettings;
         this.contexts = new ConcurrentHashMap<>();
         this.wrappedFixMessagesStore = asyncMessagesStoreSettings.getWrappedFixMessagesStoreSettings().instance();
@@ -52,6 +53,17 @@ public class AsyncMessagesStore extends Startable.SimpleStartable<FixMessagesSto
         this.asyncEventInstanceProvider = releaseCallback -> new AsyncStoreEvent(
                 directByteBuffer ? ByteBuffer.allocateDirect(messageBufferSize) : ByteBuffer.allocate(messageBufferSize), releaseCallback);
         this.asyncStoreThreads = new AsyncStoreThreads<>(asyncMessagesStoreSettings.getAsyncStoreSettings(), asyncMessagesStoreSettings.getInstanceId(), asyncEventInstanceProvider);
+    }
+
+    private static void requireComplete(AsyncMessagesStoreSettings settings) {
+        if (settings.getWrappedFixMessagesStoreSettings() == null) {
+            throw new IllegalArgumentException("Async messages store: wrappedFixMessagesStoreSettings is required, the "
+                    + "store the queue hands the messages to");
+        }
+        if (settings.getAsyncStoreSettings() == null || settings.getAsyncStoreSettings().getAsyncQueueDirectory() == null) {
+            throw new IllegalArgumentException("Async messages store " + settings.getInstanceId() + ": asyncStoreSettings "
+                    + "with an asyncQueueDirectory is required, the directory of the queue in front of the wrapped store");
+        }
     }
 
     @Override

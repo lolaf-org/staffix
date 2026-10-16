@@ -787,4 +787,31 @@ class TestAsyncMessagesStore {
         await().untilAsserted(() -> verify(messageStore).storeNextIncomingSeqNum(4321L));
     }
 
+
+    @Test
+    void settingsWithoutAQueueDirectoryAreRefusedWithWhatIsMissing() {
+        String missingQueue = "Async messages store " + asyncMessagesStoreSettings.getInstanceId() + ": asyncStoreSettings "
+                + "with an asyncQueueDirectory is required, the directory of the queue in front of the wrapped store";
+
+        assertThatThrownBy(() -> new AsyncMessagesStore(asyncMessagesStoreSettings.toBuilder()
+                .asyncStoreSettings(null)
+                .build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(missingQueue);
+        assertThatThrownBy(() -> new AsyncMessagesStore(asyncMessagesStoreSettings.toBuilder()
+                .asyncStoreSettings(AsyncStoreSettings.builder().build())
+                .build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(missingQueue);
+    }
+
+    @Test
+    void settingsWithoutAWrappedStoreAreRefusedWithWhatIsMissing() {
+        assertThatThrownBy(() -> new AsyncMessagesStore(asyncMessagesStoreSettings.toBuilder()
+                .wrappedFixMessagesStoreSettings(null)
+                .build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Async messages store: wrappedFixMessagesStoreSettings is required, the store the queue "
+                        + "hands the messages to");
+    }
 }

@@ -44,6 +44,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
@@ -553,5 +554,32 @@ class TestAsyncMessagesLogger {
         assertThat(asyncLogger.getQueueOffersCount()).isEqualTo(1L);
         await().untilAsserted(() -> verify(logger).logEvent(logTime, testEvent, "param1", "param2"));
         assertThat(asyncLogger.getQueuePollsCount()).isEqualTo(1L);
+    }
+
+    @Test
+    void settingsWithoutAQueueDirectoryAreRefusedWithWhatIsMissing() {
+        String missingQueue = "Async messages logger " + asyncMessagesLoggerSettings.getInstanceId() + ": asyncStoreSettings "
+                + "with an asyncQueueDirectory is required, the directory of the queue in front of the wrapped logger";
+
+        assertThatThrownBy(() -> new AsyncMessagesLogger(asyncMessagesLoggerSettings.toBuilder()
+                .asyncStoreSettings(null)
+                .build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(missingQueue);
+        assertThatThrownBy(() -> new AsyncMessagesLogger(asyncMessagesLoggerSettings.toBuilder()
+                .asyncStoreSettings(AsyncStoreSettings.builder().build())
+                .build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(missingQueue);
+    }
+
+    @Test
+    void settingsWithoutAWrappedLoggerAreRefusedWithWhatIsMissing() {
+        assertThatThrownBy(() -> new AsyncMessagesLogger(asyncMessagesLoggerSettings.toBuilder()
+                .wrappedLoggerSettings(null)
+                .build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Async messages logger: wrappedLoggerSettings is required, the logger the queue hands the "
+                        + "messages to");
     }
 }
