@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-parent</artifactId>
+        <version>0.9.2-SNAPSHOT</version>
+    </parent>
+    <packaging>pom</packaging>
+
+    <name>Staffix Build Tools</name>
+    <description>
+        Tools the staffix build runs on its own modules.
+    </description>
+
+    <artifactId>staffix-build-tools-parent</artifactId>
+
+    <modules>
+        <module>settings-javadoc</module>
+    </modules>
+
+</project>

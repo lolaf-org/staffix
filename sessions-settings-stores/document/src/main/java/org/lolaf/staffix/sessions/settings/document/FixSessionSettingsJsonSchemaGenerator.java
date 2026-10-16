@@ -31,6 +31,7 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.buildtools.javadoc.SettingsJavadoc;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,6 +46,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -266,10 +268,11 @@ public class FixSessionSettingsJsonSchemaGenerator {
      * The API class's javadoc for the same field, else this module's for a field only a document has.
      */
     private static String description(SettingsJavadoc javadoc, Class<?> type, String field) {
-        String className = type.getName().substring(type.getPackage().getName().length() + 1).replace('$', '.');
-        String apiClassName = className.equals("FixSessionSettingsDocument.FixSessionId")
-                ? "FixSessionId"
-                : className.replaceFirst("^FixSessionSettingsDocument", "FixSessionSettings");
+        String className = type.getName().replace('$', '.');
+        String apiClassName = type == FixSessionSettingsDocument.FixSessionId.class
+                ? FixSessionId.class.getName()
+                : className.replaceFirst("^" + Pattern.quote(FixSessionSettingsDocument.class.getName()),
+                        FixSessionSettings.class.getName());
         String description = javadoc.describe(apiClassName, field);
         return description != null ? description : javadoc.describe(className, field);
     }

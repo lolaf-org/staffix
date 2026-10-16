@@ -54,6 +54,7 @@
     </issueManagement>
 
     <modules>
+        <module>build-tools</module>
         <module>api</module>
         <module>collections</module>
         <module>test-utils</module>
