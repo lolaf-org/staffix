@@ -18,12 +18,14 @@ package org.lolaf.staffix.api.admin;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.InstanceProvider;
 
 /**
  * Settings for an admin API, resolved through the {@link org.lolaf.staffix.api.Factory} SPI - JMX is the shipped
  * implementation.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class AdminApiExporterSettings implements InstanceProvider<AdminApiExporter> {

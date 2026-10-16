@@ -19,10 +19,12 @@ package org.lolaf.staffix.api.alerting;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * The settings every alerts publisher shares, so each module declares only what is its own.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class AbstractFixAlertsPublisherSettings implements FixAlertsPublisherSettings {

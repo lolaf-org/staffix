@@ -44,7 +44,8 @@ holds it. In plain Java, `fixMessagesStore(AsyncMessagesStoreSettings.builder()`
 
 ## Message loggers
 
-Selected by a session's `fixMessageLoggerInstanceId`. Doc: `docs/stores-and-loggers.md`.
+Selected by a session's `fixMessageLoggerInstanceId`. With none registered, sessions are not logged; once any is, a
+session naming an unknown id is refused. Doc: `docs/stores-and-loggers.md`.
 
 | logger | artifact | Java settings | Spring prefix | notes |
 | :- | :- | :- | :- | :- |

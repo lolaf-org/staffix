@@ -17,11 +17,13 @@ package org.lolaf.staffix.spring.boot.actuator;
 
 import lombok.Builder;
 import lombok.Getter;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 
 /**
  * Settings for the Actuator monitoring plugin - the one that collects what the endpoints report.
  */
+@NullMarked
 @Getter
 @Builder(toBuilder = true)
 public class ActuatorMonitoringManagerSettings implements FixSessionsPluginSettings<ActuatorMonitoringManager> {

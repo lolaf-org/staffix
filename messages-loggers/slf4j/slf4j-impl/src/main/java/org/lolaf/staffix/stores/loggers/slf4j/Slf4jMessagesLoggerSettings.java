@@ -18,6 +18,8 @@ package org.lolaf.staffix.stores.loggers.slf4j;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.logging.AbstractFixMessageLoggerSettings;
 import org.lolaf.staffix.api.session.FixSessionId;
 
@@ -26,6 +28,7 @@ import java.util.function.Function;
 /**
  * The logger name and level the SLF4J message logger writes under.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class Slf4jMessagesLoggerSettings extends AbstractFixMessageLoggerSettings {
@@ -62,6 +65,7 @@ public class Slf4jMessagesLoggerSettings extends AbstractFixMessageLoggerSetting
      * in most log viewers.
      */
     @Builder.Default
+    @Nullable
     private Character messageFieldsDelimiter = null;
 
 }

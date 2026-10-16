@@ -18,6 +18,7 @@ package org.lolaf.staffix.application.factories.simple;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 
@@ -26,6 +27,7 @@ import java.util.Map;
 /**
  * The application class each session id maps to.
  */
+@NullMarked
 @Getter
 @Builder(toBuilder = true)
 public class SimpleApplicationFactorySettings implements FixApplicationFactorySettings {

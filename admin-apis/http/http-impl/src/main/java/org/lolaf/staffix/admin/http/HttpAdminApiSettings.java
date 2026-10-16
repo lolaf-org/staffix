@@ -19,6 +19,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.admin.AdminApiExporterSettings;
 
 import javax.net.ssl.SSLContext;
@@ -28,6 +30,7 @@ import java.util.concurrent.ScheduledExecutorService;
 /**
  * Where the engine serves its admin API, and the staffix admin console it announces itself to.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class HttpAdminApiSettings extends AdminApiExporterSettings {
@@ -44,23 +47,27 @@ public class HttpAdminApiSettings extends AdminApiExporterSettings {
     /**
      * Serves HTTPS when set, plain HTTP otherwise.
      */
+    @Nullable
     private final SSLContext sslContext;
 
     /**
      * The bearer token every API request must carry; null generates a random one at export, known only to the
      * console it is announced to.
      */
+    @Nullable
     private final String apiToken;
 
     /**
      * A second bearer token that may only read ({@code GET}), for monitoring tools that must not operate sessions;
      * null serves none.
      */
+    @Nullable
     private final String readOnlyApiToken;
 
     /**
      * The staffix admin console to announce the engine to; null serves the API without announcing it.
      */
+    @Nullable
     private final AnnouncementSettings announcement;
 
     @Getter
@@ -77,19 +84,23 @@ public class HttpAdminApiSettings extends AdminApiExporterSettings {
          * The URL the console reaches this engine at; null derives it from the host name and the bound port, which
          * is wrong behind a proxy or a NAT.
          */
+        @Nullable
         private final String advertisedUrl;
 
         /**
          * An admin console user with the ENGINE role, used only to announce the engine; it grants nothing on this API.
          */
+        @Nullable
         private final String username;
 
+        @Nullable
         private final String password;
 
         /**
          * Trusts an HTTPS console whose certificate the JVM's default truststore does not, such as one from a private
          * CA; null uses the JVM's default.
          */
+        @Nullable
         private final SSLContext sslContext;
 
         /**
@@ -103,6 +114,7 @@ public class HttpAdminApiSettings extends AdminApiExporterSettings {
          * Runs the announcements; null creates one daemon thread per engine. A given scheduler is never shut down by
          * the engine.
          */
+        @Nullable
         private final ScheduledExecutorService scheduler;
     }
 }

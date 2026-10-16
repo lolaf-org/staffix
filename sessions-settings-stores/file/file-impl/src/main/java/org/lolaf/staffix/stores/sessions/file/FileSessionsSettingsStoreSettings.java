@@ -18,6 +18,8 @@ package org.lolaf.staffix.stores.sessions.file;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.ConfigValueResolver;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
 
@@ -28,6 +30,7 @@ import java.util.List;
 /**
  * The directory of session files, and whether changes to them are picked up while the engine runs.
  */
+@NullMarked
 @Getter
 @Builder(toBuilder = true)
 public class FileSessionsSettingsStoreSettings implements FixSessionsSettingsStoreSettings {
@@ -54,7 +57,9 @@ public class FileSessionsSettingsStoreSettings implements FixSessionsSettingsSto
     @Singular("fixSessionSettingsUri")
     private final List<URI> fixSessionSettingsUris;
     /**
-     * The directory of YAML session files. Required.
+     * The directory of YAML session files, written back when settings change. This or
+     * {@link #fixSessionSettingsUris} is required.
      */
+    @Nullable
     private File fixSessionSettingsDirectory;
 }

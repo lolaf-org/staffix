@@ -17,6 +17,7 @@ package org.lolaf.staffix.stores.messages.memory;
 
 import lombok.Builder;
 import lombok.Getter;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
@@ -26,6 +27,7 @@ import java.util.function.BiPredicate;
 /**
  * How much the in-memory store retains before discarding the oldest.
  */
+@NullMarked
 @Getter
 @Builder(toBuilder = true)
 public class MemoryMessageStoreSettings implements FixMessagesStoreSettings {

@@ -17,8 +17,10 @@ package org.lolaf.staffix.plugins.async;
 
 import lombok.Builder;
 import lombok.Getter;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.ringos.idling.TimerSlackAwareBackoffIdleStrategy;
+import org.lolaf.staffix.api.metadata.Wrapped;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 
@@ -43,6 +45,7 @@ import java.util.function.Supplier;
  *         .build())
  * }</pre>
  */
+@NullMarked
 @Getter
 @Builder(toBuilder = true)
 public class AsyncFixSessionsPluginSettings implements FixSessionsPluginSettings<AsyncFixSessionsPlugin<?>> {
@@ -50,6 +53,7 @@ public class AsyncFixSessionsPluginSettings implements FixSessionsPluginSettings
     /**
      * Settings of the plugin being wrapped. Required.
      */
+    @Wrapped
     private final FixSessionsPluginSettings<?> delegateSettings;
 
     /**

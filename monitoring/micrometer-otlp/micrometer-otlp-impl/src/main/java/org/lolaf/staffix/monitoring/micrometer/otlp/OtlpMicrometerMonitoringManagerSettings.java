@@ -22,6 +22,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.http.HttpSender;
 import org.lolaf.staffix.api.http.HttpSenderSettings;
 import org.lolaf.staffix.http.jdk.JdkHttpSender;
@@ -35,6 +37,7 @@ import java.util.function.Function;
 /**
  * The collector endpoint, the push interval, and which HTTP client carries it.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class OtlpMicrometerMonitoringManagerSettings extends MicrometerMonitoringManagerSettings {
@@ -42,10 +45,11 @@ public class OtlpMicrometerMonitoringManagerSettings extends MicrometerMonitorin
     /**
      * Overrides the generated OtlpConfig from settings
      */
+    @Nullable
     private final OtlpConfig otlpConfig;
 
     /**
-     * HTTP OTLP endpoint url
+     * The collector's OTLP/HTTP URL, {@code /v1/metrics} appended when missing; unused when {@link #otlpConfig} is set.
      */
     private final String otlpEndpointUrl;
 

@@ -19,6 +19,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.grpc.GrpcSender;
@@ -39,12 +41,13 @@ import java.util.function.Supplier;
  *
  * <p>gRPC needs the OkHttp or Jetty client: HTTP/2 trailers are not exposed by the JDK's.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class OtlpMessagesLoggerSettings extends AbstractFixMessageLoggerSettings {
 
     /**
-     * HTTP OTLP endpoint url
+     * The collector's URL; over HTTP, {@code /v1/logs} is appended when missing.
      */
     private final String otlpEndpointUrl;
 
@@ -91,6 +94,7 @@ public class OtlpMessagesLoggerSettings extends AbstractFixMessageLoggerSettings
      * it unset with {@code GRPC} selected and the logger refuses to start, naming both.
      */
     @Builder.Default
+    @Nullable
     private final Function<GrpcSenderSettings, GrpcSender> grpcSenderFactory = null;
 
     /**
@@ -139,6 +143,7 @@ public class OtlpMessagesLoggerSettings extends AbstractFixMessageLoggerSettings
      * Runs the flush to the collector, so it does not happen on the message path.
      */
     @Builder.Default
+    @Nullable
     private final ScheduledExecutorService logsFlushingExecutorService = null;
 
     /**
@@ -146,6 +151,7 @@ public class OtlpMessagesLoggerSettings extends AbstractFixMessageLoggerSettings
      * if the logger is not backed by an async messages logger
      */
     @Builder.Default
+    @Nullable
     private final Character fixMessageFieldsDelimiter = null;
 
     /**

@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.loggers.demux;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.logging.AbstractFixMessageLoggerSettings;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 
@@ -26,6 +27,7 @@ import java.util.List;
 /**
  * The loggers a demultiplexing logger feeds.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class DemuxMessagesLoggerSettings extends AbstractFixMessageLoggerSettings {

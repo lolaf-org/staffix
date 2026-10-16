@@ -21,6 +21,7 @@ import lombok.experimental.SuperBuilder;
 import net.openhft.chronicle.queue.RollCycle;
 import net.openhft.chronicle.queue.RollCycles;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.ringos.idling.TimerSlackAwareBackoffIdleStrategy;
@@ -39,6 +40,7 @@ import java.util.function.Supplier;
 /**
  * The queue's location and size, the consumer threads, and the thresholds at which queue depth is reported.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class AsyncStoreSettings {
@@ -49,7 +51,7 @@ public class AsyncStoreSettings {
     @Builder.Default
     private final ThreadFactory threadFactory = FastThreadLocalThread::new;
     /**
-     * Directory where the async queues for the FIX sessions are stored
+     * Directory holding each session's Chronicle queue, which keeps queued work across a restart.
      */
     private String asyncQueueDirectory;
     /**

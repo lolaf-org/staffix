@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.alerting.AbstractFixAlertsPublisherSettings;
 import org.lolaf.staffix.api.http.HttpSender;
 import org.lolaf.staffix.api.http.HttpSenderSettings;
@@ -34,6 +35,7 @@ import java.util.function.Function;
  * Where and how often the ongoing alerts are posted. Each alert is posted with an {@code endsAt} of four resend
  * intervals ahead, so an engine that stops posting has its alerts resolved by Alertmanager on its own.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class AlertmanagerAlertsPublisherSettings extends AbstractFixAlertsPublisherSettings {

@@ -20,6 +20,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.InstanceProvider;
 import org.lolaf.staffix.api.monitoring.FixSessionMonitoringManagerSettings;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -34,6 +36,7 @@ import java.util.function.Supplier;
 /**
  * The registry to publish to, and which timers are enabled - each one costs a measurement on the message path.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class MicrometerMonitoringManagerSettings implements FixSessionMonitoringManagerSettings {
@@ -114,8 +117,9 @@ public class MicrometerMonitoringManagerSettings implements FixSessionMonitoring
             .publishPercentileHistogram(false)
             .build();
     /**
-     * Supplies the registry to publish to. Required.
+     * Supplies the registry to publish to. Required by the Micrometer manager; the OTLP one builds its own.
      */
+    @Nullable
     private Supplier<MeterRegistry> meterRegistrySupplier;
 
     @Getter

@@ -18,10 +18,14 @@ package org.lolaf.staffix.stores.loggers.async;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.logging.AbstractFixMessageLoggerSettings;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.logging.LogObfuscator;
+import org.lolaf.staffix.api.metadata.JvmFlagSet;
+import org.lolaf.staffix.api.metadata.RequiresJvmFlags;
+import org.lolaf.staffix.api.metadata.Wrapped;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 
@@ -32,12 +36,14 @@ import java.util.function.BiPredicate;
 /**
  * The logger being wrapped, and the queue and threads in front of it.
  */
+@NullMarked
+@RequiresJvmFlags(JvmFlagSet.CHRONICLE)
 @Getter
 @SuperBuilder(toBuilder = true)
 public class AsyncMessagesLoggerSettings extends AbstractFixMessageLoggerSettings {
 
     /**
-     * Async store base settings
+     * The queue in front of the wrapped logger: where it lives and how it is read.
      */
     private AsyncStoreSettings asyncStoreSettings;
 
@@ -63,8 +69,9 @@ public class AsyncMessagesLoggerSettings extends AbstractFixMessageLoggerSetting
     private boolean useDirectByteBuffer = true;
 
     /**
-     * Wrapped logger settings
+     * The logger the calls go to; its instance id is this logger's.
      */
+    @Wrapped
     private FixMessagesLoggerSettings wrappedLoggerSettings;
 
     @Override

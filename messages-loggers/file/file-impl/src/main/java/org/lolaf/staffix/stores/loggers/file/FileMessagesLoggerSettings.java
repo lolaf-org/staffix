@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.loggers.file;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.logging.AbstractFixMessageLoggerSettings;
 import org.lolaf.staffix.api.session.FixSessionId;
 
@@ -28,6 +29,7 @@ import java.util.function.BiFunction;
 /**
  * Where the file message logger writes, how it rolls, and the prefixes marking a message's direction.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class FileMessagesLoggerSettings extends AbstractFixMessageLoggerSettings {

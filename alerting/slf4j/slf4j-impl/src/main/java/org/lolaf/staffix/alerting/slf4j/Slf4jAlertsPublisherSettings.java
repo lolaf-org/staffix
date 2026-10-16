@@ -18,6 +18,7 @@ package org.lolaf.staffix.alerting.slf4j;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.alerting.AbstractFixAlertsPublisherSettings;
 import org.lolaf.staffix.api.session.FixSessionId;
 
@@ -27,6 +28,7 @@ import java.util.function.Function;
  * The logger name an alert is logged under. The level follows the alert: warn for a warning, error for major and
  * critical, info once cleared.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class Slf4jAlertsPublisherSettings extends AbstractFixAlertsPublisherSettings {

@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.jmx;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.admin.AdminApiExporterSettings;
 
 import javax.management.MBeanServer;
@@ -26,6 +27,7 @@ import java.lang.management.ManagementFactory;
 /**
  * The domain the MBeans are registered under, and which operations are exposed.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class JmxAdminApiSettings extends AdminApiExporterSettings {

@@ -49,10 +49,10 @@ Without the tool, take the answers from the request and the defaults, and list t
 - **Add the artifacts** as `components.md` says, and remove those nothing uses any more.
 - **Keep the instance id the sessions already name** when replacing a component, so no session changes. A new
   instance id means every session that should use it names it, in every environment that shares the session.
-- **A session naming an unregistered component**: a store, a logger, or an alerts publisher once any is registered,
-  fails at start; a plugin fails at start once the engine registers any plugin. An environment that drops a
-  component keeps one under the id the sessions name, or the sessions it shares with other environments stop
-  naming it.
+- **A session naming an unregistered component** is refused: always for a store, and for a logger, an alerts
+  publisher or a plugin once the engine registers any of that kind (with none, the session runs without it). An
+  environment that drops a component keeps one under the id the sessions name, or the sessions it shares with
+  other environments stop naming it.
 - **Replacing the prod message store loses its sequence numbers and messages**: the sessions start again at 1 unless
   the counterparty resets too. Tell the user to switch at a sequence reset agreed with the counterparty.
 - **An async store or logger** runs on Chronicle Queue: check the JVM flags are where `environment-rules.md` puts

@@ -17,6 +17,8 @@ package org.lolaf.staffix.plugins.throttling;
 
 import lombok.Builder;
 import lombok.Getter;
+import org.jspecify.annotations.NullMarked;
+import org.lolaf.staffix.api.metadata.Wrapped;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 
@@ -54,6 +56,7 @@ import java.time.Duration;
  *         .build())
  * }</pre>
  */
+@NullMarked
 @Getter
 @Builder(toBuilder = true)
 public class ThrottlingFixSessionsPluginSettings implements FixSessionsPluginSettings<ThrottlingFixSessionsPlugin<?>> {
@@ -61,6 +64,7 @@ public class ThrottlingFixSessionsPluginSettings implements FixSessionsPluginSet
     /**
      * Settings of the plugin being wrapped. Required.
      */
+    @Wrapped
     private final FixSessionsPluginSettings<?> delegateSettings;
 
     /**

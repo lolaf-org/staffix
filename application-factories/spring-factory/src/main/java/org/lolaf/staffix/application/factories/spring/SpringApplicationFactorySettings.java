@@ -18,12 +18,14 @@ package org.lolaf.staffix.application.factories.spring;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.springframework.context.ApplicationContext;
 
 /**
  * The bean name or type each session's application is resolved by.
  */
+@NullMarked
 @Getter
 @Builder(toBuilder = true)
 public class SpringApplicationFactorySettings implements FixApplicationFactorySettings {

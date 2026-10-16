@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.sessions.memory;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
 
@@ -27,6 +28,7 @@ import java.util.function.BiFunction;
 /**
  * The sessions an in-memory settings store serves.
  */
+@NullMarked
 @Getter
 @Builder(toBuilder = true)
 public class MemorySessionsSettingsStoreSettings implements FixSessionsSettingsStoreSettings {

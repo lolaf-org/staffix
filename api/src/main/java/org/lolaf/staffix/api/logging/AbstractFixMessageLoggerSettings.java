@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.msg.MessageType;
 
 import java.time.Duration;
@@ -29,6 +30,7 @@ import java.util.function.BiPredicate;
  * The settings every message logger shares - obfuscators, message filter, instance id - so each module declares
  * only what is its own.
  */
+@NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
 public class AbstractFixMessageLoggerSettings implements FixMessagesLoggerSettings {
@@ -54,11 +56,11 @@ public class AbstractFixMessageLoggerSettings implements FixMessagesLoggerSettin
      */
     @Builder.Default
     private boolean logEvents = true;
-    @Singular
     /**
      * Applied to every message before it is written. A Logon carries Username(553) and Password(554) in clear, and a
      * log of raw FIX is kept for years.
      */
+    @Singular
     private List<LogObfuscator> logObfuscators;
     /**
      * Suppresses what it matches. Defaults to logging everything; the usual use is dropping heartbeats, which

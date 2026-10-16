@@ -23,7 +23,10 @@ import io.opentelemetry.sdk.trace.samplers.Sampler;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.metadata.RequiresArtifact;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 
@@ -35,6 +38,8 @@ import java.util.function.Supplier;
 /**
  * The collector endpoint, the sampling, and the field trace context is carried in.
  */
+@NullMarked
+@RequiresArtifact(oneOf = {"staffix-monitoring-tracing-otlp-sender", "staffix-monitoring-tracing-otlp-sender-grpc"})
 @Getter
 @Builder(toBuilder = true)
 public class OtelTracingSettings implements FixSessionsPluginSettings<OtelTracing> {
@@ -46,7 +51,7 @@ public class OtelTracingSettings implements FixSessionsPluginSettings<OtelTracin
     private final String instanceId = DEFAULT_INSTANCE_ID;
 
     /**
-     * HTTP or GRPC OTLP endpoint url
+     * The collector's URL, reached as {@link #otlpEndpointType} says; {@code /v1/traces} is appended when missing.
      */
     private final String otlpEndpointUrl;
 
@@ -89,6 +94,7 @@ public class OtelTracingSettings implements FixSessionsPluginSettings<OtelTracin
     /**
      * Executor service used by the OTLP span exporter client. If not provided, OtelTracing will create and manage its own instance.
      */
+    @Nullable
     private final ExecutorService executorService;
 
     /**

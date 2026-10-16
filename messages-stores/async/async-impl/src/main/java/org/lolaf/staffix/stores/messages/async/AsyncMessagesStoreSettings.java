@@ -18,6 +18,11 @@ package org.lolaf.staffix.stores.messages.async;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+import org.lolaf.staffix.api.metadata.JvmFlagSet;
+import org.lolaf.staffix.api.metadata.RequiresJvmFlags;
+import org.lolaf.staffix.api.metadata.Wrapped;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
@@ -29,12 +34,14 @@ import java.util.function.BiPredicate;
 /**
  * The store being wrapped, and the queue and threads in front of it.
  */
+@NullMarked
+@RequiresJvmFlags(JvmFlagSet.CHRONICLE)
 @Getter
 @SuperBuilder(toBuilder = true)
 public class AsyncMessagesStoreSettings implements FixMessagesStoreSettings {
 
     /**
-     * Async store base settings
+     * The queue in front of the wrapped store: where it lives and how it is read.
      */
     private AsyncStoreSettings asyncStoreSettings;
 
@@ -48,6 +55,7 @@ public class AsyncMessagesStoreSettings implements FixMessagesStoreSettings {
      * than read stale sequence numbers. {@code null} does not wait, so any pending write fails the start.
      */
     @Builder.Default
+    @Nullable
     private Duration flushPendingMessagesOnStartupDelay = Duration.ofSeconds(120);
     /**
      * Max duration a {@code find} call waits for every pending write to reach the wrapped store before reading, so a
@@ -55,6 +63,7 @@ public class AsyncMessagesStoreSettings implements FixMessagesStoreSettings {
      * {@code null} reads immediately, but a {@code find} while the wrapped store is down always throws.
      */
     @Builder.Default
+    @Nullable
     private Duration findWaitForEmptyQueueTimeout = Duration.ofSeconds(5);
     /**
      * Default byte buffer size for reading FIX messages from chronicle and passing them to the wrapped store
@@ -67,8 +76,9 @@ public class AsyncMessagesStoreSettings implements FixMessagesStoreSettings {
     @Builder.Default
     private boolean useDirectByteBuffer = true;
     /**
-     * Wrapped store settings
+     * The store the writes go to; its instance id is this store's.
      */
+    @Wrapped
     private FixMessagesStoreSettings wrappedFixMessagesStoreSettings;
     /**
      * See {@link FixMessagesStoreSettings#getResourceCheckInterval()}.

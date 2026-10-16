@@ -17,6 +17,7 @@ package org.lolaf.staffix.stores.messages.file;
 
 import lombok.Builder;
 import lombok.Getter;
+import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
@@ -27,6 +28,7 @@ import java.util.function.BiPredicate;
 /**
  * Where the file message store keeps its files, and how it flushes them.
  */
+@NullMarked
 @Getter
 @Builder(toBuilder = true)
 public class FileMessageStoreSettings implements FixMessagesStoreSettings {
