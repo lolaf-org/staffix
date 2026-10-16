@@ -103,6 +103,29 @@
 
     <build>
         <plugins>
+            <!-- A FIX 4.4 dictionary cut to Email, as a message list cuts it: without BusinessMessageReject -->
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-fix-encoders-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <id>fix44-without-business-message-reject</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>code-generator</goal>
+                        </goals>
+                        <configuration>
+                            <dictionaryFile>src/test/resources/dictionaries/FIX44-without-business-message-reject.xml</dictionaryFile>
+                            <dictionaryId>without-business-message-reject</dictionaryId>
+                            <packageName>org.lolaf.staffix.impl.fix44.withoutbmr</packageName>
+                            <sourcesOutputDirectory>${project.build.directory}/generated-test-sources/fix</sourcesOutputDirectory>
+                            <resourcesOutputDirectory>${project.build.testOutputDirectory}</resourcesOutputDirectory>
+                            <testSources>true</testSources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>

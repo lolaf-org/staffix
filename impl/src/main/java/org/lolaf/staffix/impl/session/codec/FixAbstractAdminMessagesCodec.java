@@ -79,20 +79,30 @@ public abstract class FixAbstractAdminMessagesCodec implements FixAdminMessagesC
         // for FIXT support
         this.fixAdminMessagesCodec = adminMessageCodecContext.getFixAdminMessagesCodec() != null ? adminMessageCodecContext.getFixAdminMessagesCodec() : this;
         MessageFieldsRegistry messageFieldsRegistry = adminMessageCodecContext.getMessageFieldsRegistry();
-        registerAdminDecoder(new LogonFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.LOGON.code()), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new LogonFixMessageDecoder(requireMessageType(CoreMessageType.LOGON), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new LogoutFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.LOGOUT.code()), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new LogoutFixMessageDecoder(requireMessageType(CoreMessageType.LOGOUT), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new HeartbeatFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.HEARTBEAT.code()), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new HeartbeatFixMessageDecoder(requireMessageType(CoreMessageType.HEARTBEAT), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new TestRequestFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.TEST_REQUEST.code()), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new TestRequestFixMessageDecoder(requireMessageType(CoreMessageType.TEST_REQUEST), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new RejectFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.REJECT.code()), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new RejectFixMessageDecoder(requireMessageType(CoreMessageType.REJECT), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new ResendRequestFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.RESEND_REQUEST.code()), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new ResendRequestFixMessageDecoder(requireMessageType(CoreMessageType.RESEND_REQUEST), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
-        registerAdminDecoder(new SequenceResetFixMessageDecoder(messageTypeRegistry.find(CoreMessageType.SEQUENCE_REQUEST.code()), adminMessageCodecContext, fixAdminMessagesCodec),
+        registerAdminDecoder(new SequenceResetFixMessageDecoder(requireMessageType(CoreMessageType.SEQUENCE_REQUEST), adminMessageCodecContext, fixAdminMessagesCodec),
                 messageFieldsRegistry, adminMessageCodecContext.getFixSessionSettings().getFixSessionId());
+    }
+
+    protected MessageType requireMessageType(CoreMessageType coreMessageType) {
+        MessageType messageType = messageTypeRegistry.find(coreMessageType.code());
+        if (messageType == null) {
+            throw new IllegalStateException("Dictionary " + messageTypeRegistry.getTargetDictionary().getId() + " has no "
+                    + coreMessageType.messageName() + " (35=" + coreMessageType.code() + "), which the session layer "
+                    + "sends and receives: add it to the dictionary, or to the message list it is cut from");
+        }
+        return messageType;
     }
 
     public void registerAdminDecoder(FixMessageDecoder decoder, MessageFieldsRegistry messageFieldsRegistry, FixSessionId fixSessionId) {

@@ -30,17 +30,21 @@ import lombok.experimental.Accessors;
 @RequiredArgsConstructor
 public enum CoreMessageType {
 
-    LOGON("A"),
-    LOGOUT("5"),
-    HEARTBEAT("0"),
-    REJECT("3"),
-    BUSINESS_MESSAGE_REJECT("j"),
-    TEST_REQUEST("1"),
-    RESEND_REQUEST("2"),
-    SEQUENCE_REQUEST("4"),
-    XML_NON_FIX("n");
+    LOGON("A", "Logon"),
+    LOGOUT("5", "Logout"),
+    HEARTBEAT("0", "Heartbeat"),
+    REJECT("3", "Reject"),
+    BUSINESS_MESSAGE_REJECT("j", "BusinessMessageReject"),
+    TEST_REQUEST("1", "TestRequest"),
+    RESEND_REQUEST("2", "ResendRequest"),
+    SEQUENCE_REQUEST("4", "SequenceReset"),
+    XML_NON_FIX("n", "XMLnonFIX");
 
     private final String code;
+    /**
+     * The message's name in the FIX dictionaries.
+     */
+    private final String messageName;
 
     /**
      * Compares by code, so a {@link MessageType} from any dictionary matches.

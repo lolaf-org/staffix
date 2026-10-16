@@ -18,6 +18,7 @@ package org.lolaf.staffix.impl;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixAcceptor;
+import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
 import org.lolaf.staffix.api.fields.CoreFields;
@@ -51,6 +52,7 @@ import java.util.function.ToIntFunction;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.assertArg;
@@ -62,6 +64,11 @@ import static org.mockito.Mockito.when;
 class TestFixAcceptor extends AbstractFixTests {
 
     private static final int TEST_REQ_ID = 112;
+    /**
+     * FIX 4.4 cut from Orchestra to Email, as a message list cuts it: without BusinessMessageReject.
+     */
+    private static final FixDictionaryId WITHOUT_BUSINESS_MESSAGE_REJECT =
+            FixDictionaryId.of("without-business-message-reject", FixRegularVersion.VERSION_44);
 
     /**
      * A stopped acceptor must leave nothing behind in its engine's {@link FixSessionRegistry}, which its sessions
@@ -339,5 +346,20 @@ class TestFixAcceptor extends AbstractFixTests {
                 .instanceId("logon-timeout")
                 .logonTimeout(logonTimeout)
                 .build());
+    }
+
+    /**
+     * The session layer sends and receives BusinessMessageReject from FIX 4.2, so a dictionary without it is refused
+     * with a message saying so rather than failing deep inside the session's setup.
+     */
+    @Test
+    void testSessionOfADictionaryWithoutBusinessMessageRejectIsRefusedAtStart() {
+        when(fixAcceptorApplication.getDictionaryId()).thenReturn(WITHOUT_BUSINESS_MESSAGE_REJECT);
+
+        assertThatThrownBy(() -> fixAcceptor.start())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Dictionary without-business-message-reject-FIX.4.4 has no BusinessMessageReject (35=j), "
+                        + "which the session layer sends and receives: add it to the dictionary, or to the message "
+                        + "list it is cut from");
     }
 }
