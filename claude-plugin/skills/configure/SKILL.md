@@ -31,7 +31,8 @@ Find, and tell the user in a few lines:
   `fixSessionsSettingsStore`, `fixSessionsPlugin`, `fixAlertsPublisher`, `adminApiExporter`. Spring: the `staffix.*`
   properties of each profile file.
 - **Instance ids**: those each component registers under, and those the sessions name (`fixMessageStoreInstanceId`,
-  `fixMessageLoggerInstanceId`, `fixAlertsPublisherInstanceId`, `fixSessionPluginsInstanceIds`; left out, `default`).
+  `fixMessageLoggerInstanceId`, `fixAlertsPublisherInstanceId`, left out `default`; `fixSessionPluginsInstanceIds`,
+  left out no plugin at all).
 - **Tests** that start an environment and exchange messages, and the JVM flags of `environment-rules.md`.
 
 ## 2. Ask what to change
@@ -54,8 +55,8 @@ Without the tool, take the answers from the request and the defaults, and list t
   naming it.
 - **Replacing the prod message store loses its sequence numbers and messages**: the sessions start again at 1 unless
   the counterparty resets too. Tell the user to switch at a sequence reset agreed with the counterparty.
-- **An async wrapper or Chronicle**: check the JVM flags are where `environment-rules.md` puts them, and add them
-  if not.
+- **An async store or logger** runs on Chronicle Queue: check the JVM flags are where `environment-rules.md` puts
+  them, and add them if not.
 - **A new environment**: plain Java, a `StaffixEnvironment` implementation and its case; Spring, an
   `application-<name>.properties`. Its data directory and endpoints come from environment variables like prod's.
 - In a project not shaped like the reference projects, make the change where the project already selects its
@@ -65,7 +66,8 @@ Without the tool, take the answers from the request and the defaults, and list t
 
 1. Make the changed environment run its round trip: extend the test that starts it, or add one in the project's test
    style as `environment-rules.md` describes. A component is proven only by starting it.
-2. Update the README: each new environment variable with its default, and the new environment's run command.
+2. Update the README, if the project has one: each new environment variable with its default, and the new
+   environment's run command. Without one, give them in the hand-over instead.
 3. Run `mvn verify` (`./mvnw` when the project has it). Fix what fails, reading the docs rather than guessing, until
    it passes.
 

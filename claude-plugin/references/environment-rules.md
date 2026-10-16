@@ -35,6 +35,7 @@ stays out of the defaults, and the warning is harmless.
   without it. After the round trip, await its output: rows in its table, files in its directory.
 - Spring: one abstract test, a subclass per profile, `@DirtiesContext(AFTER_CLASS)` and a counterparty per class, so
   two cached contexts never log on to the same counterparty at once.
-- An OTLP endpoint in a test can point at a closed port: the round trip passes, and the exporter logs a refused
-  connection when the engine stops.
+- **An OTLP exporter is proven by an in-process HTTP server** standing in for the collector: await a request on its
+  path (`/v1/metrics`, `/v1/traces`, `/v1/logs`) holding what the session did. Metrics are pushed every 10 seconds
+  and when the engine stops, so stop it first. A closed port only proves the application starts.
 - **Finish with `mvn verify`** and fix what fails, reading the docs rather than guessing.

@@ -25,7 +25,10 @@ Selected by a session's `fixMessageStoreInstanceId`. Doc: `docs/stores-and-logge
 
 ### JDBC store
 
-Worked out on `plain-java-initiator` with the store behind the async store, PostgreSQL in prod and H2 in the test.
+Worked out on a scratch copy of `plain-java-initiator`, PostgreSQL in prod and H2 in the test; no reference project
+holds it. In plain Java, `fixMessagesStore(AsyncMessagesStoreSettings.builder()` with
+`.asyncStoreSettings(AsyncStoreSettings.builder().asyncQueueDirectory(<data dir>/store-queue).build())` and
+`.wrappedFixMessagesStoreSettings(JdbcMessageStoreSettings.builder().dataSource(dataSource).build())`.
 
 - **Schema**: `staffix-jdbc-ddl-generator-maven-plugin` (`org.lolaf.staffix`, goal `generate-ddl`, `schema`
   `MESSAGES`), one execution per dialect: the prod one (`org.hibernate.dialect.PostgreSQLDialect`, ...) with
@@ -69,16 +72,17 @@ class: `org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager` for metri
 `org.lolaf.staffix.tracing.otlp.OtelTracing` for tracing. In a session file that is a map under
 `fixSessionPluginsInstanceIds`, the class name as key; in Spring properties
 `...sessions[0].fix-session-plugins-instance-ids.[org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager]=<id>`.
-A session naming a plugin the engine does not register runs without it only when the engine registers no plugin at
-all, so dev can share the session with prod; once any is registered, an unknown id fails at start.
+Unlike stores and loggers, a session naming no plugin gets none: there is no `default` plugin. A session naming a
+plugin the engine does not register runs without it only when the engine registers no plugin at all, so dev can share
+the session with prod; once any is registered, an unknown id fails at start.
 Doc: `docs/monitoring.md`.
 
 | plugin | artifact | Java settings | Spring prefix | notes |
 | :- | :- | :- | :- | :- |
-| Micrometer, OTLP export (*proven* by a generated project) | `staffix-monitoring-micrometer-otlp` | `monitoring.micrometer.otlp.OtlpMicrometerMonitoringManagerSettings` | `staffix.monitoring.otlp.instances.<id>` | `otlpEndpointUrl`; set `baseTimeUnit` to microseconds |
+| Micrometer, OTLP export (*proven* by a generated project, no reference) | `staffix-monitoring-micrometer-otlp` | `monitoring.micrometer.otlp.OtlpMicrometerMonitoringManagerSettings` | `staffix.monitoring.otlp.instances.<id>` | `otlpEndpointUrl`; set `baseTimeUnit` to microseconds |
 | Micrometer, own registry | `staffix-monitoring-micrometer` | `monitoring.micrometer.MicrometerMonitoringManagerSettings` | `staffix.monitoring.instances.<id>`, `staffix.monitoring.meter-registry-bean` | e.g. a Prometheus registry the application exposes |
-| OpenTelemetry tracing | `staffix-monitoring-tracing-otlp` | `tracing.otlp.OtelTracingSettings` | `staffix.tracing.otel.instances.<id>` | W3C propagation needs `allowUserDefinedFields` in the session's validation settings |
-| async wrapper | `staffix-monitoring-async-plugin` | `plugins.async.AsyncFixSessionsPluginSettings` | `staffix.async-plugin.instances.<id>.wraps` | keeps monitoring off the message path; drops samples when full |
+| OpenTelemetry tracing | `staffix-monitoring-tracing-otlp` | `tracing.otlp.OtelTracingSettings` | `staffix.tracing.otel.instances.<id>` | needs a sender beside it, or it fails at start ("No HttpSenderProvider found"): `staffix-monitoring-tracing-otlp-sender` (*full*, HTTP) or `-sender-grpc`; W3C propagation needs `allowUserDefinedFields` in the session's validation settings |
+| async wrapper | `staffix-monitoring-async-plugin` | `plugins.async.AsyncFixSessionsPluginSettings` | `staffix.async-plugin.instances.<id>.wraps` | keeps monitoring off the message path; drops samples when full; an in-memory queue, no Chronicle |
 | throttling wrapper | `staffix-monitoring-throttling-plugin` | `plugins.throttling.ThrottlingFixSessionsPluginSettings` | `staffix.throttling-plugin.instances.<id>.wraps` | samples per-message callbacks |
 
 ## Alerting
@@ -98,7 +102,7 @@ One exporter per engine (`adminApiExporter`). Doc: `docs/runtime-administration.
 | exporter | artifact | Java settings | Spring prefix | notes |
 | :- | :- | :- | :- | :- |
 | JMX | `staffix-admin-api-jmx` | `admin.jmx.JmxAdminApiSettings` | `staffix.admin-api-jmx` | `jmxDomain` |
-| HTTP, for the staffix-admin console | `staffix-admin-api-http` | `admin.http.HttpAdminApiSettings` | `staffix.admin-api-http` | `apiToken` from an environment variable; TLS through an SSL context (Spring: `ssl-bundle`) |
+| HTTP, for the staffix-admin console | `staffix-admin-api-http` | `admin.http.HttpAdminApiSettings` | `staffix.admin-api-http` | `apiToken` random by default, known only to the console it is announced to; TLS through an SSL context (Spring: `ssl-bundle`); with Spring it serves in every profile once on the classpath: exclude `org.lolaf.staffix.admin.http.spring.HttpAdminApiAutoConfiguration` (`spring.autoconfigure.exclude`) where it must not |
 | Spring Boot actuator | `staffix-spring-boot-actuator` (*full*) | | `staffix.actuator` | `fix-sessions` endpoint; read the doc before folding session state into health |
 
 Java settings classes are under `org.lolaf.staffix.`.
