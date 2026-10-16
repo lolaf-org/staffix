@@ -42,12 +42,16 @@ import java.util.stream.Collectors;
 /**
  * Describes each component of the module in {@code META-INF/staffix/components/}, packaged in its jar: a JSON Schema of
  * its settings, holding the {@code <settings class>.guide.yaml} written beside the class, which the jar then leaves out.
+ * A Spring Boot module gets {@code META-INF/staffix/spring/} instead, from its properties classes.
  */
 @Mojo(name = "generate-component-metadata", defaultPhase = LifecyclePhase.PROCESS_CLASSES,
         requiresDependencyResolution = ResolutionScope.COMPILE, threadSafe = true)
 public class GenerateComponentMetadataMojo extends AbstractMojo {
 
     private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+    private static final String COMPONENTS = "META-INF/staffix/components/";
+    private static final String SPRING = "META-INF/staffix/spring/";
+    private static final String SCHEMA_SUFFIX = ".v" + ComponentSchemaGenerator.FORMAT_VERSION + ".schema.json";
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
@@ -65,40 +69,60 @@ public class GenerateComponentMetadataMojo extends AbstractMojo {
     public void execute() throws MojoExecutionException {
         try (URLClassLoader loader = new URLClassLoader(compileClasspath(), ClassLoader.getPlatformClassLoader())) {
             List<Component> components = ComponentScanner.scan(classesDirectory.toPath(), loader);
-            if (components.isEmpty()) {
+            List<Class<?>> springProperties = ComponentScanner.publicConcreteClasses(classesDirectory.toPath(), loader)
+                    .stream().filter(type -> SpringComponentGenerator.configuredComponent(type) != null)
+                    .collect(Collectors.toList());
+            if (components.isEmpty() && springProperties.isEmpty()) {
                 getLog().info("No staffix component in " + classesDirectory);
                 return;
             }
             List<Path> moduleSourceRoots = project.getCompileSourceRoots().stream().map(Path::of)
                     .collect(Collectors.toList());
-            ComponentSchemaGenerator generator =
-                    new ComponentSchemaGenerator(SourceIndex.of(moduleSourceRoots, buildRoot.toPath()));
-            Path outputDirectory = classesDirectory.toPath().resolve("META-INF/staffix/components");
-            Files.createDirectories(outputDirectory);
+            SourceIndex sources = SourceIndex.of(moduleSourceRoots, buildRoot.toPath());
+            ComponentSchemaGenerator generator = new ComponentSchemaGenerator(sources);
             for (Component component : components) {
-                write(generator, component, outputDirectory);
+                writeComponent(generator, component);
+            }
+            SpringComponentGenerator springGenerator = new SpringComponentGenerator(sources);
+            for (Class<?> properties : springProperties) {
+                writeSpringComponent(springGenerator, properties, loader);
             }
         } catch (IOException | RuntimeException e) {
             throw new MojoExecutionException("Unable to describe the components of " + classesDirectory, e);
         }
     }
 
-    private void write(ComponentSchemaGenerator generator, Component component, Path outputDirectory)
-            throws IOException {
+    private void writeComponent(ComponentSchemaGenerator generator, Component component) throws IOException {
         Class<?> type = component.getSettingsClass();
-        Path schema = outputDirectory.resolve(type.getName() + ".v" + ComponentSchemaGenerator.FORMAT_VERSION
-                + ".schema.json");
         ObjectNode description = generator.generate(component, project.getGroupId(), project.getArtifactId());
-        Path guide = classesDirectory.toPath().resolve(type.getName().replace('.', '/') + ".guide.yaml");
-        if (Files.isRegularFile(guide)) {
-            ((ObjectNode) description.get("x-staffix")).set("guide", ComponentGuide.read(guide));
-            Files.delete(guide);
-        } else {
-            getLog().warn("No guide for " + type.getName() + ": write " + type.getSimpleName()
-                    + ".guide.yaml in src/main/resources beside it");
-        }
-        Files.write(schema, (JSON.writeValueAsString(description) + "\n").getBytes(StandardCharsets.UTF_8));
+        ComponentGuide.readBeside(type, classesDirectory.toPath())
+                .ifPresentOrElse(guide -> ((ObjectNode) description.get("x-staffix")).set("guide", guide),
+                        () -> getLog().warn("No guide for " + type.getName() + ": write " + type.getSimpleName()
+                                + ".guide.yaml in src/main/resources beside it"));
+        write(COMPONENTS + type.getName() + SCHEMA_SUFFIX, description);
         getLog().info("Described " + component.getKind() + " " + type.getName());
+    }
+
+    private void writeSpringComponent(SpringComponentGenerator generator, Class<?> properties, ClassLoader loader)
+            throws IOException {
+        Class<?> settings = SpringComponentGenerator.configuredComponent(properties);
+        String componentSchema = COMPONENTS + settings.getName() + SCHEMA_SUFFIX;
+        URL schema = loader.getResource(componentSchema);
+        if (schema == null) {
+            throw new IllegalStateException(properties.getName() + " configures " + settings.getName()
+                    + ", whose jar has no " + componentSchema + ": build its module with this plugin");
+        }
+        ObjectNode description = generator.generate(properties, (ObjectNode) JSON.readTree(schema),
+                project.getGroupId(), project.getArtifactId());
+        ComponentGuide.readBeside(properties, classesDirectory.toPath()).ifPresent(guide -> description.set("guide", guide));
+        write(SPRING + settings.getName() + ".v" + ComponentSchemaGenerator.FORMAT_VERSION + ".json", description);
+        getLog().info("Described the Spring Boot properties of " + settings.getName());
+    }
+
+    private void write(String resource, ObjectNode content) throws IOException {
+        Path file = classesDirectory.toPath().resolve(resource);
+        Files.createDirectories(file.getParent());
+        Files.write(file, (JSON.writeValueAsString(content) + "\n").getBytes(StandardCharsets.UTF_8));
     }
 
     private URL[] compileClasspath() throws MojoExecutionException {

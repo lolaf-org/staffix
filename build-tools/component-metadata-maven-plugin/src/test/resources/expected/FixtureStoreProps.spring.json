@@ -1,0 +1,68 @@
+{
+  "$id": "staffix:spring-component:org.lolaf.staffix.buildtools.metadata.fixture.generate.WrapperSettings:v1",
+  "title": "WrapperSettings",
+  "artifact": "org.lolaf.staffix:fixture-spring-boot",
+  "prefix": "staffix.fixture-stores",
+  "instances": "staffix.fixture-stores.instances.<id>",
+  "properties": {
+    "description": "Properties for the fixture stores.",
+    "type": "object",
+    "properties": {
+      "registry-bean": {
+        "type": "string",
+        "description": "Bean name of the registry every instance shares."
+      },
+      "instances": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/$defs/FixtureStoreEntryProps"
+        },
+        "description": "The configured instances, keyed by instance id."
+      }
+    },
+    "$defs": {
+      "FixtureStoreEntryProps": {
+        "description": "One configured fixture store.",
+        "type": "object",
+        "properties": {
+          "wraps": {
+            "type": "string",
+            "description": "Instance id of the store to wrap."
+          },
+          "flush-delay": {
+            "type": "string",
+            "format": "duration",
+            "description": "How long start waits.",
+            "default": "PT30S"
+          },
+          "sync-writes": {
+            "type": "boolean",
+            "default": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "queue": {
+            "$ref": "#/$defs/FixtureQueueProps"
+          }
+        }
+      },
+      "FixtureQueueProps": {
+        "description": "The queue in front of the store.",
+        "type": "object",
+        "properties": {
+          "readers": {
+            "type": "integer",
+            "default": 2
+          }
+        }
+      }
+    }
+  },
+  "component": {
+    "title": "WrapperSettings"
+  }
+}

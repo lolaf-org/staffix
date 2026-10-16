@@ -44,18 +44,29 @@ public class ComponentScanner {
      */
     public static List<Component> scan(Path classesDirectory, ClassLoader loader) throws IOException {
         List<Component> components = new ArrayList<>();
-        for (String className : classNames(classesDirectory)) {
-            Class<?> type;
-            try {
-                type = Class.forName(className, false, loader);
-            } catch (ClassNotFoundException | LinkageError e) {
-                continue;
-            }
-            if (isConcrete(type) && isPublic(type)) {
-                kind(type).ifPresent(kind -> components.add(new Component(type, kind)));
-            }
+        for (Class<?> type : publicConcreteClasses(classesDirectory, loader)) {
+            kind(type).ifPresent(kind -> components.add(new Component(type, kind)));
         }
         return components;
+    }
+
+    /**
+     * The classes of the directory a user could configure, loaded without being initialized; one that fails to link is
+     * left out.
+     */
+    static List<Class<?>> publicConcreteClasses(Path classesDirectory, ClassLoader loader) throws IOException {
+        List<Class<?>> classes = new ArrayList<>();
+        for (String className : classNames(classesDirectory)) {
+            try {
+                Class<?> type = Class.forName(className, false, loader);
+                if (isConcrete(type) && isPublic(type)) {
+                    classes.add(type);
+                }
+            } catch (ClassNotFoundException | LinkageError e) {
+                // a class needing an optional dependency absent at build time is not a component
+            }
+        }
+        return classes;
     }
 
     static Optional<String> kind(Class<?> type) {

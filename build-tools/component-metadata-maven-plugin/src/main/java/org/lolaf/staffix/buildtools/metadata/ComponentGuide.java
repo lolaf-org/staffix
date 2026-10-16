@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -59,6 +60,19 @@ public class ComponentGuide {
                     : "expected a mapping"));
         }
         return (ObjectNode) guide;
+    }
+
+    /**
+     * The guide written beside a class, removed from the classes directory once read so the jar leaves it out.
+     */
+    public static Optional<ObjectNode> readBeside(Class<?> type, Path classesDirectory) throws IOException {
+        Path guide = classesDirectory.resolve(type.getName().replace('.', '/') + ".guide.yaml");
+        if (!Files.isRegularFile(guide)) {
+            return Optional.empty();
+        }
+        ObjectNode content = read(guide);
+        Files.delete(guide);
+        return Optional.of(content);
     }
 
     private static String describe(Error error) {
