@@ -19,10 +19,16 @@
 
     <properties>
         <sonar.skip>true</sonar.skip>
-        <!-- Hand-written sources here reference FIX encoders generated into target/generated-sources
-             in this same module, so javadoc needs both on its source path. -->
+        <!-- Each generator has its own directory under target/generated-sources, never that directory itself: it
+             also holds javac's annotations output, and JMH's stale generated sources fed back to javac as inputs
+             fail the next build with "error reading". -->
+        <generated.staffix>${project.build.directory}/generated-sources/staffix</generated.staffix>
+        <generated.quickfixj>${project.build.directory}/generated-sources/quickfixj</generated.quickfixj>
+        <generated.artio>${project.build.directory}/generated-sources/artio</generated.artio>
+        <!-- Hand-written sources here reference FIX encoders generated in this same module, so javadoc needs them
+             on its source path. -->
         <javadoc.sourcepath>
-            ${javadoc.delomboked.sources}${path.separator}${project.build.directory}/generated-sources
+            ${javadoc.delomboked.sources}${path.separator}${generated.staffix}${path.separator}${generated.quickfixj}${path.separator}${generated.artio}
         </javadoc.sourcepath>
         <quickfix.version>3.0.2</quickfix.version>
         <artio.version>0.185</artio.version>
@@ -197,11 +203,30 @@
                             <dependency>org.agrona:agrona</dependency>
                         </classpath>
                         <argument>uk.co.real_logic.artio.dictionary.CodecGenerationTool</argument>
-                        <argument>${project.build.directory}/generated-sources</argument>
+                        <argument>${generated.artio}</argument>
                         <argument>${project.basedir}/src/main/resources/FIX44-benchmarks-sanitized.xml</argument>
                     </arguments>
 
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.2</version>
+                <executions>
+                    <execution>
+                        <id>add-artio-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${generated.artio}</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.lolaf.staffix</groupId>
@@ -210,7 +235,7 @@
                 <configuration>
                     <dictionaryFile>${project.basedir}/src/main/resources/FIX44-benchmarks-sanitized.xml
                     </dictionaryFile>
-                    <sourcesOutputDirectory>${project.build.directory}/generated-sources</sourcesOutputDirectory>
+                    <sourcesOutputDirectory>${generated.staffix}</sourcesOutputDirectory>
                     <packageName>org.lolaf.staffix.benchmarks.fix44</packageName>
                     <dictionaryId>benchmarks</dictionaryId>
                 </configuration>
@@ -228,6 +253,14 @@
                 <artifactId>quickfixj-codegenerator</artifactId>
                 <version>3.0.2</version>
                 <!-- do not change 3.0.2 requires a recent version of maven -->
+                <dependencies>
+                    <!-- Maven 3.9 stops providing it to plugins, and the generator needs it once outputDirectory is set -->
+                    <dependency>
+                        <groupId>org.codehaus.plexus</groupId>
+                        <artifactId>plexus-utils</artifactId>
+                        <version>3.6.1</version>
+                    </dependency>
+                </dependencies>
                 <executions>
                     <execution>
                         <goals>
@@ -235,6 +268,7 @@
                         </goals>
                         <configuration>
                             <dictFile>${project.basedir}/src/main/resources/FIX44-benchmarks-sanitized.xml</dictFile>
+                            <outputDirectory>${generated.quickfixj}</outputDirectory>
                             <packaging>org.lolaf.staffix.benchmarks.quickfix.fix44</packaging>
                             <fieldPackage>org.lolaf.staffix.benchmarks.quickfix.fix44.field</fieldPackage>
                         </configuration>
