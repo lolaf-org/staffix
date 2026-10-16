@@ -143,7 +143,7 @@
                         </goals>
                         <configuration>
                             <upToVersion>FIX.4.4</upToVersion>
-                            <upToExtensionPack>0</upToExtensionPack>
+                            <upToExtensionPack>38</upToExtensionPack>
                             <markDeprecated>true</markDeprecated>
                             <includeMessagesFile>${project.basedir}/src/main/dictionaries/messages.txt</includeMessagesFile>
                             <outputFile>${project.build.directory}/dictionaries/fix-dictionary-cut.xml</outputFile>

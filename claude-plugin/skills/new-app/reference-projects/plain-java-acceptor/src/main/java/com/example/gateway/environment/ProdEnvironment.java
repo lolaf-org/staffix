@@ -1,5 +1,6 @@
 package com.example.gateway.environment;
 
+import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.stores.loggers.async.AsyncMessagesLoggerSettings;
@@ -10,13 +11,15 @@ import java.nio.file.Path;
 
 /**
  * Messages stored on file with synchronous writes so a restart resumes the sequence numbers, and logged to file off
- * the session thread. Files go under {@code STAFFIX_DATA_DIR}.
+ * the session thread, all under one data directory.
  */
+@RequiredArgsConstructor
 public class ProdEnvironment implements StaffixEnvironment {
+
+    private final Path dataDirectory;
 
     @Override
     public void addComponents(FixEngineBuilder.FixEngineBuilderBuilder engine) {
-        Path dataDirectory = Path.of(requiredEnvironmentVariable("STAFFIX_DATA_DIR"));
         engine.fixMessagesStore(FileMessageStoreSettings.builder()
                         .storageDirectoryPath(dataDirectory.resolve("store").toString())
                         .build())
@@ -29,13 +32,5 @@ public class ProdEnvironment implements StaffixEnvironment {
                                 .build())
                         .build())
                 .fixSessionsSettingsStore(SessionsSettings.fromClasspath());
-    }
-
-    private static String requiredEnvironmentVariable(String name) {
-        String value = System.getenv(name);
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException(name + " must be set in the prod environment");
-        }
-        return value;
     }
 }

@@ -2,16 +2,16 @@ package com.example.fixclient;
 
 import com.example.fixclient.fix.fields.Side;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.time.Duration;
@@ -23,12 +23,16 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
+/**
+ * The round trip, run once per profile. Each class has its own broker and its context is closed after it, so two
+ * cached contexts never log on to the same broker at once.
+ */
 @SpringBootTest
-@ActiveProfiles("dev")
-class FixClientApplicationTest {
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+abstract class AbstractFixClientApplicationTest {
 
-    private static final int BROKER_PORT = freePort();
-    private static final BrokerSimulator BROKER = new BrokerSimulator(new InetSocketAddress("localhost", BROKER_PORT));
+    private static int brokerPort;
+    private static BrokerSimulator broker;
 
     @Autowired
     private OrderEntryApplication orderEntryApplication;
@@ -36,14 +40,20 @@ class FixClientApplicationTest {
     @MockitoSpyBean
     private ExecutionReportHandler executionReportHandler;
 
-    @DynamicPropertySource
-    static void connectToTheBroker(DynamicPropertyRegistry registry) {
-        registry.add("staffix.initiators.order-entry.main-target.connect-addresses[0]", () -> "localhost:" + BROKER_PORT);
+    @BeforeAll
+    static void startTheBroker() throws IOException {
+        brokerPort = freePort();
+        broker = new BrokerSimulator(new InetSocketAddress("localhost", brokerPort));
     }
 
     @AfterAll
     static void stopTheBroker() {
-        BROKER.stop();
+        broker.stop();
+    }
+
+    @DynamicPropertySource
+    static void connectToTheBroker(DynamicPropertyRegistry registry) {
+        registry.add("staffix.initiators.order-entry.main-target.connect-addresses[0]", () -> "localhost:" + brokerPort);
     }
 
     @Test
@@ -63,11 +73,9 @@ class FixClientApplicationTest {
                 assertThat(executionReports).containsExactly("order-1:0"));
     }
 
-    private static int freePort() {
+    private static int freePort() throws IOException {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
         }
     }
 }

@@ -1,12 +1,13 @@
 # Listing a dictionary's messages
 
-Use the Grep tool, not a script: it needs nothing installed.
+Use the Grep tool, or `grep -h '<message[ >]' <file>` in the shell when there is none: Claude Code always has a
+shell, Git Bash on Windows included, so nothing has to be installed.
 
 - **Shipped dictionary**: `${CLAUDE_PLUGIN_ROOT}/dictionaries/<file>`: `FIX42.xml`, `FIX43.xml`, `FIX44.xml`,
   `FIX50.xml`, `FIX50SP1.xml`, `FIX50SP2.xml`, `fix-latest-minimal.xml` (FIX Latest).
 - **Provider dictionary**: the file the user gave, once copied to `src/main/dictionaries/`.
 
-Grep the file for `<message[ >]` with output mode `content`. Every start tag holds `name`, `msgtype` and `msgcat` on
+Search the file for `<message[ >]`, showing the matching lines. Every start tag holds `name`, `msgtype` and `msgcat` on
 one line, in any order. If a line lacks `name` or `msgtype`, the file wraps its attributes: read it around that line.
 
 Offer only `msgcat="app"` messages, without BusinessMessageReject (35=j): the session layer sends and receives it, and
