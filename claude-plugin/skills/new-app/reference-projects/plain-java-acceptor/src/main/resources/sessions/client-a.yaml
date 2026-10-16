@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/lolaf-org/staffix/v0.9.1/sessions-settings-stores/document/etc/fix-session-settings.v1.schema.json
+schemaVersion: 1
+fixSessionId:
+  name: "client-a"
+  fixVersion: "FIX.4.4"
+  senderCompID: "${env:FIX_SENDER_COMP_ID:BROKER}"
+  targetCompID: "${env:CLIENT_A_COMP_ID:CLIENT_A}"
+fixSessionType: "ACCEPTOR"
+fixApplicationInstanceId: "order-handling"
