@@ -73,8 +73,9 @@ pluggable and kept off the message path.
 
 ## Getting started
 
-Build it from source with `mvn clean install` at the repository root; the coordinates below then resolve from your
-local repository.
+Staffix is published on [Maven Central](https://central.sonatype.com/namespace/org.lolaf.staffix) under the
+`org.lolaf.staffix` group id. The examples below run from a clone, built once with `mvn clean install` at the
+repository root.
 
 The quickest look at a working session is the quickstart: an acceptor and an initiator in one process, a QuoteRequest
 sent and a Quote returned:
@@ -164,7 +165,7 @@ Everything else is in the [documentation](docs/README.md).
 
 ## Is it production ready?
 
-Not yet proven in production: Staffix is **0.9.0**, and no one runs it on a live trading session today. Every build
+Not yet proven in production: no one runs it on a live trading session today. Every build
 runs the engine's own suite, 22 of the official FIX session conformance scenarios, and a real QuickFIX/J engine driven
 against Staffix in both roles; a soak test trades Staffix against QuickFIX/J continuously over a real network. The API
 is settled, and any breaking change is listed in the [changelog](CHANGELOG.md).
