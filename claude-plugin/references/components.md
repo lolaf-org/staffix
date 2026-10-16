@@ -53,7 +53,8 @@ class: `org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager` for metri
 `org.lolaf.staffix.tracing.otlp.OtelTracing` for tracing. In a session file that is a map under
 `fixSessionPluginsInstanceIds`, the class name as key; in Spring properties
 `...sessions[0].fix-session-plugins-instance-ids.[org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager]=<id>`.
-A session naming a plugin the engine does not register runs without it, so dev can share the session with prod.
+A session naming a plugin the engine does not register runs without it only when the engine registers no plugin at
+all, so dev can share the session with prod; once any is registered, an unknown id fails at start.
 Doc: `docs/monitoring.md`.
 
 | plugin | artifact | Java settings | Spring prefix | notes |
@@ -66,7 +67,8 @@ Doc: `docs/monitoring.md`.
 
 ## Alerting
 
-Selected by a session's `fixAlertsPublisherInstanceId`. Doc: `docs/alerting.md`.
+Selected by a session's `fixAlertsPublisherInstanceId`. With none registered, alerts go nowhere; once any is, a session
+naming an unknown id, `default` included, fails at start. Doc: `docs/alerting.md`.
 
 | publisher | artifact | Java settings | Spring prefix | notes |
 | :- | :- | :- | :- | :- |
