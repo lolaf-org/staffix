@@ -41,4 +41,13 @@
             <scope>provided</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-component-metadata-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>

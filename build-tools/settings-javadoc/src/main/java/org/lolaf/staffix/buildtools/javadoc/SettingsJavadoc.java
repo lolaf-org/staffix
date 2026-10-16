@@ -103,10 +103,6 @@ public class SettingsJavadoc {
                 .collect(Collectors.joining("\n\n"));
     }
 
-    /**
-     * {@code {@link a.b.Type#member(Args) label}} reads as its label, else as {@code Type.member()}; {@code {@value
-     * #CONSTANT}} as the constant of the same file.
-     */
     private static String inlineTagText(JavadocInlineTag tag, Map<String, String> constants) {
         String content = tag.getContent().trim();
         if (tag.getType() == JavadocInlineTag.Type.VALUE) {
