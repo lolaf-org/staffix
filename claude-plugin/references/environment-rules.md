@@ -31,6 +31,8 @@ stays out of the defaults, and the warning is harmless.
 
 - **The round trip in every environment**: the application against an in-process counterparty, once per
   environment, prod against a temporary data directory. A component is only proven by running it.
+- **Check what a store or logger wrote**: a failing store or logger never stops the session, so the round trip passes
+  without it. After the round trip, await its output: rows in its table, files in its directory.
 - Spring: one abstract test, a subclass per profile, `@DirtiesContext(AFTER_CLASS)` and a counterparty per class, so
   two cached contexts never log on to the same counterparty at once.
 - An OTLP endpoint in a test can point at a closed port: the round trip passes, and the exporter logs a refused

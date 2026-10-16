@@ -20,8 +20,24 @@ Selected by a session's `fixMessageStoreInstanceId`. Doc: `docs/stores-and-logge
 | :- | :- | :- | :- | :- |
 | memory (*proven*) | `staffix-messages-store-memory` | `stores.messages.memory.MemoryMessageStoreSettings` | `staffix.messages-stores-memory.instances.<id>` | nothing survives a restart: dev, tests, sessions resetting on logon |
 | file (*proven*) | `staffix-messages-store-file` | `stores.messages.file.FileMessageStoreSettings` | `staffix.messages-stores-file.instances.<id>` | `storageDirectoryPath` required; `syncWrites` true by default |
-| JDBC | `staffix-messages-store-jdbc` | `stores.messages.jdbc.JdbcMessageStoreSettings` | `staffix.messages-stores-jdbc.instances.<id>` | `dataSource` (Spring: `data-source-bean`); schema from `staffix-jdbc-ddl-generator-maven-plugin`; keep the pool timeout short; put it behind async |
+| JDBC (*proven* by a scratch project) | `staffix-messages-store-jdbc` | `stores.messages.jdbc.JdbcMessageStoreSettings` | `staffix.messages-stores-jdbc.instances.<id>` | `dataSource` (Spring: `data-source-bean`); put it behind async; see [JDBC store](#jdbc-store) |
 | async wrapper | `staffix-messages-store-async` | `stores.messages.async.AsyncMessagesStoreSettings` | `staffix.messages-stores-async.instances.<key>` with `wraps=<id>` | `asyncStoreSettings.asyncQueueDirectory` required (Spring: `async-queue-directory`); takes over the id it wraps; needs the Chronicle JVM flags |
+
+### JDBC store
+
+Worked out on `plain-java-initiator` with the store behind the async store, PostgreSQL in prod and H2 in the test.
+
+- **Schema**: `staffix-jdbc-ddl-generator-maven-plugin` (`org.lolaf.staffix`, goal `generate-ddl`, `schema`
+  `MESSAGES`), one execution per dialect: the prod one (`org.hibernate.dialect.PostgreSQLDialect`, ...) with
+  `createDropStatements` false, since the script otherwise starts by dropping the tables, writing
+  `target/generated-ddl/schema.sql` for the user to apply; an `H2Dialect` one with `outputDirectory`
+  `target/generated-ddl/h2` for the test.
+- **DataSource**: HikariCP with the JDBC URL, user and password from environment variables and a short
+  `connectionTimeout` (1 s), the database driver at runtime scope. Plain Java: `ProdEnvironment` takes the
+  `DataSource`, so the test hands it H2's.
+- **The test** runs the H2 script once with `RUNSCRIPT FROM 'target/generated-ddl/h2/schema.sql'` on a
+  `jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1` database, never through the URL's `INIT`, which reruns it on every
+  connection and drops what the store wrote. After the round trip it awaits rows in `fix_messages`.
 
 ## Message loggers
 
