@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "staffix:component:org.lolaf.staffix.buildtools.metadata.fixture.generate.WrapperSettings:v1",
+  "title": "WrapperSettings",
+  "description": "Moves writes off the session thread.",
+  "type": "object",
+  "required": [
+    "queue",
+    "wrapped"
+  ],
+  "properties": {
+    "instanceId": {
+      "type": "string",
+      "description": "Names this instance.",
+      "default": "default"
+    },
+    "queue": {
+      "$ref": "#/$defs/QueueSettings"
+    },
+    "wrapped": {
+      "x-staffix-javaType": "org.lolaf.staffix.buildtools.metadata.fixture.generate.StoreSettings",
+      "x-staffix-kind": "fixture-store",
+      "description": "The store the writes go to."
+    },
+    "startDelay": {
+      "type": "string",
+      "format": "duration",
+      "description": "How long start waits.",
+      "default": "PT2M"
+    },
+    "syncWrites": {
+      "type": "boolean",
+      "default": false
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "NANOSECONDS",
+        "MICROSECONDS",
+        "MILLISECONDS",
+        "SECONDS",
+        "MINUTES",
+        "HOURS",
+        "DAYS"
+      ],
+      "default": "MICROSECONDS"
+    },
+    "delimiter": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1,
+      "default": "|"
+    },
+    "label": {
+      "type": "string"
+    },
+    "findTimeout": {
+      "type": "string",
+      "format": "duration",
+      "default": "PT1S"
+    },
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "NANOSECONDS",
+          "MICROSECONDS",
+          "MILLISECONDS",
+          "SECONDS",
+          "MINUTES",
+          "HOURS",
+          "DAYS"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "default": {
+        "MILLISECONDS": 2,
+        "SECONDS": 3,
+        "HOURS": 4
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "default": [
+        "a",
+        "b",
+        "c"
+      ]
+    },
+    "idleStrategy": {
+      "x-staffix-javaType": "java.util.function.Supplier<java.lang.Object>",
+      "x-staffix-codeDefault": true
+    },
+    "executor": {
+      "x-staffix-javaType": "java.util.concurrent.ScheduledExecutorService"
+    }
+  },
+  "$defs": {
+    "QueueSettings": {
+      "description": "Where the queue lives.",
+      "type": "object",
+      "required": [
+        "directory"
+      ],
+      "properties": {
+        "directory": {
+          "type": "string",
+          "description": "The queue's directory."
+        },
+        "readers": {
+          "type": "integer",
+          "default": 2
+        }
+      }
+    }
+  },
+  "x-staffix": {
+    "kind": "fixture-store",
+    "artifact": "org.lolaf.staffix:fixture-impl",
+    "instanceIdFrom": "wrapped",
+    "jvmFlags": [
+      "CHRONICLE"
+    ],
+    "requiresOneOf": [
+      "org.lolaf.staffix:sender-http",
+      "org.other:sender-grpc"
+    ]
+  }
+}

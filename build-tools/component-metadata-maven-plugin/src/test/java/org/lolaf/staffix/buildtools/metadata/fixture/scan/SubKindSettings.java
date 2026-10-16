@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.buildtools.metadata.fixture;
+package org.lolaf.staffix.buildtools.metadata.fixture.scan;
 
-public class PlainSettings {
+public interface SubKindSettings extends KindSettings {
 }

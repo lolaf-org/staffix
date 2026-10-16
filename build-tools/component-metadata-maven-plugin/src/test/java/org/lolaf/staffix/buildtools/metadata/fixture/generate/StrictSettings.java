@@ -13,7 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.buildtools.metadata.fixture;
+package org.lolaf.staffix.buildtools.metadata.fixture.generate;
 
-public interface SubKindSettings extends KindSettings {
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NonNull;
+import org.jspecify.annotations.NullMarked;
+
+import java.util.Set;
+
+@NullMarked
+@Getter
+@Builder
+public class StrictSettings implements PluginSettings {
+
+    @NonNull
+    private final String endpoint;
+
+    @Builder.Default
+    private final int retries = 3;
+
+    @Override
+    public Set<Class<?>> getPluginTypes() {
+        return Set.of(String.class);
+    }
 }

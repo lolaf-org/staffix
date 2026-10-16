@@ -13,10 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.buildtools.metadata.fixture;
+package org.lolaf.staffix.buildtools.metadata.fixture.generate;
 
-import org.lolaf.staffix.api.metadata.ComponentKind;
+import lombok.Builder;
+import lombok.Getter;
+import org.jspecify.annotations.NullMarked;
 
-@ComponentKind("fixture-kind")
-public interface KindSettings {
+/**
+ * Where the queue lives.
+ */
+@NullMarked
+@Getter
+@Builder
+public class QueueSettings {
+
+    /**
+     * The queue's directory.
+     */
+    private final String directory;
+
+    @Builder.Default
+    private final int readers = 2;
 }

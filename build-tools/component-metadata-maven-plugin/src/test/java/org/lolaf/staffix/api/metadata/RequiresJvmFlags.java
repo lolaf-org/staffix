@@ -13,10 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.buildtools.metadata.fixture;
+package org.lolaf.staffix.api.metadata;
 
-public class Holder {
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 
-    public static class NestedSettings implements KindSettings {
-    }
+@Retention(RetentionPolicy.RUNTIME)
+public @interface RequiresJvmFlags {
+
+    JvmFlagSet[] value();
 }

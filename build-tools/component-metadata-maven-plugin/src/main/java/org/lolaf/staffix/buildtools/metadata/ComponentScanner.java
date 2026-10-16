@@ -40,7 +40,7 @@ public class ComponentScanner {
 
     /**
      * @param loader loads the module's classes and their compile classpath
-     * @return the concrete classes of the directory whose settings type carries {@code @ComponentKind}, by name
+     * @return the public concrete classes of the directory whose settings type carries {@code @ComponentKind}
      */
     public static List<Component> scan(Path classesDirectory, ClassLoader loader) throws IOException {
         List<Component> components = new ArrayList<>();
@@ -51,7 +51,7 @@ public class ComponentScanner {
             } catch (ClassNotFoundException | LinkageError e) {
                 continue;
             }
-            if (isConcrete(type)) {
+            if (isConcrete(type) && isPublic(type)) {
                 kind(type).ifPresent(kind -> components.add(new Component(type, kind)));
             }
         }
@@ -87,6 +87,18 @@ public class ComponentScanner {
         return !type.isInterface() && !type.isAnnotation() && !type.isEnum()
                 && !Modifier.isAbstract(type.getModifiers()) && !type.isAnonymousClass()
                 && !type.isLocalClass();
+    }
+
+    /**
+     * An internal adapter implementing a kind is not something a user configures.
+     */
+    private static boolean isPublic(Class<?> type) {
+        for (Class<?> scope = type; scope != null; scope = scope.getEnclosingClass()) {
+            if (!Modifier.isPublic(scope.getModifiers())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static List<String> classNames(Path classesDirectory) throws IOException {

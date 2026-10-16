@@ -29,18 +29,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TestComponentScanner {
 
     private static final Path TEST_CLASSES = Path.of("target/test-classes");
+    private static final String SCAN_FIXTURES = "org.lolaf.staffix.buildtools.metadata.fixture.scan.";
 
     @Test
-    void findsConcreteClassesOfAnnotatedKindsAndSkipsUnloadableOnes() throws IOException {
+    void findsPublicConcreteClassesOfAnnotatedKindsAndSkipsUnloadableOnes() throws IOException {
         try (URLClassLoader loader = new URLClassLoader(new URL[]{TEST_CLASSES.toUri().toURL()},
                 ClassLoader.getPlatformClassLoader())) {
             List<Component> components = ComponentScanner.scan(TEST_CLASSES, loader);
 
             assertThat(components.stream().map(component -> component.getSettingsClass().getName() + " "
-                    + component.getKind()).collect(Collectors.toList()))
+                    + component.getKind()).filter(component -> component.startsWith(SCAN_FIXTURES))
+                    .collect(Collectors.toList()))
                     .containsExactly(
-                            "org.lolaf.staffix.buildtools.metadata.fixture.ConcreteSettings fixture-kind",
-                            "org.lolaf.staffix.buildtools.metadata.fixture.Holder$NestedSettings fixture-kind");
+                            "org.lolaf.staffix.buildtools.metadata.fixture.scan.ConcreteSettings fixture-kind",
+                            "org.lolaf.staffix.buildtools.metadata.fixture.scan.Holder$NestedSettings fixture-kind");
         }
     }
 

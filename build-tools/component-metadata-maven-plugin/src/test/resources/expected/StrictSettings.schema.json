@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "staffix:component:org.lolaf.staffix.buildtools.metadata.fixture.generate.StrictSettings:v1",
+  "title": "StrictSettings",
+  "type": "object",
+  "required": [
+    "endpoint"
+  ],
+  "properties": {
+    "endpoint": {
+      "type": "string"
+    },
+    "retries": {
+      "type": "integer",
+      "default": 3
+    }
+  },
+  "x-staffix": {
+    "kind": "session-plugin",
+    "artifact": "org.lolaf.staffix:fixture-impl"
+  }
+}

@@ -13,15 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.buildtools.metadata.fixture;
+package org.lolaf.staffix.buildtools.metadata.fixture.scan;
 
-import org.assertj.core.api.AssertProvider;
-import org.assertj.core.api.ObjectAssert;
+public class Holder {
 
-public class UnloadableSettings implements KindSettings, AssertProvider<ObjectAssert<String>> {
-
-    @Override
-    public ObjectAssert<String> assertThat() {
-        return new ObjectAssert<>("");
+    public static class NestedSettings implements KindSettings {
     }
 }

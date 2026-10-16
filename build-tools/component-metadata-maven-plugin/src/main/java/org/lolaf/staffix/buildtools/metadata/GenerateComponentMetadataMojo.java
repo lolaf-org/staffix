@@ -24,19 +24,30 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
- * Describes each component of the module in {@code META-INF/staffix/components/}, packaged in its jar.
+ * Describes each component of the module in {@code META-INF/staffix/components/}, packaged in its jar: a JSON Schema of
+ * its settings, and the {@code <settings class>.guide.md} written beside the class, when there is one.
  */
 @Mojo(name = "generate-component-metadata", defaultPhase = LifecyclePhase.PROCESS_CLASSES,
         requiresDependencyResolution = ResolutionScope.COMPILE, threadSafe = true)
 public class GenerateComponentMetadataMojo extends AbstractMojo {
+
+    private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
@@ -44,17 +55,49 @@ public class GenerateComponentMetadataMojo extends AbstractMojo {
     @Parameter(defaultValue = "${project.build.outputDirectory}", readonly = true, required = true)
     private File classesDirectory;
 
+    /**
+     * Where the javadoc of classes from other modules is looked for, under every {@code src/main/java}.
+     */
+    @Parameter(defaultValue = "${maven.multiModuleProjectDirectory}", required = true)
+    private File buildRoot;
+
     @Override
     public void execute() throws MojoExecutionException {
         try (URLClassLoader loader = new URLClassLoader(compileClasspath(), ClassLoader.getPlatformClassLoader())) {
             List<Component> components = ComponentScanner.scan(classesDirectory.toPath(), loader);
             if (components.isEmpty()) {
                 getLog().info("No staffix component in " + classesDirectory);
+                return;
             }
-            components.forEach(component -> getLog().info("Found " + component.getKind() + " "
-                    + component.getSettingsClass().getName()));
-        } catch (IOException e) {
-            throw new MojoExecutionException("Unable to scan " + classesDirectory, e);
+            List<Path> moduleSourceRoots = project.getCompileSourceRoots().stream().map(Path::of)
+                    .collect(Collectors.toList());
+            ComponentSchemaGenerator generator =
+                    new ComponentSchemaGenerator(SourceIndex.of(moduleSourceRoots, buildRoot.toPath()));
+            Path outputDirectory = classesDirectory.toPath().resolve("META-INF/staffix/components");
+            Files.createDirectories(outputDirectory);
+            for (Component component : components) {
+                write(generator, component, outputDirectory);
+            }
+        } catch (IOException | RuntimeException e) {
+            throw new MojoExecutionException("Unable to describe the components of " + classesDirectory, e);
+        }
+    }
+
+    private void write(ComponentSchemaGenerator generator, Component component, Path outputDirectory)
+            throws IOException {
+        Class<?> type = component.getSettingsClass();
+        Path schema = outputDirectory.resolve(type.getName() + ".v" + ComponentSchemaGenerator.FORMAT_VERSION
+                + ".schema.json");
+        Files.write(schema, (JSON.writeValueAsString(generator.generate(component, project.getGroupId(),
+                project.getArtifactId())) + "\n").getBytes(StandardCharsets.UTF_8));
+        getLog().info("Described " + component.getKind() + " " + type.getName());
+        Path guide = classesDirectory.toPath().resolve(type.getName().replace('.', '/') + ".guide.md");
+        if (Files.isRegularFile(guide)) {
+            Files.copy(guide, outputDirectory.resolve(type.getName() + ".guide.md"),
+                    StandardCopyOption.REPLACE_EXISTING);
+        } else {
+            getLog().warn("No guide for " + type.getName() + ": write " + type.getSimpleName()
+                    + ".guide.md in src/main/resources beside it");
         }
     }
 

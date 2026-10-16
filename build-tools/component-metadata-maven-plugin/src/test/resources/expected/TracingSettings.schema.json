@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "staffix:component:org.lolaf.staffix.buildtools.metadata.fixture.generate.TracingSettings:v1",
+  "title": "TracingSettings",
+  "type": "object",
+  "properties": {
+    "endpoint": {
+      "type": "string"
+    }
+  },
+  "x-staffix": {
+    "kind": "session-plugin",
+    "artifact": "org.lolaf.staffix:fixture-impl",
+    "pluginClasses": [
+      "java.lang.Integer",
+      "java.lang.String"
+    ]
+  }
+}
