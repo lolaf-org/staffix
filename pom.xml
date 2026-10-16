@@ -496,6 +496,7 @@
                             <waitUntil>validated</waitUntil>
                             <excludeArtifacts>
                                 <excludeArtifact>staffix-benchmarks</excludeArtifact>
+                                <excludeArtifact>staffix-component-metadata-maven-plugin</excludeArtifact>
                                 <excludeArtifact>staffix-compatibility-tests</excludeArtifact>
                                 <excludeArtifact>staffix-compatibility-tests-quickfixj</excludeArtifact>
                                 <excludeArtifact>staffix-fix-conformance-tests</excludeArtifact>

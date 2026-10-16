@@ -17,6 +17,7 @@
 
     <modules>
         <module>settings-javadoc</module>
+        <module>component-metadata-maven-plugin</module>
     </modules>
 
 </project>

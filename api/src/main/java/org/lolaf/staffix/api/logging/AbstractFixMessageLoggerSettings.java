@@ -33,7 +33,7 @@ import java.util.function.BiPredicate;
 @NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
-public class AbstractFixMessageLoggerSettings implements FixMessagesLoggerSettings {
+public abstract class AbstractFixMessageLoggerSettings implements FixMessagesLoggerSettings {
 
     /**
      * Names this instance, so a session can select it by id when more than one is configured.

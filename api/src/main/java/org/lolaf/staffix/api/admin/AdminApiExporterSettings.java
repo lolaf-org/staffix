@@ -20,15 +20,17 @@ import lombok.Getter;
 import lombok.experimental.SuperBuilder;
 import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.metadata.ComponentKind;
 
 /**
  * Settings for an admin API, resolved through the {@link org.lolaf.staffix.api.Factory} SPI - JMX is the shipped
  * implementation.
  */
+@ComponentKind("admin-api-exporter")
 @NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
-public class AdminApiExporterSettings implements InstanceProvider<AdminApiExporter> {
+public abstract class AdminApiExporterSettings implements InstanceProvider<AdminApiExporter> {
 
     /**
      * Names this instance, so a session can select it by id when more than one is configured.

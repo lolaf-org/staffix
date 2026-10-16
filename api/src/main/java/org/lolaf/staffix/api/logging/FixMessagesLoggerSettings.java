@@ -17,6 +17,7 @@ package org.lolaf.staffix.api.logging;
 
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.metadata.ComponentKind;
 import org.lolaf.staffix.api.metadata.SelectedBy;
 import org.lolaf.staffix.api.msg.MessageType;
 
@@ -30,6 +31,7 @@ import java.util.function.BiPredicate;
  * <p>{@link #getLogObfuscators()} matters more than it looks: a Logon carries Username(553) and Password(554)
  * in clear, and a log of raw FIX would otherwise keep them.
  */
+@ComponentKind("messages-logger")
 @SelectedBy(sessionSetting = "fixMessageLoggerInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
         whenUnknown = SelectedBy.WhenUnknown.REFUSED_ONCE_ANY_REGISTERED)
 public interface FixMessagesLoggerSettings extends InstanceProvider<FixMessagesLogger> {

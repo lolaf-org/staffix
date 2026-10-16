@@ -17,6 +17,7 @@ package org.lolaf.staffix.api.stores;
 
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.metadata.ComponentKind;
 import org.lolaf.staffix.api.metadata.SelectedBy;
 import org.lolaf.staffix.api.msg.MessageType;
 
@@ -31,6 +32,7 @@ import java.util.function.BiPredicate;
  * <p>{@link #getMessageFilter()} decides what is not worth keeping: a store only has to hold what could be asked
  * for again, so filtering out what will never be resent is the cheapest way to bound it.
  */
+@ComponentKind("messages-store")
 @SelectedBy(sessionSetting = "fixMessageStoreInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
         whenUnknown = SelectedBy.WhenUnknown.REFUSED)
 public interface FixMessagesStoreSettings extends InstanceProvider<FixMessagesStore> {

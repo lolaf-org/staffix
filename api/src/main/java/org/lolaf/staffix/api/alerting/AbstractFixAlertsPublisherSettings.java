@@ -27,7 +27,7 @@ import org.jspecify.annotations.NullMarked;
 @NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)
-public class AbstractFixAlertsPublisherSettings implements FixAlertsPublisherSettings {
+public abstract class AbstractFixAlertsPublisherSettings implements FixAlertsPublisherSettings {
 
     /**
      * Names this instance, so a session can select it by id when more than one is configured.

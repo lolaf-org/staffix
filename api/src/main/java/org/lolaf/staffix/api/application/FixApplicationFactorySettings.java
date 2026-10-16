@@ -17,12 +17,14 @@ package org.lolaf.staffix.api.application;
 
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.metadata.ComponentKind;
 import org.lolaf.staffix.api.metadata.SelectedBy;
 
 /**
  * Settings for an application factory, resolved through the {@link org.lolaf.staffix.api.Factory} SPI - the
  * plain and Spring factories are the two shipped implementations.
  */
+@ComponentKind("application-factory")
 @SelectedBy(sessionSetting = "fixApplicationFactoryInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
         whenUnknown = SelectedBy.WhenUnknown.REFUSED)
 public interface FixApplicationFactorySettings extends InstanceProvider<FixApplicationFactory> {

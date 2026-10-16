@@ -17,6 +17,7 @@ package org.lolaf.staffix.api.session;
 
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.metadata.ComponentKind;
 
 /**
  * Settings for a store of session configurations - the thing that tells an engine which sessions exist.
@@ -24,6 +25,7 @@ import org.lolaf.staffix.api.InstanceProvider;
  * <p>Implemented by each store module (in-memory, YAML file) rather than here, and resolved through the
  * {@link org.lolaf.staffix.api.Factory} SPI, so the engine names no store implementation at compile time.
  */
+@ComponentKind("sessions-settings-store")
 public interface FixSessionsSettingsStoreSettings extends InstanceProvider<FixSessionsSettingsStore> {
 
     @Override

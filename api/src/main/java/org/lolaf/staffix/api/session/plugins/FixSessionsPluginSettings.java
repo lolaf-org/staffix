@@ -17,6 +17,7 @@ package org.lolaf.staffix.api.session.plugins;
 
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.InstanceProvider;
+import org.lolaf.staffix.api.metadata.ComponentKind;
 import org.lolaf.staffix.api.metadata.SelectedBy;
 
 import java.util.Set;
@@ -27,6 +28,7 @@ import java.util.Set;
  * <p>The async and throttling wrappers implement this too, reporting the delegate's instance id and plugin
  * class, which is how they stay invisible to a session's configuration.
  */
+@ComponentKind("session-plugin")
 @SelectedBy(sessionSetting = "fixSessionPluginsInstanceIds", whenUnnamed = SelectedBy.WhenUnnamed.NONE,
         whenUnknown = SelectedBy.WhenUnknown.REFUSED_ONCE_ANY_REGISTERED)
 public interface FixSessionsPluginSettings<T extends FixSessionsPlugin<?>> extends InstanceProvider<T> {
