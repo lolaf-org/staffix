@@ -158,7 +158,7 @@ staffix.async-plugin.instances.md.consumer-thread-pool-size=1
 staffix.async-plugin.instances.md.backpressure-policy=DROP
 ```
 
-`wraps` takes the instance-id key of another sessions-plugin entry: a `staffix.monitoring-micrometer.instances.<key>`
+`wraps` takes the instance-id key of another sessions-plugin entry: a `staffix.monitoring.instances.<key>`
 or `staffix.tracing.otel.instances.<key>`. See [Monitoring](monitoring.md#keeping-monitoring-off-the-message-path).
 
 Note the difference from the Java API here: in properties both plugins are declared and the wrapper *references* the

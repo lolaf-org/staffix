@@ -15,6 +15,8 @@ path.** The plugin wrappers in this guide are how that is arranged.
 | `staffix-monitoring-micrometer-impl` | Micrometer metrics for sessions |
 | `staffix-monitoring-micrometer-otlp-impl` | the above, exported over OTLP |
 | `staffix-monitoring-tracing-otlp-impl` | OpenTelemetry tracing, with W3C trace propagation |
+| `staffix-monitoring-tracing-otlp-sender` | sends the spans over OTLP/HTTP; tracing needs it, or the gRPC one |
+| `staffix-monitoring-tracing-otlp-sender-grpc` | sends the spans over OTLP/gRPC |
 | `staffix-monitoring-async-plugin-impl` | wraps a plugin so its callbacks run on their own threads |
 | `staffix-monitoring-throttling-plugin-impl` | wraps a plugin so its per-message callbacks are sampled |
 
@@ -87,6 +89,10 @@ in the same place as the FIX ones:
 ```
 
 and on the session, `fixSessionPluginsInstanceId(OtelTracing.class, "tracing-acceptor")`.
+
+**Add a sender beside the tracing module**: `staffix-monitoring-tracing-otlp-sender` for OTLP/HTTP, the default, or
+`staffix-monitoring-tracing-otlp-sender-grpc`. Without one, the engine fails at start with "No HttpSenderProvider
+found".
 
 **W3C trace propagation carries the trace context in a user-defined FIX field**, so a trace can follow an order
 across firms. That has a configuration consequence: the session must be willing to accept fields outside the

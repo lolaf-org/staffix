@@ -153,6 +153,9 @@ Chronicle Queue and returns; a background thread performs the database write, th
 
 ```java
 AsyncMessagesStoreSettings.builder()
+        .asyncStoreSettings(AsyncStoreSettings.builder()
+                .asyncQueueDirectory("/var/lib/my-app/store-queue")
+                .build())
         .wrappedFixMessagesStoreSettings(JdbcMessageStoreSettings.builder()
                 .instanceId("acceptor")
                 .dataSource(myDataSource)
@@ -168,7 +171,7 @@ process crash rather than dying with the buffer that held it.
 | `messageByteBufferSize`                      | `2048`     | sized to your largest message                                                  |
 | `useDirectByteBuffer`                        | `true`     | off-heap handover                                                              |
 | `underlyingStoreResourceWatchTaskCheckDelay` | 2 seconds  | how often the watchdog re-checks a failed backend                              |
-| `flushPendingMessagesOnStartupDelay`         | 60 seconds | how long start waits for writes left by a previous run before failing to start |
+| `flushPendingMessagesOnStartupDelay`         | 120 seconds (a logger: 60) | how long start waits for writes left by a previous run before failing to start |
 | `findWaitForEmptyQueueTimeout`               | 5 seconds  | how long a resend waits for pending writes before failing                      |
 
 **The guarantee to understand:** wrapping a JDBC store in the async decorator means a slow database costs you queue
