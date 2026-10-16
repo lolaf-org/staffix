@@ -1,0 +1,13 @@
+summary: >-
+  Declares memory message stores in Spring Boot properties, usually in the dev profile.
+production:
+  - >-
+    Declare the instance in the profile file of each environment that uses it, not in application.properties, which
+    every profile reads.
+failures:
+  - symptom: >-
+      The start fails: staffix.messages-stores-memory.instances.<key> collides with another store contributor for the
+      same key.
+    fix: >-
+      Two modules declare an instance under the same key in the active profiles. application.properties applies in every
+      profile: declare each environment's instance in its own profile file, or give it another key.

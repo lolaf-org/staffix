@@ -1,0 +1,13 @@
+summary: >-
+  Declares file session settings stores in Spring Boot properties.
+production:
+  - >-
+    Take directory from an environment variable.
+  - >-
+    Name extra ConfigValueResolver beans with config-value-resolver-beans: they are asked after the system property and
+    environment resolvers and before Spring's Environment.
+failures:
+  - symptom: >-
+      The start fails: staffix.sessions-settings-stores-file.instances.<key> needs exactly one of directory or uris.
+    fix: >-
+      Set directory, or uris, never both.

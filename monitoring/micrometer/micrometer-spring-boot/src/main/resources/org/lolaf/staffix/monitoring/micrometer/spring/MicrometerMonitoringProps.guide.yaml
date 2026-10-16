@@ -1,0 +1,8 @@
+summary: >-
+  Declares Micrometer monitoring in Spring Boot properties, publishing to a MeterRegistry bean of the application.
+failures:
+  - symptom: >-
+      The start fails: staffix.monitoring is enabled but no MeterRegistry bean was found in the context.
+    fix: >-
+      Declare a MeterRegistry bean, such as the one Spring Boot's actuator provides, or name one with
+      meter-registry-bean.

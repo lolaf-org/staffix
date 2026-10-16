@@ -1,0 +1,19 @@
+summary: >-
+  Declares OTLP message loggers in Spring Boot properties.
+production:
+  - >-
+    Declare the instance in the profile file of each environment that uses it, not in application.properties, which
+    every profile reads.
+  - >-
+    Take otlp-endpoint-url from an environment variable.
+failures:
+  - symptom: >-
+      The start fails: staffix.messages-loggers-otlp.instances.<key>.otlp-endpoint-url is required.
+    fix: >-
+      Set the collector's URL.
+  - symptom: >-
+      The start fails: staffix.messages-loggers-otlp.instances.<key> collides with another logger contributor for the
+      same key.
+    fix: >-
+      Two modules declare an instance under the same key in the active profiles. application.properties applies in every
+      profile: declare each environment's instance in its own profile file, or give it another key.

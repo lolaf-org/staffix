@@ -1,0 +1,20 @@
+summary: >-
+  Declares JDBC message stores in Spring Boot properties, each using a DataSource bean of the application.
+production:
+  - >-
+    Declare the instance in the profile file of each environment that uses it, not in application.properties, which
+    every profile reads.
+  - >-
+    Declare the DataSource as a bean and name it with data-source-bean; wrap the store with
+    staffix.messages-stores-async.
+failures:
+  - symptom: >-
+      The start fails: staffix.messages-stores-jdbc.instances.<key>.data-source-bean is required.
+    fix: >-
+      Name the DataSource bean the store uses.
+  - symptom: >-
+      The start fails: staffix.messages-stores-jdbc.instances.<key> collides with another store contributor for the same
+      key.
+    fix: >-
+      Two modules declare an instance under the same key in the active profiles. application.properties applies in every
+      profile: declare each environment's instance in its own profile file, or give it another key.

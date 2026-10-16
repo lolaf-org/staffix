@@ -1,0 +1,14 @@
+summary: >-
+  Declares the HTTP admin API in Spring Boot properties.
+production:
+  - >-
+    Serve HTTPS with ssl-bundle, and trust a console with a private certificate with announce-ssl-bundle.
+  - >-
+    Take announce-url, announce-username and announce-password from environment variables.
+failures:
+  - symptom: >-
+      The admin API serves in an environment where it must not, such as dev or tests.
+    fix: >-
+      Once its module is on the classpath it serves in every profile: exclude
+      org.lolaf.staffix.admin.http.spring.HttpAdminApiAutoConfiguration with spring.autoconfigure.exclude in those
+      profiles.

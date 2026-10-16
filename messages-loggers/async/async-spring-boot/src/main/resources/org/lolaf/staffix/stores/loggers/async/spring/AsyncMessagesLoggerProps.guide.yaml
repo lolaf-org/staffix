@@ -1,0 +1,22 @@
+summary: >-
+  Declares async logger wrappers in Spring Boot properties, each wrapping a logger declared by another logger module.
+production:
+  - >-
+    Declare the wrapper beside the logger it wraps, under its own key, and point at that logger with wraps=<key>, for
+    example an entry of staffix.messages-loggers-file.instances. In Java the wrapper holds the wrapped settings instead.
+  - >-
+    Sessions keep naming the wrapped logger's key.
+failures:
+  - symptom: >-
+      The start fails: staffix.messages-loggers-async.instances.<key>.wraps is required.
+    fix: >-
+      Set wraps to the key of the logger to wrap.
+  - symptom: >-
+      The start fails: staffix.messages-loggers-async.instances.<key>.wraps='<id>' does not reference any logger.
+    fix: >-
+      The wrapped logger's module is missing from the dependencies, its key differs, or it is declared in a profile that
+      is not active.
+  - symptom: >-
+      The start fails: staffix.messages-loggers-async.instances.<key>.async-queue-directory is required.
+    fix: >-
+      Set it under the application's data directory, from an environment variable.

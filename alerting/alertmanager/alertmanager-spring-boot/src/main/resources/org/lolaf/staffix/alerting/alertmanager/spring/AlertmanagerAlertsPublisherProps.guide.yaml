@@ -1,0 +1,15 @@
+summary: >-
+  Declares Alertmanager publishers in Spring Boot properties.
+production:
+  - >-
+    List each Alertmanager under urls[n], and put an Authorization header under headers.Authorization, from environment
+    variables.
+failures:
+  - symptom: >-
+      The start fails: <key>.urls must name at least one Alertmanager.
+    fix: >-
+      Set urls[0].
+  - symptom: >-
+      The start fails: <key>.ssl-bundle is set but no SSL bundles are configured.
+    fix: >-
+      Declare the bundle under spring.ssl.bundle.

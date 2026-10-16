@@ -1,0 +1,15 @@
+summary: >-
+  Declares sessions in Spring Boot properties, as an indexed list under instances.<key>.sessions[n]. The store a Spring
+  Boot application usually starts with.
+production:
+  - >-
+    Give a session setting that differs per profile a property placeholder,
+    reset-seq-num-on-logon=${my-app.reset-seq-num-on-logon}, and set the placeholder in each profile file: a profile
+    file cannot override one entry of an indexed list.
+  - >-
+    Name the application with fix-application-instance-id, the bean name of its FixApplication.
+failures:
+  - symptom: >-
+      A profile file's change to one session setting is ignored, or replaces the whole session list.
+    fix: >-
+      Spring merges an indexed list as a whole, never entry by entry: use a property placeholder set per profile.

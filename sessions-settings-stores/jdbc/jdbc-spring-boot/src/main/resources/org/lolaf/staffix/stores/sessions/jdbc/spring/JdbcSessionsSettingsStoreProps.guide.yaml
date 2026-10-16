@@ -1,0 +1,5 @@
+summary: >-
+  Declares JDBC session settings stores in Spring Boot properties, each using a DataSource bean of the application.
+production:
+  - >-
+    Declare the DataSource as a bean and name it with data-source-bean.
