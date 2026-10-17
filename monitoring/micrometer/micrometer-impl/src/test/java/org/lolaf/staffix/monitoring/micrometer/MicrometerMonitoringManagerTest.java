@@ -209,9 +209,18 @@ class MicrometerMonitoringManagerTest {
     }
 
     @Test
+    void theRegistryItIsGivenStaysOpenWhenItStops() {
+        monitoringManager.start();
+        monitoringManager.stop(Deadline.unlimited());
+
+        assertThat(meterRegistry.isClosed()).isFalse();
+    }
+
+    @Test
     void theFinalPublishOnCloseReportsADestroyedSessionLoggedOut() {
         RecordingStepMeterRegistry pushRegistry = new RecordingStepMeterRegistry();
         meterRegistry = pushRegistry;
+        monitoringManager = createManager(settings.toBuilder().stoppingMeterRegistryConsumer(MeterRegistry::close).build());
         when(fixSession.getStatus()).thenReturn(FixSessionStatus.LOGGED_IN);
         monitoringManager.start();
         FixSessionPlugin<?, ?> listener =

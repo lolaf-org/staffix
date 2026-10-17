@@ -131,7 +131,6 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     @Override
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         settings.getStoppingMeterRegistryConsumer().accept(meterRegistry);
-        meterRegistry.close();
         destroyedSessionsStatus.clear();
     }
 

@@ -117,7 +117,9 @@ public class MicrometerMonitoringManagerSettings implements FixSessionMonitoring
             .publishPercentileHistogram(false)
             .build();
     /**
-     * Supplies the registry to publish to. Required by the Micrometer manager; the OTLP one builds its own.
+     * Supplies the registry to publish to. Required by the Micrometer manager; the OTLP one builds its own. Never
+     * closed by staffix: pass {@code MeterRegistry::close} as {@link #stoppingMeterRegistryConsumer} to close it at stop,
+     * where its final publish still reports the sessions just destroyed.
      */
     @Nullable
     private Supplier<MeterRegistry> meterRegistrySupplier;

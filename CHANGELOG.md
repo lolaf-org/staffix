@@ -24,6 +24,10 @@ could mean.
   `FixSession.sendBusinessMessageReject`.
 - **A dictionary cut from Orchestra keeps BusinessMessageReject** whatever `includeMessagesFile` lists, since the
   session layer needs it.
+- **Stopping the engine no longer closes the `MeterRegistry` the application gives Micrometer monitoring** (with
+  Spring Boot, its `MeterRegistry` bean): the application closes what it creates. To close it when the engine stops,
+  with a last publish, pass `MeterRegistry::close` as `stoppingMeterRegistryConsumer`. The OTLP variant still closes
+  the registry it builds.
 
 ### Removed
 

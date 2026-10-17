@@ -10,3 +10,8 @@ production:
     Put it behind the async plugin to keep the timers off the message path.
   - >-
     Alert on the session.logon.status gauge: 0 is logged out inside session time.
+behaviour:
+  - >-
+    The manager never closes the registry it is given: in plain Java, close it after the engine stops, or pass
+    MeterRegistry::close as stoppingMeterRegistryConsumer for a last publish that still reports the sessions just
+    destroyed; with Spring Boot, the context closes the bean.

@@ -16,6 +16,7 @@
 package org.lolaf.staffix.monitoring.micrometer.otlp;
 
 import io.micrometer.core.instrument.Clock;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.util.NamedThreadFactory;
 import io.micrometer.registry.otlp.*;
 import lombok.extern.slf4j.Slf4j;
@@ -117,10 +118,13 @@ public class OtlpMicrometerMonitoringManager extends MicrometerMonitoringManager
 
         };
         return settings.toBuilder().meterRegistrySupplier(() -> OtlpMeterRegistry.builder(config)
-                .clock(Clock.SYSTEM)
-                .threadFactory(new NamedThreadFactory("otlp-metrics-publisher"))
-                .metricsSender(new OtlpHttpMetricsSender(newHttpSender(settings, config, httpSender)))
-                .build()).build();
+                        .clock(Clock.SYSTEM)
+                        .threadFactory(new NamedThreadFactory("otlp-metrics-publisher"))
+                        .metricsSender(new OtlpHttpMetricsSender(newHttpSender(settings, config, httpSender)))
+                        .build())
+                // the registry is this manager's own: closing it pushes the last metrics, before the sender closes
+                .stoppingMeterRegistryConsumer(settings.getStoppingMeterRegistryConsumer().andThen(MeterRegistry::close))
+                .build();
     }
 
     /**
