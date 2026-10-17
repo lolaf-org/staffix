@@ -9,7 +9,7 @@ silently dropped.
 
 | QuickFIX/J | staffix |
 | :- | :- |
-| `SocketInitiator`, `ThreadedSocketInitiator` | `engine.newInitiator(FixInitiatorBuilder)`, with a `mainTarget` (`FixInitiatorTarget`: session id and `connectAddress`) and optional `backupTarget`s; Spring Boot: `staffix.initiators.<name>` |
+| `SocketInitiator`, `ThreadedSocketInitiator` | `engine.newInitiator(FixInitiatorBuilder)`, with a `mainTarget` (`FixInitiatorTarget`: session id and `connectAddresses`) and optional `backupTarget`s; Spring Boot: `staffix.initiators.<name>` |
 | `SocketAcceptor`, `ThreadedSocketAcceptor` | `engine.newAcceptor(FixAcceptorBuilder)`, with a `bindAddress`; Spring Boot: `staffix.acceptors.<name>` |
 | one thread, or one thread per session (`Threaded...`) | staffix I/O threads either way; work too slow for the I/O thread goes to a `MessageExecutor` (`docs/threading-model.md`) |
 | `connector.start()`, `stop()` | `engine.start()`, `engine.stop(Deadline)` |
@@ -19,7 +19,8 @@ silently dropped.
 | `Session.sendToTarget(message, sessionID)` | `fixSession.send(encoder.begin().set...(...), null)` with a reusable encoder created once per session (`session.newEncoder(XEncoder.class).asReusable()`) |
 | `session.logon()`, `session.logout(reason)` | `fixSession.logon()`, `fixSession.logout(reason)` |
 | `session.reset()`, `setNextSenderMsgSeqNum`, `setNextTargetMsgSeqNum` | **no equivalent** in application code: an operator does it through an admin API exporter (`AdminApi.resetSession`, `setOutgoingSeqNum`, `setIncomingSeqNum`, `docs/runtime-administration.md`); report each call |
-| `MessageStoreFactory`: `MemoryStoreFactory`, `NoopStoreFactory` | the memory messages store (it keeps messages; nothing is a no-op store) |
+| `MessageStoreFactory`: `MemoryStoreFactory` | the memory messages store |
+| `NoopStoreFactory` | the memory messages store with `maxEntriesInMemory` 0, which keeps no messages |
 | `FileStoreFactory`, `CachedFileStoreFactory` | the file messages store |
 | `JdbcStoreFactory` | the JDBC messages store, behind the async store |
 | `SleepycatStoreFactory` | **no equivalent**: the file store, or JDBC |
