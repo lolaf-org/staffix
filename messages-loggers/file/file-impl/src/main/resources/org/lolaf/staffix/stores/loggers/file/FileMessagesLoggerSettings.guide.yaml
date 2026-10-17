@@ -8,6 +8,9 @@ production:
     Set the compression period and maxCompressedFiles to the retention the audit requires.
   - >-
     Put it behind the async logger: each line is otherwise a file write on the session thread.
+  - >-
+    For a log shipper feeding the admin UI, set lineFormat to LogfmtFileLogLineFormat: each line then starts with the
+    session, direction and message type as logfmt pairs, to parse up to the first " - ".
 proving:
   - >-
     After the round trip, await the session's file in logDirectory holding a message the test sent.

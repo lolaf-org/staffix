@@ -110,6 +110,40 @@ Registered the same way, selected per session by `fixMessageLoggerInstanceId`.
 
 The quickstart uses the SLF4J logger with both directions on, which is why you can watch the session come up.
 
+### The file logger's line format
+
+`lineFormat` decides what each line of the file logger holds:
+
+| format                    | line                                                                                        |
+|---------------------------|---------------------------------------------------------------------------------------------|
+| `PlainFileLogLineFormat`  | the default: the time, a prefix for the direction or the event, then the message as is      |
+| `LogfmtFileLogLineFormat` | logfmt pairs a log shipper reads, then the message, for an ingester feeding the admin UI    |
+
+```
+20261016-10:15:30.123456 <-: 8=FIX.4.4^A9=148^A35=D^A...
+time=2026-10-16T10:15:30.123456Z fix.eid=E1 fix.iid=acceptor fix.sg=GRP fix.sn=CLIENT1 fix.md=i fix.mt=D - 8=FIX.4.4|9=148|35=D|...
+```
+
+The logfmt pairs are the attributes metrics, OTLP logs and traces carry: engine, instance, session group and name,
+direction and message type. A session event has no direction nor type. **Only the part before the first ` - ` is
+logfmt**: split each line there, then parse the head, since the message holds spaces of its own. A value with a space,
+`=` or `"` in it is quoted, so a ` - ` inside a session name never ends the head.
+
+The logfmt format replaces the SOH between fields with `fixMessageFieldsDelimiter`, `|` by default, which costs a
+byte by byte copy of each message. `null` writes the message as is; so does putting the logger behind the async
+logger, which takes the copy off the session thread.
+
+```java
+FileMessagesLoggerSettings.builder()
+        .logDirectory(logs)
+        .lineFormat(LogfmtFileLogLineFormat.builder().build())
+        .build();
+```
+
+With Spring Boot, `line-format=logfmt`, with `logfmt.fix-message-fields-delimiter` (empty keeps the SOH); the plain
+format's prefixes are under `plain.`. A format of your own implements `FileLogLineFormat`, set in Java or named by
+`line-format-bean`.
+
 ---
 
 ## When a store or logger fails

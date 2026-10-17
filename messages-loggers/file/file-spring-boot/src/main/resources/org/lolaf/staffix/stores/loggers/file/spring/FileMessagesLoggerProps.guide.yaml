@@ -6,6 +6,8 @@ production:
     every profile reads.
   - >-
     Take log-directory from an environment variable.
+  - >-
+    Set line-format=logfmt for a log shipper feeding the admin UI.
 failures:
   - symptom: >-
       The start fails: staffix.messages-loggers-file.instances.<key>.log-directory is required.
@@ -17,3 +19,8 @@ failures:
     fix: >-
       Two modules declare an instance under the same key in the active profiles. application.properties applies in every
       profile: declare each environment's instance in its own profile file, or give it another key.
+  - symptom: >-
+      The start fails: staffix.messages-loggers-file.instances.<key>.line-format and line-format-bean both choose the
+      line format.
+    fix: >-
+      Keep line-format for the plain or logfmt format, or line-format-bean for a format of your own, not both.
