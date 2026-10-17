@@ -43,6 +43,9 @@ could mean.
   `FixEngineBuilder`: the starter now brings the engine, as the Spring Boot guide says.
 - An async messages store or logger configured in Java without a queue directory, or without what it wraps, failed with
   a `NullPointerException`; it is now refused with an error saying what is missing.
+- A JDBC messages store behind the async store, with `maxMessagesPerSession` set, failed every session's start with
+  a `NullPointerException`; and an OTLP messages logger behind the async logger kept its publishing thread after the
+  engine stopped. The async store and logger now start and stop what they wrap.
 - The session settings JSON Schema accepted `P`, `PT` and `P1DT` as durations, which then failed when the file was
   loaded; an editor using the schema now flags them.
 
