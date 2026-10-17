@@ -16,8 +16,9 @@ Everything this skill needs ships with it, under `${CLAUDE_PLUGIN_ROOT}`:
 - `skills/new-app/references/project-rules.md` and `references/environment-rules.md`: rules the generated project
   follows. **Read both before writing anything.**
 - `skills/new-app/references/dictionary-setup.md` and `dictionary-messages.md`: the FIX dictionary and its messages.
-- `references/components.md`: the stores, loggers, monitoring, alerting and admin components a prod environment can
-  use.
+- `references/catalogue.md`: how to read the components catalogue, bundled under `catalogue/` at the staffix
+  version this plugin targets: every store, logger, monitoring, alerting and admin component, with its settings and
+  guide. **Read it before choosing components.** `references/components.md`: what the catalogue cannot say.
 - `docs/`: the staffix documentation, and `dictionaries/`: the dictionaries staffix ships.
 
 ## 1. Ask what to build
@@ -40,7 +41,8 @@ defaults, and list the defaults taken when handing over.
    - *Standard*: file store, file logger behind the async logger. What the reference projects use.
    - *Observable*: Standard, plus Micrometer metrics over OTLP, SLF4J alerts and the JMX admin API.
    - *Database*: JDBC store behind the async store, file logger behind the async logger.
-   Each choice is a row of `components.md`; read the doc that row names before configuring it.
+   Each choice is a component of the bundled catalogue's index: open its file, as `catalogue.md` says, before
+   configuring it.
 
 ## 2. Build it
 
@@ -54,17 +56,20 @@ defaults, and list the defaults taken when handing over.
 3. Run `mvn generate-sources`, then write the application against the generated classes: a decoder per received
    message mapping the fields it uses, an encoder per sent message, and the example order flow replaced by the
    user's. Keep the reference's structure: environments, session files or properties, simulator.
-4. Build the prod environment from the chosen components, every path under `STAFFIX_DATA_DIR` and every endpoint or
-   secret from an environment variable.
+4. Build the prod environment from the chosen components: what each schema `required`, its guide's `production`
+   settings, one of its `requiresOneOf`, and its `jvmFlags` where `environment-rules.md` says. Every path under
+   `STAFFIX_DATA_DIR`, every endpoint or secret from an environment variable.
 5. Adapt the tests: the counterparty simulator speaks the chosen messages, and the round trip runs in dev and in
-   prod.
+   prod, proving each prod component as its guide's `proving` says.
 6. Write a README: what the application does, how to run it (`mvn exec:exec` in plain Java, `mvn spring-boot:run`
    with Spring Boot, both already passing the JVM flags; `STAFFIX_ENV=prod` or `SPRING_PROFILES_ACTIVE=prod` for
    prod), every environment variable with its default, how to add a counterparty, and where the dictionary comes
    from.
-7. Run `mvn verify`. Fix what fails, reading the docs rather than guessing, until it passes.
+7. Run `mvn verify`. When it fails, search the catalogue for the error message first: a guide's `failures` may
+   give the fix. Otherwise read the docs rather than guess, until it passes.
 
 ## 3. Hand over
 
-Tell the user what was generated, how to run it, which choices were made for them, and what is theirs to fill in:
-the business logic behind each decoder, credentials, and production endpoints.
+Tell the user what was generated, how to run it, which choices were made for them, the guide's `behaviour` of each
+prod component, and what is theirs to fill in: the business logic behind each decoder, credentials, and production
+endpoints.

@@ -38,5 +38,5 @@ them.
 - **The counterparty's session gets its own name** (`broker-order-entry` beside `order-entry`): session ids are
   interned for the whole JVM, and staffix 0.9.1 mixes up the CompIDs of two sessions sharing a name there.
 - An acceptor under test gets a free port per test class: plain Java passes it to the gateway, Spring sets
-  `staffix.acceptors.<name>.bind-address` from a `@DynamicPropertySource`. A Spring acceptor needs `bind-address`,
-  and with no `target-sessions-settings-store-instance-ids` it serves every settings store.
+  `staffix.acceptors.<name>.bind-address` from a `@DynamicPropertySource`. A Spring acceptor needs `bind-address`;
+  which settings stores it reads is the catalogue's `sessions-settings-store` rule for `ACCEPTOR`.

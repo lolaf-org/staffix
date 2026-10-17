@@ -2,13 +2,13 @@
 
 What an environment is made of, and how it is proven. Each rule cost a failed build or a broken start in the
 reference projects under `${CLAUDE_PLUGIN_ROOT}/skills/new-app/reference-projects/`. The components themselves are in
-`components.md`.
+the catalogue (`catalogue.md`).
 
 ## Environments
 
 - **dev**: memory store, SLF4J logger with `|` as field delimiter, sequence numbers reset on each logon (initiator).
   Nothing else.
-- **prod**: components from `components.md`, every file under one data directory (`STAFFIX_DATA_DIR`), every
+- **prod**: components from the catalogue, every file under one data directory (`STAFFIX_DATA_DIR`), every
   endpoint and secret from an environment variable, never a constant.
 - Plain Java: `StaffixEnvironment` with `DevEnvironment` and `ProdEnvironment`, picked by `STAFFIX_ENV`, as in
   `plain-java-initiator`. `ProdEnvironment` takes everything it needs in its constructor (the data directory, an
@@ -35,7 +35,6 @@ stays out of the defaults, and the warning is harmless.
   without it. After the round trip, await its output: rows in its table, files in its directory.
 - Spring: one abstract test, a subclass per profile, `@DirtiesContext(AFTER_CLASS)` and a counterparty per class, so
   two cached contexts never log on to the same counterparty at once.
-- **An OTLP exporter is proven by an in-process HTTP server** standing in for the collector: await a request on its
-  path (`/v1/metrics`, `/v1/traces`, `/v1/logs`) holding what the session did. Metrics are pushed every 10 seconds
-  and when the engine stops, so stop it first. A closed port only proves the application starts.
+- **Each component's guide `proving`** says what to await: rows, files, or a request on an in-process stand-in for
+  a collector. A closed port only proves the application starts.
 - **Finish with `mvn verify`** and fix what fails, reading the docs rather than guessing.
