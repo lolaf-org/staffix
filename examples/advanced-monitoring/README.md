@@ -69,8 +69,11 @@ The log directory must exist before the stack starts, since Docker would otherwi
 mkdir -p examples/advanced-monitoring/target/logs
 (cd monitoring/grafana && docker compose up -d)
 cd examples/advanced-monitoring
-./MetricsLogsTracesExample.sh -d=660 -w=1000 -lt=FILE -lf=LOGFMT
+./MetricsLogsTracesExample.sh -d=660 -w=1000 -jw -em -am -et -lt=FILE -lf=LOGFMT -oe="http://localhost:4318"
 ```
+
+Keep `-em`: the dashboard's engine, group and session lists come from the metrics, and its logs panel filters on them,
+so without metrics it shows no logs either. Pick `staffix-file-logger` in its service list.
 
 In Grafana's Explore, on Loki: `{service_name="staffix-file-logger", fix_sn="initiator-session-1"} | fix_md="i"`. The
 collector reads each file from its beginning, so a much faster run (`-w=100`) or old files left in `target/logs` can
