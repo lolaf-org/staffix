@@ -23,6 +23,12 @@ Load the plugin from this directory, without installing it:
 claude --plugin-dir claude-plugin
 ```
 
+`catalogue` links to the components catalogue the build generates, so build it first:
+
+```bash
+./mvnw install -pl build-tools/components-catalogue -am -DskipTests
+```
+
 Check it before a release:
 
 ```bash
