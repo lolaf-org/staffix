@@ -117,6 +117,34 @@ class TestFromFixSessionSettingsDocumentTransformer {
     }
 
     @Test
+    void flagsLeftOutKeepTheirDefaults() throws IOException {
+        FixSessionSettings d = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(
+                FromFixSessionSettingsDocumentTransformer.mergeWithDefault(
+                        roundTrip(defaultSettingsBuilder.build()), roundTrip(settingsBuilder.build())));
+        FixSessionSettings defaults = FixSessionSettings.builder()
+                .fixSessionId(d.getFixSessionId()).fixSessionType(d.getFixSessionType()).build();
+
+        assertThat(d.isMessageEncodersDirectByteBuffers()).isEqualTo(defaults.isMessageEncodersDirectByteBuffers());
+        assertThat(d.isPooledMessageEncodersDirectByteBuffers())
+                .isEqualTo(defaults.isPooledMessageEncodersDirectByteBuffers());
+        assertThat(d.isAdvertiseMsgTypeGrpOnLogon()).isEqualTo(defaults.isAdvertiseMsgTypeGrpOnLogon());
+        assertThat(d.isAdvertiseEngineOnLogon()).isEqualTo(defaults.isAdvertiseEngineOnLogon());
+        assertThat(d.isAdvertiseApplicationOnLogon()).isEqualTo(defaults.isAdvertiseApplicationOnLogon());
+    }
+
+    @Test
+    void aFlagTheSessionLeavesOutComesFromTheDefault() throws IOException {
+        defaultSettingsBuilder.advertiseEngineOnLogon(true).messageEncodersDirectByteBuffers(false);
+
+        FixSessionSettings d = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(
+                FromFixSessionSettingsDocumentTransformer.mergeWithDefault(
+                        roundTrip(defaultSettingsBuilder.build()), roundTrip(settingsBuilder.build())));
+
+        assertThat(d.isAdvertiseEngineOnLogon()).isTrue();
+        assertThat(d.isMessageEncodersDirectByteBuffers()).isFalse();
+    }
+
+    @Test
     void customSettingOfTheSessionWinsOverTheDefault() throws IOException {
         defaultSettingsBuilder.fixApplicationSessionSettings(Map.of("shared", "fromDefault"));
         settingsBuilder.fixApplicationSessionSettings(Map.of("shared", "fromSession"));

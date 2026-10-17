@@ -48,6 +48,11 @@ could mean.
   engine stopped. The async store and logger now start and stop what they wrap.
 - The session settings JSON Schema accepted `P`, `PT` and `P1DT` as durations, which then failed when the file was
   loaded; an editor using the schema now flags them.
+- A session loaded from a YAML file that did not set `messageEncodersDirectByteBuffers` or
+  `pooledMessageEncodersDirectByteBuffers` encoded into heap buffers, where the default is direct buffers; and
+  `advertiseMsgTypeGrpOnLogon`, `advertiseEngineOnLogon`, `advertiseApplicationOnLogon` and those two set in a
+  `default.yaml` were ignored for a session file that left them out. A setting left out of a session file now takes
+  the `default.yaml` value, then the default.
 
 ## [0.9.1] - 2026-10-14
 

@@ -65,9 +65,9 @@ public class FixSessionSettingsDocument {
     private TimeUnit sendingTimeAccuracy;
 
     private Map<String, String> fixApplicationSessionSettings;
-    private boolean advertiseMsgTypeGrpOnLogon;
-    private boolean advertiseEngineOnLogon;
-    private boolean advertiseApplicationOnLogon;
+    private Boolean advertiseMsgTypeGrpOnLogon;
+    private Boolean advertiseEngineOnLogon;
+    private Boolean advertiseApplicationOnLogon;
     private Boolean enabledLogonNextExpectedMsgSeqNum;
 
     private List<InetAddress> allowedAddresses;
@@ -101,8 +101,8 @@ public class FixSessionSettingsDocument {
     private RttMeasurementSettings rttMeasurementSettings;
     @Valid
     private SessionScheduleSettings sessionScheduleSettings;
-    private boolean messageEncodersDirectByteBuffers;
-    private boolean pooledMessageEncodersDirectByteBuffers;
+    private Boolean messageEncodersDirectByteBuffers;
+    private Boolean pooledMessageEncodersDirectByteBuffers;
     private Boolean disconnectOnRemove;
     private Boolean restartLiveSessionOnUpdate;
 

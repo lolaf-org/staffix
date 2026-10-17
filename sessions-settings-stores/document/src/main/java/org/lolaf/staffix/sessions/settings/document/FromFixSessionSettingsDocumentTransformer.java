@@ -70,9 +70,9 @@ public class FromFixSessionSettingsDocumentTransformer {
             settings.getFixApplicationSessionSettings()
                     .forEach((k, v) -> builder.fixApplicationSessionSetting(FixApplicationSessionSettingDescriptor.of(k), v));
         }
-        mergeIfNeeded(settings::isAdvertiseMsgTypeGrpOnLogon, builder::advertiseMsgTypeGrpOnLogon);
-        mergeIfNeeded(settings::isAdvertiseEngineOnLogon, builder::advertiseEngineOnLogon);
-        mergeIfNeeded(settings::isAdvertiseApplicationOnLogon, builder::advertiseApplicationOnLogon);
+        mergeIfNeeded(settings::getAdvertiseMsgTypeGrpOnLogon, builder::advertiseMsgTypeGrpOnLogon);
+        mergeIfNeeded(settings::getAdvertiseEngineOnLogon, builder::advertiseEngineOnLogon);
+        mergeIfNeeded(settings::getAdvertiseApplicationOnLogon, builder::advertiseApplicationOnLogon);
         mergeIfNeeded(settings::getEnabledLogonNextExpectedMsgSeqNum, builder::enabledLogonNextExpectedMsgSeqNum);
         if (settings.getAllowedAddresses() != null) {
             settings.getAllowedAddresses().forEach(builder::allowedAddress);
@@ -107,8 +107,8 @@ public class FromFixSessionSettingsDocumentTransformer {
         mergeIfNeeded(settings::getSessionDownAlertDelay, builder::sessionDownAlertDelay);
         mergeCancelOnDisconnectSettings(settings, builder);
         mergeRttMeasurementSettings(settings, builder);
-        mergeIfNeeded(settings::isMessageEncodersDirectByteBuffers, builder::messageEncodersDirectByteBuffers);
-        mergeIfNeeded(settings::isPooledMessageEncodersDirectByteBuffers, builder::pooledMessageEncodersDirectByteBuffers);
+        mergeIfNeeded(settings::getMessageEncodersDirectByteBuffers, builder::messageEncodersDirectByteBuffers);
+        mergeIfNeeded(settings::getPooledMessageEncodersDirectByteBuffers, builder::pooledMessageEncodersDirectByteBuffers);
         mergeIfNeeded(settings::getDisconnectOnRemove, builder::disconnectOnRemove);
         mergeIfNeeded(settings::getRestartLiveSessionOnUpdate, builder::restartLiveSessionOnUpdate);
         mergeSessionScheduleSettings(settings, builder);
