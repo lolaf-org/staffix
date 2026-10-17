@@ -16,7 +16,22 @@ could mean.
 
 ## [0.9.2] - WIP
 
+### Added
+
+- **The file messages logger has a choice of line format**, set with `lineFormat`. The plain format, the default,
+  writes the same lines as before. The new logfmt format (`LogfmtFileLogLineFormat`) starts each line with the time,
+  the engine, instance and session, the direction and the message type as logfmt pairs, then the message: a log
+  shipper such as the OpenTelemetry Collector can then send the file's records to Loki and the admin UI with the
+  same attributes as the OTLP messages logger. With Spring Boot, `line-format=logfmt`. A format of your own
+  implements `FileLogLineFormat`, set in Java or named by `line-format-bean`.
+
 ### Changed
+
+- **The file messages logger's line prefixes belong to the plain line format**: `logInPrefix`, `logOutPrefix` and
+  `logEventPrefix` moved from `FileMessagesLoggerSettings` to `PlainFileLogLineFormat`, and their Spring Boot
+  properties under `plain.`, for example `staffix.messages-loggers-file.instances.<id>.plain.log-in-prefix`.
+- **The OTLP messages logger gives a message whose type the dictionary does not declare**, such as a user defined
+  one, its `fix.mt` attribute, which it used to leave out.
 
 - **FIX 4.3 treats BusinessMessageReject as an application message**, as every other FIX version does. A business
   reject the session sends now goes through `onMessageEncoding` rather than `onAdminMessageEncoding`.
