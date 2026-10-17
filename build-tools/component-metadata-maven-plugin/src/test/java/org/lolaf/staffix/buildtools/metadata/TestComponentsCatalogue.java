@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,6 +79,22 @@ class TestComponentsCatalogue {
 
         assertThatThrownBy(() -> ComponentsCatalogue.index("1.2.3", files))
                 .hasMessage("META-INF/staffix/notes.json is not component metadata");
+    }
+
+    @Test
+    void reportsAModuleLeftOutAndADependencyWithoutMetadata() {
+        assertThat(ComponentsCatalogue.coverageProblems(Set.of("store-impl", "store-spring-boot"),
+                Set.of("store-impl", "staffix-api"), Map.of("store-impl", 1, "staffix-api", 0)))
+                .containsExactly(
+                        "store-spring-boot describes components but is not a dependency of the catalogue: add it to"
+                                + " its pom",
+                        "staffix-api is a dependency of the catalogue but holds no component metadata");
+    }
+
+    @Test
+    void aCatalogueDependingOnEveryDescribingModuleIsComplete() {
+        assertThat(ComponentsCatalogue.coverageProblems(Set.of("store-impl"), Set.of("store-impl"),
+                Map.of("store-impl", 2, "staffix-api", 0))).isEmpty();
     }
 
     private Map<String, ObjectNode> metadata() throws IOException {

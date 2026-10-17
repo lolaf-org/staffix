@@ -16,13 +16,10 @@
 package org.lolaf.staffix.buildtools.metadata;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.experimental.UtilityClass;
 
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
+import java.util.*;
 
 /**
  * The index of every component's metadata files, holding only what a skill needs to pick the components it works on
@@ -76,6 +73,22 @@ public class ComponentsCatalogue {
         index.putObject("kinds").setAll(kinds);
         index.putArray("components").addAll(components.values());
         return index;
+    }
+
+    /**
+     * @param describingModules the reactor modules generating component metadata
+     * @param dependencies      the catalogue's own staffix dependencies
+     * @param contributed       how many metadata files each staffix artifact on its class path holds
+     * @return each module the catalogue leaves out, and each dependency that adds nothing to it
+     */
+    public static List<String> coverageProblems(Set<String> describingModules, Set<String> dependencies,
+                                                Map<String, Integer> contributed) {
+        List<String> problems = new ArrayList<>();
+        describingModules.stream().filter(module -> !dependencies.contains(module)).forEach(module -> problems.add(
+                module + " describes components but is not a dependency of the catalogue: add it to its pom"));
+        dependencies.stream().filter(dependency -> contributed.getOrDefault(dependency, 0) == 0).forEach(dependency ->
+                problems.add(dependency + " is a dependency of the catalogue but holds no component metadata"));
+        return problems;
     }
 
     private static ObjectNode component(String settings, ObjectNode schema, ObjectNode springFile) {

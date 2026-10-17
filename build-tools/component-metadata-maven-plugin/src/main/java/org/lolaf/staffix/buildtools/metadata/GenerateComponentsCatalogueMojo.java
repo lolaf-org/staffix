@@ -16,6 +16,8 @@
 package org.lolaf.staffix.buildtools.metadata;
 
 import org.apache.maven.artifact.Artifact;
+import org.apache.maven.execution.MavenSession;
+import org.apache.maven.model.Dependency;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -38,7 +40,9 @@ import java.nio.file.Path;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
@@ -54,8 +58,14 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
 
     private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
+    private static final String PLUGIN = "staffix-component-metadata-maven-plugin";
+    private static final String DESCRIBE_GOAL = "generate-component-metadata";
+
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
+
+    @Parameter(defaultValue = "${session}", readonly = true, required = true)
+    private MavenSession session;
 
     @Parameter(defaultValue = "${project.build.outputDirectory}", readonly = true, required = true)
     private File classesDirectory;
@@ -70,10 +80,17 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
             Map<String, byte[]> files = new TreeMap<>();
+            Map<String, Integer> contributed = new TreeMap<>();
             for (Artifact artifact : project.getArtifacts()) {
                 if (artifact.getGroupId().equals(project.getGroupId())) {
+                    int before = files.size();
                     collect(artifact, files);
+                    contributed.put(artifact.getArtifactId(), files.size() - before);
                 }
+            }
+            List<String> problems = ComponentsCatalogue.coverageProblems(describingModules(), dependencies(), contributed);
+            if (!problems.isEmpty()) {
+                throw new MojoFailureException("The catalogue misses components:\n- " + String.join("\n- ", problems));
             }
             Map<String, ObjectNode> parsed = new TreeMap<>();
             for (Map.Entry<String, byte[]> file : files.entrySet()) {
@@ -92,6 +109,29 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
         } catch (IOException | RuntimeException e) {
             throw new MojoExecutionException("Unable to catalogue the staffix components", e);
         }
+    }
+
+    private Set<String> describingModules() {
+        return session.getAllProjects().stream()
+                .filter(module -> module != project && module.getGroupId().equals(project.getGroupId()))
+                .filter(GenerateComponentsCatalogueMojo::describesComponents)
+                .map(MavenProject::getArtifactId)
+                .collect(Collectors.toCollection(TreeSet::new));
+    }
+
+    private static boolean describesComponents(MavenProject module) {
+        return module.getBuildPlugins().stream()
+                .filter(plugin -> plugin.getArtifactId().equals(PLUGIN))
+                .flatMap(plugin -> plugin.getExecutions().stream())
+                .anyMatch(execution -> execution.getGoals().contains(DESCRIBE_GOAL)
+                        && !"none".equals(execution.getPhase()));
+    }
+
+    private Set<String> dependencies() {
+        return project.getDependencies().stream()
+                .filter(dependency -> dependency.getGroupId().equals(project.getGroupId()))
+                .map(Dependency::getArtifactId)
+                .collect(Collectors.toCollection(TreeSet::new));
     }
 
     /**
