@@ -72,7 +72,44 @@ public class LogfmtFileLogLineFormat implements FileLogLineFormat {
     }
 
     private static String pair(FixMonitoringAttributes attribute, String value) {
-        return " " + attribute.getKey() + "=" + value;
+        return " " + attribute.getKey() + "=" + value(value);
+    }
+
+    /**
+     * Quoted as logfmt requires when the value is empty or holds a space, {@code =}, {@code "} or a control character,
+     * which also keeps the first unquoted {@code " - "} the separator: session ids and instance ids accept any text.
+     */
+    static String value(String value) {
+        if (!value.isEmpty() && value.chars().noneMatch(c -> c <= ' ' || c == '=' || c == '"' || c == 0x7f)) {
+            return value;
+        }
+        StringBuilder quoted = new StringBuilder("\"");
+        for (char c : value.toCharArray()) {
+            switch (c) {
+                case '"':
+                    quoted.append("\\\"");
+                    break;
+                case '\\':
+                    quoted.append("\\\\");
+                    break;
+                case '\n':
+                    quoted.append("\\n");
+                    break;
+                case '\r':
+                    quoted.append("\\r");
+                    break;
+                case '\t':
+                    quoted.append("\\t");
+                    break;
+                default:
+                    if (c < ' ' || c == 0x7f) {
+                        quoted.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        quoted.append(c);
+                    }
+            }
+        }
+        return quoted.append('"').toString();
     }
 
     private static byte[] bytes(String text) {

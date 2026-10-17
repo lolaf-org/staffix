@@ -66,6 +66,27 @@ class TestLogfmtFileLogLineFormat {
                 .endsWith(" fix.md=i fix.mt=D - 8=FIX.4.4\u0001\n");
     }
 
+    @Test
+    void quotesAValueLogfmtCannotHoldBare() {
+        assertThat(LogfmtFileLogLineFormat.value("CLIENT1")).isEqualTo("CLIENT1");
+        assertThat(LogfmtFileLogLineFormat.value("a\\b")).isEqualTo("a\\b");
+        assertThat(LogfmtFileLogLineFormat.value("")).isEqualTo("\"\"");
+        assertThat(LogfmtFileLogLineFormat.value("desk one")).isEqualTo("\"desk one\"");
+        assertThat(LogfmtFileLogLineFormat.value("a=b")).isEqualTo("\"a=b\"");
+        assertThat(LogfmtFileLogLineFormat.value("say \"hi\" \\o/")).isEqualTo("\"say \\\"hi\\\" \\\\o/\"");
+        assertThat(LogfmtFileLogLineFormat.value("a\tb\u0001")).isEqualTo("\"a\\tb\\u0001\"");
+    }
+
+    @Test
+    void aQuotedNameKeepsTheSeparatorTheFirstOneOutsideQuotes() {
+        FixSessionId spaced = FixSessionId.of("desk - one", FixRegularVersion.VERSION_44, "EXEC", "CLIENT");
+        FileLogLineFormatter formatter = LogfmtFileLogLineFormat.builder().build()
+                .newFormatter("E1", "acceptor", spaced, registry, TimeUnit.SECONDS);
+
+        assertThat(line(l -> formatter.formatEvent(TIME, bytes("Logged on"), l)))
+                .contains(" fix.sn=\"desk - one\" - Logged on\n");
+    }
+
     /**
      * As a generated dictionary's types are: {@link MessageType#of} makes an unindexed one, which the formatter's
      * cache ignores.
