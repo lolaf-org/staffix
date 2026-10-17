@@ -131,7 +131,7 @@ public final class CfgToStaffix {
     }
 
     private final Options options;
-    private final Report report = new Report();
+    final Report report = new Report();
     final List<Session> sessions = new ArrayList<>();
     private final Map<String, Acceptor> acceptors = new LinkedHashMap<>();
 
@@ -151,9 +151,7 @@ public final class CfgToStaffix {
         }
         CfgToStaffix converter = new CfgToStaffix(options);
         try {
-            for (Path cfg : options.files) {
-                converter.convert(cfg, Cfg.parse(cfg));
-            }
+            converter.convert(options.files);
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
             System.exit(1);
@@ -164,11 +162,52 @@ public final class CfgToStaffix {
         }
     }
 
-    void convert(Path file, Cfg cfg) {
-        for (Cfg.Section section : cfg.sessions) {
-            Session session = new Session(file, section.line, cfg.resolve(section));
+    /**
+     * Converts every session of the files, named across all of them so that names are unique and stable.
+     */
+    void convert(List<Path> files) throws IOException {
+        List<Session> supported = new ArrayList<>();
+        for (Path file : files) {
+            Cfg cfg = Cfg.parse(file);
+            for (Cfg.Section section : cfg.sessions) {
+                Session session = new Session(file, section.line, cfg.resolve(section));
+                String beginString = session.take("BeginString");
+                String applVerId = session.take("DefaultApplVerID");
+                session.version = Version.of(session, beginString, applVerId);
+                if (session.version == null) {
+                    report.notConverted(session, "FIXT.1.1".equals(beginString.trim())
+                            ? "DefaultApplVerID " + applVerId : "BeginString " + beginString);
+                } else {
+                    supported.add(session);
+                }
+            }
+        }
+        name(supported);
+        for (Session session : supported) {
             convert(session);
             sessions.add(session);
+        }
+    }
+
+    private static void name(List<Session> sessions) {
+        Map<String, Integer> byCompIds = new LinkedHashMap<>();
+        for (Session session : sessions) {
+            session.name = session.values.get("SessionQualifier");
+            if (session.name == null) {
+                session.name = (session.values.get("SenderCompID") + "-" + session.values.get("TargetCompID"))
+                        .toLowerCase(Locale.ROOT);
+                byCompIds.merge(session.name, 1, Integer::sum);
+            }
+        }
+        Set<String> taken = new LinkedHashSet<>();
+        for (Session session : sessions) {
+            if (byCompIds.getOrDefault(session.name, 0) > 1 && session.values.get("SessionQualifier") == null) {
+                session.name += "-" + session.version.yaml.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+            }
+            String name = session.name;
+            for (int n = 2; !taken.add(session.name); n++) {
+                session.name = name + "-" + n;
+            }
         }
     }
 
@@ -229,7 +268,8 @@ public final class CfgToStaffix {
             if (NO_EQUIVALENT.containsKey(key)) {
                 report.noEquivalent(session, key, NO_EQUIVALENT.get(key));
             } else {
-                report.unknownKey(session, key);
+                session.applicationSettings.put(key, session.take(key));
+                report.applicationSetting(session, key);
             }
         }
     }
@@ -243,7 +283,6 @@ public final class CfgToStaffix {
                     + type);
         }
         session.doc.put("fixSessionType", session.initiator ? "INITIATOR" : "ACCEPTOR");
-        session.version = Version.of(session, session.take("BeginString"), session.take("DefaultApplVerID"));
         for (String key : List.of("SenderCompID", "SenderSubID", "SenderLocationID", "TargetCompID", "TargetSubID",
                 "TargetLocationID")) {
             String value = session.take(key);
@@ -254,28 +293,8 @@ public final class CfgToStaffix {
         if (!session.id.containsKey("senderCompID") || !session.id.containsKey("targetCompID")) {
             throw new IllegalArgumentException(session.where() + ": SenderCompID and TargetCompID are required");
         }
-        String qualifier = session.take("SessionQualifier");
-        String name = qualifier != null ? qualifier
-                : (session.id.get("senderCompID") + "-" + session.id.get("targetCompID")).toLowerCase(Locale.ROOT);
-        String unique = name;
-        for (int n = 2; isTaken(unique); n++) {
-            unique = name + "-" + n;
-        }
-        session.name = unique;
-        if (!unique.equals(name)) {
-            report.question(session, "Two sessions are named `" + name + "`: this one is `" + unique
-                    + "`. Set a SessionQualifier, or rename it.");
-        }
+        session.take("SessionQualifier");
         session.description = session.take("Description");
-    }
-
-    private boolean isTaken(String name) {
-        for (Session other : sessions) {
-            if (other.name.equals(name)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void behaviour(Session session) {
@@ -807,6 +826,7 @@ public final class CfgToStaffix {
         final Map<String, String> values;
         private final Set<String> read = new LinkedHashSet<>();
         final Map<String, String> id = new LinkedHashMap<>();
+        final Map<String, String> applicationSettings = new LinkedHashMap<>();
         final Doc doc = new Doc();
         String name;
         String description;
@@ -856,7 +876,8 @@ public final class CfgToStaffix {
     }
 
     /**
-     * The FIX version a session speaks, as YAML and as Spring properties write it.
+     * The FIX version a session speaks, as YAML and as Spring properties write it; null for one QuickFIX/J speaks and
+     * staffix does not.
      */
     static final class Version {
         final String yaml;
@@ -882,6 +903,9 @@ public final class CfgToStaffix {
                     return new Version("FIX.4.4", "VERSION_44", false);
                 case "FIXT.1.1":
                     return fixt(session, defaultApplVerId);
+                case "FIX.4.0":
+                case "FIX.4.1":
+                    return null;
                 default:
                     throw new IllegalArgumentException(session.where() + ": BeginString " + beginString
                             + " has no staffix equivalent, staffix starts at FIX.4.2");
@@ -900,6 +924,17 @@ public final class CfgToStaffix {
                 case "9":
                 case "FIX.5.0SP2":
                     return new Version("FIX.5.0-SP2", "VERSION_50_SP2", true);
+                case "2":
+                case "3":
+                case "4":
+                case "5":
+                case "6":
+                case "FIX.4.0":
+                case "FIX.4.1":
+                case "FIX.4.2":
+                case "FIX.4.3":
+                case "FIX.4.4":
+                    return null;
                 default:
                     throw new IllegalArgumentException(session.where() + ": a FIXT.1.1 session needs a"
                             + " DefaultApplVerID of FIX.5.0, FIX.5.0SP1 or FIX.5.0SP2 (7, 8 or 9), not '" + id + "'");
@@ -1016,6 +1051,13 @@ public final class CfgToStaffix {
                 yaml.append("  ").append(part.getKey()).append(": ").append(scalar(part.getValue())).append('\n');
             }
             map(yaml, session.doc.root, 0);
+            if (!session.applicationSettings.isEmpty()) {
+                yaml.append("fixApplicationSessionSettings:\n");
+                for (Map.Entry<String, String> setting : session.applicationSettings.entrySet()) {
+                    yaml.append("  ").append(scalar(setting.getKey())).append(": ").append(scalar(setting.getValue()))
+                            .append('\n');
+                }
+            }
             return yaml.toString();
         }
 
@@ -1072,6 +1114,10 @@ public final class CfgToStaffix {
                 String prefix = SPRING_STORE + session.store + ".sessions[" + index + "].";
                 id(properties, prefix + "fix-session-id.", session);
                 flatten(properties, prefix, session.doc.root);
+                for (Map.Entry<String, String> setting : session.applicationSettings.entrySet()) {
+                    line(properties, prefix + "application-session-settings[" + setting.getKey() + "]",
+                            setting.getValue());
+                }
                 if (session.initiatorSettings != null) {
                     String initiator = "staffix.initiators." + session.name + ".";
                     id(properties, initiator + "main-target.fix-session-id.", session);
@@ -1152,7 +1198,8 @@ public final class CfgToStaffix {
         final List<String[]> code = new ArrayList<>();
         final List<String[]> behaviour = new ArrayList<>();
         final List<String[]> questions = new ArrayList<>();
-        final List<String[]> unknown = new ArrayList<>();
+        final List<String[]> applicationSettings = new ArrayList<>();
+        final List<String[]> notConverted = new ArrayList<>();
         final List<String[]> dictionaries = new ArrayList<>();
         final Map<String, Map<String, List<String>>> components = new LinkedHashMap<>();
 
@@ -1172,8 +1219,12 @@ public final class CfgToStaffix {
             questions.add(new String[]{session.name, question});
         }
 
-        void unknownKey(Session session, String key) {
-            unknown.add(new String[]{session.name, key, session.values.get(key)});
+        void applicationSetting(Session session, String key) {
+            applicationSettings.add(new String[]{session.name, key, session.values.get(key)});
+        }
+
+        void notConverted(Session session, String version) {
+            notConverted.add(new String[]{session.where(), version});
         }
 
         void dictionary(Session session, String key, String file) {
@@ -1193,6 +1244,8 @@ public final class CfgToStaffix {
                             : "staffix's validation defaults").append(". Every value QuickFIX/J defaulted that staffix"
                             + " defaults otherwise is written, so each session behaves as it did.\n");
             table(md, "Sessions", new String[]{"session", "type", "from", "store"}, rows(sessions));
+            table(md, "Sessions not converted: staffix starts at FIX 4.2", new String[]{"from", "version"},
+                    notConverted);
             List<String[]> initiators = new ArrayList<>();
             for (Session session : sessions) {
                 if (session.initiatorSettings != null) {
@@ -1228,8 +1281,8 @@ public final class CfgToStaffix {
             table(md, "Needs code", new String[]{"session", "key", "value", "how"}, code);
             table(md, "Behaviour changes", new String[]{"session", "change"}, behaviour);
             table(md, "No equivalent", new String[]{"session", "key", "value", "closest"}, noEquivalent);
-            table(md, "Not QuickFIX/J keys: read by the application?", new String[]{"session", "key", "value"},
-                    unknown);
+            table(md, "Application settings, written to fixApplicationSessionSettings", new String[]{"session", "key",
+                    "value"}, applicationSettings);
             table(md, "Questions", new String[]{"session", "question"}, questions);
             return md.toString();
         }

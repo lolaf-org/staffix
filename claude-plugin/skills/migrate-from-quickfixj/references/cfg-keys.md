@@ -194,6 +194,12 @@ The `.cfg` names no logger: the application's `LogFactory` does (`concepts.md`).
 | `SLF4JLogHeartbeats` | `Y` | the logger's `messageFilter` | `N` as `FileLogHeartbeats` |
 | `JdbcLogHeartBeats`, `JdbcLogIncomingTable`, `JdbcLogOutgoingTable`, `JdbcLogEventTable` | | | **no equivalent** (`concepts.md`) |
 
+## The application's own keys
+
+A key QuickFIX/J does not declare is the application's, read with `settings.getString(sessionID, key)`, as
+Executor's `ValidOrderTypes`. It goes to the session's `fixApplicationSessionSettings` (Spring:
+`application-session-settings[<key>]`), and the application reads it as `concepts.md` says.
+
 ## No equivalent
 
 Each is reported with its value; the cell says what comes closest.
@@ -216,13 +222,15 @@ Each is reported with its value; the cell says what comes closest.
 ## Rules
 
 - **version**: `BeginString` `FIX.4.2`, `FIX.4.3`, `FIX.4.4` are copied (Spring: `VERSION_42`, `VERSION_43`,
-  `VERSION_44`). `FIX.4.0` and `FIX.4.1`: **no equivalent**, staffix starts at 4.2. `FIXT.1.1`: YAML
+  `VERSION_44`). `FIX.4.0` and `FIX.4.1`: **no equivalent**, staffix starts at 4.2: the session is not converted, and is
+  reported. `FIXT.1.1`: YAML
   `fixSessionId.fixTSession: true` and `fixVersion` from `DefaultApplVerID`; Spring `fix-version=FIXT_11` and
   `default-appl-ver-id` from it. `DefaultApplVerID` `7` or `FIX.5.0` is `FIX.5.0` (Spring `VERSION_50`), `8` or
-  `FIX.5.0SP1` is `FIX.5.0-SP1` (`VERSION_50_SP1`), `9` or `FIX.5.0SP2` is `FIX.5.0-SP2` (`VERSION_50_SP2`); any other
-  is reported.
+  `FIX.5.0SP1` is `FIX.5.0-SP1` (`VERSION_50_SP1`), `9` or `FIX.5.0SP2` is `FIX.5.0-SP2` (`VERSION_50_SP2`); a FIX 4
+  application version is not converted, and is reported.
 - **name**: staffix names every session. `SessionQualifier` when set, else `<SenderCompID>-<TargetCompID>` in lower
-  case. Two sessions of the same name in one store are reported.
+  case. Sessions sharing those CompIDs each add their version (`exec-banzai-fix44`), and a number if they still
+  collide.
 - **acceptor-heartbeat**: a staffix acceptor refuses a Logon whose HeartBtInt is outside
   `[acceptorLowerBoundInterval, acceptorUpperBoundInterval]`, by default 1 to 20 seconds; QuickFIX/J takes any. For
   each acceptor session, write `acceptorUpperBoundInterval` as the larger of `PT20S` and the session's `HeartBtInt`,

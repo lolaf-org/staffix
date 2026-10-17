@@ -14,6 +14,7 @@ silently dropped.
 | one thread, or one thread per session (`Threaded...`) | staffix I/O threads either way; work too slow for the I/O thread goes to a `MessageExecutor` (`docs/threading-model.md`) |
 | `connector.start()`, `stop()` | `engine.start()`, `engine.stop(Deadline)` |
 | `SessionSettings` and its `.cfg` file | a sessions settings store: one YAML file per session with the file store, or Spring Boot properties; each key in `cfg-keys.md` |
+| `settings.getString(sessionID, key)` for the application's own key | the session's `fixApplicationSessionSettings`, read in `setup` as `fixSessionSettings.getFixApplicationSessionSettings().get(FixApplicationSessionSettingDescriptor.of(key))`; list the descriptors in `getRequiredFixSessionSettings()`, which admin tools show |
 | `SessionID` (BeginString, SenderCompID, TargetCompID, qualifier) | `FixSessionId.of(name, version, senderCompId, targetCompId)`; the name is staffix's own and replaces the qualifier |
 | `Session.lookupSession(sessionID)` | `engine.getFixSessionRegistry().find(fixSessionId)` |
 | `Session.sendToTarget(message, sessionID)` | `fixSession.send(encoder.begin().set...(...), null)` with a reusable encoder created once per session (`session.newEncoder(XEncoder.class).asReusable()`) |

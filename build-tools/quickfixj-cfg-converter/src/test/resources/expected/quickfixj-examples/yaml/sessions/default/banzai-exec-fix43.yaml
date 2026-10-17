@@ -1,0 +1,46 @@
+# From banzai.cfg:25
+# yaml-language-server: $schema=fix-session-settings.v1.schema.json
+schemaVersion: 1
+fixSessionId:
+  name: "banzai-exec-fix43"
+  fixVersion: "FIX.4.3"
+  senderCompID: "BANZAI"
+  targetCompID: "EXEC"
+fixSessionType: "INITIATOR"
+heartBeatInterval:
+  initiatorInterval: "PT30S"
+enabledLogonNextExpectedMsgSeqNum: false
+resendRequestRange: "OPEN_ENDED"
+sendingTimeAccuracy: "MILLISECONDS"
+validationSettings:
+  validateRequiredFields: true
+  allowUndefinedTagsForMessage: false
+  validateDuplicateTags: true
+  validateFieldsOutOfOrder: true
+  validateBeginString: true
+  validateCompId: true
+  maxSendingTime: "PT120S"
+sessionScheduleSettings:
+  timeZone: "UTC"
+  nonStopSchedules:
+    - dayOfWeek: "MONDAY"
+      sequenceResetTime: "00:00:00"
+      initiatesReset: true
+    - dayOfWeek: "TUESDAY"
+      sequenceResetTime: "00:00:00"
+      initiatesReset: true
+    - dayOfWeek: "WEDNESDAY"
+      sequenceResetTime: "00:00:00"
+      initiatesReset: true
+    - dayOfWeek: "THURSDAY"
+      sequenceResetTime: "00:00:00"
+      initiatesReset: true
+    - dayOfWeek: "FRIDAY"
+      sequenceResetTime: "00:00:00"
+      initiatesReset: true
+    - dayOfWeek: "SATURDAY"
+      sequenceResetTime: "00:00:00"
+      initiatesReset: true
+    - dayOfWeek: "SUNDAY"
+      sequenceResetTime: "00:00:00"
+      initiatesReset: true

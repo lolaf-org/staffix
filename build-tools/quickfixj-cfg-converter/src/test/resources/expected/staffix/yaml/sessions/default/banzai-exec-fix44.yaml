@@ -3,7 +3,7 @@
 # yaml-language-server: $schema=fix-session-settings.v1.schema.json
 schemaVersion: 1
 fixSessionId:
-  name: "banzai-exec"
+  name: "banzai-exec-fix44"
   fixVersion: "FIX.4.4"
   senderCompID: "BANZAI"
   targetCompID: "EXEC"

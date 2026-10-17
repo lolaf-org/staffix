@@ -42,8 +42,9 @@ Read the project without changing it, and list:
   java ${CLAUDE_SKILL_DIR}/scripts/CfgToStaffix.java --format yaml <each .cfg>
   ```
 
-  Read its `report.md`: sessions, initiators and acceptors, components, what needs code, behaviour changes, no
-  equivalents, keys QuickFIX/J does not know (the application may read them) and questions. It stops on a `.cfg`
+  Read its `report.md`: sessions, those not converted (FIX 4.0 and 4.1), initiators and acceptors, components, what
+  needs code, behaviour changes, no equivalents, the application's own keys (written to
+  `fixApplicationSessionSettings`, which the application then reads) and questions. It stops on a `.cfg`
   QuickFIX/J would refuse, naming the file and line: report that, and convert the rest.
 - **Dictionaries**: the `DataDictionary`, `AppDataDictionary` and `TransportDataDictionary` files, and whether they
   are QuickFIX/J's own or a counterparty's.

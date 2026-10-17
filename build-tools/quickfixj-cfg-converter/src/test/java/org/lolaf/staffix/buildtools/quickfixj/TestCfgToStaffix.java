@@ -16,9 +16,10 @@
 package org.lolaf.staffix.buildtools.quickfixj;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.api.InstanceProvider;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.impl.session.FixSessionSettingsValidator;
@@ -60,13 +61,12 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Converts the fixtures and checks each end: the values QuickFIX/J resolves are the ones converted, the YAML loads
+ * Converts each set of fixtures and checks each end: the values QuickFIX/J resolves are the ones converted, the YAML loads
  * into staffix's file store, each schedule is up exactly when QuickFIX/J's is, and the Spring properties bind to the
  * same settings as the YAML.
  */
 class TestCfgToStaffix {
 
-    private static final List<String> FIXTURES = List.of("banzai.cfg", "executor.cfg", "options.cfg");
     private static final Path FIXTURE_DIR = Path.of("src/test/resources/cfg");
     private static final Path EXPECTED_DIR = Path.of("src/test/resources/expected");
     /**
@@ -78,23 +78,19 @@ class TestCfgToStaffix {
     @TempDir
     static Path out;
 
-    private static CfgToStaffix yaml;
-
-    @BeforeAll
-    static void convert() throws IOException {
-        yaml = convert(CfgToStaffix.Format.YAML, "--initiates-reset", "true");
-        convert(CfgToStaffix.Format.SPRING, "--initiates-reset", "true");
-    }
+    private static final Map<String, CfgToStaffix> CONVERTED = new HashMap<>();
 
     @AfterEach
     void restoreQuickfixjClock() {
         SystemTime.setTimeSource(null);
     }
 
-    @Test
-    void convertsTheValuesQuickfixjResolves() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"staffix", "quickfixj-examples"})
+    void convertsTheValuesQuickfixjResolves(String set) throws Exception {
+        CfgToStaffix yaml = converted(set);
         Map<SessionID, Map<String, String>> quickfixj = new HashMap<>();
-        for (String fixture : FIXTURES) {
+        for (Path fixture : fixtures(set)) {
             quickfix.SessionSettings settings = quickfixjSettings(fixture);
             for (Iterator<SessionID> ids = settings.sectionIterator(); ids.hasNext(); ) {
                 SessionID id = ids.next();
@@ -102,28 +98,30 @@ class TestCfgToStaffix {
             }
         }
 
-        assertThat(yaml.sessions).hasSize(quickfixj.size());
+        assertThat(yaml.sessions.size() + yaml.report.notConverted.size()).isEqualTo(quickfixj.size());
         for (CfgToStaffix.Session session : yaml.sessions) {
             assertThat(session.values).as(session.where()).isEqualTo(quickfixj.get(sessionId(session)));
         }
     }
 
-    @Test
-    void theYamlLoadsIntoTheFileStoreAndValidates() throws IOException {
-        Map<String, FixSessionSettings> loaded = loadYaml();
+    @ParameterizedTest
+    @ValueSource(strings = {"staffix", "quickfixj-examples"})
+    void theYamlLoadsIntoTheFileStoreAndValidates(String set) throws IOException {
+        Map<String, FixSessionSettings> loaded = loadYaml(set);
 
         assertThat(loaded.keySet()).containsExactlyInAnyOrderElementsOf(
-                yaml.sessions.stream().map(s -> s.name).collect(Collectors.toList()));
+                converted(set).sessions.stream().map(s -> s.name).collect(Collectors.toList()));
         loaded.values().forEach(FixSessionSettingsValidator::validate);
     }
 
-    @Test
-    void eachScheduleIsUpWhenQuickfixjsIs() throws Exception {
-        Map<String, FixSessionSettings> loaded = loadYaml();
-        for (String fixture : FIXTURES) {
+    @ParameterizedTest
+    @ValueSource(strings = {"staffix", "quickfixj-examples"})
+    void eachScheduleIsUpWhenQuickfixjsIs(String set) throws Exception {
+        Map<String, FixSessionSettings> loaded = loadYaml(set);
+        for (Path fixture : fixtures(set)) {
             quickfix.SessionSettings settings = quickfixjSettings(fixture);
-            for (CfgToStaffix.Session session : yaml.sessions) {
-                if (!session.file.getFileName().toString().equals(fixture)) {
+            for (CfgToStaffix.Session session : converted(set).sessions) {
+                if (!session.file.equals(fixture)) {
                     continue;
                 }
                 DefaultSessionSchedule schedule = new DefaultSessionSchedule(settings, sessionId(session));
@@ -149,9 +147,10 @@ class TestCfgToStaffix {
         }
     }
 
-    @Test
-    void theSpringPropertiesBindToTheSettingsTheYamlLoads() throws IOException {
-        Binder binder = binder();
+    @ParameterizedTest
+    @ValueSource(strings = {"staffix", "quickfixj-examples"})
+    void theSpringPropertiesBindToTheSettingsTheYamlLoads(String set) throws IOException {
+        Binder binder = binder(set);
         MemorySessionsSettingsStoreProps stores = binder.bind("staffix.sessions-settings-stores-memory",
                 MemorySessionsSettingsStoreProps.class).get();
         Map<String, FixSessionSettings> bound = new LinkedHashMap<>();
@@ -163,12 +162,12 @@ class TestCfgToStaffix {
             });
         }
 
-        assertThat(bound).usingRecursiveComparison().isEqualTo(loadYaml());
+        assertThat(bound).usingRecursiveComparison().isEqualTo(loadYaml(set));
     }
 
     @Test
     void theSpringPropertiesDeclareEachInitiatorAndAcceptor() throws IOException {
-        StaffixProperties staffix = binder().bind("staffix", StaffixProperties.class).get();
+        StaffixProperties staffix = binder("staffix").bind("staffix", StaffixProperties.class).get();
         Map<String, List<String>> initiators = new LinkedHashMap<>();
         staffix.getInitiators().forEach((name, initiator) -> {
             assertThat(initiator.getMainTarget().getFixSessionId().toFixSessionId().getName()).isEqualTo(name);
@@ -181,8 +180,8 @@ class TestCfgToStaffix {
             acceptors.put(name, acceptor.getBindAddress() + " " + acceptor.getTargetSessionsSettingsStoreInstanceIds());
         });
 
-        assertThat(initiators).containsOnlyKeys("banzai-exec", "banzai-exec-2", "alt")
-                .containsEntry("banzai-exec-2", List.of("localhost:9881", "backup:9891"));
+        assertThat(initiators).containsOnlyKeys("banzai-exec-fix44", "banzai-exec-fix50sp2", "alt")
+                .containsEntry("banzai-exec-fix50sp2", List.of("localhost:9881", "backup:9891"));
         assertThat(acceptors).containsExactly(
                 Map.entry("acceptor-9880", "0.0.0.0:9880 [acceptor-9880]"),
                 Map.entry("acceptor-9881", "0.0.0.0:9881 [acceptor-9881]"),
@@ -190,26 +189,54 @@ class TestCfgToStaffix {
     }
 
     @Test
-    void writesTheExpectedFiles() throws IOException {
-        assertThat(files(out)).isEqualTo(files(EXPECTED_DIR));
+    void theQuickfixjExamplesKeepTheirFix42AndLaterSessionsAndTheirApplicationSettings() throws IOException {
+        CfgToStaffix converted = converted("quickfixj-examples");
+
+        assertThat(converted.report.notConverted).hasSize(4);
+        assertThat(converted.sessions).extracting(s -> s.name).containsExactly("banzai-exec-fix42",
+                "banzai-exec-fix43", "banzai-exec-fix44", "banzai-exec-fix50", "exec-banzai-fix42", "exec-banzai-fix43",
+                "exec-banzai-fix44", "exec-banzai-fix50");
+        assertThat(converted.sessions.get(4).applicationSettings)
+                .containsExactly(Map.entry("ValidOrderTypes", "1,2,F"), Map.entry("DefaultMarketPrice", "12.30"));
     }
 
-    private static CfgToStaffix convert(CfgToStaffix.Format format, String... flags) throws IOException {
-        List<String> args = new ArrayList<>(List.of("--format", format.name().toLowerCase(), "--out",
-                out.resolve(format.name().toLowerCase()).toString()));
-        args.addAll(List.of(flags));
-        FIXTURES.forEach(fixture -> args.add(FIXTURE_DIR.resolve(fixture).toString()));
-        CfgToStaffix converter = new CfgToStaffix(CfgToStaffix.Options.parse(args.toArray(new String[0])));
-        for (String fixture : FIXTURES) {
-            converter.convert(Path.of(fixture), CfgToStaffix.Cfg.parse(FIXTURE_DIR.resolve(fixture)));
+    @ParameterizedTest
+    @ValueSource(strings = {"staffix", "quickfixj-examples"})
+    void writesTheExpectedFiles(String set) throws IOException {
+        converted(set);
+
+        assertThat(files(out.resolve(set))).isEqualTo(files(EXPECTED_DIR.resolve(set)));
+    }
+
+    private static synchronized CfgToStaffix converted(String set) throws IOException {
+        if (!CONVERTED.containsKey(set)) {
+            CONVERTED.put(set, convert(set, CfgToStaffix.Format.YAML));
+            convert(set, CfgToStaffix.Format.SPRING);
         }
+        return CONVERTED.get(set);
+    }
+
+    private static CfgToStaffix convert(String set, CfgToStaffix.Format format) throws IOException {
+        List<String> args = new ArrayList<>(List.of("--format", format.name().toLowerCase(), "--out",
+                out.resolve(set).resolve(format.name().toLowerCase()).toString(), "--initiates-reset", "true"));
+        List<Path> fixtures = fixtures(set);
+        fixtures.forEach(fixture -> args.add(fixture.toString()));
+        CfgToStaffix converter = new CfgToStaffix(CfgToStaffix.Options.parse(args.toArray(new String[0])));
+        converter.convert(fixtures);
         converter.write();
         return converter;
     }
 
-    private static Map<String, FixSessionSettings> loadYaml() throws IOException {
+    private static List<Path> fixtures(String set) throws IOException {
+        try (Stream<Path> files = Files.list(FIXTURE_DIR.resolve(set))) {
+            return files.sorted().collect(Collectors.toList());
+        }
+    }
+
+    private static Map<String, FixSessionSettings> loadYaml(String set) throws IOException {
+        converted(set);
         Map<String, FixSessionSettings> loaded = new LinkedHashMap<>();
-        try (Stream<Path> stores = Files.list(out.resolve("yaml/sessions"))) {
+        try (Stream<Path> stores = Files.list(out.resolve(set).resolve("yaml/sessions"))) {
             for (Path store : stores.sorted().collect(Collectors.toList())) {
                 FileFixSessionsSettingsStore fileStore = new FileFixSessionsSettingsStore.FileStoreFactoryImpl()
                         .newInstance(FileSessionsSettingsStoreSettings.builder()
@@ -224,17 +251,18 @@ class TestCfgToStaffix {
         return loaded;
     }
 
-    private static Binder binder() throws IOException {
+    private static Binder binder(String set) throws IOException {
+        converted(set);
         Properties properties = new Properties();
-        try (Reader reader = Files.newBufferedReader(out.resolve("spring/staffix-sessions.properties"))) {
+        try (Reader reader = Files.newBufferedReader(out.resolve(set).resolve("spring/staffix-sessions.properties"))) {
             properties.load(reader);
         }
         return new Binder(List.of(new MapConfigurationPropertySource(properties)), null,
                 ApplicationConversionService.getSharedInstance());
     }
 
-    private static quickfix.SessionSettings quickfixjSettings(String fixture) throws Exception {
-        try (InputStream in = Files.newInputStream(FIXTURE_DIR.resolve(fixture))) {
+    private static quickfix.SessionSettings quickfixjSettings(Path fixture) throws Exception {
+        try (InputStream in = Files.newInputStream(fixture)) {
             return new quickfix.SessionSettings(in);
         }
     }
