@@ -7,8 +7,8 @@ them.
 ## Build
 
 - **A standalone Maven project**: no staffix parent (there is no staffix BOM), a `staffix.version` property set to
-  the staffix release this plugin targets, `0.9.1`.
-- **Java 11** in plain Java, **Java 17** with Spring Boot (Spring Boot 4.1.1, the version staffix 0.9.1 is built
+  the staffix version this plugin targets, `0.9.2-SNAPSHOT` until 0.9.2 is released.
+- **Java 11** in plain Java, **Java 17** with Spring Boot (Spring Boot 4.1.1, the version staffix is built
   with). Spring Boot comes in as an imported BOM, not as the parent, so the user can keep their own parent.
 - **Lombok goes in the compiler's `annotationProcessorPaths`**, with an explicit `lombok.version` property: recent
   JDKs no longer run processors found on the classpath, and an imported BOM does not bring its version properties.
