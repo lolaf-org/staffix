@@ -2,7 +2,7 @@
 name: migrate-from-quickfixj
 description: Migrates a Java application from QuickFIX/J to the staffix FIX engine, in plain Java or Spring Boot: its Application callbacks, MessageCracker handlers, .cfg sessions, dictionaries, stores and logs, with a report of what has no staffix equivalent, a build, and a round trip against QuickFIX/J proving the wire is unchanged. Use when the user wants to replace QuickFIX/J with staffix.
 argument-hint: "[what to migrate]"
-allowed-tools: Read(/${CLAUDE_PLUGIN_ROOT}/**) Grep(/${CLAUDE_PLUGIN_ROOT}/**) Glob(/${CLAUDE_PLUGIN_ROOT}/**) Bash(grep *) Bash(java ${CLAUDE_SKILL_DIR}/scripts/CfgToStaffix.java *)
+allowed-tools: Read(/${CLAUDE_PLUGIN_ROOT}/**) Grep(/${CLAUDE_PLUGIN_ROOT}/**) Glob(/${CLAUDE_PLUGIN_ROOT}/**) Bash(grep *) Bash(java ${CLAUDE_SKILL_DIR}/scripts/org/lolaf/staffix/buildtools/quickfixj/CfgToStaffix.java *)
 ---
 
 # Migrate from QuickFIX/J
@@ -13,8 +13,10 @@ Under `${CLAUDE_PLUGIN_ROOT}/skills/migrate-from-quickfixj/references/`:
 
 - `concepts.md`: each QuickFIX/J class and callback and what replaces it. **Read it first.**
 - `cfg-keys.md`: each `.cfg` key, its staffix setting, its transform, and what to write when it is absent.
-- `${CLAUDE_SKILL_DIR}/scripts/CfgToStaffix.java`: the converter that applies `cfg-keys.md`, run with `java` alone
-  (JDK 11 or later). Never convert a `.cfg` by hand: its output is exact, and checked against QuickFIX/J.
+- `${CLAUDE_SKILL_DIR}/scripts/org/lolaf/staffix/buildtools/quickfixj/CfgToStaffix.java`: the converter that
+  applies `cfg-keys.md`, run with `java` alone (JDK 11 or later), from that path: since JDK 22 a source file is run
+  only from a directory matching its package. Never convert a `.cfg` by hand: its output is exact, and checked
+  against QuickFIX/J.
 
 And under `${CLAUDE_PLUGIN_ROOT}`:
 
@@ -39,7 +41,7 @@ Read the project without changing it, and list:
   format of the project's wiring (`yaml` for plain Java, `spring` for Spring Boot):
 
   ```
-  java ${CLAUDE_SKILL_DIR}/scripts/CfgToStaffix.java --format yaml <each .cfg>
+  java ${CLAUDE_SKILL_DIR}/scripts/org/lolaf/staffix/buildtools/quickfixj/CfgToStaffix.java --format yaml <each .cfg>
   ```
 
   Read its `report.md`: sessions, those not converted (FIX 4.0 and 4.1), initiators and acceptors, components, what
@@ -78,7 +80,9 @@ Follow the approved report, in this order, keeping the project's packages, names
 1. **Build**: remove the QuickFIX/J dependencies, add the staffix ones as `project-rules.md` says, plus the chosen
    components' artifacts as `components.md` says, and the encoders generator for the dictionary.
 2. **Dictionary**: each dictionary file is kept unchanged as the project's dictionary, as `dictionary-setup.md`
-   says for a provider dictionary; QuickFIX/J's own dictionaries become the shipped one of the same version. List in
+   says for a provider dictionary; QuickFIX/J's own dictionaries become the shipped one of the same version, written
+   into the project with the Write tool: the plugin is outside the project, so a shell `cp` from it may need an
+   approval the user is not there to give. List in
    `messages.txt` the message types the inventory found, then run `mvn generate-sources`.
 3. **Sessions**: run the converter again with the approved answers as options, then move its output into the
    project. YAML: `target/staffix-migration/sessions/<store>/` to `src/main/resources/sessions/<store>/`, one file

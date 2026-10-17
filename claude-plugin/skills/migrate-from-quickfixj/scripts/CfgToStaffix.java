@@ -1,1 +1,0 @@
-../../../../build-tools/quickfixj-cfg-converter/src/main/java/org/lolaf/staffix/buildtools/quickfixj/CfgToStaffix.java
