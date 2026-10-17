@@ -5,6 +5,43 @@ receivers:
         endpoint: 0.0.0.0:4318
       grpc:
         endpoint: 0.0.0.0:4317
+  # the file messages logger with the logfmt line format: the head before the first " - " outside quotes is logfmt
+  filelog/staffix:
+    include: [ /var/log/staffix/*.log ]
+    start_at: beginning
+    resource:
+      service.name: staffix-file-logger
+    operators:
+      - type: regex_parser
+        regex: '^(?P<head>(?:"(?:[^"\\]|\\.)*"|[^"])*?) - (?P<message>.*)$'
+      - type: key_value_parser
+        parse_from: attributes.head
+        delimiter: "="
+        pair_delimiter: " "
+      - type: time_parser
+        parse_from: attributes.time
+        layout_type: gotime
+        layout: 2006-01-02T15:04:05.999999999Z07:00
+      - type: move
+        from: attributes.message
+        to: body
+      # the session's attributes go to the resource, where the OTLP messages logger puts them
+      - type: move
+        from: attributes["fix.eid"]
+        to: resource["fix.eid"]
+      - type: move
+        from: attributes["fix.iid"]
+        to: resource["fix.iid"]
+      - type: move
+        from: attributes["fix.sg"]
+        to: resource["fix.sg"]
+      - type: move
+        from: attributes["fix.sn"]
+        to: resource["fix.sn"]
+      - type: remove
+        field: attributes.head
+      - type: remove
+        field: attributes.time
 processors:
   batch:
     timeout: 2s
@@ -40,6 +77,6 @@ service:
       processors: [ batch ]
       exporters: [ prometheus ]
     logs:
-      receivers: [ otlp ]
+      receivers: [ otlp, filelog/staffix ]
       processors: [ batch ]
       exporters: [ otlphttp ]

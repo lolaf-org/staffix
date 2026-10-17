@@ -61,6 +61,8 @@ import org.lolaf.staffix.plugins.throttling.ThrottlingFixSessionsPluginSettings;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.stores.loggers.async.AsyncMessagesLoggerSettings;
 import org.lolaf.staffix.stores.loggers.file.FileMessagesLoggerSettings;
+import org.lolaf.staffix.stores.loggers.file.LogfmtFileLogLineFormat;
+import org.lolaf.staffix.stores.loggers.file.PlainFileLogLineFormat;
 import org.lolaf.staffix.stores.loggers.otlp.OtlpMessagesLoggerSettings;
 import org.lolaf.staffix.stores.loggers.slf4j.Slf4jMessagesLoggerSettings;
 import org.lolaf.staffix.stores.messages.async.AsyncMessagesStoreSettings;
@@ -429,6 +431,8 @@ class FixExamplesBase {
                         .compressFileTimeUnit(TimeUnit.MINUTES)
                         .compressFileValue(1)
                         .maxCompressedFiles(3)
+                        .lineFormat(options.getFileLogLineFormat() == ExampleOptions.FileLogLineFormat.LOGFMT
+                                ? LogfmtFileLogLineFormat.builder().build() : PlainFileLogLineFormat.builder().build())
                         .build();
                 break;
             case OTLP:

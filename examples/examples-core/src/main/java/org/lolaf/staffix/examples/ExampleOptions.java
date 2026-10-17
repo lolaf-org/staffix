@@ -63,6 +63,8 @@ public class ExampleOptions {
     private boolean asyncMessagesLogger;
     @CommandLine.Option(names = "-lt", description = "Fix messages logger type: VOID,SLF4j,FILE,OTLP", defaultValue = "FILE")
     private FixMessageLoggerType fixMessageLoggerType;
+    @CommandLine.Option(names = "-lf", description = "Line format of the FILE logger: PLAIN, or LOGFMT for a log shipper", defaultValue = "PLAIN")
+    private FileLogLineFormat fileLogLineFormat;
 
     public enum OtlpTransport {
         /**
@@ -80,6 +82,11 @@ public class ExampleOptions {
         MEMORY,
         FILE,
         JDBC
+    }
+
+    public enum FileLogLineFormat {
+        PLAIN,
+        LOGFMT
     }
 
     public enum FixMessageLoggerType {

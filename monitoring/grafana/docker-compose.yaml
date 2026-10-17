@@ -30,13 +30,15 @@ services:
       - ${TEMPO_CONF}:/etc/tempo.yaml
 
   otel-collector:
-    image: otel/opentelemetry-collector:0.158.0
+    # contrib, for the filelog receiver reading the file messages logger's logfmt lines
+    image: otel/opentelemetry-collector-contrib:0.158.0
     ports:
       - 4318:${OTEL_HTTP_PORT}
       - 4317:${OTEL_GRPC_PORT}
     command: --config=/etc/otel/config.yaml
     volumes:
       - ${OTEL_CONF}:/etc/otel/config.yaml
+      - ${FIX_LOGS_DIR}:/var/log/staffix:ro
 
 volumes:
   workdir:

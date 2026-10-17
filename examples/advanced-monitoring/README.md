@@ -49,6 +49,33 @@ get the dashboard open first.
 
 Live stack logs are available with `docker compose logs -f`, and `docker compose down` stops everything.
 
+## Shipping the file logger's lines to Loki
+
+The FIX messages can also reach Loki from the file logger, through the collector, rather than over OTLP from the
+engine: `-lf=LOGFMT` writes each line as logfmt pairs, the message after the first ` - `:
+
+```
+time=2026-10-17T22:49:00.000205Z fix.eid=demo-fix-engine fix.iid=INITIATOR_1 fix.sg=initiators fix.sn=initiator-session-1 fix.md=o fix.mt=R - 8=FIX.4.4|9=111|35=R|...
+```
+
+The stack's collector, the contrib image, tails `target/logs/*.log` with a `filelog` receiver. Its operators split each
+line at the first ` - ` outside quotes, turn the pairs into attributes, take `time` as the record's timestamp and the
+message as its body, and move the session's attributes to the resource, where the OTLP logger puts them. The records
+then reach Loki as the OTLP logger's do, the session as index labels, under `service_name="staffix-file-logger"`.
+
+The log directory must exist before the stack starts, since Docker would otherwise create it owned by root:
+
+```bash
+mkdir -p examples/advanced-monitoring/target/logs
+(cd monitoring/grafana && docker compose up -d)
+cd examples/advanced-monitoring
+./MetricsLogsTracesExample.sh -d=660 -w=1000 -lt=FILE -lf=LOGFMT
+```
+
+In Grafana's Explore, on Loki: `{service_name="staffix-file-logger", fix_sn="initiator-session-1"} | fix_md="i"`. The
+collector reads each file from its beginning, so a much faster run (`-w=100`) or old files left in `target/logs` can
+burst past Loki's ingestion limit: the collector then logs HTTP 429 and retries.
+
 ## Running against Grafana Cloud
 
 Copy `.env.example` to `.env` and fill in your endpoint and token:
@@ -98,6 +125,7 @@ demonstrate. `--help` lists the rest.
 | `-em`         | export metrics                                                                         |
 | `-et`         | export traces                                                                          |
 | `-lt=OTLP`    | export FIX messages as OTLP logs (rather than to file, the default)                    |
+| `-lf=LOGFMT`  | with the file logger, write logfmt lines a log shipper can read (see below)            |
 | `-oe`         | OTLP endpoint, default `http://localhost:4318`                                         |
 | `-oa`         | OTLP `Authorization: Basic` value — needed for Grafana Cloud, not for the local stack  |
 | `-am`         | run the monitoring callbacks asynchronously, off the message path                      |
