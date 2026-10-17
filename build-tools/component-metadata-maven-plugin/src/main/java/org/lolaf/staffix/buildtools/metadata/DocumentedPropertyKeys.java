@@ -40,11 +40,11 @@ import java.util.regex.Pattern;
 public class DocumentedPropertyKeys {
 
     /**
-     * Not after a word, a dot or a {@code /} (a Java package or a path), nor after {@code <} or <code>{</code> (a
-     * Maven property).
+     * Not after a word, a dot or a {@code /} (a Java package or a path), a {@code -} ({@code x-staffix.guide}), nor
+     * after {@code <} or <code>{</code> (a Maven property).
      */
     private static final Pattern KEY =
-            Pattern.compile("(?<![\\w./<{$])staffix\\.[a-z][a-z0-9-]*(?:\\.[A-Za-z0-9_<>*-]+|\\[[0-9a-z*]+])*");
+            Pattern.compile("(?<![\\w./<{$-])staffix\\.[a-z][a-z0-9-]*(?:\\.[A-Za-z0-9_<>*-]+|\\[[0-9a-z*]+])*");
     private static final Pattern ROOT = Pattern.compile("^staffix\\.[a-z0-9-]+");
 
     private enum Shape { VALUE, OBJECT, LIST, VALUE_MAP, OBJECT_MAP }
