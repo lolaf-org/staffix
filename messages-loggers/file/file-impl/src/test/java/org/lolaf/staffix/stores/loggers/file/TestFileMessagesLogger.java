@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -33,12 +34,17 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.zip.GZIPInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class TestFileMessagesLogger {
 
@@ -78,6 +84,30 @@ class TestFileMessagesLogger {
     void shutdown() {
         logger.stop(Deadline.immediate());
         fileMessagesLogger.stop(Deadline.immediate());
+    }
+
+    @Test
+    void writesWholeLogfmtLinesEvenForAMessageLargerThanItsBuffer() throws IOException, FixMessagesLogger.LoggingException {
+        logger.stop(Deadline.immediate());
+        fileMessagesLogger.stop(Deadline.immediate());
+        settings = settings.toBuilder().lineFormat(LogfmtFileLogLineFormat.builder().build()).build();
+        fileMessagesLogger = new FileMessagesLogger(settings);
+        fileMessagesLogger.start();
+        MessageTypeRegistry registry = mock(MessageTypeRegistry.class);
+        when(registry.getMessageTypes()).thenReturn(List.of());
+        logger = fileMessagesLogger.instanciateLogger("engine", "test", fixSessionId, registry);
+        logger.start();
+        String text = "58=" + "x".repeat(10 * 1024);
+
+        logger.logIncoming(logTime, messageType, ByteBuffer.wrap(("8=FIX.4.4\u0001" + text + "\u0001").getBytes()));
+        logger.logEvent(logTime, "Logged on");
+
+        List<String> lines = Files.readAllLines(logFile.toPath());
+        assertThat(lines).hasSize(2);
+        assertThat(lines.get(0)).endsWith(" fix.md=i fix.mt=A - 8=FIX.4.4|" + text + "|");
+        assertThat(lines.get(1)).endsWith(" fix.sn=test - Logged on");
+        String time = lines.get(0).substring("time=".length(), lines.get(0).indexOf(' '));
+        assertThat(Instant.parse(time)).isEqualTo(now.truncatedTo(ChronoUnit.MICROS));
     }
 
     @Test
