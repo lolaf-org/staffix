@@ -42,3 +42,6 @@ behaviour:
   - >-
     Behind the async store, a message is on the wire before it is in the database: the queue survives a crash, but it is
     not a committed transaction.
+  - >-
+    The store never closes the DataSource it is given: in plain Java, close the pool after the engine stops; with
+    Spring Boot, the context closes the bean.

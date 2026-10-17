@@ -24,3 +24,6 @@ failures:
 behaviour:
   - >-
     A row edited in the database reaches a running engine on its next reload.
+  - >-
+    The store never closes the DataSource it is given: in plain Java, close the pool after the engine stops; with
+    Spring Boot, the context closes the bean.
