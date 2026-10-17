@@ -24,6 +24,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.List;
@@ -99,7 +100,12 @@ public class ComponentSchemaGenerator {
     }
 
     private ObjectNode propertySchema(Type type, ObjectNode definitions) {
-        return JsonTypes.schema(type, raw -> objectSchema(raw, definitions));
+        ObjectNode schema = JsonTypes.schema(type, raw -> objectSchema(raw, definitions));
+        if (type instanceof ParameterizedType) {
+            ComponentScanner.kind((Class<?>) ((ParameterizedType) type).getRawType())
+                    .ifPresent(kind -> schema.put("x-staffix-kind", kind));
+        }
+        return schema;
     }
 
     private ObjectNode objectSchema(Class<?> type, ObjectNode definitions) {

@@ -25,7 +25,7 @@ import java.util.Set;
 @NullMarked
 @Getter
 @Builder
-public class StrictSettings implements PluginSettings {
+public class StrictSettings implements PluginSettings<String> {
 
     @NonNull
     private final String endpoint;

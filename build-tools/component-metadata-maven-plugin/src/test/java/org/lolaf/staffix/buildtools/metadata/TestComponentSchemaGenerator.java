@@ -17,9 +17,11 @@ package org.lolaf.staffix.buildtools.metadata;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.lolaf.staffix.buildtools.metadata.fixture.generate.DelegatingPluginSettings;
 import org.lolaf.staffix.buildtools.metadata.fixture.generate.StrictSettings;
 import org.lolaf.staffix.buildtools.metadata.fixture.generate.TracingSettings;
 import org.lolaf.staffix.buildtools.metadata.fixture.generate.WrapperSettings;
@@ -53,6 +55,15 @@ class TestComponentSchemaGenerator {
                 "org.lolaf.staffix", "fixture-impl").toPrettyString())
                 .as("compared as text: the order of a default's keys matters to a reproducible jar")
                 .isEqualTo(expected.toPrettyString());
+    }
+
+    @Test
+    void aWrappedComponentTypedWithTypeArgumentsKeepsItsKind() {
+        ObjectNode schema = generator.generate(new Component(DelegatingPluginSettings.class, "session-plugin"),
+                "org.lolaf.staffix", "fixture-impl");
+
+        assertThat(schema.at("/properties/delegate/x-staffix-kind").asText()).isEqualTo("session-plugin");
+        assertThat(schema.at("/x-staffix/instanceIdFrom").asText()).isEqualTo("delegate");
     }
 
     @Test

@@ -22,7 +22,7 @@ import java.util.Set;
 
 @Getter
 @Builder
-public class TracingSettings implements PluginSettings {
+public class TracingSettings implements PluginSettings<String> {
 
     private final String endpoint;
 

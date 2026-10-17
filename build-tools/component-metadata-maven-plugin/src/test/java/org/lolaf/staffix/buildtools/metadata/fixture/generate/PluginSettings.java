@@ -20,7 +20,7 @@ import org.lolaf.staffix.api.metadata.ComponentKind;
 import java.util.Set;
 
 @ComponentKind("session-plugin")
-public interface PluginSettings {
+public interface PluginSettings<T> {
 
     Set<Class<?>> getPluginTypes();
 }

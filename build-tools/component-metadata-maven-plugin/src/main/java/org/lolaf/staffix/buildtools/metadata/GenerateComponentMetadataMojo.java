@@ -18,6 +18,7 @@ package org.lolaf.staffix.buildtools.metadata;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -42,16 +43,16 @@ import java.util.stream.Collectors;
 /**
  * Describes each component of the module in {@code META-INF/staffix/components/}, packaged in its jar: a JSON Schema of
  * its settings, holding the {@code <settings class>.guide.yaml} written beside the class, which the jar then leaves out.
- * A Spring Boot module gets {@code META-INF/staffix/spring/} instead, from its properties classes.
+ * A Spring Boot module gets {@code META-INF/staffix/spring/} instead, from its properties classes. Fails the build when
+ * the module breaks a rule of {@link MetadataChecks}.
  */
 @Mojo(name = "generate-component-metadata", defaultPhase = LifecyclePhase.PROCESS_CLASSES,
         requiresDependencyResolution = ResolutionScope.COMPILE, threadSafe = true)
 public class GenerateComponentMetadataMojo extends AbstractMojo {
 
     private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    private static final String COMPONENTS = "META-INF/staffix/components/";
-    private static final String SPRING = "META-INF/staffix/spring/";
-    private static final String SCHEMA_SUFFIX = ".v" + ComponentSchemaGenerator.FORMAT_VERSION + ".schema.json";
+    private static final String COMPONENTS = ComponentsCatalogue.ROOT + ComponentsCatalogue.COMPONENTS;
+    private static final String SPRING = ComponentsCatalogue.ROOT + ComponentsCatalogue.SPRING;
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
@@ -66,11 +67,17 @@ public class GenerateComponentMetadataMojo extends AbstractMojo {
     private File buildRoot;
 
     @Override
-    public void execute() throws MojoExecutionException {
+    public void execute() throws MojoExecutionException, MojoFailureException {
         try (URLClassLoader loader = new URLClassLoader(compileClasspath(), ClassLoader.getPlatformClassLoader())) {
             List<Component> components = ComponentScanner.scan(classesDirectory.toPath(), loader);
-            List<Class<?>> springProperties = ComponentScanner.publicConcreteClasses(classesDirectory.toPath(), loader)
-                    .stream().filter(type -> SpringComponentGenerator.configuredComponent(type) != null)
+            List<Class<?>> classes = ComponentScanner.publicConcreteClasses(classesDirectory.toPath(), loader);
+            List<String> problems = MetadataChecks.problems(classesDirectory.toPath(), components, classes);
+            if (!problems.isEmpty()) {
+                throw new MojoFailureException("The staffix component metadata of " + project.getArtifactId()
+                        + " is incomplete:\n- " + String.join("\n- ", problems));
+            }
+            List<Class<?>> springProperties = classes.stream()
+                    .filter(type -> SpringComponentGenerator.configuredComponent(type) != null)
                     .collect(Collectors.toList());
             if (components.isEmpty() && springProperties.isEmpty()) {
                 getLog().info("No staffix component in " + classesDirectory);
@@ -96,17 +103,15 @@ public class GenerateComponentMetadataMojo extends AbstractMojo {
         Class<?> type = component.getSettingsClass();
         ObjectNode description = generator.generate(component, project.getGroupId(), project.getArtifactId());
         ComponentGuide.readBeside(type, classesDirectory.toPath())
-                .ifPresentOrElse(guide -> ((ObjectNode) description.get("x-staffix")).set("guide", guide),
-                        () -> getLog().warn("No guide for " + type.getName() + ": write " + type.getSimpleName()
-                                + ".guide.yaml in src/main/resources beside it"));
-        write(COMPONENTS + type.getName() + SCHEMA_SUFFIX, description);
+                .ifPresent(guide -> ((ObjectNode) description.get("x-staffix")).set("guide", guide));
+        write(COMPONENTS + type.getName() + ComponentsCatalogue.SCHEMA_SUFFIX, description);
         getLog().info("Described " + component.getKind() + " " + type.getName());
     }
 
     private void writeSpringComponent(SpringComponentGenerator generator, Class<?> properties, ClassLoader loader)
             throws IOException {
         Class<?> settings = SpringComponentGenerator.configuredComponent(properties);
-        String componentSchema = COMPONENTS + settings.getName() + SCHEMA_SUFFIX;
+        String componentSchema = COMPONENTS + settings.getName() + ComponentsCatalogue.SCHEMA_SUFFIX;
         URL schema = loader.getResource(componentSchema);
         if (schema == null) {
             throw new IllegalStateException(properties.getName() + " configures " + settings.getName()
@@ -115,7 +120,7 @@ public class GenerateComponentMetadataMojo extends AbstractMojo {
         ObjectNode description = generator.generate(properties, (ObjectNode) JSON.readTree(schema),
                 project.getGroupId(), project.getArtifactId());
         ComponentGuide.readBeside(properties, classesDirectory.toPath()).ifPresent(guide -> description.set("guide", guide));
-        write(SPRING + settings.getName() + ".v" + ComponentSchemaGenerator.FORMAT_VERSION + ".json", description);
+        write(SPRING + settings.getName() + ComponentsCatalogue.SPRING_SUFFIX, description);
         getLog().info("Described the Spring Boot properties of " + settings.getName());
     }
 

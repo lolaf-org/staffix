@@ -43,6 +43,7 @@ import java.util.stream.Collectors;
 public class ComponentGuide {
 
     public static final String SCHEMA_RESOURCE = "/component-guide.v1.schema.json";
+    public static final String SUFFIX = ".guide.yaml";
 
     private static final YAMLMapper YAML = new YAMLMapper();
     private static final Schema SCHEMA = loadSchema();
@@ -66,13 +67,17 @@ public class ComponentGuide {
      * The guide written beside a class, removed from the classes directory once read so the jar leaves it out.
      */
     public static Optional<ObjectNode> readBeside(Class<?> type, Path classesDirectory) throws IOException {
-        Path guide = classesDirectory.resolve(type.getName().replace('.', '/') + ".guide.yaml");
+        Path guide = besideClass(type, classesDirectory);
         if (!Files.isRegularFile(guide)) {
             return Optional.empty();
         }
         ObjectNode content = read(guide);
         Files.delete(guide);
         return Optional.of(content);
+    }
+
+    static Path besideClass(Class<?> type, Path classesDirectory) {
+        return classesDirectory.resolve(type.getName().replace('.', '/') + SUFFIX);
     }
 
     private static String describe(Error error) {

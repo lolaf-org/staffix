@@ -1,0 +1,50 @@
+{
+  "$id" : "staffix:components-catalogue:v1",
+  "version" : "1.2.3",
+  "kinds" : {
+    "fixture-store" : {
+      "selectedBy" : {
+        "sessionSetting" : "fixtureStoreInstanceId",
+        "whenUnnamed" : "DEFAULT_INSTANCE",
+        "whenUnknown" : "REFUSED"
+      }
+    },
+    "session-plugin" : { }
+  },
+  "components" : [ {
+    "settingsClass" : "org.lolaf.staffix.buildtools.metadata.fixture.generate.WrapperSettings",
+    "kind" : "fixture-store",
+    "summary" : "Summary of WrapperSettings.",
+    "wraps" : "fixture-store",
+    "requiresOneOf" : [ "org.lolaf.staffix:sender-http", "org.other:sender-grpc" ],
+    "needsJvmFlags" : true,
+    "java" : {
+      "artifact" : "org.lolaf.staffix:fixture-impl",
+      "file" : "components/org.lolaf.staffix.buildtools.metadata.fixture.generate.WrapperSettings.v1.schema.json"
+    },
+    "spring" : {
+      "artifact" : "org.lolaf.staffix:fixture-spring-boot",
+      "prefix" : "staffix.fixture-stores",
+      "instances" : "staffix.fixture-stores.instances.<id>",
+      "file" : "spring/org.lolaf.staffix.buildtools.metadata.fixture.generate.WrapperSettings.v1.json"
+    }
+  }, {
+    "settingsClass" : "org.lolaf.staffix.buildtools.metadata.fixture.generate.StrictSettings",
+    "kind" : "session-plugin",
+    "summary" : "Summary of StrictSettings.",
+    "needsJvmFlags" : false,
+    "java" : {
+      "artifact" : "org.lolaf.staffix:fixture-impl",
+      "file" : "components/org.lolaf.staffix.buildtools.metadata.fixture.generate.StrictSettings.v1.schema.json"
+    }
+  }, {
+    "settingsClass" : "org.lolaf.staffix.buildtools.metadata.fixture.generate.TracingSettings",
+    "kind" : "session-plugin",
+    "summary" : "Summary of TracingSettings.",
+    "needsJvmFlags" : false,
+    "java" : {
+      "artifact" : "org.lolaf.staffix:fixture-impl",
+      "file" : "components/org.lolaf.staffix.buildtools.metadata.fixture.generate.TracingSettings.v1.schema.json"
+    }
+  } ]
+}
