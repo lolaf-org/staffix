@@ -17,6 +17,7 @@ package org.lolaf.staffix.stores.loggers.file.spring;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -42,17 +43,24 @@ public class FileLoggerEntryProps {
     private Boolean logEvents;
 
     /**
-     * Marks a session event line in the log.
+     * The layout of each line: plain, the default, the time, a direction prefix and the message; or logfmt, the time,
+     * the session, the direction and the message type as logfmt pairs a log shipper reads, then the message.
      */
-    private String logEventPrefix;
+    private LineFormat lineFormat;
     /**
-     * Marks an outbound message line.
+     * Settings of the plain line format.
      */
-    private String logOutPrefix;
+    @NestedConfigurationProperty
+    private PlainProps plain = new PlainProps();
     /**
-     * Marks an inbound message line.
+     * Settings of the logfmt line format.
      */
-    private String logInPrefix;
+    @NestedConfigurationProperty
+    private LogfmtProps logfmt = new LogfmtProps();
+    /**
+     * Spring bean name of a FileLogLineFormat of your own, in place of line-format.
+     */
+    private String lineFormatBean;
     /**
      * The mode the log file is opened with, as RandomAccessFile spells it: rw by default.
      */
@@ -92,4 +100,43 @@ public class FileLoggerEntryProps {
      * How long logger calls must keep succeeding before the session's messages-logger alert clears.
      */
     private Duration alertClearDelay;
+
+    /**
+     * The line formats the properties select.
+     */
+    public enum LineFormat {
+        PLAIN,
+        LOGFMT
+    }
+
+    /**
+     * Settings of the plain line format.
+     */
+    @Data
+    public static class PlainProps {
+        /**
+         * Marks a session event line in the log.
+         */
+        private String logEventPrefix;
+        /**
+         * Marks an outbound message line.
+         */
+        private String logOutPrefix;
+        /**
+         * Marks an inbound message line.
+         */
+        private String logInPrefix;
+    }
+
+    /**
+     * Settings of the logfmt line format.
+     */
+    @Data
+    public static class LogfmtProps {
+        /**
+         * Replaces the SOH between the message's fields: | by default. Empty keeps the SOH, which costs nothing per
+         * message.
+         */
+        private String fixMessageFieldsDelimiter;
+    }
 }

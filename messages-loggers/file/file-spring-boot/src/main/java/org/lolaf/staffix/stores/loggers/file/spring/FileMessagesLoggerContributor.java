@@ -20,11 +20,14 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.spring.boot.spi.BeanRef;
 import org.lolaf.staffix.spring.boot.spi.FixMessagesLoggerSettingsContributor;
 import org.lolaf.staffix.stores.loggers.file.FileMessagesLoggerSettings;
+import org.lolaf.staffix.stores.loggers.file.FileLogLineFormat;
+import org.lolaf.staffix.stores.loggers.file.LogfmtFileLogLineFormat;
 import org.lolaf.staffix.stores.loggers.file.PlainFileLogLineFormat;
 import org.springframework.context.ApplicationContext;
 
 import java.io.File;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiFunction;
 
 /**
@@ -51,6 +54,36 @@ public class FileMessagesLoggerContributor implements FixMessagesLoggerSettingsC
         });
     }
 
+    private FileLogLineFormat lineFormat(String mapKey, FileLoggerEntryProps p) {
+        String prefix = "staffix.messages-loggers-file.instances." + mapKey + ".";
+        Optional<FileLogLineFormat> custom = BeanRef.resolveOptional(ctx, p.getLineFormatBean(),
+                FileLogLineFormat.class, prefix + "line-format-bean");
+        if (custom.isPresent()) {
+            if (p.getLineFormat() != null) {
+                throw new IllegalArgumentException(prefix + "line-format and " + prefix
+                        + "line-format-bean both choose the line format: set one");
+            }
+            return custom.get();
+        }
+        if (p.getLineFormat() == FileLoggerEntryProps.LineFormat.LOGFMT) {
+            LogfmtFileLogLineFormat.LogfmtFileLogLineFormatBuilder logfmt = LogfmtFileLogLineFormat.builder();
+            String delimiter = p.getLogfmt().getFixMessageFieldsDelimiter();
+            if (delimiter != null) {
+                if (delimiter.length() > 1) {
+                    throw new IllegalArgumentException(prefix + "logfmt.fix-message-fields-delimiter must be one"
+                            + " character, or empty to keep the SOH, not " + delimiter);
+                }
+                logfmt.fixMessageFieldsDelimiter(delimiter.isEmpty() ? null : delimiter.charAt(0));
+            }
+            return logfmt.build();
+        }
+        PlainFileLogLineFormat.PlainFileLogLineFormatBuilder plain = PlainFileLogLineFormat.builder();
+        if (p.getPlain().getLogEventPrefix() != null) plain.logEventPrefix(p.getPlain().getLogEventPrefix());
+        if (p.getPlain().getLogOutPrefix() != null) plain.logOutPrefix(p.getPlain().getLogOutPrefix());
+        if (p.getPlain().getLogInPrefix() != null) plain.logInPrefix(p.getPlain().getLogInPrefix());
+        return plain.build();
+    }
+
     private FixMessagesLoggerSettings build(String mapKey, FileLoggerEntryProps p) {
         if (p.getLogDirectory() == null) {
             throw new IllegalArgumentException("staffix.messages-loggers-file.instances." + mapKey + ".log-directory is required");
@@ -61,11 +94,7 @@ public class FileMessagesLoggerContributor implements FixMessagesLoggerSettingsC
         if (p.getLogIncoming() != null) b.logIncoming(p.getLogIncoming());
         if (p.getLogOutgoing() != null) b.logOutgoing(p.getLogOutgoing());
         if (p.getLogEvents() != null) b.logEvents(p.getLogEvents());
-        PlainFileLogLineFormat.PlainFileLogLineFormatBuilder plain = PlainFileLogLineFormat.builder();
-        if (p.getLogEventPrefix() != null) plain.logEventPrefix(p.getLogEventPrefix());
-        if (p.getLogOutPrefix() != null) plain.logOutPrefix(p.getLogOutPrefix());
-        if (p.getLogInPrefix() != null) plain.logInPrefix(p.getLogInPrefix());
-        b.lineFormat(plain.build());
+        b.lineFormat(lineFormat(mapKey, p));
         if (p.getWriteMode() != null) b.writeMode(p.getWriteMode());
         if (p.getLogTimePrecision() != null) b.logTimePrecision(p.getLogTimePrecision());
         if (p.getCompressFileTimeUnit() != null) b.compressFileTimeUnit(p.getCompressFileTimeUnit());

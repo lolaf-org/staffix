@@ -15,6 +15,10 @@
  */
 package org.lolaf.staffix.stores.loggers.file.spring;
 
+import org.lolaf.staffix.stores.loggers.file.FileLogLineFormat;
+import org.lolaf.staffix.stores.loggers.file.FileMessagesLoggerSettings;
+import org.lolaf.staffix.stores.loggers.file.LogfmtFileLogLineFormat;
+import org.lolaf.staffix.stores.loggers.file.PlainFileLogLineFormat;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -25,6 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TestFileMessagesLoggerAutoConfiguration {
 
@@ -53,6 +58,63 @@ class TestFileMessagesLoggerAutoConfiguration {
                     assertThat(settings.getResourceCheckInterval()).isEqualTo(FixMessagesLoggerSettings.DEFAULT_RESOURCE_CHECK_INTERVAL);
                     assertThat(settings.getAlertClearDelay()).isEqualTo(FixMessagesLoggerSettings.DEFAULT_ALERT_CLEAR_DELAY);
                 });
+    }
+
+    @Test
+    void writesPlainLinesWithTheirPrefixesByDefault() {
+        runner.withPropertyValues("staffix.messages-loggers-file.instances.LOGS.log-directory=target/logs",
+                        "staffix.messages-loggers-file.instances.LOGS.plain.log-in-prefix=IN:")
+                .run(context -> {
+                    FileLogLineFormat format = lineFormat(context.getBean(FileMessagesLoggerContributor.class));
+
+                    assertThat(format).isInstanceOf(PlainFileLogLineFormat.class);
+                    assertThat(((PlainFileLogLineFormat) format).getLogInPrefix()).isEqualTo("IN:");
+                    assertThat(((PlainFileLogLineFormat) format).getLogOutPrefix()).isEqualTo(" ->: ");
+                });
+    }
+
+    @Test
+    void writesLogfmtLinesWithTheirDelimiter() {
+        runner.withPropertyValues("staffix.messages-loggers-file.instances.LOGS.log-directory=target/logs",
+                        "staffix.messages-loggers-file.instances.LOGS.line-format=logfmt",
+                        "staffix.messages-loggers-file.instances.LOGS.logfmt.fix-message-fields-delimiter=^")
+                .run(context -> assertThat(lineFormat(context.getBean(FileMessagesLoggerContributor.class)))
+                        .isInstanceOfSatisfying(LogfmtFileLogLineFormat.class,
+                                logfmt -> assertThat(logfmt.getFixMessageFieldsDelimiter()).isEqualTo('^')));
+    }
+
+    @Test
+    void keepsTheSohWithAnEmptyDelimiter() {
+        runner.withPropertyValues("staffix.messages-loggers-file.instances.LOGS.log-directory=target/logs",
+                        "staffix.messages-loggers-file.instances.LOGS.line-format=logfmt",
+                        "staffix.messages-loggers-file.instances.LOGS.logfmt.fix-message-fields-delimiter=")
+                .run(context -> assertThat(lineFormat(context.getBean(FileMessagesLoggerContributor.class)))
+                        .isInstanceOfSatisfying(LogfmtFileLogLineFormat.class,
+                                logfmt -> assertThat(logfmt.getFixMessageFieldsDelimiter()).isNull()));
+    }
+
+    @Test
+    void usesTheLineFormatBeanItNames() {
+        FileLogLineFormat custom = LogfmtFileLogLineFormat.builder().build();
+        runner.withBean("customFormat", FileLogLineFormat.class, () -> custom)
+                .withPropertyValues("staffix.messages-loggers-file.instances.LOGS.log-directory=target/logs",
+                        "staffix.messages-loggers-file.instances.LOGS.line-format-bean=customFormat")
+                .run(context -> assertThat(lineFormat(context.getBean(FileMessagesLoggerContributor.class)))
+                        .isSameAs(custom));
+    }
+
+    @Test
+    void refusesALineFormatAndABeanTogether() {
+        runner.withBean("customFormat", FileLogLineFormat.class, () -> LogfmtFileLogLineFormat.builder().build())
+                .withPropertyValues("staffix.messages-loggers-file.instances.LOGS.log-directory=target/logs",
+                        "staffix.messages-loggers-file.instances.LOGS.line-format=logfmt",
+                        "staffix.messages-loggers-file.instances.LOGS.line-format-bean=customFormat")
+                .run(context -> assertThatThrownBy(() -> contribute(context.getBean(FileMessagesLoggerContributor.class)))
+                        .hasMessageContaining("line-format-bean both choose the line format"));
+    }
+
+    private static FileLogLineFormat lineFormat(FileMessagesLoggerContributor contributor) {
+        return ((FileMessagesLoggerSettings) contribute(contributor)).getLineFormat();
     }
 
     private static FixMessagesLoggerSettings contribute(FileMessagesLoggerContributor contributor) {
