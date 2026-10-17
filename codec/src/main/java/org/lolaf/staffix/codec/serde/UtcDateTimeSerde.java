@@ -46,6 +46,7 @@ public class UtcDateTimeSerde {
     private static final long NANOS_IN_SECOND = 1000L * 1000L * 1000L;
     private static final FastThreadLocal<UTCDateTime> DATE_TIME_STAMPS = FastThreadLocal.withInitial(UTCDateTime::new);
     private static final FastThreadLocal<ByteArraysDateTimeOnlyCache> BA_CACHE = FastThreadLocal.withInitial(ByteArraysDateTimeOnlyCache::new);
+    private static final FastThreadLocal<Rfc3339Cache> RFC3339_CACHE = FastThreadLocal.withInitial(Rfc3339Cache::new);
 
     public static UTCTime deserialize(SerDe.DeserializationContext context) {
         return deserialize(context.getDeserializationBuffer(), context.getStartOffset(), context.getLength());
@@ -160,6 +161,21 @@ public class UtcDateTimeSerde {
         return targetArray;
     }
 
+    /**
+     * As {@link #serializeTime} in RFC 3339, {@code 2026-10-16T10:15:30.123456Z}, the form log shippers parse without
+     * a custom layout. The array is reused by the next call on the same thread.
+     */
+    public static byte[] serializeRfc3339(UTCTime utcTime, TimeUnit timeUnit) {
+        byte[] targetArray = RFC3339_CACHE.get().forTimeunit(timeUnit);
+        byte[] serializedDate = UtcDateOnlySerde.serializeEpochDay(utcTime.getEpochDays());
+        System.arraycopy(serializedDate, 0, targetArray, 0, 4);
+        System.arraycopy(serializedDate, 4, targetArray, 5, 2);
+        System.arraycopy(serializedDate, 6, targetArray, 8, 2);
+        byte[] serializedTime = UtcTimeOnlySerde.serializeForPrecision(utcTime.toNanoOfDay(), timeUnit);
+        System.arraycopy(serializedTime, 0, targetArray, 11, serializedTime.length);
+        return targetArray;
+    }
+
     public static byte[] serializeInstant(Instant instant, TimeUnit timeUnit) {
         byte[] targetArray = BA_CACHE.get().forTimeunit(timeUnit);
         byte[] serializedDate = UtcDateOnlySerde.serializeEpochMillis(instant.toEpochMilli());
@@ -200,6 +216,41 @@ public class UtcDateTimeSerde {
 
         private void initArray(byte[] array) {
             array[8] = DELIMITER;
+        }
+    }
+
+    /**
+     * Two dashes in the date, {@code T} for the date time separator and a trailing {@code Z}: three bytes longer than
+     * the FIX layout at each precision.
+     */
+    private static class Rfc3339Cache {
+        private final byte[] secondsPrecision = initArray(SIZE_WITH_SECONDS + 3);
+        private final byte[] millisPrecision = initArray(SIZE_WITH_MILLIS + 3);
+        private final byte[] microsPrecision = initArray(SIZE_WITH_MICROS + 3);
+        private final byte[] nanosPrecision = initArray(SIZE_WITH_NANOS + 3);
+
+        byte[] forTimeunit(TimeUnit timeUnit) {
+            switch (timeUnit) {
+                case MILLISECONDS:
+                    return millisPrecision;
+                case MICROSECONDS:
+                    return microsPrecision;
+                case SECONDS:
+                    return secondsPrecision;
+                case NANOSECONDS:
+                    return nanosPrecision;
+                default:
+                    throw new IllegalFieldValueException("Unsupported time unit: " + timeUnit);
+            }
+        }
+
+        private static byte[] initArray(int length) {
+            byte[] array = new byte[length];
+            array[4] = '-';
+            array[7] = '-';
+            array[10] = 'T';
+            array[length - 1] = 'Z';
+            return array;
         }
     }
 

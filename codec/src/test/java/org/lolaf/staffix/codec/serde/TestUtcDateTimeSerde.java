@@ -150,4 +150,26 @@ class TestUtcDateTimeSerde {
         serialized = UtcDateTimeSerde.serializeEpochMillis(1, 230230230L, TimeUnit.NANOSECONDS);
         Assertions.assertThat(new String(serialized)).isEqualTo("19700101-00:00:00.230230230");
     }
+
+    @Test
+    void serializesRfc3339AtEachPrecision() {
+        UTCTime time = UTCTime.of(Instant.parse("2026-10-16T09:05:03.123456789Z"));
+
+        Assertions.assertThat(new String(UtcDateTimeSerde.serializeRfc3339(time, TimeUnit.SECONDS)))
+                .isEqualTo("2026-10-16T09:05:03Z");
+        Assertions.assertThat(new String(UtcDateTimeSerde.serializeRfc3339(time, TimeUnit.MILLISECONDS)))
+                .isEqualTo("2026-10-16T09:05:03.123Z");
+        Assertions.assertThat(new String(UtcDateTimeSerde.serializeRfc3339(time, TimeUnit.MICROSECONDS)))
+                .isEqualTo("2026-10-16T09:05:03.123456Z");
+        Assertions.assertThat(new String(UtcDateTimeSerde.serializeRfc3339(time, TimeUnit.NANOSECONDS)))
+                .isEqualTo("2026-10-16T09:05:03.123456789Z");
+    }
+
+    @Test
+    void rfc3339ParsesBackToTheSameInstant() {
+        Instant instant = Instant.parse("1999-12-31T23:59:59.000001Z");
+
+        Assertions.assertThat(Instant.parse(new String(UtcDateTimeSerde.serializeRfc3339(UTCTime.of(instant),
+                TimeUnit.MICROSECONDS)))).isEqualTo(instant);
+    }
 }
