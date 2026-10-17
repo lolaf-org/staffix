@@ -35,20 +35,11 @@ import java.util.function.BiFunction;
 public class FileMessagesLoggerSettings extends AbstractFixMessageLoggerSettings {
 
     /**
-     * Marks a session event line in the log.
+     * The layout of each line. {@link PlainFileLogLineFormat} by default: the time, a prefix marking the direction,
+     * then the message.
      */
     @Builder.Default
-    private final String logEventPrefix = " EVENT: ";
-    /**
-     * Marks an outbound message line.
-     */
-    @Builder.Default
-    private final String logOutPrefix = " ->: ";
-    /**
-     * Marks an inbound message line.
-     */
-    @Builder.Default
-    private final String logInPrefix = " <-: ";
+    private final FileLogLineFormat lineFormat = PlainFileLogLineFormat.builder().build();
     /**
      * The mode the log file is opened with, as {@link java.io.RandomAccessFile} spells it.
      */

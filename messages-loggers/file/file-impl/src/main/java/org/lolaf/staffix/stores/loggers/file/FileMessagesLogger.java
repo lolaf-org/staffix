@@ -26,7 +26,6 @@ import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
-import org.lolaf.staffix.codec.serde.UtcDateTimeSerde;
 import org.lolaf.staffix.stores.loggers.core.AbstractLogger;
 import org.lolaf.staffix.stores.loggers.core.MessagesCoreBatchingLogger;
 
@@ -73,42 +72,35 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
 
     @Override
     public BatchingLogger instanciateLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry) {
-        return new LoggerImpl(settings, fixSessionId);
+        return new LoggerImpl(settings, settings.getLineFormat().newFormatter(fixEngineId, fixInstanceId, fixSessionId,
+                messageTypeRegistry, settings.getLogTimePrecision()), fixSessionId);
     }
 
     static final class LoggerImpl extends AbstractLogger implements BatchingLogger {
 
-        private final byte[] logEventPrefix;
-        private final byte[] logOutPrefix;
-        private final byte[] logInPrefix;
-        private final byte newLine;
+        private final FileLogLineFormatter formatter;
         private final FileMessagesLoggerSettings settings;
         private final File logsDir;
         private final LogFileName logFileNameFormatter;
-        private final TimeUnit logTimePrecision;
         private File logFile;
         private FileChannel fileChannel;
         private RandomAccessFile logFileAccess;
         @Getter(AccessLevel.PACKAGE)
         private UTCTime nextFileCompressionTime;
-        private ByteBuffer intermediateIncomingBuffer;
-        private ByteBuffer intermediateOutgoingBuffer;
-        private ByteBuffer intermediateEventBuffer;
+        /**
+         * One per {@link Line}, each grown on its own, so a large message does not grow the buffers of the others.
+         */
+        private final ByteBuffer[] lineBuffers = new ByteBuffer[Line.values().length];
 
-
-        private LoggerImpl(FileMessagesLoggerSettings settings, FixSessionId fixSessionId) {
+        private LoggerImpl(FileMessagesLoggerSettings settings, FileLogLineFormatter formatter, FixSessionId fixSessionId) {
             super(settings, fixSessionId);
             this.settings = settings;
-            this.logTimePrecision = settings.getLogTimePrecision();
-            this.logEventPrefix = settings.getLogEventPrefix().getBytes(SerDe.CHARSET);
-            this.logInPrefix = settings.getLogInPrefix().getBytes(SerDe.CHARSET);
-            this.logOutPrefix = settings.getLogOutPrefix().getBytes(SerDe.CHARSET);
-            this.newLine = '\n';
+            this.formatter = formatter;
             this.logsDir = new File(settings.getLogDirectory());
             this.logFileNameFormatter = LogFileName.from(settings.getCompressFileTimeUnit());
-            this.intermediateIncomingBuffer = ByteBuffer.allocate(2 * 1024);
-            this.intermediateOutgoingBuffer = ByteBuffer.allocate(2 * 1024);
-            this.intermediateEventBuffer = ByteBuffer.allocate(2 * 1024);
+            for (Line line : Line.values()) {
+                lineBuffers[line.ordinal()] = ByteBuffer.allocate(2 * 1024);
+            }
         }
 
         private void compress(File toCompress, File orginalFile) throws IOException {
@@ -242,19 +234,19 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
 
         @Override
         public void logIncoming(UTCTime logTime, MessageType messageType, ByteBuffer message) throws LoggingException {
-            logMessage(logTime, message, logInPrefix, intermediateIncomingBuffer);
+            logLine(logTime, Line.INCOMING, messageType, message);
         }
 
         @Override
         public void logOutgoing(UTCTime logTime, MessageType messageType, ByteBuffer message) throws LoggingException {
-            logMessage(logTime, message, logOutPrefix, intermediateOutgoingBuffer);
+            logLine(logTime, Line.OUTGOING, messageType, message);
         }
 
         /**
          * A failed switch to the next file is reported once the message is written to the current one, so it is not
          * lost to a rename that did not happen.
          */
-        private void logMessage(UTCTime logTime, ByteBuffer message, byte[] logPrefix, ByteBuffer intermediateBuffer) throws LoggingException {
+        private void logLine(UTCTime logTime, Line kind, MessageType messageType, ByteBuffer text) throws LoggingException {
             IOException switchFailure = null;
             if (nextFileCompressionTime.compareTo(logTime) < 0) {
                 try {
@@ -264,8 +256,8 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
                 }
             }
             try {
-                intermediateBuffer = fillBuffer(logTime, message, logPrefix, intermediateBuffer);
-                logFileAccess.write(intermediateBuffer.array(), intermediateBuffer.position(), intermediateBuffer.remaining());
+                ByteBuffer line = fillBuffer(logTime, kind, messageType, text, text.position());
+                logFileAccess.write(line.array(), line.position(), line.remaining());
             } catch (IOException e) {
                 throw new LoggingException("Failed to write to log file " + logFile, e);
             }
@@ -274,29 +266,24 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
             }
         }
 
-        private ByteBuffer fillBuffer(UTCTime logTime, ByteBuffer message, byte[] logPrefix, ByteBuffer intermediateBuffer) {
+        private ByteBuffer fillBuffer(UTCTime logTime, Line kind, MessageType messageType, ByteBuffer text, int textStart) {
+            ByteBuffer line = lineBuffers[kind.ordinal()].clear();
             try {
-                return intermediateBuffer.clear()
-                        .put(UtcDateTimeSerde.serializeTime(logTime, logTimePrecision))
-                        .put(logPrefix)
-                        .put(message)
-                        .put(newLine).flip();
-            } catch (BufferOverflowException e) {
-                if (intermediateBuffer == intermediateEventBuffer) {
-                    intermediateEventBuffer = ByteBuffer.allocate(intermediateEventBuffer.capacity() * 2);
-                    log.debug("New intermediateEventBuffer size is {}", intermediateEventBuffer.capacity());
-                    return fillBuffer(logTime, message.position(0), logPrefix, intermediateEventBuffer);
-                } else if (intermediateBuffer == intermediateIncomingBuffer) {
-                    intermediateIncomingBuffer = ByteBuffer.allocate(intermediateIncomingBuffer.capacity() * 2);
-                    log.debug("New intermediateIncomingBuffer size is {}", intermediateIncomingBuffer.capacity());
-                    return fillBuffer(logTime, message.position(0), logPrefix, intermediateIncomingBuffer);
-                } else if (intermediateBuffer == intermediateOutgoingBuffer) {
-                    intermediateOutgoingBuffer = ByteBuffer.allocate(intermediateOutgoingBuffer.capacity() * 2);
-                    log.debug("New intermediateOutgoingBuffer size is {}", intermediateOutgoingBuffer.capacity());
-                    return fillBuffer(logTime, message.position(0), logPrefix, intermediateOutgoingBuffer);
-                } else {
-                    throw new IllegalStateException("Should never have happened");
+                switch (kind) {
+                    case INCOMING:
+                        formatter.formatIncoming(logTime, messageType, text, line);
+                        break;
+                    case OUTGOING:
+                        formatter.formatOutgoing(logTime, messageType, text, line);
+                        break;
+                    default:
+                        formatter.formatEvent(logTime, text, line);
                 }
+                return line.flip();
+            } catch (BufferOverflowException e) {
+                lineBuffers[kind.ordinal()] = ByteBuffer.allocate(line.capacity() * 2);
+                log.debug("New {} line buffer size is {}", kind, line.capacity() * 2);
+                return fillBuffer(logTime, kind, messageType, text.position(textStart), textStart);
             }
         }
 
@@ -323,8 +310,10 @@ public class FileMessagesLogger extends MessagesCoreBatchingLogger {
 
         @Override
         public void logEvent(UTCTime eventTime, String event) throws LoggingException {
-            logMessage(eventTime, ByteBuffer.wrap(event.getBytes(SerDe.CHARSET)), logEventPrefix, intermediateEventBuffer);
+            logLine(eventTime, Line.EVENT, null, ByteBuffer.wrap(event.getBytes(SerDe.CHARSET)));
         }
+
+        private enum Line { INCOMING, OUTGOING, EVENT }
 
         enum LogFileName {
             MILLISECONDS(new SimpleDateFormat(BASE_DATE_FORMAT + "-HHmmssSSS")),

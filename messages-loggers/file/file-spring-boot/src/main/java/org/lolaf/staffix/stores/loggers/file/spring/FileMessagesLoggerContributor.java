@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.spring.boot.spi.BeanRef;
 import org.lolaf.staffix.spring.boot.spi.FixMessagesLoggerSettingsContributor;
 import org.lolaf.staffix.stores.loggers.file.FileMessagesLoggerSettings;
+import org.lolaf.staffix.stores.loggers.file.PlainFileLogLineFormat;
 import org.springframework.context.ApplicationContext;
 
 import java.io.File;
@@ -60,9 +61,11 @@ public class FileMessagesLoggerContributor implements FixMessagesLoggerSettingsC
         if (p.getLogIncoming() != null) b.logIncoming(p.getLogIncoming());
         if (p.getLogOutgoing() != null) b.logOutgoing(p.getLogOutgoing());
         if (p.getLogEvents() != null) b.logEvents(p.getLogEvents());
-        if (p.getLogEventPrefix() != null) b.logEventPrefix(p.getLogEventPrefix());
-        if (p.getLogOutPrefix() != null) b.logOutPrefix(p.getLogOutPrefix());
-        if (p.getLogInPrefix() != null) b.logInPrefix(p.getLogInPrefix());
+        PlainFileLogLineFormat.PlainFileLogLineFormatBuilder plain = PlainFileLogLineFormat.builder();
+        if (p.getLogEventPrefix() != null) plain.logEventPrefix(p.getLogEventPrefix());
+        if (p.getLogOutPrefix() != null) plain.logOutPrefix(p.getLogOutPrefix());
+        if (p.getLogInPrefix() != null) plain.logInPrefix(p.getLogInPrefix());
+        b.lineFormat(plain.build());
         if (p.getWriteMode() != null) b.writeMode(p.getWriteMode());
         if (p.getLogTimePrecision() != null) b.logTimePrecision(p.getLogTimePrecision());
         if (p.getCompressFileTimeUnit() != null) b.compressFileTimeUnit(p.getCompressFileTimeUnit());
