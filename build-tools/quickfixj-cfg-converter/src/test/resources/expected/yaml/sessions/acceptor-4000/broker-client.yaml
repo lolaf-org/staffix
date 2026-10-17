@@ -1,0 +1,48 @@
+# From options.cfg:34
+# yaml-language-server: $schema=fix-session-settings.v1.schema.json
+schemaVersion: 1
+fixSessionId:
+  name: "broker-client"
+  fixVersion: "FIX.4.4"
+  senderCompID: "BROKER"
+  targetCompID: "CLIENT"
+fixSessionType: "ACCEPTOR"
+heartBeatInterval:
+  acceptorUpperBoundInterval: "PT20S"
+enabledLogonNextExpectedMsgSeqNum: false
+resendRequestRange: "OPEN_ENDED"
+sendingTimeAccuracy: "SECONDS"
+allowedAddresses:
+  - "10.0.0.1"
+  - "10.0.0.2"
+validationSettings:
+  validateRequiredFields: true
+  allowUndefinedTagsForMessage: false
+  validateDuplicateTags: true
+  validateFieldsOutOfOrder: true
+  validateBeginString: true
+  validateCompId: true
+  maxSendingTime: "PT120S"
+sessionScheduleSettings:
+  timeZone: "America/New_York"
+  sessionSchedules:
+    - startDay: "MONDAY"
+      startTime: "09:30:00"
+      endDay: "MONDAY"
+      endTime: "16:00:00"
+    - startDay: "TUESDAY"
+      startTime: "09:30:00"
+      endDay: "TUESDAY"
+      endTime: "16:00:00"
+    - startDay: "WEDNESDAY"
+      startTime: "09:30:00"
+      endDay: "WEDNESDAY"
+      endTime: "16:00:00"
+    - startDay: "THURSDAY"
+      startTime: "09:30:00"
+      endDay: "THURSDAY"
+      endTime: "16:00:00"
+    - startDay: "FRIDAY"
+      startTime: "09:30:00"
+      endDay: "FRIDAY"
+      endTime: "16:00:00"

@@ -232,8 +232,9 @@ Each is reported with its value; the cell says what comes closest.
 - **dictionary**: `DataDictionary`, `AppDataDictionary` and `TransportDataDictionary` are not settings in staffix: the
   file becomes the project's dictionary (`concepts.md`, Messages). Sessions with different dictionaries need one
   application each. `UseDataDictionary=N` turns the dictionary checks off, as `ValidateIncomingMessage=N`.
-- **schedule**: times are `HH:MM:SS`, optionally followed by a time zone that then replaces `TimeZone` (two different
-  zones in one session are reported). Days are QuickFIX/J day names, written in full and upper case (`MONDAY`).
+- **schedule**: times are `HH:MM:SS`, optionally followed by a time zone; a time without one is in `TimeZone`. The
+  start time's zone is written; a close time in another zone is reported. Days are QuickFIX/J day names, written in
+  full and upper case (`MONDAY`).
   - `StartDay` and `EndDay`: one entry, `startDay`, `startTime`, `endDay`, `endTime`.
   - `Weekdays`: one entry per day listed, `startDay` that day.
   - Neither: one entry per day of the week.

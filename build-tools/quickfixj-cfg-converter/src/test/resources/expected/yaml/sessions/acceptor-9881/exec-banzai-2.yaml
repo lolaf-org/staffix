@@ -1,0 +1,29 @@
+# From executor.cfg:20
+# yaml-language-server: $schema=fix-session-settings.v1.schema.json
+schemaVersion: 1
+fixSessionId:
+  name: "exec-banzai-2"
+  fixVersion: "FIX.4.4"
+  senderCompID: "EXEC"
+  targetCompID: "BANZAI"
+fixSessionType: "ACCEPTOR"
+heartBeatInterval:
+  acceptorUpperBoundInterval: "PT20S"
+enabledLogonNextExpectedMsgSeqNum: false
+resendRequestRange: "OPEN_ENDED"
+sendingTimeAccuracy: "MILLISECONDS"
+validationSettings:
+  validateRequiredFields: true
+  allowUndefinedTagsForMessage: false
+  validateDuplicateTags: true
+  validateFieldsOutOfOrder: true
+  allowUserDefinedFields: true
+  validateBeginString: true
+  validateCompId: true
+sessionScheduleSettings:
+  timeZone: "UTC"
+  sessionSchedules:
+    - startDay: "SUNDAY"
+      startTime: "22:00:00"
+      endDay: "FRIDAY"
+      endTime: "21:00:00"

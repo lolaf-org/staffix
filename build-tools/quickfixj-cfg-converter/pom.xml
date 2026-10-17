@@ -15,5 +15,40 @@
     <properties>
         <automatic.module.name>org.lolaf.staffix.buildtools.quickfixj</automatic.module.name>
         <maven.deploy.skip>true</maven.deploy.skip>
+        <!-- the tests bind the Spring output with Spring Boot, which needs Java 17 -->
+        <maven.compiler.testRelease>17</maven.compiler.testRelease>
+        <quickfixj-core.version>3.0.2</quickfixj-core.version>
     </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.quickfixj</groupId>
+            <artifactId>quickfixj-core</artifactId>
+            <version>${quickfixj-core.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-impl</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-sessions-settings-store-file-impl</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-sessions-settings-store-memory-spring-boot</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-spring-boot-starter</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>

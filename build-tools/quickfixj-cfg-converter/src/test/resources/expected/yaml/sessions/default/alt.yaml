@@ -1,0 +1,30 @@
+# From options.cfg:6
+# yaml-language-server: $schema=fix-session-settings.v1.schema.json
+schemaVersion: 1
+fixSessionId:
+  name: "alt"
+  fixVersion: "FIX.4.3"
+  senderCompID: "CLIENT"
+  senderSubID: "desk"
+  targetCompID: "BROKER"
+fixSessionType: "INITIATOR"
+heartBeatInterval:
+  initiatorInterval: "PT20S"
+logInOrOutResponseTimeout: "PT30S"
+resetSeqNumOnLogon: true
+enabledLogonNextExpectedMsgSeqNum: true
+resendRequestRange: "CLOSED"
+sendingTimeAccuracy: "MICROSECONDS"
+validationSettings:
+  validateRequiredFields: false
+  validateDuplicateTags: false
+  validateFieldsOutOfOrder: false
+  validateFieldsHaveValues: false
+  allowUndefinedTagsForMessage: true
+  allowUserDefinedFields: true
+  allowUnknownFields: true
+  validateBeginString: true
+  validateCompId: false
+  maxSendingTime: "PT30S"
+sessionScheduleSettings:
+  timeZone: "America/New_York"

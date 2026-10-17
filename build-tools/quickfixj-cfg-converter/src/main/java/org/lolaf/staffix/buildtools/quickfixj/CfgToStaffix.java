@@ -132,7 +132,7 @@ public final class CfgToStaffix {
 
     private final Options options;
     private final Report report = new Report();
-    private final List<Session> sessions = new ArrayList<>();
+    final List<Session> sessions = new ArrayList<>();
     private final Map<String, Acceptor> acceptors = new LinkedHashMap<>();
 
     CfgToStaffix(Options options) {
@@ -409,14 +409,15 @@ public final class CfgToStaffix {
         }
         Matcher start = time(session, "StartTime", startTime);
         Matcher end = time(session, "EndTime", endTime);
-        String startZone = start.group(4);
-        String endZone = end.group(4);
-        if (startZone != null && endZone != null && !startZone.equals(endZone)) {
-            report.question(session, "StartTime and EndTime name different time zones, " + startZone + " and "
-                    + endZone + ": staffix has one per schedule, " + startZone + " is written.");
+        String sessionZone = zone == null ? "UTC" : zone;
+        String startZone = start.group(4) == null ? sessionZone : start.group(4);
+        String endZone = end.group(4) == null ? sessionZone : end.group(4);
+        if (!startZone.equals(endZone)) {
+            report.question(session, "StartTime is read in " + startZone + " and EndTime in " + endZone + ", since a"
+                    + " time without a zone is in TimeZone (UTC by default): staffix has one zone per schedule, "
+                    + startZone + " is written. Check the close time.");
         }
-        String timeZone = startZone != null ? startZone : endZone != null ? endZone : zone != null ? zone : "UTC";
-        session.doc.put("sessionScheduleSettings.timeZone", timeZone);
+        session.doc.put("sessionScheduleSettings.timeZone", startZone);
         String open = hhmmss(start);
         String close = hhmmss(end);
         List<Object> windows = new ArrayList<>();
@@ -803,7 +804,7 @@ public final class CfgToStaffix {
     static final class Session {
         final Path file;
         final int line;
-        private final Map<String, String> values;
+        final Map<String, String> values;
         private final Set<String> read = new LinkedHashSet<>();
         final Map<String, String> id = new LinkedHashMap<>();
         final Doc doc = new Doc();
