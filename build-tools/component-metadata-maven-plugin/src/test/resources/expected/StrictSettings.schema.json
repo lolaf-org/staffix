@@ -17,6 +17,7 @@
   },
   "x-staffix": {
     "kind": "session-plugin",
-    "artifact": "org.lolaf.staffix:fixture-impl"
+    "artifact": "org.lolaf.staffix:fixture-impl",
+    "cardinality": "ANY"
   }
 }

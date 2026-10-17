@@ -24,8 +24,8 @@ import org.lolaf.staffix.api.metadata.SelectedBy;
  * Settings for an application factory, resolved through the {@link org.lolaf.staffix.api.Factory} SPI - the
  * plain and Spring factories are the two shipped implementations.
  */
-@ComponentKind("application-factory")
-@SelectedBy(sessionSetting = "fixApplicationFactoryInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
+@ComponentKind(value = "application-factory", cardinality = ComponentKind.Cardinality.AT_LEAST_ONE)
+@SelectedBy(setting = "fixApplicationFactoryInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
         whenUnknown = SelectedBy.WhenUnknown.REFUSED)
 public interface FixApplicationFactorySettings extends InstanceProvider<FixApplicationFactory> {
 

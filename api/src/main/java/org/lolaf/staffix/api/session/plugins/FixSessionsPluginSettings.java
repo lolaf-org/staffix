@@ -29,7 +29,7 @@ import java.util.Set;
  * class, which is how they stay invisible to a session's configuration.
  */
 @ComponentKind("session-plugin")
-@SelectedBy(sessionSetting = "fixSessionPluginsInstanceIds", whenUnnamed = SelectedBy.WhenUnnamed.NONE,
+@SelectedBy(setting = "fixSessionPluginsInstanceIds", whenUnnamed = SelectedBy.WhenUnnamed.NONE,
         whenUnknown = SelectedBy.WhenUnknown.REFUSED_ONCE_ANY_REGISTERED)
 public interface FixSessionsPluginSettings<T extends FixSessionsPlugin<?>> extends InstanceProvider<T> {
 

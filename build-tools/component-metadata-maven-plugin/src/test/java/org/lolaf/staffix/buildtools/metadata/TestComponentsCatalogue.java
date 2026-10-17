@@ -65,11 +65,11 @@ class TestComponentsCatalogue {
     @Test
     void componentsOfAKindSelectedDifferentlyAreRefused() throws IOException {
         Map<String, ObjectNode> files = metadata();
-        ((ObjectNode) files.get(componentFile("TracingSettings")).get("x-staffix")).putObject("selectedBy")
-                .put("sessionSetting", "other");
+        ((ObjectNode) files.get(componentFile("TracingSettings")).get("x-staffix")).putArray("selectedBy")
+                .addObject().put("by", "SESSION").put("setting", "other");
 
         assertThatThrownBy(() -> ComponentsCatalogue.index("1.2.3", files))
-                .hasMessageStartingWith(FIXTURES + "TracingSettings is selected unlike the other session-plugin");
+                .hasMessageStartingWith(FIXTURES + "TracingSettings is counted or selected unlike the other session-plugin");
     }
 
     @Test

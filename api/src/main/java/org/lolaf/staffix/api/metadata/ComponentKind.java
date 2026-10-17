@@ -34,4 +34,15 @@ public @interface ComponentKind {
      * The kind's name in the metadata, such as {@code messages-store}.
      */
     String value();
+
+    /**
+     * How many components of this kind an engine takes; the engine refuses to start outside it.
+     */
+    Cardinality cardinality() default Cardinality.ANY;
+
+    enum Cardinality {
+        ANY,
+        AT_LEAST_ONE,
+        AT_MOST_ONE
+    }
 }

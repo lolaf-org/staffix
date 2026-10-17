@@ -145,11 +145,26 @@
   "x-staffix": {
     "kind": "fixture-store",
     "artifact": "org.lolaf.staffix:fixture-impl",
-    "selectedBy": {
-      "sessionSetting": "fixtureStoreInstanceId",
-      "whenUnnamed": "DEFAULT_INSTANCE",
-      "whenUnknown": "REFUSED"
-    },
+    "cardinality": "AT_LEAST_ONE",
+    "selectedBy": [
+      {
+        "by": "SESSION",
+        "setting": "fixtureStoreInstanceId",
+        "whenUnnamed": "DEFAULT_INSTANCE",
+        "whenUnknown": "REFUSED"
+      },
+      {
+        "by": "ACCEPTOR",
+        "setting": "targetStores",
+        "springSetting": "staffix.acceptors.<name>.target-stores",
+        "whenUnnamed": "DEFAULT_INSTANCE",
+        "whenUnknown": "REFUSED"
+      },
+      {
+        "by": "INITIATOR",
+        "whenUnnamed": "ALL"
+      }
+    ],
     "instanceIdFrom": "wrapped",
     "jvmFlags": [
       "--add-opens java.base/jdk.internal.ref=ALL-UNNAMED",

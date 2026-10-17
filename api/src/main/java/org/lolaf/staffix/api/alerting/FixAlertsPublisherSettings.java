@@ -25,7 +25,7 @@ import org.lolaf.staffix.api.metadata.SelectedBy;
  * Settings for an alerts publisher, resolved through the {@link Factory} SPI.
  */
 @ComponentKind("alerts-publisher")
-@SelectedBy(sessionSetting = "fixAlertsPublisherInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
+@SelectedBy(setting = "fixAlertsPublisherInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
         whenUnknown = SelectedBy.WhenUnknown.REFUSED_ONCE_ANY_REGISTERED)
 public interface FixAlertsPublisherSettings extends InstanceProvider<FixAlertsPublisher> {
 

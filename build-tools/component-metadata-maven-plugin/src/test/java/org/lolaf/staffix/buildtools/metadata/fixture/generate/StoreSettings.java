@@ -18,8 +18,11 @@ package org.lolaf.staffix.buildtools.metadata.fixture.generate;
 import org.lolaf.staffix.api.metadata.ComponentKind;
 import org.lolaf.staffix.api.metadata.SelectedBy;
 
-@ComponentKind("fixture-store")
-@SelectedBy(sessionSetting = "fixtureStoreInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
+@ComponentKind(value = "fixture-store", cardinality = ComponentKind.Cardinality.AT_LEAST_ONE)
+@SelectedBy(setting = "fixtureStoreInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
         whenUnknown = SelectedBy.WhenUnknown.REFUSED)
+@SelectedBy(by = SelectedBy.By.ACCEPTOR, setting = "targetStores", springSetting = "staffix.acceptors.<name>.target-stores",
+        whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE)
+@SelectedBy(by = SelectedBy.By.INITIATOR, whenUnnamed = SelectedBy.WhenUnnamed.ALL)
 public interface StoreSettings {
 }

@@ -26,7 +26,7 @@ import org.lolaf.staffix.api.metadata.ComponentKind;
  * Settings for an admin API, resolved through the {@link org.lolaf.staffix.api.Factory} SPI - JMX is the shipped
  * implementation.
  */
-@ComponentKind("admin-api-exporter")
+@ComponentKind(value = "admin-api-exporter", cardinality = ComponentKind.Cardinality.AT_MOST_ONE)
 @NullMarked
 @Getter
 @SuperBuilder(toBuilder = true)

@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.buildtools.schema.ValueSchemas;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -131,13 +132,15 @@ public class ComponentSchemaGenerator {
         ObjectNode staffix = NODES.objectNode();
         staffix.put("kind", component.getKind());
         staffix.put("artifact", groupId + ":" + artifactId);
-        ComponentScanner.kindType(type).flatMap(kind -> ComponentScanner.annotation(kind, METADATA + "SelectedBy"))
-                .ifPresent(selectedBy -> {
-                    ObjectNode selection = staffix.putObject("selectedBy");
-                    selection.put("sessionSetting", (String) ComponentScanner.value(selectedBy, "sessionSetting"));
-                    selection.put("whenUnnamed", ((Enum<?>) ComponentScanner.value(selectedBy, "whenUnnamed")).name());
-                    selection.put("whenUnknown", ((Enum<?>) ComponentScanner.value(selectedBy, "whenUnknown")).name());
-                });
+        ComponentScanner.kindType(type).ifPresent(kind -> {
+            Annotation componentKind = ComponentScanner.annotation(kind, ComponentScanner.COMPONENT_KIND).orElseThrow();
+            staffix.put("cardinality", ((Enum<?>) ComponentScanner.value(componentKind, "cardinality")).name());
+            List<Annotation> selections = selections(kind);
+            if (!selections.isEmpty()) {
+                ArrayNode selectedBy = staffix.putArray("selectedBy");
+                selections.forEach(selection -> selectedBy.add(selection(selection)));
+            }
+        });
         JsonTypes.fields(type).stream().filter(field -> JsonTypes.annotation(field.getAnnotations(), METADATA + "Wrapped").isPresent())
                 .findFirst().ifPresent(field -> staffix.put("instanceIdFrom", field.getName()));
         ComponentScanner.annotation(type, METADATA + "RequiresJvmFlags").ifPresent(requires -> {
@@ -161,6 +164,37 @@ public class ComponentSchemaGenerator {
             });
         }
         return staffix;
+    }
+
+    /**
+     * A repeated annotation is only visible through its container.
+     */
+    private static List<Annotation> selections(Class<?> kind) {
+        Optional<Annotation> single = ComponentScanner.annotation(kind, METADATA + "SelectedBy");
+        if (single.isPresent()) {
+            return List.of(single.get());
+        }
+        return ComponentScanner.annotation(kind, METADATA + "SelectedBy$List")
+                .map(container -> List.of((Annotation[]) ComponentScanner.value(container, "value")))
+                .orElse(List.of());
+    }
+
+    private static ObjectNode selection(Annotation selectedBy) {
+        ObjectNode selection = NODES.objectNode();
+        selection.put("by", ((Enum<?>) ComponentScanner.value(selectedBy, "by")).name());
+        String setting = (String) ComponentScanner.value(selectedBy, "setting");
+        String springSetting = (String) ComponentScanner.value(selectedBy, "springSetting");
+        if (!setting.isEmpty()) {
+            selection.put("setting", setting);
+        }
+        if (!springSetting.isEmpty()) {
+            selection.put("springSetting", springSetting);
+        }
+        selection.put("whenUnnamed", ((Enum<?>) ComponentScanner.value(selectedBy, "whenUnnamed")).name());
+        if (!setting.isEmpty()) {
+            selection.put("whenUnknown", ((Enum<?>) ComponentScanner.value(selectedBy, "whenUnknown")).name());
+        }
+        return selection;
     }
 
     private static Object invoke(Object target, String method) {

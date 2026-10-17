@@ -126,12 +126,13 @@ public class ComponentsCatalogue {
 
     private static void addKind(SortedMap<String, ObjectNode> kinds, String settings, JsonNode staffix) {
         ObjectNode kind = JsonTypes.NODES.objectNode();
+        kind.set("cardinality", staffix.get("cardinality"));
         if (staffix.has("selectedBy")) {
             kind.set("selectedBy", staffix.get("selectedBy"));
         }
         ObjectNode known = kinds.putIfAbsent(staffix.get("kind").asText(), kind);
         if (known != null && !known.equals(kind)) {
-            throw new IllegalArgumentException(settings + " is selected unlike the other " + staffix.get("kind").asText()
+            throw new IllegalArgumentException(settings + " is counted or selected unlike the other " + staffix.get("kind").asText()
                     + " components: " + kind + " against " + known);
         }
     }

@@ -99,7 +99,10 @@ public class DocumentedPropertyKeys {
         return problems;
     }
 
-    private boolean isKnown(String key) {
+    /**
+     * @param key as a document writes it, instance ids and placeholders included
+     */
+    public boolean isKnown(String key) {
         String normalized = normalize(key);
         if (keys.containsKey(normalized) || isListItem(normalized) || isWildcard(normalized)
                 || isInValueMap(normalized)) {

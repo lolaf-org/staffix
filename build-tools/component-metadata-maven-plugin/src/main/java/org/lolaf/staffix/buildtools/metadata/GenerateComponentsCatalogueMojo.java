@@ -132,7 +132,7 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
                 throw new MojoFailureException("The catalogue index takes " + indexContent.length
                         + " bytes, over its budget of " + indexBudget + ": shorten the guide summaries or raise it");
             }
-            checkDocumentation(parsed);
+            checkDocumentation(parsed, index);
             write(ComponentsCatalogue.INDEX, indexContent);
             getLog().info("Catalogued " + index.get("components").size() + " components in " + indexContent.length
                     + " bytes of index");
@@ -141,7 +141,8 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
         }
     }
 
-    private void checkDocumentation(Map<String, ObjectNode> files) throws IOException, MojoFailureException {
+    private void checkDocumentation(Map<String, ObjectNode> files, ObjectNode index)
+            throws IOException, MojoFailureException {
         List<ObjectNode> springFiles = files.entrySet().stream()
                 .filter(file -> file.getKey().startsWith(ComponentsCatalogue.SPRING))
                 .map(Map.Entry::getValue)
@@ -149,6 +150,13 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
         DocumentedPropertyKeys keys = DocumentedPropertyKeys.of(springFiles, starterProperties(), ignoredKeys);
         Path root = buildRoot.toPath();
         List<String> problems = new ArrayList<>();
+        index.get("kinds").fields().forEachRemaining(kind -> kind.getValue().path("selectedBy").forEach(selection -> {
+            String springSetting = selection.path("springSetting").asText(null);
+            if (springSetting != null && !keys.isKnown(springSetting)) {
+                problems.add("@SelectedBy of " + kind.getKey() + ": " + springSetting
+                        + " is no property of the starter or of a component's Spring Boot module");
+            }
+        }));
         int checked = 0;
         for (File directory : documentation) {
             for (Path document : documents(directory.toPath())) {

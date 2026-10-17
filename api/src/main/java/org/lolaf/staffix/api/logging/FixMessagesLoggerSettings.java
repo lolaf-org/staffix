@@ -32,7 +32,7 @@ import java.util.function.BiPredicate;
  * in clear, and a log of raw FIX would otherwise keep them.
  */
 @ComponentKind("messages-logger")
-@SelectedBy(sessionSetting = "fixMessageLoggerInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
+@SelectedBy(setting = "fixMessageLoggerInstanceId", whenUnnamed = SelectedBy.WhenUnnamed.DEFAULT_INSTANCE,
         whenUnknown = SelectedBy.WhenUnknown.REFUSED_ONCE_ANY_REGISTERED)
 public interface FixMessagesLoggerSettings extends InstanceProvider<FixMessagesLogger> {
 

@@ -11,6 +11,7 @@
   "x-staffix": {
     "kind": "session-plugin",
     "artifact": "org.lolaf.staffix:fixture-impl",
+    "cardinality": "ANY",
     "pluginClasses": [
       "java.lang.Integer",
       "java.lang.String"
