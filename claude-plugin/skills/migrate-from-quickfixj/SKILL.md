@@ -2,7 +2,7 @@
 name: migrate-from-quickfixj
 description: Migrates a Java application from QuickFIX/J to the staffix FIX engine, in plain Java or Spring Boot: its Application callbacks, MessageCracker handlers, .cfg sessions, dictionaries, stores and logs, with a report of what has no staffix equivalent, a build, and a round trip against QuickFIX/J proving the wire is unchanged. Use when the user wants to replace QuickFIX/J with staffix.
 argument-hint: "[what to migrate]"
-allowed-tools: Read(/${CLAUDE_PLUGIN_ROOT}/**) Grep(/${CLAUDE_PLUGIN_ROOT}/**) Glob(/${CLAUDE_PLUGIN_ROOT}/**) Bash(grep *)
+allowed-tools: Read(/${CLAUDE_PLUGIN_ROOT}/**) Grep(/${CLAUDE_PLUGIN_ROOT}/**) Glob(/${CLAUDE_PLUGIN_ROOT}/**) Bash(grep *) Bash(java ${CLAUDE_SKILL_DIR}/scripts/CfgToStaffix.java *)
 ---
 
 # Migrate from QuickFIX/J
@@ -13,6 +13,8 @@ Under `${CLAUDE_PLUGIN_ROOT}/skills/migrate-from-quickfixj/references/`:
 
 - `concepts.md`: each QuickFIX/J class and callback and what replaces it. **Read it first.**
 - `cfg-keys.md`: each `.cfg` key, its staffix setting, its transform, and what to write when it is absent.
+- `${CLAUDE_SKILL_DIR}/scripts/CfgToStaffix.java`: the converter that applies `cfg-keys.md`, run with `java` alone
+  (JDK 11 or later). Never convert a `.cfg` by hand: its output is exact, and checked against QuickFIX/J.
 
 And under `${CLAUDE_PLUGIN_ROOT}`:
 
@@ -33,7 +35,16 @@ Read the project without changing it, and list:
   version, Spring Boot or plain Java (a QuickFIX/J Spring Boot starter counts).
 - **Engines**: each `SocketInitiator`, `SocketAcceptor` and threaded variant, the `.cfg` it reads, the store and log
   factories it is given, and any JMX exporter.
-- **Sessions**: every section of every `.cfg`, resolved with `[DEFAULT]` as `cfg-keys.md` says.
+- **Sessions**: every `.cfg`, converted from the project's directory into `target/staffix-migration`, in the
+  format of the project's wiring (`yaml` for plain Java, `spring` for Spring Boot):
+
+  ```
+  java ${CLAUDE_SKILL_DIR}/scripts/CfgToStaffix.java --format yaml <each .cfg>
+  ```
+
+  Read its `report.md`: sessions, initiators and acceptors, components, what needs code, behaviour changes, no
+  equivalents, keys QuickFIX/J does not know (the application may read them) and questions. It stops on a `.cfg`
+  QuickFIX/J would refuse, naming the file and line: report that, and convert the rest.
 - **Dictionaries**: the `DataDictionary`, `AppDataDictionary` and `TransportDataDictionary` files, and whether they
   are QuickFIX/J's own or a counterparty's.
 - **Application code**: each `Application` and `ApplicationExtended` callback with what it does, each `MessageCracker`
@@ -46,13 +57,14 @@ Read the project without changing it, and list:
 
 Write the migration plan as `STAFFIX-MIGRATION.md` at the project root, and show it to the user:
 
-1. **What maps**, per area: concept, then each session's settings as the staffix setting and value they become.
-2. **What changes behaviour**, from both references: the schedule's sequence resets, the acceptor's heartbeat bounds,
-   the validation QuickFIX/J ran by default, a changed store starting from sequence number 1, the logging categories.
-3. **No equivalent**: each one, where it is, and what comes closest.
+1. **What maps**, per area: concept, then the converter's sessions, initiators, acceptors and components.
+2. **What changes behaviour**: the converter's behaviour changes, and from `concepts.md` what the code changes, such
+   as a changed store starting from sequence number 1 and the logging categories.
+3. **No equivalent**: the converter's and the code's, each with where it is and what comes closest.
 4. **Choices**, each with a recommendation: plain Java or Spring Boot (keep the project's), the staffix store and
-   logger for each QuickFIX/J one, whether to keep QuickFIX/J's validation checks or staffix's defaults, which side
-   sends a non-stop day's reset, whether a daily reset is expected.
+   logger for each QuickFIX/J one, whether to keep QuickFIX/J's validation checks (`--validation qfj`, the default)
+   or staffix's defaults (`--validation staffix`), and the converter's questions, such as which side sends a daily
+   reset (`--initiates-reset true` or `false`) and whether the counterparty expects one at each window.
 
 Ask with the AskUserQuestion tool. Change nothing until the user approves the report; record their answers in it.
 Without the tool (a non-interactive run), take the recommendations, write them into the report as the defaults
@@ -67,11 +79,16 @@ Follow the approved report, in this order, keeping the project's packages, names
 2. **Dictionary**: each dictionary file is kept unchanged as the project's dictionary, as `dictionary-setup.md`
    says for a provider dictionary; QuickFIX/J's own dictionaries become the shipped one of the same version. List in
    `messages.txt` the message types the inventory found, then run `mvn generate-sources`.
-3. **Sessions**: a sessions settings store holding each session, converted key by key with `cfg-keys.md`: YAML
-   files for the file store in plain Java, properties with Spring Boot. Endpoints, CompIDs and secrets become
-   environment variables with the `.cfg`'s values as dev defaults. Delete the `.cfg` once nothing reads it.
-4. **Engine**: the initiators and acceptors `cfg-keys.md` gives, and the chosen components, wired as the reference
-   projects are. Environments as `environment-rules.md` says: dev, and prod with the components the QuickFIX/J
+3. **Sessions**: run the converter again with the approved answers as options, then move its output into the
+   project. YAML: `target/staffix-migration/sessions/<store>/` to `src/main/resources/sessions/<store>/`, one file
+   store per directory, as the reference projects load theirs. Spring Boot: `staffix-sessions.properties` into
+   `application.properties`. Endpoints, CompIDs and secrets become placeholders with the `.cfg`'s values as dev
+   defaults (`"${FIX_TARGET_COMP_ID:EXEC}"`; the converter already writes keystore passwords as
+   `${FIX_KEY_STORE_PASSWORD}`). Change nothing else in the converted values. Delete the `.cfg` once nothing reads
+   it.
+4. **Engine**: the initiators and acceptors of the converter's report (in plain Java, built in code with their
+   addresses, retry and TLS; with Spring Boot, already in the properties), and the chosen components, wired as the
+   reference projects are. Environments as `environment-rules.md` says: dev, and prod with the components the QuickFIX/J
    application used in production.
 5. **Application**: each callback and handler moved as `concepts.md` says. A handler becomes a decoder whose
    `mapFieldsForDecoding` binds the fields the handler read; a send becomes an encoder built once per session. Keep the
