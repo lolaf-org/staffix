@@ -42,4 +42,11 @@ public class TestingFixMessagesStoreSettings implements FixMessagesStoreSettings
      */
     private Probe probe;
 
+    /**
+     * Run when the store as a whole starts and stops, when set: what a store wrapping it must pass on.
+     */
+    private Runnable onStart;
+
+    private Runnable onStop;
+
 }

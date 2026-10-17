@@ -34,6 +34,7 @@ import org.lolaf.staffix.tests.TestingFixMessagesLoggerSettings;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -135,6 +136,24 @@ class TestAsyncMessagesLogger {
             asyncLogger.stop(Deadline.immediate());
         }
         asyncMessagesLogger.stop(Deadline.immediate());
+    }
+
+    @Test
+    void startsAndStopsTheLoggerItWraps() {
+        List<String> lifecycle = new CopyOnWriteArrayList<>();
+        AsyncMessagesLogger wrapping = new AsyncMessagesLogger(asyncMessagesLoggerSettings.toBuilder()
+                .asyncStoreSettings(AsyncStoreSettings.builder().asyncQueueDirectory("./target/" + System.nanoTime()).build())
+                .wrappedLoggerSettings(TestingFixMessagesLoggerSettings.builder()
+                        .testingLogger(logger)
+                        .onStart(() -> lifecycle.add("start"))
+                        .onStop(() -> lifecycle.add("stop"))
+                        .build())
+                .build());
+
+        wrapping.start();
+        assertThat(lifecycle).containsExactly("start");
+        wrapping.stop(Deadline.immediate());
+        assertThat(lifecycle).containsExactly("start", "stop");
     }
 
     @Test

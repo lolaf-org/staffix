@@ -16,6 +16,7 @@
 package org.lolaf.staffix.tests;
 
 import lombok.AllArgsConstructor;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
@@ -24,9 +25,23 @@ import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 @AllArgsConstructor
-public class TestingFixMessagesLogger extends Startable.VoidStartable<FixMessagesLogger> implements FixMessagesLogger {
+public class TestingFixMessagesLogger extends Startable.SimpleStartable<FixMessagesLogger> implements FixMessagesLogger {
 
     private TestingFixMessagesLoggerSettings testingFixMessagesLoggerSettings;
+
+    @Override
+    protected void startMe() {
+        if (testingFixMessagesLoggerSettings.getOnStart() != null) {
+            testingFixMessagesLoggerSettings.getOnStart().run();
+        }
+    }
+
+    @Override
+    protected void stopMe(Deadline stopDeadline) {
+        if (testingFixMessagesLoggerSettings.getOnStop() != null) {
+            testingFixMessagesLoggerSettings.getOnStop().run();
+        }
+    }
 
     @Override
     public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,

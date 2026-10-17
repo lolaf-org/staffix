@@ -34,8 +34,10 @@ import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -91,6 +93,24 @@ class TestAsyncMessagesStore {
         asyncMessagesStore.start();
 
         asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
+    }
+
+    @Test
+    void startsAndStopsTheStoreItWraps() {
+        List<String> lifecycle = new CopyOnWriteArrayList<>();
+        AsyncMessagesStore wrapping = new AsyncMessagesStore(asyncMessagesStoreSettings.toBuilder()
+                .asyncStoreSettings(AsyncStoreSettings.builder().asyncQueueDirectory("./target/" + System.nanoTime()).build())
+                .wrappedFixMessagesStoreSettings(TestingFixMessagesStoreSettings.builder()
+                        .testingFixSessionMessagesStore(messageStore)
+                        .onStart(() -> lifecycle.add("start"))
+                        .onStop(() -> lifecycle.add("stop"))
+                        .build())
+                .build());
+
+        wrapping.start();
+        assertThat(lifecycle).containsExactly("start");
+        wrapping.stop(Deadline.immediate());
+        assertThat(lifecycle).containsExactly("start", "stop");
     }
 
     @Test

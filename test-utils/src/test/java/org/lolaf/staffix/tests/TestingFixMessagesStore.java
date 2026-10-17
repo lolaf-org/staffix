@@ -16,6 +16,7 @@
 package org.lolaf.staffix.tests;
 
 import lombok.AllArgsConstructor;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -23,9 +24,23 @@ import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
 @AllArgsConstructor
-public class TestingFixMessagesStore extends Startable.VoidStartable<FixMessagesStore> implements FixMessagesStore {
+public class TestingFixMessagesStore extends Startable.SimpleStartable<FixMessagesStore> implements FixMessagesStore {
 
     private final TestingFixMessagesStoreSettings settings;
+
+    @Override
+    protected void startMe() {
+        if (settings.getOnStart() != null) {
+            settings.getOnStart().run();
+        }
+    }
+
+    @Override
+    protected void stopMe(Deadline stopDeadline) {
+        if (settings.getOnStop() != null) {
+            settings.getOnStop().run();
+        }
+    }
 
     @Override
     public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {

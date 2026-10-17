@@ -77,8 +77,13 @@ public class AsyncMessagesLogger extends Startable.SimpleStartable<FixMessagesLo
         return logger;
     }
 
+    /**
+     * The engine registers this logger only, so the wrapped logger starts and stops here: before the threads that
+     * write to it, and after they drained.
+     */
     @Override
     protected void startMe() throws StartStopException {
+        wrappedFixMessagesLogger.start();
         asyncStoreThreads.start();
     }
 
@@ -86,6 +91,7 @@ public class AsyncMessagesLogger extends Startable.SimpleStartable<FixMessagesLo
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         asyncStoreThreads.stop(stopDeadline);
         loggers.clear();
+        wrappedFixMessagesLogger.stop(stopDeadline);
     }
 
     @Override

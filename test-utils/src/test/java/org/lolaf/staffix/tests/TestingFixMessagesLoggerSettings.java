@@ -35,6 +35,13 @@ public class TestingFixMessagesLoggerSettings implements FixMessagesLoggerSettin
     @Builder.Default
     private BiPredicate<MessageType, FixMessagesLogger.LogEventType> messageFilter = (messageType, direction) -> false;
 
+    /**
+     * Run when the logger as a whole starts and stops, when set: what a logger wrapping it must pass on.
+     */
+    private Runnable onStart;
+
+    private Runnable onStop;
+
     @Override
     public List<LogObfuscator> getLogObfuscators() {
         return List.of();

@@ -75,8 +75,13 @@ public class AsyncMessagesStore extends Startable.SimpleStartable<FixMessagesSto
         return store;
     }
 
+    /**
+     * The engine registers this store only, so the wrapped store starts and stops here: before the threads that write
+     * to it, and after they drained.
+     */
     @Override
     protected void startMe() throws StartStopException {
+        wrappedFixMessagesStore.start();
         asyncStoreThreads.start();
     }
 
@@ -84,6 +89,7 @@ public class AsyncMessagesStore extends Startable.SimpleStartable<FixMessagesSto
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         asyncStoreThreads.stop(stopDeadline);
         contexts.clear();
+        wrappedFixMessagesStore.stop(stopDeadline);
     }
 
     @Override
