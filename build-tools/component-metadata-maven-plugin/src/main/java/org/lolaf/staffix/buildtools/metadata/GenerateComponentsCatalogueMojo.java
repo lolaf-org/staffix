@@ -37,6 +37,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +61,7 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
 
     private static final String PLUGIN = "staffix-component-metadata-maven-plugin";
     private static final String DESCRIBE_GOAL = "generate-component-metadata";
+    private static final String SPRING_METADATA = "META-INF/spring-configuration-metadata.json";
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
@@ -69,6 +71,31 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
 
     @Parameter(defaultValue = "${project.build.outputDirectory}", readonly = true, required = true)
     private File classesDirectory;
+
+    /**
+     * Directories whose markdown and properties files may only name staffix properties that a module binds; links are
+     * not followed.
+     */
+    @Parameter
+    private List<File> documentation = List.of();
+
+    /**
+     * Keys the documentation writes like a staffix property that are not one, such as a Maven property in prose.
+     */
+    @Parameter
+    private List<String> ignoredKeys = List.of();
+
+    /**
+     * Where the documentation's paths are shown from.
+     */
+    @Parameter(defaultValue = "${maven.multiModuleProjectDirectory}", required = true)
+    private File buildRoot;
+
+    /**
+     * The dependency whose Spring Boot metadata declares the starter's own properties; it holds no component.
+     */
+    @Parameter(defaultValue = "staffix-spring-boot-starter", required = true)
+    private String starter;
 
     /**
      * A skill reads the whole index before choosing any component, so it must stay small enough to read every time.
@@ -88,7 +115,9 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
                     contributed.put(artifact.getArtifactId(), files.size() - before);
                 }
             }
-            List<String> problems = ComponentsCatalogue.coverageProblems(describingModules(), dependencies(), contributed);
+            Set<String> dependencies = dependencies();
+            dependencies.remove(starter);
+            List<String> problems = ComponentsCatalogue.coverageProblems(describingModules(), dependencies, contributed);
             if (!problems.isEmpty()) {
                 throw new MojoFailureException("The catalogue misses components:\n- " + String.join("\n- ", problems));
             }
@@ -103,11 +132,74 @@ public class GenerateComponentsCatalogueMojo extends AbstractMojo {
                 throw new MojoFailureException("The catalogue index takes " + indexContent.length
                         + " bytes, over its budget of " + indexBudget + ": shorten the guide summaries or raise it");
             }
+            checkDocumentation(parsed);
             write(ComponentsCatalogue.INDEX, indexContent);
             getLog().info("Catalogued " + index.get("components").size() + " components in " + indexContent.length
                     + " bytes of index");
         } catch (IOException | RuntimeException e) {
             throw new MojoExecutionException("Unable to catalogue the staffix components", e);
+        }
+    }
+
+    private void checkDocumentation(Map<String, ObjectNode> files) throws IOException, MojoFailureException {
+        List<ObjectNode> springFiles = files.entrySet().stream()
+                .filter(file -> file.getKey().startsWith(ComponentsCatalogue.SPRING))
+                .map(Map.Entry::getValue)
+                .collect(Collectors.toList());
+        DocumentedPropertyKeys keys = DocumentedPropertyKeys.of(springFiles, starterProperties(), ignoredKeys);
+        Path root = buildRoot.toPath();
+        List<String> problems = new ArrayList<>();
+        int checked = 0;
+        for (File directory : documentation) {
+            for (Path document : documents(directory.toPath())) {
+                problems.addAll(keys.problems(root, root.relativize(document)));
+                checked++;
+            }
+        }
+        getLog().info("Checked the staffix properties named in " + checked + " documents");
+        if (!problems.isEmpty()) {
+            throw new MojoFailureException("The documentation names properties no module binds:\n- "
+                    + String.join("\n- ", problems));
+        }
+    }
+
+    private static List<Path> documents(Path directory) throws IOException {
+        if (!Files.isDirectory(directory)) {
+            throw new IOException("No documentation directory " + directory);
+        }
+        try (Stream<Path> files = Files.walk(directory)) {
+            return files.filter(Files::isRegularFile)
+                    .filter(file -> file.toString().endsWith(".md") || file.toString().endsWith(".properties"))
+                    .filter(file -> !file.toString().contains(File.separator + "target" + File.separator))
+                    .sorted()
+                    .collect(Collectors.toList());
+        }
+    }
+
+    private List<String> starterProperties() throws IOException {
+        Artifact starterArtifact = project.getArtifacts().stream()
+                .filter(artifact -> artifact.getArtifactId().equals(starter))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("The catalogue must depend on " + starter
+                        + ", whose properties the documentation names"));
+        byte[] metadata = read(starterArtifact.getFile(), SPRING_METADATA);
+        List<String> names = new ArrayList<>();
+        JSON.readTree(metadata).path("properties").forEach(property -> names.add(property.path("name").asText()));
+        return names;
+    }
+
+    private static byte[] read(File artifact, String entry) throws IOException {
+        if (artifact.isDirectory()) {
+            return Files.readAllBytes(artifact.toPath().resolve(entry));
+        }
+        try (ZipFile zip = new ZipFile(artifact)) {
+            ZipEntry zipEntry = zip.getEntry(entry);
+            if (zipEntry == null) {
+                throw new IOException(artifact + " has no " + entry);
+            }
+            try (InputStream content = zip.getInputStream(zipEntry)) {
+                return content.readAllBytes();
+            }
         }
     }
 

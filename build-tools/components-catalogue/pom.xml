@@ -17,6 +17,12 @@
     <dependencies>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-spring-boot-starter</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-admin-api-http-impl</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
@@ -325,6 +331,18 @@
                         <goals>
                             <goal>generate-components-catalogue</goal>
                         </goals>
+                        <configuration>
+                            <documentation>
+                                <directory>${maven.multiModuleProjectDirectory}/docs</directory>
+                                <directory>${maven.multiModuleProjectDirectory}/claude-plugin/references</directory>
+                                <directory>${maven.multiModuleProjectDirectory}/claude-plugin/skills</directory>
+                            </documentation>
+                            <!-- Maven properties of the generated projects, which the plugin's guides name in prose -->
+                            <ignoredKeys>
+                                <ignoredKey>staffix.version</ignoredKey>
+                                <ignoredKey>staffix.jvm.args</ignoredKey>
+                            </ignoredKeys>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
