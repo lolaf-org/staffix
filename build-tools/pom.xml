@@ -19,6 +19,7 @@
         <module>settings-schema-tools</module>
         <module>component-metadata-maven-plugin</module>
         <module>components-catalogue</module>
+        <module>quickfixj-cfg-converter</module>
     </modules>
 
 </project>

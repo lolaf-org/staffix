@@ -62,7 +62,7 @@ absent** column keeps QuickFIX/J's checks; the report says so, since turning the
 | key | qfj default | YAML (`validationSettings.`) | Spring (`validation.`) | transform | when absent |
 | :- | :- | :- | :- | :- | :- |
 | `UseDataDictionary` | `Y` | | | `rule:dictionary` | |
-| `ValidateIncomingMessage` | `Y` | | | `N`: write `false` to every check below and `true` to every `allow...` | |
+| `ValidateIncomingMessage` | `Y` | | | `N` turns the dictionary checks off: `false` to `validateRequiredFields`, `validateDuplicateTags`, `validateFieldsOutOfOrder` and `validateFieldsHaveValues`, `true` to every `allow...`. The checksum, CompID, latency and BeginString checks stay | |
 | (required fields, always checked) | | `validateRequiredFields` | `validate-required-fields` | | `true` |
 | (tag not defined for the message type, always checked) | | `allowUndefinedTagsForMessage` | `allow-undefined-tags-for-message` | | `false` |
 | (tag appearing twice, always checked) | | `validateDuplicateTags` | `validate-duplicate-tags` | | `true` |
@@ -231,7 +231,7 @@ Each is reported with its value; the cell says what comes closest.
   reported.
 - **dictionary**: `DataDictionary`, `AppDataDictionary` and `TransportDataDictionary` are not settings in staffix: the
   file becomes the project's dictionary (`concepts.md`, Messages). Sessions with different dictionaries need one
-  application each. `UseDataDictionary=N` turns every validation check off, as `ValidateIncomingMessage=N`.
+  application each. `UseDataDictionary=N` turns the dictionary checks off, as `ValidateIncomingMessage=N`.
 - **schedule**: times are `HH:MM:SS`, optionally followed by a time zone that then replaces `TimeZone` (two different
   zones in one session are reported). Days are QuickFIX/J day names, written in full and upper case (`MONDAY`).
   - `StartDay` and `EndDay`: one entry, `startDay`, `startTime`, `endDay`, `endTime`.
