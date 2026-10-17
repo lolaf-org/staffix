@@ -67,6 +67,17 @@ class TestLogfmtFileLogLineFormat {
     }
 
     @Test
+    void aTypeTheDictionaryLacksStillHasItsMessageType() {
+        FileLogLineFormatter formatter = LogfmtFileLogLineFormat.builder().build()
+                .newFormatter("E1", "acceptor", SESSION, registry, TimeUnit.SECONDS);
+
+        assertThat(line(l -> formatter.formatIncoming(TIME, MessageType.of("U1", false), bytes("8=FIX.4.4"), l)))
+                .endsWith(" fix.md=i fix.mt=U1 - 8=FIX.4.4\n");
+        assertThat(line(l -> formatter.formatIncoming(TIME, MessageType.of("U 1", false), bytes("8=FIX.4.4"), l)))
+                .endsWith(" fix.md=i fix.mt=\"U 1\" - 8=FIX.4.4\n");
+    }
+
+    @Test
     void quotesAValueLogfmtCannotHoldBare() {
         assertThat(LogfmtFileLogLineFormat.value("CLIENT1")).isEqualTo("CLIENT1");
         assertThat(LogfmtFileLogLineFormat.value("a\\b")).isEqualTo("a\\b");

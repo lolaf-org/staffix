@@ -298,9 +298,9 @@ public class OtlpMessagesLogger extends MessagesCoreBatchingLogger {
             }
             if (messageType != null) {
                 KeyValue messageTypeAttribute = messageTypeCache.get(messageType);
-                if (messageTypeAttribute != null) {
-                    logRecordBuilder.addAttributes(messageTypeAttribute);
-                }
+                // a type the dictionary lacks, such as a user defined one, is rare: its attribute is built each time
+                logRecordBuilder.addAttributes(messageTypeAttribute != null ? messageTypeAttribute
+                        : createKeyValue(FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey(), messageType.code()));
             }
             if (!batchedLogRecords.offer(pooledLogRecord)) {
                 logsFlushingExecutorService.submit(this::flushLogs);

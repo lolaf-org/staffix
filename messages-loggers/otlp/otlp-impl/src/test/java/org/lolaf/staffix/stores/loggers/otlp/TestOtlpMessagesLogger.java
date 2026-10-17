@@ -286,6 +286,17 @@ class TestOtlpMessagesLogger {
     }
 
     @Test
+    void aTypeTheDictionaryLacksStillHasItsMessageType() throws FixMessagesLogger.LoggingException {
+        logger.logIncoming(UTCTime.of(Instant.ofEpochMilli(1000000)), MessageType.of("U1", false),
+                ByteBuffer.wrap("user defined message".getBytes()));
+
+        Awaitility.await().untilAsserted(() -> {
+            assertLogMessageReceived("Body: Str(user defined message)");
+            assertLogMessageReceived("fix.mt: Str(U1)");
+        });
+    }
+
+    @Test
     void testLogOutgoing() throws FixMessagesLogger.LoggingException {
         logger.logOutgoing(UTCTime.of(Instant.ofEpochMilli(1000000)), messageTypeOut, ByteBuffer.wrap("test outgoing message".getBytes()));
 

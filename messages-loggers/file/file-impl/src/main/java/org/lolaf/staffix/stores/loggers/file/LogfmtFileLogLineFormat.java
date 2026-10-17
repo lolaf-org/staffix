@@ -37,7 +37,8 @@ import java.util.concurrent.TimeUnit;
  * A logfmt head carrying the time and the {@link FixMonitoringAttributes} metrics, OTLP logs and traces use, then
  * {@code " - "} and the message:
  * {@code time=2026-10-16T10:15:30.123456Z fix.eid=E1 fix.iid=acceptor fix.sg=GRP fix.sn=CLIENT1 fix.md=i fix.mt=D - 8=FIX.4.4|9=148|...}.
- * A session event has no {@code fix.md} nor {@code fix.mt}.
+ * A session event has no {@code fix.md} nor {@code fix.mt}; a message whose type the dictionary lacks, such as a user
+ * defined one, still has its {@code fix.mt}.
  * <p>
  * Only the head is logfmt: a log shipper splits the line at the first {@code " - "} and parses the part before it.
  * Every attribute comes from what the logger already knows, never from parsing the message.
@@ -80,7 +81,7 @@ public class LogfmtFileLogLineFormat implements FileLogLineFormat {
      * which also keeps the first unquoted {@code " - "} the separator: session ids and instance ids accept any text.
      */
     static String value(String value) {
-        if (!value.isEmpty() && value.chars().noneMatch(c -> c <= ' ' || c == '=' || c == '"' || c == 0x7f)) {
+        if (!value.isEmpty() && value.chars().noneMatch(LogfmtFileLogLineFormat::needsQuotes)) {
             return value;
         }
         StringBuilder quoted = new StringBuilder("\"");
@@ -112,6 +113,10 @@ public class LogfmtFileLogLineFormat implements FileLogLineFormat {
         return quoted.append('"').toString();
     }
 
+    private static boolean needsQuotes(int c) {
+        return c <= ' ' || c == '=' || c == '"' || c == 0x7f;
+    }
+
     private static byte[] bytes(String text) {
         return text.getBytes(SerDe.CHARSET);
     }
@@ -119,6 +124,7 @@ public class LogfmtFileLogLineFormat implements FileLogLineFormat {
     private static final class Formatter implements FileLogLineFormatter {
         private static final byte[] TIME = bytes("time=");
         private static final byte[] SEPARATOR = bytes(" - ");
+        private static final byte[] MESSAGE_TYPE = bytes(" " + FixMonitoringAttributes.FIX_MESSAGE_TYPE.getKey() + "=");
 
         private final byte[] incomingHead;
         private final byte[] outgoingHead;
@@ -162,6 +168,8 @@ public class LogfmtFileLogLineFormat implements FileLogLineFormat {
             byte[] messageTypePair = messageTypes.get(messageType);
             if (messageTypePair != null) {
                 line.put(messageTypePair);
+            } else {
+                writeUnregisteredType(messageType, line);
             }
             line.put(SEPARATOR);
             if (replaceSoh) {
@@ -173,6 +181,29 @@ public class LogfmtFileLogLineFormat implements FileLogLineFormat {
                 line.put(message);
             }
             line.put((byte) '\n');
+        }
+
+        /**
+         * The type's own code, which it already holds as bytes; only a code logfmt cannot hold bare, from a garbled
+         * message, costs a quoted copy.
+         */
+        private static void writeUnregisteredType(MessageType messageType, ByteBuffer line) {
+            byte[] code = messageType.serialized();
+            line.put(MESSAGE_TYPE);
+            if (isBare(code)) {
+                line.put(code);
+            } else {
+                line.put(bytes(value(messageType.code())));
+            }
+        }
+
+        private static boolean isBare(byte[] code) {
+            for (byte b : code) {
+                if (needsQuotes(b)) {
+                    return false;
+                }
+            }
+            return code.length > 0;
         }
 
         private void writeHead(UTCTime time, byte[] head, ByteBuffer line) {
