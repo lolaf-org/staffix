@@ -16,7 +16,7 @@
     <artifactId>staffix-build-tools-parent</artifactId>
 
     <modules>
-        <module>settings-javadoc</module>
+        <module>settings-schema-tools</module>
         <module>component-metadata-maven-plugin</module>
         <module>components-catalogue</module>
     </modules>

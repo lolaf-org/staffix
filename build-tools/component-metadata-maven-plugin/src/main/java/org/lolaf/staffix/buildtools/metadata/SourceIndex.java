@@ -15,7 +15,7 @@
  */
 package org.lolaf.staffix.buildtools.metadata;
 
-import org.lolaf.staffix.buildtools.javadoc.SettingsJavadoc;
+import org.lolaf.staffix.buildtools.schema.SettingsJavadoc;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

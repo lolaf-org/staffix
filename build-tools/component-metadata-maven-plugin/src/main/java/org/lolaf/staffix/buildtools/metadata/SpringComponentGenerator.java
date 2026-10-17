@@ -17,6 +17,7 @@ package org.lolaf.staffix.buildtools.metadata;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import org.lolaf.staffix.buildtools.schema.ValueSchemas;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
@@ -80,7 +81,8 @@ public class SpringComponentGenerator {
         Object unset = newInstance(type);
         ObjectNode properties = JsonTypes.NODES.objectNode();
         for (Field field : JsonTypes.fields(type)) {
-            ObjectNode property = JsonTypes.schema(field.getGenericType(), raw -> objectSchema(raw, definitions));
+            ObjectNode property = JsonTypes.schema(field.getGenericType(), ValueSchemas.Syntax.SPRING,
+                    raw -> objectSchema(raw, definitions));
             JsonTypes.putIfPresent(property, "description", sources.describe(field.getDeclaringClass(), field.getName()));
             Object value = unset == null ? null : JsonTypes.read(field, unset);
             if (value != null) {

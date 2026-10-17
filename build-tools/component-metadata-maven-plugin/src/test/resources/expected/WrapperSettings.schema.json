@@ -25,6 +25,7 @@
     "startDelay": {
       "type": "string",
       "format": "duration",
+      "pattern": "^[-+]?P(?!$)(?:[-+]?\\d+D)?(?:T(?=[-+]?\\d)(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
       "description": "How long start waits.",
       "default": "PT2M"
     },
@@ -57,7 +58,20 @@
     "findTimeout": {
       "type": "string",
       "format": "duration",
+      "pattern": "^[-+]?P(?!$)(?:[-+]?\\d+D)?(?:T(?=[-+]?\\d)(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+      "description": "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S",
       "default": "PT1S"
+    },
+    "rollTime": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$",
+      "description": "Local time of day (ISO-8601, no zone), e.g. 09:30, 10:10:11, 10:10:10.099999999",
+      "default": "17:00"
+    },
+    "zone": {
+      "type": "string",
+      "description": "Time zone id, e.g. Europe/Paris",
+      "x-staffix-codeDefault": true
     },
     "endpoints": {
       "type": "array",

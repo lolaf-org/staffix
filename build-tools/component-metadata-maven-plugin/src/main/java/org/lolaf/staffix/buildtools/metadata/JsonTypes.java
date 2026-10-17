@@ -21,6 +21,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.experimental.UtilityClass;
+import org.lolaf.staffix.buildtools.schema.ValueSchemas;
+import org.lolaf.staffix.buildtools.schema.ValueSchemas.Syntax;
 
 import java.io.File;
 import java.lang.annotation.Annotation;
@@ -32,6 +34,7 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.LocalTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -66,9 +69,9 @@ class JsonTypes {
     /**
      * @param objects the schema of a class that is not plain data: a nested object, or only its Java type
      */
-    static ObjectNode schema(Type type, Function<Class<?>, ObjectNode> objects) {
+    static ObjectNode schema(Type type, Syntax syntax, Function<Class<?>, ObjectNode> objects) {
         if (type instanceof ParameterizedType) {
-            return parameterizedSchema((ParameterizedType) type, objects);
+            return parameterizedSchema((ParameterizedType) type, syntax, objects);
         }
         if (!(type instanceof Class)) {
             return javaType(type);
@@ -89,34 +92,33 @@ class JsonTypes {
             schema.put("type", "string");
             ArrayNode constants = schema.putArray("enum");
             Stream.of(raw.getEnumConstants()).map(constant -> ((Enum<?>) constant).name()).forEach(constants::add);
-        } else if (raw == Duration.class) {
-            schema.put("type", "string").put("format", "duration");
         } else if (raw == URI.class || raw == URL.class) {
             schema.put("type", "string").put("format", "uri");
         } else if (raw == File.class || raw == Path.class) {
             schema.put("type", "string");
         } else {
-            return objects.apply(raw);
+            return ValueSchemas.of(raw, syntax).orElseGet(() -> objects.apply(raw));
         }
         return schema;
     }
 
-    private static ObjectNode parameterizedSchema(ParameterizedType type, Function<Class<?>, ObjectNode> objects) {
+    private static ObjectNode parameterizedSchema(ParameterizedType type, Syntax syntax,
+                                                  Function<Class<?>, ObjectNode> objects) {
         Class<?> raw = (Class<?>) type.getRawType();
         Type[] arguments = type.getActualTypeArguments();
         if (raw == List.class || raw == Set.class || raw == Collection.class) {
-            ObjectNode items = schema(arguments[0], objects);
+            ObjectNode items = schema(arguments[0], syntax, objects);
             if (isData(items)) {
                 ObjectNode schema = NODES.objectNode().put("type", "array");
                 schema.set("items", items);
                 return raw == Set.class ? schema.put("uniqueItems", true) : schema;
             }
         } else if (raw == Map.class && isMapKey(arguments[0])) {
-            ObjectNode values = schema(arguments[1], objects);
+            ObjectNode values = schema(arguments[1], syntax, objects);
             if (isData(values)) {
                 ObjectNode schema = NODES.objectNode().put("type", "object");
                 if (((Class<?>) arguments[0]).isEnum()) {
-                    schema.set("propertyNames", schema(arguments[0], objects));
+                    schema.set("propertyNames", schema(arguments[0], syntax, objects));
                 }
                 schema.set("additionalProperties", values);
                 return schema;
@@ -142,7 +144,8 @@ class JsonTypes {
 
     private static JsonNode toJson(Object value) {
         if (value instanceof String || value instanceof Character || value instanceof Duration
-                || value instanceof URI || value instanceof URL || value instanceof File || value instanceof Path) {
+                || value instanceof LocalTime || value instanceof URI || value instanceof URL || value instanceof File
+                || value instanceof Path) {
             return NODES.textNode(value.toString());
         }
         if (value instanceof Boolean) {

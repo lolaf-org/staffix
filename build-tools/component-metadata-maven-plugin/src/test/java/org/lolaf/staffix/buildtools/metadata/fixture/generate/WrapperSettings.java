@@ -28,9 +28,11 @@ import org.lolaf.staffix.api.metadata.Wrapped;
 
 import java.net.URI;
 import java.time.Duration;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -71,6 +73,12 @@ public class WrapperSettings extends BaseSettings implements StoreSettings {
 
     @Builder.Default
     private final @Nullable Duration findTimeout = Duration.ofSeconds(1);
+
+    @Builder.Default
+    private final LocalTime rollTime = LocalTime.of(17, 0);
+
+    @Builder.Default
+    private final TimeZone zone = TimeZone.getDefault();
 
     @Singular
     private final List<URI> endpoints;

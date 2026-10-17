@@ -32,6 +32,7 @@
           "flush-delay": {
             "type": "string",
             "format": "duration",
+            "pattern": "^(?:[-+]?[pP](?!$)(?:[-+]?\\d+[dD])?(?:[tT](?=[-+]?\\d)(?:[-+]?\\d+[hH])?(?:[-+]?\\d+[mM])?(?:[-+]?\\d+(?:[.,]\\d+)?[sS])?)?|[-+]?\\d+(?:[nNuUmM]?[sS]|[mMhHdD])?)$",
             "description": "How long start waits.",
             "default": "PT30S"
           },

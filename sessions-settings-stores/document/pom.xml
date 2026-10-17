@@ -81,7 +81,7 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-settings-javadoc</artifactId>
+            <artifactId>staffix-settings-schema-tools</artifactId>
             <version>${project.version}</version>
             <optional>true</optional>
         </dependency>

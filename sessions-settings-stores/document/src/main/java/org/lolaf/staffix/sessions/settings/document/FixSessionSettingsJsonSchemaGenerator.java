@@ -31,20 +31,18 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.lolaf.staffix.buildtools.javadoc.SettingsJavadoc;
+import org.lolaf.staffix.buildtools.schema.SettingsJavadoc;
+import org.lolaf.staffix.buildtools.schema.ValueSchemas;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Field;
-import java.net.InetAddress;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.time.LocalTime;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -71,23 +69,6 @@ import java.util.stream.Collectors;
  */
 @UtilityClass
 public class FixSessionSettingsJsonSchemaGenerator {
-
-    /**
-     * Regex matching the ISO-8601 duration strings that {@link Duration#parse(CharSequence)} accepts (the wire format
-     * Jackson reads/writes), e.g. {@code PT10S}, {@code PT1H30M}, {@code P2DT3H}, {@code PT0.0000015S}, {@code -PT5M}.
-     * Deliberately tighter than the standard {@code "duration"} format, which also permits year/month/week components
-     * ({@code P1Y}, {@code P3W}) that {@code java.time.Duration} rejects.
-     */
-    private static final String ISO8601_DURATION_PATTERN =
-            "^[-+]?P(?:[-+]?\\d+D)?(?:T(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$";
-
-    /**
-     * Regex matching the {@code ISO_LOCAL_TIME} strings that {@link LocalTime#parse(CharSequence)} accepts (the wire
-     * format Jackson reads/writes), e.g. {@code 09:30}, {@code 10:10:11}, {@code 10:10:10.099999999}. Note this is an
-     * offset-less local time, which is why the standard {@code "time"} format (RFC 3339, requiring a zone offset) is
-     * not used here.
-     */
-    private static final String LOCAL_TIME_PATTERN = "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,9})?)?$";
 
     private static final Set<String> SCALAR_TYPES = new HashSet<>(Arrays.asList("string", "integer", "number", "boolean"));
 
@@ -128,9 +109,7 @@ public class FixSessionSettingsJsonSchemaGenerator {
                 new SchemaGeneratorConfigBuilder(SchemaVersion.DRAFT_2020_12, OptionPreset.PLAIN_JSON)
                         .with(jacksonModule)
                         .with(validationModule);
-        // java.time types are ISO strings on the wire; describe them as such and constrain them with a pattern so
-        // editors flag malformed values (e.g. "10s", "25:00") instead of only failing later at load time.
-        configBuilder.forTypesInGeneral().withCustomDefinitionProvider(FixSessionSettingsJsonSchemaGenerator::temporalDefinition);
+        configBuilder.forTypesInGeneral().withCustomDefinitionProvider(FixSessionSettingsJsonSchemaGenerator::valueDefinition);
 
         SchemaGeneratorConfig config = configBuilder.build();
         ObjectNode schema = new SchemaGenerator(config).generateSchema(FixSessionSettingsDocument.class);
@@ -289,36 +268,11 @@ public class FixSessionSettingsJsonSchemaGenerator {
         return !value.isMissingNode() && !value.isNull() && (value.isValueNode() || !value.isEmpty());
     }
 
-    private static CustomDefinition temporalDefinition(com.fasterxml.classmate.ResolvedType type, SchemaGenerationContext context) {
-        if (type.isInstanceOf(Duration.class)) {
-            return stringDefinition(context, "duration", ISO8601_DURATION_PATTERN,
-                    "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S");
-        }
-        if (type.isInstanceOf(InetAddress.class)) {
-            return stringDefinition(context, null, null, "Host name or IP address, e.g. 10.0.0.12");
-        }
-        if (type.isInstanceOf(TimeZone.class)) {
-            return stringDefinition(context, null, null, "Time zone id, e.g. Europe/Paris");
-        }
-        if (type.isInstanceOf(LocalTime.class)) {
-            // No "format": the standard "time" format is RFC 3339 (offset-required), which a local time is not.
-            return stringDefinition(context, null, LOCAL_TIME_PATTERN,
-                    "Local time of day (ISO-8601, no zone), e.g. 09:30, 10:10:11, 10:10:10.099999999");
-        }
-        return null;
-    }
-
-    private static CustomDefinition stringDefinition(SchemaGenerationContext context, String format, String pattern, String description) {
-        ObjectNode node = context.getGeneratorConfig().createObjectNode();
-        node.put("type", "string");
-        if (format != null) {
-            node.put("format", format);
-        }
-        if (pattern != null) {
-            node.put("pattern", pattern);
-        }
-        node.put("description", description);
-        return new CustomDefinition(node, CustomDefinition.DefinitionType.INLINE, CustomDefinition.AttributeInclusion.NO);
+    private static CustomDefinition valueDefinition(com.fasterxml.classmate.ResolvedType type, SchemaGenerationContext context) {
+        return ValueSchemas.of(type.getErasedType(), ValueSchemas.Syntax.SETTINGS)
+                .map(schema -> new CustomDefinition(schema, CustomDefinition.DefinitionType.INLINE,
+                        CustomDefinition.AttributeInclusion.NO))
+                .orElse(null);
     }
 
     /**

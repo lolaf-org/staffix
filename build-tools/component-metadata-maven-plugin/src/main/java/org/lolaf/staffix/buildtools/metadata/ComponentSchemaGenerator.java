@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import org.lolaf.staffix.buildtools.schema.ValueSchemas;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -100,7 +101,7 @@ public class ComponentSchemaGenerator {
     }
 
     private ObjectNode propertySchema(Type type, ObjectNode definitions) {
-        ObjectNode schema = JsonTypes.schema(type, raw -> objectSchema(raw, definitions));
+        ObjectNode schema = JsonTypes.schema(type, ValueSchemas.Syntax.SETTINGS, raw -> objectSchema(raw, definitions));
         if (type instanceof ParameterizedType) {
             ComponentScanner.kind((Class<?>) ((ParameterizedType) type).getRawType())
                     .ifPresent(kind -> schema.put("x-staffix-kind", kind));
