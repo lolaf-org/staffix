@@ -8,7 +8,8 @@ production:
   - >-
     Generate the schema with staffix-jdbc-ddl-generator-maven-plugin (org.lolaf.staffix, goal generate-ddl, schema
     MESSAGES), one execution per dialect, with createDropStatements false for the script the user applies. Its
-    tablePrefix must match the store's.
+    tablePrefix must match the store's. Its parameters: mvn help:describe
+    -Dplugin=org.lolaf.staffix:staffix-jdbc-ddl-generator-maven-plugin -Ddetail.
   - >-
     Use a pool with a short connection timeout (HikariCP, about 1 s), the URL, user and password from environment
     variables, and the database driver at runtime scope.

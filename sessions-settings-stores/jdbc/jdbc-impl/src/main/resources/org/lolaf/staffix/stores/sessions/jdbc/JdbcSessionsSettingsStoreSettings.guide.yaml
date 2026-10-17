@@ -6,7 +6,8 @@ production:
     Give the engine and the store fixed instance ids: rows are keyed by both.
   - >-
     Generate the table with staffix-jdbc-ddl-generator-maven-plugin, schema SESSIONS_SETTINGS; its tablePrefix must
-    match the store's.
+    match the store's. Its parameters: mvn help:describe
+    -Dplugin=org.lolaf.staffix:staffix-jdbc-ddl-generator-maven-plugin -Ddetail.
 failures:
   - symptom: >-
       The engine starts with none of its sessions.
