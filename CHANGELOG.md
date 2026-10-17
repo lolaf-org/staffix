@@ -61,6 +61,8 @@ could mean.
 - A JDBC messages store behind the async store, with `maxMessagesPerSession` set, failed every session's start with
   a `NullPointerException`; and an OTLP messages logger behind the async logger kept its publishing thread after the
   engine stopped. The async store and logger now start and stop what they wrap.
+- The JVM warmup failed to start its sessions when the engine builder it copies registers its alerts publisher under
+  another id than `default`; its sessions now use that publisher.
 - The session settings JSON Schema accepted `P`, `PT` and `P1DT` as durations, which then failed when the file was
   loaded; an editor using the schema now flags them.
 - A session loaded from a YAML file that did not set `messageEncodersDirectByteBuffers` or

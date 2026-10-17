@@ -25,6 +25,7 @@ import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.ringos.idling.TimedWaitNotifyIdleStrategy;
 import org.lolaf.ringos.idling.WaitNotifyIdleStrategy;
 import org.lolaf.ringos.timer.WheelTimer;
+import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
 import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixEngineBuilder;
@@ -190,6 +191,7 @@ public final class JvmWarmup {
 
                 List<? extends FixMessagesStoreSettings> storeSettings = sourceBuilder.getFixMessagesStores();
                 List<? extends FixMessagesLoggerSettings> loggerSettings = sourceBuilder.getFixMessagesLoggers();
+                List<? extends FixAlertsPublisherSettings> alertsPublisherSettings = sourceBuilder.getFixAlertsPublishers();
                 List<? extends FixSessionsPluginSettings<?>> pluginSettings = sourceBuilder.getFixSessionsPlugins();
 
                 Map<Class<? extends FixSessionsPlugin<?>>, String> pluginInstanceIds = new LinkedHashMap<>();
@@ -263,6 +265,12 @@ public final class JvmWarmup {
                         String loggerInstanceId = loggerSettings.get(i % loggerSettings.size()).getInstanceId();
                         acceptorSettings.fixMessageLoggerInstanceId(loggerInstanceId);
                         initiatorSettings.fixMessageLoggerInstanceId(loggerInstanceId);
+                    }
+
+                    if (!alertsPublisherSettings.isEmpty()) {
+                        String alertsPublisherInstanceId = alertsPublisherSettings.get(0).getInstanceId();
+                        acceptorSettings.fixAlertsPublisherInstanceId(alertsPublisherInstanceId);
+                        initiatorSettings.fixAlertsPublisherInstanceId(alertsPublisherInstanceId);
                     }
 
                     pluginInstanceIds.forEach(acceptorSettings::fixSessionPluginsInstanceId);

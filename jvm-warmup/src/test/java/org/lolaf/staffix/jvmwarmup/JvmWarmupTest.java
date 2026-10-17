@@ -16,6 +16,7 @@
 package org.lolaf.staffix.jvmwarmup;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.alerting.slf4j.Slf4jAlertsPublisherSettings;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
@@ -90,6 +91,25 @@ class JvmWarmupTest {
         assertThat(result).isNotNull();
         assertThat(result.isCancelled()).isFalse();
         assertThat(result.getMessagesSent()).as("messages sent").isGreaterThan(MIN_MESSAGES_EXCHANGED);
+        assertThat(result.getMessagesReceived()).as("messages received").isGreaterThan(MIN_MESSAGES_EXCHANGED);
+    }
+
+    @Test
+    void runsWithAnAlertsPublisherNotNamedDefault() throws Exception {
+        FixEngineBuilder sourceBuilder = FixEngineBuilder.builder()
+                .fixMessagesStore(MemoryMessageStoreSettings.builder().instanceId("store").maxEntriesInMemory(16).build())
+                .fixAlertsPublisher(Slf4jAlertsPublisherSettings.builder().instanceId("alerts").build())
+                .build();
+
+        JvmWarmupOptions options = JvmWarmupOptions.builder()
+                .warmupDuration(Duration.ofSeconds(3))
+                .throttling(Duration.ofMillis(10))
+                .port(freePort())
+                .fixEngineBuilder(sourceBuilder)
+                .build();
+
+        JvmWarmupResult result = JvmWarmup.run(options).get(30, TimeUnit.SECONDS);
+
         assertThat(result.getMessagesReceived()).as("messages received").isGreaterThan(MIN_MESSAGES_EXCHANGED);
     }
 
