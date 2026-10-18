@@ -41,7 +41,8 @@ from the request and the defaults, and list the defaults taken when handing over
    credentials on the Logon; for an acceptor, the port and each counterparty's CompIDs. These become environment
    variables with dev defaults, never constants.
 6. **Messages**: list the dictionary's application messages as `dictionary-messages.md` says, with the ones the
-   purpose needs preselected, sent and received, and let the user change the selection.
+   purpose needs preselected from their descriptions, each marked sent or received from the user's business side,
+   and let the user change the selection.
 7. **Prod environment**, one question per part. The options of each are the bundled catalogue index's components of
    that kind, with their `summary`, leaving out the wrappers (`wraps`) and what the kind's summary says is never
    configured by hand:
