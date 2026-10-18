@@ -7,8 +7,7 @@ sessions select it and its guide. This file holds only what is not in the code.
 
 - **Plain Java**: declare the component's `java.artifact`, at the project's staffix version.
 - **Spring Boot**: declare the `spring.artifact` only. It brings the impl, and an impl declared again, above all in
-  test scope, hides it from the autoconfiguration, which then skips the component without a word. The engine is the
-  exception: staffix 0.9.1's starter does not bring `staffix-impl`, so declare it beside the starter.
+  test scope, hides it from the autoconfiguration, which then skips the component without a word.
 
 ## What a reference project proves
 

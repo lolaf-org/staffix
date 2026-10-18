@@ -27,9 +27,8 @@ Three plugins in the `initialize` and `generate-sources` phases, as in the refer
 2. `staffix-fix-dictionary-sanitizer-maven-plugin`, goal `sanitize`, from the cut to the file the generator reads.
 3. `staffix-fix-encoders-generator-maven-plugin`, goal `code-generator`, `packageName` `<base package>.fix`.
 
-`messages.txt` lists one message name per line, with `#` comments. **Always add `BusinessMessageReject`** with the
-comment `# required by the session layer`: staffix 0.9.1 drops it from a cut that does not name it, and every session
-then fails at creation. A later staffix keeps it by itself; the line stays harmless.
+`messages.txt` lists one message name per line, with `#` comments. BusinessMessageReject stays in the cut without being
+named: the session layer needs it.
 
 ## 2. FIX 4.2 or 4.3: a copy of the shipped dictionary
 

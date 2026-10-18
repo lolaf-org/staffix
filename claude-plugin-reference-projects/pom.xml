@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <!-- no staffix parent: each project is copied as a user's own, so it must stand alone -->
+    <groupId>org.lolaf.staffix</groupId>
+    <artifactId>staffix-claude-plugin-reference-projects</artifactId>
+    <version>0.9.2-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>Staffix Claude Plugin Reference Projects</name>
+    <description>
+        The projects the Claude plugin's new-app skill starts from, built against the current staffix.
+    </description>
+    <modules>
+        <module>plain-java-initiator</module>
+        <module>plain-java-acceptor</module>
+        <module>spring-boot-initiator</module>
+    </modules>
+</project>

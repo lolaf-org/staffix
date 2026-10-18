@@ -78,6 +78,7 @@
         <module>jvm-warmup</module>
         <module>module-path-tests</module>
         <module>coverage-report</module>
+        <module>claude-plugin-archive</module>
     </modules>
 
     <properties>
@@ -129,6 +130,7 @@
         <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
         <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
         <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
+        <maven-antrun-plugin.version>3.1.0</maven-antrun-plugin.version>
         <!-- Appended to what maven-release-plugin passes to its forked builds -->
         <release.extraArguments />
         <lombok-maven-plugin.version>1.18.20.0</lombok-maven-plugin.version>
@@ -301,7 +303,7 @@
                         <autoVersionSubmodules>true</autoVersionSubmodules>
                         <releaseProfiles>release</releaseProfiles>
                         <useReleaseProfile>false</useReleaseProfile>
-                        <arguments>-T1C ${release.extraArguments}</arguments>
+                        <arguments>-T1C -P-reference-projects ${release.extraArguments}</arguments>
                         <scmReleaseCommitComment>release @{releaseLabel}</scmReleaseCommitComment>
                         <scmDevelopmentCommitComment>resume development after @{releaseLabel}
                         </scmDevelopmentCommitComment>
@@ -447,6 +449,7 @@
                                 <exclude>**/lombok.config</exclude>
                                 <exclude>**/.env</exclude>
                                 <exclude>**/.env.example</exclude>
+                                <exclude>claude-plugin-reference-projects/**</exclude>
                                 <exclude>claude-plugin/**/reference-projects/**</exclude>
                                 <exclude>claude-plugin/dictionaries/**</exclude>
                                 <exclude>**/*.ini</exclude>
@@ -468,6 +471,19 @@
     </build>
 
     <profiles>
+        <!-- in the reactor so a refactoring that breaks one fails CI, and so a release rewrites their versions;
+             the release plugin's arguments turn it off in its builds, so they are never deployed -->
+        <profile>
+            <id>reference-projects</id>
+            <activation>
+                <property>
+                    <name>env.CI</name>
+                </property>
+            </activation>
+            <modules>
+                <module>claude-plugin-reference-projects</module>
+            </modules>
+        </profile>
         <profile>
             <id>release</id>
             <build>
@@ -525,6 +541,12 @@
                                 <excludeArtifact>staffix-examples-file-session-settings</excludeArtifact>
                                 <excludeArtifact>staffix-examples-spring-boot-starter</excludeArtifact>
                                 <excludeArtifact>staffix-examples-alerting</excludeArtifact>
+                                <excludeArtifact>staffix-quickfixj-cfg-converter</excludeArtifact>
+                                <excludeArtifact>staffix-claude-plugin-archive</excludeArtifact>
+                                <excludeArtifact>staffix-claude-plugin-reference-projects</excludeArtifact>
+                                <excludeArtifact>fix-client</excludeArtifact>
+                                <excludeArtifact>fix-client-spring</excludeArtifact>
+                                <excludeArtifact>order-gateway</excludeArtifact>
                             </excludeArtifacts>
                         </configuration>
                     </plugin>

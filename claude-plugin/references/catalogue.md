@@ -21,7 +21,8 @@ The project's Maven resolves it, through the user's own repositories and setting
 again when `target/staffix-catalogue` is missing.
 
 **For a new project, or a project Maven cannot build**, read the copy bundled with this plugin,
-`${CLAUDE_PLUGIN_ROOT}/catalogue/`, and tell the user which staffix version it describes (`version` in the index).
+`${CLAUDE_PLUGIN_ROOT}/catalogue/`. Its index's `version` is the staffix release this plugin was built with: a new
+project depends on that version, and the user is told which it is.
 
 Below, `<catalogue>` is `target/staffix-catalogue/META-INF/staffix` or the bundled copy.
 

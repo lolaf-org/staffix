@@ -1,0 +1,19 @@
+{
+  "name": "lolaf",
+  "description": "Claude Code plugins for the lolaf.org libraries",
+  "owner": {
+    "name": "lolaf.org",
+    "url": "https://lolaf.org"
+  },
+  "plugins": [
+    {
+      "name": "staffix",
+      "description": "Create a staffix FIX application, change its components, or migrate a QuickFIX/J application to staffix",
+      "source": {
+        "source": "archive",
+        "url": "@URL@",
+        "sha256": "@SHA256@"
+      }
+    }
+  ]
+}

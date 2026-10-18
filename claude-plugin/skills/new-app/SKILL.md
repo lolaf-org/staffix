@@ -11,8 +11,8 @@ The user wants: $ARGUMENTS
 
 Everything this skill needs ships with it, under `${CLAUDE_PLUGIN_ROOT}`:
 
-- `skills/new-app/reference-projects/`: three working projects to start from, each passing `mvn verify` against
-  staffix 0.9.2-SNAPSHOT: `plain-java-initiator`, `plain-java-acceptor`, `spring-boot-initiator`.
+- `skills/new-app/reference-projects/`: three working projects to start from, each passing `mvn verify`:
+  `plain-java-initiator`, `plain-java-acceptor`, `spring-boot-initiator`.
 - `skills/new-app/references/project-rules.md` and `references/environment-rules.md`: rules the generated project
   follows. **Read both before writing anything.**
 - `skills/new-app/references/dictionary-setup.md` and `dictionary-messages.md`: the FIX dictionary and its messages.

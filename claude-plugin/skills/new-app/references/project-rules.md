@@ -7,7 +7,8 @@ them.
 ## Build
 
 - **A standalone Maven project**: no staffix parent (there is no staffix BOM), a `staffix.version` property set to
-  the staffix version this plugin targets, `0.9.2-SNAPSHOT` until 0.9.2 is released.
+  `version` in the bundled catalogue's index (`catalogue.md`), never to the reference project's or one from memory.
+  The project's own coordinates are the user's (`0.1.0-SNAPSHOT` unless they say), not the reference project's.
 - **Java 11** in plain Java, **Java 17** with Spring Boot (Spring Boot 4.1.1, the version staffix is built
   with). Spring Boot comes in as an imported BOM, not as the parent, so the user can keep their own parent.
 - **Lombok goes in the compiler's `annotationProcessorPaths`**, with an explicit `lombok.version` property: recent
@@ -35,8 +36,6 @@ them.
 
 - **The counterparty is a simulator in the test**: a broker simulator for an initiator, a client simulator for an
   acceptor.
-- **The counterparty's session gets its own name** (`broker-order-entry` beside `order-entry`): session ids are
-  interned for the whole JVM, and staffix 0.9.1 mixes up the CompIDs of two sessions sharing a name there.
 - An acceptor under test gets a free port per test class: plain Java passes it to the gateway, Spring sets
   `staffix.acceptors.<name>.bind-address` from a `@DynamicPropertySource`. A Spring acceptor needs `bind-address`;
   which settings stores it reads is the catalogue's `sessions-settings-store` rule for `ACCEPTOR`.
