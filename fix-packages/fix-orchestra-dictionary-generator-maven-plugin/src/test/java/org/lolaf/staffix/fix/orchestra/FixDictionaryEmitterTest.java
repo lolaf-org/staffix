@@ -100,6 +100,29 @@ public class FixDictionaryEmitterTest {
     }
 
     /**
+     * The synopsis and elaborations of a message are its business intent, which a QuickFIX dictionary has no place
+     * for; they go in a {@code <description>} that QuickFIX/J ignores, their markdown lines kept. A message without
+     * them gets none.
+     */
+    @Test
+    public void testAMessageCarriesItsSynopsisAndElaborationAsItsDescription() throws Exception {
+        String dictionary = emit("FIX.4.4", null);
+
+        assertTrue(dictionary.contains("<message name=\"AppMessage\" msgtype=\"ZX\" msgcat=\"app\">\n"
+                + "      <description>\n"
+                + "        The AppMessage(35=ZX) is sent by the order submitter\n"
+                + "        to its counterparty &amp; nobody else.\n"
+                + "\n"
+                + "        An elaboration in markdown:\n"
+                + "\n"
+                + "        State | Meaning\n"
+                + "        New   | Accepted &lt; filled\n"
+                + "      </description>\n"));
+        assertFalse(dictionary.contains("Not part of the description"));
+        assertEquals(1, countOf(dictionary, "<description>"));
+    }
+
+    /**
      * A component keeps its name and is written once, referenced from wherever it is used.
      */
     @Test

@@ -46,6 +46,9 @@ import java.util.*;
  * <p>
  * <b>Deprecation</b> is carried over when asked for, as {@code deprecated="true"} on whatever the standard had
  * already deprecated at the cut.
+ * <p>
+ * A message's SYNOPSIS and ELABORATION, its business intent, become a {@code <description>} child: QuickFIX/J
+ * ignores it, and the encoders generator writes it as the encoder's javadoc.
  */
 public final class FixDictionaryEmitter {
 
@@ -380,6 +383,7 @@ public final class FixDictionaryEmitter {
                     + "\" msgtype=\"" + attribute(message.getAttribute("msgType"))
                     + "\" msgcat=\"" + (admin ? "admin" : "app") + "\""
                     + deprecationOf(message) + ">\n");
+            writeDescription(out, message);
             Element structure = firstChild(message, "fixr:structure");
             if (structure != null) {
                 writeStructure(out, structure, 3, new HashSet<>());
@@ -387,6 +391,66 @@ public final class FixDictionaryEmitter {
             out.write("    </message>\n");
         }
         out.write("  </messages>\n");
+    }
+
+    private static void writeDescription(Writer out, Element message) throws IOException {
+        List<String> lines = descriptionLines(message);
+        if (lines.isEmpty()) {
+            return;
+        }
+        out.write("      <description>\n");
+        for (String line : lines) {
+            out.write(line.isEmpty() ? "\n" : "        " + text(line) + "\n");
+        }
+        out.write("      </description>\n");
+    }
+
+    /**
+     * The SYNOPSIS then each ELABORATION, a blank line apart. The repository writes them in markdown, lists and
+     * tables included, so their own line breaks are kept.
+     */
+    private static List<String> descriptionLines(Element message) {
+        List<String> lines = new ArrayList<>();
+        Element annotation = firstChild(message, "fixr:annotation");
+        if (annotation == null) {
+            return lines;
+        }
+        for (String purpose : List.of("SYNOPSIS", "ELABORATION")) {
+            for (Node child = annotation.getFirstChild(); child != null; child = child.getNextSibling()) {
+                if (child instanceof Element && ((Element) child).getTagName().equals("fixr:documentation")
+                        && purpose.equals(((Element) child).getAttribute("purpose"))) {
+                    List<String> documentation = dedented(child.getTextContent());
+                    if (!documentation.isEmpty()) {
+                        if (!lines.isEmpty()) {
+                            lines.add("");
+                        }
+                        lines.addAll(documentation);
+                    }
+                }
+            }
+        }
+        return lines;
+    }
+
+    private static List<String> dedented(String text) {
+        List<String> lines = new ArrayList<>();
+        for (String line : text.replace("\r", "").split("\n", -1)) {
+            lines.add(line.replaceAll("\\s+$", ""));
+        }
+        while (!lines.isEmpty() && lines.get(0).isEmpty()) {
+            lines.remove(0);
+        }
+        while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
+            lines.remove(lines.size() - 1);
+        }
+        int indent = lines.stream().filter(line -> !line.isEmpty())
+                .mapToInt(line -> line.length() - line.stripLeading().length()).min().orElse(0);
+        lines.replaceAll(line -> line.isEmpty() ? line : line.substring(indent));
+        return lines;
+    }
+
+    private static String text(String value) {
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private void writeComponents(Writer out) throws IOException {

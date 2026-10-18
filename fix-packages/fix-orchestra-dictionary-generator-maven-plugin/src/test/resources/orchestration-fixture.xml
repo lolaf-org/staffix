@@ -105,6 +105,16 @@
                 <fixr:fieldRef id="1" added="FIX.4.2"/>
                 <fixr:fieldRef id="1234" added="FIX.4.4"/>
             </fixr:structure>
+            <fixr:annotation>
+                <fixr:documentation purpose="SYNOPSIS">
+                    The AppMessage(35=ZX) is sent by the order submitter
+                    to its counterparty &amp; nobody else.</fixr:documentation>
+                <fixr:documentation purpose="FIXML">Not part of the description.</fixr:documentation>
+                <fixr:documentation purpose="ELABORATION">An elaboration in markdown:
+
+State | Meaning
+New   | Accepted &lt; filled</fixr:documentation>
+            </fixr:annotation>
         </fixr:message>
     </fixr:messages>
 </fixr:repository>

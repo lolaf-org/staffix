@@ -54,7 +54,7 @@ import java.util.UUID;
 #if (!${descriptionLines.isEmpty()} || ${deprecated})
 /**
 #foreach($line in ${descriptionLines})
- * $line
+$line
 #end
 #if (!${descriptionLines.isEmpty()} && ${deprecated})
  *

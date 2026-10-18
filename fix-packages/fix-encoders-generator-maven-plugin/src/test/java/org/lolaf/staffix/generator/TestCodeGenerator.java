@@ -149,7 +149,8 @@ class TestCodeGenerator {
     }
 
     /**
-     * A message's description becomes the javadoc of its encoder, wrapped and escaped; one inside a group is skipped.
+     * A message's description becomes the javadoc of its encoder: lines kept and wrapped, blank lines as paragraphs, a
+     * table in a {@code <pre>}, everything escaped. One inside a group is skipped.
      */
     @Test
     void testAMessageDescriptionBecomesItsEncoderJavadoc() throws Exception {
@@ -158,7 +159,14 @@ class TestCodeGenerator {
         Assertions.assertThat(read(generated, "encoders/DeprecatedThingsEncoder.java")).contains(
                 "/**\n"
                         + " * Carries every kind of deprecation the generator marks, so that each one is checked against a message that also\n"
-                        + " * carries a description long enough to be wrapped, with &lt;markup&gt; &amp; a closing *&#47; to escape.\n"
+                        + " * carries a description long enough to be wrapped,\n"
+                        + " * with &lt;markup&gt; &amp; a closing *&#47; to escape.\n"
+                        + " * <pre>\n"
+                        + " * State | Meaning\n"
+                        + " * New   | Accepted\n"
+                        + " * </pre>\n"
+                        + " * <p>\n"
+                        + " * A last paragraph.\n"
                         + " */\n");
         Assertions.assertThat(read(generated, "encoders/OldMessageEncoder.java")).contains(
                 "/**\n"

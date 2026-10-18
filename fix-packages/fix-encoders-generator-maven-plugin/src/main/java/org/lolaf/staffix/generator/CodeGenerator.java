@@ -257,7 +257,7 @@ public class CodeGenerator {
 
     /**
      * The business intent of a message, which the Orchestra dictionary generator copies from the repository's
-     * synopsis. QuickFIX/J ignores the element, so a dictionary carrying it stays readable there.
+     * synopsis and elaborations. QuickFIX/J ignores the element, so a dictionary carrying it stays readable there.
      */
     private static String description(Element message) {
         NodeList children = message.getChildNodes();
@@ -270,21 +270,68 @@ public class CodeGenerator {
         return "";
     }
 
+    /**
+     * The description as javadoc lines, prefix included: its blank lines become paragraphs and a paragraph whose every
+     * line holds a {@code |} is a markdown table, kept in a {@code <pre>}.
+     */
     private static List<String> javadocLines(String text) {
-        String escaped = text.trim().replaceAll("\\s+", " ")
-                .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("@", "&#64;").replace("*/", "*&#47;");
-        List<String> lines = new ArrayList<>();
-        StringBuilder line = new StringBuilder();
-        for (String word : escaped.isEmpty() ? new String[0] : escaped.split(" ")) {
-            if (line.length() > 0 && line.length() + 1 + word.length() > JAVADOC_LINE_WIDTH) {
-                lines.add(line.toString());
-                line.setLength(0);
+        List<String> javadoc = new ArrayList<>();
+        for (List<String> paragraph : paragraphs(text)) {
+            boolean table = paragraph.stream().allMatch(line -> line.contains("|"));
+            if (!javadoc.isEmpty() && !table) {
+                javadoc.add(" * <p>");
             }
-            line.append(line.length() > 0 ? " " : "").append(word);
+            if (table) {
+                javadoc.add(" * <pre>");
+                paragraph.forEach(line -> javadoc.add(" * " + javadocEscaped(line)));
+                javadoc.add(" * </pre>");
+            } else {
+                paragraph.forEach(line -> wrapped(javadocEscaped(line)).forEach(wrapped -> javadoc.add(" * " + wrapped)));
+            }
         }
-        if (line.length() > 0) {
-            lines.add(line.toString());
+        return javadoc;
+    }
+
+    private static List<List<String>> paragraphs(String text) {
+        List<String> lines = new ArrayList<>();
+        for (String line : text.replace("\r", "").split("\n")) {
+            lines.add(line.replaceAll("\\s+$", ""));
         }
+        int indent = lines.stream().filter(line -> !line.isEmpty())
+                .mapToInt(line -> line.length() - line.stripLeading().length()).min().orElse(0);
+        List<List<String>> paragraphs = new ArrayList<>();
+        List<String> paragraph = new ArrayList<>();
+        for (String line : lines) {
+            if (line.isEmpty()) {
+                if (!paragraph.isEmpty()) {
+                    paragraphs.add(paragraph);
+                    paragraph = new ArrayList<>();
+                }
+            } else {
+                paragraph.add(line.substring(indent));
+            }
+        }
+        if (!paragraph.isEmpty()) {
+            paragraphs.add(paragraph);
+        }
+        return paragraphs;
+    }
+
+    private static String javadocEscaped(String line) {
+        return line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("@", "&#64;").replace("*/", "*&#47;");
+    }
+
+    private static List<String> wrapped(String line) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String word : line.trim().split("\\s+")) {
+            if (current.length() > 0 && current.length() + 1 + word.length() > JAVADOC_LINE_WIDTH) {
+                lines.add(current.toString());
+                current.setLength(0);
+            }
+            current.append(current.length() > 0 ? " " : "").append(word);
+        }
+        lines.add(current.toString());
         return lines;
     }
 
