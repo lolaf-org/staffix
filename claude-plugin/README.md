@@ -45,11 +45,10 @@ claude plugin validate --strict claude-plugin
 
 ## Release
 
-The build zips the plugin, symlinks replaced by their content and the version set to staffix's, and writes the
-`marketplace.json` listing it:
+A staffix release attaches the plugin zip, symlinks replaced by their content and the version set to staffix's, and
+the `marketplace.json` listing it to its GitHub Release. The entry points at the zip there, pinned by its SHA-256, so
+`marketplace.json` is the only file to put on `https://lolaf.org/claude/`. To build both locally:
 
 ```bash
 ./mvnw package -pl claude-plugin-archive -am -DskipTests
 ```
-
-Upload both files from `claude-plugin-archive/target` to `https://lolaf.org/claude/`.

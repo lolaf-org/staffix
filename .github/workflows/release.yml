@@ -46,3 +46,34 @@ jobs:
       tag: ${{ inputs.tag }}
       timeout-minutes: 120
     secrets: inherit
+
+  claude-plugin:
+    needs: release
+    if: ${{ !inputs.dryRun }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.performOnly && inputs.tag || format('v{0}', inputs.releaseVersion) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: '21'
+          cache: maven
+
+      - name: Build the plugin zip and its marketplace.json
+        run: ./mvnw -B package -pl claude-plugin-archive -am -DskipTests
+
+      - name: Attach them to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$TAG" --clobber \
+            claude-plugin-archive/target/staffix-claude-plugin-*.zip \
+            claude-plugin-archive/target/marketplace.json

@@ -10,13 +10,13 @@
     <packaging>pom</packaging>
     <name>Staffix Claude Plugin Archive</name>
     <description>
-        The Claude Code plugin as a zip, and the marketplace.json listing it, both uploaded to lolaf.org by hand.
+        The Claude Code plugin as a zip, and the marketplace.json listing it, both attached to the GitHub Release.
     </description>
     <properties>
         <maven.deploy.skip>true</maven.deploy.skip>
         <claude.plugin.dir>${project.basedir}/../claude-plugin</claude.plugin.dir>
         <claude.plugin.archive>staffix-claude-plugin-${project.version}</claude.plugin.archive>
-        <claude.marketplace.url>https://lolaf.org/claude</claude.marketplace.url>
+        <claude.plugin.download.url>https://github.com/lolaf-org/staffix/releases/download/v${project.version}</claude.plugin.download.url>
     </properties>
     <dependencies>
         <!-- claude-plugin/catalogue links to its build output -->
@@ -57,7 +57,7 @@
                                 <copy file="src/marketplace/marketplace.json" todir="${project.build.directory}"
                                       overwrite="true">
                                     <filterset>
-                                        <filter token="URL" value="${claude.marketplace.url}/${claude.plugin.archive}.zip"/>
+                                        <filter token="URL" value="${claude.plugin.download.url}/${claude.plugin.archive}.zip"/>
                                         <filter token="SHA256" value="${claude.plugin.sha256}"/>
                                     </filterset>
                                 </copy>
