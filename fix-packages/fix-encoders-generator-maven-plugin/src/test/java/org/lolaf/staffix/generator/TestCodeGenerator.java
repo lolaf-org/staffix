@@ -149,6 +149,25 @@ class TestCodeGenerator {
     }
 
     /**
+     * A message's description becomes the javadoc of its encoder, wrapped and escaped; one inside a group is skipped.
+     */
+    @Test
+    void testAMessageDescriptionBecomesItsEncoderJavadoc() throws Exception {
+        File generated = generate("FIX44-deprecated-test.xml", "described");
+
+        Assertions.assertThat(read(generated, "encoders/DeprecatedThingsEncoder.java")).contains(
+                "/**\n"
+                        + " * Carries every kind of deprecation the generator marks, so that each one is checked against a message that also\n"
+                        + " * carries a description long enough to be wrapped, with &lt;markup&gt; &amp; a closing *&#47; to escape.\n"
+                        + " */\n");
+        Assertions.assertThat(read(generated, "encoders/OldMessageEncoder.java")).contains(
+                "/**\n"
+                        + " * A retired message.\n"
+                        + " *\n"
+                        + " * @deprecated deprecated by the FIX standard.");
+    }
+
+    /**
      * The point of generating groups as top-level classes: a group encoder is built from its field list and from
      * nothing else, so every message carrying that group shares one class rather than getting a nested copy of it.
      * Before this, {@code staffix-fix-latest} generated 20,985 group encoder classes for 515 distinct field lists.

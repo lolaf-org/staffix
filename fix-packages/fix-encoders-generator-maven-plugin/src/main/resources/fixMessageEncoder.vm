@@ -51,11 +51,21 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.UUID;
 
-#if (${deprecated})
+#if (!${descriptionLines.isEmpty()} || ${deprecated})
 /**
+#foreach($line in ${descriptionLines})
+ * $line
+#end
+#if (!${descriptionLines.isEmpty()} && ${deprecated})
+ *
+#end
+#if (${deprecated})
  * @deprecated deprecated by the FIX standard. It stays here so that a peer still sending this message can be
  *             answered, and should not be used in new work.
+#end
  */
+#end
+#if (${deprecated})
 @Deprecated
 #end
 #if (${referencesDeprecated})

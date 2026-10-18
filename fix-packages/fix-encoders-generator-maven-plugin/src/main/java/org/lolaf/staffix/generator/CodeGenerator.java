@@ -70,6 +70,8 @@ public class CodeGenerator {
      */
     public static final String DICTIONARIES_DIRECTORY = "staffix-dictionaries";
 
+    private static final int JAVADOC_LINE_WIDTH = 112;
+
     public static void process(String packageName, File dictionary, File sourcesOutputDirectory, File resourcesOutputDirectory,
                                String dictionaryId, Log log, boolean addFIXEngineAndAppInfoFields) throws IOException, SAXException, ParserConfigurationException {
         try (InputStream in = new FileInputStream(dictionary)) {
@@ -207,7 +209,8 @@ public class CodeGenerator {
             String messageName = message.getAttribute("name");
             encoderInfos.add(new EncoderInfo(className, messageName, isDeprecated(message)));
             groupsList.forEach(g -> groupEncoders.collect(g, message.getAttribute("name")));
-            messageModels.add(new MessageModel(className, messageName, isDeprecated(message), fieldsList, groupsList));
+            messageModels.add(new MessageModel(className, messageName, isDeprecated(message), javadocLines(description(message)),
+                    fieldsList, groupsList));
         }
 
         groupEncoders.assignNames();
@@ -217,6 +220,7 @@ public class CodeGenerator {
         for (MessageModel model : messageModels) {
             VelocityContext context = new VelocityContext();
             context.put("deprecated", model.isDeprecated());
+            context.put("descriptionLines", model.getDescriptionLines());
             // only where there is something to suppress, so that a dictionary carrying no deprecation at all still
             // generates exactly the code it generated before any of this existed
             context.put("referencesDeprecated", referencesDeprecated(model.getFields(), model.getGroups()));
@@ -249,6 +253,39 @@ public class CodeGenerator {
             processTemplate(groupPackageDir, entry.getKey(), getTemplate(ve, "fixGroupEncoder.vm"), context);
         }
         return encoderInfos;
+    }
+
+    /**
+     * The business intent of a message, which the Orchestra dictionary generator copies from the repository's
+     * synopsis. QuickFIX/J ignores the element, so a dictionary carrying it stays readable there.
+     */
+    private static String description(Element message) {
+        NodeList children = message.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node child = children.item(i);
+            if (child instanceof Element && ((Element) child).getTagName().equals("description")) {
+                return child.getTextContent();
+            }
+        }
+        return "";
+    }
+
+    private static List<String> javadocLines(String text) {
+        String escaped = text.trim().replaceAll("\\s+", " ")
+                .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("@", "&#64;").replace("*/", "*&#47;");
+        List<String> lines = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : escaped.isEmpty() ? new String[0] : escaped.split(" ")) {
+            if (line.length() > 0 && line.length() + 1 + word.length() > JAVADOC_LINE_WIDTH) {
+                lines.add(line.toString());
+                line.setLength(0);
+            }
+            line.append(line.length() > 0 ? " " : "").append(word);
+        }
+        if (line.length() > 0) {
+            lines.add(line.toString());
+        }
+        return lines;
     }
 
     /**
@@ -317,7 +354,7 @@ public class CodeGenerator {
                     Element innerComponent = findComponent(el.getAttribute("name"), fixRootElement);
                     processMessageOrComponent(fixRootElement, generatedFields, innerComponent, fieldsList, groupsList, usedFields,
                             isDeprecated(el) || isDeprecated(innerComponent) || inherited, el.getAttribute("name"));
-                } else {
+                } else if (!el.getTagName().equals("description")) {
                     throw new IllegalStateException("Element " + el.getTagName() + " is not managed");
                 }
             }
@@ -360,7 +397,7 @@ public class CodeGenerator {
                     Element innerComponent = findComponent(el.getAttribute("name"), fixRootElement);
                     processMessageGroupChildren(generatedFields, fixRootElement, fieldsList, groupsList, innerComponent.getChildNodes(), group, usedFields,
                             isDeprecated(el) || isDeprecated(innerComponent) || inherited, el.getAttribute("name"));
-                } else {
+                } else if (!el.getTagName().equals("description")) {
                     throw new IllegalStateException("Element " + el.getTagName() + " is not managed");
                 }
             }
@@ -647,6 +684,7 @@ public class CodeGenerator {
         String className;
         String messageName;
         boolean deprecated;
+        List<String> descriptionLines;
         List<Field> fields;
         List<Group> groups;
     }

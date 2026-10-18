@@ -40,16 +40,21 @@
     </trailer>
     <messages>
         <message name="DeprecatedThings" msgtype="ZD" msgcat="app">
+            <description>
+                Carries every kind of deprecation the generator marks, so that each one is checked against a message
+                that also carries a description long enough to be wrapped, with &lt;markup&gt; &amp; a closing */ to escape.</description>
             <field name="Account" required="N" deprecated="true"/>
             <field name="Retired" required="N"/>
             <field name="LegacyBits" required="N"/>
             <component name="Legacy" required="N"/>
             <component name="Current" required="N"/>
             <group name="NoLegs" required="N" deprecated="true">
+                <description>A description inside a group is skipped.</description>
                 <field name="LegSymbol" required="N"/>
             </group>
         </message>
         <message name="OldMessage" msgtype="ZO" msgcat="app" deprecated="true">
+            <description>A retired message.</description>
             <field name="Account" required="N"/>
         </message>
     </messages>
