@@ -45,9 +45,19 @@ claude plugin validate --strict claude-plugin
 
 ## Release
 
-A staffix release attaches the plugin zip, symlinks replaced by their content and the version set to staffix's, and
-the `marketplace.json` listing it to its GitHub Release. The entry points at the zip there, pinned by its SHA-256, so
-`marketplace.json` is the only file to put on `https://lolaf.org/claude/`. To build both locally:
+The plugin is released with staffix, by the same workflow, and needs no edit:
+
+- The reference projects' version and `staffix.version` become the release's, since they are in the reactor in CI.
+- `plugin.json` and the bundled catalogue carry the release's version, which the skills write into the projects
+  they create.
+- The GitHub Release gets the plugin zip and the `marketplace.json` listing it, pinned by its SHA-256.
+  `https://lolaf.org/claude/marketplace.json` redirects to the latest one, so users get it with
+  `claude plugin update staffix@lolaf`.
+
+Before releasing, check that `spring-boot.version` in `claude-plugin-reference-projects/spring-boot-initiator/pom.xml`
+is staffix's own (root `pom.xml`): generated Spring Boot apps take it from there, and nothing compares the two.
+
+To build the zip and `marketplace.json` locally:
 
 ```bash
 ./mvnw package -pl claude-plugin-archive -am -DskipTests
