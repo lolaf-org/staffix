@@ -37,12 +37,23 @@ defaults, and list the defaults taken when handing over.
    variables with dev defaults, never constants.
 6. **Messages**: list the dictionary's application messages as `dictionary-messages.md` says, then ask which the
    application sends and which it receives.
-7. **Prod environment**: offer presets, then let the user change any part of them:
-   - *Standard*: file store, file logger behind the async logger. What the reference projects use.
-   - *Observable*: Standard, plus Micrometer metrics over OTLP, SLF4J alerts and the JMX admin API.
-   - *Database*: JDBC store behind the async store, file logger behind the async logger.
-   Each choice is a component of the bundled catalogue's index: open its file, as `catalogue.md` says, before
-   configuring it.
+7. **Prod environment**, one question per part. The options of each are the bundled catalogue index's components of
+   that kind, with their `summary`, leaving out the wrappers (`wraps`) and what the kind's summary says is never
+   configured by hand:
+   1. **Messages store** (`messages-store`, required): file by default; memory only if the user accepts losing
+      sequence numbers on a restart.
+   2. **Messages logger** (`messages-logger`): file by default, none, or several (fed through the demux logger).
+   3. **Async**: whether the chosen store and the chosen logger each go behind its async wrapper, which takes their
+      writes off the session's thread. Recommend it for the logger and the JDBC store; for the file store, only when
+      latency matters. Not for a store whose messages must be durable before they go on the wire: see
+      `docs/stores-and-loggers.md`, "Taking I/O off the session thread".
+   4. **Metrics** (the `session-plugin` monitoring components): none by default, or which one.
+   5. **Tracing** (the `session-plugin` tracing component): none by default, or yes.
+   6. **Alerting** (`alerts-publisher`): none by default, or which publishers.
+   7. **Admin API** (`admin-api-exporter`, at most one): none by default, or which one.
+
+Each choice is a component of the bundled catalogue's index: open its file, as `catalogue.md` says, before
+configuring it.
 
 ## 2. Build it
 
