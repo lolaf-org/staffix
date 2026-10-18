@@ -12,5 +12,10 @@ one line, in any order. If a line lacks `name` or `msgtype`, the file wraps its 
 
 Offer only `msgcat="app"` messages, without BusinessMessageReject (35=j): the session layer sends and receives it, and
 the build adds it to every cut. Group them by business area (orders, executions, quotes, market data, allocations,
-reference data, and so on) so a list of a hundred reads at a glance, and ask which the application sends and which it
-receives. A message can be both.
+reference data, and so on) so a list of a hundred reads at a glance. A message can be both sent and received.
+
+**Preselect from the purpose.** Propose the messages the purpose needs, sent and received, each with why, and
+nothing more. Take only names this dictionary has, and add what the counterparty answers to each message sent: "place
+and cancel orders with a broker" sends NewOrderSingle and OrderCancelRequest, and receives ExecutionReport and
+OrderCancelReject. The AskUserQuestion tool takes four options per question, too few for a dictionary, so show the
+proposal and the grouped list as text and ask the user to accept it or name what to add or remove.
