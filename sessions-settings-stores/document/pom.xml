@@ -18,7 +18,7 @@
         <!-- Pinned to Java 11-compatible releases: hibernate-validator 9.x and jakarta-validation 3.1
              require Java 17, which would break this library's Java 11 runtime promise. -->
         <jakarta-validation-api.version>3.1.1</jakarta-validation-api.version>
-        <hibernate-validator.version>8.0.5.Final</hibernate-validator.version>
+        <hibernate-validator.version>8.0.6.Final</hibernate-validator.version>
         <victools-jsonschema.version>4.38.0</victools-jsonschema.version>
         <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
         <build-helper-maven-plugin.version>3.6.2</build-helper-maven-plugin.version>
