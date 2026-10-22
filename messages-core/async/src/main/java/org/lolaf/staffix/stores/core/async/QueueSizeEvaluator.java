@@ -16,32 +16,26 @@
 package org.lolaf.staffix.stores.core.async;
 
 import org.lolaf.staffix.api.alerting.Alert;
-import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeEvaluator;
+import org.lolaf.staffix.api.alerting.ThresholdAlertEvaluator;
 
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.IntSupplier;
-import java.util.stream.Collectors;
 
 /**
  * Raises the highest level whose threshold the queue depth has reached, and clears below the lowest threshold.
  */
 public final class QueueSizeEvaluator implements ProbeEvaluator {
 
-    private final IntSupplier queueSize;
-    private final AlertLevel[] levels;
-    private final int[] thresholds;
+    private final ThresholdAlertEvaluator thresholds;
 
     QueueSizeEvaluator(IntSupplier queueSize, AsyncStoreSettings.QueueSizeThresholdsSettings settings) {
-        this.queueSize = queueSize;
-        List<Map.Entry<AlertLevel, Integer>> highestFirst = settings.getThresholds().entrySet().stream()
-                .sorted(Map.Entry.<AlertLevel, Integer>comparingByKey().reversed())
-                .collect(Collectors.toList());
-        this.levels = highestFirst.stream().map(Map.Entry::getKey).toArray(AlertLevel[]::new);
-        this.thresholds = highestFirst.stream().mapToInt(Map.Entry::getValue).toArray();
+        this.thresholds = ThresholdAlertEvaluator.builder()
+                .value(queueSize::getAsInt)
+                .valueLabel("events queued")
+                .aboveThresholds(settings.getThresholds())
+                .build();
     }
 
     /**
@@ -58,12 +52,6 @@ public final class QueueSizeEvaluator implements ProbeEvaluator {
 
     @Override
     public Optional<Alert> evaluate() {
-        int size = queueSize.getAsInt();
-        for (int i = 0; i < levels.length; i++) {
-            if (size >= thresholds[i]) {
-                return Optional.of(new Alert(levels[i], size + " events queued, " + levels[i] + " from " + thresholds[i]));
-            }
-        }
-        return Optional.empty();
+        return thresholds.evaluate();
     }
 }
