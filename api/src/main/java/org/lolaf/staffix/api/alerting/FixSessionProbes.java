@@ -32,6 +32,18 @@ public interface FixSessionProbes {
     void add(Probe probe);
 
     /**
+     * Adds a probe evaluated by {@code evaluator}, with the defaults of {@link Probe}, and returns the evaluator, so an
+     * alerting meter such as {@link AlertingTimer} is kept with its own type. Use {@link #add(Probe)} for labels, a
+     * runbook or other intervals.
+     *
+     * @throws IllegalArgumentException if the session already has a probe of that name
+     */
+    default <T extends ProbeEvaluator> T watch(String name, String description, T evaluator) {
+        add(Probe.builder().name(name).description(description).evaluator(evaluator).build());
+        return evaluator;
+    }
+
+    /**
      * Stops evaluating the probe; an alert it had ongoing is published as cleared.
      *
      * @return false if the session has no probe of that name

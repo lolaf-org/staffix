@@ -16,8 +16,11 @@
 package org.lolaf.staffix.impl.alerting;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.alerting.AlertLevel;
+import org.lolaf.staffix.api.alerting.AlertingCounter;
 import org.lolaf.staffix.api.alerting.Probe;
 
+import java.time.Duration;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +56,21 @@ class TestFixSessionProbesImpl {
         assertThat(probes.remove("a")).isTrue();
         assertThat(probes.remove("a")).isFalse();
         assertThat(probes.list()).extracting(Probe::getName).containsExactly("b");
+    }
+
+    @Test
+    void watchAddsAProbeOnTheMeterAndReturnsIt() {
+        AlertingCounter orders = AlertingCounter.builder().window(Duration.ofMinutes(1)).threshold(AlertLevel.WARNING, 1).build();
+
+        AlertingCounter watched = probes.watch("order-rate", "Orders over the last minute", orders);
+
+        assertThat(watched).isSameAs(orders);
+        assertThat(probes.list()).singleElement().satisfies(probe -> {
+            assertThat(probe.getName()).isEqualTo("order-rate");
+            assertThat(probe.getDescription()).isEqualTo("Orders over the last minute");
+            assertThat(probe.getEvaluator()).isSameAs(orders);
+        });
+        assertThatThrownBy(() -> probes.watch("order-rate", "again", orders)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
