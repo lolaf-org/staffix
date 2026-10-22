@@ -18,6 +18,10 @@ could mean.
 
 ### Added
 
+- **Applications can publish counters**, with `FixSessionsMonitoringContext.getCounter`.
+- **A counter, timer or gauge can raise its own alerts**: add an `AlertingCounter`, `AlertingTimer` or `AlertingGauge`
+  with `FixSessionProbes.watch`, and what the application records is both published and alerted on. A timer alerts
+  on a latency percentile, so a short spike does not alert; a gauge alerts above or below thresholds.
 - **The file messages logger has a choice of line format**, set with `lineFormat`. The plain format, the default,
   writes the same lines as before. The new logfmt format (`LogfmtFileLogLineFormat`) starts each line with the time,
   the engine, instance and session, the direction and the message type as logfmt pairs, then the message: a log

@@ -64,6 +64,25 @@ registry such as Prometheus gets no final value: alert on the target being down 
 from the session's own continuous line measurement; see [Network monitoring](network-monitoring.md). They need
 `rttMeasurementSettings.probeInterval` set on the session to have anything to report.
 
+### Your application's meters
+
+The session's `FixSessionsMonitoringContext` gives an application meters of its own, published with the session's
+tags plus the ones passed:
+
+```java
+FixSessionsMonitoringContext monitoring = session.getPluginContext(FixSessionsMonitoringContext.class)
+        .orElse(VoidFixSessionsMonitoringContext.getInstance());
+
+Counter orders = monitoring.getCounter("orders.received", "NewOrderSingle received", Map.of("venue", "xpar"));
+Timer pricing = monitoring.getTimer("orders.pricing", "Pricing an order", Map.of());
+Gauge inFlight = monitoring.getGauge("orders.in.flight", "Orders sent, not yet acknowledged", Map.of());
+```
+
+The same id and tags return the same meter, so asking again is cheap. A counter only goes up, and the backend turns
+it into a rate; a gauge is set or added to, or registered with a supplier read at each export. Without monitoring,
+the void context returns meters that do nothing. To alert on one of them, see
+[Alerting on a metric](alerting.md#alerting-on-a-metric).
+
 `startedMeterRegistryConsumer` hands you the registry once it is up, which is where to bind JVM metrics so they land
 in the same place as the FIX ones:
 

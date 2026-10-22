@@ -6,7 +6,8 @@ second, and tells a publisher each time one starts, changes or ends. What you do
 dashboard) is the publisher's job.
 
 The runnable version of this guide is [`examples/alerting`](../examples/alerting): an application that adds its own
-probes on logon (its own evaluator, a rate and alerts raised from code), with the alerts logged through SLF4J.
+probes on logon (its own evaluator, an alerting counter and timer, and alerts raised from code), with the alerts
+logged through SLF4J.
 
 ---
 
@@ -118,10 +119,54 @@ cheap enough for the session thread. `clear()` forgets the events counted so far
 
 An operator can clear a probe's alert from the admin API (`AdminApi.clearAlert`, HTTP or JMX). The engine asks the
 probe's evaluator, so only an evaluator that can forget its alert accepts: a `RaisedAlertEvaluator`, a
-`RateAlertEvaluator`, and a `withClearDelay` evaluator whose condition is already back to normal. A polled condition
+`RateAlertEvaluator`, an `AlertingCounter` or `AlertingTimer`, and a `withClearDelay` evaluator whose condition is already back to normal. A polled condition
 refuses, since it would only raise the alert again. Once accepted, the alert clears at the next tick, whatever the
 probe's evaluation interval, and every publisher is told as for any other clear. To accept it in your own evaluator,
 override `clear()`.
+
+## Alerting on a metric
+
+When what a probe watches is also a metric, record it once: an **alerting meter** is a counter, timer or gauge of the
+session's [monitoring](monitoring.md) that is also its own probe's evaluator. `watch` adds the probe and returns the
+meter, which the application then records on as usual:
+
+```java
+FixSessionsMonitoringContext monitoring = session.getPluginContext(FixSessionsMonitoringContext.class)
+        .orElse(VoidFixSessionsMonitoringContext.getInstance());
+
+Counter orders = session.getProbes().watch("order-rate", "NewOrderSingle over the last 5 seconds",
+        AlertingCounter.builder()
+                .counter(monitoring.getCounter("orders.received", "NewOrderSingle received", Map.of()))
+                .window(Duration.ofSeconds(5))
+                .threshold(AlertLevel.WARNING, 8)
+                .build());
+
+// on the session thread, for each order
+orders.increment();
+```
+
+Without monitoring the meter publishes nothing and still alerts. `watch` gives the probe `Probe`'s defaults; for labels,
+a runbook or other intervals, build the `Probe` with the meter as its evaluator and `add` it.
+
+| meter | raises a level when | options |
+|-------|---------------------|---------|
+| `AlertingCounter` | its count over the window reaches the level's threshold, as a `RateAlertEvaluator` | `window`, `threshold` |
+| `AlertingTimer` | its percentile over the window is above the level's latency | `window`, `threshold`, `percentile` (0.95), `minRecordings` (20) |
+| `AlertingGauge` | its value reaches the level's threshold going up, or going down | `above`, `below`, `initialValue` (0), `valueLabel` |
+
+**A timer alerts on a percentile, not on its slowest call**, so a short spike does not page anyone. It counts how many
+recordings were slower than each threshold: p95 is above 10ms exactly when more than 5% of the recordings were
+slower, so the percentile is exact with no histogram. Below `minRecordings` in the window it raises nothing, so one
+slow call out of one is not 100%.
+
+**A gauge can watch both edges of a band**, `below` and `above` on the same gauge, the highest level reached winning.
+A threshold is the first value that alerts, in either direction.
+
+All three take `raiseDelay` and `clearDelay`, the same as `withRaiseDelay` and `withClearDelay` above: a gauge above
+its threshold for a minute is `.above(AlertLevel.WARNING, 500).raiseDelay(Duration.ofMinutes(1))`.
+
+For a value the application already holds, such as a gauge registered with a supplier, use a
+`ThresholdAlertEvaluator` on that supplier: it alerts as an `AlertingGauge`, without publishing anything.
 
 ## What a publisher is told
 
