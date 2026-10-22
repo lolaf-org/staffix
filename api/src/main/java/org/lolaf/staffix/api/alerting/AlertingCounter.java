@@ -53,18 +53,7 @@ public final class AlertingCounter implements Counter, ProbeEvaluator {
                     Duration clearDelay, LongSupplier nanoClock) {
         this.counter = counter == null ? Counter.VoidCounter.getInstance() : counter;
         this.rate = new RateAlertEvaluator(window, thresholds, nanoClock);
-        this.evaluator = withDelays(rate, raiseDelay, clearDelay, nanoClock);
-    }
-
-    private static ProbeEvaluator withDelays(ProbeEvaluator evaluator, Duration raiseDelay, Duration clearDelay, LongSupplier nanoClock) {
-        ProbeEvaluator delayed = evaluator;
-        if (raiseDelay != null && !raiseDelay.isZero()) {
-            delayed = new RaiseDelayEvaluator(delayed, raiseDelay, nanoClock);
-        }
-        if (clearDelay != null && !clearDelay.isZero()) {
-            delayed = new ClearDelayEvaluator(delayed, clearDelay, nanoClock);
-        }
-        return delayed;
+        this.evaluator = DelayedEvaluators.withDelays(rate, raiseDelay, clearDelay, nanoClock);
     }
 
     @Override
