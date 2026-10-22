@@ -91,6 +91,22 @@ class TestRateAlertEvaluator {
     }
 
     @Test
+    void recordsSeveralEventsAtOnce() {
+        evaluator.record(3);
+        evaluator.record(0);
+        evaluator.record();
+        assertThat(evaluator.evaluate()).isEmpty();
+
+        evaluator.record(46);
+        assertThat(evaluator.evaluate()).hasValueSatisfying(alert -> assertThat(alert.getMessage()).isEqualTo("50 in the last 1m, MAJOR from 50"));
+    }
+
+    @Test
+    void refusesANegativeEventCount() {
+        assertThatThrownBy(() -> evaluator.record(-1)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void clearForgetsTheCountedEvents() {
         record(50);
 
