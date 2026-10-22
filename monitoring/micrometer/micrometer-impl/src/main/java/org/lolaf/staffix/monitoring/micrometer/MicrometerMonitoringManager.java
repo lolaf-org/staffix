@@ -16,6 +16,7 @@
 package org.lolaf.staffix.monitoring.micrometer;
 
 import io.micrometer.core.instrument.*;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
@@ -193,6 +194,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         private final Gauge sessionStatus;
         private final BiConsumer<String, FixSessionId> onSessionDestroyed;
         private final Map<String, MicrometerTimerWrapper> timersForSession;
+        private final Map<String, MicrometerCounterWrapper> countersForSession;
         private final Map<String, RegisteredGauge> gaugesForSession;
         private final MeterRegistry meterRegistry;
         private final MicrometerMonitoringManagerSettings settings;
@@ -213,6 +215,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             this.meterRegistry = meterRegistry;
             this.settings = micrometerMonitoringManagerSettings;
             this.timersForSession = new ConcurrentHashMap<>();
+            this.countersForSession = new ConcurrentHashMap<>();
             this.gaugesForSession = new ConcurrentHashMap<>();
             this.onSessionDestroyed = onSessionDestroyed;
             Tags tags = Tags.of(Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), fixEngineId),
@@ -355,6 +358,18 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         }
 
         @Override
+        public org.lolaf.staffix.api.monitoring.Counter getCounter(String id, String description, Map<String, String> tags) {
+            return countersForSession.computeIfAbsent(meterKey(id, tags), i -> {
+                Counter counter = Counter.builder(id)
+                        .description(description)
+                        .tags(customTags(tags))
+                        .register(meterRegistry);
+                describeCustomMeter(id, description, tags, FixMeterDescriptor.Type.COUNTER);
+                return new MicrometerCounterWrapper(counter);
+            });
+        }
+
+        @Override
         public org.lolaf.staffix.api.monitoring.Gauge getGauge(String id, String description, Map<String, String> tags) {
             return gaugesForSession.computeIfAbsent(meterKey(id, tags), i -> {
                 PushedGauge gauge = new PushedGauge();
@@ -378,14 +393,18 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                     .tags(customTags(tags))
                     .strongReference(true)
                     .register(meterRegistry);
+            describeCustomMeter(id, description, tags, FixMeterDescriptor.Type.GAUGE);
+            return gauge;
+        }
+
+        private void describeCustomMeter(String id, String description, Map<String, String> tags, FixMeterDescriptor.Type type) {
             customMeters.merge(id, FixMeterDescriptor.builder()
                     .name(id)
-                    .type(FixMeterDescriptor.Type.GAUGE)
+                    .type(type)
                     .description(description)
                     .tagKeys(tags.keySet())
                     .custom(true)
                     .build(), FixSessionEventsListenerImpl::withTagKeysOf);
-            return gauge;
         }
 
         private Tags customTags(Map<String, String> tags) {
@@ -422,6 +441,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         void destroy(MeterRegistry meterRegistry) {
             destroyed = true;
             timersForSession.values().forEach(timer -> timer.destroy(meterRegistry));
+            countersForSession.values().forEach(counter -> meterRegistry.remove(counter.counter));
             gaugesForSession.values().forEach(gauge -> meterRegistry.remove(gauge.meter));
             if (readsTimersPerMsgType != null) {
                 readsTimersPerMsgType.values().forEach(meterRegistry::remove);
@@ -556,6 +576,22 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             @Override
             public void add(double delta) {
                 // the supplier gives the value
+            }
+        }
+
+        @RequiredArgsConstructor
+        private static final class MicrometerCounterWrapper implements org.lolaf.staffix.api.monitoring.Counter {
+
+            private final Counter counter;
+
+            @Override
+            public void increment() {
+                counter.increment();
+            }
+
+            @Override
+            public void increment(long amount) {
+                counter.increment(amount);
             }
         }
 

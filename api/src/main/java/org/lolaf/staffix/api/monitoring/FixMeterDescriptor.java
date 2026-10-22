@@ -50,12 +50,13 @@ public class FixMeterDescriptor {
      */
     boolean percentiles;
     /**
-     * Registered by the application through {@link FixSessionsMonitoringContext#getTimer}, not by the monitoring itself.
+     * Registered by the application through {@link FixSessionsMonitoringContext}, not by the monitoring itself.
      */
     boolean custom;
 
     public enum Type {
         TIMER,
+        COUNTER,
         GAUGE
     }
 }

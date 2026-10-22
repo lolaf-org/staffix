@@ -42,6 +42,17 @@ public interface FixSessionsMonitoringContext extends PluginContext {
     Timer getTimer(String id, String description, Map<String, String> tags);
 
     /**
+     * Retrieves a counter the application increments; the same id and tags give the same counter. The returned NOOP
+     * counter when monitoring is disabled has no impact on performances.
+     *
+     * @param id          the counter id
+     * @param description the counter description
+     * @param tags        the counter tags
+     * @return a counter publishing its total at each export
+     */
+    Counter getCounter(String id, String description, Map<String, String> tags);
+
+    /**
      * Retrieves a gauge the application sets; the same id and tags give the same gauge. The returned NOOP gauge
      * when monitoring is disabled has no impact on performances.
      *
@@ -66,8 +77,8 @@ public interface FixSessionsMonitoringContext extends PluginContext {
     Gauge getGauge(String id, String description, Map<String, String> tags, DoubleSupplier value);
 
     /**
-     * The meters this session publishes: the monitoring's own, and the timers obtained so far from
-     * {@link #getTimer(String, String, Map)}.
+     * The meters this session publishes: the monitoring's own, and the timers, counters and gauges the application
+     * obtained so far.
      */
     List<FixMeterDescriptor> getMeterDescriptors();
 

@@ -361,6 +361,37 @@ class MicrometerMonitoringManagerTest {
     }
 
     @Test
+    void aCounterAddsUpEveryIncrementOfTheSameIdAndTags() {
+        monitoringManager.start();
+        FixSessionsMonitoringContext context = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow();
+
+        org.lolaf.staffix.api.monitoring.Counter orders = context.getCounter("orders.received", "Orders received", Map.of("venue", "xpar"));
+        orders.increment();
+        orders.increment(3);
+        context.getCounter("orders.received", "Orders received", Map.of("venue", "xpar")).increment();
+
+        assertThat(meterRegistry.find("orders.received").tag("venue", "xpar")
+                .tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()).counter().count()).isEqualTo(5);
+        assertThat(context.getMeterDescriptors()).filteredOn(FixMeterDescriptor::isCustom).singleElement().satisfies(counter -> {
+            assertThat(counter.getType()).isEqualTo(FixMeterDescriptor.Type.COUNTER);
+            assertThat(counter.getTagKeys()).containsExactly("venue");
+        });
+    }
+
+    @Test
+    void countersGoWithTheirSession() {
+        monitoringManager.start();
+        FixSessionPlugin<FixSessionsMonitoringContext, Void> listener = monitoringManager
+                .onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of()).orElseThrow();
+        listener.getPluginContext().orElseThrow().getCounter("orders.received", "Orders received", Map.of()).increment();
+
+        listener.onSessionDestroyed("fix-instance-1", fixSessionId);
+
+        assertThat(meterRegistry.find("orders.received").counter()).isNull();
+    }
+
+    @Test
     void aPushedGaugeReadsWhatTheApplicationSetsAndAdds() {
         monitoringManager.start();
         FixSessionsMonitoringContext context = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())

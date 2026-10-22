@@ -41,6 +41,11 @@ public class VoidFixSessionsMonitoringContext implements FixSessionsMonitoringCo
     }
 
     @Override
+    public Counter getCounter(String id, String description, Map<String, String> tags) {
+        return Counter.VoidCounter.getInstance();
+    }
+
+    @Override
     public Gauge getGauge(String id, String description, Map<String, String> tags) {
         return Gauge.VoidGauge.getInstance();
     }
