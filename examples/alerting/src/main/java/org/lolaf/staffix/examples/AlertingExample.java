@@ -20,25 +20,30 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLevel;
+import org.lolaf.staffix.api.alerting.AlertingCounter;
+import org.lolaf.staffix.api.alerting.AlertingTimer;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeEvaluator;
 import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
-import org.lolaf.staffix.api.alerting.RateAlertEvaluator;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.fields.FieldsRegistry;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
+import org.lolaf.staffix.api.monitoring.VoidFixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.fix44.encoders.NewOrderSingleEncoder;
 import org.lolaf.staffix.fix44.fields.OrdType;
 import org.lolaf.staffix.fix44.fields.OrderQty;
 import org.lolaf.staffix.fix44.fields.Side;
+import org.lolaf.staffix.fix44.fields.TransactTime;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import picocli.CommandLine;
 
@@ -52,14 +57,17 @@ import java.util.concurrent.locks.LockSupport;
 /**
  * An application watching its own business flow with probes.
  * <p>
- * Each initiator sends NewOrderSingle in bursts, with pauses that grow from one burst to the next, and every few
- * bursts one order above the acceptor's quantity limit. The acceptor's application adds three probes to its session
- * on logon and removes them on logout:
+ * Each initiator sends NewOrderSingle in bursts, with pauses that grow from one burst to the next, every few bursts one
+ * order above the acceptor's quantity limit, and every few bursts a burst stamped late, as if delayed upstream. The
+ * acceptor's application adds four probes to its session on logon and removes them on logout:
  * <ul>
  *     <li>{@code order-flow}, its own evaluator measuring the time since the last order, {@code WARNING} after a
  *     short silence and {@code MAJOR} after a longer one, re-published while it lasts;</li>
- *     <li>{@code order-rate}, a {@link RateAlertEvaluator} the decoder records each order on, {@code WARNING} when
- *     two bursts come close together;</li>
+ *     <li>{@code order-rate}, an {@link AlertingCounter} the decoder increments on each order, published as the
+ *     {@code orders.received} counter and {@code WARNING} when two bursts come close together;</li>
+ *     <li>{@code order-latency}, an {@link AlertingTimer} the decoder records the time since each order's TransactTime
+ *     on, published as the {@code orders.latency} timer and {@code WARNING} while a late burst keeps its p95 above the
+ *     limit;</li>
  *     <li>{@code large-order}, a {@link RaisedAlertEvaluator} the decoder raises on an order above the limit, which
  *     expires on its own, with labels and a runbook URL a publisher passes on.</li>
  * </ul>
@@ -67,7 +75,7 @@ import java.util.concurrent.locks.LockSupport;
  * raised, changed, reminded and cleared.
  * <p>
  * Read {@link OrderFlowEvaluator} for what a probe evaluates, then {@link OrderReceivingApplication#onLogon} for how
- * they are added. Every session also carries the engine's built-in {@code session-down} probe, which the same
+ * they are added, the alerting meters through {@code watch}. Every session also carries the engine's built-in {@code session-down} probe, which the same
  * publisher reports.
  * <p>
  * Run with -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints --enable-native-access=ALL-UNNAMED --add-opens java.base/jdk.internal.ref=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED
@@ -79,6 +87,7 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
     private static final String ORDER_FLOW_PROBE = "order-flow";
     private static final String ORDER_RATE_PROBE = "order-rate";
+    private static final String ORDER_LATENCY_PROBE = "order-latency";
     private static final String LARGE_ORDER_PROBE = "large-order";
 
     @CommandLine.Option(names = "-bs", description = "Orders sent in each burst", defaultValue = "5")
@@ -98,6 +107,15 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
     @CommandLine.Option(names = "-rw", description = "Orders within 5s before a rate warning", defaultValue = "8")
     private int rateWarningOrders;
+
+    @CommandLine.Option(names = "-lw", description = "Milliseconds from TransactTime to receiving an order before a p95 latency warning", defaultValue = "20")
+    private long latencyWarningMillis;
+
+    @CommandLine.Option(names = "-db", description = "Every how many bursts a burst is stamped late", defaultValue = "6")
+    private int lateBurstEveryBursts;
+
+    @CommandLine.Option(names = "-dm", description = "Milliseconds a late burst is stamped behind", defaultValue = "50")
+    private long lateBurstMillis;
 
     @CommandLine.Option(names = "-ql", description = "Order quantity above which an order raises an alert", defaultValue = "10000")
     private long quantityLimit;
@@ -124,9 +142,9 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
         FixEngine fixEngine = fixEngineBuilder(exampleOptions, true,
                 sid -> new OrderReceivingApplication(Duration.ofSeconds(warningAfterSeconds), Duration.ofSeconds(majorAfterSeconds),
-                        Duration.ofSeconds(reminderIntervalInSeconds), rateWarningOrders, quantityLimit),
+                        Duration.ofSeconds(reminderIntervalInSeconds), rateWarningOrders, Duration.ofMillis(latencyWarningMillis), quantityLimit),
                 sid -> new OrderSendingApplication(burstSize, Arrays.stream(pausesInSeconds).mapToObj(Duration::ofSeconds).toArray(Duration[]::new),
-                        largeOrderEveryBursts, quantityLimit * 10),
+                        largeOrderEveryBursts, quantityLimit * 10, lateBurstEveryBursts, Duration.ofMillis(lateBurstMillis)),
                 sid -> Collections.emptyMap(),
                 sid -> Collections.emptyMap()).build().instance().start();
 
@@ -191,9 +209,11 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         private final Duration majorAfter;
         private final Duration reminderInterval;
         private final int rateWarningOrders;
+        private final Duration latencyWarning;
         private final long quantityLimit;
         private volatile OrderFlowEvaluator orderFlow;
-        private volatile RateAlertEvaluator orderRate;
+        private volatile AlertingCounter orderRate;
+        private volatile AlertingTimer orderLatency;
         private volatile RaisedAlertEvaluator largeOrder;
 
         @Override
@@ -213,15 +233,27 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         }
 
         /**
-         * Fresh evaluators per logon, so nothing measured before a disconnection is carried over.
+         * Fresh evaluators per logon, so nothing measured before a disconnection is carried over. The published meters
+         * are the same across logons, the monitoring returning the existing one for an id.
          */
         @Override
         public void onLogon(FixSession session, DecodedFixMessage logon) {
+            FixSessionsMonitoringContext monitoring = session.getPluginContext(FixSessionsMonitoringContext.class)
+                    .orElse(VoidFixSessionsMonitoringContext.getInstance());
             orderFlow = new OrderFlowEvaluator(warningAfter, majorAfter);
-            orderRate = RateAlertEvaluator.builder()
-                    .window(Duration.ofSeconds(5))
-                    .threshold(AlertLevel.WARNING, rateWarningOrders)
-                    .build();
+            orderRate = session.getProbes().watch(ORDER_RATE_PROBE, "NewOrderSingle received over the last 5 seconds",
+                    AlertingCounter.builder()
+                            .counter(monitoring.getCounter("orders.received", "NewOrderSingle received", Map.of()))
+                            .window(Duration.ofSeconds(5))
+                            .threshold(AlertLevel.WARNING, rateWarningOrders)
+                            .build());
+            orderLatency = session.getProbes().watch(ORDER_LATENCY_PROBE, "Time from a NewOrderSingle's TransactTime to its decoding, at p95",
+                    AlertingTimer.builder()
+                            .timer(monitoring.getTimer("orders.latency", "Time from TransactTime to decoding", Map.of()))
+                            .window(Duration.ofSeconds(30))
+                            .minRecordings(10)
+                            .threshold(AlertLevel.WARNING, latencyWarning)
+                            .build());
             largeOrder = new RaisedAlertEvaluator();
             session.getProbes().add(Probe.builder()
                     .name(ORDER_FLOW_PROBE)
@@ -230,19 +262,14 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
                     .reminderInterval(reminderInterval)
                     .build());
             session.getProbes().add(Probe.builder()
-                    .name(ORDER_RATE_PROBE)
-                    .description("NewOrderSingle received over the last 5 seconds")
-                    .evaluator(orderRate)
-                    .build());
-            session.getProbes().add(Probe.builder()
                     .name(LARGE_ORDER_PROBE)
                     .description("NewOrderSingle above the quantity limit")
                     .evaluator(largeOrder)
                     .label("team", "trading_desk")
                     .runbookUrl(URI.create("https://wiki.example.com/runbooks/large-order"))
                     .build());
-            log.info("Logon acceptor {}, probes {}, {} and {} added", session.getFixSessionId(), ORDER_FLOW_PROBE,
-                    ORDER_RATE_PROBE, LARGE_ORDER_PROBE);
+            log.info("Logon acceptor {}, probes {}, {}, {} and {} added", session.getFixSessionId(), ORDER_FLOW_PROBE,
+                    ORDER_RATE_PROBE, ORDER_LATENCY_PROBE, LARGE_ORDER_PROBE);
         }
 
         /**
@@ -252,6 +279,7 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         public void onLogout(FixSession session, String message, DecodedFixMessage logoutMessage) {
             session.getProbes().remove(ORDER_FLOW_PROBE);
             session.getProbes().remove(ORDER_RATE_PROBE);
+            session.getProbes().remove(ORDER_LATENCY_PROBE);
             session.getProbes().remove(LARGE_ORDER_PROBE);
             log.info("Logout acceptor {} : {}, probes removed", session.getFixSessionId(), message);
         }
@@ -259,13 +287,14 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         /**
          * On the session thread: recording and raising are cheap enough for it.
          */
-        void onOrder(double quantity) {
+        void onOrder(double quantity, long sinceTransactTimeNanos) {
             OrderFlowEvaluator currentFlow = orderFlow;
             if (currentFlow == null) {
                 return;
             }
             currentFlow.onOrder();
-            orderRate.record();
+            orderRate.increment();
+            orderLatency.record(sinceTransactTimeNanos, TimeUnit.NANOSECONDS);
             if (quantity > quantityLimit) {
                 largeOrder.raise(Alert.major("order of " + (long) quantity + " above the limit of " + quantityLimit),
                         Duration.ofSeconds(15));
@@ -277,6 +306,7 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
             private final OrderReceivingApplication application;
             private double quantity;
+            private long transactTimeNanos;
 
             @Override
             public MessageType getMessageType() {
@@ -286,17 +316,19 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
             @Override
             public void mapFieldsForDecoding(FixFieldsDecoderMapper mapper, FieldsRegistry fieldsRegistry) {
                 mapper.mapDoubleField(OrderQty.get(), value -> quantity = value, 0d);
+                mapper.mapUtcDateTimeField(TransactTime.get(), value -> transactTimeNanos = value.toEpochNanos(), UTCTime.of(0L));
             }
 
             @Override
             public void onDecoded(FixSession session, boolean possDupFlag, boolean possResend) {
-                application.onOrder(quantity);
+                application.onOrder(quantity, session.getClock().nowEpochNanos() - transactTimeNanos);
             }
         }
     }
 
     /**
-     * Sends bursts of orders from a thread of its own, pausing longer each time, and every few bursts one large order.
+     * Sends bursts of orders from a thread of its own, pausing longer each time, every few bursts one large order, and
+     * every few bursts a burst whose TransactTime is set back, as if the orders had been held up before reaching it.
      */
     @RequiredArgsConstructor
     private static final class OrderSendingApplication implements FixApplication {
@@ -305,6 +337,8 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         private final Duration[] pauses;
         private final int largeOrderEveryBursts;
         private final long largeOrderQuantity;
+        private final int lateBurstEveryBursts;
+        private final Duration lateBurstDelay;
         private volatile boolean sending;
 
         @Override
@@ -342,11 +376,16 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         private void sendBursts(FixSession session) {
             for (int burst = 0; sending; burst++) {
                 try {
+                    boolean late = burst % lateBurstEveryBursts == lateBurstEveryBursts - 1;
+                    Duration stampedBehind = late ? lateBurstDelay : Duration.ZERO;
                     for (int i = 0; i < burstSize; i++) {
-                        sendOrder(session, 100);
+                        sendOrder(session, 100, stampedBehind);
+                    }
+                    if (late) {
+                        log.info("{} stamped its last burst {}ms late", session.getFixSessionId().getName(), lateBurstDelay.toMillis());
                     }
                     if (burst % largeOrderEveryBursts == largeOrderEveryBursts - 1) {
-                        sendOrder(session, largeOrderQuantity);
+                        sendOrder(session, largeOrderQuantity, Duration.ZERO);
                         log.info("{} sent an order of {}", session.getFixSessionId().getName(), largeOrderQuantity);
                     }
                     Duration pause = pauses[burst % pauses.length];
@@ -363,13 +402,13 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
             }
         }
 
-        private static void sendOrder(FixSession session, long quantity) {
+        private static void sendOrder(FixSession session, long quantity, Duration stampedBehind) {
             // a fresh encoder per message: a reusable one belongs to a single thread, and this one is not the
             // session's I/O thread - see docs/threading-model.md
             NewOrderSingleEncoder order = session.newEncoder(NewOrderSingleEncoder.class);
             order.begin()
                     .setClOrdID(UUID.randomUUID().toString())
-                    .setTransactTime(session.getClock().now(), TimeUnit.MICROSECONDS)
+                    .setTransactTime(UTCTime.of(session.getClock().nowEpochNanos() - stampedBehind.toNanos()), TimeUnit.MICROSECONDS)
                     .setSymbol("XAG/USD")
                     .setSide(Side.SideValues.BUY)
                     .setOrdType(OrdType.OrdTypeValues.MARKET)
