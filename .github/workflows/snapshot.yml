@@ -1,0 +1,29 @@
+name: snapshot
+
+# Run by hand, from the branch to publish, when another repository needs what it has.
+on:
+  workflow_dispatch:
+    inputs:
+      skipTests:
+        description: 'Deploy without running the tests, when CI already passed on this commit'
+        required: false
+        default: false
+        type: boolean
+
+# Queued rather than cancelled: a run stopped mid-upload would leave modules on different snapshots.
+concurrency:
+  group: snapshot
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    uses: lolaf-org/workflows/.github/workflows/maven-snapshot.yml@v1.1.0
+    with:
+      skip-tests: ${{ inputs.skipTests }}
+      # the reference projects' profile turns on in CI; the release turns it off the same way
+      extra-maven-args: -T1C -P-reference-projects
+      timeout-minutes: 90
+    secrets: inherit
