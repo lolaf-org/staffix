@@ -20,7 +20,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * A count an application publishes with its session's metrics that only goes up, such as the orders it received; the
- * metrics backend turns it into a rate. Safe to increment from any thread, and allocation free.
+ * metrics backend turns it into a rate. A value that goes back to 0, such as orders since the logon, is a
+ * {@link Gauge}. Safe to increment from any thread, and allocation free.
  */
 public interface Counter {
 
