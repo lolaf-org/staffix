@@ -28,9 +28,18 @@ could mean.
   shipper such as the OpenTelemetry Collector can then send the file's records to Loki and the admin UI with the
   same attributes as the OTLP messages logger. With Spring Boot, `line-format=logfmt`. A format of your own
   implements `FileLogLineFormat`, set in Java or named by `line-format-bean`.
+- **An evaluator can forget what it measured when its session logs back in**, by overriding
+  `ProbeEvaluator.reset()`. The evaluators and alerting meters staffix provides already do.
+- **The admin API, HTTP and JMX, shows whether a probe runs only while logged in** (`onlyWhileLoggedIn`), and
+  whether it is currently waiting for a logon (`suspended`).
 
 ### Changed
 
+- **Probes an application adds are now evaluated only while their session is logged in.** At logout their
+  ongoing alerts are cleared, and at logon they start afresh, so a probe on the order flow no longer alerts all
+  night, or the moment the session is back. An application that removed its probes on logout and added them again
+  on logon can add them once. For a probe that must keep running while logged out, such as one watching a disk or a
+  queue, build it with `onlyWhileLoggedIn(false)`. The built-in probes are unchanged.
 - **The file messages logger's line prefixes belong to the plain line format**: `logInPrefix`, `logOutPrefix` and
   `logEventPrefix` moved from `FileMessagesLoggerSettings` to `PlainFileLogLineFormat`, and their Spring Boot
   properties under `plain.`, for example `staffix.messages-loggers-file.instances.<id>.plain.log-in-prefix`.

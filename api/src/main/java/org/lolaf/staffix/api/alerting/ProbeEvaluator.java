@@ -45,6 +45,14 @@ public interface ProbeEvaluator {
     }
 
     /**
+     * Forgets what was measured so far, so a probe resuming at logon does not alert on the previous logon's events.
+     * Called on the probes thread when a {@link Probe#isOnlyWhileLoggedIn()} probe resumes; does nothing by default, as
+     * suits an evaluator polling a current value.
+     */
+    default void reset() {
+    }
+
+    /**
      * This evaluator, raising its alert only once it has been reported for {@code delay} without a break, so a
      * condition that comes and goes faster than that never alerts. Only the first raise waits: a level change while
      * already in alert, and the clear, are reported at once. The alert's {@code since} is when it was raised, after the

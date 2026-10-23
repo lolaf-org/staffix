@@ -117,6 +117,20 @@ class TestAlertingGauge {
     }
 
     @Test
+    void resetEndsAClearDelayHoldButKeepsTheValue() {
+        AlertingGauge gauge = gauge(Map.of(AlertLevel.WARNING, 10), Map.of(), null, Duration.ofSeconds(30));
+        gauge.set(12);
+        gauge.evaluate();
+        gauge.set(5);
+        assertThat(gauge.evaluate()).isPresent();
+
+        gauge.reset();
+
+        assertThat(gauge.evaluate()).isEmpty();
+        assertThat(published[0]).isEqualTo(5);
+    }
+
+    @Test
     void alertsWithoutAPublishedGauge() {
         AlertingGauge gauge = AlertingGauge.builder().above(AlertLevel.WARNING, 1).build();
 

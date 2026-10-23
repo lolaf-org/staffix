@@ -90,4 +90,13 @@ public final class ClearDelayEvaluator implements ProbeEvaluator {
         }
         return false;
     }
+
+    @Override
+    public void reset() {
+        lastAlert = Optional.empty();
+        clearPendingSinceNanos = NOT_PENDING;
+        holding = false;
+        clearRequested = false;
+        delegate.reset();
+    }
 }

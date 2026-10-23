@@ -103,7 +103,7 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
         return delegate.getProbeDefinitions(fixSessionId).stream()
                 .map(probe -> new ProbeImpl(probe.getName(), probe.getDescription(), probe.getEvaluationInterval().toString(),
                         probe.getReminderInterval().map(Object::toString).orElse(null), probe.getLabels(),
-                        probe.getRunbookUrl().map(Object::toString).orElse(null)))
+                        probe.getRunbookUrl().map(Object::toString).orElse(null), probe.isOnlyWhileLoggedIn()))
                 .collect(Collectors.toList());
     }
 
@@ -125,7 +125,8 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
                 alert == null ? null : alert.getLevel().name(),
                 alert == null ? null : alert.getMessage(),
                 state.getSince().map(Object::toString).orElse(null),
-                state.getLastEvaluation().toString());
+                state.getLastEvaluation().toString(),
+                state.isSuspended());
     }
 
     @Value
@@ -136,6 +137,7 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
         String reminderInterval;
         Map<String, String> labels;
         String runbookUrl;
+        boolean onlyWhileLoggedIn;
     }
 
     @Value
@@ -145,5 +147,6 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
         String message;
         String since;
         String lastEvaluation;
+        boolean suspended;
     }
 }

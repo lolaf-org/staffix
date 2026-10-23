@@ -44,6 +44,11 @@ public class ProbeState {
      * {@link ProbesListener#onAlertTransition transition}.
      */
     boolean clearedManually;
+    /**
+     * Whether the probe is not evaluated while its session is not logged in, as
+     * {@link Probe#isOnlyWhileLoggedIn()} asks; it is then normal, and its last evaluation is from before the logout.
+     */
+    boolean suspended;
 
     /**
      * The ongoing alert, empty while the probe is normal.

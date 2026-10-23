@@ -89,6 +89,8 @@ public interface FixSessionMXBean {
         Map<String, String> getLabels();
 
         String getRunbookUrl();
+
+        boolean isOnlyWhileLoggedIn();
     }
 
     /**
@@ -105,5 +107,10 @@ public interface FixSessionMXBean {
         String getSince();
 
         String getLastEvaluation();
+
+        /**
+         * Not evaluated while the session is not logged in; the last evaluation then predates the logout.
+         */
+        boolean isSuspended();
     }
 }

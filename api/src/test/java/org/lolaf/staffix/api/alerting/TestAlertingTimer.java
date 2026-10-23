@@ -177,6 +177,22 @@ class TestAlertingTimer {
     }
 
     @Test
+    void resetForgetsTheRecordingsAndRestartsTheRaiseDelayButKeepsThePublishedOnes() {
+        AlertingTimer timer = timer(Duration.ofSeconds(10), null);
+        record(timer, 20, 20);
+        timer.evaluate();
+        advance(Duration.ofSeconds(10));
+        assertThat(timer.evaluate()).isPresent();
+
+        timer.reset();
+
+        assertThat(timer.evaluate()).isEmpty();
+        record(timer, 20, 20);
+        assertThat(timer.evaluate()).isEmpty();
+        assertThat(published).hasSize(40);
+    }
+
+    @Test
     void refusesAnInvalidPercentileMinimumOrThreshold() {
         assertThatThrownBy(() -> AlertingTimer.builder().window(MINUTE).percentile(1.0).threshold(AlertLevel.WARNING, Duration.ofMillis(1)).build())
                 .isInstanceOf(IllegalArgumentException.class);

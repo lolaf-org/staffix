@@ -17,14 +17,11 @@ package org.lolaf.staffix.examples;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.lolaf.staffix.api.*;
-import org.lolaf.staffix.api.alerting.Alert;
-import org.lolaf.staffix.api.alerting.AlertLevel;
-import org.lolaf.staffix.api.alerting.AlertingCounter;
-import org.lolaf.staffix.api.alerting.AlertingTimer;
-import org.lolaf.staffix.api.alerting.Probe;
-import org.lolaf.staffix.api.alerting.ProbeEvaluator;
-import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
+import org.lolaf.staffix.api.FixAcceptor;
+import org.lolaf.staffix.api.FixDictionaryId;
+import org.lolaf.staffix.api.FixEngine;
+import org.lolaf.staffix.api.FixInitiator;
+import org.lolaf.staffix.api.alerting.*;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
@@ -33,8 +30,8 @@ import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.VoidFixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSession;
-import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixApiVersion;
@@ -59,7 +56,8 @@ import java.util.concurrent.locks.LockSupport;
  * <p>
  * Each initiator sends NewOrderSingle in bursts, with pauses that grow from one burst to the next, every few bursts one
  * order above the acceptor's quantity limit, and every few bursts a burst stamped late, as if delayed upstream. The
- * acceptor's application adds four probes to its session on logon and removes them on logout:
+ * acceptor's application adds four probes to its session once, when it is created, which the engine evaluates only while
+ * the session is logged in, clearing their alerts on logout:
  * <ul>
  *     <li>{@code order-flow}, its own evaluator measuring the time since the last order, {@code WARNING} after a
  *     short silence and {@code MAJOR} after a longer one, re-published while it lasts;</li>
@@ -74,7 +72,7 @@ import java.util.concurrent.locks.LockSupport;
  * Their alerts go through the SLF4J alerts publisher every example engine registers, so the log shows each alert
  * raised, changed, reminded and cleared.
  * <p>
- * Read {@link OrderFlowEvaluator} for what a probe evaluates, then {@link OrderReceivingApplication#onLogon} for how
+ * Read {@link OrderFlowEvaluator} for what a probe evaluates, then {@link OrderReceivingApplication#onSessionCreated} for how
  * they are added, the alerting meters through {@code watch}. Every session also carries the engine's built-in {@code session-down} probe, which the same
  * publisher reports.
  * <p>
@@ -165,7 +163,8 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
 
     /**
      * Runs on the engine's evaluation thread, not the session's, which is why the time of the last order is volatile.
-     * One alert per level is built up front, so an evaluation allocates nothing.
+     * One alert per level is built up front, so an evaluation allocates nothing. Reset at logon, or the silence since
+     * the previous session's last order would alert at once.
      */
     private static final class OrderFlowEvaluator implements ProbeEvaluator {
 
@@ -187,6 +186,11 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         }
 
         @Override
+        public void reset() {
+            lastOrderNanos = System.nanoTime();
+        }
+
+        @Override
         public Optional<Alert> evaluate() {
             long silence = System.nanoTime() - lastOrderNanos;
             if (silence >= majorAfterNanos) {
@@ -199,9 +203,6 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         }
     }
 
-    /**
-     * Owns the probes for as long as its session is logged on.
-     */
     @RequiredArgsConstructor
     private static final class OrderReceivingApplication implements FixApplication {
 
@@ -233,11 +234,13 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         }
 
         /**
-         * Fresh evaluators per logon, so nothing measured before a disconnection is carried over. The published meters
-         * are the same across logons, the monitoring returning the existing one for an id.
+         * The probes live as long as the session. They only run while it is logged in, so none reports the silence of
+         * a night or a disconnection, and each is reset at logon, so nothing measured before it is carried over. Added
+         * here rather than in {@code setup}, where the monitoring plugin is not initialized yet.
          */
         @Override
-        public void onLogon(FixSession session, DecodedFixMessage logon) {
+        public void onSessionCreated(FixSession session, FieldsRegistry fieldsRegistry, MessageTypeRegistry messageTypeRegistry,
+                                     List<FixMessageDecoder> decoders) {
             FixSessionsMonitoringContext monitoring = session.getPluginContext(FixSessionsMonitoringContext.class)
                     .orElse(VoidFixSessionsMonitoringContext.getInstance());
             orderFlow = new OrderFlowEvaluator(warningAfter, majorAfter);
@@ -268,31 +271,13 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
                     .label("team", "trading_desk")
                     .runbookUrl(URI.create("https://wiki.example.com/runbooks/large-order"))
                     .build());
-            log.info("Logon acceptor {}, probes {}, {}, {} and {} added", session.getFixSessionId(), ORDER_FLOW_PROBE,
-                    ORDER_RATE_PROBE, ORDER_LATENCY_PROBE, LARGE_ORDER_PROBE);
-        }
-
-        /**
-         * Removing a probe clears its alert, if one is ongoing: a session nobody can send on is not short of orders.
-         */
-        @Override
-        public void onLogout(FixSession session, String message, DecodedFixMessage logoutMessage) {
-            session.getProbes().remove(ORDER_FLOW_PROBE);
-            session.getProbes().remove(ORDER_RATE_PROBE);
-            session.getProbes().remove(ORDER_LATENCY_PROBE);
-            session.getProbes().remove(LARGE_ORDER_PROBE);
-            log.info("Logout acceptor {} : {}, probes removed", session.getFixSessionId(), message);
         }
 
         /**
          * On the session thread: recording and raising are cheap enough for it.
          */
         void onOrder(double quantity, long sinceTransactTimeNanos) {
-            OrderFlowEvaluator currentFlow = orderFlow;
-            if (currentFlow == null) {
-                return;
-            }
-            currentFlow.onOrder();
+            orderFlow.onOrder();
             orderRate.increment();
             orderLatency.record(sinceTransactTimeNanos, TimeUnit.NANOSECONDS);
             if (quantity > quantityLimit) {
@@ -340,6 +325,20 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
         private final int lateBurstEveryBursts;
         private final Duration lateBurstDelay;
         private volatile boolean sending;
+
+        private static void sendOrder(FixSession session, long quantity, Duration stampedBehind) {
+            // a fresh encoder per message: a reusable one belongs to a single thread, and this one is not the
+            // session's I/O thread - see docs/threading-model.md
+            NewOrderSingleEncoder order = session.newEncoder(NewOrderSingleEncoder.class);
+            order.begin()
+                    .setClOrdID(UUID.randomUUID().toString())
+                    .setTransactTime(UTCTime.of(session.getClock().nowEpochNanos() - stampedBehind.toNanos()), TimeUnit.MICROSECONDS)
+                    .setSymbol("XAG/USD")
+                    .setSide(Side.SideValues.BUY)
+                    .setOrdType(OrdType.OrdTypeValues.MARKET)
+                    .setOrderQty(quantity);
+            session.send(order, null);
+        }
 
         @Override
         public FixApiVersion getFixApiVersion() {
@@ -400,20 +399,6 @@ public class AlertingExample extends FixExamplesBase implements Callable<Integer
                     return;
                 }
             }
-        }
-
-        private static void sendOrder(FixSession session, long quantity, Duration stampedBehind) {
-            // a fresh encoder per message: a reusable one belongs to a single thread, and this one is not the
-            // session's I/O thread - see docs/threading-model.md
-            NewOrderSingleEncoder order = session.newEncoder(NewOrderSingleEncoder.class);
-            order.begin()
-                    .setClOrdID(UUID.randomUUID().toString())
-                    .setTransactTime(UTCTime.of(session.getClock().nowEpochNanos() - stampedBehind.toNanos()), TimeUnit.MICROSECONDS)
-                    .setSymbol("XAG/USD")
-                    .setSide(Side.SideValues.BUY)
-                    .setOrdType(OrdType.OrdTypeValues.MARKET)
-                    .setOrderQty(quantity);
-            session.send(order, null);
         }
     }
 }

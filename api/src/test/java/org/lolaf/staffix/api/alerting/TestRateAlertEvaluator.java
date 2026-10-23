@@ -107,6 +107,15 @@ class TestRateAlertEvaluator {
     }
 
     @Test
+    void resetForgetsTheCountedEvents() {
+        record(50);
+
+        evaluator.reset();
+
+        assertThat(evaluator.evaluate()).isEmpty();
+    }
+
+    @Test
     void clearForgetsTheCountedEvents() {
         record(50);
 

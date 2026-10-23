@@ -48,6 +48,18 @@ class TestRaisedAlertEvaluator {
     }
 
     @Test
+    void resetDropsTheRaisedAlertAndAnUnreportedRaise() {
+        evaluator.raise(WARNING);
+        assertThat(evaluator.evaluate()).contains(WARNING);
+        evaluator.raise(MAJOR);
+        evaluator.clear();
+
+        evaluator.reset();
+
+        assertThat(evaluator.evaluate()).isEmpty();
+    }
+
+    @Test
     void theLatestRaiseWinsEvenAtALowerLevel() {
         evaluator.raise(MAJOR);
         evaluator.raise(WARNING);

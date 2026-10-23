@@ -20,6 +20,7 @@ import lombok.Builder;
 import lombok.NonNull;
 import lombok.Singular;
 import lombok.Value;
+import org.lolaf.staffix.api.session.FixSessionStatus;
 
 import java.net.URI;
 import java.time.Duration;
@@ -70,10 +71,20 @@ public class Probe {
      * Where an operator reads what to do about this probe's alerts; {@code null} when there is none.
      */
     URI runbookUrl;
+    /**
+     * Evaluate the probe only while the session is {@link FixSessionStatus#LOGGED_IN}; {@code true} by default, since an
+     * application probe usually watches business traffic, which stops outside a logon. Suspended in every other status,
+     * {@link FixSessionStatus#LOGGED_OUT_INSIDE_SESSION_TIME} included: the built-in {@code session-down} probe alerts
+     * then, and this probe would only report a consequence of it. Suspending clears an ongoing alert, resuming
+     * {@link ProbeEvaluator#reset() resets} the evaluator. Set {@code false} for a probe whose subject outlives the
+     * logon, such as a queue or a disk.
+     */
+    boolean onlyWhileLoggedIn;
 
     @Builder
     private Probe(@NonNull String name, @NonNull String description, @NonNull ProbeEvaluator evaluator,
-                  Duration evaluationInterval, Duration reminderInterval, @Singular Map<String, String> labels, URI runbookUrl) {
+                  Duration evaluationInterval, Duration reminderInterval, @Singular Map<String, String> labels, URI runbookUrl,
+                  Boolean onlyWhileLoggedIn) {
         this.name = name;
         this.description = description;
         this.evaluator = evaluator;
@@ -81,6 +92,7 @@ public class Probe {
         this.reminderInterval = reminderInterval == null ? null : requireAtLeastMinInterval("reminderInterval", reminderInterval);
         this.labels = Collections.unmodifiableMap(new LinkedHashMap<>(requireValidLabels(labels)));
         this.runbookUrl = runbookUrl;
+        this.onlyWhileLoggedIn = onlyWhileLoggedIn == null || onlyWhileLoggedIn;
     }
 
     private static Map<String, String> requireValidLabels(Map<String, String> labels) {

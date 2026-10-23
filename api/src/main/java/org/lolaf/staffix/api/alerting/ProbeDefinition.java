@@ -65,6 +65,11 @@ public class ProbeDefinition {
      */
     @Getter(AccessLevel.NONE)
     URI runbookUrl;
+    /**
+     * See {@link Probe#isOnlyWhileLoggedIn()}; shown so a tool does not read a suspended probe as stale.
+     */
+    @Builder.Default
+    boolean onlyWhileLoggedIn = true;
 
     /**
      * The definition of a probe as it was added; a probe never changes, so neither does its definition.
@@ -77,6 +82,7 @@ public class ProbeDefinition {
                 .reminderInterval(probe.getReminderInterval())
                 .labels(probe.getLabels())
                 .runbookUrl(probe.getRunbookUrl())
+                .onlyWhileLoggedIn(probe.isOnlyWhileLoggedIn())
                 .build();
     }
 

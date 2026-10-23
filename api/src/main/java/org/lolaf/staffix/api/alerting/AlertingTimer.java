@@ -131,6 +131,14 @@ public final class AlertingTimer implements Timer, ProbeEvaluator {
         return evaluator.clear();
     }
 
+    /**
+     * Forgets the recordings counted for alerting; the published timer keeps them.
+     */
+    @Override
+    public void reset() {
+        evaluator.reset();
+    }
+
     private static String formatNanos(long nanos) {
         if (nanos % 1_000_000_000L == 0) {
             return nanos / 1_000_000_000L + "s";
@@ -183,11 +191,16 @@ public final class AlertingTimer implements Timer, ProbeEvaluator {
 
         @Override
         public boolean clear() {
+            reset();
+            return true;
+        }
+
+        @Override
+        public void reset() {
             recordings.clear();
             for (Threshold threshold : highestFirst) {
                 threshold.getSlowRecordings().clear();
             }
-            return true;
         }
     }
 }

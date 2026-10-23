@@ -98,6 +98,14 @@ public final class AlertingGauge implements Gauge, ProbeEvaluator {
         return evaluator.clear();
     }
 
+    /**
+     * Resets a raise or clear delay in progress; the value is current, so there is nothing else to forget.
+     */
+    @Override
+    public void reset() {
+        evaluator.reset();
+    }
+
     private double value() {
         return Double.longBitsToDouble(valueBits.get());
     }

@@ -6,7 +6,7 @@ second, and tells a publisher each time one starts, changes or ends. What you do
 dashboard) is the publisher's job.
 
 The runnable version of this guide is [`examples/alerting`](../examples/alerting): an application that adds its own
-probes on logon (its own evaluator, an alerting counter and timer, and alerts raised from code), with the alerts
+probes once per session (its own evaluator, an alerting counter and timer, and alerts raised from code), with the alerts
 logged through SLF4J.
 
 ---
@@ -33,6 +33,7 @@ Probe probe = Probe.builder()
         .reminderInterval(Duration.ofMinutes(1))     // default none
         .label("team", "fix_ops")                    // default none
         .runbookUrl(URI.create("https://wiki.example.com/runbooks/order-flow"))
+        .onlyWhileLoggedIn(true)                     // default true
         .build();
 
 session.getProbes().add(probe);
@@ -76,7 +77,28 @@ ticks once a second and evaluates a probe on the first tick at or after it is du
 
 **Probes live as long as the session object.** `getProbes()` is usable from any thread, and adding a name already
 present throws `IllegalArgumentException`. A session rebuilt after a settings change starts with none of the probes
-an application added, so add them in `FixApplication.setup` or `onLogon`, not once at startup.
+an application added, so add them in `FixApplication.onSessionCreated`, not once at startup. `setup` is called
+earlier, before the session's plugins are ready, so an alerting meter could not reach its monitoring there.
+
+### Only while the session is logged in
+
+**A probe is evaluated only while its session is logged in**, by default. An application probe usually watches
+business traffic, which stops at logout: without this, a probe on the order flow would alert all night. While the
+session is logged out, whether by an operator, outside its session time or inside it, the probe is suspended:
+
+- **at logout, an ongoing alert is cleared**, published as any other clear;
+- **nothing is evaluated** until the next logon, and an operator has nothing to clear;
+- **at logon, the evaluator's `reset()` is called**, then it is evaluated at once. Override `reset()` to forget what
+  was measured before, such as the time of the previous session's last order, or the probe alerts the moment the
+  session is back. The evaluators and alerting meters of this guide already do.
+
+A logout inside session time suspends the probe too: the built-in `session-down` probe raises the one alert that
+matters then, and a probe on the order flow would only add a consequence of it.
+
+**For a probe whose subject outlives the logon**, such as a disk, a queue still draining, or a connection of your own,
+build it with `.onlyWhileLoggedIn(false)`: it is then evaluated whatever the session's state, as every built-in probe
+is. The admin API shows both: `onlyWhileLoggedIn` on the probe, and `suspended` on its state while it waits for a
+logon, its last evaluation then dating from before the logout.
 
 ### Raising an alert from your own code
 
@@ -183,8 +205,8 @@ session, the probe's name and description, the alert, since when it is ongoing, 
 **A message change at the same level is not published**, otherwise a probe whose message carries a count would
 publish every second. Opt into `reminderInterval` if an ongoing alert must be repeated.
 
-**Removing a probe clears its alert**, at the next tick, and so does replacing it under the same name or removing the
-session from the engine. **Stopping the engine does not**: a shutdown is not the problem going away.
+**Removing a probe clears its alert**, at the next tick, and so does replacing it under the same name, removing the
+session from the engine, or the session logging out for a probe evaluated only while logged in. **Stopping the engine does not**: a shutdown is not the problem going away.
 
 ## Built-in probes
 
@@ -194,6 +216,9 @@ session from the engine. **Stopping the engine does not**: a shutdown is not the
 | `async-store-queue`, `async-logger-queue` | per threshold | the async store's or logger's queue is deeper than a threshold |
 | `async-store-resource`, `async-logger-resource` | `MAJOR` | what the async store or logger writes to is unavailable |
 | `messages-store`, `messages-logger` | `WARNING`, then `MAJOR` | a store or logger call failed, then its resource was found down |
+
+**Every built-in probe is evaluated whether the session is logged in or not**: each watches something a logout does
+not fix, or the logout itself.
 
 `session-down` is on every session. An operator logout or being outside session time never raises it, and the delay
 restarts after each logon. **`sessionDownAlertDelay` defaults to 10 seconds; zero turns the probe off.**

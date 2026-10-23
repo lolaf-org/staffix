@@ -55,6 +55,8 @@ import static org.lolaf.staffix.api.alerting.AlertEvent.Type.CLEARED;
 import static org.lolaf.staffix.api.alerting.AlertEvent.Type.RAISED;
 import static org.lolaf.staffix.api.alerting.AlertEvent.Type.REMINDED;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TestProbesManager {
@@ -73,6 +75,7 @@ class TestProbesManager {
 
     TestProbesManager() {
         when(session.getFixSessionId()).thenReturn(SESSION_ID);
+        when(session.isLoggedIn()).thenReturn(true);
         listeners.add(new RecordingListener(listened));
         manager.register(session, probes, new TestingFixAlertsPublisher(publisherSettings));
     }
@@ -317,6 +320,7 @@ class TestProbesManager {
     void aFailingPublisherDoesNotStopTheEvaluation() {
         FixSession other = mock(FixSession.class);
         when(other.getFixSessionId()).thenReturn(SESSION_ID);
+        when(other.isLoggedIn()).thenReturn(true);
         FixSessionProbesImpl otherProbes = new FixSessionProbesImpl();
         manager.register(other, otherProbes, new FailingPublisher());
         otherProbes.add(probe("failing", () -> Optional.of(Alert.warning("x"))));
@@ -367,6 +371,83 @@ class TestProbesManager {
         assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED);
     }
 
+    @Test
+    void aProbeOnlyRunWhileLoggedInIsClearedOnLogoutAndNotEvaluatedUntilLogon() {
+        CountingEvaluator evaluator = new CountingEvaluator(result::get);
+        probes.add(probe("orders", evaluator));
+        result.set(Optional.of(Alert.warning("no order")));
+        manager.tick();
+        listened.clear();
+
+        when(session.isLoggedIn()).thenReturn(false);
+        tick(3);
+
+        assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED, CLEARED);
+        assertThat(listened).containsExactly("transition orders orders normal");
+        assertThat(manager.getProbeStates(session)).singleElement().satisfies(state -> {
+            assertThat(state.isSuspended()).isTrue();
+            assertThat(state.getAlert()).isEmpty();
+        });
+        assertThat(evaluator.evaluations).isEqualTo(1);
+        assertThat(manager.getActiveAlerts()).isEmpty();
+        assertThat(manager.clearAlert(session, "orders")).isFalse();
+    }
+
+    @Test
+    void onLogonTheEvaluatorIsResetAndEvaluatedAtOnceWhateverItsInterval() {
+        CountingEvaluator evaluator = new CountingEvaluator(result::get);
+        probes.add(Probe.builder().name("orders").description("d").evaluator(evaluator)
+                .evaluationInterval(Duration.ofSeconds(10)).build());
+        manager.tick();
+        when(session.isLoggedIn()).thenReturn(false);
+        manager.tick();
+        result.set(Optional.of(Alert.warning("no order")));
+
+        when(session.isLoggedIn()).thenReturn(true);
+        manager.tick();
+
+        assertThat(evaluator.resets).isEqualTo(1);
+        assertThat(manager.getProbeStates(session)).singleElement()
+                .satisfies(state -> assertThat(state.isSuspended()).isFalse());
+        assertThat(evaluator.evaluations).isEqualTo(2);
+        assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED);
+    }
+
+    @Test
+    void aProbeAddedWhileLoggedOutWaitsForTheLogon() {
+        when(session.isLoggedIn()).thenReturn(false);
+        CountingEvaluator evaluator = new CountingEvaluator(result::get);
+        probes.add(probe("orders", evaluator));
+        tick(2);
+
+        assertThat(evaluator.evaluations).isZero();
+        assertThat(manager.getProbeStates(session)).isEmpty();
+        when(session.isLoggedIn()).thenReturn(true);
+        manager.tick();
+        assertThat(evaluator.evaluations).isEqualTo(1);
+    }
+
+    @Test
+    void aProbeRunWhetherLoggedInOrNotKeepsItsAlertOnLogout() {
+        result.set(Optional.of(Alert.critical("disk full")));
+        probes.add(Probe.builder().name("disk").description("d").evaluator(result::get).onlyWhileLoggedIn(false).build());
+        manager.tick();
+
+        when(session.isLoggedIn()).thenReturn(false);
+        tick(2);
+
+        assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED);
+        assertThat(manager.getActiveAlerts()).hasSize(1);
+    }
+
+    @Test
+    void aSessionWithoutAProbeOnlyRunWhileLoggedInNeverHasItsLogonRead() {
+        probes.add(Probe.builder().name("disk").description("d").evaluator(result::get).onlyWhileLoggedIn(false).build());
+        tick(2);
+
+        verify(session, never()).isLoggedIn();
+    }
+
     private void tick(int times) {
         for (int i = 0; i < times; i++) {
             manager.tick();
@@ -375,6 +456,28 @@ class TestProbesManager {
 
     private static Probe probe(String name, ProbeEvaluator evaluator) {
         return Probe.builder().name(name).description(name + " description").evaluator(evaluator).build();
+    }
+
+    private static final class CountingEvaluator implements ProbeEvaluator {
+
+        private final ProbeEvaluator delegate;
+        private int evaluations;
+        private int resets;
+
+        CountingEvaluator(ProbeEvaluator delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public Optional<Alert> evaluate() {
+            evaluations++;
+            return delegate.evaluate();
+        }
+
+        @Override
+        public void reset() {
+            resets++;
+        }
     }
 
     /**

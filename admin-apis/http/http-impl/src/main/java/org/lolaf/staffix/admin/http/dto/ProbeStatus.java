@@ -31,6 +31,7 @@ public class ProbeStatus {
     String message;
     String since;
     String lastEvaluation;
+    boolean suspended;
 
     public static ProbeStatus of(ProbeState state) {
         Alert alert = state.getAlert().orElse(null);
@@ -38,6 +39,7 @@ public class ProbeStatus {
                 alert == null ? null : alert.getLevel(),
                 alert == null ? null : alert.getMessage(),
                 state.getSince().map(Object::toString).orElse(null),
-                state.getLastEvaluation().toString());
+                state.getLastEvaluation().toString(),
+                state.isSuspended());
     }
 }

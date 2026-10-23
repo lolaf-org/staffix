@@ -73,6 +73,16 @@ public final class RaisedAlertEvaluator implements ProbeEvaluator {
         return true;
     }
 
+    /**
+     * Drops the raised alert and a raise not reported yet.
+     */
+    @Override
+    public void reset() {
+        raised = null;
+        unreported.set(null);
+        lastResult = Optional.empty();
+    }
+
     @Override
     public Optional<Alert> evaluate() {
         Alert sinceLastEvaluation = unreported.getAndSet(null);

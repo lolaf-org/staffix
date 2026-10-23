@@ -31,7 +31,8 @@ import java.util.List;
 
 /**
  * The probes of one session as the probes thread sees them. The evaluations are rebuilt only when the session's probe
- * array is replaced, so a tick where nothing was added or removed allocates nothing.
+ * array is replaced, so a tick where nothing was added or removed allocates nothing. A probe run only while logged in
+ * is suspended and resumed as the session logs out and in; a session without one never has its logon read.
  */
 @Slf4j
 final class SessionProbesEvaluation {
@@ -46,6 +47,7 @@ final class SessionProbesEvaluation {
     private final FixAlertsPublisher publisher;
     private final ProbesListener listener;
     private Probe[] evaluatedProbes = NO_PROBES;
+    private boolean anyOnlyWhileLoggedIn;
     private volatile ProbeEvaluation[] evaluations = NO_EVALUATIONS;
 
     SessionProbesEvaluation(String engineId, FixSession fixSession, FixSessionProbesImpl probes,
@@ -72,8 +74,24 @@ final class SessionProbesEvaluation {
             reconcile(current, tick, nowMillis);
         }
         ProbeEvaluation[] local = evaluations;
+        if (anyOnlyWhileLoggedIn) {
+            followLogon(local, fixSession.isLoggedIn(), tick, nowMillis);
+        }
         for (ProbeEvaluation probeEvaluation : local) {
             publish(probeEvaluation, probeEvaluation.evaluateIfDue(tick, nowMillis));
+        }
+    }
+
+    private void followLogon(ProbeEvaluation[] local, boolean loggedIn, long tick, long nowMillis) {
+        for (ProbeEvaluation probeEvaluation : local) {
+            if (!probeEvaluation.getProbe().isOnlyWhileLoggedIn()) {
+                continue;
+            }
+            if (loggedIn && probeEvaluation.isSuspended()) {
+                probeEvaluation.resume(tick);
+            } else if (!loggedIn && !probeEvaluation.isSuspended()) {
+                publish(probeEvaluation, probeEvaluation.suspend(nowMillis));
+            }
         }
     }
 
@@ -157,6 +175,10 @@ final class SessionProbesEvaluation {
         }
         evaluatedProbes = current;
         evaluations = updated;
+        anyOnlyWhileLoggedIn = false;
+        for (Probe probe : current) {
+            anyOnlyWhileLoggedIn |= probe.isOnlyWhileLoggedIn();
+        }
     }
 
     private void publish(ProbeEvaluation probeEvaluation, AlertEvent event) {

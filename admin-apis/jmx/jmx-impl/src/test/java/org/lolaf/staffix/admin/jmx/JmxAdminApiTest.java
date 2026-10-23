@@ -184,6 +184,7 @@ class JmxAdminApiTest {
         adminApi.probeStates.add(ProbeState.builder().probeName("order-flow").alert(Alert.warning("no order for 4s"))
                 .since(SINCE).lastEvaluation(SINCE.plusSeconds(2)).build());
         adminApi.probeStates.add(ProbeState.builder().probeName("session-down").lastEvaluation(SINCE).build());
+        adminApi.probeStates.add(ProbeState.builder().probeName("rejects").lastEvaluation(SINCE).suspended(true).build());
         exporter.export(adminApi);
         adminApi.lifecycleListener.onSessionRegistered(session(INITIATOR_SESSION, true));
 
@@ -196,13 +197,16 @@ class JmxAdminApiTest {
             assertThat(probe.getReminderInterval()).isNull();
             assertThat(probe.getLabels()).containsExactly(Map.entry("team", "fix_ops"));
             assertThat(probe.getRunbookUrl()).isEqualTo("https://wiki.example.com/order-flow");
+            assertThat(probe.isOnlyWhileLoggedIn()).isTrue();
         });
         assertThat(proxy.getProbeStates()).extracting(FixSessionMXBean.ProbeStatus::getProbe,
                         FixSessionMXBean.ProbeStatus::getLevel, FixSessionMXBean.ProbeStatus::getMessage,
-                        FixSessionMXBean.ProbeStatus::getSince, FixSessionMXBean.ProbeStatus::getLastEvaluation)
+                        FixSessionMXBean.ProbeStatus::getSince, FixSessionMXBean.ProbeStatus::getLastEvaluation,
+                        FixSessionMXBean.ProbeStatus::isSuspended)
                 .containsExactly(
-                        tuple("order-flow", "WARNING", "no order for 4s", "2026-10-10T10:00:00Z", "2026-10-10T10:00:02Z"),
-                        tuple("session-down", null, null, null, "2026-10-10T10:00:00Z"));
+                        tuple("order-flow", "WARNING", "no order for 4s", "2026-10-10T10:00:00Z", "2026-10-10T10:00:02Z", false),
+                        tuple("session-down", null, null, null, "2026-10-10T10:00:00Z", false),
+                        tuple("rejects", null, null, null, "2026-10-10T10:00:00Z", true));
     }
 
     @Test

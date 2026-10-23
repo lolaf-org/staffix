@@ -57,6 +57,7 @@ public final class SessionDownEvaluator implements ProbeEvaluator {
                 .name(PROBE_NAME)
                 .description("The session is logged out while its schedule says it should be logged in")
                 .evaluator(delayed(fixSession, delay, System::nanoTime))
+                .onlyWhileLoggedIn(false)
                 .build());
     }
 

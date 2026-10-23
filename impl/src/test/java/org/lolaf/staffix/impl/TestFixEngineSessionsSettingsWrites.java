@@ -312,7 +312,7 @@ class TestFixEngineSessionsSettingsWrites {
                 .findFirst().orElseThrow();
 
         session.getProbes().add(Probe.builder().name("queue").description("Orders waiting")
-                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).build());
+                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).onlyWhileLoggedIn(false).build());
         await().atMost(Duration.ofSeconds(5)).until(() -> !alertsPublisher.getEvents().isEmpty());
         adminApi.removeFixSessionSettings(alpha.getFixSessionId(), FixSession.FixSessionType.ACCEPTOR);
 
@@ -347,7 +347,7 @@ class TestFixEngineSessionsSettingsWrites {
                 .findFirst().orElseThrow();
 
         session.getProbes().add(Probe.builder().name("queue").description("Orders waiting")
-                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).build());
+                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).onlyWhileLoggedIn(false).build());
 
         assertThat(adminApi.getProbeDefinitions(alpha.getFixSessionId())).extracting(ProbeDefinition::getName)
                 .containsExactlyElementsOf(added).contains(SessionDownEvaluator.PROBE_NAME, "queue");

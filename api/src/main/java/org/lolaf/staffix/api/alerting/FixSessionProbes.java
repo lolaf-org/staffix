@@ -20,7 +20,9 @@ import java.util.List;
 /**
  * The probes of one session, added and removed at runtime from any thread. They live as long as the session: a
  * session rebuilt after a settings change starts with none, which is why an application adds its probes in
- * {@link org.lolaf.staffix.api.application.FixApplication#setup}.
+ * {@link org.lolaf.staffix.api.application.FixApplication#onSessionCreated}, the first callback where an alerting meter
+ * can read the session's monitoring. A probe need not be removed on logout: unless
+ * {@link Probe#isOnlyWhileLoggedIn()} says otherwise, it is suspended until the next logon.
  */
 public interface FixSessionProbes {
 
@@ -32,9 +34,9 @@ public interface FixSessionProbes {
     void add(Probe probe);
 
     /**
-     * Adds a probe evaluated by {@code evaluator}, with the defaults of {@link Probe}, and returns the evaluator, so an
-     * alerting meter such as {@link AlertingTimer} is kept with its own type. Use {@link #add(Probe)} for labels, a
-     * runbook or other intervals.
+     * Adds a probe evaluated by {@code evaluator}, with the defaults of {@link Probe}, so only while logged in, and
+     * returns the evaluator, so an alerting meter such as {@link AlertingTimer} is kept with its own type. Use
+     * {@link #add(Probe)} for labels, a runbook, other intervals or a probe that runs while logged out.
      *
      * @throws IllegalArgumentException if the session already has a probe of that name
      */

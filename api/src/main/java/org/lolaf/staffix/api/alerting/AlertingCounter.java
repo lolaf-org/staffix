@@ -83,4 +83,12 @@ public final class AlertingCounter implements Counter, ProbeEvaluator {
     public boolean clear() {
         return evaluator.clear();
     }
+
+    /**
+     * Forgets the increments counted for alerting; the published counter keeps its total.
+     */
+    @Override
+    public void reset() {
+        evaluator.reset();
+    }
 }

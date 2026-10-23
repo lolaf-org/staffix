@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -36,6 +37,20 @@ class TestClearDelayEvaluator {
 
     private void advance(int seconds) {
         nanos.addAndGet(Duration.ofSeconds(seconds).toNanos());
+    }
+
+    private ProbeEvaluator countingResets(AtomicInteger resets) {
+        return new ProbeEvaluator() {
+            @Override
+            public Optional<Alert> evaluate() {
+                return condition.get();
+            }
+
+            @Override
+            public void reset() {
+                resets.incrementAndGet();
+            }
+        };
     }
 
     @Test
@@ -65,6 +80,21 @@ class TestClearDelayEvaluator {
         evaluator.evaluate();
         advance(9);
         assertThat(evaluator.evaluate()).isEqualTo(WARNING);
+    }
+
+    @Test
+    void resetEndsAHoldAndResetsTheWrappedEvaluator() {
+        AtomicInteger resets = new AtomicInteger();
+        ClearDelayEvaluator evaluator = new ClearDelayEvaluator(countingResets(resets), Duration.ofSeconds(10), nanos::get);
+        condition.set(WARNING);
+        evaluator.evaluate();
+        condition.set(Optional.empty());
+        assertThat(evaluator.evaluate()).isEqualTo(WARNING);
+
+        evaluator.reset();
+
+        assertThat(resets).hasValue(1);
+        assertThat(evaluator.evaluate()).isEmpty();
     }
 
     @Test

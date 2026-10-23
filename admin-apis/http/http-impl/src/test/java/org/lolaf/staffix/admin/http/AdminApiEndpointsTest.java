@@ -180,14 +180,15 @@ class AdminApiEndpointsTest {
         when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(ProbeDefinition.builder()
                 .name("order-flow").description("Time since the last order")
                 .evaluationInterval(Duration.ofSeconds(1)).reminderInterval(Duration.ofMinutes(1))
-                .label("team", "fix_ops").runbookUrl(URI.create("https://wiki.example.com/order-flow")).build()));
+                .label("team", "fix_ops").runbookUrl(URI.create("https://wiki.example.com/order-flow"))
+                .onlyWhileLoggedIn(false).build()));
 
         HttpResponse<String> probes = call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null);
 
         assertThat(probes.statusCode()).isEqualTo(200);
         assertThat(probes.body()).isEqualTo("[{\"name\":\"order-flow\",\"description\":\"Time since the last order\","
                 + "\"evaluationInterval\":\"PT1S\",\"reminderInterval\":\"PT1M\",\"labels\":{\"team\":\"fix_ops\"},"
-                + "\"runbookUrl\":\"https://wiki.example.com/order-flow\"}]");
+                + "\"runbookUrl\":\"https://wiki.example.com/order-flow\",\"onlyWhileLoggedIn\":false}]");
         String etag = probes.headers().firstValue("ETag").orElseThrow();
         assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"probesVersion\":" + etag);
         HttpResponse<String> unchanged = client.send(HttpRequest.newBuilder(
@@ -214,6 +215,15 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void aSuspendedProbeIsServedAsSuspended() throws Exception {
+        when(adminApi.getProbeStates(TRADING)).thenReturn(List.of(ProbeState.builder().probeName("orders")
+                .lastEvaluation(Instant.parse("2026-10-10T10:00:05Z")).suspended(true).build()));
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
+                .isEqualTo("[{\"probe\":\"orders\",\"lastEvaluation\":\"2026-10-10T10:00:05Z\",\"suspended\":true}]");
+    }
+
+    @Test
     void probeStatesAndAlertsNameTheSessionAfterItsMainConfig() throws Exception {
         running(adminApi, TRADING_DRP);
         ProbeState alerting = ProbeState.builder().probeName("session-down").alert(Alert.critical("down"))
@@ -224,7 +234,7 @@ class AdminApiEndpointsTest {
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
                 .isEqualTo("[{\"probe\":\"session-down\",\"level\":\"CRITICAL\",\"message\":\"down\","
-                        + "\"since\":\"2026-10-10T10:00:00Z\",\"lastEvaluation\":\"2026-10-10T10:00:05Z\"}]");
+                        + "\"since\":\"2026-10-10T10:00:00Z\",\"lastEvaluation\":\"2026-10-10T10:00:05Z\",\"suspended\":false}]");
         assertThat(call("GET", "/engines/alpha-engine/v1/alerts", null).body())
                 .startsWith("{\"engineId\":\"alpha-engine\",\"alertsVersion\":")
                 .endsWith("\"alerts\":[{\"group\":\"alpha\",\"name\":\"trading\",\"selectedConfig\":\"trading-drp\","

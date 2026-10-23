@@ -117,4 +117,20 @@ class TestAlertingCounter {
         assertThat(counter.evaluate()).isEmpty();
         assertThat(published).hasValue(50);
     }
+
+    @Test
+    void resetForgetsTheCountedIncrementsAndRestartsTheRaiseDelayButKeepsThePublishedTotal() {
+        AlertingCounter counter = counter(Duration.ofSeconds(10), null);
+        counter.increment(5);
+        counter.evaluate();
+        advance(Duration.ofSeconds(10));
+        assertThat(counter.evaluate()).isPresent();
+
+        counter.reset();
+
+        assertThat(counter.evaluate()).isEmpty();
+        counter.increment(5);
+        assertThat(counter.evaluate()).isEmpty();
+        assertThat(published).hasValue(10);
+    }
 }

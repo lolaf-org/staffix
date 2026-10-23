@@ -53,6 +53,8 @@ final class ProbeEvaluation {
     private volatile Alert alert;
     private volatile long lastEvaluationMillis = NOT_EVALUATED;
     private volatile boolean manualClearAccepted;
+    @Getter
+    private volatile boolean suspended;
 
     ProbeEvaluation(String engineId, FixSessionId fixSessionId, Probe probe, long firstTick) {
         this.engineId = engineId;
@@ -72,6 +74,9 @@ final class ProbeEvaluation {
      * Returns the event to publish, or null when the evaluation changed nothing worth publishing.
      */
     AlertEvent evaluateIfDue(long tick, long nowMillis) {
+        if (suspended) {
+            return null;
+        }
         boolean manualClear = manualClearAccepted;
         if (tick < nextEvaluationTick && !manualClear) {
             return null;
@@ -115,6 +120,29 @@ final class ProbeEvaluation {
     }
 
     /**
+     * Returns the cleared event of an ongoing alert, or null without one; nothing is evaluated until {@link #resume}.
+     */
+    AlertEvent suspend(long nowMillis) {
+        suspended = true;
+        return clear(nowMillis);
+    }
+
+    /**
+     * Resets the evaluator, so it does not alert on what it measured before the suspension, and makes the probe due at
+     * once.
+     */
+    void resume(long tick) {
+        try {
+            probe.getEvaluator().reset();
+        } catch (Exception e) {
+            log.warn("Probe {} of session {} failed to reset", probe.getName(), fixSessionId, e);
+        }
+        manualClearAccepted = false;
+        nextEvaluationTick = tick;
+        suspended = false;
+    }
+
+    /**
      * Called from any thread; an accepted clear makes the probe due at the next tick, whatever its interval.
      */
     boolean requestClear() {
@@ -148,6 +176,7 @@ final class ProbeEvaluation {
                 .since(current == null ? null : since)
                 .lastEvaluation(Instant.ofEpochMilli(lastEvaluation))
                 .clearedManually(clearedManually)
+                .suspended(suspended)
                 .build();
     }
 

@@ -39,6 +39,17 @@ class TestProbe {
     }
 
     @Test
+    void isOnlyEvaluatedWhileLoggedInByDefault() {
+        Probe probe = Probe.builder().name("p").description("d").evaluator(HEALTHY).build();
+        Probe alwaysOn = Probe.builder().name("p").description("d").evaluator(HEALTHY).onlyWhileLoggedIn(false).build();
+
+        assertThat(probe.isOnlyWhileLoggedIn()).isTrue();
+        assertThat(ProbeDefinition.of(probe).isOnlyWhileLoggedIn()).isTrue();
+        assertThat(alwaysOn.isOnlyWhileLoggedIn()).isFalse();
+        assertThat(ProbeDefinition.of(alwaysOn).isOnlyWhileLoggedIn()).isFalse();
+    }
+
+    @Test
     void keepsGivenIntervals() {
         Probe probe = Probe.builder().name("p").description("d").evaluator(HEALTHY)
                 .evaluationInterval(Duration.ofSeconds(10))

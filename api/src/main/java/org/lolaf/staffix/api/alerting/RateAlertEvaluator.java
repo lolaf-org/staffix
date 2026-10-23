@@ -101,7 +101,12 @@ public final class RateAlertEvaluator implements ProbeEvaluator {
      */
     @Override
     public boolean clear() {
-        events.clear();
+        reset();
         return true;
+    }
+
+    @Override
+    public void reset() {
+        events.clear();
     }
 }

@@ -82,6 +82,12 @@ class TestSessionDownEvaluator {
                 .hasValueSatisfying(probe -> assertThat(probe.getName()).isEqualTo(SessionDownEvaluator.PROBE_NAME));
     }
 
+    @Test
+    void isEvaluatedWhileLoggedOut() {
+        assertThat(SessionDownEvaluator.probe(session, Duration.ofSeconds(10)))
+                .hasValueSatisfying(probe -> assertThat(probe.isOnlyWhileLoggedIn()).isFalse());
+    }
+
     private void advance(Duration duration) {
         nanoTime.addAndGet(duration.toNanos());
     }

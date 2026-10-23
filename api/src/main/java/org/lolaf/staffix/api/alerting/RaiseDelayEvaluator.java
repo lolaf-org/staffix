@@ -73,4 +73,11 @@ public final class RaiseDelayEvaluator implements ProbeEvaluator {
     public boolean clear() {
         return delegate.clear();
     }
+
+    @Override
+    public void reset() {
+        pendingSinceNanos = NOT_PENDING;
+        raised = false;
+        delegate.reset();
+    }
 }
