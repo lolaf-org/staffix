@@ -94,7 +94,8 @@ public interface FixSessionMXBean {
     }
 
     /**
-     * Level, message and since are absent while the probe is normal; times are ISO-8601 instants.
+     * Level, message and since are absent while the probe is normal, the last evaluation for a probe suspended before
+     * its first; times are ISO-8601 instants.
      */
     interface ProbeStatus {
 

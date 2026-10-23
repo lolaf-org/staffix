@@ -158,7 +158,7 @@ final class ProbeEvaluation {
     }
 
     /**
-     * Null until the first evaluation.
+     * Null until the first evaluation, unless the probe is suspended before it.
      */
     ProbeState state() {
         return state(false);
@@ -166,7 +166,8 @@ final class ProbeEvaluation {
 
     ProbeState state(boolean clearedManually) {
         long lastEvaluation = lastEvaluationMillis;
-        if (lastEvaluation == NOT_EVALUATED) {
+        boolean suspendedNow = suspended;
+        if (lastEvaluation == NOT_EVALUATED && !suspendedNow) {
             return null;
         }
         Alert current = alert;
@@ -174,9 +175,9 @@ final class ProbeEvaluation {
                 .probeName(probe.getName())
                 .alert(current)
                 .since(current == null ? null : since)
-                .lastEvaluation(Instant.ofEpochMilli(lastEvaluation))
+                .lastEvaluation(lastEvaluation == NOT_EVALUATED ? null : Instant.ofEpochMilli(lastEvaluation))
                 .clearedManually(clearedManually)
-                .suspended(suspended)
+                .suspended(suspendedNow)
                 .build();
     }
 

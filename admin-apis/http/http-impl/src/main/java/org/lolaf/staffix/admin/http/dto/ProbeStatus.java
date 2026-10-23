@@ -21,8 +21,8 @@ import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.ProbeState;
 
 /**
- * Where a probe stood at its last evaluation; level, message and since are absent while it is normal. Times are
- * ISO-8601 instants.
+ * Where a probe stood at its last evaluation; level, message and since are absent while it is normal, the last
+ * evaluation for a probe suspended before its first. Times are ISO-8601 instants.
  */
 @Value
 public class ProbeStatus {
@@ -39,7 +39,7 @@ public class ProbeStatus {
                 alert == null ? null : alert.getLevel(),
                 alert == null ? null : alert.getMessage(),
                 state.getSince().map(Object::toString).orElse(null),
-                state.getLastEvaluation().toString(),
+                state.getLastEvaluation().map(Object::toString).orElse(null),
                 state.isSuspended());
     }
 }

@@ -37,7 +37,7 @@ public class ProbeState {
     Alert alert;
     @Getter(AccessLevel.NONE)
     Instant since;
-    @NonNull
+    @Getter(AccessLevel.NONE)
     Instant lastEvaluation;
     /**
      * Whether an operator cleared it from the admin; only ever true on the clear's
@@ -62,5 +62,12 @@ public class ProbeState {
      */
     public Optional<Instant> getSince() {
         return Optional.ofNullable(since);
+    }
+
+    /**
+     * Empty for a probe {@link #isSuspended() suspended} before its first evaluation.
+     */
+    public Optional<Instant> getLastEvaluation() {
+        return Optional.ofNullable(lastEvaluation);
     }
 }

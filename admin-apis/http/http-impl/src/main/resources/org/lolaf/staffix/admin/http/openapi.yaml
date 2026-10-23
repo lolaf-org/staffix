@@ -874,7 +874,7 @@ components:
           description: Evaluated only while the session is LOGGED_IN, suspended in every other status.
     ProbeStatus:
       type: object
-      required: [probe, lastEvaluation, suspended]
+      required: [probe, suspended]
       properties:
         probe:
           type: string
@@ -890,6 +890,7 @@ components:
         lastEvaluation:
           type: string
           format: date-time
+          description: Absent for a probe suspended before its first evaluation.
         suspended:
           type: boolean
           description: Not evaluated while the session is not logged in; the probe is then normal and lastEvaluation predates the logout.

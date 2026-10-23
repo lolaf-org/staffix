@@ -105,7 +105,7 @@ final class SessionProbesEvaluation {
     }
 
     /**
-     * Readable from any thread; a probe appears once it has been evaluated.
+     * Readable from any thread; a probe appears once it has been evaluated or suspended.
      */
     List<ProbeState> getStates() {
         ProbeEvaluation[] local = evaluations;

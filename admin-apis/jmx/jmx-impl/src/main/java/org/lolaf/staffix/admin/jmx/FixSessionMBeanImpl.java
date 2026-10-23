@@ -125,7 +125,7 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
                 alert == null ? null : alert.getLevel().name(),
                 alert == null ? null : alert.getMessage(),
                 state.getSince().map(Object::toString).orElse(null),
-                state.getLastEvaluation().toString(),
+                state.getLastEvaluation().map(Object::toString).orElse(null),
                 state.isSuspended());
     }
 

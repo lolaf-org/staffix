@@ -40,6 +40,9 @@ could mean.
   night, or the moment the session is back. An application that removed its probes on logout and added them again
   on logon can add them once. For a probe that must keep running while logged out, such as one watching a disk or a
   queue, build it with `onlyWhileLoggedIn(false)`. The built-in probes are unchanged.
+- **`ProbeState.getLastEvaluation()` returns an `Optional<Instant>`**, empty for a probe whose session logged out
+  before it was ever evaluated: such a probe now shows as suspended in the admin API instead of not at all. In the
+  HTTP and JMX admin APIs, `lastEvaluation` is absent in that case.
 - **The file messages logger's line prefixes belong to the plain line format**: `logInPrefix`, `logOutPrefix` and
   `logEventPrefix` moved from `FileMessagesLoggerSettings` to `PlainFileLogLineFormat`, and their Spring Boot
   properties under `plain.`, for example `staffix.messages-loggers-file.instances.<id>.plain.log-in-prefix`.

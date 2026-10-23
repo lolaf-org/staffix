@@ -249,7 +249,7 @@ class TestProbesManager {
         assertThat(manager.getProbeStates(session)).singleElement().satisfies(state -> {
             assertThat(state.getAlert()).contains(Alert.warning("150 queued"));
             assertThat(state.getSince()).contains(NOW);
-            assertThat(state.getLastEvaluation()).isEqualTo(NOW);
+            assertThat(state.getLastEvaluation()).contains(NOW);
         });
     }
 
@@ -414,17 +414,22 @@ class TestProbesManager {
     }
 
     @Test
-    void aProbeAddedWhileLoggedOutWaitsForTheLogon() {
+    void aProbeAddedWhileLoggedOutIsSuspendedWithoutAnEvaluationUntilTheLogon() {
         when(session.isLoggedIn()).thenReturn(false);
         CountingEvaluator evaluator = new CountingEvaluator(result::get);
         probes.add(probe("orders", evaluator));
         tick(2);
 
         assertThat(evaluator.evaluations).isZero();
-        assertThat(manager.getProbeStates(session)).isEmpty();
+        assertThat(manager.getProbeStates(session)).singleElement().satisfies(state -> {
+            assertThat(state.isSuspended()).isTrue();
+            assertThat(state.getLastEvaluation()).isEmpty();
+        });
         when(session.isLoggedIn()).thenReturn(true);
         manager.tick();
         assertThat(evaluator.evaluations).isEqualTo(1);
+        assertThat(manager.getProbeStates(session)).singleElement()
+                .satisfies(state -> assertThat(state.getLastEvaluation()).contains(NOW));
     }
 
     @Test

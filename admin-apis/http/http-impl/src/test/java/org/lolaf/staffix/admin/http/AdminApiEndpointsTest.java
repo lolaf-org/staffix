@@ -224,6 +224,14 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void aProbeSuspendedBeforeItsFirstEvaluationHasNoLastEvaluation() throws Exception {
+        when(adminApi.getProbeStates(TRADING)).thenReturn(List.of(ProbeState.builder().probeName("orders").suspended(true).build()));
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
+                .isEqualTo("[{\"probe\":\"orders\",\"suspended\":true}]");
+    }
+
+    @Test
     void probeStatesAndAlertsNameTheSessionAfterItsMainConfig() throws Exception {
         running(adminApi, TRADING_DRP);
         ProbeState alerting = ProbeState.builder().probeName("session-down").alert(Alert.critical("down"))
