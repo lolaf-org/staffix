@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   snapshot:
-    uses: lolaf-org/workflows/.github/workflows/maven-snapshot.yml@v1.1.0
+    uses: lolaf-org/workflows/.github/workflows/maven-snapshot.yml@v1.1.1
     with:
       skip-tests: ${{ inputs.skipTests }}
       # the reference projects' profile turns on in CI; the release turns it off the same way
