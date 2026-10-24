@@ -322,42 +322,42 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     public void logonSession(FixSessionId fixSessionId) {
-        findControl(fixSessionId).logonSession(fixSessionId);
+        runningControl(fixSessionId, "log on").logonSession(fixSessionId);
     }
 
     @Override
     public void logoutSession(FixSessionId fixSessionId) {
-        findControl(fixSessionId).logoutSession(fixSessionId);
+        runningControl(fixSessionId, "log out").logoutSession(fixSessionId);
     }
 
     @Override
     public void resetSession(FixSessionId fixSessionId, AdminApi.ResetFixSessionMode resetFixSessionMode) {
-        findControl(fixSessionId).resetSession(fixSessionId, resetFixSessionMode);
+        runningControl(fixSessionId, "reset").resetSession(fixSessionId, resetFixSessionMode);
     }
 
     @Override
     public void setIncomingSeqNum(FixSessionId fixSessionId, long incomingSeqNum) {
-        findControl(fixSessionId).setIncomingSeqNum(fixSessionId, incomingSeqNum);
+        runningControl(fixSessionId, "set the incoming sequence number of").setIncomingSeqNum(fixSessionId, incomingSeqNum);
     }
 
     @Override
     public void setOutgoingSeqNum(FixSessionId fixSessionId, long outgoingSeqNum) {
-        findControl(fixSessionId).setOutgoingSeqNum(fixSessionId, outgoingSeqNum);
+        runningControl(fixSessionId, "set the outgoing sequence number of").setOutgoingSeqNum(fixSessionId, outgoingSeqNum);
     }
 
     @Override
     public void sendFixMessage(FixSessionId fixSessionId, String fixMessage, char separator, boolean possDupFlag) {
-        findControl(fixSessionId).sendFixMessage(fixSessionId, fixMessage, separator, possDupFlag);
+        runningControl(fixSessionId, "send a message on").sendFixMessage(fixSessionId, fixMessage, separator, possDupFlag);
     }
 
     @Override
     public long getIncomingSeqNum(FixSessionId fixSessionId) {
-        return findControl(fixSessionId).getIncomingSeqNum(fixSessionId);
+        return runningControl(fixSessionId, "read the incoming sequence number of").getIncomingSeqNum(fixSessionId);
     }
 
     @Override
     public long getOutgoingSeqNum(FixSessionId fixSessionId) {
-        return findControl(fixSessionId).getOutgoingSeqNum(fixSessionId);
+        return runningControl(fixSessionId, "read the outgoing sequence number of").getOutgoingSeqNum(fixSessionId);
     }
 
     @Override
@@ -511,6 +511,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         if (targeting.isEmpty()) {
             throw new IllegalArgumentException("No initiator has FIX session " + fixSessionId + " as a target");
         }
+        requireActive(fixSessionId, "switch to");
         targeting.forEach(initiator -> initiator.switchTo(fixSessionId));
     }
 
@@ -661,6 +662,23 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         List<FixSessionAdminControl> controls = new ArrayList<>(initiators.values());
         controls.addAll(acceptors.values());
         sessionAdminControls = controls.toArray(FixSessionAdminControl[]::new);
+    }
+
+    /**
+     * The control of a session this engine runs: a standby runs none, and acting on a session there would act on the
+     * leader's in the store the replica writes, or bring it up on two nodes at once.
+     */
+    private FixSessionAdminControl runningControl(FixSessionId fixSessionId, String action) {
+        FixSessionAdminControl control = findControl(fixSessionId);
+        requireActive(fixSessionId, action);
+        return control;
+    }
+
+    private void requireActive(FixSessionId fixSessionId, String action) {
+        if (!active) {
+            throw new IllegalStateException("Engine " + getInstanceId() + " is a standby and does not run FIX session "
+                    + fixSessionId + ": " + action + " it on the engine that leads");
+        }
     }
 
     private FixSessionAdminControl findControl(FixSessionId fixSessionId) {

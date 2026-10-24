@@ -19,10 +19,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.Delegate;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
@@ -36,6 +38,8 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -134,6 +138,44 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         fixInitiatorSession.logon();
 
         await().untilAsserted(() -> verify(fixInitiatorApplication).onLogon(any(FixSession.class), any(DecodedFixMessage.class)));
+    }
+
+    @Test
+    void aStandbyRefusesEverySessionActionWithAClearMessage() {
+        withStandbyHighAvailability();
+        setupInitiatorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);
+        fixInitiator.start();
+        AdminApi admin = (AdminApi) initiatorFixEngine;
+        FixSessionId id = fixInitiatorBuilder.getMainTarget().getFixSessionId();
+
+        List<ThrowingCallable> actions = List.of(
+                () -> admin.logonSession(id),
+                () -> admin.logoutSession(id),
+                () -> admin.resetSession(id, AdminApi.ResetFixSessionMode.RESET_SEQUENCE),
+                () -> admin.setIncomingSeqNum(id, 5),
+                () -> admin.setOutgoingSeqNum(id, 5),
+                () -> admin.sendFixMessage(id, "35=0|", '|', false),
+                () -> admin.getIncomingSeqNum(id),
+                () -> admin.getOutgoingSeqNum(id),
+                () -> admin.switchInitiatorSession(id));
+        actions.forEach(action -> assertThatThrownBy(action)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("is a standby and does not run FIX session " + id)
+                .hasMessageContaining("on the engine that leads"));
+    }
+
+    @Test
+    void anEngineThatNoLongerLeadsRefusesSessionActions() {
+        withHighAvailability();
+        setupInitiatorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);
+        logonClient();
+        AdminApi admin = (AdminApi) initiatorFixEngine;
+        FixSessionId id = fixInitiatorBuilder.getMainTarget().getFixSessionId();
+        assertThat(admin.getOutgoingSeqNum(id)).isPositive();
+
+        engine.deactivate();
+
+        assertThatThrownBy(() -> admin.setOutgoingSeqNum(id, 100)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
