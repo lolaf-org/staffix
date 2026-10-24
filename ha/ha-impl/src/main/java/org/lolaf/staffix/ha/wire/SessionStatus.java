@@ -35,7 +35,11 @@ public enum SessionStatus {
     /**
      * The follower has no settings for this session.
      */
-    UNKNOWN_SESSION(3);
+    UNKNOWN_SESSION(3),
+    /**
+     * The follower replicates the session but misses part of its history: it needs a snapshot to be in sync.
+     */
+    SNAPSHOT_NEEDED(4);
 
     private final int code;
 
@@ -56,6 +60,8 @@ public enum SessionStatus {
                 return UNKNOWN_STORAGE;
             case 3:
                 return UNKNOWN_SESSION;
+            case 4:
+                return SNAPSHOT_NEEDED;
             default:
                 return null;
         }

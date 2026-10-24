@@ -35,6 +35,14 @@ public enum CloseReason {
     NOT_LEADER(3),
     PROTOCOL_ERROR(4),
     /**
+     * The log overwrote events the follower had not been sent: it reconnects, and is caught up by snapshot.
+     */
+    LAPPED(5),
+    /**
+     * The leader could not read a session's store for a snapshot; the follower reconnects to try again.
+     */
+    SNAPSHOT_FAILED(6),
+    /**
      * Any other code, from a newer peer; kept rather than refused so the close is still reported.
      */
     UNKNOWN(0xFFFF);
@@ -57,6 +65,10 @@ public enum CloseReason {
                 return NOT_LEADER;
             case 4:
                 return PROTOCOL_ERROR;
+            case 5:
+                return LAPPED;
+            case 6:
+                return SNAPSHOT_FAILED;
             default:
                 return UNKNOWN;
         }

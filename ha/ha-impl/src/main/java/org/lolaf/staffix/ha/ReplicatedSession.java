@@ -21,6 +21,7 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.leader.Followers;
 
 import java.time.Duration;
@@ -39,6 +40,10 @@ public final class ReplicatedSession {
     private volatile long replicationAckTimeoutNanos;
     private volatile @Nullable String storageIdentity;
     /**
+     * The session's own store, which a snapshot reads off the session's thread.
+     */
+    private volatile FixSessionMessagesStore store;
+    /**
      * Set when an event could not be replicated, so the follower's copy has a gap only a snapshot fills.
      */
     private volatile boolean snapshotNeeded;
@@ -54,10 +59,11 @@ public final class ReplicatedSession {
         this.fixSessionType = fixSessionType;
     }
 
-    void update(ReplicationMode replicationMode, Duration replicationAckTimeout, @Nullable String storageIdentity) {
+    void update(ReplicationMode replicationMode, Duration replicationAckTimeout, FixSessionMessagesStore store) {
+        this.store = store;
         this.replicationMode = replicationMode;
         this.replicationAckTimeoutNanos = replicationAckTimeout.toNanos();
-        this.storageIdentity = storageIdentity;
+        this.storageIdentity = store.getStorageIdentity().orElse(null);
     }
 
     /**

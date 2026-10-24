@@ -57,7 +57,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void awaitReplicated() {
         if (lastAppendedOffset >= 0) {
-            session.acknowledged(followers.awaitApplied(lastAppendedOffset, session.getReplicationAckTimeoutNanos(), ackIdle));
+            session.acknowledged(followers.awaitApplied(session.getKey(), lastAppendedOffset, session.getReplicationAckTimeoutNanos(), ackIdle));
         }
     }
 

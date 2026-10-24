@@ -23,14 +23,18 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreException;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
+import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 
@@ -38,7 +42,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -68,7 +75,7 @@ class TestFollowerLink {
     }
 
     private FollowerLink link() {
-        return new FollowerLink(connection, ha.getLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
+        return new FollowerLink(connection, ha.getLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100,
                 loop -> {
                 });
     }
@@ -100,13 +107,13 @@ class TestFollowerLink {
     }
 
     @Test
-    void aFreshFollowerIsWelcomedWithoutAResumeAndNeedsASnapshot() {
+    void aFreshFollowerIsStreamedFromTheLogTail() {
         replicated("main").storeNextIncomingSeqNum(5);
 
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
         fill();
 
-        assertThat(link.getState()).isEqualTo(FollowerLink.State.OUT_OF_SYNC);
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
         assertThat(link.getFollowerId()).isEqualTo("follower-b");
         assertThat(sent.frames).containsExactly(
                 "WELCOME epoch=7 version=1 leader=leader-a resume=-1",
@@ -141,7 +148,6 @@ class TestFollowerLink {
         link.onHello(EPOCH - 1, WireFormat.VERSION, "follower-b", EPOCH - 1, 0);
 
         assertThat(sent.frames).first().asString().endsWith("resume=-1");
-        assertThat(link.getState()).isEqualTo(FollowerLink.State.OUT_OF_SYNC);
     }
 
     @Test
@@ -168,7 +174,7 @@ class TestFollowerLink {
     }
 
     @Test
-    void aFollowerTheLogLapsIsOutOfSync() {
+    void aFollowerTheLogLapsIsDisconnected() {
         ha = engine(1024);
         link = link();
         FixSessionMessagesStore store = replicated("main");
@@ -180,8 +186,9 @@ class TestFollowerLink {
 
         fill();
 
-        assertThat(link.getState()).isEqualTo(FollowerLink.State.OUT_OF_SYNC);
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("STORE_EVENT"));
+        assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 LAPPED"));
     }
 
     @Test
@@ -221,15 +228,97 @@ class TestFollowerLink {
     }
 
     @Test
-    void onlyAStreamingFollowerCaughtUpByItsOwnAccountIsInSync() {
+    void aSessionIsInSyncOnceTheFollowerSaysItReplicatesIt() {
         replicated("main").storeNextIncomingSeqNum(5);
-        link.onAck(EPOCH, 0, true);
-        assertThat(link.isInSync()).as("before its hello").isFalse();
-
+        assertThat(link.isInSync(0)).as("before its hello").isFalse();
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
-        assertThat(link.isInSync()).isTrue();
+        fill();
+        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.ANNOUNCED);
+        assertThat(link.isInSync(0)).as("announced").isFalse();
 
-        link.onAck(EPOCH, 0, false);
-        assertThat(link.isInSync()).isFalse();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
+
+        assertThat(link.isInSync(0)).isTrue();
+        assertThat(link.isInSync(1)).as("another session").isFalse();
+    }
+
+    @Test
+    void aSessionTheFollowerDoesNotReplicateIsNeverInSync() {
+        replicated("main").storeNextIncomingSeqNum(5);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        fill();
+
+        link.onSessionStatus(EPOCH, 0, SessionStatus.UNKNOWN_SESSION);
+
+        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.NOT_REPLICATED);
+        assertThat(link.isInSync(0)).isFalse();
+    }
+
+    @Test
+    void aStatusForASessionNeverAnnouncedClosesTheStream() {
+        link.onSessionStatus(EPOCH, 3, SessionStatus.REPLICATING);
+
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    }
+
+    @Test
+    void aSnapshotCarriesTheSeqnumsAndTheLastMessagesCutAtTheStreamPosition() {
+        FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
+        when(local.getIncomingSeqNum()).thenReturn(21L);
+        when(local.getOutgoingSeqNum()).thenReturn(13L);
+        doAnswer(invocation -> {
+            StoreMessagesConsumer consumer = invocation.getArgument(2);
+            consumer.onMessage(11, ByteBuffer.wrap("eleven".getBytes(StandardCharsets.US_ASCII)));
+            consumer.onMessage(12, ByteBuffer.wrap("twelve".getBytes(StandardCharsets.US_ASCII)));
+            return null;
+        }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
+        ha.replicatingStore(settings("main"), local).storeNextIncomingSeqNum(20);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        fill();
+        sent.frames.clear();
+
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+        link.snapshotPending();
+
+        long cut = ha.getLog().getTailOffset();
+        assertThat(sent.frames).containsExactly(
+                "SNAPSHOT_BEGIN epoch=7 key=0 cut=" + cut + " nextIn=21 nextOut=13",
+                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=11 message=eleven",
+                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=twelve",
+                "SNAPSHOT_END epoch=7 key=0 count=2");
+        verify(local).find(eq(1L), eq(12L), any(StoreMessagesConsumer.class));
+        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_SENT);
+    }
+
+    @Test
+    void aSnapshotKeepsTheMostRecentMessagesOnly() {
+        FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
+        when(local.getOutgoingSeqNum()).thenReturn(1_001L);
+        ha.replicatingStore(settings("main"), local).storeNextIncomingSeqNum(20);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        fill();
+
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+        link.snapshotPending();
+
+        verify(local).find(eq(901L), eq(1_000L), any(StoreMessagesConsumer.class));
+    }
+
+    @Test
+    void aStoreThatCannotBeReadEndsTheStreamSoTheFollowerRetries() {
+        FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
+        when(local.getOutgoingSeqNum()).thenReturn(5L);
+        doThrow(new StoreException("storage down")).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
+        ha.replicatingStore(settings("main"), local).storeNextIncomingSeqNum(20);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        fill();
+        sent.frames.clear();
+
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+        link.snapshotPending();
+
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
+        assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 SNAPSHOT_FAILED"));
+        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_PENDING);
     }
 }

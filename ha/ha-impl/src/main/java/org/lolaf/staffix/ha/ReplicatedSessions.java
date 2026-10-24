@@ -46,7 +46,7 @@ public final class ReplicatedSessions {
                     return added;
                 });
         FixSessionSettings.HaSessionSettings haSettings = settings.getHaSessionSettings();
-        session.update(haSettings.getReplicationMode(), haSettings.getReplicationAckTimeout(), store.getStorageIdentity().orElse(null));
+        session.update(haSettings.getReplicationMode(), haSettings.getReplicationAckTimeout(), store);
         return session;
     }
 

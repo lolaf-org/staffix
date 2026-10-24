@@ -31,10 +31,11 @@ import java.util.Arrays;
 
 /**
  * What the follower holds of the leader's sessions, kept across connections so a reconnection can resume: each
- * session's store, opened outside the session, and the last event applied.
+ * session's store, opened outside the session, whether it is complete, and the last event applied.
  *
- * <p>Applying never deletes: seqnums and messages are written over, so an event applied twice changes nothing.
- * Written from the connection's IO thread only.
+ * <p>A session is complete once a snapshot filled it, and until a stream fails to resume. A snapshot resets the store
+ * before filling it, so nothing older than the leader's copy survives; store events are written over, so one applied
+ * twice changes nothing. Written from the connection's IO thread only.
  */
 @Slf4j
 public final class Replica {
@@ -48,24 +49,37 @@ public final class Replica {
      */
     @Getter
     private volatile long lastAppliedOffset = -1;
-    /**
-     * Holds every event the leader logged up to the last one applied: false until a snapshot fills it, and again
-     * after a stream that did not resume.
-     */
-    @Getter
-    private volatile boolean complete;
 
     public Replica(EngineAccess engine) {
         this.engine = engine;
     }
 
     /**
-     * Starts a stream: one that did not resume leaves a gap only a snapshot fills.
+     * Starts a stream: one that did not resume leaves every session a gap only a snapshot fills, and nothing to resume
+     * from.
      */
     void streamStarted(boolean resumed) {
-        if (!resumed) {
-            complete = false;
+        if (resumed) {
+            return;
         }
+        lastAppliedOffset = -1;
+        for (ReplicaSession session : sessions) {
+            if (session != null) {
+                session.complete = false;
+            }
+        }
+    }
+
+    /**
+     * Every session replicated here is complete.
+     */
+    public boolean isComplete() {
+        for (ReplicaSession session : sessions) {
+            if (session != null && session.store != null && !session.complete) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -75,7 +89,7 @@ public final class Replica {
     SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId) {
         ReplicaSession bound = key < sessions.length ? sessions[key] : null;
         if (bound != null && bound.matches(fixSessionType, fixSessionId)) {
-            return bound.status;
+            return bound.status();
         }
         if (bound != null) {
             bound.stop(Deadline.unlimited());
@@ -85,14 +99,14 @@ public final class Replica {
             sessions = Arrays.copyOf(sessions, Math.max(key + 1, sessions.length * 2));
         }
         if (settings == null) {
-            sessions[key] = new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.UNKNOWN_SESSION);
+            sessions[key] = new ReplicaSession(fixSessionType, fixSessionId, null);
             log.warn("The leader replicates FIX session {} {}, unknown here", fixSessionType, fixSessionId);
         } else {
             FixSessionMessagesStore store = engine.openStore(settings);
             store.start();
-            sessions[key] = new ReplicaSession(fixSessionType, fixSessionId, store, SessionStatus.REPLICATING);
+            sessions[key] = new ReplicaSession(fixSessionType, fixSessionId, store);
         }
-        return sessions[key].status;
+        return sessions[key].status();
     }
 
     private @Nullable FixSessionSettings findSettings(FixSessionType fixSessionType, String fixSessionId) {
@@ -119,6 +133,53 @@ public final class Replica {
         lastAppliedEpoch = epoch;
         lastAppliedOffset = offset;
         return true;
+    }
+
+    /**
+     * @return false for a key the leader never bound, or one not replicated here
+     */
+    boolean snapshotBegin(int key, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        ReplicaSession session = replicated(key);
+        if (session == null) {
+            return false;
+        }
+        session.complete = false;
+        session.snapshotNextOutgoingSeqNum = nextOutgoingSeqNum;
+        session.snapshotMessages = 0;
+        session.store.resetSequenceNumbers();
+        session.store.storeNextIncomingSeqNum(nextIncomingSeqNum);
+        session.store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
+        return true;
+    }
+
+    boolean snapshotMessage(int key, long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength) {
+        ReplicaSession session = replicated(key);
+        if (session == null) {
+            return false;
+        }
+        session.apply(StoreEventType.STORE_MESSAGE, sequenceNumber, buffer, messageIndex, messageLength);
+        session.snapshotMessages++;
+        return true;
+    }
+
+    /**
+     * Completes the session. Storing a message moves the outgoing seqnum past it, so the snapshot's is written again.
+     *
+     * @return false when the session is unknown or the count is not what was received
+     */
+    boolean snapshotEnd(int key, int messageCount) {
+        ReplicaSession session = replicated(key);
+        if (session == null || session.snapshotMessages != messageCount) {
+            return false;
+        }
+        session.store.storeNextOutgoingSeqNum(session.snapshotNextOutgoingSeqNum);
+        session.complete = true;
+        return true;
+    }
+
+    private @Nullable ReplicaSession replicated(int key) {
+        ReplicaSession session = key < sessions.length ? sessions[key] : null;
+        return session == null || session.store == null ? null : session;
     }
 
     /**
@@ -150,14 +211,21 @@ public final class Replica {
         private final FixSessionType fixSessionType;
         private final String fixSessionId;
         private final @Nullable FixSessionMessagesStore store;
-        private final SessionStatus status;
+        private volatile boolean complete;
+        private long snapshotNextOutgoingSeqNum;
+        private int snapshotMessages;
 
-        ReplicaSession(FixSessionType fixSessionType, String fixSessionId, @Nullable FixSessionMessagesStore store,
-                       SessionStatus status) {
+        ReplicaSession(FixSessionType fixSessionType, String fixSessionId, @Nullable FixSessionMessagesStore store) {
             this.fixSessionType = fixSessionType;
             this.fixSessionId = fixSessionId;
             this.store = store;
-            this.status = status;
+        }
+
+        SessionStatus status() {
+            if (store == null) {
+                return SessionStatus.UNKNOWN_SESSION;
+            }
+            return complete ? SessionStatus.REPLICATING : SessionStatus.SNAPSHOT_NEEDED;
         }
 
         boolean matches(FixSessionType fixSessionType, String fixSessionId) {

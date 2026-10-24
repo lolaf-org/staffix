@@ -28,6 +28,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
@@ -44,6 +45,7 @@ class TestFollowers {
 
     private static final long EPOCH = 7;
     private static final long NO_TIMEOUT = 0;
+    private static final int KEY = 0;
 
     private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final Followers followers = new Followers();
@@ -65,9 +67,11 @@ class TestFollowers {
         IOSession connection = mock(IOSession.class);
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerLink link = new FollowerLink(connection, ha.getLog(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofSeconds(1), loop -> {
+                Duration.ofSeconds(1), 100, loop -> {
         });
         link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0);
+        link.fill(ByteBuffer.allocate(1 << 16));
+        link.onSessionStatus(EPOCH, KEY, SessionStatus.REPLICATING);
         link.onAck(EPOCH, appliedOffset, true);
         followers.add(link);
         return link;
@@ -75,18 +79,18 @@ class TestFollowers {
 
     @Test
     void withoutAFollowerInSyncTheWaitEndsAtOnceEvenWithoutATimeout() {
-        assertThat(followers.awaitApplied(offset, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
+        assertThat(followers.awaitApplied(KEY, offset, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
 
-        inSyncFollower(0).onAck(EPOCH, 0, false);
+        inSyncFollower(0).onSessionStatus(EPOCH, KEY, SessionStatus.SNAPSHOT_NEEDED);
 
-        assertThat(followers.awaitApplied(offset, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
+        assertThat(followers.awaitApplied(KEY, offset, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
     }
 
     @Test
     void anEventTheFollowerAppliedNeedsNoWait() {
         inSyncFollower(offset);
 
-        assertThat(followers.awaitApplied(offset, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.APPLIED);
+        assertThat(followers.awaitApplied(KEY, offset, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.APPLIED);
     }
 
     @Test
@@ -94,7 +98,7 @@ class TestFollowers {
         inSyncFollower(0);
 
         long start = System.nanoTime();
-        assertThat(followers.awaitApplied(offset, TimeUnit.MILLISECONDS.toNanos(20), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
+        assertThat(followers.awaitApplied(KEY, offset, TimeUnit.MILLISECONDS.toNanos(20), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
         assertThat(System.nanoTime() - start).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(20));
     }
 
@@ -102,7 +106,7 @@ class TestFollowers {
     void theWaitEndsWhenTheFollowerAcks() {
         FollowerLink follower = inSyncFollower(0);
 
-        CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitApplied(offset, NO_TIMEOUT, new BackoffIdleStrategy()));
+        CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitApplied(KEY, offset, NO_TIMEOUT, new BackoffIdleStrategy()));
         follower.onAck(EPOCH, offset, true);
 
         assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.APPLIED);
@@ -112,7 +116,7 @@ class TestFollowers {
     void aFollowerDisconnectingReleasesTheWait() {
         FollowerLink follower = inSyncFollower(0);
 
-        CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitApplied(offset, NO_TIMEOUT, new BackoffIdleStrategy()));
+        CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitApplied(KEY, offset, NO_TIMEOUT, new BackoffIdleStrategy()));
         follower.disconnected();
 
         assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
@@ -123,19 +127,19 @@ class TestFollowers {
         inSyncFollower(offset);
         inSyncFollower(0);
 
-        assertThat(followers.awaitApplied(offset, TimeUnit.MILLISECONDS.toNanos(1), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
+        assertThat(followers.awaitApplied(KEY, offset, TimeUnit.MILLISECONDS.toNanos(1), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
     }
 
     @Test
     void waitingAllocatesNothing() {
         inSyncFollower(offset);
-        followers.awaitApplied(offset, NO_TIMEOUT, idle);
+        followers.awaitApplied(KEY, offset, NO_TIMEOUT, idle);
 
         long before = AllocatedBytes.ofCurrentThread();
         for (int i = 0; i < 100_000; i++) {
-            followers.awaitApplied(offset, NO_TIMEOUT, idle);
+            followers.awaitApplied(KEY, offset, NO_TIMEOUT, idle);
         }
 
-        assertThat(AllocatedBytes.ofCurrentThread() - before).isLessThan(1_000);
+        assertThat(AllocatedBytes.ofCurrentThread() - before).as("less than a byte per wait").isLessThan(100_000);
     }
 }

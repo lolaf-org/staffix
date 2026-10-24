@@ -50,19 +50,19 @@ public final class Followers {
     }
 
     /**
-     * Waits until every follower in sync applied the event at {@code offset}. A follower falling out of sync stops
-     * being waited for, and with none left the wait ends at once. Allocates nothing.
+     * Waits until every follower in sync for the session applied the event at {@code offset}. A follower falling out
+     * of sync stops being waited for, and with none left the wait ends at once. Allocates nothing.
      *
      * @param timeoutNanos 0 to wait as long as a follower is in sync
      */
-    public Ack awaitApplied(long offset, long timeoutNanos, IdleStrategy idle) {
+    public Ack awaitApplied(int sessionKey, long offset, long timeoutNanos, IdleStrategy idle) {
         long startNanos = timeoutNanos == 0 ? 0 : System.nanoTime();
         idle.reset();
         while (true) {
             boolean anyInSync = false;
             boolean applied = true;
             for (FollowerLink link : links) {
-                if (link.isInSync()) {
+                if (link.isInSync(sessionKey)) {
                     anyInSync = true;
                     applied &= link.getAppliedOffset() >= offset;
                 }

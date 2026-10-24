@@ -24,6 +24,8 @@ import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
@@ -37,6 +39,7 @@ import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
@@ -45,8 +48,10 @@ import java.util.function.LongSupplier;
  *
  * <p>Frames from the follower arrive on the connection's IO thread; the log is streamed from a thread of the link's
  * own, which borrows a write buffer, reads as many events as fit straight into it behind room for their headers, and
- * sends it. A follower whose position is no longer in the log, or that the log laps, is out of sync: it needs a
- * snapshot, and only heartbeats reach it meanwhile.
+ * sends it. A session the follower answers {@link SessionStatus#SNAPSHOT_NEEDED} for is snapshot by that thread
+ * between two batches, so the snapshot is consistent with the stream: every event before the reader's position is in
+ * the store it reads, and the events after it are sent next, applied twice at worst. A follower the log laps is
+ * disconnected, so it knows it missed events and reconnects to be caught up.
  */
 @Slf4j
 public final class FollowerLink implements FrameHandler {
@@ -54,8 +59,18 @@ public final class FollowerLink implements FrameHandler {
     public enum State {
         AWAITING_HELLO,
         STREAMING,
-        OUT_OF_SYNC,
         CLOSED
+    }
+
+    /**
+     * Where a session stands on this follower, as the leader knows it.
+     */
+    public enum SessionSync {
+        ANNOUNCED,
+        SNAPSHOT_PENDING,
+        SNAPSHOT_SENT,
+        IN_SYNC,
+        NOT_REPLICATED
     }
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
@@ -69,6 +84,7 @@ public final class FollowerLink implements FrameHandler {
     private final long heartbeatIntervalNanos;
     private final int maxEventFrameBytes;
     private final int batchBytes;
+    private final int snapshotMaxMessages;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
     @Getter
@@ -78,7 +94,13 @@ public final class FollowerLink implements FrameHandler {
      */
     @Getter
     private volatile long appliedOffset = -1;
-    private volatile boolean inSync;
+    /**
+     * What the follower said of itself in its last ACK; {@link #isInSync(int)} relies on the leader's own account.
+     */
+    @Getter
+    private volatile boolean reportedInSync;
+    private volatile AtomicReferenceArray<SessionSync> sessionSyncs = new AtomicReferenceArray<>(16);
+    private volatile boolean snapshotRequested;
     private volatile boolean paused;
     private int announced;
     private long lastSendNanos;
@@ -88,7 +110,8 @@ public final class FollowerLink implements FrameHandler {
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
     FollowerLink(IOSession connection, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
-                 Duration heartbeatInterval, Consumer<Runnable> senderLauncher) {
+                 Duration heartbeatInterval, int snapshotMaxMessages, Consumer<Runnable> senderLauncher) {
+        this.snapshotMaxMessages = snapshotMaxMessages;
         this.senderLauncher = senderLauncher;
         this.connection = connection;
         this.replicationLog = log;
@@ -129,7 +152,7 @@ public final class FollowerLink implements FrameHandler {
             reader.seekToTail();
         }
         appliedOffset = lastAppliedOffset;
-        state = resumed ? State.STREAMING : State.OUT_OF_SYNC;
+        state = State.STREAMING;
         log.info("Follower {} connected at epoch {}, {}", nodeId, leaderEpoch,
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
         ByteBuffer welcome = connection.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
@@ -152,22 +175,57 @@ public final class FollowerLink implements FrameHandler {
     @Override
     public void onAck(long epoch, long appliedOffset, boolean inSync) {
         this.appliedOffset = appliedOffset;
-        this.inSync = inSync;
+        this.reportedInSync = inSync;
     }
 
     /**
-     * Streaming, and caught up by its own account: a {@code SYNC} send waits for its ack.
+     * The follower holds everything of the session up to its last ack, so a {@code SYNC} send of the session waits
+     * for its ack. Allocates nothing.
      */
-    public boolean isInSync() {
-        return inSync && state == State.STREAMING;
+    public boolean isInSync(int sessionKey) {
+        return state == State.STREAMING && getSessionSync(sessionKey) == SessionSync.IN_SYNC;
+    }
+
+    public @Nullable SessionSync getSessionSync(int sessionKey) {
+        AtomicReferenceArray<SessionSync> syncs = sessionSyncs;
+        return sessionKey < syncs.length() ? syncs.get(sessionKey) : null;
+    }
+
+    private synchronized void sessionSync(int sessionKey, SessionSync sync) {
+        AtomicReferenceArray<SessionSync> syncs = sessionSyncs;
+        if (sessionKey >= syncs.length()) {
+            AtomicReferenceArray<SessionSync> grown = new AtomicReferenceArray<>(Math.max(sessionKey + 1, syncs.length() * 2));
+            for (int key = 0; key < syncs.length(); key++) {
+                grown.set(key, syncs.get(key));
+            }
+            sessionSyncs = syncs = grown;
+        }
+        syncs.set(sessionKey, sync);
+    }
+
+    private synchronized void sessionSync(int sessionKey, SessionSync expected, SessionSync sync) {
+        sessionSyncs.compareAndSet(sessionKey, expected, sync);
     }
 
     @Override
     public void onSessionStatus(long epoch, int sessionKey, SessionStatus status) {
-        if (status != SessionStatus.REPLICATING) {
-            ReplicatedSession session = sessions.get(sessionKey);
-            log.info("Follower {} does not replicate FIX session {} {}: {}", followerId, session.getFixSessionType(),
-                    session.getFixSessionId(), status);
+        if (getSessionSync(sessionKey) == null) {
+            close(CloseReason.PROTOCOL_ERROR, "a SESSION_STATUS for session key " + sessionKey + ", never announced");
+            return;
+        }
+        switch (status) {
+            case REPLICATING:
+                sessionSync(sessionKey, SessionSync.IN_SYNC);
+                break;
+            case SNAPSHOT_NEEDED:
+                sessionSync(sessionKey, SessionSync.SNAPSHOT_PENDING);
+                snapshotRequested = true;
+                break;
+            default:
+                sessionSync(sessionKey, SessionSync.NOT_REPLICATED);
+                ReplicatedSession session = sessions.get(sessionKey);
+                log.warn("Follower {} does not replicate FIX session {} {}: {}", followerId, session.getFixSessionType(),
+                        session.getFixSessionId(), status);
         }
     }
 
@@ -235,12 +293,12 @@ public final class FollowerLink implements FrameHandler {
                 break;
             }
             if (body == ReplicationLog.Reader.LAPPED) {
-                outOfSync("the log overwrote events it had not been sent");
+                close(CloseReason.LAPPED, "the log overwrote events not sent yet");
                 break;
             }
             if (dst.getInt(filled + WireFormat.STORE_EVENT_BODY_OFFSET) >= announced) {
                 if (!reader.seek(reader.getEventOffset())) {
-                    outOfSync("the log overwrote an event while its session was announced");
+                    close(CloseReason.LAPPED, "the log overwrote an event while its session was announced");
                 }
                 break;
             }
@@ -260,6 +318,7 @@ public final class FollowerLink implements FrameHandler {
             }
             filled += FrameEncoder.session(dst, filled, leaderEpoch, session.getKey(), session.getFixSessionType(),
                     session.getReplicationMode(), id, session.getStorageIdentity());
+            sessionSync(announced, SessionSync.ANNOUNCED);
             announced++;
         }
         return filled;
@@ -277,12 +336,6 @@ public final class FollowerLink implements FrameHandler {
         return FrameEncoder.heartbeat(dst, 0, epoch.getAsLong(), replicationLog.getTailOffset());
     }
 
-    private void outOfSync(String reason) {
-        state = State.OUT_OF_SYNC;
-        inSync = false;
-        log.warn("Follower {} is out of sync and needs a snapshot: {}", followerId, reason);
-    }
-
     void pause(boolean paused) {
         this.paused = paused;
     }
@@ -293,6 +346,12 @@ public final class FollowerLink implements FrameHandler {
         while (state != State.CLOSED) {
             if (paused) {
                 idle.idle();
+                continue;
+            }
+            if (snapshotRequested) {
+                snapshotRequested = false;
+                snapshotPending();
+                lastSendNanos = System.nanoTime();
                 continue;
             }
             ByteBuffer batch = connection.borrow(batchBytes);
@@ -309,6 +368,95 @@ public final class FollowerLink implements FrameHandler {
             connection.send(written(batch, filled), true);
             lastSendNanos = System.nanoTime();
             idle.reset();
+        }
+    }
+
+    /**
+     * Snapshots every session the follower asked for, at the reader's position, which the stream then resumes from.
+     */
+    void snapshotPending() {
+        for (int key = 0; key < announced && state == State.STREAMING; key++) {
+            if (getSessionSync(key) == SessionSync.SNAPSHOT_PENDING && snapshot(key)) {
+                sessionSync(key, SessionSync.SNAPSHOT_PENDING, SessionSync.SNAPSHOT_SENT);
+            }
+        }
+    }
+
+    private boolean snapshot(int sessionKey) {
+        ReplicatedSession session = sessions.get(sessionKey);
+        FixSessionMessagesStore store = session.getStore();
+        SnapshotWriter writer = new SnapshotWriter(sessionKey, epoch.getAsLong());
+        try {
+            long nextOutgoingSeqNum = store.getOutgoingSeqNum();
+            writer.begin(reader.getOffset(), store.getIncomingSeqNum(), nextOutgoingSeqNum);
+            store.find(Math.max(1, nextOutgoingSeqNum - snapshotMaxMessages), nextOutgoingSeqNum - 1, writer);
+            writer.end();
+            log.info("Snapshot of FIX session {} {} sent to follower {}: {} messages", session.getFixSessionType(),
+                    session.getFixSessionId(), followerId, writer.messageCount);
+            return true;
+        } catch (RuntimeException e) {
+            log.warn("Snapshot of FIX session {} {} failed", session.getFixSessionType(), session.getFixSessionId(), e);
+            close(CloseReason.SNAPSHOT_FAILED, "FIX session " + session.getFixSessionId() + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Writes a snapshot's frames into batch buffers, sending each when the next frame does not fit.
+     */
+    private final class SnapshotWriter implements StoreMessagesConsumer {
+
+        private final int sessionKey;
+        private final long leaderEpoch;
+        private ByteBuffer batch;
+        private int filled;
+        private int messageCount;
+
+        SnapshotWriter(int sessionKey, long leaderEpoch) {
+            this.sessionKey = sessionKey;
+            this.leaderEpoch = leaderEpoch;
+            this.batch = connection.borrow(batchBytes);
+        }
+
+        void begin(long cutOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+            room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_BEGIN));
+            filled += FrameEncoder.snapshotBegin(batch, filled, leaderEpoch, sessionKey, cutOffset, nextIncomingSeqNum,
+                    nextOutgoingSeqNum);
+        }
+
+        /**
+         * A message too long for a batch is left out: a resend of it is answered with a gap fill.
+         */
+        @Override
+        public boolean onMessage(long seqNum, ByteBuffer message) {
+            int bytes = FrameEncoder.snapshotMessageBytes(message.remaining());
+            if (bytes > batchBytes) {
+                log.warn("Message {} of {} bytes left out of a snapshot to follower {}", seqNum, message.remaining(), followerId);
+                return true;
+            }
+            room(bytes);
+            filled += FrameEncoder.snapshotMessage(batch, filled, leaderEpoch, sessionKey, seqNum, message);
+            messageCount++;
+            return state == State.STREAMING;
+        }
+
+        void end() {
+            room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_END));
+            filled += FrameEncoder.snapshotEnd(batch, filled, leaderEpoch, sessionKey, messageCount);
+            connection.send(written(batch, filled), true);
+        }
+
+        private void room(int bytes) {
+            if (batchBytes - filled >= bytes) {
+                return;
+            }
+            connection.send(written(batch, filled), true);
+            IdleStrategy idle = new BackoffIdleStrategy();
+            while (paused && state == State.STREAMING) {
+                idle.idle();
+            }
+            batch = connection.borrow(batchBytes);
+            filled = 0;
         }
     }
 

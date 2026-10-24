@@ -109,7 +109,10 @@ public final class LeaderLink implements FrameHandler {
         if (!fromLeader(epoch)) {
             return;
         }
-        SessionStatus status = replica.bind(sessionKey, fixSessionType, fixSessionId);
+        sessionStatus(sessionKey, replica.bind(sessionKey, fixSessionType, fixSessionId));
+    }
+
+    private void sessionStatus(int sessionKey, SessionStatus status) {
         ByteBuffer frame = connection.borrow(FrameEncoder.fixedBytes(FrameType.SESSION_STATUS));
         int length = FrameEncoder.sessionStatus(frame.clear(), 0, leaderEpoch, sessionKey, status);
         connection.send(written(frame, length), true);
@@ -168,18 +171,35 @@ public final class LeaderLink implements FrameHandler {
 
     @Override
     public void onSnapshotBegin(long epoch, int sessionKey, long cutOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        unexpected(FrameType.SNAPSHOT_BEGIN);
+        if (fromLeader(epoch) && !replica.snapshotBegin(sessionKey, nextIncomingSeqNum, nextOutgoingSeqNum)) {
+            close(CloseReason.PROTOCOL_ERROR, "a snapshot of session key " + sessionKey + ", not replicated here");
+        }
     }
 
     @Override
     public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
                                   int messageLength) {
-        unexpected(FrameType.SNAPSHOT_MESSAGE);
+        if (fromLeader(epoch) && !replica.snapshotMessage(sessionKey, sequenceNumber, buffer, messageIndex, messageLength)) {
+            close(CloseReason.PROTOCOL_ERROR, "a snapshot message of session key " + sessionKey + ", not replicated here");
+        }
     }
 
+    /**
+     * Tells the leader the session is now in sync, which is when its {@code SYNC} sends start waiting for this
+     * follower.
+     */
     @Override
     public void onSnapshotEnd(long epoch, int sessionKey, int messageCount) {
-        unexpected(FrameType.SNAPSHOT_END);
+        if (!fromLeader(epoch)) {
+            return;
+        }
+        if (!replica.snapshotEnd(sessionKey, messageCount)) {
+            close(CloseReason.PROTOCOL_ERROR, "a snapshot of session key " + sessionKey + " that does not end with "
+                    + messageCount + " messages received");
+            return;
+        }
+        sessionStatus(sessionKey, SessionStatus.REPLICATING);
+        ackDue = true;
     }
 
     @Override

@@ -63,4 +63,11 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final Duration heartbeatInterval = Duration.ofSeconds(1);
+
+    /**
+     * The most recent messages of a session a snapshot copies to a follower catching up. A resend asking for older
+     * ones, after a failover to that follower, is answered with a gap fill.
+     */
+    @Builder.Default
+    private final int snapshotMaxMessages = 10_000;
 }

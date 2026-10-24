@@ -18,10 +18,10 @@ package org.lolaf.staffix.ha.follower;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.leader.FollowerLink;
@@ -43,16 +43,18 @@ import static org.awaitility.Awaitility.await;
 class TestReplicationReceiver {
 
     private static final long EPOCH = 7;
-    private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.ACCEPTOR);
+    private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.ACCEPTOR).toBuilder()
+            .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+            .build();
     private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
 
     private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
     private final ReplicationPublisher publisher = new ReplicationPublisher(address, leader.getLog(), leader.getSessions(),
-            leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100));
+            leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100);
     private final RecordingEngine follower = new RecordingEngine().with(MAIN);
     private final Replica replica = new Replica(follower);
-    private final FixSessionMessagesStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore());
+    private final ReplicatingStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore());
     private ReplicationReceiver receiver;
 
     private static int freePort() {
@@ -63,15 +65,8 @@ class TestReplicationReceiver {
         }
     }
 
-    /**
-     * The follower applied the leader's first event in an earlier connection, so the stream resumes after it: a
-     * follower with nothing applied needs a snapshot first.
-     */
     TestReplicationReceiver() {
         leaderStore.storeNextIncomingSeqNum(1);
-        replica.bind(0, MAIN.getFixSessionType(), MAIN.getFixSessionId().toString());
-        replica.apply(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 1, ByteBuffer.allocate(0), 0, 0);
-        follower.store(MAIN).writes.clear();
         publisher.start();
     }
 
@@ -80,6 +75,11 @@ class TestReplicationReceiver {
                 Duration.ofMillis(50));
         receiver.start();
         await().until(() -> receiver.getLink() != null && receiver.getLink().getState() == LeaderLink.State.STREAMING);
+    }
+
+    private FollowerLink inSync() {
+        await().until(() -> !leader.getFollowers().all().isEmpty() && leader.getFollowers().all().get(0).isInSync(0));
+        return leader.getFollowers().all().get(0);
     }
 
     @AfterEach
@@ -92,8 +92,12 @@ class TestReplicationReceiver {
     }
 
     @Test
-    void theLeadersWritesReachTheFollowersStoreAndAreAcknowledged() {
+    void aFreshFollowerIsCaughtUpBySnapshotThenStreamedTheLeadersWrites() {
         connect();
+        FollowerLink link = inSync();
+        assertThat(follower.store(MAIN).writes).startsWith("reset");
+        assertThat(replica.isComplete()).isTrue();
+        follower.store(MAIN).writes.clear();
 
         leaderStore.storeMessageSent(5, ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII)));
         leaderStore.storeNextIncomingSeqNum(2);
@@ -102,23 +106,37 @@ class TestReplicationReceiver {
 
         await().untilAsserted(() -> assertThat(follower.store(MAIN).writes)
                 .containsExactly("message 5 " + MESSAGE, "incoming 2", "outgoing 9"));
-        FollowerLink link = leader.getFollowers().all().get(0);
         await().until(() -> link.getAppliedOffset() == lastOffset);
-        assertThat(link.getFollowerId()).isEqualTo("follower-b");
+        assertThat(link.isReportedInSync()).isTrue();
     }
 
     @Test
-    void aFollowerReconnectingResumesWithTheWritesItMissed() {
+    void aSyncSendWaitsForTheFollowersAckOnceItIsInSync() {
         connect();
+        inSync();
+
+        leaderStore.storeNextOutgoingSeqNum(2);
+        leaderStore.awaitReplicated();
+
+        assertThat(follower.store(MAIN).writes).endsWith("outgoing 2");
+        assertThat(leader.getSessions().get(0).getUnacknowledgedSends()).isZero();
+    }
+
+    @Test
+    void aFollowerReconnectingResumesWithTheWritesItMissedWithoutANewSnapshot() {
+        connect();
+        inSync();
         leaderStore.storeNextIncomingSeqNum(2);
         await().until(() -> follower.store(MAIN).writes.contains("incoming 2"));
         receiver.stop(Deadline.of(Duration.ofSeconds(2)));
         await().until(() -> leader.getFollowers().all().isEmpty());
+        follower.store(MAIN).writes.clear();
 
         leaderStore.storeNextIncomingSeqNum(3);
         connect();
+        inSync();
         leaderStore.storeNextIncomingSeqNum(4);
 
-        await().untilAsserted(() -> assertThat(follower.store(MAIN).writes).containsExactly("incoming 2", "incoming 3", "incoming 4"));
+        await().untilAsserted(() -> assertThat(follower.store(MAIN).writes).containsExactly("incoming 3", "incoming 4"));
     }
 }
