@@ -17,6 +17,7 @@
 
     <modules>
         <module>ha-impl</module>
+        <module>ha-primos</module>
     </modules>
 
 </project>

@@ -35,6 +35,7 @@ import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -99,7 +100,13 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             thread.setDaemon(true);
             return thread;
         });
-        election.addListener((previous, current, epoch) -> roleThread.execute(this::followRole));
+        election.addListener((previous, current, epoch) -> {
+            try {
+                roleThread.execute(this::followRole);
+            } catch (RejectedExecutionException stopped) {
+                // the election outlives this engine's role thread by the time it takes to stop
+            }
+        });
         election.start();
         roleThread.execute(this::followRole);
         long checkMillis = settings.getHeartbeatInterval().toMillis();

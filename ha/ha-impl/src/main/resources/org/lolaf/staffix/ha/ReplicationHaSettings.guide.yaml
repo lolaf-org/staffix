@@ -1,6 +1,6 @@
 summary: >-
   Replicates the stores of the sessions whose haSessionSettings ask for it to a standby engine, which takes over when
-  the leader election makes it the leader. Needs a leaderElection, and no implementation of one ships yet.
+  the leader election makes it the leader. Needs a leaderElection, such as primos from staffix-ha-primos.
 production:
   - >-
     Size logCapacity to the bytes the sessions write while a follower may lag or reconnect; a follower left further
@@ -16,3 +16,5 @@ production:
     promotionOutgoingSeqNumJump, so the counterparty sees a gap it fills with a resend request answered by a gap fill,
     rather than a number lower than the old leader's, which it would refuse. Size it above what a session sends
     while unreplicated.
+  - >-
+    With primos, a node is named by its primos node id as decimal text: use those ids as nodeId and as the peers keys.
