@@ -139,8 +139,28 @@ class TestReplicationFixEngineHa {
 
         await().until(() -> a.engine.activity.contains("deactivate"));
         await().until(() -> b.engine.activity.contains("activate, stores open 0"));
+        assertThat(b.engine.store(MAIN).writes).as("moved past what a may have sent").endsWith("outgoing 10001");
         await().until(() -> listening(addressB));
         await().until(() -> !listening(addressA));
+    }
+
+    @Test
+    void aLeaderReElectedAtANewEpochDoesNotMoveItsOwnSessionsAhead() {
+        a.election.elect(Role.LEADER, 3, "a");
+        a.start();
+        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
+        int jumps = jumps(a);
+
+        a.election.elect(Role.LEADER, 4, "a");
+
+        await().until(() -> a.engine.activity.size() == 3);
+        assertThat(a.engine.activity).containsExactly("activate, stores open 0", "deactivate", "activate, stores open 0");
+        assertThat(jumps(a)).isEqualTo(jumps);
+    }
+
+    private static int jumps(Node node) {
+        RecordingEngine.RecordingStore store = node.engine.store(MAIN);
+        return store == null ? 0 : (int) store.writes.stream().filter(write -> write.startsWith("outgoing 10001")).count();
     }
 
     @Test

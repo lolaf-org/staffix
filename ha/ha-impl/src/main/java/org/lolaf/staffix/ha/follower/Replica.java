@@ -22,6 +22,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.wire.SessionStatus;
@@ -208,6 +209,34 @@ public final class Replica {
             }
         }
         return null;
+    }
+
+    /**
+     * Moves the outgoing seqnum of every session configured with replication by {@code jump}, before this node runs
+     * them as leader: in the replica's store, or in one opened for it when the replica holds none (its storage shared
+     * with the old leader, unidentified, or never announced).
+     */
+    public void jumpOutgoingSeqNums(long jump) {
+        for (FixSessionSettings settings : engine.getFixSessionsSettings()) {
+            if (settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE) {
+                continue;
+            }
+            FixSessionMessagesStore replicated = getStore(settings.getFixSessionType(), settings.getFixSessionId().toString());
+            FixSessionMessagesStore store = replicated != null ? replicated : engine.openStore(settings);
+            if (replicated == null) {
+                store.start();
+            }
+            try {
+                long next = store.getOutgoingSeqNum();
+                store.storeNextOutgoingSeqNum(next + jump);
+                log.warn("FIX session {} {} outgoing sequence number moved from {} to {}, past what the old leader may "
+                        + "have sent unreplicated", settings.getFixSessionType(), settings.getFixSessionId(), next, next + jump);
+            } finally {
+                if (replicated == null) {
+                    store.stop(Deadline.unlimited());
+                }
+            }
+        }
     }
 
     /**

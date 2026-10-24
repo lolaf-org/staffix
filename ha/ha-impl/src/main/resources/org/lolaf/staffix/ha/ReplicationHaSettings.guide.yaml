@@ -11,3 +11,8 @@ production:
   - >-
     Give both nodes the same peers and logCapacity: a node binds its own peers entry while it leads and connects to
     the leader's, and a follower sizes its receive buffer from logCapacity.
+  - >-
+    A node that becomes leader moves the outgoing sequence number of every replicated session ahead by
+    promotionOutgoingSeqNumJump, so the counterparty sees a gap it fills with a resend request answered by a gap fill,
+    rather than a number lower than the old leader's, which it would refuse. Size it above what a session sends
+    while unreplicated.

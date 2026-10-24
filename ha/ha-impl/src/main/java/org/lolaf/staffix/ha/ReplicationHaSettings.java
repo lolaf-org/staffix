@@ -81,4 +81,12 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final int snapshotMaxMessages = 10_000;
+
+    /**
+     * How far a node that becomes leader moves the outgoing MsgSeqNum(34) of every replicated session: past what the
+     * old leader may have sent without this node receiving it, which the counterparty would refuse as too low. It
+     * then asks for the gap and gets a gap fill. Must exceed the messages a session can send while unreplicated.
+     */
+    @Builder.Default
+    private final long promotionOutgoingSeqNumJump = 10_000;
 }

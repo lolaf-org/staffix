@@ -43,8 +43,9 @@ import java.util.concurrent.TimeUnit;
  * node leads: a follower keeps them unbuilt and replays the leader's writes into their stores instead.
  *
  * <p>The election's role is followed on a thread of its own, one change at a time. Promotion stops following,
- * closes the replica's stores, starts the publisher, then activates the engine; demotion deactivates the engine
- * first, so a node that no longer leads stops writing before anything else.
+ * moves every replicated session's outgoing seqnum ahead, closes the replica's stores, starts the publisher, then
+ * activates the engine; demotion deactivates the engine first, so a node that no longer leads stops writing before
+ * anything else.
  */
 @Slf4j
 @Getter
@@ -164,8 +165,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         stopReceiver(deadline);
         stopPublisher(deadline);
-        if (!replica.isComplete()) {
-            log.warn("Node {} leads at epoch {} with sessions its follower copy did not hold in full", settings.getNodeId(), epoch);
+        if (followedRole != Role.LEADER) {
+            if (!replica.isComplete()) {
+                log.warn("Node {} leads at epoch {} with sessions its follower copy did not hold in full", settings.getNodeId(), epoch);
+            }
+            replica.jumpOutgoingSeqNums(settings.getPromotionOutgoingSeqNumJump());
         }
         replica.close(deadline);
         publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLog, sessions, followers,
