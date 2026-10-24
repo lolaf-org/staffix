@@ -58,6 +58,17 @@ public class FrameEncoder {
         return HEADER_BYTES + type.getFixedPayloadBytes();
     }
 
+    /**
+     * The length of a frame whose variable part is the given strings, UTF-8 encoded.
+     */
+    public static int bytesWith(FrameType type, @Nullable String... strings) {
+        int length = fixedBytes(type);
+        for (String string : strings) {
+            length += string == null ? 0 : utf8(string).length;
+        }
+        return length;
+    }
+
     public static int hello(ByteBuffer out, int index, long epoch, String nodeId, long lastAppliedEpoch,
                             long lastAppliedOffset) {
         byte[] id = utf8(nodeId);

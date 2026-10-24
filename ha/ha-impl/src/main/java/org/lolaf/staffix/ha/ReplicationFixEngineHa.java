@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.ha;
 
-import lombok.AccessLevel;
 import lombok.Getter;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
@@ -24,7 +23,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 
-@Getter(AccessLevel.PACKAGE)
+@Getter
 public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineHa> implements FixEngineHa {
 
     private final ReplicationLog log;
@@ -36,7 +35,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     @Override
     public FixSessionMessagesStore replicatingStore(FixSessionSettings sessionSettings, FixSessionMessagesStore store) {
-        return new ReplicatingFixSessionMessagesStore(store, log, sessions.register(sessionSettings));
+        return new ReplicatingFixSessionMessagesStore(store, log, sessions.register(sessionSettings, store));
     }
 
     @Override

@@ -17,8 +17,10 @@ package org.lolaf.staffix.ha;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 
 /**
  * A replicated session as the leader knows it: the key its events carry in the log and on the wire.
@@ -30,6 +32,8 @@ public final class ReplicatedSession {
     private final int key;
     private final FixSessionId fixSessionId;
     private final FixSessionType fixSessionType;
+    private volatile ReplicationMode replicationMode = ReplicationMode.ASYNC;
+    private volatile @Nullable String storageIdentity;
     /**
      * Set when an event could not be replicated, so the follower's copy has a gap only a snapshot fills.
      */
@@ -39,6 +43,11 @@ public final class ReplicatedSession {
         this.key = key;
         this.fixSessionId = fixSessionId;
         this.fixSessionType = fixSessionType;
+    }
+
+    void update(ReplicationMode replicationMode, @Nullable String storageIdentity) {
+        this.replicationMode = replicationMode;
+        this.storageIdentity = storageIdentity;
     }
 
     void unreplicated(String reason) {

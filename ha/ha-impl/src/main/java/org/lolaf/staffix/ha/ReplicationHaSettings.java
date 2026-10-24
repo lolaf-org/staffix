@@ -23,6 +23,9 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
 
+import java.net.InetSocketAddress;
+import java.time.Duration;
+
 /**
  * Replicates the stores of the sessions asking for it to a standby engine over TCP.
  */
@@ -42,4 +45,22 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final int logCapacity = 16 << 20;
+
+    /**
+     * Names this engine to its peer in the replication handshake, and in their logs.
+     */
+    @Builder.Default
+    private final String nodeId = "default";
+
+    /**
+     * Where this engine accepts its follower while it leads.
+     */
+    private final @Nullable InetSocketAddress bindAddress;
+
+    /**
+     * How often a leader with nothing to send tells its follower where the log ends, so the follower can tell an idle
+     * leader from a dead connection and measure how far behind it is.
+     */
+    @Builder.Default
+    private final Duration heartbeatInterval = Duration.ofSeconds(1);
 }

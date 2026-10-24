@@ -18,28 +18,53 @@ package org.lolaf.staffix.ha;
 import lombok.Value;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * The engine's replicated sessions, each with a key that stays its own for the life of the engine, across the
- * restarts that rebuild a session.
+ * restarts that rebuild a session. Keys are dense from 0, in the order sessions were first registered.
  */
-final class ReplicatedSessions {
+public final class ReplicatedSessions {
 
-    private final Map<Id, ReplicatedSession> sessions = new ConcurrentHashMap<>();
-    private final AtomicInteger nextKey = new AtomicInteger();
+    private final Map<Id, ReplicatedSession> byId = new HashMap<>();
+    private final List<ReplicatedSession> byKey = new CopyOnWriteArrayList<>();
 
-    ReplicatedSession register(FixSessionSettings settings) {
-        return sessions.computeIfAbsent(new Id(settings.getFixSessionId().toString(), settings.getFixSessionType()),
-                id -> new ReplicatedSession(nextKey.getAndIncrement(), settings.getFixSessionId(), settings.getFixSessionType()));
+    /**
+     * Registers a session as it is built, or takes the latest settings and store of one already known.
+     */
+    synchronized ReplicatedSession register(FixSessionSettings settings, FixSessionMessagesStore store) {
+        ReplicatedSession session = byId.computeIfAbsent(new Id(settings.getFixSessionId().toString(), settings.getFixSessionType()),
+                id -> {
+                    ReplicatedSession added = new ReplicatedSession(byKey.size(), settings.getFixSessionId(), settings.getFixSessionType());
+                    byKey.add(added);
+                    return added;
+                });
+        session.update(settings.getHaSessionSettings().getReplicationMode(), store.getStorageIdentity().orElse(null));
+        return session;
     }
 
-    Collection<ReplicatedSession> all() {
-        return sessions.values();
+    /**
+     * Any thread.
+     */
+    public ReplicatedSession get(int key) {
+        return byKey.get(key);
+    }
+
+    /**
+     * How many sessions were registered; keys run from 0 to this, excluded. Any thread.
+     */
+    public int count() {
+        return byKey.size();
+    }
+
+    public Collection<ReplicatedSession> all() {
+        return byKey;
     }
 
     /**
