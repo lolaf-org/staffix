@@ -16,9 +16,13 @@
 package org.lolaf.staffix.ha;
 
 import org.lolaf.ringos.Deadline;
+import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.ringos.idling.IdleStrategy;
+import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.log.StoreEventRecord;
 
@@ -33,17 +37,28 @@ import java.util.Optional;
  * the session's thread one at a time, which is what keeps the log in the order the writes were applied and lets one
  * {@link StoreEventRecord} serve them all.
  */
-final class ReplicatingFixSessionMessagesStore implements FixSessionMessagesStore {
+final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
 
     private final FixSessionMessagesStore store;
     private final ReplicationLog log;
     private final ReplicatedSession session;
+    private final Followers followers;
     private final StoreEventRecord record = new StoreEventRecord();
+    private final IdleStrategy ackIdle = new BackoffIdleStrategy();
+    private long lastAppendedOffset = -1;
 
-    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog log, ReplicatedSession session) {
+    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog log, ReplicatedSession session, Followers followers) {
         this.store = store;
         this.log = log;
         this.session = session;
+        this.followers = followers;
+    }
+
+    @Override
+    public void awaitReplicated() {
+        if (lastAppendedOffset >= 0) {
+            session.acknowledged(followers.awaitApplied(lastAppendedOffset, session.getReplicationAckTimeoutNanos(), ackIdle));
+        }
     }
 
     @Override
@@ -138,7 +153,7 @@ final class ReplicatingFixSessionMessagesStore implements FixSessionMessagesStor
      */
     private void append(StoreEventType eventType, long sequenceNumber, ByteBuffer message) {
         try {
-            log.append(record.set(session.getKey(), eventType, sequenceNumber, message));
+            lastAppendedOffset = log.append(record.set(session.getKey(), eventType, sequenceNumber, message));
         } catch (IllegalArgumentException e) {
             session.unreplicated(e.getMessage());
         }

@@ -32,6 +32,7 @@ import org.lolaf.staffix.api.time.UTCTime;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.LongSupplier;
 import java.util.function.UnaryOperator;
@@ -48,6 +49,7 @@ class FixSessionFixMessageContext implements IOWriter.ByteBufferBuilder, Releasa
     private final FixSessionId fixSessionId;
     private final RingBuffer<FixSessionFixMessageContext> ctxPool;
     private final UnaryOperator<FixMessageEncoder<?>> detacher;
+    private final Consumer<FixSessionFixMessageContext> beforeWrite;
 
     private IntFunction<ByteBuffer> allocator;
     @Getter
@@ -96,6 +98,17 @@ class FixSessionFixMessageContext implements IOWriter.ByteBufferBuilder, Releasa
 
     @Override
     public ByteBuffer build() throws IOException {
+        encode();
+        if (beforeWrite != null) {
+            beforeWrite.accept(this);
+        }
+        return message;
+    }
+
+    /**
+     * Builds the message without its {@code beforeWrite}, which a batch calls once for all of its messages.
+     */
+    ByteBuffer encode() {
         outgoingSeqNum = nextOutgoingSeqNumSupplier.getAsLong();
         if (sendingTime == null) {
             sendingTime = clock.now();

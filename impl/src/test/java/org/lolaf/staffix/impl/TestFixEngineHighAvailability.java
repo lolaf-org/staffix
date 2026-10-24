@@ -15,15 +15,27 @@
  */
 package org.lolaf.staffix.impl;
 
+import lombok.RequiredArgsConstructor;
+import lombok.experimental.Delegate;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa;
+import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
+import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.fix44.encoders.EmailEncoder;
+import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.tests.TestingHaSettings;
 
+import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.AdditionalAnswers.returnsSecondArg;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
@@ -34,13 +46,18 @@ import static org.mockito.Mockito.when;
 class TestFixEngineHighAvailability extends AbstractFixTests {
 
     private final FixEngineHa ha = mock(FixEngineHa.class);
+    private final List<RecordingReplicatingStore> stores = new CopyOnWriteArrayList<>();
 
     private static FixSessionSettings.HaSessionSettings replicated(ReplicationMode mode) {
         return FixSessionSettings.HaSessionSettings.builder().replicationMode(mode).build();
     }
 
     private void withHighAvailability() {
-        when(ha.replicatingStore(any(), any())).then(returnsSecondArg());
+        when(ha.replicatingStore(any(), any())).then(invocation -> {
+            RecordingReplicatingStore store = new RecordingReplicatingStore(invocation.getArgument(1));
+            stores.add(store);
+            return store;
+        });
         initiatorFixEngineBuilder = initiatorFixEngineBuilder.toBuilder()
                 .highAvailability(TestingHaSettings.builder().mock(ha).build())
                 .build();
@@ -66,6 +83,51 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     }
 
     @Test
+    void aSyncSessionStoresEachMessageThenWaitsForItsReplicationBeforeWritingIt() {
+        withHighAvailability();
+
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC)).build());
+        logonClient();
+
+        await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
+                .startsWith("outgoing 2", "await")
+                .containsOnlyOnce("outgoing 2"));
+    }
+
+    @Test
+    void aSyncBatchStoresAllItsMessagesThenWaitsOnce() {
+        withHighAvailability();
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC)).build());
+        logonClient();
+        FixSession fixSession = getFixSession(ConnectorType.INITIATOR);
+        await().until(() -> stores.get(0).outgoingWrites.contains("await"));
+        stores.get(0).outgoingWrites.clear();
+
+        for (int i = 1; i <= 3; i++) {
+            fixSession.bufferize(fixSession.newEncoder(EmailEncoder.class).begin().setSubject("subject-" + i), null);
+        }
+        fixSession.flush();
+
+        await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
+                .containsExactly("message 2", "message 3", "message 4", "await"));
+        List<TestingDecodedFixMessage> received = getDecodedFixMessages(ConnectorType.ACCEPTOR);
+        assertMessageReceived(received, Subject.get(), "subject-1");
+        assertMessageReceived(received, Subject.get(), "subject-3");
+    }
+
+    @Test
+    void anAsyncSessionNeverWaitsForReplication() {
+        withHighAvailability();
+
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        logonClient();
+
+        await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
+                .containsOnlyOnce("outgoing 2")
+                .doesNotContain("await"));
+    }
+
+    @Test
     void anUnreplicatedSessionKeepsItsStoreUnwrapped() {
         withHighAvailability();
 
@@ -83,5 +145,37 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         initiatorFixEngine.stop(Deadline.unlimited());
 
         verify(ha).stop(any());
+    }
+
+    @RequiredArgsConstructor
+    private static final class RecordingReplicatingStore implements ReplicatingStore {
+
+        @Delegate(excludes = OutgoingWrites.class)
+        private final FixSessionMessagesStore store;
+        private final List<String> outgoingWrites = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
+            outgoingWrites.add("message " + outgoingSeqNum);
+            store.storeMessageSent(outgoingSeqNum, message);
+        }
+
+        @Override
+        public void storeNextOutgoingSeqNum(long nextOutgoingSeqNum) {
+            outgoingWrites.add("outgoing " + nextOutgoingSeqNum);
+            store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
+        }
+
+        @Override
+        public void awaitReplicated() {
+            outgoingWrites.add("await");
+        }
+
+        private interface OutgoingWrites {
+
+            void storeMessageSent(long outgoingSeqNum, ByteBuffer message);
+
+            void storeNextOutgoingSeqNum(long nextOutgoingSeqNum);
+        }
     }
 }

@@ -60,7 +60,7 @@ class TestReplicationPublisher {
 
     private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
-    private final ReplicationPublisher publisher = new ReplicationPublisher(address, ha.getLog(), ha.getSessions(), () -> EPOCH,
+    private final ReplicationPublisher publisher = new ReplicationPublisher(address, ha.getLog(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
             "leader-a", Duration.ofMillis(100));
     private final RecordingHandler received = new RecordingHandler();
     private Client follower;
@@ -133,8 +133,8 @@ class TestReplicationPublisher {
         publisher.start();
 
         connectFollower(EPOCH, 0);
-        await().until(() -> !publisher.getFollowers().isEmpty()
-                && publisher.getFollowers().get(0).getState() == FollowerLink.State.STREAMING);
+        await().until(() -> !ha.getFollowers().all().isEmpty()
+                && ha.getFollowers().all().get(0).getState() == FollowerLink.State.STREAMING);
         store.storeNextIncomingSeqNum(2);
         store.storeNextOutgoingSeqNum(9);
 
@@ -161,10 +161,10 @@ class TestReplicationPublisher {
     void aFollowerThatDisconnectsIsForgotten() {
         publisher.start();
         connectFollower(0, -1);
-        await().until(() -> publisher.getFollowers().size() == 1);
+        await().until(() -> ha.getFollowers().all().size() == 1);
 
         follower.stop(Deadline.of(Duration.ofSeconds(2)));
 
-        await().until(() -> publisher.getFollowers().isEmpty());
+        await().until(() -> ha.getFollowers().all().isEmpty());
     }
 }

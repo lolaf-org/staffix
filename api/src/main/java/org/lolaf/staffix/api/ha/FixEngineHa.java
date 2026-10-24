@@ -36,7 +36,21 @@ public interface FixEngineHa extends Startable<FixEngineHa> {
      * <p>{@code store} reports a storage failure rather than throwing it, so a write reaching it can always be
      * replicated, and every write comes from the session's own thread, one at a time.
      */
-    FixSessionMessagesStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store);
+    ReplicatingStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store);
+
+    /**
+     * A replicated session's store.
+     */
+    interface ReplicatingStore extends FixSessionMessagesStore {
+
+        /**
+         * Called by a {@link FixSessionSettings.HaSessionSettings.ReplicationMode#SYNC SYNC} session once a message
+         * is in its store and before it goes out, from the session's thread. Returns when the standby has every write
+         * made so far, when {@link FixSessionSettings.HaSessionSettings#getReplicationAckTimeout()} runs out, or at
+         * once while no standby is in sync, so that a lost standby never stops trading.
+         */
+        void awaitReplicated();
+    }
 
     /**
      * The service provider that builds an engine's high availability from its settings class; see {@link Factory}.

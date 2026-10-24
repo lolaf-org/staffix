@@ -35,9 +35,7 @@ import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.LongSupplier;
 
 /**
@@ -58,12 +56,13 @@ public final class ReplicationPublisher {
     private final LongSupplier epoch;
     private final String leaderId;
     private final Duration heartbeatInterval;
-    private final List<FollowerLink> followers = new CopyOnWriteArrayList<>();
+    private final Followers followers;
     private IOWorkersGroup ioWorkers;
     private Server server;
 
-    public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch,
-                                String leaderId, Duration heartbeatInterval) {
+    public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLog log, ReplicatedSessions sessions, Followers followers,
+                                LongSupplier epoch, String leaderId, Duration heartbeatInterval) {
+        this.followers = followers;
         this.bindAddress = bindAddress;
         this.replicationLog = log;
         this.sessions = sessions;
@@ -94,7 +93,7 @@ public final class ReplicationPublisher {
     }
 
     public void stop(Deadline deadline) {
-        followers.forEach(FollowerLink::disconnected);
+        followers.all().forEach(FollowerLink::disconnected);
         if (server != null) {
             server.stop(deadline);
         }
@@ -107,13 +106,6 @@ public final class ReplicationPublisher {
         Thread thread = new Thread(loop, "staffix-ha-sender");
         thread.setDaemon(true);
         thread.start();
-    }
-
-    /**
-     * The followers connected now.
-     */
-    public List<FollowerLink> getFollowers() {
-        return followers;
     }
 
     private final class Listener implements IOEventsListener {

@@ -32,7 +32,7 @@ final class NoHighAvailability implements FixEngineHa {
     static final NoHighAvailability INSTANCE = new NoHighAvailability();
 
     @Override
-    public FixSessionMessagesStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store) {
+    public ReplicatingStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store) {
         throw new IllegalStateException("FIX session " + settings.getFixSessionId() + " asks for replication mode "
                 + settings.getHaSessionSettings().getReplicationMode()
                 + ", but its engine has no high availability configured");

@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.codec.FixMessageEncoderFactory;
 import org.lolaf.staffix.api.fields.FieldLocation;
 import org.lolaf.staffix.api.fields.FieldType;
 import org.lolaf.staffix.api.fields.FieldsRegistry;
+import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.VoidMessageLogger;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
@@ -115,7 +116,7 @@ final class SessionWiring {
         this.disconnectedSessionsExecutor = runtimeDependencies.getDisconnectedSessionsExecutor();
 
         OutgoingMessagesComponent outgoingMessages = new OutgoingMessagesComponent(fixSession, components, fixApplication, messagesStore,
-                messagesLogger, fixSessionId, clock, sendingTimeAccuracy, ioSettings);
+                syncReplicatingStore(settings, messagesStore), messagesLogger, fixSessionId, clock, sendingTimeAccuracy, ioSettings);
         IntFunction<ByteBuffer> encodersAllocator = settings.isMessageEncodersDirectByteBuffers()
                 ? ByteBuffer::allocateDirect : ByteBuffer::allocate;
         CodecsComponent codecs = new CodecsComponent(fixSession, settings, adminMessagesCodec, fixApplication, fieldsRegistry,
@@ -174,6 +175,10 @@ final class SessionWiring {
                                                       FixSessionRuntimeDependencies runtimeDependencies) {
         return settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE
                 ? store : runtimeDependencies.getFixEngineHa().replicatingStore(settings, store);
+    }
+
+    private static ReplicatingStore syncReplicatingStore(FixSessionSettings settings, FixSessionMessagesStore store) {
+        return settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.SYNC ? (ReplicatingStore) store : null;
     }
 
     private static FieldsRegistry fieldsRegistry(FixSessionSettings settings, FixDictionaryId fixDictionaryId, FixSessionId fixSessionId) {

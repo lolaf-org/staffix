@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
 @RequiredArgsConstructor
@@ -34,6 +35,7 @@ class FixSessionBufferedFixMessageContext implements IOWriter.ByteBufferBuilder,
 
     private final RingBuffer<FixSessionBufferedFixMessageContext> ctxPool;
     private final FixSessionImpl fixSession;
+    private final Consumer<FixSessionBufferedFixMessageContext> beforeWrite;
 
     private ByteBuffer[] encodedMessages = new ByteBuffer[8];
     private FixSessionFixMessageContext[] sendingContexts = new FixSessionFixMessageContext[8];
@@ -77,13 +79,16 @@ class FixSessionBufferedFixMessageContext implements IOWriter.ByteBufferBuilder,
         int requiredTotalSize = 0;
         for (int i = 0; i < sendingContextsCount; i++) {
             FixSessionFixMessageContext ctx = sendingContexts[i];
-            ByteBuffer byteBuffer = ctx.build().flip();
+            ByteBuffer byteBuffer = ctx.encode().flip();
             encodedMessages[i] = byteBuffer;
             requiredTotalSize += byteBuffer.remaining();
         }
         ByteBuffer encodedMessagesBuffer = allocator.apply(requiredTotalSize);
         for (int i = 0; i < sendingContextsCount; i++) {
             encodedMessagesBuffer.put(encodedMessages[i]);
+        }
+        if (beforeWrite != null) {
+            beforeWrite.accept(this);
         }
         return encodedMessagesBuffer;
     }

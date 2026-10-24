@@ -21,6 +21,9 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.ha.leader.Followers;
+
+import java.time.Duration;
 
 /**
  * A replicated session as the leader knows it: the key its events carry in the log and on the wire.
@@ -33,11 +36,17 @@ public final class ReplicatedSession {
     private final FixSessionId fixSessionId;
     private final FixSessionType fixSessionType;
     private volatile ReplicationMode replicationMode = ReplicationMode.ASYNC;
+    private volatile long replicationAckTimeoutNanos;
     private volatile @Nullable String storageIdentity;
     /**
      * Set when an event could not be replicated, so the follower's copy has a gap only a snapshot fills.
      */
     private volatile boolean snapshotNeeded;
+    /**
+     * {@code SYNC} sends that went out without the standby's ack, on a timeout or with no standby in sync.
+     */
+    private volatile long unacknowledgedSends;
+    private volatile boolean unprotected;
 
     ReplicatedSession(int key, FixSessionId fixSessionId, FixSessionType fixSessionType) {
         this.key = key;
@@ -45,9 +54,29 @@ public final class ReplicatedSession {
         this.fixSessionType = fixSessionType;
     }
 
-    void update(ReplicationMode replicationMode, @Nullable String storageIdentity) {
+    void update(ReplicationMode replicationMode, Duration replicationAckTimeout, @Nullable String storageIdentity) {
         this.replicationMode = replicationMode;
+        this.replicationAckTimeoutNanos = replicationAckTimeout.toNanos();
         this.storageIdentity = storageIdentity;
+    }
+
+    /**
+     * From the session's thread only. Logs the change from protected to not and back, never each send.
+     */
+    void acknowledged(Followers.Ack ack) {
+        boolean wasUnprotected = unprotected;
+        if (ack == Followers.Ack.APPLIED) {
+            if (wasUnprotected) {
+                unprotected = false;
+                log.info("FIX session {} {} sends are acknowledged by the standby again", fixSessionType, fixSessionId);
+            }
+            return;
+        }
+        unacknowledgedSends++;
+        if (!wasUnprotected) {
+            unprotected = true;
+            log.warn("FIX session {} {} sends without the standby's ack: {}", fixSessionType, fixSessionId, ack);
+        }
     }
 
     void unreplicated(String reason) {

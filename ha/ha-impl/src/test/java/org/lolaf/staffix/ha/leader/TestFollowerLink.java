@@ -217,7 +217,19 @@ class TestFollowerLink {
         link.onAck(EPOCH, 4096, true);
 
         assertThat(link.getAppliedOffset()).isEqualTo(4096);
-        assertThat(link.isInSync()).isTrue();
         assertThat(List.copyOf(sent.frames)).isEmpty();
+    }
+
+    @Test
+    void onlyAStreamingFollowerCaughtUpByItsOwnAccountIsInSync() {
+        replicated("main").storeNextIncomingSeqNum(5);
+        link.onAck(EPOCH, 0, true);
+        assertThat(link.isInSync()).as("before its hello").isFalse();
+
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        assertThat(link.isInSync()).isTrue();
+
+        link.onAck(EPOCH, 0, false);
+        assertThat(link.isInSync()).isFalse();
     }
 }

@@ -16,7 +16,9 @@
 package org.lolaf.staffix.ha;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -136,6 +138,27 @@ class TestReplicatingFixSessionMessagesStore {
      * Fewer bytes than writes rather than zero: a one-off may land in the window while the JIT settles, whereas an
      * object per write would cost at least 16 bytes each.
      */
+    @Test
+    @Timeout(5)
+    void aSyncSendWithoutAFollowerInSyncGoesOutAtOnceUnacknowledged() {
+        ReplicatingStore store = ha.replicatingStore(FixSessionSettings.builder()
+                .fixSessionId(FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
+                .fixSessionType(FixSessionType.INITIATOR)
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .build(), local);
+
+        store.awaitReplicated();
+        assertThat(ha.getSessions().get(0).getUnacknowledgedSends()).as("nothing written yet").isZero();
+
+        store.storeNextOutgoingSeqNum(2);
+        store.awaitReplicated();
+        store.storeNextOutgoingSeqNum(3);
+        store.awaitReplicated();
+
+        assertThat(ha.getSessions().get(0).getUnacknowledgedSends()).isEqualTo(2);
+        assertThat(ha.getSessions().get(0).isUnprotected()).isTrue();
+    }
+
     @Test
     void writesAllocateNothingPerWrite() {
         local.recording = false;

@@ -78,7 +78,6 @@ public final class FollowerLink implements FrameHandler {
      */
     @Getter
     private volatile long appliedOffset = -1;
-    @Getter
     private volatile boolean inSync;
     private volatile boolean paused;
     private int announced;
@@ -158,6 +157,13 @@ public final class FollowerLink implements FrameHandler {
     public void onAck(long epoch, long appliedOffset, boolean inSync) {
         this.appliedOffset = appliedOffset;
         this.inSync = inSync;
+    }
+
+    /**
+     * Streaming, and caught up by its own account: a {@code SYNC} send waits for its ack.
+     */
+    public boolean isInSync() {
+        return inSync && state == State.STREAMING;
     }
 
     @Override
