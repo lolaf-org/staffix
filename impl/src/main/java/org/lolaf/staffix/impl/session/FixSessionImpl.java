@@ -74,6 +74,11 @@ import java.util.function.LongSupplier;
 public class FixSessionImpl implements FixSession {
 
     static final IOException NO_CONNECTED_SESSION = new IOException("No connected session");
+    /**
+     * How long an admin call waits for the session's thread to run its write, past which that thread is taken to be
+     * stuck rather than busy.
+     */
+    private static final Duration OWNER_THREAD_TASK_TIMEOUT = Duration.ofSeconds(10);
     private static final BiConsumer<Runnable, Exception> IGNORE_TASK_RESULT = (task, error) -> {
         if (error == NO_CONNECTED_SESSION || error instanceof EOFException) {
             log.debug("Skipped FIX session task {}, the connection is gone: {}", task.getClass().getName(), error.getMessage());
@@ -443,6 +448,40 @@ public class FixSessionImpl implements FixSession {
         handToTheOfflineOwner(task, null);
     }
 
+    /**
+     * Runs a task on the session's own thread and waits for it, rethrowing what it threw; inline when already there,
+     * which would otherwise wait on itself.
+     *
+     * @param what the task, for the failure saying it did not run in time
+     */
+    private void runOnSessionOwnerThreadAndWait(Runnable task, String what) {
+        IOSession currentIOSession = ioSession;
+        if (isWithinSessionOwnerThread(currentIOSession)) {
+            task.run();
+            return;
+        }
+        CompletableFuture<Void> done = new CompletableFuture<>();
+        runOnSessionOwnerThread(() -> {
+            try {
+                task.run();
+                done.complete(null);
+            } catch (RuntimeException e) {
+                done.completeExceptionally(e);
+            }
+        }, currentIOSession);
+        try {
+            done.get(OWNER_THREAD_TASK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (ExecutionException e) {
+            throw (RuntimeException) e.getCause();
+        } catch (TimeoutException e) {
+            throw new IllegalStateException("FIX session " + fixSessionId + " did not " + what + " within "
+                    + OWNER_THREAD_TASK_TIMEOUT, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted waiting for FIX session " + fixSessionId + " to " + what, e);
+        }
+    }
+
     private void handToTheOfflineOwner(Runnable task, IOSession refusedBy) {
         try {
             disconnectedSessionsExecutor.execute(() -> runIfStillDisconnected(task, refusedBy));
@@ -746,12 +785,20 @@ public class FixSessionImpl implements FixSession {
         adminOperations.sendFixMessage(fixMessage, separator, possDupFlag);
     }
 
+    /**
+     * Written on the session's own thread, which the store is otherwise only written from, and returns once done.
+     */
+    @ExternalThread
     public void adminSetIncomingSeqNum(long seqNum) {
-        adminOperations.setIncomingSeqNum(seqNum);
+        runOnSessionOwnerThreadAndWait(() -> adminOperations.setIncomingSeqNum(seqNum), "set the incoming sequence number");
     }
 
+    /**
+     * Written on the session's own thread, which the store is otherwise only written from, and returns once done.
+     */
+    @ExternalThread
     public void adminSetOutgoingSeqNum(long seqNum) {
-        adminOperations.setOutgoingSeqNum(seqNum);
+        runOnSessionOwnerThreadAndWait(() -> adminOperations.setOutgoingSeqNum(seqNum), "set the outgoing sequence number");
     }
 
     public void hardSequenceReset(long newSeqNum) {
