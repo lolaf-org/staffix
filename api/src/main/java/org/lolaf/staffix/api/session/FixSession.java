@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.api.session;
 
+import lombok.Getter;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.alerting.FixSessionProbes;
@@ -360,9 +361,31 @@ public interface FixSession {
      * {@link #ACCEPTOR} (it listens for and accepts incoming connections). The same {@link FixSessionId} may be
      * configured for both roles, so this type is required to disambiguate a session's settings.
      */
+    @Getter
     enum FixSessionType {
-        INITIATOR,
-        ACCEPTOR
+        INITIATOR((byte) 1),
+        ACCEPTOR((byte) 0);
+
+        /**
+         * Fixed rather than the ordinal, so a binary format carrying it survives a reordering.
+         */
+        private final byte code;
+
+        FixSessionType(byte code) {
+            this.code = code;
+        }
+
+        /**
+         * @throws IllegalStateException for a code no type has
+         */
+        public static FixSessionType from(byte code) {
+            if (code == ACCEPTOR.code) {
+                return ACCEPTOR;
+            } else if (code == INITIATOR.code) {
+                return INITIATOR;
+            }
+            throw new IllegalStateException("Unknown FIX session type code " + code);
+        }
     }
 
     /**

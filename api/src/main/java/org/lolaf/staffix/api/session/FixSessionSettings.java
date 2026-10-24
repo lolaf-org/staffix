@@ -398,21 +398,45 @@ public class FixSessionSettings {
         @Builder.Default
         Duration replicationAckTimeout = Duration.ZERO;
 
+        @Getter
         public enum ReplicationMode {
             /**
              * Not replicated: after a failover the session starts from the standby's own store.
              */
-            NONE,
+            NONE((byte) 0),
             /**
              * Replicated once a message is sent, so nothing waits; a failover may lose the last messages, which the
              * new leader covers by jumping its outgoing sequence number.
              */
-            ASYNC,
+            ASYNC((byte) 1),
             /**
              * A message is replicated before it is sent, so the counterparty never receives one the standby lacks;
              * each send waits for the standby.
              */
-            SYNC
+            SYNC((byte) 2);
+
+            /**
+             * Fixed rather than the ordinal, so a binary format carrying it survives a reordering.
+             */
+            private final byte code;
+
+            ReplicationMode(byte code) {
+                this.code = code;
+            }
+
+            /**
+             * @throws IllegalStateException for a code no mode has
+             */
+            public static ReplicationMode from(byte code) {
+                if (code == NONE.code) {
+                    return NONE;
+                } else if (code == ASYNC.code) {
+                    return ASYNC;
+                } else if (code == SYNC.code) {
+                    return SYNC;
+                }
+                throw new IllegalStateException("Unknown replication mode code " + code);
+            }
         }
     }
 
