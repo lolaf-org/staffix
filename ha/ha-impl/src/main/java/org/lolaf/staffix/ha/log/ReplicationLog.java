@@ -21,6 +21,7 @@ import org.lolaf.ringos.rb.ByteRingReader;
 import org.lolaf.ringos.rb.ByteTranslator;
 import org.lolaf.ringos.rb.ProducerType;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
+import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 
@@ -54,6 +55,13 @@ public class ReplicationLog {
      */
     public int getMaxMessageLength() {
         return ring.getMaxPayloadLength() - FrameEncoder.storeEventBodyBytes(0);
+    }
+
+    /**
+     * The longest STORE_EVENT frame this log can produce, which a follower's receive buffer must hold.
+     */
+    public int getMaxEventFrameBytes() {
+        return WireFormat.STORE_EVENT_BODY_OFFSET + FrameEncoder.storeEventBodyBytes(getMaxMessageLength());
     }
 
     /**

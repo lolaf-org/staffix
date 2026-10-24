@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.ha.follower.Replica;
 import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 
@@ -30,6 +31,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final ReplicationLog log;
     private final ReplicatedSessions sessions = new ReplicatedSessions();
     private final Followers followers = new Followers();
+    private Replica replica;
 
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
         this.log = new ReplicationLog(settings.getLogCapacity());
@@ -38,6 +40,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     @Override
     public ReplicatingStore replicatingStore(FixSessionSettings sessionSettings, FixSessionMessagesStore store) {
         return new ReplicatingFixSessionMessagesStore(store, log, sessions.register(sessionSettings, store), followers);
+    }
+
+    @Override
+    public void bind(EngineAccess engine) {
+        this.replica = new Replica(engine);
     }
 
     @Override

@@ -97,19 +97,15 @@ public final class FollowerLink implements FrameHandler {
         this.epoch = epoch;
         this.leaderId = leaderId;
         this.heartbeatIntervalNanos = heartbeatInterval.toNanos();
-        this.maxEventFrameBytes = maxEventFrameBytes(log);
+        this.maxEventFrameBytes = log.getMaxEventFrameBytes();
         this.batchBytes = batchBytesFor(log);
-    }
-
-    private static int maxEventFrameBytes(ReplicationLog log) {
-        return WireFormat.STORE_EVENT_BODY_OFFSET + FrameEncoder.storeEventBodyBytes(log.getMaxMessageLength());
     }
 
     /**
      * The size of the write buffers a sender fills: room for the largest event, and for many small ones at once.
      */
     static int batchBytesFor(ReplicationLog log) {
-        return Math.max(64 * 1024, maxEventFrameBytes(log));
+        return Math.max(64 * 1024, log.getMaxEventFrameBytes());
     }
 
     @Override

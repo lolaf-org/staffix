@@ -39,6 +39,10 @@ final class NoHighAvailability implements FixEngineHa {
     }
 
     @Override
+    public void bind(EngineAccess engine) {
+    }
+
+    @Override
     public FixEngineHa start() {
         return this;
     }

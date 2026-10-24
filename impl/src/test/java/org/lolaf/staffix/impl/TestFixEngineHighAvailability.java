@@ -18,6 +18,7 @@ package org.lolaf.staffix.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.Delegate;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
@@ -125,6 +126,24 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
                 .containsOnlyOnce("outgoing 2")
                 .doesNotContain("await"));
+    }
+
+    @Test
+    void theEngineLendsItsSessionsSettingsAndStoresToItsHighAvailability() {
+        withHighAvailability();
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+
+        ArgumentCaptor<FixEngineHa.EngineAccess> engine = ArgumentCaptor.forClass(FixEngineHa.EngineAccess.class);
+        verify(ha).bind(engine.capture());
+        FixSessionSettings settings = engine.getValue().getFixSessionsSettings().stream()
+                .filter(s -> s.getFixSessionType() == FixSession.FixSessionType.INITIATOR)
+                .findFirst().orElseThrow();
+        FixSessionMessagesStore store = engine.getValue().openStore(settings);
+
+        store.start();
+        store.storeNextIncomingSeqNum(42);
+        assertThat(store.getIncomingSeqNum()).isEqualTo(42);
+        store.stop(Deadline.unlimited());
     }
 
     @Test

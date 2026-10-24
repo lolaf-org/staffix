@@ -36,6 +36,7 @@ import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
+import org.lolaf.staffix.impl.alerting.FixSessionProbesImpl;
 import org.lolaf.staffix.impl.alerting.ProbesListeners;
 import org.lolaf.staffix.impl.alerting.ProbesManager;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
@@ -228,6 +229,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         });
         fixMessagesLoggers.forEach(Startable::start);
         fixAlertsPublishers.forEach(Startable::start);
+        fixEngineHa.bind(new HaEngineAccess());
         fixEngineHa.start();
         probesManager.start();
         if (adminApiExporter != null) {
@@ -718,6 +720,19 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         }
         throw new IllegalArgumentException(String.format("Unable to find any FIX application factory for id %s within: %s", fixSessionSettings.getFixApplicationFactoryInstanceId(),
                 fixApplicationFactories.stream().map(FixApplicationFactory::getInstanceId).collect(Collectors.joining(","))));
+    }
+
+    private final class HaEngineAccess implements FixEngineHa.EngineAccess {
+
+        @Override
+        public List<FixSessionSettings> getFixSessionsSettings() {
+            return getManagedFixSessionsSettings();
+        }
+
+        @Override
+        public FixMessagesStore.FixSessionMessagesStore openStore(FixSessionSettings settings) {
+            return findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), new FixSessionProbesImpl());
+        }
     }
 
     private FixMessagesStore findMatchAmongstMessagesStores(FixSessionSettings fixSessionSettings) {

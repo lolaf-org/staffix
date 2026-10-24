@@ -1,0 +1,222 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.lolaf.staffix.ha.follower;
+
+import org.junit.jupiter.api.Test;
+import org.lolaf.betty.api.io.IOSession;
+import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.wire.FrameDecoder;
+import org.lolaf.staffix.ha.wire.FrameEncoder;
+import org.lolaf.staffix.ha.wire.FrameHandler;
+import org.lolaf.staffix.ha.wire.RecordingHandler;
+import org.lolaf.staffix.ha.wire.WireFormat;
+
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.function.ToIntBiFunction;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class TestLeaderLink {
+
+    private static final long EPOCH = 7;
+    private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.INITIATOR);
+    private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
+
+    private final IOSession connection = mock(IOSession.class);
+    private final RecordingHandler sent = new RecordingHandler();
+    private final RecordingEngine engine = new RecordingEngine().with(MAIN);
+    private final Replica replica = new Replica(engine);
+    private final LeaderLink link = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+
+    TestLeaderLink() {
+        when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
+        doAnswer(invocation -> {
+            ByteBuffer frames = invocation.getArgument(0);
+            decode(frames.duplicate().flip(), sent);
+            return null;
+        }).when(connection).send(any(ByteBuffer.class), anyBoolean());
+    }
+
+    private static void decode(ByteBuffer frames, FrameHandler handler) {
+        FrameDecoder decoder = new FrameDecoder(1 << 20);
+        int index = frames.position();
+        int consumed;
+        while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, handler)) > 0) {
+            index += consumed;
+        }
+    }
+
+    /**
+     * Hands the link the frames written by each encoder in one read, as the receiver does.
+     */
+    @SafeVarargs
+    private void read(ToIntBiFunction<ByteBuffer, Integer>... frames) {
+        decode(writeFrames(frames), link);
+        link.afterRead();
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset) {
+        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset);
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings) {
+        return (out, index) -> FrameEncoder.session(out, index, EPOCH, key, settings.getFixSessionType(), ReplicationMode.SYNC,
+                settings.getFixSessionId().toString(), null);
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
+                                                              String message) {
+        return (out, index) -> FrameEncoder.storeEvent(out, index, epoch, offset, key, type, seq,
+                message == null ? null : ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
+    }
+
+    private void streaming() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
+        sent.frames.clear();
+    }
+
+    @Test
+    void theHelloCarriesTheLastEventApplied() {
+        link.hello();
+
+        assertThat(sent.frames).containsExactly("HELLO epoch=7 version=1 node=follower-b lastEpoch=0 lastOffset=-1");
+    }
+
+    @Test
+    void aWelcomeStartsTheStreamAndIsAcknowledged() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.STREAMING);
+        assertThat(link.getLeaderId()).isEqualTo("leader-a");
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=-1 inSync=false");
+    }
+
+    @Test
+    void aLeaderOfAnOlderEpochIsRefused() {
+        read(welcome(EPOCH - 1, 0));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 STALE_EPOCH");
+        verify(connection).stop(any());
+    }
+
+    @Test
+    void aSessionConfiguredHereIsReplicatedIntoItsOwnStartedStore() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
+
+        assertThat(engine.store(MAIN).started).isTrue();
+        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 REPLICATING", "ACK epoch=7 applied=-1 inSync=false");
+    }
+
+    @Test
+    void aSessionUnknownHereIsReportedAndNotReplicated() {
+        FixSessionSettings other = RecordingEngine.session("other", FixSessionType.INITIATOR);
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(3, other),
+                event(EPOCH, 0, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
+
+        assertThat(engine.stores).isEmpty();
+        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=false");
+    }
+
+    @Test
+    void storeEventsAreAppliedInOrderAndAcknowledgedOncePerRead() {
+        streaming();
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, MESSAGE),
+                event(EPOCH, 64, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 7, null),
+                event(EPOCH, 96, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null),
+                event(EPOCH, 128, 0, StoreEventType.RESET_SEQ_NUM, 0, null));
+
+        assertThat(engine.store(MAIN).writes).containsExactly("message 5 " + MESSAGE, "outgoing 7", "incoming 3", "reset");
+        assertThat(replica.getLastAppliedEpoch()).isEqualTo(EPOCH);
+        assertThat(replica.getLastAppliedOffset()).isEqualTo(128);
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
+    }
+
+    @Test
+    void aReconnectionKeepsTheStoresAndResumesAfterTheLastEvent() {
+        streaming();
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
+        RecordingEngine.RecordingStore store = engine.store(MAIN);
+
+        LeaderLink next = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+        sent.frames.clear();
+        next.hello();
+        decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), next);
+
+        assertThat(sent.frames).startsWith("HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=0");
+        assertThat(engine.store(MAIN)).isSameAs(store);
+        assertThat(store.started).isTrue();
+    }
+
+    @Test
+    void aFrameOfAnotherEpochClosesTheStream() {
+        streaming();
+
+        read(event(EPOCH + 1, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
+
+        assertThat(engine.store(MAIN).writes).isEmpty();
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 STALE_EPOCH");
+    }
+
+    @Test
+    void anEventOfASessionNeverAnnouncedIsAProtocolError() {
+        streaming();
+
+        read(event(EPOCH, 0, 1, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
+
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    }
+
+    @Test
+    void aFrameBeforeTheWelcomeIsAProtocolError() {
+        read((out, index) -> FrameEncoder.heartbeat(out, index, EPOCH, 0));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    }
+
+    @Test
+    void closingTheReplicaStopsItsStores() {
+        streaming();
+
+        replica.close(Deadline.unlimited());
+
+        assertThat(engine.store(MAIN).started).isFalse();
+    }
+
+    @SafeVarargs
+    private static ByteBuffer writeFrames(ToIntBiFunction<ByteBuffer, Integer>... frames) {
+        ByteBuffer buffer = ByteBuffer.allocate(1 << 16);
+        int length = 0;
+        for (ToIntBiFunction<ByteBuffer, Integer> frame : frames) {
+            length += frame.applyAsInt(buffer, length);
+        }
+        return buffer.limit(length);
+    }
+}

@@ -1,0 +1,124 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.lolaf.staffix.ha.follower;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.ReplicationFixEngineHa;
+import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.ha.leader.FollowerLink;
+import org.lolaf.staffix.ha.leader.ReplicationPublisher;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+
+/**
+ * A leader's publisher and a follower's receiver over a real connection.
+ */
+class TestReplicationReceiver {
+
+    private static final long EPOCH = 7;
+    private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.ACCEPTOR);
+    private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
+
+    private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
+    private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
+    private final ReplicationPublisher publisher = new ReplicationPublisher(address, leader.getLog(), leader.getSessions(),
+            leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100));
+    private final RecordingEngine follower = new RecordingEngine().with(MAIN);
+    private final Replica replica = new Replica(follower);
+    private final FixSessionMessagesStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore());
+    private ReplicationReceiver receiver;
+
+    private static int freePort() {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * The follower applied the leader's first event in an earlier connection, so the stream resumes after it: a
+     * follower with nothing applied needs a snapshot first.
+     */
+    TestReplicationReceiver() {
+        leaderStore.storeNextIncomingSeqNum(1);
+        replica.bind(0, MAIN.getFixSessionType(), MAIN.getFixSessionId().toString());
+        replica.apply(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 1, ByteBuffer.allocate(0), 0, 0);
+        follower.store(MAIN).writes.clear();
+        publisher.start();
+    }
+
+    private void connect() {
+        receiver = new ReplicationReceiver(address, replica, () -> EPOCH, "follower-b", leader.getLog().getMaxEventFrameBytes(),
+                Duration.ofMillis(50));
+        receiver.start();
+        await().until(() -> receiver.getLink() != null && receiver.getLink().getState() == LeaderLink.State.STREAMING);
+    }
+
+    @AfterEach
+    void stop() {
+        if (receiver != null) {
+            receiver.stop(Deadline.of(Duration.ofSeconds(2)));
+        }
+        publisher.stop(Deadline.of(Duration.ofSeconds(2)));
+        replica.close(Deadline.of(Duration.ofSeconds(2)));
+    }
+
+    @Test
+    void theLeadersWritesReachTheFollowersStoreAndAreAcknowledged() {
+        connect();
+
+        leaderStore.storeMessageSent(5, ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII)));
+        leaderStore.storeNextIncomingSeqNum(2);
+        long lastOffset = leader.getLog().getTailOffset();
+        leaderStore.storeNextOutgoingSeqNum(9);
+
+        await().untilAsserted(() -> assertThat(follower.store(MAIN).writes)
+                .containsExactly("message 5 " + MESSAGE, "incoming 2", "outgoing 9"));
+        FollowerLink link = leader.getFollowers().all().get(0);
+        await().until(() -> link.getAppliedOffset() == lastOffset);
+        assertThat(link.getFollowerId()).isEqualTo("follower-b");
+    }
+
+    @Test
+    void aFollowerReconnectingResumesWithTheWritesItMissed() {
+        connect();
+        leaderStore.storeNextIncomingSeqNum(2);
+        await().until(() -> follower.store(MAIN).writes.contains("incoming 2"));
+        receiver.stop(Deadline.of(Duration.ofSeconds(2)));
+        await().until(() -> leader.getFollowers().all().isEmpty());
+
+        leaderStore.storeNextIncomingSeqNum(3);
+        connect();
+        leaderStore.storeNextIncomingSeqNum(4);
+
+        await().untilAsserted(() -> assertThat(follower.store(MAIN).writes).containsExactly("incoming 2", "incoming 3", "incoming 4"));
+    }
+}

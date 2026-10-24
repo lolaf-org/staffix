@@ -20,6 +20,8 @@ import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
+import java.util.List;
+
 /**
  * An engine's high availability: everything the engine calls to replicate its sessions and to follow the leader
  * election. Started and stopped with the engine.
@@ -37,6 +39,29 @@ public interface FixEngineHa extends Startable<FixEngineHa> {
      * replicated, and every write comes from the session's own thread, one at a time.
      */
     ReplicatingStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store);
+
+    /**
+     * Called once by the engine, before {@link #start()}.
+     */
+    void bind(EngineAccess engine);
+
+    /**
+     * What the engine lends its high availability: a standby replays the leader's writes into its sessions' stores
+     * while the sessions themselves are not running.
+     */
+    interface EngineAccess {
+
+        /**
+         * The settings of every session the engine manages now.
+         */
+        List<FixSessionSettings> getFixSessionsSettings();
+
+        /**
+         * The store the session would use, opened outside any session and not started. The caller starts it, and
+         * stops it before the session starts, so the session never shares its store with a replica.
+         */
+        FixSessionMessagesStore openStore(FixSessionSettings settings);
+    }
 
     /**
      * A replicated session's store.
