@@ -44,6 +44,11 @@ public class WireFormat {
     public static final int HEADER_BYTES = 16;
 
     /**
+     * Where the body of a {@link FrameType#STORE_EVENT} starts: past the header and the log offset.
+     */
+    public static final int STORE_EVENT_BODY_OFFSET = HEADER_BYTES + Long.BYTES;
+
+    /**
      * Opens {@link FrameType#HELLO} and {@link FrameType#WELCOME}, so a peer that is not a staffix replication
      * endpoint is refused before anything else is read: 'SFHA'.
      */

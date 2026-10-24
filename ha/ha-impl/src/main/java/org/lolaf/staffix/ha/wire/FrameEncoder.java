@@ -21,10 +21,14 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 
 import static org.lolaf.staffix.ha.wire.WireFormat.HEADER_BYTES;
+import static org.lolaf.staffix.ha.wire.WireFormat.STORE_EVENT_BODY_OFFSET;
 
 /**
  * Writes frames at an absolute index of a caller-owned buffer, leaving its position and limit alone: several threads
@@ -36,6 +40,11 @@ import static org.lolaf.staffix.ha.wire.WireFormat.HEADER_BYTES;
  */
 @UtilityClass
 public class FrameEncoder {
+
+    /**
+     * Plain access only, which tolerates any alignment.
+     */
+    private static final VarHandle LONG = MethodHandles.byteBufferViewVarHandle(long[].class, ByteOrder.nativeOrder());
 
     public static int storeEventBytes(int messageLength) {
         return HEADER_BYTES + FrameType.STORE_EVENT.getFixedPayloadBytes() + messageLength;
@@ -105,19 +114,49 @@ public class FrameEncoder {
      */
     public static int storeEvent(ByteBuffer out, int index, long epoch, long logOffset, int sessionKey,
                                  StoreEventType eventType, long sequenceNumber, @Nullable ByteBuffer message) {
+        int bodyLength = storeEventBody(out, index + STORE_EVENT_BODY_OFFSET, sessionKey, eventType, sequenceNumber, message);
+        return storeEventHeader(out, index, epoch, logOffset, bodyLength);
+    }
+
+    /**
+     * The length of a {@link #storeEventBody} carrying {@code messageLength} bytes of message.
+     */
+    public static int storeEventBodyBytes(int messageLength) {
+        return FrameType.STORE_EVENT.getFixedPayloadBytes() - Long.BYTES + messageLength;
+    }
+
+    /**
+     * Writes a {@link FrameType#STORE_EVENT} without its header and log offset, which the replication log holds
+     * until a sender adds them with {@link #storeEventHeader}: the offset is the log's position for the event, known
+     * only once it is written. The body goes {@link WireFormat#STORE_EVENT_BODY_OFFSET} bytes into the frame.
+     *
+     * @param message the bytes from its position to its limit, left untouched; null for an event carrying none
+     * @return the body's length
+     */
+    public static int storeEventBody(ByteBuffer out, int index, int sessionKey, StoreEventType eventType,
+                                     long sequenceNumber, @Nullable ByteBuffer message) {
         int messageLength = message == null ? 0 : message.remaining();
-        int length = header(out, index, FrameType.STORE_EVENT, 0, epoch, messageLength);
-        int p = index + HEADER_BYTES;
-        out.putLong(p, logOffset);
-        out.putInt(p + 8, sessionKey);
-        out.put(p + 12, eventType.getCode());
-        out.put(p + 13, (byte) 0);
-        out.putShort(p + 14, (short) 0);
-        out.putLong(p + 16, sequenceNumber);
-        out.putInt(p + 24, messageLength);
+        out.putInt(index, sessionKey);
+        out.put(index + 4, eventType.getCode());
+        out.put(index + 5, (byte) 0);
+        out.putShort(index + 6, (short) 0);
+        out.putLong(index + 8, sequenceNumber);
+        out.putInt(index + 16, messageLength);
         if (message != null) {
-            copy(message, message.position(), out, p + 28, messageLength);
+            copy(message, message.position(), out, index + 20, messageLength);
         }
+        return storeEventBodyBytes(messageLength);
+    }
+
+    /**
+     * Writes the header and log offset in front of a {@link #storeEventBody} that is already in place.
+     *
+     * @return the frame's length
+     */
+    public static int storeEventHeader(ByteBuffer out, int index, long epoch, long logOffset, int bodyLength) {
+        int messageLength = bodyLength - storeEventBodyBytes(0);
+        int length = header(out, index, FrameType.STORE_EVENT, 0, epoch, messageLength);
+        out.putLong(index + HEADER_BYTES, logOffset);
         return length;
     }
 
@@ -179,12 +218,13 @@ public class FrameEncoder {
     }
 
     /**
-     * Copies without touching either buffer's position, which an absolute bulk copy cannot do before Java 16.
+     * Copies without touching either buffer's position, which an absolute bulk copy cannot do before Java 16. Longs
+     * are read and written in native order whatever the buffers' order, so the bytes come out unswapped.
      */
     static void copy(ByteBuffer src, int srcIndex, ByteBuffer dst, int dstIndex, int length) {
         int i = 0;
         for (; i + Long.BYTES <= length; i += Long.BYTES) {
-            dst.putLong(dstIndex + i, src.getLong(srcIndex + i));
+            LONG.set(dst, dstIndex + i, (long) LONG.get(src, srcIndex + i));
         }
         for (; i < length; i++) {
             dst.put(dstIndex + i, src.get(srcIndex + i));

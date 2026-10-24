@@ -24,6 +24,17 @@
             <artifactId>staffix-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.lolaf.ringos</groupId>
+            <artifactId>ringos-lib-api</artifactId>
+            <version>${ringos.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.ringos</groupId>
+            <artifactId>ringos-lib-impl-all</artifactId>
+            <version>${ringos.version}</version>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
 
     <build>

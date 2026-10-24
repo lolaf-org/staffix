@@ -27,9 +27,9 @@ import java.util.List;
 /**
  * Records each frame as one line, so a test compares every field at once.
  */
-class RecordingHandler implements FrameHandler {
+public class RecordingHandler implements FrameHandler {
 
-    final List<String> frames = new ArrayList<>();
+    public final List<String> frames = new ArrayList<>();
 
     private static String text(ByteBuffer buffer, int index, int length) {
         byte[] bytes = new byte[length];

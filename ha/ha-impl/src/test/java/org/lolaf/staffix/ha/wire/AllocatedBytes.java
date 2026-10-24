@@ -20,11 +20,11 @@ import lombok.experimental.UtilityClass;
 import java.lang.management.ManagementFactory;
 
 @UtilityClass
-class AllocatedBytes {
+public class AllocatedBytes {
 
     private static final com.sun.management.ThreadMXBean THREADS = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
 
-    static long ofCurrentThread() {
+    public static long ofCurrentThread() {
         return THREADS.getThreadAllocatedBytes(Thread.currentThread().getId());
     }
 }

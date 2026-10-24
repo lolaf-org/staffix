@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha;
 
+import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
 import org.jspecify.annotations.NullMarked;
@@ -34,4 +35,11 @@ public class ReplicationHaSettings extends HaSettings {
      * Decides which engine leads, and so which one runs the sessions while the other replicates.
      */
     private final @Nullable LeaderElectionSettings leaderElection;
+
+    /**
+     * Bytes of off-heap memory holding the store events not yet sent to the follower, a power of two. A follower
+     * falling this far behind is caught up by snapshot instead; the largest message replicated is an eighth of it.
+     */
+    @Builder.Default
+    private final int logCapacity = 16 << 20;
 }
