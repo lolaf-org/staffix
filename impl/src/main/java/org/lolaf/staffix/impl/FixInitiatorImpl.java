@@ -41,6 +41,7 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -62,6 +63,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     private final FixSessionsObserver fixSessionsObserver;
     private final List<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final Object lifecycleLock;
+    private final BooleanSupplier engineActive;
     private FixSessionSettings mainSettings;
     private FixInitiatorTarget activeFixInitiatorTarget;
     private FixInitiatorTargets fixInitiatorTargets;
@@ -71,8 +73,13 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     private Client ioClient;
     private boolean targetRunning;
 
+    /**
+     * @param engineActive false while the engine is a standby: the session is not even built until it is true
+     */
     FixInitiatorImpl(FixInitiatorBuilder fixInitiatorBuilder, Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesProvider,
-                     List<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver) {
+                     List<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver,
+                     BooleanSupplier engineActive) {
+        this.engineActive = engineActive;
         validateTargets(fixInitiatorBuilder, fixSessionsSettingsStores);
         this.mainSettings = findSettings(fixInitiatorBuilder.getMainTarget().getFixSessionId(), fixSessionsSettingsStores).orElseThrow();
         requireApplicationSpeaksEveryTarget(fixInitiatorBuilder, mainSettings, fixRuntimeDependenciesProvider.apply(mainSettings));
@@ -153,7 +160,8 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
 
     @Override
     public boolean isConnected() {
-        return fixSession.isConnected();
+        FixSessionImpl session = fixSession;
+        return session != null && session.isConnected();
     }
 
     @Override
@@ -188,7 +196,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             log.info("Switching initiator '{}' from FIX session {} to {}", fixInitiatorBuilder.getInstanceId(),
                     activeFixInitiatorTarget.getFixSessionId(), fixSessionId);
             if (running) {
-                stopTarget("Fix initiator switching to " + fixSessionId, Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
+                stopTarget("Fix initiator switching to " + fixSessionId, Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), true);
             }
             activeFixInitiatorTarget = target;
             fixInitiatorTargets = fixInitiatorTargets(target);
@@ -234,6 +242,11 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             log.info("Starting initiator for FIX session {}", fixSessionSettings.getFixSessionId());
             checkNoBackupHasStoredSettings(fixInitiatorBuilder, fixSessionsSettingsStores);
             startInitiatorResources();
+            if (!engineActive.getAsBoolean()) {
+                log.info("Started initiator for FIX session {} on a standby engine: it connects once the engine leads",
+                        fixSessionSettings.getFixSessionId());
+                return;
+            }
             try {
                 startTarget();
             } catch (RuntimeException failure) {
@@ -243,6 +256,32 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                 throw failure;
             }
             log.info("Started initiator for FIX session {}", fixSessionSettings.getFixSessionId());
+        }
+    }
+
+    /**
+     * The engine leads: builds and connects the session of an initiator started meanwhile.
+     */
+    void activate() {
+        synchronized (lifecycleLock) {
+            // start() flips isStarted before taking the lock, so a start in progress is caught here or does it itself
+            if (isStarted() && !targetRunning) {
+                log.info("Engine leads, starting initiator for FIX session {}", fixSessionSettings.getFixSessionId());
+                startTarget();
+            }
+        }
+    }
+
+    /**
+     * The engine no longer leads: drops the session without a Logout and closes its store, keeping the initiator
+     * started for the next {@link #activate()}.
+     */
+    void deactivate() {
+        synchronized (lifecycleLock) {
+            if (targetRunning) {
+                log.info("Engine on standby, dropping FIX session {}", fixSessionSettings.getFixSessionId());
+                stopTarget("Fix engine on standby", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), false);
+            }
         }
     }
 
@@ -364,7 +403,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         synchronized (lifecycleLock) {
             log.info("Stopping initiator for FIX session {}", fixSessionSettings.getFixSessionId());
             fixSessionsSettingsStores.forEach(s -> s.unregister(this));
-            stopTarget("Fix initiator stop", stopDeadline);
+            stopTarget("Fix initiator stop", stopDeadline, true);
             stopInitiatorResources(stopDeadline);
             log.info("Stopped initiator for FIX session {}", fixSessionSettings.getFixSessionId());
         }
@@ -376,13 +415,17 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         messageExecutorsRuntime.stop(stopDeadline);
     }
 
-    private void stopTarget(String reason, Deadline stopDeadline) {
+    private void stopTarget(String reason, Deadline stopDeadline, boolean logout) {
         if (!targetRunning) {
             return;
         }
         targetRunning = false;
         fixSessionsObserver.onSessionUnregistered(fixSession);
-        fixSession.stopProtocol(reason, stopDeadline.fromRemainingTime(0.7));
+        if (logout) {
+            fixSession.stopProtocol(reason, stopDeadline.fromRemainingTime(0.7));
+        } else {
+            fixSession.dropProtocol(reason, stopDeadline.fromRemainingTime(0.7));
+        }
         ioClient.stop(stopDeadline.fromRemainingTime(0.8));
         fixSession.releaseResources(stopDeadline);
         ioClient = null;

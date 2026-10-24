@@ -75,7 +75,7 @@ class TestFollowerLink {
     }
 
     private FollowerLink link() {
-        return new FollowerLink(connection, ha.getLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100,
+        return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100,
                 loop -> {
                 });
     }
@@ -126,7 +126,7 @@ class TestFollowerLink {
         store.storeNextIncomingSeqNum(5);
         // events without a message are all one length, so the second starts halfway to the third
         store.storeNextIncomingSeqNum(6);
-        long third = ha.getLog().getTailOffset();
+        long third = ha.getReplicationLog().getTailOffset();
         long second = third / 2;
         store.storeNextIncomingSeqNum(7);
 
@@ -216,7 +216,7 @@ class TestFollowerLink {
         int length = link.heartbeatIfDue(batch, Duration.ofMillis(100).toNanos());
 
         decodeAll(batch.limit(length));
-        assertThat(sent.frames).containsExactly("HEARTBEAT epoch=7 tail=" + ha.getLog().getTailOffset());
+        assertThat(sent.frames).containsExactly("HEARTBEAT epoch=7 tail=" + ha.getReplicationLog().getTailOffset());
     }
 
     @Test
@@ -280,7 +280,7 @@ class TestFollowerLink {
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
         link.snapshotPending();
 
-        long cut = ha.getLog().getTailOffset();
+        long cut = ha.getReplicationLog().getTailOffset();
         assertThat(sent.frames).containsExactly(
                 "SNAPSHOT_BEGIN epoch=7 key=0 cut=" + cut + " nextIn=21 nextOut=13",
                 "SNAPSHOT_MESSAGE epoch=7 key=0 seq=11 message=eleven",

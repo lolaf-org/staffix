@@ -62,6 +62,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -101,11 +102,20 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private volatile FixSessionImpl[] connectedSessionsArray;
     private volatile FixAcceptorSessions fixAcceptorSessions;
     private ScheduledExecutorService scheduledExecutorService;
+    private final Object lifecycleLock = new Object();
+    private final BooleanSupplier engineActive;
     private Server ioServer;
     private boolean shuttingDown;
+    private boolean running;
 
+    /**
+     * @param engineActive false while the engine is a standby: no session is built and nothing is bound until it is
+     *                     true
+     */
     FixAcceptorImpl(FixAcceptorBuilder fixAcceptorBuilder, Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesSupplier,
-                    Collection<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver) {
+                    Collection<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver,
+                    BooleanSupplier engineActive) {
+        this.engineActive = engineActive;
         this.configuredSessionsSettings = Collections.synchronizedSet(new HashSet<>());
         this.connectedSessions = Collections.synchronizedSet(new HashSet<>());
         this.connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
@@ -178,6 +188,42 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     protected void startMe() throws StartStopException {
+        synchronized (lifecycleLock) {
+            if (engineActive.getAsBoolean()) {
+                startAcceptor();
+            } else {
+                log.info("Started FIX server {} on a standby engine: it binds once the engine leads", fixAcceptorBuilder.getInstanceId());
+            }
+        }
+    }
+
+    /**
+     * The engine leads: builds the sessions and binds, for an acceptor started meanwhile.
+     */
+    void activate() {
+        synchronized (lifecycleLock) {
+            // start() flips isStarted before taking the lock, so a start in progress is caught here or does it itself
+            if (isStarted() && !running) {
+                log.info("Engine leads, starting FIX server {}", fixAcceptorBuilder.getInstanceId());
+                startAcceptor();
+            }
+        }
+    }
+
+    /**
+     * The engine no longer leads: drops every session without a Logout, closes their stores and unbinds, keeping the
+     * acceptor started for the next {@link #activate()}.
+     */
+    void deactivate() {
+        synchronized (lifecycleLock) {
+            if (running) {
+                log.info("Engine on standby, dropping the sessions of FIX server {}", fixAcceptorBuilder.getInstanceId());
+                stopAcceptor(Deadline.of(fixAcceptorBuilder.getShutdownMaxDelay()), false);
+            }
+        }
+    }
+
+    private void startAcceptor() {
         if (fixAcceptorBuilder.getScheduledExecutorService() == null) {
             scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "Staffix-server-scheduler-" + fixAcceptorBuilder.getInstanceId());
@@ -228,6 +274,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 .build().newInstance();
         shuttingDown = false;
         ioServer.start();
+        running = true;
     }
 
     private IOStats.IOStatsProvider getIoStatsProvider(boolean monitoringEnabled) {
@@ -277,12 +324,21 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
+        synchronized (lifecycleLock) {
+            if (running) {
+                stopAcceptor(stopDeadline, true);
+            }
+        }
+    }
+
+    private void stopAcceptor(Deadline stopDeadline, boolean logout) {
+        running = false;
         shuttingDown = true;
         ioServer.stopListening();
         fixSessionsSettingsStores.forEach(s -> s.unregister(this));
         configuredSessions.values().forEach(fixSessionsObserver::onSessionUnregistered);
 
-        stopSessionsProtocol(stopDeadline);
+        stopSessionsProtocol(stopDeadline, logout);
         ioServer.stop(stopDeadline.fromRemainingTime(0.8));
         configuredSessions.values().forEach(fixSession -> fixSession.releaseResources(stopDeadline));
         stopOwnSchedulerIfNeeded(scheduledExecutorService, fixAcceptorBuilder.getInstanceId(),
@@ -302,11 +358,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     }
 
     /**
-     * Logs every session out and takes its connection down, holding nothing back: the stores and the loggers stay open
-     * until {@link #stopMe(Deadline)} has stopped the IO server and each session has released its own resources, so a
-     * message still being delivered while this runs is recorded rather than written into released memory.
+     * Logs every session out, or drops it without a Logout, and takes its connection down: the stores and the loggers
+     * stay open until the IO server is stopped and each session has released its own resources, so a message still
+     * being delivered while this runs is recorded rather than written into released memory.
      */
-    private void stopSessionsProtocol(Deadline stopDeadline) {
+    private void stopSessionsProtocol(Deadline stopDeadline, boolean logout) {
         if (configuredSessions.isEmpty()) {
             return;
         }
@@ -319,7 +375,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         configuredSessions.values().forEach(fixSession ->
                 sessionsStopService.submit(() -> {
                     try {
-                        fixSession.stopProtocol("FIX server stop", sessionStopDeadline);
+                        if (logout) {
+                            fixSession.stopProtocol("FIX server stop", sessionStopDeadline);
+                        } else {
+                            fixSession.dropProtocol("Fix engine on standby", sessionStopDeadline);
+                        }
                     } finally {
                         countDownLatch.countDown();
                     }

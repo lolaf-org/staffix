@@ -38,12 +38,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * An engine whose sessions' stores record what is written to them, as text.
  */
-final class RecordingEngine implements EngineAccess {
+public final class RecordingEngine implements EngineAccess {
 
     final List<FixSessionSettings> settings = new CopyOnWriteArrayList<>();
     final Map<String, RecordingStore> stores = new ConcurrentHashMap<>();
+    /**
+     * Activations and deactivations, each with the number of stores open at the time.
+     */
+    public final List<String> activity = new CopyOnWriteArrayList<>();
 
-    static FixSessionSettings session(String name, FixSessionType type) {
+    public static FixSessionSettings session(String name, FixSessionType type) {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(type)
@@ -51,12 +55,12 @@ final class RecordingEngine implements EngineAccess {
                 .build();
     }
 
-    RecordingEngine with(FixSessionSettings session) {
+    public RecordingEngine with(FixSessionSettings session) {
         settings.add(session);
         return this;
     }
 
-    RecordingStore store(FixSessionSettings session) {
+    public RecordingStore store(FixSessionSettings session) {
         return stores.get(session.getFixSessionType() + " " + session.getFixSessionId());
     }
 
@@ -78,9 +82,23 @@ final class RecordingEngine implements EngineAccess {
         return store;
     }
 
-    static final class RecordingStore implements FixSessionMessagesStore {
+    @Override
+    public void activate() {
+        activity.add("activate, stores open " + openStores());
+    }
 
-        final List<String> writes = new CopyOnWriteArrayList<>();
+    @Override
+    public void deactivate() {
+        activity.add("deactivate");
+    }
+
+    private long openStores() {
+        return stores.values().stream().filter(store -> store.started).count();
+    }
+
+    public static final class RecordingStore implements FixSessionMessagesStore {
+
+        public final List<String> writes = new CopyOnWriteArrayList<>();
         volatile boolean started;
         volatile @Nullable String storageIdentity = "recording:" + UUID.randomUUID();
 

@@ -61,6 +61,19 @@ public interface FixEngineHa extends Startable<FixEngineHa> {
          * stops it before the session starts, so the session never shares its store with a replica.
          */
         FixSessionMessagesStore openStore(FixSessionSettings settings);
+
+        /**
+         * Runs the sessions: the initiators and acceptors the application started connect and bind. An engine with
+         * high availability starts without them, so a standby never builds a session; call this once this node leads
+         * and the replica's stores are closed.
+         */
+        void activate();
+
+        /**
+         * Drops every session at once, without a Logout, and closes their stores, for a node that no longer leads.
+         * The initiators and acceptors stay started for the next {@link #activate()}.
+         */
+        void deactivate();
     }
 
     /**

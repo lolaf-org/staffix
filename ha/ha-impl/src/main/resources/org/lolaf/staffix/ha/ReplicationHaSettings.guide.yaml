@@ -1,6 +1,6 @@
 summary: >-
   Replicates the stores of the sessions whose haSessionSettings ask for it to a standby engine, which takes over when
-  the leader election makes it the leader. Not functional yet: the engine does not start the replication on its own.
+  the leader election makes it the leader. Needs a leaderElection, and no implementation of one ships yet.
 production:
   - >-
     Size logCapacity to the bytes the sessions write while a follower may lag or reconnect; a follower left further
@@ -8,3 +8,6 @@ production:
   - >-
     Size snapshotMaxMessages to the oldest message a counterparty may ask to be resent after a failover to a follower
     that was caught up by snapshot; older ones are gap filled.
+  - >-
+    Give both nodes the same peers and logCapacity: a node binds its own peers entry while it leads and connects to
+    the leader's, and a follower sizes its receive buffer from logCapacity.

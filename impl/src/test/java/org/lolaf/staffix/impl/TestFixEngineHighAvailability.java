@@ -18,10 +18,10 @@ package org.lolaf.staffix.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.Delegate;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
+import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -30,6 +30,9 @@ import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.tests.TestingHaSettings;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -39,6 +42,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.notNull;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -48,12 +54,29 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
 
     private final FixEngineHa ha = mock(FixEngineHa.class);
     private final List<RecordingReplicatingStore> stores = new CopyOnWriteArrayList<>();
+    private volatile FixEngineHa.EngineAccess engine;
+    private boolean leadsOnBind;
 
     private static FixSessionSettings.HaSessionSettings replicated(ReplicationMode mode) {
         return FixSessionSettings.HaSessionSettings.builder().replicationMode(mode).build();
     }
 
+    /**
+     * A highly available engine starts standby; this one leads as soon as it is bound.
+     */
     private void withHighAvailability() {
+        leadsOnBind = true;
+        withStandbyHighAvailability();
+    }
+
+    private void withStandbyHighAvailability() {
+        doAnswer(invocation -> {
+            engine = invocation.getArgument(0);
+            if (leadsOnBind) {
+                engine.activate();
+            }
+            return null;
+        }).when(ha).bind(any());
         when(ha.replicatingStore(any(), any())).then(invocation -> {
             RecordingReplicatingStore store = new RecordingReplicatingStore(invocation.getArgument(1));
             stores.add(store);
@@ -62,6 +85,70 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         initiatorFixEngineBuilder = initiatorFixEngineBuilder.toBuilder()
                 .highAvailability(TestingHaSettings.builder().mock(ha).build())
                 .build();
+    }
+
+    private static boolean listening(InetSocketAddress address) {
+        try (Socket socket = new Socket(address.getHostString(), address.getPort())) {
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    @Test
+    void aStandbyEngineBuildsNoSessionUntilItLeads() {
+        withStandbyHighAvailability();
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        startFixAcceptor();
+
+        fixInitiator.start();
+
+        assertThat(fixInitiator.isStarted()).isTrue();
+        assertThat(fixInitiator.getSession()).isNull();
+        verify(ha, never()).replicatingStore(any(), any());
+        verify(fixInitiatorApplication, never()).onSessionCreated(any(), any(), any(), any());
+
+        engine.activate();
+        trapCreatedFixSession(ConnectorType.INITIATOR);
+        fixInitiatorSession.logon();
+
+        await().untilAsserted(() -> verify(fixAcceptorApplication).onLogon(any(FixSession.class), any(DecodedFixMessage.class)));
+    }
+
+    @Test
+    void anEngineThatNoLongerLeadsDropsItsSessionsWithoutALogoutAndRunsThemAgainOnceItLeads() {
+        withHighAvailability();
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        logonClient();
+
+        engine.deactivate();
+
+        await().untilAsserted(() -> verify(fixAcceptorApplication).onDisconnected(any()));
+        verify(fixAcceptorApplication, never()).onLogout(any(), any(), notNull());
+        assertThat(fixInitiator.isConnected()).isFalse();
+        assertThat(stores.get(0).isStarted()).as("the session's store is closed").isFalse();
+
+        clearInvocations(fixInitiatorApplication);
+        engine.activate();
+        trapCreatedFixSession(ConnectorType.INITIATOR);
+        fixInitiatorSession.logon();
+
+        await().untilAsserted(() -> verify(fixInitiatorApplication).onLogon(any(FixSession.class), any(DecodedFixMessage.class)));
+    }
+
+    @Test
+    void aStandbyAcceptorBindsNothingUntilItsEngineLeads() {
+        acceptorFixEngineBuilder = acceptorFixEngineBuilder.toBuilder()
+                .highAvailability(TestingHaSettings.builder().mock(ha).build())
+                .build();
+        withStandbyHighAvailability();
+        setupAcceptorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);
+
+        fixAcceptor.start();
+
+        assertThat(listening(fixAcceptorBuilder.getBindAddress())).isFalse();
+        engine.activate();
+        assertThat(listening(fixAcceptorBuilder.getBindAddress())).isTrue();
     }
 
     @Test
@@ -133,12 +220,10 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         withHighAvailability();
         setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
 
-        ArgumentCaptor<FixEngineHa.EngineAccess> engine = ArgumentCaptor.forClass(FixEngineHa.EngineAccess.class);
-        verify(ha).bind(engine.capture());
-        FixSessionSettings settings = engine.getValue().getFixSessionsSettings().stream()
+        FixSessionSettings settings = engine.getFixSessionsSettings().stream()
                 .filter(s -> s.getFixSessionType() == FixSession.FixSessionType.INITIATOR)
                 .findFirst().orElseThrow();
-        FixSessionMessagesStore store = engine.getValue().openStore(settings);
+        FixSessionMessagesStore store = engine.openStore(settings);
 
         store.start();
         store.storeNextIncomingSeqNum(42);

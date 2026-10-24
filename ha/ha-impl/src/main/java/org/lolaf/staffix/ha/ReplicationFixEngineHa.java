@@ -16,45 +16,221 @@
 package org.lolaf.staffix.ha;
 
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.ha.FixEngineHa;
+import org.lolaf.staffix.api.ha.LeaderElection;
+import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.follower.Replica;
+import org.lolaf.staffix.ha.follower.ReplicationReceiver;
 import org.lolaf.staffix.ha.leader.Followers;
+import org.lolaf.staffix.ha.leader.ReplicationPublisher;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 
+import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Replicates the sessions' stores from the leader to its follower, and runs the engine's sessions only while this
+ * node leads: a follower keeps them unbuilt and replays the leader's writes into their stores instead.
+ *
+ * <p>The election's role is followed on a thread of its own, one change at a time. Promotion stops following,
+ * closes the replica's stores, starts the publisher, then activates the engine; demotion deactivates the engine
+ * first, so a node that no longer leads stops writing before anything else.
+ */
+@Slf4j
 @Getter
 public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineHa> implements FixEngineHa {
 
-    private final ReplicationLog log;
+    private static final Duration ROLE_CHANGE_DEADLINE = Duration.ofSeconds(10);
+
+    private final ReplicationHaSettings settings;
+    private final ReplicationLog replicationLog;
     private final ReplicatedSessions sessions = new ReplicatedSessions();
     private final Followers followers = new Followers();
+    private EngineAccess engine;
     private Replica replica;
+    private LeaderElection election;
+    private ScheduledExecutorService roleThread;
+    private Role followedRole = Role.UNKNOWN;
+    private long followedEpoch = -1;
+    private @Nullable InetSocketAddress followedLeader;
+    private @Nullable ReplicationPublisher publisher;
+    private @Nullable ReplicationReceiver receiver;
 
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
-        this.log = new ReplicationLog(settings.getLogCapacity());
+        this.settings = settings;
+        this.replicationLog = new ReplicationLog(settings.getLogCapacity());
     }
 
     @Override
     public ReplicatingStore replicatingStore(FixSessionSettings sessionSettings, FixSessionMessagesStore store) {
-        return new ReplicatingFixSessionMessagesStore(store, log, sessions.register(sessionSettings, store), followers);
+        return new ReplicatingFixSessionMessagesStore(store, replicationLog, sessions.register(sessionSettings, store), followers);
     }
 
     @Override
     public void bind(EngineAccess engine) {
+        this.engine = engine;
         this.replica = new Replica(engine);
     }
 
     @Override
     protected void startMe() {
-        // the publisher and the follower receiver start here once they exist
+        if (settings.getLeaderElection() == null) {
+            throw new IllegalStateException("Replication high availability of node " + settings.getNodeId()
+                    + " needs a leaderElection to tell which node runs the sessions");
+        }
+        if (!settings.getPeers().containsKey(settings.getNodeId())) {
+            throw new IllegalStateException("Replication high availability peers " + settings.getPeers().keySet()
+                    + " have no address for this node, " + settings.getNodeId());
+        }
+        election = settings.getLeaderElection().instance();
+        roleThread = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "staffix-ha-role-" + settings.getNodeId());
+            thread.setDaemon(true);
+            return thread;
+        });
+        election.addListener((previous, current, epoch) -> roleThread.execute(this::followRole));
+        election.start();
+        roleThread.execute(this::followRole);
+        long checkMillis = settings.getHeartbeatInterval().toMillis();
+        roleThread.scheduleWithFixedDelay(this::followRole, checkMillis, checkMillis, TimeUnit.MILLISECONDS);
     }
 
     @Override
     protected void stopMe(Deadline stopDeadline) {
-        // the publisher and the follower receiver stop here once they exist
+        roleThread.shutdownNow();
+        try {
+            if (!roleThread.awaitTermination(Math.max(1, stopDeadline.getRemainingTime().toMillis()), TimeUnit.MILLISECONDS)) {
+                log.warn("The role thread of node {} is still busy at the stop deadline", settings.getNodeId());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        stopPublisher(stopDeadline);
+        stopReceiver(stopDeadline);
+        replica.close(stopDeadline);
+        election.stop(stopDeadline);
+    }
+
+    /**
+     * Brings this node in line with the election. A leader that can no longer prove it leads is treated as no longer
+     * leading, before another node takes over its sessions.
+     */
+    private void followRole() {
+        try {
+            Role role = election.getRole();
+            if (role == Role.LEADER && !election.isLeadershipValid()) {
+                role = Role.UNKNOWN;
+            }
+            switch (role) {
+                case LEADER:
+                    lead(election.getEpoch());
+                    break;
+                case FOLLOWER:
+                    follow(election.getEpoch(), leaderAddress());
+                    break;
+                default:
+                    stand();
+            }
+        } catch (RuntimeException e) {
+            log.error("Node {} failed to follow its leader election", settings.getNodeId(), e);
+        }
+    }
+
+    private @Nullable InetSocketAddress leaderAddress() {
+        Optional<InetSocketAddress> advertised = election.getLeaderEndpoint();
+        if (advertised.isPresent()) {
+            return advertised.get();
+        }
+        return election.getLeaderId().map(settings.getPeers()::get).orElse(null);
+    }
+
+    private void lead(long epoch) {
+        if (followedRole == Role.LEADER && followedEpoch == epoch) {
+            return;
+        }
+        Deadline deadline = Deadline.of(ROLE_CHANGE_DEADLINE);
+        if (followedRole == Role.LEADER) {
+            engine.deactivate();
+        }
+        stopReceiver(deadline);
+        stopPublisher(deadline);
+        if (!replica.isComplete()) {
+            log.warn("Node {} leads at epoch {} with sessions its follower copy did not hold in full", settings.getNodeId(), epoch);
+        }
+        replica.close(deadline);
+        publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLog, sessions, followers,
+                () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getSnapshotMaxMessages());
+        publisher.start();
+        engine.activate();
+        changed(Role.LEADER, epoch, null);
+    }
+
+    private void follow(long epoch, @Nullable InetSocketAddress leader) {
+        if (followedRole == Role.FOLLOWER && followedEpoch == epoch && sameAddress(leader)) {
+            return;
+        }
+        Deadline deadline = Deadline.of(ROLE_CHANGE_DEADLINE);
+        if (followedRole == Role.LEADER) {
+            engine.deactivate();
+            stopPublisher(deadline);
+        }
+        stopReceiver(deadline);
+        if (leader == null) {
+            log.warn("Node {} follows at epoch {} but has no address for its leader", settings.getNodeId(), epoch);
+        } else {
+            receiver = new ReplicationReceiver(leader, replica, election::getEpoch, settings.getNodeId(),
+                    replicationLog.getMaxEventFrameBytes(), settings.getReconnectInterval());
+            receiver.start();
+        }
+        changed(Role.FOLLOWER, epoch, leader);
+    }
+
+    private void stand() {
+        if (followedRole == Role.UNKNOWN) {
+            return;
+        }
+        Deadline deadline = Deadline.of(ROLE_CHANGE_DEADLINE);
+        if (followedRole == Role.LEADER) {
+            engine.deactivate();
+            stopPublisher(deadline);
+        }
+        stopReceiver(deadline);
+        changed(Role.UNKNOWN, -1, null);
+    }
+
+    private boolean sameAddress(@Nullable InetSocketAddress leader) {
+        return leader == null ? followedLeader == null : leader.equals(followedLeader);
+    }
+
+    private void changed(Role role, long epoch, @Nullable InetSocketAddress leader) {
+        log.info("Node {} is now {} at epoch {}{}", settings.getNodeId(), role, epoch, leader == null ? "" : ", following " + leader);
+        followedRole = role;
+        followedEpoch = epoch;
+        followedLeader = leader;
+    }
+
+    private void stopPublisher(Deadline deadline) {
+        if (publisher != null) {
+            publisher.stop(deadline);
+            publisher = null;
+        }
+    }
+
+    private void stopReceiver(Deadline deadline) {
+        if (receiver != null) {
+            receiver.stop(deadline);
+            receiver = null;
+        }
     }
 
     public static class ReplicationFixEngineHaFactory implements FixEngineHa.FixEngineHaFactory<ReplicationHaSettings> {

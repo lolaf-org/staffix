@@ -708,11 +708,24 @@ public class FixSessionImpl implements FixSession {
      */
     @ExternalThread
     public void stopProtocol(String message, Deadline stopDeadline) {
+        stopProtocol(message, stopDeadline, true);
+    }
+
+    /**
+     * Like {@link #stopProtocol(String, Deadline)}, without a Logout: for an engine that lost its leadership, which
+     * must stop writing at once, and whose Logout would take a MsgSeqNum(34) the new leader never learns.
+     */
+    @ExternalThread
+    public void dropProtocol(String message, Deadline stopDeadline) {
+        stopProtocol(message, stopDeadline, false);
+    }
+
+    private void stopProtocol(String message, Deadline stopDeadline, boolean logout) {
         fixSessionLayerComponents.onSessionStopping(stopDeadline);
         // before anything else touches the connection: a retransmission still running would otherwise carry on
         // writing into a session being torn down, and the logout below is what the peer should see next
         fixApplication.onSessionPreDestroy(this);
-        if (isLoggedIn()) {
+        if (logout && isLoggedIn()) {
             logout(message);
             Deadline logoutAnswerDeadline = stopDeadline.fromRemainingTime(0.5);
             Duration logoutResponseTimeout = fixSessionSettings.getLogInOrOutResponseTimeout();

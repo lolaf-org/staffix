@@ -59,14 +59,14 @@ class TestFollowers {
                 .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
                 .build(), mock(FixSessionMessagesStore.class));
         store.storeNextIncomingSeqNum(1);
-        offset = ha.getLog().getTailOffset();
+        offset = ha.getReplicationLog().getTailOffset();
         store.storeNextIncomingSeqNum(2);
     }
 
     private FollowerLink inSyncFollower(long appliedOffset) {
         IOSession connection = mock(IOSession.class);
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
-        FollowerLink link = new FollowerLink(connection, ha.getLog(), ha.getSessions(), () -> EPOCH, "leader-a",
+        FollowerLink link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofSeconds(1), 100, loop -> {
         });
         link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0);

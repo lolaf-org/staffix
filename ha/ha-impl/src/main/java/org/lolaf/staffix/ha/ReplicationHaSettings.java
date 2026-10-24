@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Singular;
 import lombok.experimental.SuperBuilder;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -25,6 +26,7 @@ import org.lolaf.staffix.api.ha.LeaderElectionSettings;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * Replicates the stores of the sessions asking for it to a standby engine over TCP.
@@ -53,9 +55,18 @@ public class ReplicationHaSettings extends HaSettings {
     private final String nodeId = "default";
 
     /**
-     * Where this engine accepts its follower while it leads.
+     * Where each node accepts replication while it leads, by {@link #getNodeId() node id}, the same map on every node:
+     * a node binds its own entry, and connects to the leader's. A leader election that advertises the leader's
+     * endpoint overrides the leader's entry.
      */
-    private final @Nullable InetSocketAddress bindAddress;
+    @Singular
+    private final Map<String, InetSocketAddress> peers;
+
+    /**
+     * How long a follower waits between two attempts to connect to its leader.
+     */
+    @Builder.Default
+    private final Duration reconnectInterval = Duration.ofSeconds(1);
 
     /**
      * How often a leader with nothing to send tells its follower where the log ends, so the follower can tell an idle

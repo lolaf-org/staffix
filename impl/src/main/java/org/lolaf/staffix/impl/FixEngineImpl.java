@@ -26,12 +26,12 @@ import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.ha.FixEngineHa;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.session.*;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
@@ -75,12 +75,12 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private final FixEngineBuilder fixEngineBuilder;
     private final AdminApiExporter adminApiExporter;
     private final FixEngineHa fixEngineHa;
-
     private final Map<String, FixInitiatorImpl> initiators;
     private final Map<String, FixAcceptorImpl> acceptors;
     private final Set<SessionLifecycleListener> sessionLifecycleListeners;
     @Getter
     private final FixSessionRegistryImpl fixSessionRegistry;
+    private volatile boolean active;
     private volatile FixSessionAdminControl[] sessionAdminControls = new FixSessionAdminControl[0];
     private volatile List<FixInitiatorTargets> initiatorsTargets = List.of();
     private volatile List<FixAcceptorSessions> acceptorsSessions = List.of();
@@ -117,6 +117,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         this.probesManager = new ProbesManager(fixEngineBuilder.getInstanceId(), Clock.systemUTC(), probesListeners);
         this.adminApiExporter = fixEngineBuilder.getAdminApiExporter() != null ? fixEngineBuilder.getAdminApiExporter().instance() : null;
         this.fixEngineHa = fixEngineBuilder.getHighAvailability() != null ? fixEngineBuilder.getHighAvailability().instance() : NoHighAvailability.INSTANCE;
+        this.active = fixEngineBuilder.getHighAvailability() == null;
         this.initiators = new ConcurrentHashMap<>();
         this.acceptors = new ConcurrentHashMap<>();
     }
@@ -265,7 +266,8 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             throw new IllegalStateException("Start the FIX engine first");
         }
         FixInitiator initiator = initiators.computeIfAbsent(fixInitiatorBuilder.getInstanceId(), instanceId -> {
-            FixInitiatorImpl newInitiator = new FixInitiatorImpl(fixInitiatorBuilder, this::getDependencies, fixSessionsSettingsStores, this);
+            FixInitiatorImpl newInitiator = new FixInitiatorImpl(fixInitiatorBuilder, this::getDependencies, fixSessionsSettingsStores, this,
+                    () -> active);
             checkNoBackupManagedElsewhere(fixInitiatorBuilder);
             return newInitiator;
         });
@@ -306,7 +308,8 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             throw new IllegalStateException("Start the FIX engine first");
         }
         FixAcceptor acceptor = acceptors.computeIfAbsent(fixAcceptorBuilder.getInstanceId(),
-                instanceId -> new FixAcceptorImpl(fixAcceptorBuilder, this::getDependencies, fixSessionsSettingsStores, this));
+                instanceId -> new FixAcceptorImpl(fixAcceptorBuilder, this::getDependencies, fixSessionsSettingsStores, this,
+                        () -> active));
         refreshSessionAdminControls();
         onAcceptorSessionsChanged();
         return acceptor;
@@ -722,19 +725,6 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 fixApplicationFactories.stream().map(FixApplicationFactory::getInstanceId).collect(Collectors.joining(","))));
     }
 
-    private final class HaEngineAccess implements FixEngineHa.EngineAccess {
-
-        @Override
-        public List<FixSessionSettings> getFixSessionsSettings() {
-            return getManagedFixSessionsSettings();
-        }
-
-        @Override
-        public FixMessagesStore.FixSessionMessagesStore openStore(FixSessionSettings settings) {
-            return findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), new FixSessionProbesImpl());
-        }
-    }
-
     private FixMessagesStore findMatchAmongstMessagesStores(FixSessionSettings fixSessionSettings) {
         for (FixMessagesStore fms : fixMessagesStores) {
             if (fms.getInstanceId().equals(fixSessionSettings.getFixMessageStoreInstanceId())) {
@@ -782,6 +772,33 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         @Override
         public Class<FixEngineBuilder> getSettingsClass() {
             return FixEngineBuilder.class;
+        }
+    }
+
+    private final class HaEngineAccess implements FixEngineHa.EngineAccess {
+
+        @Override
+        public List<FixSessionSettings> getFixSessionsSettings() {
+            return getManagedFixSessionsSettings();
+        }
+
+        @Override
+        public FixMessagesStore.FixSessionMessagesStore openStore(FixSessionSettings settings) {
+            return findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), new FixSessionProbesImpl());
+        }
+
+        @Override
+        public synchronized void activate() {
+            active = true;
+            initiators.values().forEach(FixInitiatorImpl::activate);
+            acceptors.values().forEach(FixAcceptorImpl::activate);
+        }
+
+        @Override
+        public synchronized void deactivate() {
+            active = false;
+            initiators.values().forEach(FixInitiatorImpl::deactivate);
+            acceptors.values().forEach(FixAcceptorImpl::deactivate);
         }
     }
 }
