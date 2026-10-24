@@ -15,28 +15,38 @@
  */
 package org.lolaf.staffix.ha;
 
+import lombok.AccessLevel;
+import lombok.Getter;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.ha.log.ReplicationLog;
 
+@Getter(AccessLevel.PACKAGE)
 public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineHa> implements FixEngineHa {
+
+    private final ReplicationLog log;
+    private final ReplicatedSessions sessions = new ReplicatedSessions();
+
+    public ReplicationFixEngineHa(ReplicationHaSettings settings) {
+        this.log = new ReplicationLog(settings.getLogCapacity());
+    }
 
     @Override
     public FixSessionMessagesStore replicatingStore(FixSessionSettings sessionSettings, FixSessionMessagesStore store) {
-        throw new UnsupportedOperationException("Store replication is not implemented yet, FIX session "
-                + sessionSettings.getFixSessionId() + " cannot be replicated");
+        return new ReplicatingFixSessionMessagesStore(store, log, sessions.register(sessionSettings));
     }
 
     @Override
     protected void startMe() {
-        // nothing to start until replication exists
+        // the publisher and the follower receiver start here once they exist
     }
 
     @Override
     protected void stopMe(Deadline stopDeadline) {
-        // nothing to stop until replication exists
+        // the publisher and the follower receiver stop here once they exist
     }
 
     public static class ReplicationFixEngineHaFactory implements FixEngineHa.FixEngineHaFactory<ReplicationHaSettings> {
@@ -48,7 +58,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
         @Override
         public FixEngineHa newInstance(ReplicationHaSettings settings) {
-            return new ReplicationFixEngineHa();
+            return new ReplicationFixEngineHa(settings);
         }
     }
 }

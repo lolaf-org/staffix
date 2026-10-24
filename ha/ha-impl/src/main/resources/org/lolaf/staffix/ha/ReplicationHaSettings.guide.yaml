@@ -1,3 +1,8 @@
 summary: >-
   Replicates the stores of the sessions whose haSessionSettings ask for it to a standby engine, which takes over when
-  the leader election makes it the leader. Not functional yet: a replicated session is refused when it connects.
+  the leader election makes it the leader. Not functional yet: store events are kept in the replication log but no
+  follower receives them.
+production:
+  - >-
+    Size logCapacity to the bytes the sessions write while a follower may lag or reconnect; a follower left further
+    behind is caught up by snapshot, and no single message may exceed an eighth of it.

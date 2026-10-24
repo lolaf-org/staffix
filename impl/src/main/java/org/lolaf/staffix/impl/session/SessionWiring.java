@@ -75,7 +75,7 @@ final class SessionWiring {
     final MessageTypeRegistry messageTypeRegistry;
     final Clock clock;
     final FixSessionLayerComponents components;
-    final FailSafeFixSessionMessagesStore messagesStore;
+    final FixSessionMessagesStore messagesStore;
     final FixMessagesLogger.Logger messagesLogger;
     final FixAdminMessagesCodec adminMessagesCodec;
     final FixMessageParser messageParser;
@@ -104,9 +104,11 @@ final class SessionWiring {
                 settings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR),
                 settings.getDesiredSessionState(), scheduleManager);
         this.components = new FixSessionLayerComponents();
-        this.messagesStore = new FailSafeFixSessionMessagesStore(sessionStore(settings, fixSessionId, probes, runtimeDependencies),
-                fixSessionId, runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
-        probes.add(messagesStore.getProbe());
+        FailSafeFixSessionMessagesStore failSafeStore = new FailSafeFixSessionMessagesStore(
+                runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes), fixSessionId,
+                runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
+        probes.add(failSafeStore.getProbe());
+        this.messagesStore = replicated(settings, failSafeStore, runtimeDependencies);
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
         this.messagesLogger = messagesLogger(fixInstanceId, probes, runtimeDependencies);
         this.messageExecutors = messageExecutorsRuntime.newSessionExecutors();
@@ -164,9 +166,12 @@ final class SessionWiring {
         return logger;
     }
 
-    private static FixSessionMessagesStore sessionStore(FixSessionSettings settings, FixSessionId fixSessionId, FixSessionProbesImpl probes,
-                                                        FixSessionRuntimeDependencies runtimeDependencies) {
-        FixSessionMessagesStore store = runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes);
+    /**
+     * Outside the fail-safe store, so replication goes on while the session's own storage is down: the standby's copy
+     * is what a failover needs then.
+     */
+    private static FixSessionMessagesStore replicated(FixSessionSettings settings, FailSafeFixSessionMessagesStore store,
+                                                      FixSessionRuntimeDependencies runtimeDependencies) {
         return settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE
                 ? store : runtimeDependencies.getFixEngineHa().replicatingStore(settings, store);
     }

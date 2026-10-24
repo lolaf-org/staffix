@@ -27,10 +27,14 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 public interface FixEngineHa extends Startable<FixEngineHa> {
 
     /**
-     * The store a session uses in place of {@code store}, replicating what is written to it. Called once, when the
-     * session is built, and only for a session whose {@link FixSessionSettings.HaSessionSettings#getReplicationMode()}
-     * is not {@link FixSessionSettings.HaSessionSettings.ReplicationMode#NONE NONE}: other sessions keep their store
+     * The store a session uses in place of {@code store}, replicating what is written to it. Called each time the
+     * session is built, which a restart repeats, and only for a session whose
+     * {@link FixSessionSettings.HaSessionSettings#getReplicationMode()} is not
+     * {@link FixSessionSettings.HaSessionSettings.ReplicationMode#NONE NONE}: other sessions keep their store
      * unwrapped, so replication costs them nothing.
+     *
+     * <p>{@code store} reports a storage failure rather than throwing it, so a write reaching it can always be
+     * replicated, and every write comes from the session's own thread, one at a time.
      */
     FixSessionMessagesStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store);
 
