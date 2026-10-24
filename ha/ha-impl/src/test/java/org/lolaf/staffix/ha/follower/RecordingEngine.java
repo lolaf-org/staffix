@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.follower;
 
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -29,6 +30,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -62,9 +65,15 @@ final class RecordingEngine implements EngineAccess {
         return settings;
     }
 
+    /**
+     * The storage identity the next stores opened report.
+     */
+    volatile @Nullable String nextStorageIdentity = "follower-storage";
+
     @Override
     public FixSessionMessagesStore openStore(FixSessionSettings session) {
         RecordingStore store = new RecordingStore();
+        store.storageIdentity = nextStorageIdentity;
         stores.put(session.getFixSessionType() + " " + session.getFixSessionId(), store);
         return store;
     }
@@ -73,6 +82,12 @@ final class RecordingEngine implements EngineAccess {
 
         final List<String> writes = new CopyOnWriteArrayList<>();
         volatile boolean started;
+        volatile @Nullable String storageIdentity = "recording:" + UUID.randomUUID();
+
+        @Override
+        public Optional<String> getStorageIdentity() {
+            return Optional.ofNullable(storageIdentity);
+        }
 
         @Override
         public FixSessionMessagesStore start() {

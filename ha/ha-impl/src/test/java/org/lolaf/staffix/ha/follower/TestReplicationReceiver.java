@@ -123,6 +123,19 @@ class TestReplicationReceiver {
     }
 
     @Test
+    void aSessionWhoseStorageTheFollowerSharesIsInSyncWithoutBeingWritten() {
+        follower.nextStorageIdentity = leader.getSessions().get(0).getStorageIdentity();
+        connect();
+        inSync();
+
+        leaderStore.storeNextOutgoingSeqNum(2);
+        leaderStore.awaitReplicated();
+
+        assertThat(follower.store(MAIN).writes).isEmpty();
+        assertThat(leader.getSessions().get(0).getUnacknowledgedSends()).isZero();
+    }
+
+    @Test
     void aFollowerReconnectingResumesWithTheWritesItMissedWithoutANewSnapshot() {
         connect();
         inSync();

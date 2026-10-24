@@ -63,7 +63,8 @@ public final class FollowerLink implements FrameHandler {
     }
 
     /**
-     * Where a session stands on this follower, as the leader knows it.
+     * Where a session stands on this follower, as the leader knows it. A session whose storage the follower shares
+     * is in sync: what the leader stored is already there.
      */
     public enum SessionSync {
         ANNOUNCED,
@@ -215,6 +216,7 @@ public final class FollowerLink implements FrameHandler {
         }
         switch (status) {
             case REPLICATING:
+            case SHARED_STORAGE:
                 sessionSync(sessionKey, SessionSync.IN_SYNC);
                 break;
             case SNAPSHOT_NEEDED:

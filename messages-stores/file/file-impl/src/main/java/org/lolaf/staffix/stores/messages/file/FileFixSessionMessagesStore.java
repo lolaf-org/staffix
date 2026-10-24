@@ -15,13 +15,13 @@
  */
 package org.lolaf.staffix.stores.messages.file;
 
-import org.lolaf.staffix.api.serde.SerDe;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.unsafe.UnsafeOperations;
 import org.lolaf.ringos.unsafe.UnsafeOperationsApi;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 
@@ -71,10 +71,19 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final File sessionFile;
     private final int blockSize;
     private final FixSessionId fixSessionId;
+    private final String storageIdentity;
     private MappedByteBuffer mappedByteBuffer;
     private ByteBuffer alignedByteBuffer;
 
     public FileFixSessionMessagesStore(FileMessageStoreSettings settings, FixSessionId fixSessionId) {
+        this(settings, fixSessionId, null);
+    }
+
+    /**
+     * @param storageIdentity the directory's, read by the {@link FileMessagesStore} as it starts; null for none
+     */
+    FileFixSessionMessagesStore(FileMessageStoreSettings settings, FixSessionId fixSessionId, String storageIdentity) {
+        this.storageIdentity = storageIdentity;
         this.settings = settings;
         this.messageFilter = settings.getMessageFilter();
         this.outgoingSequenceNumber = new AtomicLong(1);
@@ -85,6 +94,11 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             throw new IllegalArgumentException("Minimum block size is 32 bytes");
         }
         this.fixSessionId = fixSessionId;
+    }
+
+    @Override
+    public Optional<String> getStorageIdentity() {
+        return Optional.ofNullable(storageIdentity);
     }
 
     @Override

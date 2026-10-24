@@ -17,10 +17,13 @@ package org.lolaf.staffix.stores.messages.jdbc;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.junit.jupiter.api.Test;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
 public class TestPostgresJdbcFixSessionMessagesStore extends AbstractJdbcFixSessionMessagesStore {
@@ -45,5 +48,18 @@ public class TestPostgresJdbcFixSessionMessagesStore extends AbstractJdbcFixSess
         config.setPassword(postgres.getPassword());
         config.setMaximumPoolSize(10);
         return new HikariDataSource(config);
+    }
+
+    @Test
+    void aDatabaseReachedThroughAnotherUrlIsTheSameStorage() {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(postgres.getJdbcUrl().replace("localhost", "127.0.0.1"));
+        config.setUsername(postgres.getUsername());
+        config.setPassword(postgres.getPassword());
+        try (HikariDataSource throughAddress = new HikariDataSource(config); HikariDataSource throughName = getDataSource()) {
+            assertThat(throughAddress.getJdbcUrl()).isNotEqualTo(throughName.getJdbcUrl());
+
+            assertThat(identity(throughAddress, "").get()).isEqualTo(identity(throughName, "").get());
+        }
     }
 }

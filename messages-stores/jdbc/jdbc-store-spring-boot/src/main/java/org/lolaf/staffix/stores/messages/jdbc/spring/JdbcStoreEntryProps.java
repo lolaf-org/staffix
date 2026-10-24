@@ -36,6 +36,11 @@ public class JdbcStoreEntryProps {
      */
     private String tablePrefix;
     /**
+     * Overrides the storage identity derived from the database, which high availability compares to tell a shared
+     * database from a separate one.
+     */
+    private String storageIdentity;
+    /**
      * How many messages a session retains before the oldest are pruned.
      */
     private Integer maxMessagesPerSession;

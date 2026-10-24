@@ -84,29 +84,45 @@ public final class Replica {
 
     /**
      * Binds the leader's key to the session configured here with that id and type, opening and starting its store
-     * the first time.
+     * the first time, when it is not the leader's own storage. A session refused is looked at again on the next
+     * connection, its storage being readable by then perhaps.
      */
-    SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId) {
+    SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId, @Nullable String leaderStorageIdentity) {
         ReplicaSession bound = key < sessions.length ? sessions[key] : null;
-        if (bound != null && bound.matches(fixSessionType, fixSessionId)) {
+        if (bound != null && bound.matches(fixSessionType, fixSessionId) && bound.store != null) {
             return bound.status();
         }
         if (bound != null) {
             bound.stop(Deadline.unlimited());
         }
-        FixSessionSettings settings = findSettings(fixSessionType, fixSessionId);
         if (key >= sessions.length) {
             sessions = Arrays.copyOf(sessions, Math.max(key + 1, sessions.length * 2));
         }
-        if (settings == null) {
-            sessions[key] = new ReplicaSession(fixSessionType, fixSessionId, null);
-            log.warn("The leader replicates FIX session {} {}, unknown here", fixSessionType, fixSessionId);
-        } else {
-            FixSessionMessagesStore store = engine.openStore(settings);
-            store.start();
-            sessions[key] = new ReplicaSession(fixSessionType, fixSessionId, store);
+        sessions[key] = open(fixSessionType, fixSessionId, leaderStorageIdentity);
+        SessionStatus status = sessions[key].status();
+        if (status == SessionStatus.SHARED_STORAGE) {
+            log.info("FIX session {} {} is not replicated: its storage is the leader's own", fixSessionType, fixSessionId);
+        } else if (status != SessionStatus.SNAPSHOT_NEEDED) {
+            log.warn("FIX session {} {} is not replicated here: {}", fixSessionType, fixSessionId, status);
         }
-        return sessions[key].status();
+        return status;
+    }
+
+    private ReplicaSession open(FixSessionType fixSessionType, String fixSessionId, @Nullable String leaderStorageIdentity) {
+        FixSessionSettings settings = findSettings(fixSessionType, fixSessionId);
+        if (settings == null) {
+            return new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.UNKNOWN_SESSION);
+        }
+        FixSessionMessagesStore store = engine.openStore(settings);
+        String storageIdentity = store.getStorageIdentity().orElse(null);
+        if (storageIdentity == null || leaderStorageIdentity == null) {
+            return new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.UNKNOWN_STORAGE);
+        }
+        if (storageIdentity.equals(leaderStorageIdentity)) {
+            return new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.SHARED_STORAGE);
+        }
+        store.start();
+        return new ReplicaSession(fixSessionType, fixSessionId, store, SessionStatus.SNAPSHOT_NEEDED);
     }
 
     private @Nullable FixSessionSettings findSettings(FixSessionType fixSessionType, String fixSessionId) {
@@ -211,19 +227,25 @@ public final class Replica {
         private final FixSessionType fixSessionType;
         private final String fixSessionId;
         private final @Nullable FixSessionMessagesStore store;
+        private final SessionStatus refusal;
         private volatile boolean complete;
         private long snapshotNextOutgoingSeqNum;
         private int snapshotMessages;
 
-        ReplicaSession(FixSessionType fixSessionType, String fixSessionId, @Nullable FixSessionMessagesStore store) {
+        /**
+         * @param refusal the status of a session not replicated here, without a store
+         */
+        ReplicaSession(FixSessionType fixSessionType, String fixSessionId, @Nullable FixSessionMessagesStore store,
+                       SessionStatus refusal) {
             this.fixSessionType = fixSessionType;
             this.fixSessionId = fixSessionId;
             this.store = store;
+            this.refusal = refusal;
         }
 
         SessionStatus status() {
             if (store == null) {
-                return SessionStatus.UNKNOWN_SESSION;
+                return refusal;
             }
             return complete ? SessionStatus.REPLICATING : SessionStatus.SNAPSHOT_NEEDED;
         }

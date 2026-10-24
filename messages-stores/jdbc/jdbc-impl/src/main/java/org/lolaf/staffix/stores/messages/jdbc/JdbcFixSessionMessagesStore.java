@@ -35,6 +35,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -67,11 +68,18 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final ScheduledExecutorService scheduledExecutorService;
     private final String resetSql;
     private final String deleteAllMessagesSql;
+    private final JdbcStorageIdentity storageIdentity;
     private String findCutoffSeqNumSql;
     private ScheduledFuture<?> pruningTask;
     private boolean resetPending;
 
     JdbcFixSessionMessagesStore(JdbcMessageStoreSettings settings, FixSessionId fixSessionId, ScheduledExecutorService scheduledExecutorService) {
+        this(settings, fixSessionId, scheduledExecutorService, new JdbcStorageIdentity(settings));
+    }
+
+    JdbcFixSessionMessagesStore(JdbcMessageStoreSettings settings, FixSessionId fixSessionId, ScheduledExecutorService scheduledExecutorService,
+                                JdbcStorageIdentity storageIdentity) {
+        this.storageIdentity = storageIdentity;
         this.cachedInputStreamTL = FastThreadLocal.withInitial(ArrayList::new);
         this.dataSource = settings.getDataSource();
         this.fixSessionId = fixSessionId;
@@ -104,6 +112,11 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         } catch (SQLException e) {
             return false;
         }
+    }
+
+    @Override
+    public Optional<String> getStorageIdentity() {
+        return storageIdentity.get();
     }
 
     @Override

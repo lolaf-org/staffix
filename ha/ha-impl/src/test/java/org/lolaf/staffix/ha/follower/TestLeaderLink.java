@@ -85,8 +85,12 @@ class TestLeaderLink {
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings) {
+        return session(key, settings, "leader-storage");
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings, String leaderStorageIdentity) {
         return (out, index) -> FrameEncoder.session(out, index, EPOCH, key, settings.getFixSessionType(), ReplicationMode.SYNC,
-                settings.getFixSessionId().toString(), null);
+                settings.getFixSessionId().toString(), leaderStorageIdentity);
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
@@ -146,6 +150,48 @@ class TestLeaderLink {
 
         assertThat(engine.stores).isEmpty();
         assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=true");
+    }
+
+    @Test
+    void aSessionWhoseStorageIsTheLeadersOwnIsNeitherStartedNorWrittenTo() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN, "follower-storage"),
+                event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
+
+        assertThat(engine.store(MAIN).started).isFalse();
+        assertThat(engine.store(MAIN).writes).isEmpty();
+        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=true");
+    }
+
+    @Test
+    void aSessionWhoseStorageCannotBeIdentifiedIsRefused() {
+        engine.nextStorageIdentity = null;
+
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
+
+        assertThat(engine.store(MAIN).started).isFalse();
+        assertThat(sent.frames).first().isEqualTo("SESSION_STATUS epoch=7 key=0 UNKNOWN_STORAGE");
+    }
+
+    @Test
+    void aSessionTheLeaderCannotIdentifyIsRefused() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME), (out, index) -> FrameEncoder.session(out, index, EPOCH, 0,
+                MAIN.getFixSessionType(), ReplicationMode.SYNC, MAIN.getFixSessionId().toString(), null));
+
+        assertThat(sent.frames).first().isEqualTo("SESSION_STATUS epoch=7 key=0 UNKNOWN_STORAGE");
+    }
+
+    @Test
+    void aRefusedSessionIsLookedAtAgainOnTheNextConnection() {
+        engine.nextStorageIdentity = null;
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
+        engine.nextStorageIdentity = "follower-storage-back";
+
+        LeaderLink next = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+        sent.frames.clear();
+        decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), next);
+
+        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(engine.store(MAIN).started).isTrue();
     }
 
     @Test

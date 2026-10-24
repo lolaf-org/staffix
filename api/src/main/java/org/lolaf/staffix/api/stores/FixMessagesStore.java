@@ -137,7 +137,7 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
         /**
          * Identifies the storage this store writes to, equal on two engines only when they share it, such as one
          * database. High availability skips replicating a session whose store the standby shares, since replaying into
-         * it would rewrite the leader's own data. Empty when the storage cannot be identified.
+         * it would rewrite the leader's own data, and refuses one whose store answers empty: it cannot be identified.
          */
         default Optional<String> getStorageIdentity() {
             return Optional.empty();

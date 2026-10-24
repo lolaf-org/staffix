@@ -52,6 +52,14 @@ class TestMemoryFixSessionMessagesStore extends AbstractFixSessionMessagesStoreT
     }
 
     @Test
+    void eachStoreIsItsOwnStorage() {
+        MemoryFixSessionMessagesStore other = createGroupedSessionStore(sessionId);
+
+        assertThat(messageStore.getStorageIdentity()).hasValueSatisfying(id -> assertThat(id).startsWith("memory:"));
+        assertThat(other.getStorageIdentity()).isPresent().isNotEqualTo(messageStore.getStorageIdentity());
+    }
+
+    @Test
     void shouldIncrementOutgoingSequenceNumberWhenDisabled() {
         setupDisabledStore(0);
         messageStore.start();

@@ -56,6 +56,13 @@ public class JdbcMessageStoreSettings implements FixMessagesStoreSettings {
     private final String tablePrefix = "";
 
     /**
+     * Overrides the storage identity derived from the database, which high availability compares to tell a database
+     * the standby shares from its own. Set the same value on both nodes when the derived one differs for one database
+     * (a proxy hiding the server's id, say), and different values when it matches for two.
+     */
+    private final @Nullable String storageIdentity;
+
+    /**
      * Message filter to determine which messages should be stored.
      * By default, all messages are stored.
      */

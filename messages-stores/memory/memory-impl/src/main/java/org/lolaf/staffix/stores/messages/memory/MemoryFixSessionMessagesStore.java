@@ -28,6 +28,8 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
@@ -43,6 +45,10 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
     private final Consumer<ByteBuffer> byteBufferCleaner;
     private final boolean enabledMessageStoring;
     private final RingBuffer<StoredMessage> storeMessages;
+    /**
+     * Memory is never shared, so each store is its own storage.
+     */
+    private final Optional<String> storageIdentity = Optional.of("memory:" + UUID.randomUUID());
 
     public MemoryFixSessionMessagesStore(MemoryMessageStoreSettings settings) {
         allocator = settings.isUseDirectMemory() ? ByteBuffer::allocateDirect : ByteBuffer::allocate;
@@ -67,6 +73,11 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
 
     private void doClean(ByteBuffer bb) {
         UnsafeOperationsApi.ifAvailableDo(UnsafeOperations::invokeCleaner, bb);
+    }
+
+    @Override
+    public Optional<String> getStorageIdentity() {
+        return storageIdentity;
     }
 
     @Override

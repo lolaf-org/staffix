@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.stores.messages.testkit.AbstractFixSessionMessagesStoreTest;
 
+import javax.sql.DataSource;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -67,6 +68,42 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
                 .dataSource(dataSource)
                 .messageFilter(messagesFilter)
                 .build(), sessionId, scheduledExecutorService);
+    }
+
+    static JdbcStorageIdentity identity(DataSource source, String tablePrefix) {
+        return new JdbcStorageIdentity(JdbcMessageStoreSettings.builder().dataSource(source).tablePrefix(tablePrefix).build());
+    }
+
+    @Test
+    void storesOnOneDatabaseAndTablesShareTheirStorageIdentity() {
+        assertThat(identity(dataSource, "").get()).hasValueSatisfying(id -> assertThat(id).startsWith("jdbc:"));
+        assertThat(identity(dataSource, "").get()).isEqualTo(identity(dataSource, "").get());
+        assertThat(messageStore.getStorageIdentity())
+                .isEqualTo(identity(dataSource, "").get());
+    }
+
+    @Test
+    void anotherTablePrefixIsAnotherStorage() {
+        assertThat(identity(dataSource, "other").get()).isNotEqualTo(identity(dataSource, "").get());
+    }
+
+    @Test
+    void aConfiguredStorageIdentityWinsOverTheDatabases() {
+        JdbcStorageIdentity configured = new JdbcStorageIdentity(JdbcMessageStoreSettings.builder()
+                .dataSource(dataSource).storageIdentity("shared-db").build());
+
+        assertThat(configured.get()).contains("shared-db");
+    }
+
+    @Test
+    void anUnreachableDatabaseHasNoStorageIdentityUntilItIsBack() {
+        FailingDataSource failing = new FailingDataSource(dataSource);
+        JdbcStorageIdentity identity = identity(failing, "");
+
+        failing.setDown(true);
+        assertThat(identity.get()).isEmpty();
+        failing.setDown(false);
+        assertThat(identity.get()).isEqualTo(identity(dataSource, "").get());
     }
 
     @Override

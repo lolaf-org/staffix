@@ -40,6 +40,7 @@ public class JdbcMessagesStore extends Startable.SimpleStartable<FixMessagesStor
 
     private final JdbcMessageStoreSettings settings;
     private final Map<FixSessionId, FixSessionMessagesStore> sessionStores;
+    private final JdbcStorageIdentity storageIdentity;
     private ScheduledExecutorService scheduledExecutorService;
     private boolean embeddedScheduledExecutorService;
 
@@ -53,12 +54,13 @@ public class JdbcMessagesStore extends Startable.SimpleStartable<FixMessagesStor
         }
         this.settings = settings;
         this.sessionStores = new ConcurrentHashMap<>();
+        this.storageIdentity = new JdbcStorageIdentity(settings);
     }
 
     @Override
     public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {
         return sessionStores.computeIfAbsent(fixSessionId,
-                sid -> new JdbcFixSessionMessagesStore(settings, fixSessionId, scheduledExecutorService));
+                sid -> new JdbcFixSessionMessagesStore(settings, fixSessionId, scheduledExecutorService, storageIdentity));
     }
 
     @Override
