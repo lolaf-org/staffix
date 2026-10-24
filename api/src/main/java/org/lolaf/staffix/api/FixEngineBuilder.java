@@ -22,6 +22,7 @@ import lombok.experimental.SuperBuilder;
 import org.lolaf.staffix.api.admin.AdminApiExporterSettings;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
+import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
@@ -49,6 +50,11 @@ public class FixEngineBuilder implements InstanceProvider<FixEngine> {
      * The admin API to expose the engine through, if any. JMX is the shipped implementation.
      */
     private AdminApiExporterSettings adminApiExporter;
+    /**
+     * Replicates the sessions' stores to a standby engine that takes over when it is elected leader. Without it, a
+     * session asking for replication is refused.
+     */
+    private HaSettings highAvailability;
     /**
      * Where sessions are read from. More than one is allowed, so sessions built in code can sit beside sessions
      * loaded from files.

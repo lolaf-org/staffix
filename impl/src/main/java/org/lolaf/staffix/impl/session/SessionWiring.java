@@ -29,6 +29,8 @@ import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
@@ -102,7 +104,7 @@ final class SessionWiring {
                 settings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR),
                 settings.getDesiredSessionState(), scheduleManager);
         this.components = new FixSessionLayerComponents();
-        this.messagesStore = new FailSafeFixSessionMessagesStore(runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes),
+        this.messagesStore = new FailSafeFixSessionMessagesStore(sessionStore(settings, fixSessionId, probes, runtimeDependencies),
                 fixSessionId, runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
         probes.add(messagesStore.getProbe());
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
@@ -160,6 +162,13 @@ final class SessionWiring {
                 fixSessionId, runtimeDependencies.getFixMessagesLoggerSettings(), runtimeDependencies.getUnderlyingResourceChecker());
         probes.add(logger.getProbe());
         return logger;
+    }
+
+    private static FixSessionMessagesStore sessionStore(FixSessionSettings settings, FixSessionId fixSessionId, FixSessionProbesImpl probes,
+                                                        FixSessionRuntimeDependencies runtimeDependencies) {
+        FixSessionMessagesStore store = runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes);
+        return settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE
+                ? store : runtimeDependencies.getFixEngineHa().replicatingStore(settings, store);
     }
 
     private static FieldsRegistry fieldsRegistry(FixSessionSettings settings, FixDictionaryId fixDictionaryId, FixSessionId fixSessionId) {

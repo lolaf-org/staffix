@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Where a session's outbound messages and sequence numbers are kept, so a restart can serve a ResendRequest.
@@ -131,6 +132,15 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
          */
         default String getUnderlyingStorageResourceDescription() {
             return "default";
+        }
+
+        /**
+         * Identifies the storage this store writes to, equal on two engines only when they share it, such as one
+         * database. High availability skips replicating a session whose store the standby shares, since replaying into
+         * it would rewrite the leader's own data. Empty when the storage cannot be identified.
+         */
+        default Optional<String> getStorageIdentity() {
+            return Optional.empty();
         }
 
         /**

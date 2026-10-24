@@ -66,6 +66,9 @@ rttMeasurementSettings:
   maxAcceptedRtt: "PT2S"
   probeTestReqIdPrefix: "RTT-measurement-"
   sendingTimeToWireDelay: "PT0.0000015S"
+haSessionSettings:
+  replicationMode: "NONE"
+  replicationAckTimeout: "PT0S"
 sessionScheduleSettings:
   outsideSessionTimePreTriggerDelay: "PT2S"
   timeZone: "Europe/Zurich"

@@ -1,0 +1,3 @@
+summary: >-
+  Replicates the stores of the sessions whose haSessionSettings ask for it to a standby engine, which takes over when
+  the leader election makes it the leader. Not functional yet: a replicated session is refused when it connects.

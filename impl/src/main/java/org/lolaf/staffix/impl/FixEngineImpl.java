@@ -25,6 +25,8 @@ import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
+import org.lolaf.staffix.api.ha.FixEngineHa;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
@@ -71,6 +73,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Getter
     private final FixEngineBuilder fixEngineBuilder;
     private final AdminApiExporter adminApiExporter;
+    private final FixEngineHa fixEngineHa;
 
     private final Map<String, FixInitiatorImpl> initiators;
     private final Map<String, FixAcceptorImpl> acceptors;
@@ -112,6 +115,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         this.probesListeners = new ProbesListeners();
         this.probesManager = new ProbesManager(fixEngineBuilder.getInstanceId(), Clock.systemUTC(), probesListeners);
         this.adminApiExporter = fixEngineBuilder.getAdminApiExporter() != null ? fixEngineBuilder.getAdminApiExporter().instance() : null;
+        this.fixEngineHa = fixEngineBuilder.getHighAvailability() != null ? fixEngineBuilder.getHighAvailability().instance() : NoHighAvailability.INSTANCE;
         this.initiators = new ConcurrentHashMap<>();
         this.acceptors = new ConcurrentHashMap<>();
     }
@@ -159,6 +163,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         acceptors.clear();
         onAcceptorSessionsChanged();
         refreshSessionAdminControls();
+        fixEngineHa.stop(stopDeadline);
         stopSelfManagedDisconnectedSessionsExecutor(stopDeadline);
         underlyingResourceChecker.stop();
 
@@ -212,7 +217,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         }
         fixSessionsSettingsStores.forEach(s -> {
             s.start();
-            s.getSettings().forEach(FixSessionSettingsValidator::validate);
+            s.getSettings().forEach(this::validate);
         });
         fixApplicationFactories.forEach(Startable::start);
         fixMessagesStores.forEach(Startable::start);
@@ -223,9 +228,19 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         });
         fixMessagesLoggers.forEach(Startable::start);
         fixAlertsPublishers.forEach(Startable::start);
+        fixEngineHa.start();
         probesManager.start();
         if (adminApiExporter != null) {
             adminApiExporter.export(this);
+        }
+    }
+
+    private void validate(FixSessionSettings settings) {
+        FixSessionSettingsValidator.validate(settings);
+        ReplicationMode replicationMode = settings.getHaSessionSettings().getReplicationMode();
+        if (fixEngineBuilder.getHighAvailability() == null && replicationMode != ReplicationMode.NONE) {
+            throw new IllegalArgumentException("FIX session " + settings.getFixSessionId() + " asks for replication mode "
+                    + replicationMode + ", but engine " + getInstanceId() + " has no high availability configured");
         }
     }
 
@@ -239,7 +254,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 findMatchAmongstAlertsPublishers(fixSessionSettings),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
                 findMatchAmongstPluginsComponent(fixSessionSettings),
-                fixSessionRegistry, disconnectedSessionsExecutor(), underlyingResourceChecker);
+                fixSessionRegistry, disconnectedSessionsExecutor(), underlyingResourceChecker, fixEngineHa);
     }
 
     @Override
@@ -363,7 +378,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             // load() reads the backing source without mutating the store; we reconcile the difference here, keyed by
             // FixSessionId, so that the store's add/remove/update fire the listener callbacks the sessions react to.
             Set<FixSessionSettings> loaded = store.load();
-            loaded.forEach(FixSessionSettingsValidator::validate);
+            loaded.forEach(this::validate);
             Map<FixSessionId, FixSessionSettings> currentBySessionId = store.getSettings().stream()
                     .collect(Collectors.toMap(FixSessionSettings::getFixSessionId, s -> s));
             Set<FixSessionId> loadedSessionIds = new HashSet<>();
@@ -395,7 +410,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Override
     public void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings) {
         FixSessionsSettingsStore store = store(storeInstanceId);
-        FixSessionSettingsValidator.validate(settings);
+        validate(settings);
         requireResolvableComponents(settings);
         synchronized (store) {
             requireUnusedName(settings.getFixSessionId(), null);
@@ -411,7 +426,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                     + fixSessionId + " cannot become " + settings.getFixSessionId());
         }
         FixSessionsSettingsStore store = storeHolding(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));
-        FixSessionSettingsValidator.validate(settings);
+        validate(settings);
         requireResolvableComponents(settings);
         synchronized (store) {
             FixSessionSettings current = store.find(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));

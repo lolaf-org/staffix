@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-ha-parent</artifactId>
+        <version>0.9.2-SNAPSHOT</version>
+    </parent>
+    <artifactId>staffix-ha-impl</artifactId>
+
+    <name>Staffix High Availability</name>
+    <description>
+        Replicates the stores of the sessions that ask for it to a standby engine over TCP, so the standby takes over
+        a session where the leader left it.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.ha</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-component-metadata-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -207,6 +207,13 @@ public class FixSessionSettingsMapper {
             if (r.getSendingTimeToWireDelay() != null) rb.sendingTimeToWireDelay(r.getSendingTimeToWireDelay());
             b.rttMeasurementSettings(rb.build());
         }
+        if (p.getHa() != null) {
+            FixSessionSettings.HaSessionSettings.HaSessionSettingsBuilder<?, ?> hb = FixSessionSettings.HaSessionSettings.builder();
+            FixSessionSettingsProps.HaProps h = p.getHa();
+            if (h.getReplicationMode() != null) hb.replicationMode(h.getReplicationMode());
+            if (h.getReplicationAckTimeout() != null) hb.replicationAckTimeout(h.getReplicationAckTimeout());
+            b.haSessionSettings(hb.build());
+        }
         if (p.getSchedule() != null) {
             FixSessionSettings.SessionScheduleSettings.SessionScheduleSettingsBuilder ssb = FixSessionSettings.SessionScheduleSettings.builder();
             FixSessionSettingsProps.ScheduleProps s = p.getSchedule();

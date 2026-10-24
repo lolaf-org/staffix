@@ -47,6 +47,7 @@ public class FixSessionSettingsValidator {
         validateTimeouts(settings, violations);
         validateCancelOnDisconnect(settings, violations);
         validateRttMeasurement(settings, violations);
+        validateHaSessionSettings(settings, violations);
 
         if (!violations.isEmpty()) {
             String details = violations.stream().sorted().reduce("", (a, b) -> a + "\n  - " + b);
@@ -190,6 +191,14 @@ public class FixSessionSettingsValidator {
         if (maxAcceptedRtt != null && (maxAcceptedRtt.isZero() || maxAcceptedRtt.isNegative())) {
             violations.add("rttMeasurementSettings.maxAcceptedRtt must be greater than zero when set");
         }
+    }
+
+    private static void validateHaSessionSettings(FixSessionSettings settings, List<String> violations) {
+        FixSessionSettings.HaSessionSettings ha = settings.getHaSessionSettings();
+        if (ha.getReplicationMode() == null) {
+            violations.add("haSessionSettings.replicationMode must be set");
+        }
+        requireNonNegative(violations, ha.getReplicationAckTimeout(), "haSessionSettings.replicationAckTimeout");
     }
 
     /**

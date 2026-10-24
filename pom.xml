@@ -71,6 +71,7 @@
         <module>sessions-settings-stores</module>
         <module>monitoring</module>
         <module>admin-apis</module>
+        <module>ha</module>
         <module>impl</module>
         <module>benchmarks</module>
         <module>examples</module>

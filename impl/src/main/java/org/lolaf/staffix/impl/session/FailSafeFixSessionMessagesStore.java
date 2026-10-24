@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
 import java.nio.ByteBuffer;
+import java.util.Optional;
 
 /**
  * Wraps a session's message store so a storage failure is reported rather than thrown into the session, and raises
@@ -74,6 +75,11 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
     @Override
     public String getUnderlyingStorageResourceDescription() {
         return fixSessionMessagesStore.getUnderlyingStorageResourceDescription();
+    }
+
+    @Override
+    public Optional<String> getStorageIdentity() {
+        return fixSessionMessagesStore.getStorageIdentity();
     }
 
     @Override

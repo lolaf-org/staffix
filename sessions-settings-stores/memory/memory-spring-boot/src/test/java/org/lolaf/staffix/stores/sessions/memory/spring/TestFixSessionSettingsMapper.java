@@ -38,6 +38,13 @@ class TestFixSessionSettingsMapper {
     }
 
     private static FixSessionSettings.SessionScheduleSettings mapSchedule(FixSessionSettingsProps.ScheduleProps schedule) {
+        FixSessionSettingsProps props = sessionProps();
+        props.setSchedule(schedule);
+
+        return FixSessionSettingsMapper.toSettings(props).getSessionScheduleSettings();
+    }
+
+    private static FixSessionSettingsProps sessionProps() {
         FixSessionIdProps sessionId = new FixSessionIdProps();
         sessionId.setName("SENDER-TARGET");
         sessionId.setSenderCompId("SENDER");
@@ -47,9 +54,7 @@ class TestFixSessionSettingsMapper {
         FixSessionSettingsProps props = new FixSessionSettingsProps();
         props.setFixSessionId(sessionId);
         props.setType(FixSession.FixSessionType.INITIATOR);
-        props.setSchedule(schedule);
-
-        return FixSessionSettingsMapper.toSettings(props).getSessionScheduleSettings();
+        return props;
     }
 
     /**
@@ -99,5 +104,24 @@ class TestFixSessionSettingsMapper {
             assertThat(mappedEntry.getStartTime()).isEqualTo(LocalTime.of(8, 0));
             assertThat(mappedEntry.getEndTime()).isEqualTo(LocalTime.of(18, 0));
         });
+    }
+
+    @Test
+    void mapsTheReplicationModeAndKeepsTheDefaultAckTimeoutWhenUnset() {
+        FixSessionSettingsProps.HaProps ha = new FixSessionSettingsProps.HaProps();
+        ha.setReplicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC);
+        FixSessionSettingsProps props = sessionProps();
+        props.setHa(ha);
+
+        FixSessionSettings.HaSessionSettings mapped = FixSessionSettingsMapper.toSettings(props).getHaSessionSettings();
+
+        assertThat(mapped.getReplicationMode()).isEqualTo(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC);
+        assertThat(mapped.getReplicationAckTimeout()).isZero();
+    }
+
+    @Test
+    void leavesASessionUnreplicatedWithoutHaProps() {
+        assertThat(FixSessionSettingsMapper.toSettings(sessionProps()).getHaSessionSettings().getReplicationMode())
+                .isEqualTo(FixSessionSettings.HaSessionSettings.ReplicationMode.NONE);
     }
 }

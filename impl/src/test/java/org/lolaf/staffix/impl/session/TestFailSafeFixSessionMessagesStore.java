@@ -227,4 +227,11 @@ class TestFailSafeFixSessionMessagesStore {
 
         verify(store, never()).isUnderlyingStorageResourceAvailable();
     }
+
+    @Test
+    void theStorageIdentityIsTheWrappedStores() {
+        when(store.getStorageIdentity()).thenReturn(Optional.of("shared-database"));
+
+        assertThat(failSafe(Duration.ofSeconds(1)).getStorageIdentity()).contains("shared-database");
+    }
 }

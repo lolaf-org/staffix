@@ -41,6 +41,12 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-impl</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-admin-api-jmx-spring-boot</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>

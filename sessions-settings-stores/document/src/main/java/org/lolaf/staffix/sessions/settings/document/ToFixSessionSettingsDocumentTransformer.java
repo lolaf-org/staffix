@@ -91,6 +91,7 @@ public class ToFixSessionSettingsDocumentTransformer {
         mergeIfNeeded(settings::getSessionDownAlertDelay, builder::sessionDownAlertDelay);
         mergeCancelOnDisconnectSettings(settings, builder);
         mergeRttMeasurementSettings(settings, builder);
+        mergeHaSessionSettings(settings, builder);
         mergeSessionScheduleSettings(settings, builder);
         mergeIfNeeded(settings::isMessageEncodersDirectByteBuffers, builder::messageEncodersDirectByteBuffers);
         mergeIfNeeded(settings::isPooledMessageEncodersDirectByteBuffers, builder::pooledMessageEncodersDirectByteBuffers);
@@ -189,6 +190,16 @@ public class ToFixSessionSettingsDocumentTransformer {
             mergeIfNeeded(rtt::getProbeTestReqIdPrefix, rb::probeTestReqIdPrefix);
             mergeIfNeeded(rtt::getSendingTimeToWireDelay, rb::sendingTimeToWireDelay);
             builder.rttMeasurementSettings(rb.build());
+        }
+    }
+
+    private static void mergeHaSessionSettings(FixSessionSettings settings, FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder) {
+        if (settings.getHaSessionSettings() != null) {
+            FixSessionSettingsDocument.HaSessionSettings.HaSessionSettingsBuilder hb = FixSessionSettingsDocument.HaSessionSettings.builder();
+            FixSessionSettings.HaSessionSettings ha = settings.getHaSessionSettings();
+            mergeIfNeeded(ha::getReplicationMode, hb::replicationMode);
+            mergeIfNeeded(ha::getReplicationAckTimeout, hb::replicationAckTimeout);
+            builder.haSessionSettings(hb.build());
         }
     }
 

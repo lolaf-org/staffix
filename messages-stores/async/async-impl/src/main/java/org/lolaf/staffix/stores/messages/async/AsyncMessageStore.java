@@ -28,6 +28,7 @@ import org.lolaf.staffix.stores.core.async.QueueSizeEvaluator;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -332,6 +333,11 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
 
     boolean hasEmptyQueue() {
         return messagesQueue.isEmpty();
+    }
+
+    @Override
+    public Optional<String> getStorageIdentity() {
+        return wrappedStore.getStorageIdentity();
     }
 
     @Override

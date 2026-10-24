@@ -20,6 +20,7 @@ import lombok.Data;
 import org.lolaf.staffix.api.session.CancelOnDisconnectType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
+import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.ResendRequestRange;
 import org.lolaf.staffix.spring.boot.spi.FixSessionIdProps;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
@@ -232,6 +233,12 @@ public class FixSessionSettingsProps {
     @NestedConfigurationProperty
     private RttMeasurementProps rttMeasurement;
 
+    /**
+     * Whether and how this session's store is replicated to the standby engine.
+     */
+    @NestedConfigurationProperty
+    private HaProps ha;
+
     @Data
     public static class HeartbeatProps {
         /**
@@ -425,6 +432,18 @@ public class FixSessionSettingsProps {
          * the wire.
          */
         private Duration sendingTimeToWireDelay;
+    }
+
+    @Data
+    public static class HaProps {
+        /**
+         * NONE, ASYNC (replicated once sent) or SYNC (replicated before it is sent, each send waiting for the standby).
+         */
+        private FixSessionSettings.HaSessionSettings.ReplicationMode replicationMode;
+        /**
+         * How long a SYNC send waits for the standby before going out anyway; zero waits forever.
+         */
+        private Duration replicationAckTimeout;
     }
 
     @Data

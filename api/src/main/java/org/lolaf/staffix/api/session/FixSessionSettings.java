@@ -279,6 +279,12 @@ public class FixSessionSettings {
     private CancelOnDisconnectSettings cancelOnDisconnectSettings = CancelOnDisconnectSettings.builder().build();
 
     /**
+     * Whether and how this session's store is replicated to the standby engine.
+     */
+    @Builder.Default
+    private HaSessionSettings haSessionSettings = HaSessionSettings.builder().build();
+
+    /**
      * Whether removing these settings from their {@link FixSessionsSettingsStore} disconnects the live session. On
      * by default. Off makes the removal a configuration change only: the session keeps running until it drops on its
      * own, which is what a venue asking you to stop reconnecting after the trading day needs.
@@ -368,6 +374,46 @@ public class FixSessionSettings {
          */
         @Builder.Default
         TimeUnit codTimeoutWindowScale = TimeUnit.MILLISECONDS;
+    }
+
+    /**
+     * The high availability settings bound to one session; they take effect only on an engine with
+     * {@link FixEngineBuilder#getHighAvailability() high availability}.
+     */
+    @Getter
+    @SuperBuilder(toBuilder = true)
+    @EqualsAndHashCode
+    public static class HaSessionSettings {
+
+        /**
+         * Whether the session's store is replicated, and whether a send waits for the standby.
+         */
+        @Builder.Default
+        ReplicationMode replicationMode = ReplicationMode.NONE;
+
+        /**
+         * How long a {@link ReplicationMode#SYNC SYNC} send waits for the standby's acknowledgement before going out
+         * anyway; {@link Duration#ZERO} waits forever.
+         */
+        @Builder.Default
+        Duration replicationAckTimeout = Duration.ZERO;
+
+        public enum ReplicationMode {
+            /**
+             * Not replicated: after a failover the session starts from the standby's own store.
+             */
+            NONE,
+            /**
+             * Replicated once a message is sent, so nothing waits; a failover may lose the last messages, which the
+             * new leader covers by jumping its outgoing sequence number.
+             */
+            ASYNC,
+            /**
+             * A message is replicated before it is sent, so the counterparty never receives one the standby lacks;
+             * each send waits for the standby.
+             */
+            SYNC
+        }
     }
 
     /**

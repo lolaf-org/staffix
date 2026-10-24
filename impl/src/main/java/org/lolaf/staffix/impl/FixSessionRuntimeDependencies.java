@@ -18,6 +18,7 @@ package org.lolaf.staffix.impl;
 import lombok.Value;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
+import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSessionRegistry;
@@ -60,5 +61,9 @@ public class FixSessionRuntimeDependencies {
      * The engine's thread checking whether a failing store or logger is back. Shared with every other session.
      */
     UnderlyingResourceChecker underlyingResourceChecker;
+    /**
+     * The engine's high availability, or {@link NoHighAvailability} when it has none.
+     */
+    FixEngineHa fixEngineHa;
 
 }

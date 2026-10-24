@@ -348,4 +348,18 @@ class TestFixSessionSettingsValidator {
                 .hasMessageContaining("logInOrOutResponseTimeout")
                 .hasMessageContaining("maxMessageSize");
     }
+
+    @Test
+    void rejectsANegativeReplicationAckTimeout() {
+        FixSessionSettings settings = validSettings()
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC)
+                        .replicationAckTimeout(Duration.ofMillis(-1))
+                        .build())
+                .build();
+
+        assertThatThrownBy(() -> FixSessionSettingsValidator.validate(settings))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("haSessionSettings.replicationAckTimeout must be set and not negative");
+    }
 }

@@ -217,6 +217,10 @@ class TestToFixSessionSettingsDocumentTransformer {
                         .maxMessageSize(100)
                         .requiredPeerMaxMessageSize(200)
                         .maxSendingTime(Duration.ofSeconds(10)).build())
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC)
+                        .replicationAckTimeout(Duration.ofMillis(500))
+                        .build())
                 .allowedAddress(InetAddress.getByName("127.0.0.1"))
                 .build();
 

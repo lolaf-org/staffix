@@ -380,6 +380,32 @@
       "enum" : [ "INITIATOR", "ACCEPTOR" ],
       "description" : "Whether these settings describe an initiator or an acceptor session. Required: the same FixSessionId may be configured for both roles, so this distinguishes them (e.g. in FixSessionsSettingsStore.find)."
     },
+    "haSessionSettings" : {
+      "type" : "object",
+      "properties" : {
+        "replicationAckTimeout" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?!$)(?:[-+]?\\d+D)?(?:T(?=[-+]?\\d)(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ],
+          "description" : "How long a SYNC send waits for the standby's acknowledgement before going out anyway; Duration.ZERO waits forever.",
+          "default" : "PT0S"
+        },
+        "replicationMode" : {
+          "type" : "string",
+          "enum" : [ "NONE", "ASYNC", "SYNC" ],
+          "description" : "Whether the session's store is replicated, and whether a send waits for the standby.",
+          "default" : "NONE"
+        }
+      },
+      "description" : "Whether and how this session's store is replicated to the standby engine."
+    },
     "heartBeatInterval" : {
       "type" : "object",
       "properties" : {
