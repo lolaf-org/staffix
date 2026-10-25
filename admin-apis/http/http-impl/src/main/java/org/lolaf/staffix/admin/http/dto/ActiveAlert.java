@@ -18,6 +18,8 @@ package org.lolaf.staffix.admin.http.dto;
 import lombok.Value;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 
+import java.time.Instant;
+
 /**
  * One entry of {@code GET alerts}: a probe in alert, with the session it belongs to named as in
  * {@link EngineSessions}, so the console can place it without another call.
@@ -43,9 +45,9 @@ public class ActiveAlert {
      */
     String message;
     /**
-     * When the alert was raised, as an ISO-8601 instant; kept across level changes.
+     * When the alert was raised; kept across level changes.
      */
-    String since;
+    Instant since;
     /**
      * The probe's runbook, absent when it has none.
      */

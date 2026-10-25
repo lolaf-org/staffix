@@ -19,10 +19,11 @@ import lombok.Value;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
- * The engine's high availability, as {@link HaStatus} with its instant as text.
+ * The engine's high availability, as {@link HaStatus}.
  */
 @Value
 public class HaNodeStatus {
@@ -33,15 +34,15 @@ public class HaNodeStatus {
     boolean leadershipValid;
     String leaderElection;
     /**
-     * ISO-8601, absent before the engine took a role.
+     * Absent before the engine took a role.
      */
-    String roleSince;
+    Instant roleSince;
     List<HaStatus.Follower> followers;
     HaStatus.Leader leader;
 
     public static HaNodeStatus of(HaStatus status) {
         return new HaNodeStatus(status.getNodeId(), status.getRole(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElection(),
-                status.getRoleSince() == null ? null : status.getRoleSince().toString(), status.getFollowers(), status.getLeader());
+                status.getRoleSince(), status.getFollowers(), status.getLeader());
     }
 }

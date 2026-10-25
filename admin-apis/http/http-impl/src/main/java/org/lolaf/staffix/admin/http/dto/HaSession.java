@@ -20,8 +20,10 @@ import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 
+import java.time.Duration;
+
 /**
- * A replicated session, as {@link HaSessionStatus} with its id split and its timeout as ISO-8601 text.
+ * A replicated session, as {@link HaSessionStatus} with its id split.
  */
 @Value
 public class HaSession {
@@ -29,7 +31,7 @@ public class HaSession {
     String name;
     FixSessionType fixSessionType;
     ReplicationMode replicationMode;
-    String replicationAckTimeout;
+    Duration replicationAckTimeout;
     boolean inSync;
     boolean sharedStorage;
     String notReplicatedReason;
@@ -41,7 +43,7 @@ public class HaSession {
 
     public static HaSession of(HaSessionStatus status) {
         return new HaSession(status.getFixSessionId().getGroup(), status.getFixSessionId().getName(),
-                status.getFixSessionType(), status.getReplicationMode(), status.getReplicationAckTimeout().toString(),
+                status.getFixSessionType(), status.getReplicationMode(), status.getReplicationAckTimeout(),
                 status.isInSync(), status.isSharedStorage(), status.getNotReplicatedReason(), status.isUnprotected(),
                 status.getUnacknowledgedSends(), status.getNextIncomingSeqNum(), status.getNextOutgoingSeqNum(),
                 status.isHandedOver());

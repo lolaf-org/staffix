@@ -18,6 +18,8 @@ package org.lolaf.staffix.admin.http;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import lombok.Getter;
@@ -62,7 +64,11 @@ public class AdminApiHandler implements HttpHandler {
     }
 
     static ObjectMapper newObjectMapper() {
-        return new ObjectMapper().setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
+        return new ObjectMapper()
+                .setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL)
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS);
     }
 
     static void sendProblem(HttpExchange exchange, ObjectMapper mapper, HttpProblemException problem) throws IOException {
