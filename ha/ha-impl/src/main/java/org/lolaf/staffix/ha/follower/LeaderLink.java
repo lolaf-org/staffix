@@ -140,7 +140,12 @@ public final class LeaderLink implements FrameHandler {
 
     @Override
     public void onClose(long epoch, CloseReason reason, String text) {
-        log.warn("Leader {} closed the replication stream: {} {}", leaderId, reason, text);
+        if (reason == CloseReason.SHUTDOWN && state == State.STREAMING && epoch == leaderEpoch) {
+            log.info("Leader {} stopped cleanly and handed over: {}", leaderId, text);
+            replica.handedOver();
+        } else {
+            log.warn("Leader {} closed the replication stream: {} {}", leaderId, reason, text);
+        }
         state = State.CLOSED;
     }
 

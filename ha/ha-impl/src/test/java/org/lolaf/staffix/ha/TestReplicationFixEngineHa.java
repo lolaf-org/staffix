@@ -145,6 +145,20 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void aFollowerTakesOverALeaderThatStoppedCleanlyWithoutMovingItsSessionsAhead() {
+        aLeadsBFollows();
+        a.store.storeNextIncomingSeqNum(7);
+
+        a.ha.stop(Deadline.of(Duration.ofSeconds(2)));
+        started.remove(a.ha);
+        b.election.elect(Role.LEADER, 4, "b");
+
+        await().until(() -> b.engine.activity.contains("activate, stores open 0"));
+        assertThat(b.engine.store(MAIN).writes).as("the last write reached b before the handover").contains("incoming 7")
+                .doesNotContain("outgoing 10001");
+    }
+
+    @Test
     void aLeaderReElectedAtANewEpochDoesNotMoveItsOwnSessionsAhead() {
         a.election.elect(Role.LEADER, 3, "a");
         a.start();

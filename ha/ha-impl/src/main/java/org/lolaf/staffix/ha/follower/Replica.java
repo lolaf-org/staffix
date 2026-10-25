@@ -56,17 +56,30 @@ public final class Replica {
     }
 
     /**
-     * Starts a stream: one that did not resume leaves every session a gap only a snapshot fills, and nothing to resume
-     * from.
+     * Starts a stream, ending any handover: one that did not resume leaves every session a gap only a snapshot fills,
+     * and nothing to resume from.
      */
     void streamStarted(boolean resumed) {
-        if (resumed) {
-            return;
-        }
-        lastAppliedOffset = -1;
         for (ReplicaSession session : sessions) {
             if (session != null) {
-                session.complete = false;
+                session.handedOver = false;
+                session.complete &= resumed;
+            }
+        }
+        if (!resumed) {
+            lastAppliedOffset = -1;
+        }
+    }
+
+    /**
+     * The leader stopped cleanly after sending every event, so each session complete here, or whose storage is the
+     * leader's own, holds exactly what the leader last wrote: taking it over needs no seqnum jump. Holds until the
+     * next stream.
+     */
+    void handedOver() {
+        for (ReplicaSession session : sessions) {
+            if (session != null) {
+                session.handedOver = session.store != null ? session.complete : session.refusal == SessionStatus.SHARED_STORAGE;
             }
         }
     }
@@ -203,9 +216,14 @@ public final class Replica {
      * The store replaying the session, null when it is not replicated here.
      */
     public @Nullable FixSessionMessagesStore getStore(FixSessionType fixSessionType, String fixSessionId) {
+        ReplicaSession session = find(fixSessionType, fixSessionId);
+        return session == null ? null : session.store;
+    }
+
+    private @Nullable ReplicaSession find(FixSessionType fixSessionType, String fixSessionId) {
         for (ReplicaSession session : sessions) {
             if (session != null && session.matches(fixSessionType, fixSessionId)) {
-                return session.store;
+                return session;
             }
         }
         return null;
@@ -214,14 +232,21 @@ public final class Replica {
     /**
      * Moves the outgoing seqnum of every session configured with replication by {@code jump}, before this node runs
      * them as leader: in the replica's store, or in one opened for it when the replica holds none (its storage shared
-     * with the old leader, unidentified, or never announced).
+     * with the old leader, unidentified, or never announced). A session the old leader {@link #handedOver() handed
+     * over} cleanly keeps its seqnum.
      */
     public void jumpOutgoingSeqNums(long jump) {
         for (FixSessionSettings settings : engine.getFixSessionsSettings()) {
             if (settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE) {
                 continue;
             }
-            FixSessionMessagesStore replicated = getStore(settings.getFixSessionType(), settings.getFixSessionId().toString());
+            ReplicaSession session = find(settings.getFixSessionType(), settings.getFixSessionId().toString());
+            if (session != null && session.handedOver) {
+                log.info("FIX session {} {} taken over where the old leader cleanly left it", settings.getFixSessionType(),
+                        settings.getFixSessionId());
+                continue;
+            }
+            FixSessionMessagesStore replicated = session == null ? null : session.store;
             FixSessionMessagesStore store = replicated != null ? replicated : engine.openStore(settings);
             if (replicated == null) {
                 store.start();
@@ -258,6 +283,7 @@ public final class Replica {
         private final @Nullable FixSessionMessagesStore store;
         private final SessionStatus refusal;
         private volatile boolean complete;
+        private volatile boolean handedOver;
         private long snapshotNextOutgoingSeqNum;
         private int snapshotMessages;
 

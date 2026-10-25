@@ -74,10 +74,6 @@ import java.util.function.LongSupplier;
 public class FixSessionImpl implements FixSession {
 
     static final IOException NO_CONNECTED_SESSION = new IOException("No connected session");
-    /**
-     * How long an admin call waits for the session's thread to run its write, past which that thread is taken to be
-     * stuck rather than busy.
-     */
     private static final Duration OWNER_THREAD_TASK_TIMEOUT = Duration.ofSeconds(10);
     private static final BiConsumer<Runnable, Exception> IGNORE_TASK_RESULT = (task, error) -> {
         if (error == NO_CONNECTED_SESSION || error instanceof EOFException) {

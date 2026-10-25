@@ -18,3 +18,7 @@ production:
     while unreplicated.
   - >-
     With primos, a node is named by its primos node id as decimal text: use those ids as nodeId and as the peers keys.
+  - >-
+    Stop the leader's engine rather than kill it: it sends its follower every event within handOverTimeout and says
+    so, and the follower then takes over without moving its sequence numbers ahead. When the application runs the
+    leader election, stop the engine before the election, or the follower takes over with the jump.

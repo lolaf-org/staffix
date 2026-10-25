@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameHandler;
@@ -269,6 +270,60 @@ class TestLeaderLink {
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), notResumed);
         assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED");
         assertThat(replica.getLastAppliedOffset()).as("nothing left to resume from").isEqualTo(-1);
+    }
+
+    private void complete() {
+        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0));
+        engine.store(MAIN).writes.clear();
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> close(CloseReason reason) {
+        return (out, index) -> FrameEncoder.close(out, index, EPOCH, reason, "test");
+    }
+
+    @Test
+    void aCleanShutdownHandsOverEveryCompleteSessionWithoutAJump() {
+        streaming();
+        complete();
+
+        read(close(CloseReason.SHUTDOWN));
+        replica.jumpOutgoingSeqNums(1_000);
+
+        assertThat(engine.store(MAIN).writes).isEmpty();
+    }
+
+    @Test
+    void aSessionIncompleteAtTheShutdownIsMovedAhead() {
+        streaming();
+
+        read(close(CloseReason.SHUTDOWN));
+        replica.jumpOutgoingSeqNums(1_000);
+
+        assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");
+    }
+
+    @Test
+    void aCloseForAnyOtherReasonIsNoHandOver() {
+        streaming();
+        complete();
+
+        read(close(CloseReason.LAPPED));
+        replica.jumpOutgoingSeqNums(1_000);
+
+        assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");
+    }
+
+    @Test
+    void aHandOverLastsUntilTheNextStream() {
+        streaming();
+        complete();
+        read(close(CloseReason.SHUTDOWN));
+
+        decode(writeFrames(welcome(EPOCH, 48)), new LeaderLink(connection, replica, () -> EPOCH, "follower-b"));
+        replica.jumpOutgoingSeqNums(1_000);
+
+        assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");
     }
 
     @Test

@@ -103,6 +103,12 @@ public final class FollowerLink implements FrameHandler {
     private volatile AtomicReferenceArray<SessionSync> sessionSyncs = new AtomicReferenceArray<>(16);
     private volatile boolean snapshotRequested;
     private volatile boolean paused;
+    /**
+     * Where the next batch starts reading the log: once it is the log's tail, every event has been handed to betty.
+     */
+    private volatile long sentOffset = -1;
+    private volatile boolean handingOver;
+    private volatile boolean senderRunning;
     private int announced;
     private long lastSendNanos;
     private final Consumer<Runnable> senderLauncher;
@@ -306,6 +312,7 @@ public final class FollowerLink implements FrameHandler {
             }
             filled += FrameEncoder.storeEventHeader(dst, filled, leaderEpoch, reader.getEventOffset(), body);
         }
+        sentOffset = reader.getOffset();
         return filled;
     }
 
@@ -343,9 +350,18 @@ public final class FollowerLink implements FrameHandler {
     }
 
     private void send() {
+        senderRunning = true;
+        try {
+            sendUntilClosedOrHandingOver();
+        } finally {
+            senderRunning = false;
+        }
+    }
+
+    private void sendUntilClosedOrHandingOver() {
         IdleStrategy idle = new BackoffIdleStrategy();
         lastSendNanos = System.nanoTime();
-        while (state != State.CLOSED) {
+        while (state != State.CLOSED && !handingOver) {
             if (paused) {
                 idle.idle();
                 continue;
@@ -463,10 +479,41 @@ public final class FollowerLink implements FrameHandler {
     }
 
     /**
+     * For a leader stopping cleanly, its sessions already stopped: waits for every event of the log to be sent, then
+     * closes with {@link CloseReason#SHUTDOWN}. Arriving after them on the same connection, it tells the follower it
+     * holds everything, so the follower takes over without moving its seqnums ahead. When the deadline passes first,
+     * the link is dropped without it.
+     *
+     * @return whether the follower was told
+     */
+    boolean handOver(Deadline deadline) {
+        if (state != State.STREAMING) {
+            return false;
+        }
+        boolean sentAll = deadline.waitAsLongAs(() -> state == State.STREAMING && sentOffset != replicationLog.getTailOffset())
+                && state == State.STREAMING;
+        handingOver = true;
+        boolean senderStopped = deadline.waitAsLongAs(() -> senderRunning);
+        if (!sentAll || !senderStopped) {
+            log.warn("Follower {} was not sent every event before the deadline: it will take over with its seqnums moved ahead",
+                    followerId);
+            state = State.CLOSED;
+            connection.stop(Deadline.immediate());
+            return false;
+        }
+        close(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent");
+        return true;
+    }
+
+    /**
      * Sends a CLOSE and disconnects, the connection flushing it first.
      */
     void close(CloseReason reason, String text) {
-        log.warn("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
+        if (reason == CloseReason.SHUTDOWN) {
+            log.info("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
+        } else {
+            log.warn("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
+        }
         state = State.CLOSED;
         ByteBuffer frame = connection.borrow(FrameEncoder.bytesWith(FrameType.CLOSE, text));
         int length = FrameEncoder.close(frame.clear(), 0, epoch.getAsLong(), reason, text);

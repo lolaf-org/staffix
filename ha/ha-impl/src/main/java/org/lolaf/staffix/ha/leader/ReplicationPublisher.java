@@ -94,6 +94,13 @@ public final class ReplicationPublisher {
         log.info("Replication leader listening on {}", bindAddress);
     }
 
+    /**
+     * Hands over to every follower, for a leader stopping cleanly; see {@link FollowerLink#handOver(Deadline)}.
+     */
+    public void handOver(Deadline deadline) {
+        followers.all().forEach(link -> link.handOver(deadline));
+    }
+
     public void stop(Deadline deadline) {
         followers.all().forEach(FollowerLink::disconnected);
         if (server != null) {

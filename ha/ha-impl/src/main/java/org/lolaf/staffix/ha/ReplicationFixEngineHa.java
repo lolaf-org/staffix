@@ -123,6 +123,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        if (followedRole == Role.LEADER && publisher != null) {
+            // the engine stopped the sessions before this, so what they last wrote is all in the log
+            publisher.handOver(Deadline.of(settings.getHandOverTimeout()));
+        }
         stopPublisher(stopDeadline);
         stopReceiver(stopDeadline);
         replica.close(stopDeadline);
@@ -156,10 +160,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     private @Nullable InetSocketAddress leaderAddress() {
         Optional<InetSocketAddress> advertised = election.getLeaderEndpoint();
-        if (advertised.isPresent()) {
-            return advertised.get();
-        }
-        return election.getLeaderId().map(settings.getPeers()::get).orElse(null);
+        return advertised.orElseGet(() -> election.getLeaderId().map(settings.getPeers()::get).orElse(null));
     }
 
     private void lead(long epoch) {

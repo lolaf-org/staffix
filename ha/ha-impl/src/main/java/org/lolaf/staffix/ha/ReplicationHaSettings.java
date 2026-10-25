@@ -89,4 +89,11 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final long promotionOutgoingSeqNumJump = 10_000;
+
+    /**
+     * How long a leader stopping cleanly waits to send its follower every event before telling it so, which lets the
+     * follower take over without moving its seqnums ahead. A follower not reached in time takes over with the jump.
+     */
+    @Builder.Default
+    private final Duration handOverTimeout = Duration.ofSeconds(5);
 }

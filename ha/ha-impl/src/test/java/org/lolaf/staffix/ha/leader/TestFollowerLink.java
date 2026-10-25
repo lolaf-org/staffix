@@ -228,6 +228,34 @@ class TestFollowerLink {
     }
 
     @Test
+    void aCleanHandOverClosesWithShutdownOnceEveryEventIsSent() {
+        FixSessionMessagesStore store = replicated("main");
+        store.storeNextIncomingSeqNum(5);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        store.storeNextIncomingSeqNum(6);
+        fill();
+
+        assertThat(link.handOver(Deadline.of(Duration.ofSeconds(1)))).isTrue();
+
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 SHUTDOWN");
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
+    }
+
+    @Test
+    void aFollowerNotSentEveryEventBeforeTheDeadlineIsDroppedWithoutShutdown() {
+        FixSessionMessagesStore store = replicated("main");
+        store.storeNextIncomingSeqNum(5);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        store.storeNextIncomingSeqNum(6);
+
+        assertThat(link.handOver(Deadline.of(Duration.ofMillis(50)))).isFalse();
+
+        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("CLOSE"));
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
+        verify(connection).stop(any(Deadline.class));
+    }
+
+    @Test
     void aSessionIsInSyncOnceTheFollowerSaysItReplicatesIt() {
         replicated("main").storeNextIncomingSeqNum(5);
         assertThat(link.isInSync(0)).as("before its hello").isFalse();
