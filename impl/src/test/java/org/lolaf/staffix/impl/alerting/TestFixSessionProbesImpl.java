@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.AlertingCounter;
 import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -28,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TestFixSessionProbesImpl {
 
-    private final FixSessionProbesImpl probes = new FixSessionProbesImpl();
+    private final FixSessionProbesImpl probes = new FixSessionProbesImpl(ProbeScope.builder().type("session").name("orders").label("desk", "fx").build());
 
     @Test
     void listsProbesInTheOrderTheyWereAdded() {
@@ -46,6 +47,16 @@ class TestFixSessionProbesImpl {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("a");
         assertThat(probes.list()).hasSize(1);
+    }
+
+    @Test
+    void rejectsAProbeLabelItsScopeAlreadyHas() {
+        Probe clashing = Probe.builder().name("a").description("a").evaluator(Optional::empty).label("desk", "eq").build();
+
+        assertThatThrownBy(() -> probes.add(clashing))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("desk");
+        assertThat(probes.list()).isEmpty();
     }
 
     @Test

@@ -52,7 +52,7 @@ engine-level MBean. Any JMX client (JConsole, VisualVM, your monitoring agent) c
 
 The session MBean's `Probes` and `ProbeStates` attributes list its [probes](alerting.md) and where each stood at its
 last evaluation, with each probe's labels and runbook URL; the engine-level MBean's `ActiveAlerts` lists every probe in
-alert across the engine, with its runbook URL. Levels are strings, times ISO-8601. The session MBean's
+alert across the engine, with its scope (`session/group.name`) and runbook URL. Levels are strings, times ISO-8601. The session MBean's
 `clearAlert(String probeName)` [clears a probe's alert by hand](alerting.md#clearing-an-alert-by-hand).
 
 The engine-level MBean names a session by its full `toString()` form, `alpha.trading:VERSION_44:SENDER->TARGET`, in

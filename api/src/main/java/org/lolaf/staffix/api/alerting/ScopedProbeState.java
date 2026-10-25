@@ -13,26 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.lolaf.staffix.api.alerting;
 
-import lombok.*;
-import org.lolaf.staffix.api.session.FixSessionId;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NonNull;
+import lombok.Value;
 
 import java.net.URI;
 import java.util.Optional;
 
 /**
- * A probe's state with the session it belongs to, for engine-wide listings.
+ * A probe's state with the scope it belongs to, for listings across scopes.
  */
 @Value
 @AllArgsConstructor
-public class SessionProbeState {
+public class ScopedProbeState {
 
     /**
-     * The session the probe belongs to; probe names are unique only within a session.
+     * Probe names are unique only within a scope.
      */
     @NonNull
-    FixSessionId fixSessionId;
+    ProbeScope scope;
     @NonNull
     ProbeState probeState;
     /**
@@ -44,8 +48,8 @@ public class SessionProbeState {
     /**
      * A state whose probe has no runbook.
      */
-    public SessionProbeState(FixSessionId fixSessionId, ProbeState probeState) {
-        this(fixSessionId, probeState, null);
+    public ScopedProbeState(ProbeScope scope, ProbeState probeState) {
+        this(scope, probeState, null);
     }
 
     public Optional<URI> getRunbookUrl() {

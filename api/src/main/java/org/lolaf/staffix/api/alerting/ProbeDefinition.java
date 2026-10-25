@@ -36,7 +36,7 @@ import java.util.Optional;
 public class ProbeDefinition {
 
     /**
-     * Identifies the probe within its session, and keys its {@link ProbeState}.
+     * Identifies the probe within its scope, and keys its {@link ProbeState}.
      */
     @NonNull
     String name;

@@ -22,7 +22,7 @@ import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.session.FixSession;
 
 import java.util.ArrayList;
@@ -40,7 +40,7 @@ final class SessionProbesEvaluation {
     private static final Probe[] NO_PROBES = new Probe[0];
     private static final ProbeEvaluation[] NO_EVALUATIONS = new ProbeEvaluation[0];
 
-    private final String engineId;
+    private final String source;
     @Getter
     private final FixSession fixSession;
     private final FixSessionProbesImpl probes;
@@ -50,9 +50,9 @@ final class SessionProbesEvaluation {
     private boolean anyOnlyWhileLoggedIn;
     private volatile ProbeEvaluation[] evaluations = NO_EVALUATIONS;
 
-    SessionProbesEvaluation(String engineId, FixSession fixSession, FixSessionProbesImpl probes,
+    SessionProbesEvaluation(String source, FixSession fixSession, FixSessionProbesImpl probes,
                             FixAlertsPublisher publisher, ProbesListener listener) {
-        this.engineId = engineId;
+        this.source = source;
         this.fixSession = fixSession;
         this.probes = probes;
         this.publisher = publisher;
@@ -135,13 +135,13 @@ final class SessionProbesEvaluation {
                 return false;
             }
         }
-        throw new IllegalArgumentException("Session " + fixSession.getFixSessionId() + " has no probe named " + probeName);
+        throw new IllegalArgumentException(probes.getScope() + " has no probe named " + probeName);
     }
 
     /**
      * Allocates nothing for a probe that is not in alert, so a console polling a quiet engine costs next to nothing.
      */
-    List<SessionProbeState> addActiveAlerts(List<SessionProbeState> active) {
+    List<ScopedProbeState> addActiveAlerts(List<ScopedProbeState> active) {
         ProbeEvaluation[] local = evaluations;
         for (ProbeEvaluation probeEvaluation : local) {
             if (probeEvaluation.isInAlert()) {
@@ -150,7 +150,7 @@ final class SessionProbesEvaluation {
                     if (active == null) {
                         active = new ArrayList<>();
                     }
-                    active.add(new SessionProbeState(fixSession.getFixSessionId(), state, probeEvaluation.getProbe().getRunbookUrl()));
+                    active.add(new ScopedProbeState(probes.getScope(), state, probeEvaluation.getProbe().getRunbookUrl()));
                 }
             }
         }
@@ -166,7 +166,7 @@ final class SessionProbesEvaluation {
         ProbeEvaluation[] updated = new ProbeEvaluation[current.length];
         for (int i = 0; i < current.length; i++) {
             ProbeEvaluation kept = find(previous, current[i]);
-            updated[i] = kept != null ? kept : new ProbeEvaluation(engineId, fixSession.getFixSessionId(), current[i], tick);
+            updated[i] = kept != null ? kept : new ProbeEvaluation(source, probes.getScope(), current[i], tick);
         }
         for (ProbeEvaluation probeEvaluation : previous) {
             if (find(updated, probeEvaluation.getProbe()) == null) {
@@ -191,7 +191,7 @@ final class SessionProbesEvaluation {
             log.warn("Alerts publisher {} failed to publish {}", publisher.getInstanceId(), event, e);
         }
         if (event.getType() != AlertEvent.Type.REMINDED) {
-            listener.onAlertTransition(fixSession.getFixSessionId(), probeEvaluation.state(event.isClearedManually()));
+            listener.onAlertTransition(probes.getScope(), probeEvaluation.state(event.isClearedManually()));
         }
     }
 }

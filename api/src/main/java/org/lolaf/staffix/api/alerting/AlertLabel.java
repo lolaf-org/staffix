@@ -20,33 +20,24 @@ import lombok.Getter;
 import java.util.Locale;
 
 /**
- * The labels that identify an alert, for a publisher to a label-based system such as Alertmanager. A probe's own
- * {@link Probe#getLabels() labels} cannot use these names.
+ * The labels every alert carries, with its scope's, for a publisher to a label-based system such as Alertmanager.
+ * Neither a probe's nor a scope's labels can use these names.
  */
 public enum AlertLabel {
 
     ALERT_NAME("alertname") {
         @Override
         public String valueFor(AlertEvent event) {
-            return event.getProbeName();
+            return event.getProbeId().getName();
         }
     },
-    ENGINE("engine") {
+    /**
+     * The {@link AlertEvent#getSource() source}; the scope and the probe name only identify an alert within it.
+     */
+    SOURCE("source") {
         @Override
         public String valueFor(AlertEvent event) {
-            return event.getEngineId();
-        }
-    },
-    FIX_SESSION_GROUP("fixSessionGroup") {
-        @Override
-        public String valueFor(AlertEvent event) {
-            return event.getFixSessionId().getGroup();
-        }
-    },
-    FIX_SESSION_NAME("fixSessionName") {
-        @Override
-        public String valueFor(AlertEvent event) {
-            return event.getFixSessionId().getName();
+            return event.getSource();
         }
     },
     /**

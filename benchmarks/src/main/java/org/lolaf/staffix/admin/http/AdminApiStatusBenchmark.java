@@ -29,6 +29,7 @@ import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -68,7 +69,7 @@ public class AdminApiStatusBenchmark {
     public byte[] status(EngineState state) throws IOException {
         SessionsDocument document = state.documents.get();
         return state.mapper.writeValueAsBytes(EngineStatus.of(state.adminApi, document.getRunning(), document.getVersion(),
-                state.probes.getAlertsVersion(), fixSessionId -> state.probes.get(fixSessionId).getVersion()));
+                state.probes.getAlertsVersion(), fixSessionId -> state.probes.get(FixSessionProbeScope.of(fixSessionId)).getVersion()));
     }
 
     @Benchmark

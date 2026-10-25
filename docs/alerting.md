@@ -68,8 +68,8 @@ once, and calling its `clear()` skips the delay. Both delays combine, in either 
 
 **Labels and a runbook URL travel with every alert of the probe.** Labels are for routing and grouping, such as the
 owning team; their names follow Prometheus' label syntax (`[a-zA-Z_][a-zA-Z0-9_]*`) and cannot be one of the names
-that already identify an alert (`AlertLabel`: `alertname`, `engine`, `fixSessionGroup`, `fixSessionName`,
-`severity`). The runbook URL points an operator at what to do. Both are optional, and both are shown by the admin
+that already identify an alert: `alertname`, `source` and `severity` (`AlertLabel`), and the session's
+`fixSessionGroup` and `fixSessionName`. The runbook URL points an operator at what to do. Both are optional, and both are shown by the admin
 API and passed on by the Alertmanager publisher.
 
 **Both intervals are at least one second** (`Probe.MIN_INTERVAL`), and are rounded up to whole seconds: the engine
@@ -192,8 +192,9 @@ For a value the application already holds, such as a gauge registered with a sup
 
 ## What a publisher is told
 
-A publisher receives an `AlertEvent`: the engine's instance id (a session id is only unique within an engine), the
-session, the probe's name and description, the alert, since when it is ongoing, and one of four types.
+A publisher receives an `AlertEvent`: its source, the engine's instance id (a probe is only unique within an engine),
+the probe's id (its scope, such as the session, and its name), the probe's description, the alert, since when it is
+ongoing, and one of four types. `getLabels()` gives every label of the alert, ready for a label-based system.
 
 | type | when |
 |------|------|
@@ -270,9 +271,9 @@ and `INFO` once cleared:
 Alert RAISED on session acceptor.acceptor-session-1, probe order-flow (Time since the last NewOrderSingle): WARNING no order for more than 4s (since 2026-10-10T11:23:14.648Z)
 ```
 
-`loggerNameForFixSession` picks the logger name per session, so one session's alerts can be routed or silenced
-independently, and `useMDC` (on by default) puts the session's group and name in the MDC under `fixSessionGroup` and
-`fixSessionName`, the keys the SLF4J message logger uses.
+`loggerNameForScope` picks the logger name per probe scope, so one session's alerts can be routed or silenced
+independently, and `useMDC` (on by default) puts the scope's labels in the MDC: a session's group and name under
+`fixSessionGroup` and `fixSessionName`, the keys the SLF4J message logger uses.
 
 From Spring Boot, add `staffix-alerts-publisher-slf4j-spring-boot` and declare an instance:
 
@@ -295,7 +296,7 @@ AlertmanagerAlertsPublisherSettings.builder()
         .build();
 ```
 
-Each alert carries the labels `alertname` (the probe name), `engine` (the engine's instance id), `fixSessionGroup`,
+Each alert carries the labels `alertname` (the probe name), `source` (the engine's instance id), `fixSessionGroup`,
 `fixSessionName` and `severity` (`warning`, `major` or `critical`), plus the probe's labels and your static labels (a
 probe label wins over a static one of the same name), and the annotations `summary` (the alert message),
 `description` (the probe description) and, when the probe has one, `runbook_url`. `startsAt` is when the alert was

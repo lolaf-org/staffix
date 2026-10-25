@@ -19,7 +19,9 @@ import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.ha.HaAdmin;
@@ -307,32 +309,33 @@ public interface AdminApi extends InstanceIdSupplier {
     List<FixAcceptorSessions> getAcceptorsSessions();
 
     /**
-     * The probes of the session, in the order they were added.
+     * The probes of the scope, in the order they were added; a session's scope is
+     * {@link org.lolaf.staffix.api.session.FixSessionProbeScope#of}.
      *
-     * @throws IllegalArgumentException if no initiator or acceptor manages the given session
+     * @throws IllegalArgumentException if the engine evaluates no such scope
      */
-    List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId);
+    List<ProbeDefinition> getProbeDefinitions(ProbeScope scope);
 
     /**
-     * Where each probe of the session stood at its last evaluation; a probe not evaluated yet is absent.
+     * Where each probe of the scope stood at its last evaluation; a probe not evaluated yet is absent.
      *
-     * @throws IllegalArgumentException if no initiator or acceptor manages the given session
+     * @throws IllegalArgumentException if the engine evaluates no such scope
      */
-    List<ProbeState> getProbeStates(FixSessionId fixSessionId);
+    List<ProbeState> getProbeStates(ProbeScope scope);
 
     /**
-     * The probes in alert, across every session of the engine.
+     * The probes in alert, across every scope of the engine.
      */
-    List<SessionProbeState> getActiveAlerts();
+    List<ScopedProbeState> getActiveAlerts();
 
     /**
      * Asks the probe's evaluator to end its ongoing alert. Once accepted, the alert clears at the next evaluation tick,
      * published like any other clear but marked as manual.
      *
      * @return false when the probe is not in alert, or its evaluator refuses, as a polled condition does
-     * @throws IllegalArgumentException if no initiator or acceptor manages the given session, or it has no such probe
+     * @throws IllegalArgumentException if the engine evaluates no such scope, or it has no such probe
      */
-    boolean clearAlert(FixSessionId fixSessionId, String probeName);
+    boolean clearAlert(ProbeId probeId);
 
     /**
      * The engine's high availability, empty when it has none.

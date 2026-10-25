@@ -25,9 +25,11 @@ import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.ha.HaAdmin;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
@@ -37,6 +39,7 @@ import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
@@ -226,15 +229,15 @@ class JmxAdminApiTest {
     }
 
     @Test
-    void theEnginesActiveAlertsAreReadableWithTheirSessionIdString() throws Exception {
-        adminApi.activeAlerts.add(new SessionProbeState(ACCEPTOR_SESSION, ProbeState.builder().probeName("session-down")
+    void theEnginesActiveAlertsAreReadableWithTheirScope() throws Exception {
+        adminApi.activeAlerts.add(new ScopedProbeState(FixSessionProbeScope.of(ACCEPTOR_SESSION), ProbeState.builder().probeName("session-down")
                 .alert(Alert.critical("down")).since(SINCE).lastEvaluation(SINCE).build(), URI.create("https://wiki.example.com/session-down")));
         exporter.export(adminApi);
 
         FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
 
         assertThat(proxy.getActiveAlerts()).singleElement().satisfies(alert -> {
-            assertThat(alert.getFixSessionId()).isEqualTo(ACCEPTOR_SESSION.toString());
+            assertThat(alert.getScope()).isEqualTo("session/" + ACCEPTOR_SESSION.getQualifiedName());
             assertThat(alert.getProbe()).isEqualTo("session-down");
             assertThat(alert.getLevel()).isEqualTo("CRITICAL");
             assertThat(alert.getMessage()).isEqualTo("down");
@@ -323,7 +326,7 @@ class JmxAdminApiTest {
         private final List<FixSessionId> switchedTo = new ArrayList<>();
         private final List<ProbeDefinition> probeDefinitions = new ArrayList<>();
         private final List<ProbeState> probeStates = new ArrayList<>();
-        private final List<SessionProbeState> activeAlerts = new ArrayList<>();
+        private final List<ScopedProbeState> activeAlerts = new ArrayList<>();
         private final List<String> clearedAlerts = new ArrayList<>();
         private HaAdmin ha;
         private SessionLifecycleListener lifecycleListener;
@@ -444,17 +447,17 @@ class JmxAdminApiTest {
         }
 
         @Override
-        public List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId) {
+        public List<ProbeDefinition> getProbeDefinitions(ProbeScope scope) {
             return probeDefinitions;
         }
 
         @Override
-        public List<ProbeState> getProbeStates(FixSessionId fixSessionId) {
+        public List<ProbeState> getProbeStates(ProbeScope scope) {
             return probeStates;
         }
 
         @Override
-        public List<SessionProbeState> getActiveAlerts() {
+        public List<ScopedProbeState> getActiveAlerts() {
             return activeAlerts;
         }
 
@@ -469,9 +472,9 @@ class JmxAdminApiTest {
         }
 
         @Override
-        public boolean clearAlert(FixSessionId fixSessionId, String probeName) {
-            clearedAlerts.add(fixSessionId.getName() + " " + probeName);
-            return !"session-down".equals(probeName);
+        public boolean clearAlert(ProbeId probeId) {
+            clearedAlerts.add(probeId.getScope().getLabels().get(FixSessionProbeScope.NAME_LABEL) + " " + probeId.getName());
+            return !"session-down".equals(probeId.getName());
         }
 
         @Override

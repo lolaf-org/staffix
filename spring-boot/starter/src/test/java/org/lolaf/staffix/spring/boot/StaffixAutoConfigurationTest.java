@@ -21,10 +21,12 @@ import org.lolaf.staffix.api.FixAcceptor;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
 import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.ProbeId;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -141,9 +143,8 @@ class StaffixAutoConfigurationTest {
         Awaitility.await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() -> assertThat(alertsPublisherContributor.getSettings().getEvents())
                         .anySatisfy(event -> {
-                            assertThat(event.getFixSessionId()).isEqualTo(ALERTING_SESSION_ID);
+                            assertThat(event.getProbeId()).isEqualTo(ProbeId.of(FixSessionProbeScope.of(ALERTING_SESSION_ID), "session-down"));
                             assertThat(event.getType()).isEqualTo(AlertEvent.Type.RAISED);
-                            assertThat(event.getProbeName()).isEqualTo("session-down");
                         }));
     }
 

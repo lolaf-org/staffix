@@ -135,7 +135,7 @@ public class FixSessionImpl implements FixSession {
                           Clock providedClock) {
         this.fixSessionSettings = fixSessionSettings;
         this.fixSessionRegistry = fixSessionRuntimeDependencies.getFixSessionRegistry();
-        this.probes = new FixSessionProbesImpl();
+        this.probes = new FixSessionProbesImpl(FixSessionProbeScope.of(fixSessionSettings.getFixSessionId()));
         this.wiring = new SessionWiring(this, fixInstanceId, fixSessionSettings, probes, fixSessionRuntimeDependencies,
                 scheduledExecutorService, ioSettings, messageExecutorsRuntime, providedClock);
         SessionDownEvaluator.probe(this, fixSessionSettings.getSessionDownAlertDelay()).ifPresent(probes::add);

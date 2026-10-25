@@ -38,7 +38,7 @@ public interface FixAdminMXBean {
     void switchInitiatorSession(String fixSessionId);
 
     /**
-     * The probes in alert across every session of the engine.
+     * The probes in alert across every scope of the engine.
      */
     List<ActiveAlert> getActiveAlerts();
 
@@ -55,12 +55,12 @@ public interface FixAdminMXBean {
     }
 
     /**
-     * A probe in alert, its session in {@code toString()} form; since is an ISO-8601 instant, and the runbook absent
-     * for a probe without one.
+     * A probe in alert, its scope as {@code type/name} ({@code session/group.name} for a session); since is an ISO-8601
+     * instant, and the runbook absent for a probe without one.
      */
     interface ActiveAlert {
 
-        String getFixSessionId();
+        String getScope();
 
         String getProbe();
 

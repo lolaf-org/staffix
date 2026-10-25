@@ -26,13 +26,14 @@ import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.ProbeState;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionStatus;
 import org.lolaf.staffix.api.version.FixApplVerID;
@@ -151,8 +152,8 @@ class EngineStatusTest {
         assertThat(status().get("sessions").get(1).has("alertLevel")).isFalse();
     }
 
-    private static SessionProbeState active(FixSessionId fixSessionId, Alert alert) {
-        return new SessionProbeState(fixSessionId, ProbeState.builder().probeName(alert.getMessage()).alert(alert)
+    private static ScopedProbeState active(FixSessionId fixSessionId, Alert alert) {
+        return new ScopedProbeState(FixSessionProbeScope.of(fixSessionId), ProbeState.builder().probeName(alert.getMessage()).alert(alert)
                 .since(Instant.EPOCH).lastEvaluation(Instant.EPOCH).build());
     }
 

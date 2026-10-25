@@ -28,9 +28,10 @@ import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeId;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
@@ -38,6 +39,7 @@ import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.ha.HaAdmin;
@@ -182,7 +184,7 @@ class AdminApiEndpointsTest {
 
     @Test
     void aSessionsProbesAreServedWithTheVersionStatusReportsAsTheirETag() throws Exception {
-        when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(ProbeDefinition.builder()
+        when(adminApi.getProbeDefinitions(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(ProbeDefinition.builder()
                 .name("order-flow").description("Time since the last order")
                 .evaluationInterval(Duration.ofSeconds(1)).reminderInterval(Duration.ofMinutes(1))
                 .label("team", "fix_ops").runbookUrl(URI.create("https://wiki.example.com/order-flow"))
@@ -209,11 +211,11 @@ class AdminApiEndpointsTest {
         String before = call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null).headers()
                 .firstValue("ETag").orElseThrow();
         ProbeDefinition added = ProbeDefinition.builder().name("queue").description("d").evaluationInterval(Duration.ofSeconds(1)).build();
-        when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(added));
+        when(adminApi.getProbeDefinitions(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(added));
         ArgumentCaptor<ProbesListener> listener = ArgumentCaptor.forClass(ProbesListener.class);
         verify(adminApi).addProbesListener(listener.capture());
 
-        listener.getValue().onProbeAdded(TRADING, added);
+        listener.getValue().onProbeAdded(FixSessionProbeScope.of(TRADING), added);
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null).headers()
                 .firstValue("ETag")).isNotEqualTo(Optional.of(before));
@@ -221,7 +223,7 @@ class AdminApiEndpointsTest {
 
     @Test
     void aSuspendedProbeIsServedAsSuspended() throws Exception {
-        when(adminApi.getProbeStates(TRADING)).thenReturn(List.of(ProbeState.builder().probeName("orders")
+        when(adminApi.getProbeStates(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(ProbeState.builder().probeName("orders")
                 .lastEvaluation(Instant.parse("2026-10-10T10:00:05Z")).suspended(true).build()));
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
@@ -230,7 +232,7 @@ class AdminApiEndpointsTest {
 
     @Test
     void aProbeSuspendedBeforeItsFirstEvaluationHasNoLastEvaluation() throws Exception {
-        when(adminApi.getProbeStates(TRADING)).thenReturn(List.of(ProbeState.builder().probeName("orders").suspended(true).build()));
+        when(adminApi.getProbeStates(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(ProbeState.builder().probeName("orders").suspended(true).build()));
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
                 .isEqualTo("[{\"probe\":\"orders\",\"suspended\":true}]");
@@ -241,8 +243,8 @@ class AdminApiEndpointsTest {
         running(adminApi, TRADING_DRP);
         ProbeState alerting = ProbeState.builder().probeName("session-down").alert(Alert.critical("down"))
                 .since(Instant.parse("2026-10-10T10:00:00Z")).lastEvaluation(Instant.parse("2026-10-10T10:00:05Z")).build();
-        when(adminApi.getProbeStates(TRADING_DRP)).thenReturn(List.of(alerting));
-        when(adminApi.getActiveAlerts()).thenReturn(List.of(new SessionProbeState(TRADING_DRP, alerting,
+        when(adminApi.getProbeStates(FixSessionProbeScope.of(TRADING_DRP))).thenReturn(List.of(alerting));
+        when(adminApi.getActiveAlerts()).thenReturn(List.of(new ScopedProbeState(FixSessionProbeScope.of(TRADING_DRP), alerting,
                 URI.create("https://wiki.example.com/session-down"))));
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
@@ -262,7 +264,7 @@ class AdminApiEndpointsTest {
         verify(adminApi).addProbesListener(listener.capture());
         long before = alertsVersion();
 
-        listener.getValue().onAlertTransition(TRADING, ProbeState.builder().probeName("queue").lastEvaluation(Instant.EPOCH).build());
+        listener.getValue().onAlertTransition(FixSessionProbeScope.of(TRADING), ProbeState.builder().probeName("queue").lastEvaluation(Instant.EPOCH).build());
 
         assertThat(alertsVersion()).isEqualTo(before + 1);
     }
@@ -305,15 +307,15 @@ class AdminApiEndpointsTest {
 
     @Test
     void clearingAnAlertAnswers204WhenAccepted409WhenRefusedAnd404ForAnUnknownProbe() throws Exception {
-        when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(
+        when(adminApi.getProbeDefinitions(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(
                 ProbeDefinition.builder().name("rejects").description("d").evaluationInterval(Duration.ofSeconds(1)).build(),
                 ProbeDefinition.builder().name("queue").description("d").evaluationInterval(Duration.ofSeconds(1)).build()));
-        when(adminApi.clearAlert(TRADING, "rejects")).thenReturn(true);
+        when(adminApi.clearAlert(ProbeId.of(FixSessionProbeScope.of(TRADING), "rejects"))).thenReturn(true);
 
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/rejects/clear", null).statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/queue/clear", null).statusCode()).isEqualTo(409);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/unknown/clear", null).statusCode()).isEqualTo(404);
-        verify(adminApi, never()).clearAlert(TRADING, "unknown");
+        verify(adminApi, never()).clearAlert(ProbeId.of(FixSessionProbeScope.of(TRADING), "unknown"));
     }
 
     @Test

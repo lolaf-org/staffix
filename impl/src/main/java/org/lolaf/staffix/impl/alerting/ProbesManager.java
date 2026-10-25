@@ -22,7 +22,7 @@ import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.session.FixSession;
 
 import java.time.Clock;
@@ -74,7 +74,7 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
         SessionProbesEvaluation[] updated = Arrays.copyOf(sessions, sessions.length + 1);
         updated[sessions.length] = new SessionProbesEvaluation(engineId, fixSession, probes, publisher, listener);
         sessions = updated;
-        probes.attach(fixSession.getFixSessionId(), listener);
+        probes.attach(listener);
     }
 
     public void unregister(FixSession fixSession, FixSessionProbesImpl probes) {
@@ -117,8 +117,8 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
         return false;
     }
 
-    public List<SessionProbeState> getActiveAlerts() {
-        List<SessionProbeState> active = null;
+    public List<ScopedProbeState> getActiveAlerts() {
+        List<ScopedProbeState> active = null;
         for (SessionProbesEvaluation session : sessions) {
             active = session.addActiveAlerts(active);
         }

@@ -15,11 +15,12 @@
  */
 package org.lolaf.staffix.impl.alerting;
 
+import lombok.Getter;
 import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.util.Arrays;
 import java.util.List;
@@ -32,20 +33,30 @@ public final class FixSessionProbesImpl implements FixSessionProbes {
 
     private static final Probe[] NO_PROBES = new Probe[0];
 
+    @Getter
+    private final ProbeScope scope;
     private volatile Probe[] probes = NO_PROBES;
-    private FixSessionId listenedSessionId;
     private ProbesListener listener;
+
+    public FixSessionProbesImpl(ProbeScope scope) {
+        this.scope = scope;
+    }
 
     @Override
     public synchronized void add(Probe probe) {
         if (indexOf(probe.getName()) >= 0) {
-            throw new IllegalArgumentException("A probe named " + probe.getName() + " already exists in this session");
+            throw new IllegalArgumentException("A probe named " + probe.getName() + " already exists in " + scope);
+        }
+        for (String labelName : probe.getLabels().keySet()) {
+            if (scope.getLabels().containsKey(labelName)) {
+                throw new IllegalArgumentException("Probe " + probe.getName() + " label " + labelName + " is a label of its scope " + scope);
+            }
         }
         Probe[] updated = Arrays.copyOf(probes, probes.length + 1);
         updated[probes.length] = probe;
         probes = updated;
         if (listener != null) {
-            listener.onProbeAdded(listenedSessionId, ProbeDefinition.of(probe));
+            listener.onProbeAdded(scope, ProbeDefinition.of(probe));
         }
     }
 
@@ -60,7 +71,7 @@ public final class FixSessionProbesImpl implements FixSessionProbes {
         System.arraycopy(probes, index + 1, updated, index, updated.length - index);
         probes = updated;
         if (listener != null) {
-            listener.onProbeRemoved(listenedSessionId, name);
+            listener.onProbeRemoved(scope, name);
         }
         return true;
     }
@@ -73,11 +84,10 @@ public final class FixSessionProbesImpl implements FixSessionProbes {
     /**
      * Tells the listener about every probe already present, then about each change.
      */
-    synchronized void attach(FixSessionId fixSessionId, ProbesListener probesListener) {
-        listenedSessionId = fixSessionId;
+    synchronized void attach(ProbesListener probesListener) {
         listener = probesListener;
         for (Probe probe : probes) {
-            listener.onProbeAdded(fixSessionId, ProbeDefinition.of(probe));
+            listener.onProbeAdded(scope, ProbeDefinition.of(probe));
         }
     }
 
@@ -89,10 +99,9 @@ public final class FixSessionProbesImpl implements FixSessionProbes {
             return;
         }
         for (Probe probe : probes) {
-            listener.onProbeRemoved(listenedSessionId, probe.getName());
+            listener.onProbeRemoved(scope, probe.getName());
         }
         listener = null;
-        listenedSessionId = null;
     }
 
     /**

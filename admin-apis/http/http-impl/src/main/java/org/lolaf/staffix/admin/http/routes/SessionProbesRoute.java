@@ -17,6 +17,7 @@ package org.lolaf.staffix.admin.http.routes;
 
 import com.sun.net.httpserver.HttpExchange;
 import org.lolaf.staffix.admin.http.ProbesDocuments;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 
 import java.io.IOException;
 import java.util.List;
@@ -34,7 +35,7 @@ public final class SessionProbesRoute extends Route {
 
     @Override
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
-        ProbesDocuments.ProbesDocument document = probes.get(sessions.runningConfig(param(path, "group"), param(path, "name")));
+        ProbesDocuments.ProbesDocument document = probes.get(FixSessionProbeScope.of(sessions.runningConfig(param(path, "group"), param(path, "name"))));
         if (!notModified(exchange, document.getVersion())) {
             send(exchange, 200, "application/json", document.getJson());
         }

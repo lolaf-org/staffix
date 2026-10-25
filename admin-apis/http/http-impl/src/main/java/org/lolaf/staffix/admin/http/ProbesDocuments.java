@@ -24,7 +24,7 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -36,7 +36,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Each session's probe definitions encoded once, dropped when a probe of that session is added or removed and
+ * Each scope's probe definitions encoded once, dropped when a probe of that scope is added or removed and
  * rebuilt at the next read, so a poll never re-encodes them. Built on read rather than from the events alone, because
  * the sessions an engine had before this listener was registered were announced to nobody.
  */
@@ -44,12 +44,12 @@ public final class ProbesDocuments implements ProbesListener {
 
     private final AdminApi adminApi;
     private final ObjectMapper mapper;
-    private final Map<FixSessionId, ProbesDocument> documents = new ConcurrentHashMap<>();
+    private final Map<ProbeScope, ProbesDocument> documents = new ConcurrentHashMap<>();
     /**
      * Starts at the wall clock rather than zero, so a console polling across an engine restart still sees it move.
      */
     private final AtomicLong alertsVersion = new AtomicLong(System.currentTimeMillis());
-    private final Function<FixSessionId, ProbesDocument> builder = this::build;
+    private final Function<ProbeScope, ProbesDocument> builder = this::build;
 
     public ProbesDocuments(AdminApi adminApi, ObjectMapper mapper) {
         this.adminApi = adminApi;
@@ -57,11 +57,11 @@ public final class ProbesDocuments implements ProbesListener {
     }
 
     /**
-     * @throws IllegalArgumentException if the engine no longer manages the session
+     * @throws IllegalArgumentException if the engine no longer evaluates the scope
      */
-    public ProbesDocument get(FixSessionId fixSessionId) {
-        ProbesDocument cached = documents.get(fixSessionId);
-        return cached != null ? cached : documents.computeIfAbsent(fixSessionId, builder);
+    public ProbesDocument get(ProbeScope scope) {
+        ProbesDocument cached = documents.get(scope);
+        return cached != null ? cached : documents.computeIfAbsent(scope, builder);
     }
 
     public long getAlertsVersion() {
@@ -69,22 +69,22 @@ public final class ProbesDocuments implements ProbesListener {
     }
 
     @Override
-    public void onProbeAdded(FixSessionId fixSessionId, ProbeDefinition probe) {
-        documents.remove(fixSessionId);
+    public void onProbeAdded(ProbeScope scope, ProbeDefinition probe) {
+        documents.remove(scope);
     }
 
     @Override
-    public void onProbeRemoved(FixSessionId fixSessionId, String probeName) {
-        documents.remove(fixSessionId);
+    public void onProbeRemoved(ProbeScope scope, String probeName) {
+        documents.remove(scope);
     }
 
     @Override
-    public void onAlertTransition(FixSessionId fixSessionId, ProbeState state) {
+    public void onAlertTransition(ProbeScope scope, ProbeState state) {
         alertsVersion.incrementAndGet();
     }
 
-    private ProbesDocument build(FixSessionId fixSessionId) {
-        List<ProbeDescription> probes = adminApi.getProbeDefinitions(fixSessionId).stream()
+    private ProbesDocument build(ProbeScope scope) {
+        List<ProbeDescription> probes = adminApi.getProbeDefinitions(scope).stream()
                 .map(ProbeDescription::of)
                 .collect(Collectors.toList());
         try {

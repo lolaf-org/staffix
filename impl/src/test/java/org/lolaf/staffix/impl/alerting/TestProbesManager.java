@@ -25,11 +25,14 @@ import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeEvaluator;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.tests.TestingFixAlertsPublisher;
 import org.lolaf.staffix.tests.TestingFixAlertsPublisherSettings;
@@ -67,7 +70,7 @@ class TestProbesManager {
 
     private final TestingFixAlertsPublisherSettings publisherSettings = TestingFixAlertsPublisherSettings.builder().build();
     private final FixSession session = mock(FixSession.class);
-    private final FixSessionProbesImpl probes = new FixSessionProbesImpl();
+    private final FixSessionProbesImpl probes = new FixSessionProbesImpl(FixSessionProbeScope.of(SESSION_ID));
     private final AtomicReference<Optional<Alert>> result = new AtomicReference<>(Optional.empty());
     private final List<String> listened = new CopyOnWriteArrayList<>();
     private final ProbesListeners listeners = new ProbesListeners();
@@ -84,7 +87,7 @@ class TestProbesManager {
     void theListenerIsToldOfTheProbesASessionHadWhenRegisteredAndOfEachChange() {
         FixSession other = mock(FixSession.class);
         when(other.getFixSessionId()).thenReturn(OTHER_SESSION_ID);
-        FixSessionProbesImpl otherProbes = new FixSessionProbesImpl();
+        FixSessionProbesImpl otherProbes = new FixSessionProbesImpl(FixSessionProbeScope.of(OTHER_SESSION_ID));
         otherProbes.add(probe("before", result::get));
 
         manager.register(other, otherProbes, new TestingFixAlertsPublisher(publisherSettings));
@@ -138,7 +141,7 @@ class TestProbesManager {
         manager.tick();
 
         assertThat(manager.getActiveAlerts()).singleElement().satisfies(active -> {
-            assertThat(active.getFixSessionId()).isEqualTo(SESSION_ID);
+            assertThat(active.getScope()).isEqualTo(FixSessionProbeScope.of(SESSION_ID));
             assertThat(active.getProbeState().getProbeName()).isEqualTo("alerting");
         });
     }
@@ -208,7 +211,7 @@ class TestProbesManager {
         failingFirst.add(new RecordingListener(null));
         failingFirst.add(new RecordingListener(listened));
 
-        failingFirst.onProbeRemoved(SESSION_ID, "queue");
+        failingFirst.onProbeRemoved(FixSessionProbeScope.of(SESSION_ID), "queue");
 
         assertThat(listened).containsExactly("removed orders queue");
     }
@@ -229,9 +232,8 @@ class TestProbesManager {
         assertThat(publisherSettings.getEvents()).extracting(event -> event.getAlert().getMessage())
                 .containsExactly("100 queued", "1000 queued", "1000 queued");
         assertThat(publisherSettings.getEvents()).allSatisfy(event -> {
-            assertThat(event.getEngineId()).isEqualTo("engine");
-            assertThat(event.getFixSessionId()).isEqualTo(SESSION_ID);
-            assertThat(event.getProbeName()).isEqualTo("queue");
+            assertThat(event.getSource()).isEqualTo("engine");
+            assertThat(event.getProbeId()).isEqualTo(ProbeId.of(FixSessionProbeScope.of(SESSION_ID), "queue"));
             assertThat(event.getProbeDescription()).isEqualTo("queue description");
             assertThat(event.getSince()).isEqualTo(NOW);
         });
@@ -321,7 +323,7 @@ class TestProbesManager {
         FixSession other = mock(FixSession.class);
         when(other.getFixSessionId()).thenReturn(SESSION_ID);
         when(other.isLoggedIn()).thenReturn(true);
-        FixSessionProbesImpl otherProbes = new FixSessionProbesImpl();
+        FixSessionProbesImpl otherProbes = new FixSessionProbesImpl(FixSessionProbeScope.of(SESSION_ID));
         manager.register(other, otherProbes, new FailingPublisher());
         otherProbes.add(probe("failing", () -> Optional.of(Alert.warning("x"))));
         probes.add(probe("queue", () -> Optional.of(Alert.warning("y"))));
@@ -497,20 +499,24 @@ class TestProbesManager {
         }
 
         @Override
-        public void onProbeAdded(FixSessionId fixSessionId, ProbeDefinition probe) {
-            calls.add("added " + fixSessionId.getName() + " " + probe.getName());
+        public void onProbeAdded(ProbeScope scope, ProbeDefinition probe) {
+            calls.add("added " + sessionName(scope) + " " + probe.getName());
         }
 
         @Override
-        public void onProbeRemoved(FixSessionId fixSessionId, String probeName) {
-            calls.add("removed " + fixSessionId.getName() + " " + probeName);
+        public void onProbeRemoved(ProbeScope scope, String probeName) {
+            calls.add("removed " + sessionName(scope) + " " + probeName);
         }
 
         @Override
-        public void onAlertTransition(FixSessionId fixSessionId, ProbeState state) {
-            calls.add("transition " + fixSessionId.getName() + " " + state.getProbeName() + " "
+        public void onAlertTransition(ProbeScope scope, ProbeState state) {
+            calls.add("transition " + sessionName(scope) + " " + state.getProbeName() + " "
                     + state.getAlert().map(alert -> alert.getLevel().name()).orElse("normal")
                     + (state.isClearedManually() ? " manually" : ""));
+        }
+
+        private static String sessionName(ProbeScope scope) {
+            return scope.getLabels().get(FixSessionProbeScope.NAME_LABEL);
         }
     }
 

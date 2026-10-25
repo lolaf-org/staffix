@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.alerting.AlertEvent;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -35,6 +36,7 @@ import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixApplVerID;
@@ -317,8 +319,9 @@ class TestFixEngineSessionsSettingsWrites {
         adminApi.removeFixSessionSettings(alpha.getFixSessionId(), FixSession.FixSessionType.ACCEPTOR);
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alertsPublisher.getEvents())
-                .extracting(AlertEvent::getType, AlertEvent::getFixSessionId)
-                .containsExactly(tuple(AlertEvent.Type.RAISED, alpha.getFixSessionId()), tuple(AlertEvent.Type.CLEARED, alpha.getFixSessionId())));
+                .extracting(AlertEvent::getType, event -> event.getProbeId().getScope())
+                .containsExactly(tuple(AlertEvent.Type.RAISED, FixSessionProbeScope.of(alpha.getFixSessionId())),
+                        tuple(AlertEvent.Type.CLEARED, FixSessionProbeScope.of(alpha.getFixSessionId()))));
     }
 
     @Test
@@ -327,16 +330,16 @@ class TestFixEngineSessionsSettingsWrites {
         List<ProbeState> transitions = new CopyOnWriteArrayList<>();
         adminApi.addProbesListener(new ProbesListener() {
             @Override
-            public void onProbeAdded(FixSessionId fixSessionId, ProbeDefinition probe) {
+            public void onProbeAdded(ProbeScope scope, ProbeDefinition probe) {
                 added.add(probe.getName());
             }
 
             @Override
-            public void onProbeRemoved(FixSessionId fixSessionId, String probeName) {
+            public void onProbeRemoved(ProbeScope scope, String probeName) {
             }
 
             @Override
-            public void onAlertTransition(FixSessionId fixSessionId, ProbeState state) {
+            public void onAlertTransition(ProbeScope scope, ProbeState state) {
                 transitions.add(state);
             }
         });
@@ -349,16 +352,16 @@ class TestFixEngineSessionsSettingsWrites {
         session.getProbes().add(Probe.builder().name("queue").description("Orders waiting")
                 .evaluator(() -> Optional.of(Alert.warning("100 queued"))).onlyWhileLoggedIn(false).build());
 
-        assertThat(adminApi.getProbeDefinitions(alpha.getFixSessionId())).extracting(ProbeDefinition::getName)
+        assertThat(adminApi.getProbeDefinitions(FixSessionProbeScope.of(alpha.getFixSessionId()))).extracting(ProbeDefinition::getName)
                 .containsExactlyElementsOf(added).contains(SessionDownEvaluator.PROBE_NAME, "queue");
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(adminApi.getActiveAlerts())
                 .singleElement().satisfies(active -> {
-                    assertThat(active.getFixSessionId()).isEqualTo(alpha.getFixSessionId());
+                    assertThat(active.getScope()).isEqualTo(FixSessionProbeScope.of(alpha.getFixSessionId()));
                     assertThat(active.getProbeState().getProbeName()).isEqualTo("queue");
                 }));
-        assertThat(adminApi.getProbeStates(alpha.getFixSessionId())).extracting(ProbeState::getProbeName).contains("queue");
+        assertThat(adminApi.getProbeStates(FixSessionProbeScope.of(alpha.getFixSessionId()))).extracting(ProbeState::getProbeName).contains("queue");
         assertThat(transitions).extracting(ProbeState::getProbeName).containsExactly("queue");
-        assertThatThrownBy(() -> adminApi.getProbeStates(session("beta", "BETA").getFixSessionId()))
+        assertThatThrownBy(() -> adminApi.getProbeStates(FixSessionProbeScope.of(session("beta", "BETA").getFixSessionId())))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -384,8 +387,8 @@ class TestFixEngineSessionsSettingsWrites {
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alertsPublisher.getEvents()).singleElement().satisfies(event -> {
             assertThat(event.getType()).isEqualTo(AlertEvent.Type.RAISED);
-            assertThat(event.getEngineId()).isEqualTo("engine");
-            assertThat(event.getProbeName()).isEqualTo(SessionDownEvaluator.PROBE_NAME);
+            assertThat(event.getSource()).isEqualTo("engine");
+            assertThat(event.getProbeId().getName()).isEqualTo(SessionDownEvaluator.PROBE_NAME);
             assertThat(event.getAlert().getLevel()).isEqualTo(AlertLevel.CRITICAL);
         }));
     }

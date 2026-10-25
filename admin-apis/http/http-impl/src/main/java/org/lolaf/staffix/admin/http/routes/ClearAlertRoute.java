@@ -19,7 +19,10 @@ import com.sun.net.httpserver.HttpExchange;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.admin.http.HttpProblemException;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 
 import java.util.List;
 
@@ -36,11 +39,12 @@ public final class ClearAlertRoute extends SessionOperationRoute {
     @Override
     void apply(FixSessionId fixSessionId, HttpExchange exchange, List<String> path) {
         String probe = param(path, "probe");
-        if (adminApi.getProbeDefinitions(fixSessionId).stream().noneMatch(definition -> definition.getName().equals(probe))) {
+        ProbeScope scope = FixSessionProbeScope.of(fixSessionId);
+        if (adminApi.getProbeDefinitions(scope).stream().noneMatch(definition -> definition.getName().equals(probe))) {
             throw new HttpProblemException(404, "Session " + fixSessionId.getQualifiedName() + " has no probe named " + probe);
         }
         log.info("Admin API: clear alert {} of {}", probe, fixSessionId.getQualifiedName());
-        if (!adminApi.clearAlert(fixSessionId, probe)) {
+        if (!adminApi.clearAlert(ProbeId.of(scope, probe))) {
             throw new HttpProblemException(409, "Probe " + probe + " is not in alert, or its alert cannot be cleared by hand");
         }
     }

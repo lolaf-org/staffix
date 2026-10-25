@@ -27,11 +27,10 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
- * Watches one thing of a FIX session and raises an alert while it is wrong. Immutable: changing a probe means removing
- * it and adding a new one.
+ * Watches one thing of its {@link ProbeScope} and raises an alert while it is wrong. Immutable: changing a probe means
+ * removing it and adding a new one.
  */
 @Value
 public class Probe {
@@ -40,10 +39,9 @@ public class Probe {
      * The engine evaluates probes on a one-second tick, so no interval can be shorter.
      */
     public static final Duration MIN_INTERVAL = Duration.ofSeconds(1);
-    private static final Pattern LABEL_NAME = Pattern.compile("[a-zA-Z_][a-zA-Z0-9_]*");
 
     /**
-     * Identifies the probe within its session.
+     * Identifies the probe within its scope.
      */
     String name;
     /**
@@ -64,7 +62,8 @@ public class Probe {
     Duration reminderInterval;
     /**
      * Carried on every alert for routing and grouping, such as the owning team. Names follow Prometheus' label syntax,
-     * since Alertmanager refuses a whole post over one invalid name, and cannot be an {@link AlertLabel}.
+     * since Alertmanager refuses a whole post over one invalid name, and cannot be an {@link AlertLabel} or a label of
+     * the probe's {@link ProbeScope}.
      */
     Map<String, String> labels;
     /**
@@ -90,24 +89,9 @@ public class Probe {
         this.evaluator = evaluator;
         this.evaluationInterval = requireAtLeastMinInterval("evaluationInterval", evaluationInterval == null ? MIN_INTERVAL : evaluationInterval);
         this.reminderInterval = reminderInterval == null ? null : requireAtLeastMinInterval("reminderInterval", reminderInterval);
-        this.labels = Collections.unmodifiableMap(new LinkedHashMap<>(requireValidLabels(labels)));
+        this.labels = Collections.unmodifiableMap(new LinkedHashMap<>(Labels.requireValid(labels)));
         this.runbookUrl = runbookUrl;
         this.onlyWhileLoggedIn = onlyWhileLoggedIn == null || onlyWhileLoggedIn;
-    }
-
-    private static Map<String, String> requireValidLabels(Map<String, String> labels) {
-        labels.forEach((labelName, value) -> {
-            if (!LABEL_NAME.matcher(labelName).matches()) {
-                throw new IllegalArgumentException("Label name " + labelName + " must match " + LABEL_NAME);
-            }
-            if (AlertLabel.isReserved(labelName)) {
-                throw new IllegalArgumentException("Label name " + labelName + " is reserved by " + AlertLabel.class.getSimpleName());
-            }
-            if (value == null) {
-                throw new IllegalArgumentException("Label " + labelName + " has no value");
-            }
-        });
-        return labels;
     }
 
     private static Duration requireAtLeastMinInterval(String name, Duration interval) {

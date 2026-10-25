@@ -589,15 +589,15 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
-    public List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId) {
-        return managedSession(fixSessionId).getProbes().list().stream()
+    public List<ProbeDefinition> getProbeDefinitions(ProbeScope scope) {
+        return probedSession(scope).getProbes().list().stream()
                 .map(ProbeDefinition::of)
                 .collect(Collectors.toUnmodifiableList());
     }
 
     @Override
-    public List<ProbeState> getProbeStates(FixSessionId fixSessionId) {
-        return probesManager.getProbeStates(managedSession(fixSessionId));
+    public List<ProbeState> getProbeStates(ProbeScope scope) {
+        return probesManager.getProbeStates(probedSession(scope));
     }
 
     @Override
@@ -606,13 +606,24 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
-    public List<SessionProbeState> getActiveAlerts() {
+    public List<ScopedProbeState> getActiveAlerts() {
         return probesManager.getActiveAlerts();
     }
 
     @Override
-    public boolean clearAlert(FixSessionId fixSessionId, String probeName) {
-        return probesManager.clearAlert(managedSession(fixSessionId), probeName);
+    public boolean clearAlert(ProbeId probeId) {
+        return probesManager.clearAlert(probedSession(probeId.getScope()), probeId.getName());
+    }
+
+    private FixSession probedSession(ProbeScope scope) {
+        if (FixSessionProbeScope.isSession(scope)) {
+            for (FixSession session : getManagedFixSessions()) {
+                if (session.getFixSessionId().getQualifiedName().equals(scope.getName())) {
+                    return session;
+                }
+            }
+        }
+        throw new IllegalArgumentException("Engine " + getInstanceId() + " evaluates no probe scope " + scope);
     }
 
     @Override
@@ -629,11 +640,6 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         return findControl(fixSessionId).getManagedFixSessions().stream()
                 .filter(session -> session.getFixSessionId().equals(fixSessionId))
                 .findFirst();
-    }
-
-    private FixSession managedSession(FixSessionId fixSessionId) {
-        return findManagedSession(fixSessionId)
-                .orElseThrow(() -> new IllegalArgumentException("No initiator or acceptor manages session " + fixSessionId));
     }
 
     @Override
@@ -821,7 +827,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
         @Override
         public FixMessagesStore.FixSessionMessagesStore openStore(FixSessionSettings settings) {
-            return findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), new FixSessionProbesImpl());
+            return findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), new FixSessionProbesImpl(FixSessionProbeScope.of(settings.getFixSessionId())));
         }
 
         @Override
