@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.ha.FixEngineHa;
+import org.lolaf.staffix.api.ha.HaAdmin;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
@@ -584,6 +585,11 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Override
     public List<ProbeState> getProbeStates(FixSessionId fixSessionId) {
         return probesManager.getProbeStates(managedSession(fixSessionId));
+    }
+
+    @Override
+    public Optional<HaAdmin> getHa() {
+        return fixEngineHa == NoHighAvailability.INSTANCE ? Optional.empty() : Optional.of(fixEngineHa);
     }
 
     @Override

@@ -18,8 +18,13 @@ package org.lolaf.staffix.impl;
 import lombok.NoArgsConstructor;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.ha.HaStatus;
+import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+
+import java.util.List;
 
 import static lombok.AccessLevel.PRIVATE;
 
@@ -40,6 +45,19 @@ final class NoHighAvailability implements FixEngineHa {
 
     @Override
     public void bind(EngineAccess engine) {
+    }
+
+    /**
+     * Never shown: the engine's admin API has no high availability to show.
+     */
+    @Override
+    public HaStatus getStatus() {
+        return HaStatus.builder().nodeId("").role(LeaderElection.Role.UNKNOWN).epoch(-1).leaderElection("").build();
+    }
+
+    @Override
+    public List<HaSessionStatus> getSessionsStatus() {
+        return List.of();
     }
 
     @Override

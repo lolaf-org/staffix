@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -42,7 +43,7 @@ import java.util.Arrays;
 public final class Replica {
 
     private final EngineAccess engine;
-    private ReplicaSession[] sessions = new ReplicaSession[16];
+    private volatile ReplicaSession[] sessions = new ReplicaSession[16];
     @Getter
     private volatile long lastAppliedEpoch;
     /**
@@ -227,6 +228,27 @@ public final class Replica {
             }
         }
         return null;
+    }
+
+    /**
+     * Adds what this follower holds of the session to its status, nothing for a session the leader never announced.
+     * Any thread.
+     */
+    public void describe(FixSessionType fixSessionType, String fixSessionId, HaSessionStatus.HaSessionStatusBuilder status) {
+        ReplicaSession session = find(fixSessionType, fixSessionId);
+        if (session == null) {
+            return;
+        }
+        status.handedOver(session.handedOver);
+        if (session.store != null) {
+            status.inSync(session.complete)
+                    .nextIncomingSeqNum(session.store.getIncomingSeqNum())
+                    .nextOutgoingSeqNum(session.store.getOutgoingSeqNum());
+        } else if (session.refusal == SessionStatus.SHARED_STORAGE) {
+            status.inSync(true).sharedStorage(true);
+        } else {
+            status.notReplicatedReason(session.refusal.name());
+        }
     }
 
     /**

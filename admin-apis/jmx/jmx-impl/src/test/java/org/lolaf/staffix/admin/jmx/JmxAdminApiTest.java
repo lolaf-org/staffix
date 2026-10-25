@@ -29,11 +29,16 @@ import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
+import org.lolaf.staffix.api.ha.HaAdmin;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.ha.HaStatus;
+import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
@@ -238,6 +243,53 @@ class JmxAdminApiTest {
         });
     }
 
+    @Test
+    void anEngineWithoutHighAvailabilityHasNoHaBean() throws Exception {
+        exporter.export(adminApi);
+
+        assertThat(mBeanServer.isRegistered(haName())).isFalse();
+    }
+
+    @Test
+    void theHighAvailabilityIsReadableAndUnregisteredOnShutdown() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.FOLLOWER).epoch(7)
+                .leaderId("2").leaderElection("PrimosLeaderElection").roleSince(SINCE)
+                .leader(HaStatus.Leader.builder().leaderId("2").address("/10.0.0.2:17101").connected(true).inSync(true).build())
+                .build());
+        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
+                .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC)
+                .replicationAckTimeout(Duration.ofMillis(200)).inSync(true).nextIncomingSeqNum(12).nextOutgoingSeqNum(34)
+                .handedOver(true).build()));
+        adminApi.ha = ha;
+        exporter.export(adminApi);
+
+        FixHaMXBean proxy = JMX.newMXBeanProxy(mBeanServer, haName(), FixHaMXBean.class);
+
+        FixHaMXBean.Status status = proxy.getStatus();
+        assertThat(status.getRole()).isEqualTo("FOLLOWER");
+        assertThat(status.getEpoch()).isEqualTo(7);
+        assertThat(status.getRoleSince()).isEqualTo("2026-10-10T10:00:00Z");
+        assertThat(status.getFollowers()).isEmpty();
+        assertThat(status.getLeader().getAddress()).isEqualTo("/10.0.0.2:17101");
+        assertThat(status.getLeader().isInSync()).isTrue();
+        assertThat(proxy.getSessionsStatus()).singleElement().satisfies(session -> {
+            assertThat(session.getFixSessionId()).isEqualTo(ACCEPTOR_SESSION.toString());
+            assertThat(session.getReplicationMode()).isEqualTo("SYNC");
+            assertThat(session.getReplicationAckTimeout()).isEqualTo("PT0.2S");
+            assertThat(session.getNextOutgoingSeqNum()).isEqualTo(34);
+            assertThat(session.isHandedOver()).isTrue();
+            assertThat(session.getNotReplicatedReason()).isNull();
+        });
+
+        exporter.shutdown(Deadline.immediate());
+        assertThat(mBeanServer.isRegistered(haName())).isFalse();
+    }
+
+    private ObjectName haName() throws Exception {
+        return new ObjectName(DOMAIN + ":type=FixHa,instance=" + ObjectName.quote(adminApi.getInstanceId()));
+    }
+
     private static FixInitiatorTargets initiatorTargets() {
         InetSocketAddress address = new InetSocketAddress("localhost", 1);
         return FixInitiatorTargets.builder()
@@ -273,6 +325,7 @@ class JmxAdminApiTest {
         private final List<ProbeState> probeStates = new ArrayList<>();
         private final List<SessionProbeState> activeAlerts = new ArrayList<>();
         private final List<String> clearedAlerts = new ArrayList<>();
+        private HaAdmin ha;
         private SessionLifecycleListener lifecycleListener;
 
         @Override
@@ -403,6 +456,11 @@ class JmxAdminApiTest {
         @Override
         public List<SessionProbeState> getActiveAlerts() {
             return activeAlerts;
+        }
+
+        @Override
+        public Optional<HaAdmin> getHa() {
+            return Optional.ofNullable(ha);
         }
 
         @Override

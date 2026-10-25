@@ -28,7 +28,7 @@ import java.util.List;
  * An engine's high availability: everything the engine calls to replicate its sessions and to follow the leader
  * election. Started and stopped with the engine.
  */
-public interface FixEngineHa extends Startable<FixEngineHa> {
+public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
 
     /**
      * The store a session uses in place of {@code store}, replicating what is written to it. Called each time the

@@ -25,6 +25,7 @@ import org.lolaf.betty.api.io.IOWorkersGroup;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -99,6 +100,17 @@ public final class ReplicationReceiver {
      */
     public @Nullable LeaderLink getLink() {
         return link;
+    }
+
+    public HaStatus.Leader status() {
+        LeaderLink current = link;
+        boolean connected = current != null && current.getState() == LeaderLink.State.STREAMING;
+        return HaStatus.Leader.builder()
+                .leaderId(current == null ? null : current.getLeaderId())
+                .address(String.valueOf(leaderAddress))
+                .connected(connected)
+                .inSync(connected && replica.isComplete())
+                .build();
     }
 
     private final class Listener implements IOEventsListener {

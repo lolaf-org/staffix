@@ -21,18 +21,27 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.ha.FixEngineHa;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.follower.Replica;
 import org.lolaf.staffix.ha.follower.ReplicationReceiver;
+import org.lolaf.staffix.ha.leader.FollowerLink;
 import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.leader.ReplicationPublisher;
 import org.lolaf.staffix.ha.log.ReplicationLog;
+import org.lolaf.staffix.ha.wire.SessionStatus;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -58,15 +67,16 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final ReplicationLog replicationLog;
     private final ReplicatedSessions sessions = new ReplicatedSessions();
     private final Followers followers = new Followers();
-    private EngineAccess engine;
-    private Replica replica;
-    private LeaderElection election;
+    private volatile EngineAccess engine;
+    private volatile Replica replica;
+    private volatile LeaderElection election;
     private ScheduledExecutorService roleThread;
-    private Role followedRole = Role.UNKNOWN;
+    private volatile Role followedRole = Role.UNKNOWN;
     private long followedEpoch = -1;
     private @Nullable InetSocketAddress followedLeader;
-    private @Nullable ReplicationPublisher publisher;
-    private @Nullable ReplicationReceiver receiver;
+    private volatile @Nullable Instant roleSince;
+    private volatile @Nullable ReplicationPublisher publisher;
+    private volatile @Nullable ReplicationReceiver receiver;
 
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
         this.settings = settings;
@@ -82,6 +92,84 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     public void bind(EngineAccess engine) {
         this.engine = engine;
         this.replica = new Replica(engine);
+    }
+
+    @Override
+    public HaStatus getStatus() {
+        LeaderElection currentElection = election;
+        Role role = followedRole;
+        HaStatus.HaStatusBuilder status = HaStatus.builder()
+                .nodeId(settings.getNodeId())
+                .role(role)
+                .epoch(currentElection == null ? -1 : currentElection.getEpoch())
+                .leaderId(currentElection == null ? null : currentElection.getLeaderId().orElse(null))
+                .leadershipValid(currentElection != null && currentElection.getRole() == Role.LEADER
+                        && currentElection.isLeadershipValid())
+                .leaderElection(currentElection == null ? "" : currentElection.getClass().getSimpleName())
+                .roleSince(roleSince);
+        if (role == Role.LEADER) {
+            for (FollowerLink link : followers.all()) {
+                status.follower(link.status(sessions.count()));
+            }
+        }
+        ReplicationReceiver currentReceiver = receiver;
+        if (role == Role.FOLLOWER && currentReceiver != null) {
+            status.leader(currentReceiver.status());
+        }
+        return status.build();
+    }
+
+    @Override
+    public List<HaSessionStatus> getSessionsStatus() {
+        EngineAccess currentEngine = engine;
+        if (currentEngine == null) {
+            return List.of();
+        }
+        Role role = followedRole;
+        List<HaSessionStatus> statuses = new ArrayList<>();
+        for (FixSessionSettings sessionSettings : currentEngine.getFixSessionsSettings()) {
+            HaSessionSettings haSettings = sessionSettings.getHaSessionSettings();
+            if (haSettings.getReplicationMode() == ReplicationMode.NONE) {
+                continue;
+            }
+            HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder()
+                    .fixSessionId(sessionSettings.getFixSessionId())
+                    .fixSessionType(sessionSettings.getFixSessionType())
+                    .replicationMode(haSettings.getReplicationMode())
+                    .replicationAckTimeout(haSettings.getReplicationAckTimeout())
+                    .nextIncomingSeqNum(-1)
+                    .nextOutgoingSeqNum(-1);
+            if (role == Role.LEADER) {
+                describeLed(sessionSettings, status);
+            } else if (role == Role.FOLLOWER) {
+                replica.describe(sessionSettings.getFixSessionType(), sessionSettings.getFixSessionId().toString(), status);
+            }
+            statuses.add(status.build());
+        }
+        return statuses;
+    }
+
+    private void describeLed(FixSessionSettings sessionSettings, HaSessionStatus.HaSessionStatusBuilder status) {
+        ReplicatedSession session = sessions.find(sessionSettings.getFixSessionId(), sessionSettings.getFixSessionType());
+        if (session == null) {
+            return;
+        }
+        boolean inSync = false;
+        boolean sharedStorage = false;
+        String refusal = null;
+        for (FollowerLink link : followers.all()) {
+            SessionStatus reported = link.getReportedStatus(session.getKey());
+            inSync |= link.isInSync(session.getKey());
+            sharedStorage |= reported == SessionStatus.SHARED_STORAGE;
+            if (reported == SessionStatus.UNKNOWN_SESSION || reported == SessionStatus.UNKNOWN_STORAGE) {
+                refusal = reported.name();
+            }
+        }
+        status.inSync(inSync)
+                .sharedStorage(sharedStorage)
+                .notReplicatedReason(inSync ? null : refusal)
+                .unprotected(session.isUnprotected())
+                .unacknowledgedSends(session.getUnacknowledgedSends());
     }
 
     @Override
@@ -226,9 +314,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     private void changed(Role role, long epoch, @Nullable InetSocketAddress leader) {
         log.info("Node {} is now {} at epoch {}{}", settings.getNodeId(), role, epoch, leader == null ? "" : ", following " + leader);
-        followedRole = role;
         followedEpoch = epoch;
         followedLeader = leader;
+        roleSince = Instant.now();
+        followedRole = role;
     }
 
     private void stopPublisher(Deadline deadline) {

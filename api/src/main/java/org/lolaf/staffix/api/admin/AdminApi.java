@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.alerting.SessionProbeState;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.fields.CoreFields;
+import org.lolaf.staffix.api.ha.HaAdmin;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
@@ -326,6 +327,11 @@ public interface AdminApi extends InstanceIdSupplier {
      * @throws IllegalArgumentException if no initiator or acceptor manages the given session, or it has no such probe
      */
     boolean clearAlert(FixSessionId fixSessionId, String probeName);
+
+    /**
+     * The engine's high availability, empty when it has none.
+     */
+    Optional<HaAdmin> getHa();
 
     /**
      * Registers a listener told about every probe added or removed, and every alert transition, from now on.

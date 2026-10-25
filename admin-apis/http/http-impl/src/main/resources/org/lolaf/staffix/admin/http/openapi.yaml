@@ -267,6 +267,40 @@ paths:
                 $ref: '#/components/schemas/EngineAlerts'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/ha:
+    get:
+      summary: The engine's high availability
+      description: The role it acts on, and on a leader its followers, on a follower its link to the leader.
+      operationId: getHaStatus
+      responses:
+        '200':
+          description: The engine's high availability.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HaNodeStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/ha/sessions:
+    get:
+      summary: Every session configured with replication
+      description: On a leader whether a follower holds each, on a follower what it holds.
+      operationId: getHaSessions
+      responses:
+        '200':
+          description: The replicated sessions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HaSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/session-settings-stores/{storeId}/reload:
     post:
       summary: Reloads a session settings store, starting, stopping or restarting the sessions it changed
@@ -631,7 +665,7 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     NotFound:
-      description: No such session, config, dictionary or API version.
+      description: No such session, config, dictionary or API version, or no high availability.
       content:
         application/problem+json:
           schema:
@@ -933,6 +967,121 @@ components:
           type: string
           format: uri
           description: The probe's runbook; absent when it has none.
+    HaNodeStatus:
+      type: object
+      required: [nodeId, role, epoch, leadershipValid, leaderElection, followers]
+      properties:
+        nodeId:
+          type: string
+        role:
+          type: string
+          enum: [LEADER, FOLLOWER, UNKNOWN]
+          description: The role the engine acts on, which trails the election's while it changes over.
+        epoch:
+          type: integer
+          format: int64
+          description: The election's epoch, -1 when unknown.
+        leaderId:
+          type: string
+        leadershipValid:
+          type: boolean
+          description: This node can still prove it leads; a leader that cannot stops its sessions.
+        leaderElection:
+          type: string
+          description: The leader election's implementation.
+        roleSince:
+          type: string
+          format: date-time
+          description: When the engine took its role; absent before it took any.
+        followers:
+          type: array
+          description: The followers connected to this node, while it leads.
+          items:
+            $ref: '#/components/schemas/HaFollower'
+        leader:
+          $ref: '#/components/schemas/HaLeader'
+    HaFollower:
+      type: object
+      required: [address, connected, inSync, snapshotInProgress, unsentBytes]
+      properties:
+        nodeId:
+          type: string
+          description: Absent until the follower said.
+        address:
+          type: string
+        connected:
+          type: boolean
+          description: Streaming the leader's writes.
+        inSync:
+          type: boolean
+          description: Holds every replicated session in sync.
+        snapshotInProgress:
+          type: boolean
+        unsentBytes:
+          type: integer
+          format: int64
+          description: >-
+            Bytes the leader wrote and has not sent this follower yet, -1 before it started sending. Reaching the
+            replication log's capacity drops the follower, which a snapshot then catches up.
+    HaLeader:
+      type: object
+      description: A follower's link to its leader.
+      required: [address, connected, inSync]
+      properties:
+        leaderId:
+          type: string
+          description: Absent until the leader said.
+        address:
+          type: string
+        connected:
+          type: boolean
+        inSync:
+          type: boolean
+          description: Holds every replicated session in full.
+    HaSession:
+      type: object
+      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, inSync, sharedStorage, unprotected,
+                 unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver]
+      properties:
+        group:
+          type: string
+        name:
+          type: string
+        fixSessionType:
+          type: string
+          enum: [INITIATOR, ACCEPTOR]
+        replicationMode:
+          type: string
+          enum: [ASYNC, SYNC]
+        replicationAckTimeout:
+          type: string
+          format: duration
+        inSync:
+          type: boolean
+          description: On a leader, a follower holds it in sync; on a follower, it holds it in full.
+        sharedStorage:
+          type: boolean
+          description: Its storage is the same on both nodes, so nothing of it needs replicating.
+        notReplicatedReason:
+          type: string
+          description: Why it is not replicated; absent when it is.
+        unprotected:
+          type: boolean
+          description: A leader's SYNC session whose last send went out without the follower's ack.
+        unacknowledgedSends:
+          type: integer
+          format: int64
+        nextIncomingSeqNum:
+          type: integer
+          format: int64
+          description: As replicated to this follower, -1 on a leader.
+        nextOutgoingSeqNum:
+          type: integer
+          format: int64
+          description: As replicated to this follower, -1 on a leader.
+        handedOver:
+          type: boolean
+          description: The old leader stopped cleanly with this follower holding it in full, so taking over keeps its seqnum.
     SessionComponents:
       type: object
       required: [applicationFactories, messagesStores, messagesLoggers, alertsPublishers, sessionsPlugins]

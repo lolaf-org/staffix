@@ -79,6 +79,8 @@ public class AdminApiHandler implements HttpHandler {
                 new SessionsRoute(documents),
                 new StatusRoute(adminApi, documents, probes, json),
                 new AlertsRoute(adminApi, probes, json),
+                new HaStatusRoute(adminApi, json),
+                new HaSessionsRoute(adminApi, json),
                 new ComponentsRoute(adminApi, json),
                 new SessionComponentsRoute(adminApi, json),
                 new MetersRoute(adminApi, json),

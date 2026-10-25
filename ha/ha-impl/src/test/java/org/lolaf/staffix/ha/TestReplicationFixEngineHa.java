@@ -19,6 +19,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -187,6 +189,62 @@ class TestReplicationFixEngineHa {
 
         await().until(() -> a.engine.activity.contains("deactivate"));
         await().until(() -> !listening(addressA));
+    }
+
+    @Test
+    void theLeaderSeesItsFollowerInSyncAndTheFollowerItsLeader() {
+        aLeadsBFollows();
+
+        await().untilAsserted(() -> {
+            HaStatus leader = a.ha.getStatus();
+            assertThat(leader.getRole()).isEqualTo(Role.LEADER);
+            assertThat(leader.getEpoch()).isEqualTo(3);
+            assertThat(leader.isLeadershipValid()).isTrue();
+            assertThat(leader.getRoleSince()).isNotNull();
+            assertThat(leader.getLeader()).isNull();
+            assertThat(leader.getFollowers()).singleElement().satisfies(follower -> {
+                assertThat(follower.getNodeId()).isEqualTo("b");
+                assertThat(follower.isConnected()).isTrue();
+                assertThat(follower.isInSync()).isTrue();
+                assertThat(follower.isSnapshotInProgress()).isFalse();
+                assertThat(follower.getUnsentBytes()).isZero();
+            });
+        });
+        HaStatus follower = b.ha.getStatus();
+        assertThat(follower.getRole()).isEqualTo(Role.FOLLOWER);
+        assertThat(follower.isLeadershipValid()).isFalse();
+        assertThat(follower.getFollowers()).isEmpty();
+        assertThat(follower.getLeader()).isNotNull();
+        assertThat(follower.getLeader().getLeaderId()).isEqualTo("a");
+        assertThat(follower.getLeader().isConnected()).isTrue();
+        assertThat(follower.getLeader().isInSync()).isTrue();
+    }
+
+    @Test
+    void eachNodeDescribesTheReplicatedSessionFromItsSide() {
+        aLeadsBFollows();
+
+        await().untilAsserted(() -> assertThat(a.ha.getSessionsStatus()).singleElement().satisfies(session -> {
+            assertThat(session.getFixSessionId()).isEqualTo(MAIN.getFixSessionId());
+            assertThat(session.isInSync()).isTrue();
+            assertThat(session.isSharedStorage()).isFalse();
+            assertThat(session.getNotReplicatedReason()).isNull();
+            assertThat(session.getNextOutgoingSeqNum()).isEqualTo(-1);
+        }));
+        HaSessionStatus replicated = b.ha.getSessionsStatus().get(0);
+        assertThat(replicated.isInSync()).isTrue();
+        assertThat(replicated.getNextIncomingSeqNum()).isEqualTo(1);
+        assertThat(replicated.getNextOutgoingSeqNum()).isEqualTo(1);
+        assertThat(replicated.isHandedOver()).isFalse();
+    }
+
+    @Test
+    void aNodeWhoseRoleIsUnknownDescribesItsSessionsWithoutReplication() {
+        a.start();
+
+        assertThat(a.ha.getStatus().getRole()).isEqualTo(Role.UNKNOWN);
+        assertThat(a.ha.getStatus().getRoleSince()).isNull();
+        assertThat(a.ha.getSessionsStatus()).singleElement().satisfies(session -> assertThat(session.isInSync()).isFalse());
     }
 
     @Test

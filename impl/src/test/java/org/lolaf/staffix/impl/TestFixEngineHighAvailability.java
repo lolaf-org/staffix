@@ -195,6 +195,16 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     }
 
     @Test
+    void theAdminApiShowsTheHighAvailabilityOnlyWhenTheEngineHasOne() {
+        setupInitiatorSessionSettings(b -> b.build());
+        assertThat(((AdminApi) initiatorFixEngine).getHa()).isEmpty();
+
+        withHighAvailability();
+        setupInitiatorSessionSettings(b -> b.build());
+        assertThat(((AdminApi) initiatorFixEngine).getHa()).containsSame(ha);
+    }
+
+    @Test
     void aReplicatedSessionIsRefusedOnAnEngineWithoutHighAvailability() {
         assertThatThrownBy(() -> setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build()))
                 .isInstanceOf(IllegalArgumentException.class)

@@ -22,6 +22,7 @@ import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
+import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
@@ -39,6 +40,8 @@ import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -101,6 +104,10 @@ public final class FollowerLink implements FrameHandler {
     @Getter
     private volatile boolean reportedInSync;
     private volatile AtomicReferenceArray<SessionSync> sessionSyncs = new AtomicReferenceArray<>(16);
+    /**
+     * What the follower last said of each session, by key, which tells a shared storage and a refusal's reason apart.
+     */
+    private final Map<Integer, SessionStatus> reportedStatuses = new ConcurrentHashMap<>();
     private volatile boolean snapshotRequested;
     private volatile boolean paused;
     /**
@@ -220,6 +227,7 @@ public final class FollowerLink implements FrameHandler {
             close(CloseReason.PROTOCOL_ERROR, "a SESSION_STATUS for session key " + sessionKey + ", never announced");
             return;
         }
+        reportedStatuses.put(sessionKey, status);
         switch (status) {
             case REPLICATING:
             case SHARED_STORAGE:
@@ -235,6 +243,33 @@ public final class FollowerLink implements FrameHandler {
                 log.warn("Follower {} does not replicate FIX session {} {}: {}", followerId, session.getFixSessionType(),
                         session.getFixSessionId(), status);
         }
+    }
+
+    public @Nullable SessionStatus getReportedStatus(int sessionKey) {
+        return reportedStatuses.get(sessionKey);
+    }
+
+    /**
+     * @param sessionCount the sessions the leader replicates, every one of which the follower must hold to be in sync
+     */
+    public HaStatus.Follower status(int sessionCount) {
+        boolean streaming = state == State.STREAMING;
+        boolean inSync = streaming;
+        boolean snapshotInProgress = false;
+        for (int key = 0; key < sessionCount; key++) {
+            SessionSync sync = getSessionSync(key);
+            inSync &= sync == SessionSync.IN_SYNC;
+            snapshotInProgress |= sync == SessionSync.SNAPSHOT_PENDING || sync == SessionSync.SNAPSHOT_SENT;
+        }
+        long sent = sentOffset;
+        return HaStatus.Follower.builder()
+                .nodeId(followerId)
+                .address(String.valueOf(connection.getSocketAddress()))
+                .connected(streaming)
+                .inSync(inSync)
+                .snapshotInProgress(snapshotInProgress)
+                .unsentBytes(sent < 0 ? -1 : replicationLog.getTailOffset() - sent)
+                .build();
     }
 
     @Override

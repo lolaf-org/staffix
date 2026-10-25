@@ -16,7 +16,9 @@
 package org.lolaf.staffix.ha;
 
 import lombok.Value;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
@@ -58,6 +60,13 @@ public final class ReplicatedSessions {
      */
     public ReplicatedSession get(int key) {
         return byKey.get(key);
+    }
+
+    /**
+     * Null for a session not built yet. Any thread.
+     */
+    synchronized @Nullable ReplicatedSession find(FixSessionId fixSessionId, FixSessionType fixSessionType) {
+        return byId.get(new Id(fixSessionId.toString(), fixSessionType));
     }
 
     /**

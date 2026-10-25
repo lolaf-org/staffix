@@ -39,6 +39,11 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.ha.HaAdmin;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.ha.HaStatus;
+import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.mockito.ArgumentCaptor;
 
@@ -500,6 +505,40 @@ class AdminApiEndpointsTest {
         betaExporter.shutdown(Deadline.of(Duration.ofSeconds(1)));
         assertThat(call("GET", "/engines/beta-engine/v1/status", null, "beta-token").statusCode()).isEqualTo(404);
         assertThat(call("GET", "/engines/alpha-engine/v1/status", null, "alpha-token").statusCode()).isEqualTo(200);
+    }
+
+    @Test
+    void anEngineWithoutHighAvailabilityAnswersNotFound() throws Exception {
+        HttpResponse<String> response = call("GET", "/engines/alpha-engine/v1/ha", null);
+
+        assertThat(response.statusCode()).isEqualTo(404);
+        assertThat(response.body()).contains("This engine has no high availability");
+        assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void theHighAvailabilityAndItsSessionsAreRead() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
+                .leaderId("1").leadershipValid(true).leaderElection("PrimosLeaderElection")
+                .roleSince(Instant.parse("2026-10-10T10:00:00Z"))
+                .follower(HaStatus.Follower.builder().nodeId("2").address("/10.0.0.2:40000").connected(true).inSync(true)
+                        .unsentBytes(0).build())
+                .build());
+        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
+                .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
+                .replicationAckTimeout(Duration.ZERO).inSync(true).nextIncomingSeqNum(-1).nextOutgoingSeqNum(-1).build()));
+        when(adminApi.getHa()).thenReturn(Optional.of(ha));
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/ha", null).body())
+                .isEqualTo("{\"nodeId\":\"1\",\"role\":\"LEADER\",\"epoch\":7,\"leaderId\":\"1\",\"leadershipValid\":true,"
+                        + "\"leaderElection\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
+                        + "\"followers\":[{\"nodeId\":\"2\",\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
+                        + "\"snapshotInProgress\":false,\"unsentBytes\":0}]}");
+        assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
+                .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
+                        + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"sharedStorage\":false,\"unprotected\":false,"
+                        + "\"unacknowledgedSends\":0,\"nextIncomingSeqNum\":-1,\"nextOutgoingSeqNum\":-1,\"handedOver\":false}]");
     }
 
     @Test
