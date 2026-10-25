@@ -52,6 +52,11 @@ public class ReplicationHaProps {
     private String monitoringInstanceId;
 
     /**
+     * The instance id of the alerts publisher publishing the replication's probes; none when unset.
+     */
+    private String alertsPublisherInstanceId;
+
+    /**
      * Bytes of off-heap memory holding the store events not yet sent to the follower, a power of two; unset keeps
      * 16 MiB.
      */

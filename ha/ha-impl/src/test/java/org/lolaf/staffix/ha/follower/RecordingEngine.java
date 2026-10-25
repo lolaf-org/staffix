@@ -98,9 +98,18 @@ public final class RecordingEngine implements EngineAccess {
         return meters;
     }
 
+    /**
+     * The probes handed out to component {@code "ha"} with the alerts publisher {@code "alerts"}.
+     */
+    public final RecordingProbes probes = new RecordingProbes();
+
     @Override
     public Probes probes(String component, String alertsPublisherInstanceId, BooleanSupplier componentActive) {
-        throw new IllegalArgumentException("No alerts publisher " + alertsPublisherInstanceId);
+        if (!component.equals("ha") || !alertsPublisherInstanceId.equals("alerts")) {
+            throw new IllegalArgumentException("No alerts publisher " + alertsPublisherInstanceId);
+        }
+        probes.active = componentActive;
+        return probes;
     }
 
     @Override

@@ -226,6 +226,7 @@ session from the engine, or the session logging out for a probe evaluated only w
 | `async-store-queue`, `async-logger-queue` | per threshold | the async store's or logger's queue is deeper than a threshold |
 | `async-store-resource`, `async-logger-resource` | `MAJOR` | what the async store or logger writes to is unavailable |
 | `messages-store`, `messages-logger` | `WARNING`, then `MAJOR` | a store or logger call failed, then its resource was found down |
+| `ha-replication` | `MAJOR` | while leading: a `SYNC` send went out without the follower's ack in time, a message was too long for the replication log, or a follower refuses to replicate the session |
 
 **Every built-in probe is evaluated whether the session is logged in or not**: each watches something a logout does
 not fix, or the logout itself.
@@ -247,6 +248,21 @@ calls have kept succeeding for `alertClearDelay` (30 seconds by default). A data
 using that database, once each however many calls fail, with the same name, so Alertmanager groups them into one
 notification. Behind the async store or logger, the async probes report the outage of what it writes to, and these two
 report failures of the async queue itself, such as a full disk.
+
+`ha-replication` is on every replicated session. A late ack or a message too long for the replication log keeps the
+alert raised for 5 minutes after the last one, since nothing tells that they stopped; a follower refusing the session
+(it has no settings for it, or cannot identify its storage) keeps it raised for as long as it refuses. A send with no
+follower in sync is left to the node's `ha-followers`, so one outage raises one alert rather than one per session.
+
+Component `ha` has the node's own probes when `ReplicationHaSettings.alertsPublisherInstanceId` names a publisher
+(unknown, the engine refuses to start). Each is raised once its condition has lasted 10 seconds, and reports nothing in
+a role it does not apply to:
+
+| probe | level | raised when |
+|-------|-------|-------------|
+| `ha-followers` | `MAJOR`, `WARNING` | leading with no follower connected; a follower connected but not in sync, or catching up by snapshot |
+| `ha-leader-link` | `MAJOR`, `WARNING` | following without a connection to the leader; connected but not holding every session in full |
+| `ha-leadership` | `CRITICAL` | the node has no role, or is elected leader but cannot prove it, so it runs no session |
 
 ## Binding a publisher
 

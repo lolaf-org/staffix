@@ -44,7 +44,8 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> b = ReplicationHaSettings.builder()
                 .leaderElection(leaderElection)
                 .nodeId(props.getNodeId())
-                .monitoringInstanceId(props.getMonitoringInstanceId());
+                .monitoringInstanceId(props.getMonitoringInstanceId())
+                .alertsPublisherInstanceId(props.getAlertsPublisherInstanceId());
         props.getPeers().forEach((nodeId, address) -> b.peer(nodeId, address(nodeId, address)));
         if (props.getLogCapacity() != null) b.logCapacity(props.getLogCapacity());
         if (props.getReconnectInterval() != null) b.reconnectInterval(props.getReconnectInterval());

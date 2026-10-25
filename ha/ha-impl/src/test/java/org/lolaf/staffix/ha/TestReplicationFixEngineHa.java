@@ -18,6 +18,8 @@ package org.lolaf.staffix.ha;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.alerting.AlertLevel;
+import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
@@ -26,6 +28,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.ha.follower.RecordingEngine;
 import org.lolaf.staffix.ha.follower.RecordingMeters;
+import org.lolaf.staffix.ha.follower.RecordingProbes;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -72,11 +75,17 @@ class TestReplicationFixEngineHa {
     private final class Node {
 
         final FakeLeaderElection election = new FakeLeaderElection();
-        final RecordingEngine engine = new RecordingEngine().with(MAIN);
+        final RecordingEngine engine;
         final ReplicationFixEngineHa ha;
+        final RecordingProbes sessionProbes = new RecordingProbes();
         final ReplicatingStore store;
 
         Node(String nodeId) {
+            this(nodeId, new RecordingEngine().with(MAIN));
+        }
+
+        Node(String nodeId, RecordingEngine engine) {
+            this.engine = engine;
             ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
                     .nodeId(nodeId)
                     .peer("a", addressA)
@@ -86,9 +95,10 @@ class TestReplicationFixEngineHa {
                     .reconnectInterval(Duration.ofMillis(50))
                     .leaderElection(FakeLeaderElection.Settings.builder().election(election).build())
                     .monitoringInstanceId("monitoring")
+                    .alertsPublisherInstanceId("alerts")
                     .build());
             ha.bind(engine);
-            store = ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore());
+            store = ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore(), sessionProbes);
         }
 
         Node start() {
@@ -292,6 +302,98 @@ class TestReplicationFixEngineHa {
         assertThat(meters.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isEqualTo(1);
         assertThat(meters.read("ha.sync.unacknowledged", Map.of("reason", "timed_out"))).isZero();
         assertThat(meters.recordings(HaMeters.SYNC_ACK_LATENCY)).isZero();
+    }
+
+    @Test
+    void theNodeProbesItsReplicationThroughTheAlertsPublisherItNames() {
+        a.start();
+
+        assertThat(a.engine.probes.list()).extracting(Probe::getName)
+                .containsExactlyInAnyOrder(HaProbes.FOLLOWERS, HaProbes.LEADER_LINK, HaProbes.LEADERSHIP);
+        assertThat(a.engine.probes.active.getAsBoolean()).isTrue();
+        assertThat(a.sessionProbes.list()).extracting(Probe::getName).containsExactly(HaProbes.REPLICATION);
+
+        a.ha.stop(Deadline.of(Duration.ofSeconds(2)));
+        started.remove(a.ha);
+
+        assertThat(a.engine.probes.active.getAsBoolean()).isFalse();
+        a.start();
+        assertThat(a.engine.probes.list()).as("replaced on restart").hasSize(3);
+    }
+
+    @Test
+    void aLeaderAlertsUntilAFollowerIsConnectedAndInSync() {
+        a.election.elect(Role.LEADER, 3, "a");
+        a.start();
+        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
+
+        assertThat(HaProbes.followers(a.ha).evaluate()).hasValueSatisfying(alert -> {
+            assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
+            assertThat(alert.getMessage()).startsWith("No follower connected");
+        });
+        assertThat(HaProbes.leaderLink(a.ha).evaluate()).as("a follower's probe").isEmpty();
+        assertThat(HaProbes.leadership(a.ha).evaluate()).isEmpty();
+
+        b.election.elect(Role.FOLLOWER, 3, "a");
+        b.start();
+
+        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
+        await().until(() -> HaProbes.leaderLink(b.ha).evaluate().isEmpty());
+        assertThat(HaProbes.followers(b.ha).evaluate()).as("a leader's probe").isEmpty();
+    }
+
+    @Test
+    void aFollowerAlertsWhileNotConnectedToItsLeader() {
+        b.election.elect(Role.FOLLOWER, 3, "a");
+        b.start();
+        await().until(() -> b.ha.getFollowedRole() == Role.FOLLOWER);
+
+        assertThat(HaProbes.leaderLink(b.ha).evaluate()).hasValueSatisfying(alert -> {
+            assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
+            assertThat(alert.getMessage()).startsWith("Not connected to the leader");
+        });
+    }
+
+    @Test
+    void aNodeWithoutRoleOrUnableToProveItLeadsAlertsCritical() {
+        a.start();
+
+        assertThat(HaProbes.leadership(a.ha).evaluate()).hasValueSatisfying(alert -> {
+            assertThat(alert.getLevel()).isEqualTo(AlertLevel.CRITICAL);
+            assertThat(alert.getMessage()).startsWith("No role");
+        });
+
+        a.election.elect(Role.LEADER, 3, "a");
+        await().until(() -> HaProbes.leadership(a.ha).evaluate().isEmpty());
+        a.election.leadershipValid(false);
+
+        await().untilAsserted(() -> assertThat(HaProbes.leadership(a.ha).evaluate()).hasValueSatisfying(alert ->
+                assertThat(alert.getMessage()).startsWith("Elected leader but unable to prove it")));
+    }
+
+    @Test
+    void aSessionAlertsWhileItsFollowerRefusesToReplicateIt() {
+        Node stranger = new Node("b", new RecordingEngine());
+        a.election.elect(Role.LEADER, 3, "a");
+        stranger.election.elect(Role.FOLLOWER, 3, "a");
+        a.start();
+        stranger.start();
+
+        await().untilAsserted(() -> assertThat(a.sessionProbes.evaluate(HaProbes.REPLICATION)).hasValueSatisfying(alert -> {
+            assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
+            assertThat(alert.getMessage()).isEqualTo("follower b refuses to replicate it: UNKNOWN_SESSION");
+        }));
+    }
+
+    @Test
+    void anUnknownAlertsPublisherIsRefused() {
+        ReplicationFixEngineHa unknown = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
+                .nodeId("a").peer("a", addressA).alertsPublisherInstanceId("elsewhere")
+                .leaderElection(FakeLeaderElection.Settings.builder().election(new FakeLeaderElection()).build())
+                .build());
+        unknown.bind(new RecordingEngine());
+
+        assertThatThrownBy(unknown::start).hasMessageContaining("No alerts publisher elsewhere");
     }
 
     @Test

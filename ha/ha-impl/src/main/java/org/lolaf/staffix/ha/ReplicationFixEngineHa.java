@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
@@ -88,9 +89,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     }
 
     @Override
-    public ReplicatingStore replicatingStore(FixSessionSettings sessionSettings, FixSessionMessagesStore store) {
-        return new ReplicatingFixSessionMessagesStore(store, replicationLog, sessions.register(sessionSettings, store), followers,
-                syncAckLatency);
+    public ReplicatingStore replicatingStore(FixSessionSettings sessionSettings, FixSessionMessagesStore store, Probes probes) {
+        ReplicatedSession session = sessions.register(sessionSettings, store);
+        probes.add(HaProbes.sessionProbe(session, followers));
+        return new ReplicatingFixSessionMessagesStore(store, replicationLog, session, followers, syncAckLatency);
     }
 
     @Override
@@ -190,6 +192,9 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         election = settings.getLeaderElection().instance();
         if (settings.getMonitoringInstanceId() != null) {
             syncAckLatency.target = HaMeters.register(engine.monitoring(settings.getMonitoringInstanceId()), this, stats);
+        }
+        if (settings.getAlertsPublisherInstanceId() != null) {
+            HaProbes.register(engine.probes(HaProbes.COMPONENT, settings.getAlertsPublisherInstanceId(), this::isStarted), this);
         }
         roleThread = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "staffix-ha-role-" + settings.getNodeId());

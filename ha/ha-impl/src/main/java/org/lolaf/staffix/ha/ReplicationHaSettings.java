@@ -47,6 +47,12 @@ public class ReplicationHaSettings extends HaSettings {
     private final @Nullable String monitoringInstanceId;
 
     /**
+     * The instance id of the engine's alerts publisher publishing the replication's probes, of component {@code ha};
+     * none when unset. The probes of the replicated sessions go to each session's own publisher regardless.
+     */
+    private final @Nullable String alertsPublisherInstanceId;
+
+    /**
      * Bytes of off-heap memory holding the store events not yet sent to the follower, a power of two. A follower
      * falling this far behind is caught up by snapshot instead; the largest message replicated is an eighth of it.
      */

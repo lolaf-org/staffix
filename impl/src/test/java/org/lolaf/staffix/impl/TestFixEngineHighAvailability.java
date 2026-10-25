@@ -102,7 +102,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
             }
             return null;
         }).when(ha).bind(any());
-        when(ha.replicatingStore(any(), any())).then(invocation -> {
+        when(ha.replicatingStore(any(), any(), any())).then(invocation -> {
             RecordingReplicatingStore store = new RecordingReplicatingStore(invocation.getArgument(1));
             stores.add(store);
             return store;
@@ -130,7 +130,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
 
         assertThat(fixInitiator.isStarted()).isTrue();
         assertThat(fixInitiator.getSession()).isNull();
-        verify(ha, never()).replicatingStore(any(), any());
+        verify(ha, never()).replicatingStore(any(), any(), any());
         verify(fixInitiatorApplication, never()).onSessionCreated(any(), any(), any(), any());
 
         engine.activate();
@@ -295,7 +295,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
 
         verify(ha).start();
         verify(ha).replicatingStore(argThat(settings -> settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.SYNC),
-                any());
+                any(), any());
     }
 
     @Test
@@ -366,7 +366,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         setupInitiatorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);
         logonClient();
 
-        verify(ha, never()).replicatingStore(any(), any());
+        verify(ha, never()).replicatingStore(any(), any(), any());
     }
 
     @Test

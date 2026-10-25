@@ -109,7 +109,7 @@ final class SessionWiring {
                 runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes), fixSessionId,
                 runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
         probes.add(failSafeStore.getProbe());
-        this.messagesStore = replicated(settings, failSafeStore, runtimeDependencies);
+        this.messagesStore = replicated(settings, failSafeStore, probes, runtimeDependencies);
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
         this.messagesLogger = messagesLogger(fixInstanceId, probes, runtimeDependencies);
         this.messageExecutors = messageExecutorsRuntime.newSessionExecutors();
@@ -172,9 +172,9 @@ final class SessionWiring {
      * is what a failover needs then.
      */
     private static FixSessionMessagesStore replicated(FixSessionSettings settings, FailSafeFixSessionMessagesStore store,
-                                                      FixSessionRuntimeDependencies runtimeDependencies) {
+                                                      ProbesImpl probes, FixSessionRuntimeDependencies runtimeDependencies) {
         return settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE
-                ? store : runtimeDependencies.getFixEngineHa().replicatingStore(settings, store);
+                ? store : runtimeDependencies.getFixEngineHa().replicatingStore(settings, store, probes);
     }
 
     private static ReplicatingStore syncReplicatingStore(FixSessionSettings settings, FixSessionMessagesStore store) {

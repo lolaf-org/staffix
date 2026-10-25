@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
 
@@ -76,7 +77,7 @@ class TestReplicatingFixSessionMessagesStore {
 
     @Test
     void eachWriteIsAppliedLocallyThenLoggedInOrderWithTheSessionsKey() {
-        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local);
+        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes());
 
         store.storeMessageSent(5, message());
         store.storeNextOutgoingSeqNum(7);
@@ -93,7 +94,7 @@ class TestReplicatingFixSessionMessagesStore {
 
     @Test
     void readsGoToTheLocalStoreAndAreNotLogged() {
-        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local);
+        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes());
 
         assertThat(store.getNextOutgoingSeqNum()).isEqualTo(11);
         assertThat(store.getOutgoingSeqNum()).isEqualTo(12);
@@ -104,7 +105,7 @@ class TestReplicatingFixSessionMessagesStore {
 
     @Test
     void theMessageIsLoggedWholeThoughTheLocalStoreConsumedIt() {
-        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local);
+        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes());
         ByteBuffer message = message();
 
         store.storeMessageSent(5, message);
@@ -115,24 +116,27 @@ class TestReplicatingFixSessionMessagesStore {
 
     @Test
     void aSessionKeepsItsKeyWhenRebuiltAndTwoSessionsNeverShareOne() {
-        ha.replicatingStore(session("main", FixSessionType.INITIATOR), local).storeNextIncomingSeqNum(1);
-        ha.replicatingStore(session("main", FixSessionType.ACCEPTOR), local).storeNextIncomingSeqNum(1);
-        ha.replicatingStore(session("other", FixSessionType.INITIATOR), local).storeNextIncomingSeqNum(1);
-        ha.replicatingStore(session("main", FixSessionType.INITIATOR), local).storeNextIncomingSeqNum(2);
+        ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes()).storeNextIncomingSeqNum(1);
+        ha.replicatingStore(session("main", FixSessionType.ACCEPTOR), local, new RecordingProbes()).storeNextIncomingSeqNum(1);
+        ha.replicatingStore(session("other", FixSessionType.INITIATOR), local, new RecordingProbes()).storeNextIncomingSeqNum(1);
+        ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes()).storeNextIncomingSeqNum(2);
 
         assertThat(List.of(nextEvent(), nextEvent(), nextEvent(), nextEvent()))
                 .containsExactly("0 1 1 ", "1 1 1 ", "2 1 1 ", "0 1 2 ");
     }
 
     @Test
-    void aMessageTooLongForTheLogIsStoredLocallyOnly() {
-        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local);
+    void aMessageTooLongForTheLogIsStoredLocallyOnlyAndAlerts() {
+        RecordingProbes probes = new RecordingProbes();
+        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, probes);
         ByteBuffer tooLong = ByteBuffer.allocate(ha.getReplicationLog().getMaxMessageLength() + 1);
 
         store.storeMessageSent(5, tooLong);
 
         assertThat(local.calls).containsExactly("message 5");
         assertThat(nextEvent()).isEqualTo("none");
+        assertThat(probes.evaluate(HaProbes.REPLICATION)).hasValueSatisfying(alert ->
+                assertThat(alert.getMessage()).contains("too long for the replication log"));
     }
 
     /**
@@ -146,7 +150,7 @@ class TestReplicatingFixSessionMessagesStore {
     }
 
     private ReplicatingStore syncStore() {
-        return ha.replicatingStore(session("main", FixSessionType.INITIATOR), local);
+        return ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes());
     }
 
     @Test
@@ -239,7 +243,7 @@ class TestReplicatingFixSessionMessagesStore {
                 .fixSessionId(FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.INITIATOR)
                 .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
-                .build(), local);
+                .build(), local, new RecordingProbes());
 
         store.awaitReplicated();
         assertThat(ha.getSessions().get(0).getUnacknowledgedSends()).as("nothing written yet").isZero();
@@ -256,7 +260,7 @@ class TestReplicatingFixSessionMessagesStore {
     @Test
     void writesAllocateNothingPerWrite() {
         local.recording = false;
-        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local);
+        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes());
         ByteBuffer message = message();
         for (int i = 0; i < 20_000; i++) {
             store.storeMessageSent(i, message);

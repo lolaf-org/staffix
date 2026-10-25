@@ -41,9 +41,10 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
      * unwrapped, so replication costs them nothing.
      *
      * <p>{@code store} reports a storage failure rather than throwing it, so a write reaching it can always be
-     * replicated, and every write comes from the session's own thread, one at a time.
+     * replicated, and every write comes from the session's own thread, one at a time. {@code probes} are the session's,
+     * which the replication adds its own to.
      */
-    ReplicatingStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store);
+    ReplicatingStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store, Probes probes);
 
     /**
      * Called once by the engine, before {@link #start()}.

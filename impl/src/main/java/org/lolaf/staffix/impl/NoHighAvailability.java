@@ -17,6 +17,7 @@ package org.lolaf.staffix.impl;
 
 import lombok.NoArgsConstructor;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
@@ -37,7 +38,7 @@ final class NoHighAvailability implements FixEngineHa {
     static final NoHighAvailability INSTANCE = new NoHighAvailability();
 
     @Override
-    public ReplicatingStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store) {
+    public ReplicatingStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store, Probes probes) {
         throw new IllegalStateException("FIX session " + settings.getFixSessionId() + " asks for replication mode "
                 + settings.getHaSessionSettings().getReplicationMode()
                 + ", but its engine has no high availability configured");

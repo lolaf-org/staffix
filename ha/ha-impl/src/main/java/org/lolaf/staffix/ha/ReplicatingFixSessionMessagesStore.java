@@ -197,6 +197,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         try {
             lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber, message));
         } catch (IllegalArgumentException e) {
+            session.unreplicated();
             log.error("FIX session {} {} {} {} not replicated, its follower will not have it: {}. Raise logCapacity to "
                     + "replicate messages this long", session.getFixSessionType(), session.getFixSessionId(), eventType,
                     sequenceNumber, e.getMessage());

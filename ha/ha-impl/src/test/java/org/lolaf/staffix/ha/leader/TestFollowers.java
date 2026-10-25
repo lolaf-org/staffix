@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -57,7 +58,7 @@ class TestFollowers {
                 .fixSessionId(FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.INITIATOR)
                 .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
-                .build(), mock(FixSessionMessagesStore.class));
+                .build(), mock(FixSessionMessagesStore.class), new RecordingProbes());
         store.storeNextIncomingSeqNum(1);
         offset = ha.getReplicationLog().getTailOffset();
         store.storeNextIncomingSeqNum(2);

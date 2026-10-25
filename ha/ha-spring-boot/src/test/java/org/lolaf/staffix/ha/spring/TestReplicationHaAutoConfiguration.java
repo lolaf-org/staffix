@@ -45,7 +45,8 @@ class TestReplicationHaAutoConfiguration {
                         "staffix.ha-replication.peers.2=127.0.0.1:17102",
                         "staffix.ha-replication.log-capacity=1048576",
                         "staffix.ha-replication.hand-over-timeout=2s",
-                        "staffix.ha-replication.monitoring-instance-id=metrics")
+                        "staffix.ha-replication.monitoring-instance-id=metrics",
+                        "staffix.ha-replication.alerts-publisher-instance-id=alerts")
                 .run(context -> {
                     ReplicationHaSettings settings = contribute(context.getBean(ReplicationHaContributor.class));
 
@@ -56,6 +57,7 @@ class TestReplicationHaAutoConfiguration {
                     assertThat(settings.getLogCapacity()).isEqualTo(1 << 20);
                     assertThat(settings.getHandOverTimeout()).isEqualTo(Duration.ofSeconds(2));
                     assertThat(settings.getMonitoringInstanceId()).isEqualTo("metrics");
+                    assertThat(settings.getAlertsPublisherInstanceId()).isEqualTo("alerts");
                     assertThat(settings.getSnapshotMaxMessages()).isEqualTo(ReplicationHaSettings.builder().build().getSnapshotMaxMessages());
                 });
     }

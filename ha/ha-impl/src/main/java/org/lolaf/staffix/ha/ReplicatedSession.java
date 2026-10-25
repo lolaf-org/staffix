@@ -48,6 +48,12 @@ public final class ReplicatedSession {
      * {@code SYNC} sends that went out without the standby's ack because no standby was in sync.
      */
     private volatile long noFollowerSends;
+    private volatile long lastTimedOutNanos;
+    /**
+     * Store events left out of the replication log, too long for it.
+     */
+    private volatile long unreplicatedEvents;
+    private volatile long lastUnreplicatedNanos;
     private volatile boolean unprotected;
 
     ReplicatedSession(int key, FixSessionId fixSessionId, FixSessionType fixSessionType, Config config) {
@@ -74,6 +80,7 @@ public final class ReplicatedSession {
             return;
         }
         if (ack == Followers.Ack.TIMED_OUT) {
+            lastTimedOutNanos = System.nanoTime();
             timedOutSends++;
         } else {
             noFollowerSends++;
@@ -82,6 +89,14 @@ public final class ReplicatedSession {
             unprotected = true;
             log.warn("FIX session {} {} sends without the standby's ack: {}", fixSessionType, fixSessionId, ack);
         }
+    }
+
+    /**
+     * From the session's thread only.
+     */
+    void unreplicated() {
+        lastUnreplicatedNanos = System.nanoTime();
+        unreplicatedEvents++;
     }
 
     /**

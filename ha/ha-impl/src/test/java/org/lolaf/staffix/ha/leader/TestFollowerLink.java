@@ -28,6 +28,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.Sto
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.ha.wire.SessionStatus;
@@ -90,7 +91,7 @@ class TestFollowerLink {
     }
 
     private FixSessionMessagesStore replicated(String name) {
-        return ha.replicatingStore(settings(name), mock(FixSessionMessagesStore.class));
+        return ha.replicatingStore(settings(name), mock(FixSessionMessagesStore.class), new RecordingProbes());
     }
 
     private void decodeAll(ByteBuffer frames) {
@@ -302,7 +303,7 @@ class TestFollowerLink {
             consumer.onMessage(12, ByteBuffer.wrap("twelve".getBytes(StandardCharsets.US_ASCII)));
             return null;
         }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
-        ha.replicatingStore(settings("main"), local).storeNextIncomingSeqNum(20);
+        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
         fill();
         sent.frames.clear();
@@ -326,7 +327,7 @@ class TestFollowerLink {
     void aSnapshotKeepsTheMostRecentMessagesOnly() {
         FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
         when(local.getOutgoingSeqNum()).thenReturn(1_001L);
-        ha.replicatingStore(settings("main"), local).storeNextIncomingSeqNum(20);
+        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
         fill();
 
@@ -341,7 +342,7 @@ class TestFollowerLink {
         FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
         when(local.getOutgoingSeqNum()).thenReturn(5L);
         doThrow(new StoreException("storage down")).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
-        ha.replicatingStore(settings("main"), local).storeNextIncomingSeqNum(20);
+        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
         fill();
         sent.frames.clear();

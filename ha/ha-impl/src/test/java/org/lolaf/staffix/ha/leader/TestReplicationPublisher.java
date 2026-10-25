@@ -32,6 +32,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
@@ -78,7 +79,7 @@ class TestReplicationPublisher {
                 .fixSessionId(FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.ACCEPTOR)
                 .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
-                .build(), mock(FixSessionMessagesStore.class));
+                .build(), mock(FixSessionMessagesStore.class), new RecordingProbes());
     }
 
     private void connectFollower(long lastAppliedEpoch, long lastAppliedOffset) {

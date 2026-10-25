@@ -21,6 +21,10 @@ production:
     in sync and how far behind, SYNC ack latency and unacknowledged sends, laps, snapshots); none are published
     without it.
   - >-
+    Name an alerts publisher in alertsPublisherInstanceId to probe the node's replication, as component ha: no
+    follower connected or in sync while leading, the leader unreachable while following, no role. Each replicated
+    session also gets an ha-replication probe on its own alerts publisher.
+  - >-
     With primos, a node is named by its primos node id as decimal text: use those ids as nodeId and as the peers keys.
   - >-
     Stop the leader's engine rather than kill it: it sends its follower every event within handOverTimeout and says
