@@ -191,6 +191,14 @@ its threshold for a minute is `.above(AlertLevel.WARNING, 500).raiseDelay(Durati
 For a value the application already holds, such as a gauge registered with a supplier, use a
 `ThresholdAlertEvaluator` on that supplier: it alerts as an `AlertingGauge`, without publishing anything.
 
+## The engine's own components
+
+Besides its sessions, the engine watches some of its own components, such as its high availability. Their probes
+belong to the component rather than to a session: their alerts carry a `component` label (`ha`) instead of
+`fixSessionGroup` and `fixSessionName`, go to the publisher the component's settings name, and are listed by the admin
+API under the component's name. A component's probe is suspended while the component is inactive, as a session's is
+while logged out.
+
 ## What a publisher is told
 
 A publisher receives an `AlertEvent`: its source, the engine's instance id (a probe is only unique within an engine),

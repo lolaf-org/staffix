@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.jmx;
 import lombok.Value;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.ProbeDefinition;
 import org.lolaf.staffix.api.alerting.ProbeId;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -103,9 +104,7 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
     @Override
     public List<Probe> getProbes() {
         return delegate.getProbeDefinitions(FixSessionProbeScope.of(fixSessionId)).stream()
-                .map(probe -> new ProbeImpl(probe.getName(), probe.getDescription(), probe.getEvaluationInterval().toString(),
-                        probe.getReminderInterval().map(Object::toString).orElse(null), probe.getLabels(),
-                        probe.getRunbookUrl().map(Object::toString).orElse(null), probe.isOnlyWhileActive()))
+                .map(FixSessionMBeanImpl::probe)
                 .collect(Collectors.toList());
     }
 
@@ -121,7 +120,13 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
         return delegate.clearAlert(ProbeId.of(FixSessionProbeScope.of(fixSessionId), probeName));
     }
 
-    private static ProbeStatus status(ProbeState state) {
+    static Probe probe(ProbeDefinition probe) {
+        return new ProbeImpl(probe.getName(), probe.getDescription(), probe.getEvaluationInterval().toString(),
+                probe.getReminderInterval().map(Object::toString).orElse(null), probe.getLabels(),
+                probe.getRunbookUrl().map(Object::toString).orElse(null), probe.isOnlyWhileActive());
+    }
+
+    static ProbeStatus status(ProbeState state) {
         Alert alert = state.getAlert().orElse(null);
         return new ProbeStatusImpl(state.getProbeName(),
                 alert == null ? null : alert.getLevel().name(),

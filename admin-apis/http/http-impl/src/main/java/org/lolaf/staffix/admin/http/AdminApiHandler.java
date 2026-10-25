@@ -78,6 +78,7 @@ public class AdminApiHandler implements HttpHandler {
 
     private static Route[] routes(AdminApi adminApi, ObjectMapper mapper, ProbesDocuments probes) {
         SessionLookup sessions = new SessionLookup(adminApi);
+        ComponentLookup components = new ComponentLookup(adminApi);
         SessionsDocumentCache documents = new SessionsDocumentCache(adminApi, mapper);
         JsonResponseBuffer json = new JsonResponseBuffer(mapper);
         return new Route[]{
@@ -94,6 +95,8 @@ public class AdminApiHandler implements HttpHandler {
                 new SessionMetersRoute(adminApi, sessions, json),
                 new SessionProbesRoute(probes, sessions),
                 new SessionProbeStatesRoute(adminApi, sessions, json),
+                new ComponentProbesRoute(probes, components),
+                new ComponentProbeStatesRoute(adminApi, components, json),
                 new SessionSettingsSchemaRoute(),
                 new SessionSettingsStoresRoute(adminApi, json),
                 new AddSessionRoute(adminApi),
@@ -106,6 +109,7 @@ public class AdminApiHandler implements HttpHandler {
                 new LogonRoute(adminApi, sessions),
                 new LogoutRoute(adminApi, sessions),
                 new ClearAlertRoute(adminApi, sessions),
+                new ComponentClearAlertRoute(adminApi, components),
                 new ResetRoute(adminApi, sessions, mapper),
                 new SeqNumsRoute(adminApi, sessions, mapper),
                 new SendMessagesRoute(adminApi, sessions, mapper),

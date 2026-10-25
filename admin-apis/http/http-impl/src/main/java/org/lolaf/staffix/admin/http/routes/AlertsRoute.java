@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.http.routes;
 import org.lolaf.staffix.admin.http.ProbesDocuments;
 import org.lolaf.staffix.admin.http.dto.ActiveAlert;
 import org.lolaf.staffix.admin.http.dto.EngineAlerts;
+import org.lolaf.staffix.api.ComponentProbeScope;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.alerting.Alert;
@@ -55,15 +56,17 @@ public final class AlertsRoute extends JsonRoute {
         List<ActiveAlert> alerts = new ArrayList<>();
         for (ScopedProbeState active : adminApi.getActiveAlerts()) {
             ProbeScope scope = active.getScope();
-            if (!FixSessionProbeScope.isSession(scope)) {
-                continue;
-            }
-            String selectedConfig = scope.getLabels().get(FixSessionProbeScope.NAME_LABEL);
             ProbeState state = active.getProbeState();
             Alert alert = state.getAlert().orElseThrow();
-            alerts.add(new ActiveAlert(scope.getLabels().get(FixSessionProbeScope.GROUP_LABEL), mainNames.getOrDefault(scope, selectedConfig),
-                    selectedConfig, state.getProbeName(), alert.getLevel(), alert.getMessage(),
-                    state.getSince().orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null)));
+            if (FixSessionProbeScope.isSession(scope)) {
+                String selectedConfig = scope.getLabels().get(FixSessionProbeScope.NAME_LABEL);
+                alerts.add(new ActiveAlert(null, scope.getLabels().get(FixSessionProbeScope.GROUP_LABEL),
+                        mainNames.getOrDefault(scope, selectedConfig), selectedConfig, state.getProbeName(), alert.getLevel(),
+                        alert.getMessage(), state.getSince().orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null)));
+            } else if (ComponentProbeScope.isComponent(scope)) {
+                alerts.add(new ActiveAlert(scope.getName(), null, null, null, state.getProbeName(), alert.getLevel(),
+                        alert.getMessage(), state.getSince().orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null)));
+            }
         }
         return new EngineAlerts(adminApi.getInstanceId(), alertsVersion, alerts);
     }

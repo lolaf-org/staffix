@@ -43,6 +43,28 @@ public interface FixAdminMXBean {
     List<ActiveAlert> getActiveAlerts();
 
     /**
+     * The engine's own components with probes, such as {@code ha}.
+     */
+    List<String> getProbedComponents();
+
+    /**
+     * The component's probes, in the order they were added.
+     */
+    List<FixSessionMXBean.Probe> getComponentProbes(String component);
+
+    /**
+     * Where each of the component's probes stood at its last evaluation.
+     */
+    List<FixSessionMXBean.ProbeStatus> getComponentProbeStates(String component);
+
+    /**
+     * Asks the component probe's evaluator to end its ongoing alert, which then clears at the next evaluation tick.
+     *
+     * @return false when the probe is not in alert, or its evaluator refuses, as a polled condition does
+     */
+    boolean clearComponentAlert(String component, String probeName);
+
+    /**
      * An initiator's sessions, each in its {@code toString()} form, main target first.
      */
     interface InitiatorTargets {

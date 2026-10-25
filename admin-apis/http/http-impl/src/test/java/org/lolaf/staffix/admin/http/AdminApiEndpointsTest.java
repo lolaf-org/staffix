@@ -19,6 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ComponentProbeScope;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
@@ -29,6 +30,7 @@ import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
 import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.alerting.ScopedProbeState;
@@ -256,6 +258,48 @@ class AdminApiEndpointsTest {
                         + "\"probe\":\"session-down\",\"level\":\"CRITICAL\",\"message\":\"down\",\"since\":\"2026-10-10T10:00:00Z\","
                         + "\"runbookUrl\":\"https://wiki.example.com/session-down\"}]}");
         assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"alertLevel\":\"CRITICAL\"");
+    }
+
+    @Test
+    void anEngineComponentsProbesStatesAndAlertsAreServedUnderItsName() throws Exception {
+        ProbeScope ha = ComponentProbeScope.of("ha");
+        ProbeState alerting = ProbeState.builder().probeName("followers").alert(Alert.major("no follower"))
+                .since(Instant.parse("2026-10-10T10:00:00Z")).lastEvaluation(Instant.parse("2026-10-10T10:00:05Z")).build();
+        when(adminApi.getComponentProbeScopes()).thenReturn(List.of(ha));
+        when(adminApi.getProbeDefinitions(ha)).thenReturn(List.of(ProbeDefinition.builder().name("followers")
+                .description("A follower in sync").evaluationInterval(Duration.ofSeconds(1)).build()));
+        when(adminApi.getProbeStates(ha)).thenReturn(List.of(alerting));
+        when(adminApi.getActiveAlerts()).thenReturn(List.of(new ScopedProbeState(ha, alerting)));
+
+        HttpResponse<String> probes = call("GET", "/engines/alpha-engine/v1/engine/ha/probes", null);
+
+        assertThat(probes.statusCode()).isEqualTo(200);
+        assertThat(probes.body()).contains("\"name\":\"followers\"");
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"components\":[{\"component\":\"ha\","
+                + "\"probesVersion\":" + probes.headers().firstValue("ETag").orElseThrow() + ",\"alertLevel\":\"MAJOR\"}]");
+        assertThat(call("GET", "/engines/alpha-engine/v1/engine/ha/probes/states", null).body())
+                .startsWith("[{\"probe\":\"followers\",\"level\":\"MAJOR\"");
+        assertThat(call("GET", "/engines/alpha-engine/v1/alerts", null).body())
+                .endsWith("\"alerts\":[{\"component\":\"ha\",\"probe\":\"followers\",\"level\":\"MAJOR\","
+                        + "\"message\":\"no follower\",\"since\":\"2026-10-10T10:00:00Z\"}]}");
+        assertThat(call("GET", "/engines/alpha-engine/v1/engine/other/probes", null).statusCode()).isEqualTo(404);
+        assertThat(call("GET", "/engines/alpha-engine/v1/engine/other/probes/states", null).statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void clearingAComponentsAlertAnswers204WhenAccepted409WhenRefusedAnd404ForAnUnknownProbeOrComponent() throws Exception {
+        ProbeScope ha = ComponentProbeScope.of("ha");
+        when(adminApi.getComponentProbeScopes()).thenReturn(List.of(ha));
+        when(adminApi.getProbeDefinitions(ha)).thenReturn(List.of(
+                ProbeDefinition.builder().name("unprotected").description("d").evaluationInterval(Duration.ofSeconds(1)).build(),
+                ProbeDefinition.builder().name("followers").description("d").evaluationInterval(Duration.ofSeconds(1)).build()));
+        when(adminApi.clearAlert(ProbeId.of(ha, "unprotected"))).thenReturn(true);
+
+        assertThat(call("POST", "/engines/alpha-engine/v1/engine/ha/probes/unprotected/clear", null).statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/engine/ha/probes/followers/clear", null).statusCode()).isEqualTo(409);
+        assertThat(call("POST", "/engines/alpha-engine/v1/engine/ha/probes/unknown/clear", null).statusCode()).isEqualTo(404);
+        assertThat(call("POST", "/engines/alpha-engine/v1/engine/other/probes/followers/clear", null).statusCode()).isEqualTo(404);
+        verify(adminApi, never()).clearAlert(ProbeId.of(ha, "unknown"));
     }
 
     @Test

@@ -17,6 +17,7 @@ package org.lolaf.staffix.api.ha;
 
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -24,6 +25,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
  * An engine's high availability: everything the engine calls to replicate its sessions and to follow the leader
@@ -72,6 +74,16 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
          * @throws IllegalArgumentException when the engine has no such plugin
          */
         FixEngineMonitoringContext monitoring(String monitoringInstanceId);
+
+        /**
+         * The probes of the component, a {@link org.lolaf.staffix.api.ComponentProbeScope}, evaluated by the engine
+         * and published to its alerts publisher of that instance id. Asked again for the same component, returns the
+         * same probes, with the publisher and activity of the first call.
+         *
+         * @param active whether the component is active, for its probes run only while active
+         * @throws IllegalArgumentException when the engine has no such alerts publisher
+         */
+        Probes probes(String component, String alertsPublisherInstanceId, BooleanSupplier active);
 
         /**
          * Runs the sessions: the initiators and acceptors the application started connect and bind. An engine with

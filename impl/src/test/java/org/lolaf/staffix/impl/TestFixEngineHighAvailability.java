@@ -19,7 +19,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.Delegate;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ComponentProbeScope;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
+import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.alerting.Probes;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
@@ -31,6 +41,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
+import org.lolaf.staffix.tests.TestingFixAlertsPublisherSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMonitoringManagerSettings;
 import org.lolaf.staffix.tests.TestingHaSettings;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
@@ -42,8 +53,11 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 
@@ -230,6 +244,39 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         assertThat(((AdminApi) initiatorFixEngine).getEngineMeters()).containsExactly(role);
         assertThatThrownBy(() -> engine.monitoring("elsewhere")).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("has no engine monitoring manager elsewhere");
+    }
+
+    @Test
+    void theHighAvailabilityGetsComponentProbesTheEngineEvaluatesAndPublishesToThePublisherItNames() {
+        TestingFixAlertsPublisherSettings alerts = TestingFixAlertsPublisherSettings.builder().instanceId("alerts").build();
+        initiatorFixEngineBuilder = initiatorFixEngineBuilder.toBuilder().fixAlertsPublisher(alerts).build();
+        withHighAvailability();
+        setupInitiatorSessionSettings(b -> b.fixAlertsPublisherInstanceId("alerts").build());
+        AdminApi admin = (AdminApi) initiatorFixEngine;
+        ProbeScope haScope = ComponentProbeScope.of("ha");
+        AtomicBoolean leading = new AtomicBoolean(true);
+
+        Probes probes = engine.probes("ha", "alerts", leading::get);
+        probes.add(Probe.builder().name("followers").description("No follower").evaluator(() -> Optional.of(Alert.major("none"))).build());
+
+        assertThat(engine.probes("ha", "alerts", () -> false)).isSameAs(probes);
+        assertThat(admin.getComponentProbeScopes()).containsExactly(haScope);
+        assertThat(admin.getProbeDefinitions(haScope)).extracting(ProbeDefinition::getName).containsExactly("followers");
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alerts.getEvents())
+                .filteredOn(event -> event.getProbeId().getScope().equals(haScope)).singleElement().satisfies(event -> {
+                    assertThat(event.getProbeId()).isEqualTo(ProbeId.of(haScope, "followers"));
+                    assertThat(event.getLabels()).containsEntry(ComponentProbeScope.COMPONENT_LABEL, "ha");
+                }));
+        assertThat(admin.getActiveAlerts()).extracting(ScopedProbeState::getScope).contains(haScope);
+        assertThat(admin.getProbeStates(haScope)).extracting(ProbeState::getProbeName).containsExactly("followers");
+
+        leading.set(false);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(alerts.getEvents())
+                .filteredOn(event -> event.getProbeId().getScope().equals(haScope))
+                .extracting(AlertEvent::getType).containsExactly(AlertEvent.Type.RAISED, AlertEvent.Type.CLEARED));
+        assertThatThrownBy(() -> engine.probes("other", "elsewhere", () -> true)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> admin.getProbeStates(ComponentProbeScope.of("other"))).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

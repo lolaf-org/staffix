@@ -22,10 +22,15 @@ import java.time.Instant;
 
 /**
  * One entry of {@code GET alerts}: a probe in alert, with the session it belongs to named as in
- * {@link EngineSessions}, so the console can place it without another call.
+ * {@link EngineSessions}, so the console can place it without another call, or the engine component it belongs to.
+ * Exactly one of {@code component} and the session's {@code group}, {@code name} and {@code selectedConfig} is present.
  */
 @Value
 public class ActiveAlert {
+    /**
+     * The engine component the probe belongs to, such as {@code ha}.
+     */
+    String component;
     String group;
     /**
      * The main config's name, unique within the group.

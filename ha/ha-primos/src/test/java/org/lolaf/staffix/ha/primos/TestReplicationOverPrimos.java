@@ -21,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.lolaf.primos.ClusterConfig;
 import org.lolaf.primos.Peer;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
@@ -37,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import static org.awaitility.Awaitility.await;
 
@@ -93,6 +95,11 @@ class TestReplicationOverPrimos {
         @Override
         public FixEngineMonitoringContext monitoring(String monitoringInstanceId) {
             throw new IllegalArgumentException("No monitoring manager " + monitoringInstanceId);
+        }
+
+        @Override
+        public Probes probes(String component, String alertsPublisherInstanceId, BooleanSupplier componentActive) {
+            throw new IllegalArgumentException("No alerts publisher " + alertsPublisherInstanceId);
         }
 
         @Override

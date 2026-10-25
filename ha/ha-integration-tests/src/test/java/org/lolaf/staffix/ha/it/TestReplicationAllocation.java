@@ -56,6 +56,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -242,6 +243,11 @@ class TestReplicationAllocation {
             @Override
             public FixEngineMonitoringContext monitoring(String monitoringInstanceId) {
                 throw new IllegalArgumentException("No monitoring manager " + monitoringInstanceId);
+            }
+
+            @Override
+            public Probes probes(String component, String alertsPublisherInstanceId, BooleanSupplier componentActive) {
+                throw new IllegalArgumentException("No alerts publisher " + alertsPublisherInstanceId);
             }
 
             @Override

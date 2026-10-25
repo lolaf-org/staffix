@@ -268,6 +268,95 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/engine/{component}/probes:
+    get:
+      summary: The probes of one of the engine's own components, which change only when one is added or removed
+      operationId: getComponentProbes
+      parameters:
+        - name: component
+          in: path
+          required: true
+          description: An engine component with probes, as listed in the status, such as ha.
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The component's probes, in the order they were added.
+          headers:
+            ETag:
+              description: The probes' version, quoted; the same as probesVersion in the status.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProbeDescription'
+        '304':
+          description: Unchanged since the ETag sent in If-None-Match.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/engine/{component}/probes/states:
+    get:
+      summary: Where each of the component's probes stood at its last evaluation
+      operationId: getComponentProbeStates
+      parameters:
+        - name: component
+          in: path
+          required: true
+          description: An engine component with probes, as listed in the status, such as ha.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One state per probe evaluated at least once.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProbeStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/engine/{component}/probes/{probe}/clear:
+    post:
+      summary: Clears the component probe's ongoing alert, when its evaluator accepts it
+      description: The alert clears at the engine's next evaluation tick, published as manually cleared. A probe whose
+        condition is polled refuses, since it would only raise the alert again.
+      operationId: clearComponentAlert
+      parameters:
+        - name: component
+          in: path
+          required: true
+          description: An engine component with probes, as listed in the status, such as ha.
+          schema:
+            type: string
+        - name: probe
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/alerts:
     get:
       summary: Every probe in alert across the engine
@@ -774,7 +863,7 @@ components:
             $ref: '#/components/schemas/DictionaryRef'
     EngineStatus:
       type: object
-      required: [engineId, sessionsVersion, alertsVersion, sessions]
+      required: [engineId, sessionsVersion, alertsVersion, sessions, components]
       properties:
         engineId:
           type: string
@@ -789,6 +878,22 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SessionStatus'
+        components:
+          type: array
+          description: The engine's own components with probes, such as its high availability.
+          items:
+            $ref: '#/components/schemas/ComponentStatus'
+    ComponentStatus:
+      type: object
+      required: [component, probesVersion]
+      properties:
+        component:
+          type: string
+        probesVersion:
+          type: string
+          description: The version of the component's probes; fetch them again when it differs.
+        alertLevel:
+          $ref: '#/components/schemas/AlertLevel'
     SessionStatus:
       type: object
       required: [group, name, selectedConfig, loggedIn, connected, withinSessionTime, desiredState, incomingSeqNum,
@@ -959,8 +1064,13 @@ components:
             $ref: '#/components/schemas/ActiveAlert'
     ActiveAlert:
       type: object
-      required: [group, name, selectedConfig, probe, level, message, since]
+      description: Carries either the engine component the probe belongs to, or the session's group, name and
+        selectedConfig.
+      required: [probe, level, message, since]
       properties:
+        component:
+          type: string
+          description: The engine component the probe belongs to, such as ha; absent for a session's probe.
         group:
           type: string
         name:

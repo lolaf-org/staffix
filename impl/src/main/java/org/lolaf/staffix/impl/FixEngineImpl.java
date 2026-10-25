@@ -50,6 +50,7 @@ import org.lolaf.staffix.impl.session.UnderlyingResourceChecker;
 import java.time.Clock;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 
 /**
@@ -77,6 +78,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
      * The engine contexts handed to the engine's components, whose meters {@link #getEngineMeters()} lists.
      */
     private final List<FixEngineMonitoringContext> engineMonitoringContexts = new CopyOnWriteArrayList<>();
+    private final Map<String, ProbesImpl> componentProbes = new ConcurrentHashMap<>();
     private final List<FixApplicationFactory> fixApplicationFactories;
     @Getter
     private final FixEngineBuilder fixEngineBuilder;
@@ -261,7 +263,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 fixEngineBuilder.getFixMessagesStores().get(fixMessagesStores.indexOf(fixMessagesStore)),
                 fixMessagesLogger,
                 fixMessagesLogger == null ? null : fixEngineBuilder.getFixMessagesLoggers().get(fixMessagesLoggers.indexOf(fixMessagesLogger)),
-                findMatchAmongstAlertsPublishers(fixSessionSettings),
+                findMatchAmongstAlertsPublishers(fixSessionSettings.getFixAlertsPublisherInstanceId()),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
                 findMatchAmongstPluginsComponent(fixSessionSettings),
                 fixSessionRegistry, disconnectedSessionsExecutor(), underlyingResourceChecker, fixEngineHa);
@@ -619,12 +621,25 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         return probesManager.clearAlert(probeId);
     }
 
+    @Override
+    public List<ProbeScope> getComponentProbeScopes() {
+        return componentProbes.values().stream()
+                .map(ProbesImpl::getScope)
+                .sorted(Comparator.comparing(ProbeScope::getName))
+                .collect(Collectors.toUnmodifiableList());
+    }
+
     /**
      * A session's probes through the sessions it manages rather than the probes manager, which only knows the
      * registered ones: a session stays managed, with its probes, while not registered.
      */
     private Probes probesOf(ProbeScope scope) {
-        if (FixSessionProbeScope.isSession(scope)) {
+        if (ComponentProbeScope.isComponent(scope)) {
+            ProbesImpl probes = componentProbes.get(scope.getName());
+            if (probes != null) {
+                return probes;
+            }
+        } else if (FixSessionProbeScope.isSession(scope)) {
             for (FixSession session : getManagedFixSessions()) {
                 if (session.getFixSessionId().getQualifiedName().equals(scope.getName())) {
                     return session.getProbes();
@@ -755,7 +770,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private void requireResolvableComponents(FixSessionSettings settings) {
         findMatchAmongstMessagesStores(settings);
         findMatchAmongstMessagesLoggers(settings);
-        findMatchAmongstAlertsPublishers(settings);
+        findMatchAmongstAlertsPublishers(settings.getFixAlertsPublisherInstanceId());
         findMatchAmongstPluginsComponent(settings);
         FixApplicationFactory factory = findMatchAmongstFixApplicationFactories(settings);
         if (!factory.getApplicationIds().contains(settings.getFixApplicationInstanceId())) {
@@ -800,16 +815,16 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 fixMessagesLoggers.stream().map(FixMessagesLogger::getInstanceId).collect(Collectors.joining(","))));
     }
 
-    private FixAlertsPublisher findMatchAmongstAlertsPublishers(FixSessionSettings fixSessionSettings) {
+    private FixAlertsPublisher findMatchAmongstAlertsPublishers(String alertsPublisherInstanceId) {
         if (fixAlertsPublishers.isEmpty()) {
             return VoidAlertsPublisher.getInstance();
         }
         for (FixAlertsPublisher publisher : fixAlertsPublishers) {
-            if (publisher.getInstanceId().equals(fixSessionSettings.getFixAlertsPublisherInstanceId())) {
+            if (publisher.getInstanceId().equals(alertsPublisherInstanceId)) {
                 return publisher;
             }
         }
-        throw new IllegalArgumentException(String.format("Unable to find any FIX alerts publisher for id '%s' within: '%s'", fixSessionSettings.getFixAlertsPublisherInstanceId(),
+        throw new IllegalArgumentException(String.format("Unable to find any FIX alerts publisher for id '%s' within: '%s'", alertsPublisherInstanceId,
                 fixAlertsPublishers.stream().map(FixAlertsPublisher::getInstanceId).collect(Collectors.joining(","))));
     }
 
@@ -851,6 +866,15 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 engineMonitoringContexts.add(context);
             }
             return context;
+        }
+
+        @Override
+        public Probes probes(String component, String alertsPublisherInstanceId, BooleanSupplier componentActive) {
+            return componentProbes.computeIfAbsent(component, name -> {
+                ProbesImpl probes = new ProbesImpl(ComponentProbeScope.of(name));
+                probesManager.register(probes, findMatchAmongstAlertsPublishers(alertsPublisherInstanceId), componentActive);
+                return probes;
+            });
         }
 
         @Override

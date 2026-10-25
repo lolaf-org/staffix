@@ -16,8 +16,11 @@
 package org.lolaf.staffix.admin.jmx;
 
 import lombok.Value;
+import org.lolaf.staffix.api.ComponentProbeScope;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -79,6 +82,30 @@ public class FixAdminMBeanImpl implements FixAdminMXBean {
                     state.getSince().map(Object::toString).orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null))));
         }
         return alerts;
+    }
+
+    @Override
+    public List<String> getProbedComponents() {
+        return delegate.getComponentProbeScopes().stream().map(ProbeScope::getName).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<FixSessionMXBean.Probe> getComponentProbes(String component) {
+        return delegate.getProbeDefinitions(ComponentProbeScope.of(component)).stream()
+                .map(FixSessionMBeanImpl::probe)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<FixSessionMXBean.ProbeStatus> getComponentProbeStates(String component) {
+        return delegate.getProbeStates(ComponentProbeScope.of(component)).stream()
+                .map(FixSessionMBeanImpl::status)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean clearComponentAlert(String component, String probeName) {
+        return delegate.clearAlert(ProbeId.of(ComponentProbeScope.of(component), probeName));
     }
 
     @Value

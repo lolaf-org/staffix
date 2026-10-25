@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.jmx;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ComponentProbeScope;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
@@ -247,6 +248,25 @@ class JmxAdminApiTest {
     }
 
     @Test
+    void anEngineComponentsProbesAreReadableAndClearableFromTheEngineBean() throws Exception {
+        adminApi.componentScopes.add(ComponentProbeScope.of("ha"));
+        adminApi.probeDefinitions.add(ProbeDefinition.builder().name("followers").description("A follower in sync")
+                .evaluationInterval(Duration.ofSeconds(1)).build());
+        adminApi.probeStates.add(ProbeState.builder().probeName("followers").alert(Alert.major("none")).since(SINCE)
+                .lastEvaluation(SINCE).build());
+        exporter.export(adminApi);
+
+        FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
+
+        assertThat(proxy.getProbedComponents()).containsExactly("ha");
+        assertThat(proxy.getComponentProbes("ha")).extracting(FixSessionMXBean.Probe::getName).containsExactly("followers");
+        assertThat(proxy.getComponentProbeStates("ha")).singleElement()
+                .satisfies(state -> assertThat(state.getLevel()).isEqualTo("MAJOR"));
+        assertThat(proxy.clearComponentAlert("ha", "followers")).isTrue();
+        assertThat(adminApi.clearedAlerts).containsExactly("ha followers");
+    }
+
+    @Test
     void anEngineWithoutHighAvailabilityHasNoHaBean() throws Exception {
         exporter.export(adminApi);
 
@@ -326,6 +346,7 @@ class JmxAdminApiTest {
         private final List<FixSessionId> switchedTo = new ArrayList<>();
         private final List<ProbeDefinition> probeDefinitions = new ArrayList<>();
         private final List<ProbeState> probeStates = new ArrayList<>();
+        private final List<ProbeScope> componentScopes = new ArrayList<>();
         private final List<ScopedProbeState> activeAlerts = new ArrayList<>();
         private final List<String> clearedAlerts = new ArrayList<>();
         private HaAdmin ha;
@@ -447,6 +468,11 @@ class JmxAdminApiTest {
         }
 
         @Override
+        public List<ProbeScope> getComponentProbeScopes() {
+            return componentScopes;
+        }
+
+        @Override
         public List<ProbeDefinition> getProbeDefinitions(ProbeScope scope) {
             return probeDefinitions;
         }
@@ -473,7 +499,8 @@ class JmxAdminApiTest {
 
         @Override
         public boolean clearAlert(ProbeId probeId) {
-            clearedAlerts.add(probeId.getScope().getLabels().get(FixSessionProbeScope.NAME_LABEL) + " " + probeId.getName());
+            clearedAlerts.add(probeId.getScope().getLabels().getOrDefault(FixSessionProbeScope.NAME_LABEL, probeId.getScope().getName())
+                    + " " + probeId.getName());
             return !"session-down".equals(probeId.getName());
         }
 

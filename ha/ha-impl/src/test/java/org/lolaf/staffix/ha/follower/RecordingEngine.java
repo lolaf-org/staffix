@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.follower;
 
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -35,6 +36,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BooleanSupplier;
 
 /**
  * An engine whose sessions' stores record what is written to them, as text.
@@ -94,6 +96,11 @@ public final class RecordingEngine implements EngineAccess {
             throw new IllegalArgumentException("No monitoring manager " + monitoringInstanceId);
         }
         return meters;
+    }
+
+    @Override
+    public Probes probes(String component, String alertsPublisherInstanceId, BooleanSupplier componentActive) {
+        throw new IllegalArgumentException("No alerts publisher " + alertsPublisherInstanceId);
     }
 
     @Override

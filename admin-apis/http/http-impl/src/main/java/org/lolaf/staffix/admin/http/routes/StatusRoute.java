@@ -19,7 +19,6 @@ import org.lolaf.staffix.admin.http.ProbesDocuments;
 import org.lolaf.staffix.admin.http.SessionsDocument;
 import org.lolaf.staffix.admin.http.dto.EngineStatus;
 import org.lolaf.staffix.api.admin.AdminApi;
-import org.lolaf.staffix.api.session.FixSessionProbeScope;
 
 import java.io.IOException;
 import java.util.List;
@@ -41,6 +40,6 @@ public final class StatusRoute extends JsonRoute {
     Object body(List<String> path) throws IOException {
         SessionsDocument document = documents.get();
         return EngineStatus.of(adminApi, document.getRunning(), document.getVersion(), probes.getAlertsVersion(),
-                fixSessionId -> probes.get(FixSessionProbeScope.of(fixSessionId)).getVersion());
+                scope -> probes.get(scope).getVersion());
     }
 }

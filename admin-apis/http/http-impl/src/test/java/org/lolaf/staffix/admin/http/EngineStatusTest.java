@@ -113,7 +113,7 @@ class EngineStatusTest {
     }
 
     private JsonNode status() {
-        return mapper.valueToTree(EngineStatus.of(adminApi, document().getRunning(), "v1", 7, fixSessionId -> "p-" + fixSessionId.getName()));
+        return mapper.valueToTree(EngineStatus.of(adminApi, document().getRunning(), "v1", 7, scope -> "p-" + scope.getLabels().get(FixSessionProbeScope.NAME_LABEL)));
     }
 
     private JsonNode sessions() throws Exception {

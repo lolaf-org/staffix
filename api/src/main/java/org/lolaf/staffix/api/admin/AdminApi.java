@@ -309,6 +309,12 @@ public interface AdminApi extends InstanceIdSupplier {
     List<FixAcceptorSessions> getAcceptorsSessions();
 
     /**
+     * The scopes of the engine's own components that have probes, such as its high availability's; a session's scope
+     * is not listed.
+     */
+    List<ProbeScope> getComponentProbeScopes();
+
+    /**
      * The probes of the scope, in the order they were added; a session's scope is
      * {@link org.lolaf.staffix.api.session.FixSessionProbeScope#of}.
      *
