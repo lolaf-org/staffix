@@ -27,6 +27,8 @@ import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.HaAdmin;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringManager;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
@@ -71,6 +73,10 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private final ProbesManager probesManager;
     private final ProbesListeners probesListeners;
     private final List<FixSessionsPlugin<?>> fixSessionsPlugins;
+    /**
+     * The engine contexts handed to the engine's components, whose meters {@link #getEngineMeters()} lists.
+     */
+    private final List<FixEngineMonitoringContext> engineMonitoringContexts = new CopyOnWriteArrayList<>();
     private final List<FixApplicationFactory> fixApplicationFactories;
     @Getter
     private final FixEngineBuilder fixEngineBuilder;
@@ -568,6 +574,13 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
+    public List<FixMeterDescriptor> getEngineMeters() {
+        return engineMonitoringContexts.stream()
+                .flatMap(context -> context.getMeterDescriptors().stream())
+                .collect(Collectors.toUnmodifiableList());
+    }
+
+    @Override
     public List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId) {
         return findManagedSession(fixSessionId)
                 .flatMap(session -> session.getPluginContext(FixSessionsMonitoringContext.class))
@@ -809,6 +822,21 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         @Override
         public FixMessagesStore.FixSessionMessagesStore openStore(FixSessionSettings settings) {
             return findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), new FixSessionProbesImpl());
+        }
+
+        @Override
+        public FixEngineMonitoringContext monitoring(String monitoringInstanceId) {
+            FixEngineMonitoringContext context = fixSessionsPlugins.stream()
+                    .filter(plugin -> plugin.getInstanceId().equals(monitoringInstanceId))
+                    .flatMap(plugin -> plugin.unwrap(FixEngineMonitoringManager.class).stream())
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Engine " + getInstanceId()
+                            + " has no engine monitoring manager " + monitoringInstanceId))
+                    .engineContext(getInstanceId());
+            if (!engineMonitoringContexts.contains(context)) {
+                engineMonitoringContexts.add(context);
+            }
+            return context;
         }
 
         @Override

@@ -104,13 +104,21 @@ public final class ReplicationReceiver {
 
     public HaStatus.Leader status() {
         LeaderLink current = link;
-        boolean connected = current != null && current.getState() == LeaderLink.State.STREAMING;
         return HaStatus.Leader.builder()
                 .leaderId(current == null ? null : current.getLeaderId())
                 .address(String.valueOf(leaderAddress))
-                .connected(connected)
-                .inSync(connected && replica.isComplete())
+                .connected(isConnected())
+                .inSync(isInSync())
                 .build();
+    }
+
+    public boolean isConnected() {
+        LeaderLink current = link;
+        return current != null && current.getState() == LeaderLink.State.STREAMING;
+    }
+
+    public boolean isInSync() {
+        return isConnected() && replica.isComplete();
     }
 
     private final class Listener implements IOEventsListener {

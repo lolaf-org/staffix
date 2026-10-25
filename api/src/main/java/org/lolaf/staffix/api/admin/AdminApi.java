@@ -277,6 +277,12 @@ public interface AdminApi extends InstanceIdSupplier {
     List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId);
 
     /**
+     * The meters of the engine's own components, such as its high availability, tagged with the engine alone; empty
+     * when none publishes any.
+     */
+    List<FixMeterDescriptor> getEngineMeters();
+
+    /**
      * Makes the given session the active one on every initiator that has it as a target, as
      * {@link org.lolaf.staffix.api.FixInitiator#switchTo} does. Every one, because two initiators may share a main target.
      *

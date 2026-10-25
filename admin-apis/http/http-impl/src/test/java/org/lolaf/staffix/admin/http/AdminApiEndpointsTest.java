@@ -432,8 +432,19 @@ class AdminApiEndpointsTest {
                 + "\"tagKeys\":[\"venue\"],\"percentiles\":true,\"custom\":true}";
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/meters", null).body()).isEqualTo("[" + meter + "]");
-        assertThat(call("GET", "/engines/alpha-engine/v1/meters", null).body())
+        assertThat(call("GET", "/engines/alpha-engine/v1/sessions/meters", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"meters\":[" + meter + "]}]");
+        assertThat(call("GET", "/engines/alpha-engine/v1/meters", null).statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void theEnginesOwnMetersAreListed() throws Exception {
+        when(adminApi.getEngineMeters()).thenReturn(List.of(FixMeterDescriptor.builder().name("ha.role")
+                .type(FixMeterDescriptor.Type.GAUGE).description("The role").build()));
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/engine/meters", null).body())
+                .isEqualTo("[{\"name\":\"ha.role\",\"type\":\"GAUGE\",\"description\":\"The role\",\"tagKeys\":[],"
+                        + "\"percentiles\":false,\"custom\":false}]");
     }
 
     @Test

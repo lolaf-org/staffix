@@ -25,6 +25,7 @@ import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
+import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -34,6 +35,7 @@ import org.lolaf.staffix.ha.follower.ReplicationReceiver;
 import org.lolaf.staffix.ha.leader.FollowerLink;
 import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.leader.ReplicationPublisher;
+import org.lolaf.staffix.ha.leader.ReplicationStats;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 
@@ -67,6 +69,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final ReplicationLog replicationLog;
     private final ReplicatedSessions sessions = new ReplicatedSessions();
     private final Followers followers = new Followers();
+    private final ReplicationStats stats = new ReplicationStats();
+    private final LateTimer syncAckLatency = new LateTimer();
     private volatile EngineAccess engine;
     private volatile Replica replica;
     private volatile LeaderElection election;
@@ -85,7 +89,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     @Override
     public ReplicatingStore replicatingStore(FixSessionSettings sessionSettings, FixSessionMessagesStore store) {
-        return new ReplicatingFixSessionMessagesStore(store, replicationLog, sessions.register(sessionSettings, store), followers);
+        return new ReplicatingFixSessionMessagesStore(store, replicationLog, sessions.register(sessionSettings, store), followers,
+                syncAckLatency);
     }
 
     @Override
@@ -183,6 +188,9 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                     + " have no address for this node, " + settings.getNodeId());
         }
         election = settings.getLeaderElection().instance();
+        if (settings.getMonitoringInstanceId() != null) {
+            syncAckLatency.target = HaMeters.register(engine.monitoring(settings.getMonitoringInstanceId()), this, stats);
+        }
         roleThread = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "staffix-ha-role-" + settings.getNodeId());
             thread.setDaemon(true);
@@ -269,7 +277,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         replica.close(deadline);
         publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLog, sessions, followers,
-                () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getSnapshotMaxMessages());
+                () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getSnapshotMaxMessages(), stats);
         publisher.start();
         engine.activate();
         changed(Role.LEADER, epoch, null);
@@ -331,6 +339,29 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (receiver != null) {
             receiver.stop(deadline);
             receiver = null;
+        }
+    }
+
+    /**
+     * Handed to stores whenever they are built, before or after the meters are registered at start.
+     */
+    private static final class LateTimer implements Timer {
+
+        private Timer target = Timer.VoidTimer.getInstance();
+
+        @Override
+        public void start() {
+            target.start();
+        }
+
+        @Override
+        public void stop() {
+            target.stop();
+        }
+
+        @Override
+        public void record(long duration, TimeUnit unit) {
+            target.record(duration, unit);
         }
     }
 

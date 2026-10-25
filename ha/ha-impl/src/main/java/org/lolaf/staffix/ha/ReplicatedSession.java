@@ -41,9 +41,13 @@ public final class ReplicatedSession {
      */
     private volatile Config config;
     /**
-     * {@code SYNC} sends that went out without the standby's ack, on a timeout or with no standby in sync.
+     * {@code SYNC} sends that went out without the standby's ack because it did not come in time.
      */
-    private volatile long unacknowledgedSends;
+    private volatile long timedOutSends;
+    /**
+     * {@code SYNC} sends that went out without the standby's ack because no standby was in sync.
+     */
+    private volatile long noFollowerSends;
     private volatile boolean unprotected;
 
     ReplicatedSession(int key, FixSessionId fixSessionId, FixSessionType fixSessionType, Config config) {
@@ -69,11 +73,22 @@ public final class ReplicatedSession {
             }
             return;
         }
-        unacknowledgedSends++;
+        if (ack == Followers.Ack.TIMED_OUT) {
+            timedOutSends++;
+        } else {
+            noFollowerSends++;
+        }
         if (!wasUnprotected) {
             unprotected = true;
             log.warn("FIX session {} {} sends without the standby's ack: {}", fixSessionType, fixSessionId, ack);
         }
+    }
+
+    /**
+     * {@code SYNC} sends that went out without the standby's ack, on a timeout or with no standby in sync.
+     */
+    public long getUnacknowledgedSends() {
+        return timedOutSends + noFollowerSends;
     }
 
     /**

@@ -57,6 +57,7 @@ class TestFollowerLink {
 
     private final IOSession connection = mock(IOSession.class);
     private final RecordingHandler sent = new RecordingHandler();
+    private final ReplicationStats stats = new ReplicationStats();
     private final FrameDecoder decoder = new FrameDecoder(1 << 20);
     private ReplicationFixEngineHa ha = engine(1 << 16);
     private FollowerLink link = link();
@@ -75,7 +76,7 @@ class TestFollowerLink {
     }
 
     private FollowerLink link() {
-        return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100,
+        return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100, stats,
                 loop -> {
                 });
     }
@@ -189,6 +190,7 @@ class TestFollowerLink {
         assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("STORE_EVENT"));
         assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 LAPPED"));
+        assertThat(stats.getLaps()).isEqualTo(1);
     }
 
     @Test
@@ -316,6 +318,8 @@ class TestFollowerLink {
                 "SNAPSHOT_END epoch=7 key=0 count=2");
         verify(local).find(eq(1L), eq(12L), any(StoreMessagesConsumer.class));
         assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_SENT);
+        assertThat(stats.getSnapshots()).isEqualTo(1);
+        assertThat(stats.getSnapshotMessages()).isEqualTo(2);
     }
 
     @Test

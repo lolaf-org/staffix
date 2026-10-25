@@ -53,6 +53,12 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-monitoring-micrometer-impl</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-test-utils</artifactId>
             <version>${project.version}</version>
             <classifier>tests</classifier>

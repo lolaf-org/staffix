@@ -1,0 +1,91 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.lolaf.staffix.api.monitoring;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.DoubleSupplier;
+import java.util.function.LongSupplier;
+
+/**
+ * Meters created once and reused, for a session or for the engine.
+ *
+ * <p>{@link #getTimer} takes the description and tags on every call because the first call creates the meter and
+ * later ones return it; passing them each time keeps the caller from having to know which call it is.
+ */
+public interface MetersContext {
+
+    /**
+     * Retrieves a timer to measure time
+     * The timer has a slight impact on performance, so it is recommended to use it only when needed.
+     * The returned NOOP timer return if monitoring is disabled has however no impact on performances
+     *
+     * @param id          the timer id
+     * @param description the time description
+     * @param tags        the timer tags
+     * @return a timer instance to measure time
+     */
+    Timer getTimer(String id, String description, Map<String, String> tags);
+
+    /**
+     * Retrieves a counter the application increments; the same id and tags give the same counter. The returned NOOP
+     * counter when monitoring is disabled has no impact on performances.
+     *
+     * @param id          the counter id
+     * @param description the counter description
+     * @param tags        the counter tags
+     * @return a counter publishing its total at each export
+     */
+    Counter getCounter(String id, String description, Map<String, String> tags);
+
+    /**
+     * Registers a counter read from {@code total} at each export, for a running total the caller already keeps, so
+     * counting costs nothing where it happens. Same threading rules as {@link #getGauge(String, String, Map,
+     * DoubleSupplier)}; the returned counter ignores {@link Counter#increment}.
+     *
+     * @param total read at each export, never going down
+     */
+    Counter getCounter(String id, String description, Map<String, String> tags, LongSupplier total);
+
+    /**
+     * Retrieves a gauge the application sets; the same id and tags give the same gauge. The returned NOOP gauge
+     * when monitoring is disabled has no impact on performances.
+     *
+     * @param id          the gauge id
+     * @param description the gauge description
+     * @param tags        the gauge tags
+     * @return a gauge holding the value the next export reads
+     */
+    Gauge getGauge(String id, String description, Map<String, String> tags);
+
+    /**
+     * Registers a gauge read from {@code value} at each export, for a value the application already holds. The
+     * supplier runs on the exporter's thread, so it must be thread-safe, cheap and non-blocking; it is kept until the
+     * session, or the engine, ends. The returned gauge ignores {@link Gauge#set} and {@link Gauge#add}.
+     *
+     * @param id          the gauge id
+     * @param description the gauge description
+     * @param tags        the gauge tags
+     * @param value       read at each export
+     * @return the registered gauge
+     */
+    Gauge getGauge(String id, String description, Map<String, String> tags, DoubleSupplier value);
+
+    /**
+     * The meters published here: the monitoring's own, and the timers, counters and gauges obtained so far.
+     */
+    List<FixMeterDescriptor> getMeterDescriptors();
+}

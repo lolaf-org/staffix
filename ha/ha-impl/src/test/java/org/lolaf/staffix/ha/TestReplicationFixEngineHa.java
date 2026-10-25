@@ -25,6 +25,7 @@ import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.ha.follower.RecordingEngine;
+import org.lolaf.staffix.ha.follower.RecordingMeters;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -33,6 +34,7 @@ import java.net.Socket;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -83,6 +85,7 @@ class TestReplicationFixEngineHa {
                     .heartbeatInterval(Duration.ofMillis(50))
                     .reconnectInterval(Duration.ofMillis(50))
                     .leaderElection(FakeLeaderElection.Settings.builder().election(election).build())
+                    .monitoringInstanceId("monitoring")
                     .build());
             ha.bind(engine);
             store = ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore());
@@ -245,6 +248,61 @@ class TestReplicationFixEngineHa {
         assertThat(a.ha.getStatus().getRole()).isEqualTo(Role.UNKNOWN);
         assertThat(a.ha.getStatus().getRoleSince()).isNull();
         assertThat(a.ha.getSessionsStatus()).singleElement().satisfies(session -> assertThat(session.isInSync()).isFalse());
+    }
+
+    @Test
+    void theMetersFollowTheReplicationOnBothNodes() {
+        aLeadsBFollows();
+        RecordingMeters leader = a.engine.meters;
+        RecordingMeters follower = b.engine.meters;
+
+        await().until(() -> leader.read("ha.followers.in.sync") == 1);
+        assertThat(leader.read("ha.role")).isEqualTo(2);
+        assertThat(leader.read("ha.epoch")).isEqualTo(3);
+        assertThat(leader.read("ha.leadership.valid")).isEqualTo(1);
+        assertThat(leader.read("ha.followers.connected")).isEqualTo(1);
+        assertThat(leader.read("ha.snapshots")).as("b caught up by snapshot").isEqualTo(1);
+        assertThat(leader.read("ha.replica.connected")).isZero();
+        await().until(() -> follower.read("ha.replica.in.sync") == 1);
+        assertThat(follower.read("ha.role")).isEqualTo(1);
+        assertThat(follower.read("ha.replica.connected")).isEqualTo(1);
+        assertThat(follower.read("ha.followers.connected")).isZero();
+        assertThat(follower.read("ha.leadership.valid")).isZero();
+        double written = leader.read("ha.log.written");
+
+        a.store.storeNextIncomingSeqNum(7);
+        a.store.awaitReplicated();
+
+        assertThat(leader.read("ha.log.written")).isGreaterThan(written);
+        assertThat(leader.recordings(HaMeters.SYNC_ACK_LATENCY)).isEqualTo(1);
+        await().until(() -> leader.read("ha.follower.unsent") == 0);
+        assertThat(leader.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isZero();
+    }
+
+    @Test
+    void aSyncSendWithoutAFollowerIsCountedUnacknowledged() {
+        a.election.elect(Role.LEADER, 3, "a");
+        a.start();
+        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
+
+        a.store.storeNextIncomingSeqNum(7);
+        a.store.awaitReplicated();
+
+        RecordingMeters meters = a.engine.meters;
+        assertThat(meters.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isEqualTo(1);
+        assertThat(meters.read("ha.sync.unacknowledged", Map.of("reason", "timed_out"))).isZero();
+        assertThat(meters.recordings(HaMeters.SYNC_ACK_LATENCY)).isZero();
+    }
+
+    @Test
+    void anUnknownMonitoringManagerIsRefused() {
+        ReplicationFixEngineHa unknown = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
+                .nodeId("a").peer("a", addressA).monitoringInstanceId("elsewhere")
+                .leaderElection(FakeLeaderElection.Settings.builder().election(new FakeLeaderElection()).build())
+                .build());
+        unknown.bind(new RecordingEngine());
+
+        assertThatThrownBy(unknown::start).hasMessageContaining("No monitoring manager elsewhere");
     }
 
     @Test

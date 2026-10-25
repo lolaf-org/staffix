@@ -25,6 +25,7 @@ import io.micrometer.core.instrument.step.StepRegistryConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixMonitoringAttributes;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
@@ -45,9 +46,11 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.lolaf.staffix.monitoring.micrometer.MicrometerMonitoringManager.*;
 import static org.mockito.Mockito.mock;
@@ -389,6 +392,51 @@ class MicrometerMonitoringManagerTest {
         listener.onSessionDestroyed("fix-instance-1", fixSessionId);
 
         assertThat(meterRegistry.find("orders.received").counter()).isNull();
+    }
+
+    @Test
+    void engineMetersAreTaggedWithTheEngineAloneAndRemovedOnStop() {
+        monitoringManager.start();
+        FixEngineMonitoringContext engine = monitoringManager.engineContext("engine-1");
+        AtomicLong written = new AtomicLong(1024);
+
+        engine.getCounter("ha.log.written", "Bytes written", Map.of(), written::get);
+        engine.getGauge("ha.role", "Role", Map.of(), () -> 2);
+        engine.getCounter("ha.sync.unacknowledged", "Sends unacked", Map.of("reason", "timed_out")).increment();
+        written.addAndGet(1024);
+
+        assertThat(monitoringManager.engineContext("engine-1")).isSameAs(engine);
+        assertThat(meterRegistry.find("ha.log.written").tag(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), "engine-1")
+                .functionCounter().count()).isEqualTo(2048);
+        assertThat(meterRegistry.find("ha.role").gauge().getId().getTags())
+                .containsExactly(io.micrometer.core.instrument.Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), "engine-1"));
+        assertThat(meterRegistry.find("ha.sync.unacknowledged").tag("reason", "timed_out").counter().count()).isEqualTo(1);
+        assertThat(engine.getMeterDescriptors()).extracting(FixMeterDescriptor::getName, FixMeterDescriptor::isCustom)
+                .containsExactlyInAnyOrder(tuple("ha.log.written", false), tuple("ha.role", false),
+                        tuple("ha.sync.unacknowledged", false));
+
+        monitoringManager.stop(Deadline.unlimited());
+
+        assertThat(meterRegistry.find("ha.log.written").meters()).isEmpty();
+        assertThat(meterRegistry.find("ha.role").meters()).isEmpty();
+    }
+
+    @Test
+    void engineMetersAreRefusedBeforeStart() {
+        assertThatThrownBy(() -> monitoringManager.engineContext("engine-1")).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void aSessionsPulledCounterReadsItsSupplier() {
+        monitoringManager.start();
+        FixSessionsMonitoringContext context = monitoringManager.onSessionCreated("engine-1", "fix-instance-1", fixSession, List.of(), List.of())
+                .orElseThrow().getPluginContext().orElseThrow();
+        AtomicLong fills = new AtomicLong(5);
+
+        context.getCounter("orders.filled", "Fills", Map.of(), fills::get).increment();
+
+        assertThat(meterRegistry.find("orders.filled").tag(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName())
+                .functionCounter().count()).isEqualTo(5);
     }
 
     @Test

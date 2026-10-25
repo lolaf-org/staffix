@@ -131,10 +131,10 @@ paths:
                 $ref: '#/components/schemas/SessionComponents'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /v1/meters:
+  /v1/sessions/meters:
     get:
       summary: The meters each running session publishes, by the name of the config it runs
-      operationId: getMeters
+      operationId: getSessionsMeters
       responses:
         '200':
           description: One element per running session.
@@ -154,6 +154,21 @@ paths:
                       type: array
                       items:
                         $ref: '#/components/schemas/Meter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/engine/meters:
+    get:
+      summary: The meters of the engine's own components, such as its high availability, tagged with the engine alone
+      operationId: getEngineMeters
+      responses:
+        '200':
+          description: The engine's meters; empty when no component publishes any.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Meter'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /v1/sessions/{group}/{name}/meters:

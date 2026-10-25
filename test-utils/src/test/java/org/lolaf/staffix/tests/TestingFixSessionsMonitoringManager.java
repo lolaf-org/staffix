@@ -18,6 +18,7 @@ package org.lolaf.staffix.tests;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.monitoring.FixSessionMonitoringManagerSettings;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringManager;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -51,6 +52,16 @@ public class TestingFixSessionsMonitoringManager extends Startable.SimpleStartab
     @Override
     public Optional<? extends FixSessionPlugin<FixSessionsMonitoringContext, ?>> onSessionCreated(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes, Collection<MessageType> outgoingMessageTypes) {
         return fixSessionMonitoringManagerSettings.getMock().onSessionCreated(fixEngineId, fixInstanceId, fixSession, incomingMessageTypes, outgoingMessageTypes);
+    }
+
+    /**
+     * Also the roles its mock takes on, such as {@link FixEngineMonitoringManager}.
+     */
+    @Override
+    public <T> Optional<T> unwrap(Class<T> type) {
+        Object mock = fixSessionMonitoringManagerSettings.getMock();
+        return type.isInstance(this) ? Optional.of(type.cast(this))
+                : type.isInstance(mock) ? Optional.of(type.cast(mock)) : Optional.empty();
     }
 
     @Override

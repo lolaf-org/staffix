@@ -42,6 +42,11 @@ public class ReplicationHaSettings extends HaSettings {
     private final @Nullable LeaderElectionSettings leaderElection;
 
     /**
+     * The instance id of the engine's monitoring manager publishing the replication's meters; none when unset.
+     */
+    private final @Nullable String monitoringInstanceId;
+
+    /**
      * Bytes of off-heap memory holding the store events not yet sent to the follower, a power of two. A follower
      * falling this far behind is caught up by snapshot instead; the largest message replicated is an eighth of it.
      */

@@ -89,6 +89,7 @@ public final class FollowerLink implements FrameHandler {
     private final int maxEventFrameBytes;
     private final int batchBytes;
     private final int snapshotMaxMessages;
+    private final ReplicationStats stats;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
     @Getter
@@ -124,8 +125,9 @@ public final class FollowerLink implements FrameHandler {
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
     FollowerLink(IOSession connection, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
-                 Duration heartbeatInterval, int snapshotMaxMessages, Consumer<Runnable> senderLauncher) {
+                 Duration heartbeatInterval, int snapshotMaxMessages, ReplicationStats stats, Consumer<Runnable> senderLauncher) {
         this.snapshotMaxMessages = snapshotMaxMessages;
+        this.stats = stats;
         this.senderLauncher = senderLauncher;
         this.connection = connection;
         this.replicationLog = log;
@@ -253,23 +255,43 @@ public final class FollowerLink implements FrameHandler {
      * @param sessionCount the sessions the leader replicates, every one of which the follower must hold to be in sync
      */
     public HaStatus.Follower status(int sessionCount) {
-        boolean streaming = state == State.STREAMING;
-        boolean inSync = streaming;
         boolean snapshotInProgress = false;
         for (int key = 0; key < sessionCount; key++) {
             SessionSync sync = getSessionSync(key);
-            inSync &= sync == SessionSync.IN_SYNC;
             snapshotInProgress |= sync == SessionSync.SNAPSHOT_PENDING || sync == SessionSync.SNAPSHOT_SENT;
         }
-        long sent = sentOffset;
         return HaStatus.Follower.builder()
                 .nodeId(followerId)
                 .address(String.valueOf(connection.getSocketAddress()))
-                .connected(streaming)
-                .inSync(inSync)
+                .connected(isConnected())
+                .inSync(isInSyncForAll(sessionCount))
                 .snapshotInProgress(snapshotInProgress)
-                .unsentBytes(sent < 0 ? -1 : replicationLog.getTailOffset() - sent)
+                .unsentBytes(getUnsentBytes())
                 .build();
+    }
+
+    public boolean isConnected() {
+        return state == State.STREAMING;
+    }
+
+    /**
+     * @param sessionCount the sessions the leader replicates, every one of which the follower must hold
+     */
+    public boolean isInSyncForAll(int sessionCount) {
+        for (int key = 0; key < sessionCount; key++) {
+            if (!isInSync(key)) {
+                return false;
+            }
+        }
+        return isConnected();
+    }
+
+    /**
+     * The bytes the leader wrote and has not sent this follower, -1 before it started sending.
+     */
+    public long getUnsentBytes() {
+        long sent = sentOffset;
+        return sent < 0 ? -1 : replicationLog.getTailOffset() - sent;
     }
 
     @Override
@@ -447,6 +469,7 @@ public final class FollowerLink implements FrameHandler {
             writer.begin(reader.getOffset(), store.getIncomingSeqNum(), nextOutgoingSeqNum);
             store.find(Math.max(1, nextOutgoingSeqNum - snapshotMaxMessages), nextOutgoingSeqNum - 1, writer);
             writer.end();
+            stats.snapshotSent(writer.messageCount);
             log.info("Snapshot of FIX session {} {} sent to follower {}: {} messages", session.getFixSessionType(),
                     session.getFixSessionId(), followerId, writer.messageCount);
             return true;
@@ -553,6 +576,9 @@ public final class FollowerLink implements FrameHandler {
             log.warn("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
         }
         state = State.CLOSED;
+        if (reason == CloseReason.LAPPED) {
+            stats.lapped();
+        }
         ByteBuffer frame = connection.borrow(FrameEncoder.bytesWith(FrameType.CLOSE, text));
         int length = FrameEncoder.close(frame.clear(), 0, epoch.getAsLong(), reason, text);
         connection.send(written(frame, length), true);

@@ -17,6 +17,10 @@ production:
     rather than a number lower than the old leader's, which it would refuse. Size it above what a session sends
     while unreplicated.
   - >-
+    Name a monitoring manager in monitoringInstanceId to publish the replication's meters (role, throughput, followers
+    in sync and how far behind, SYNC ack latency and unacknowledged sends, laps, snapshots); none are published
+    without it.
+  - >-
     With primos, a node is named by its primos node id as decimal text: use those ids as nodeId and as the peers keys.
   - >-
     Stop the leader's engine rather than kill it: it sends its follower every event within handOverTimeout and says

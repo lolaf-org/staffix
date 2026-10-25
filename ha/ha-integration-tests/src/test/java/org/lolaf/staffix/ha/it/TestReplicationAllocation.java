@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.it;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,8 @@ import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
+import org.lolaf.staffix.monitoring.micrometer.MicrometerMonitoringManagerSettings;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -110,15 +113,15 @@ class TestReplicationAllocation {
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSetting(settings).build());
     }
 
-    private static ReplicationHaSettings ha(String nodeId, Role role, InetSocketAddress a, InetSocketAddress b) {
+    private static ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> ha(String nodeId, Role role, InetSocketAddress a,
+                                                                             InetSocketAddress b) {
         return ReplicationHaSettings.builder()
                 .nodeId(nodeId)
                 .peer("a", a)
                 .peer("b", b)
                 .heartbeatInterval(Duration.ofMillis(100))
                 .reconnectInterval(Duration.ofMillis(50))
-                .leaderElection(StaticLeaderElection.Settings.builder().role(role).leaderId("a").build())
-                .build();
+                .leaderElection(StaticLeaderElection.Settings.builder().role(role).leaderId("a").build());
     }
 
     @AfterEach
@@ -143,18 +146,39 @@ class TestReplicationAllocation {
                 .isLessThan(baseline + 1);
         assertThat(bytesPerRoundTrip.get(ReplicationMode.SYNC)).as("SYNC against NONE, bytes per round trip: %s", bytesPerRoundTrip)
                 .isLessThan(baseline + 1);
+
+        long start = System.nanoTime();
+        double syncWithMeters = measure(ReplicationMode.SYNC, true);
+        log.info("SYNC with the replication's meters: {} bytes per round trip on the session thread, {} ms", syncWithMeters,
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+        assertThat(syncWithMeters).as("SYNC with the replication's meters against NONE").isLessThan(baseline + 1);
     }
 
     private double measure(ReplicationMode mode) {
+        return measure(mode, false);
+    }
+
+    /**
+     * @param meters whether a Micrometer monitoring publishes the replication's meters, the {@code SYNC} ack latency
+     *               timer among them, recorded on the session thread
+     */
+    private double measure(ReplicationMode mode, boolean meters) {
         int fixPort = TestPorts.findFree();
         InetSocketAddress leaderReplication = new InetSocketAddress("localhost", TestPorts.findFree());
         InetSocketAddress followerReplication = new InetSocketAddress("localhost", TestPorts.findFree());
         FixSessionSettings acceptorSettings = sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, mode);
 
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
         EchoAcceptor acceptor = new EchoAcceptor();
         FixEngineBuilder.FixEngineBuilderBuilder acceptorEngine = engine("acceptor", acceptor, acceptorSettings);
         if (mode != ReplicationMode.NONE) {
-            acceptorEngine.highAvailability(ha("a", Role.LEADER, leaderReplication, followerReplication));
+            ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> leader = ha("a", Role.LEADER, leaderReplication, followerReplication);
+            if (meters) {
+                acceptorEngine.fixSessionsPlugin(MicrometerMonitoringManagerSettings.builder()
+                        .instanceId("monitoring").meterRegistrySupplier(() -> registry).build());
+                leader.monitoringInstanceId("monitoring");
+            }
+            acceptorEngine.highAvailability(leader.build());
         }
         start(acceptorEngine.build().instance()).newAcceptor(FixAcceptorBuilder.builder()
                 .bindAddress(new InetSocketAddress("localhost", fixPort))
@@ -185,6 +209,9 @@ class TestReplicationAllocation {
             FixSessionMessagesStore replica = follower.getReplica().getStore(FixSession.FixSessionType.ACCEPTOR, ACCEPTOR_ID.toString());
             await().untilAsserted(() -> assertThat(replica.getOutgoingSeqNum()).as("replicated").isGreaterThan(WARM_UP + MEASURED));
         }
+        if (meters) {
+            assertThat(registry.find("ha.sync.ack.latency").timer().count()).as("SYNC acks timed").isGreaterThan(MEASURED);
+        }
         return (double) allocated / MEASURED;
     }
 
@@ -200,7 +227,7 @@ class TestReplicationAllocation {
     private ReplicationFixEngineHa follower(FixSessionSettings settings, InetSocketAddress a, InetSocketAddress b) {
         FixMessagesStore memory = MemoryMessageStoreSettings.builder().build().instance();
         memory.start();
-        ReplicationFixEngineHa follower = new ReplicationFixEngineHa(ha("b", Role.FOLLOWER, a, b));
+        ReplicationFixEngineHa follower = new ReplicationFixEngineHa(ha("b", Role.FOLLOWER, a, b).build());
         follower.bind(new EngineAccess() {
             @Override
             public List<FixSessionSettings> getFixSessionsSettings() {
@@ -210,6 +237,11 @@ class TestReplicationAllocation {
             @Override
             public FixSessionMessagesStore openStore(FixSessionSettings sessionSettings) {
                 return memory.getStore(sessionSettings.getFixSessionId(), NO_PROBES);
+            }
+
+            @Override
+            public FixEngineMonitoringContext monitoring(String monitoringInstanceId) {
+                throw new IllegalArgumentException("No monitoring manager " + monitoringInstanceId);
             }
 
             @Override

@@ -21,7 +21,7 @@ import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import java.util.List;
 
 /**
- * An element of {@code GET meters}: a running session, by the name of the config it runs, and its meters.
+ * An element of {@code GET sessions/meters}: a running session, by the name of the config it runs, and its meters.
  */
 @Value
 public class SessionMeters {

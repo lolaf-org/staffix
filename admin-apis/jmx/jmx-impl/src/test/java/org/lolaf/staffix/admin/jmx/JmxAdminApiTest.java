@@ -459,6 +459,11 @@ class JmxAdminApiTest {
         }
 
         @Override
+        public List<FixMeterDescriptor> getEngineMeters() {
+            return List.of();
+        }
+
+        @Override
         public Optional<HaAdmin> getHa() {
             return Optional.ofNullable(ha);
         }

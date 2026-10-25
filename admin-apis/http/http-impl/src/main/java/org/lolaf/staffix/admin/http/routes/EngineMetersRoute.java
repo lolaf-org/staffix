@@ -15,29 +15,21 @@
  */
 package org.lolaf.staffix.admin.http.routes;
 
-import org.lolaf.staffix.admin.http.dto.SessionMeters;
 import org.lolaf.staffix.api.admin.AdminApi;
-import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
-public final class MetersRoute extends JsonRoute {
+public final class EngineMetersRoute extends JsonRoute {
 
     private final AdminApi adminApi;
 
-    public MetersRoute(AdminApi adminApi, JsonResponseBuffer json) {
-        super("v1/meters", json);
+    public EngineMetersRoute(AdminApi adminApi, JsonResponseBuffer json) {
+        super("v1/engine/meters", json);
         this.adminApi = adminApi;
     }
 
     @Override
     Object body(List<String> path) {
-        return adminApi.getManagedFixSessions().stream()
-                .map(session -> new SessionMeters(session.getFixSessionId().getGroup(), session.getFixSessionId().getName(),
-                        session.getPluginContext(FixSessionsMonitoringContext.class)
-                                .map(FixSessionsMonitoringContext::getMeterDescriptors)
-                                .orElse(List.of())))
-                .collect(Collectors.toList());
+        return adminApi.getEngineMeters();
     }
 }

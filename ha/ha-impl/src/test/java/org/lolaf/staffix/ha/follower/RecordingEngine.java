@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha.follower;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -80,6 +81,19 @@ public final class RecordingEngine implements EngineAccess {
         store.storageIdentity = nextStorageIdentity;
         stores.put(session.getFixSessionType() + " " + session.getFixSessionId(), store);
         return store;
+    }
+
+    /**
+     * The meters handed out as the monitoring manager {@code "monitoring"}.
+     */
+    public final RecordingMeters meters = new RecordingMeters();
+
+    @Override
+    public FixEngineMonitoringContext monitoring(String monitoringInstanceId) {
+        if (!monitoringInstanceId.equals("monitoring")) {
+            throw new IllegalArgumentException("No monitoring manager " + monitoringInstanceId);
+        }
+        return meters;
     }
 
     @Override

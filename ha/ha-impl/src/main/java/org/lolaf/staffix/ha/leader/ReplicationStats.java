@@ -1,0 +1,52 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.lolaf.staffix.ha.leader;
+
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * What the leader's links did over the engine's life, across connections, read by the meters on another thread.
+ */
+public final class ReplicationStats {
+
+    private final AtomicLong laps = new AtomicLong();
+    private final AtomicLong snapshots = new AtomicLong();
+    private final AtomicLong snapshotMessages = new AtomicLong();
+
+    void lapped() {
+        laps.incrementAndGet();
+    }
+
+    void snapshotSent(int messages) {
+        snapshots.incrementAndGet();
+        snapshotMessages.addAndGet(messages);
+    }
+
+    /**
+     * Followers dropped for falling a whole replication log behind.
+     */
+    public long getLaps() {
+        return laps.get();
+    }
+
+    public long getSnapshots() {
+        return snapshots.get();
+    }
+
+    public long getSnapshotMessages() {
+        return snapshotMessages.get();
+    }
+}

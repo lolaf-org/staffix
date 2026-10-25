@@ -72,4 +72,11 @@ public interface FixSessionsPlugin<C extends PluginContext> extends InstanceIdSu
         return this.getClass().equals(pluginClass);
     }
 
+    /**
+     * This plugin as {@code type}, or the plugin it wraps: a wrapper hides its delegate's type from the engine.
+     */
+    default <T> Optional<T> unwrap(Class<T> type) {
+        return type.isInstance(this) ? Optional.of(type.cast(this)) : Optional.empty();
+    }
+
 }

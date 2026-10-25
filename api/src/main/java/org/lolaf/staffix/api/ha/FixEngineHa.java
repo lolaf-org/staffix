@@ -18,6 +18,7 @@ package org.lolaf.staffix.api.ha;
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
@@ -63,6 +64,14 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
          * stops it before the session starts, so the session never shares its store with a replica.
          */
         FixSessionMessagesStore openStore(FixSessionSettings settings);
+
+        /**
+         * The engine meters of the engine's session plugin with that instance id, which must be a
+         * {@link org.lolaf.staffix.api.monitoring.FixEngineMonitoringManager}.
+         *
+         * @throws IllegalArgumentException when the engine has no such plugin
+         */
+        FixEngineMonitoringContext monitoring(String monitoringInstanceId);
 
         /**
          * Runs the sessions: the initiators and acceptors the application started connect and bind. An engine with

@@ -31,7 +31,12 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
+import org.lolaf.staffix.tests.TestingFixSessionMonitoringManagerSettings;
 import org.lolaf.staffix.tests.TestingHaSettings;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringManager;
+import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -54,6 +59,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 class TestFixEngineHighAvailability extends AbstractFixTests {
 
@@ -202,6 +208,28 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         withHighAvailability();
         setupInitiatorSessionSettings(b -> b.build());
         assertThat(((AdminApi) initiatorFixEngine).getHa()).containsSame(ha);
+    }
+
+    @Test
+    void theHighAvailabilityGetsTheEngineMetersOfTheMonitoringItNamesAndTheAdminApiListsThem() {
+        FixSessionsMonitoringManager monitoring = mock(FixSessionsMonitoringManager.class,
+                withSettings().extraInterfaces(FixEngineMonitoringManager.class));
+        FixEngineMonitoringContext engineMeters = mock(FixEngineMonitoringContext.class);
+        FixMeterDescriptor role = FixMeterDescriptor.builder().name("ha.role").type(FixMeterDescriptor.Type.GAUGE).build();
+        when(((FixEngineMonitoringManager) monitoring).engineContext(any())).thenReturn(engineMeters);
+        when(engineMeters.getMeterDescriptors()).thenReturn(List.of(role));
+        initiatorFixEngineBuilder = initiatorFixEngineBuilder.toBuilder()
+                .fixSessionsPlugin(TestingFixSessionMonitoringManagerSettings.builder().instanceId("monitoring").mock(monitoring).build())
+                .build();
+        withHighAvailability();
+        setupInitiatorSessionSettings(b -> b.build());
+
+        assertThat(((AdminApi) initiatorFixEngine).getEngineMeters()).isEmpty();
+        assertThat(engine.monitoring("monitoring")).isSameAs(engineMeters);
+        verify((FixEngineMonitoringManager) monitoring).engineContext(((AdminApi) initiatorFixEngine).getInstanceId());
+        assertThat(((AdminApi) initiatorFixEngine).getEngineMeters()).containsExactly(role);
+        assertThatThrownBy(() -> engine.monitoring("elsewhere")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("has no engine monitoring manager elsewhere");
     }
 
     @Test

@@ -16,10 +16,8 @@
 package org.lolaf.staffix.monitoring.micrometer;
 
 import io.micrometer.core.instrument.*;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Timer;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
@@ -32,21 +30,20 @@ import org.lolaf.staffix.api.session.plugins.PluginContext;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.collections.IndexableMap;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.DoubleSupplier;
-import java.util.function.ToDoubleFunction;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
 /**
  * Publishes session and message metrics to a Micrometer registry the application supplies.
  */
 @Slf4j
-public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSessionsMonitoringManager> implements FixSessionsMonitoringManager {
+public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSessionsMonitoringManager> implements FixSessionsMonitoringManager, FixEngineMonitoringManager {
 
     static final String MESSAGES_READ_LATENCY = "messages.read.latency";
     static final String MESSAGES_WRITE_LATENCY = "messages.write.latency";
@@ -80,6 +77,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     private final Map<FixSessionId, FixSessionEventsListenerImpl> listeners;
     private final Map<FixSessionId, Gauge> destroyedSessionsStatus;
     private final List<FixMeterDescriptor> builtInMeters;
+    private final Map<String, MicrometerMeters> engineMeters = new ConcurrentHashMap<>();
     private MeterRegistry meterRegistry;
 
     public MicrometerMonitoringManager(MicrometerMonitoringManagerSettings settings) {
@@ -133,12 +131,26 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         settings.getStoppingMeterRegistryConsumer().accept(meterRegistry);
         destroyedSessionsStatus.clear();
+        engineMeters.values().forEach(MicrometerMeters::remove);
+        engineMeters.clear();
     }
 
     @Override
     protected void startMe() throws StartStopException {
         meterRegistry = settings.getMeterRegistrySupplier().get();
         settings.getStartedMeterRegistryConsumer().accept(meterRegistry);
+    }
+
+    /**
+     * Its meters are removed when this stops, after the stopping consumer, so a push registry publishes them last.
+     */
+    @Override
+    public FixEngineMonitoringContext engineContext(String fixEngineId) {
+        if (meterRegistry == null) {
+            throw new IllegalStateException("Monitoring " + getInstanceId() + " hands out engine meters once started");
+        }
+        return engineMeters.computeIfAbsent(fixEngineId, id -> new MicrometerMeters(meterRegistry, settings,
+                Tags.of(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), id), false));
     }
 
     @Override
@@ -193,16 +205,10 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
         private final Gauge clockOffsetGauge;
         private final Gauge sessionStatus;
         private final BiConsumer<String, FixSessionId> onSessionDestroyed;
-        private final Map<String, MicrometerTimerWrapper> timersForSession;
-        private final Map<String, MicrometerCounterWrapper> countersForSession;
-        private final Map<String, RegisteredGauge> gaugesForSession;
-        private final MeterRegistry meterRegistry;
-        private final MicrometerMonitoringManagerSettings settings;
+        private final MicrometerMeters customMeters;
         private final Optional<FixSessionsMonitoringContext> pluginContext;
         private final String fixEngineId;
         private final List<FixMeterDescriptor> builtInMeters;
-        private final Map<String, FixMeterDescriptor> customMeters;
-        private final Tags sessionTags;
         private boolean destroyed;
 
         FixSessionEventsListenerImpl(String fixEngineId, String fixInstanceId, FixSession fixSession, Collection<MessageType> incomingMessageTypes,
@@ -211,18 +217,12 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             FixSessionId fixSessionId = fixSession.getFixSessionId();
             this.fixEngineId = fixEngineId;
             this.builtInMeters = builtInMeters;
-            this.customMeters = new ConcurrentHashMap<>();
-            this.meterRegistry = meterRegistry;
-            this.settings = micrometerMonitoringManagerSettings;
-            this.timersForSession = new ConcurrentHashMap<>();
-            this.countersForSession = new ConcurrentHashMap<>();
-            this.gaugesForSession = new ConcurrentHashMap<>();
             this.onSessionDestroyed = onSessionDestroyed;
             Tags tags = Tags.of(Tag.of(FixMonitoringAttributes.FIX_ENGINE_ID.getKey(), fixEngineId),
                     Tag.of(FixMonitoringAttributes.FIX_INSTANCE_ID.getKey(), fixInstanceId),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_NAME.getKey(), fixSessionId.getName()),
                     Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey(), fixSessionId.getGroup()));
-            this.sessionTags = tags;
+            this.customMeters = new MicrometerMeters(meterRegistry, micrometerMonitoringManagerSettings, tags, true);
             // pulled at each export: the schedule changes the status with no event to push it on
             this.sessionStatus = Gauge.builder(SESSION_LOGON_STATUS, fixSession, this::statusCode)
                     .strongReference(true)
@@ -244,7 +244,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                     outgoingMessageTypes, readLatencyEnabled, writeLatencyEnabled, decodingLatencyEnabled, encodingLatencyEnabled);
 
             this.rttTimer = micrometerMonitoringManagerSettings.isRttLatencyEnabled()
-                    ? getTimer(SESSION_RTT, RTT_DESCRIPTION, meterRegistry, tags, micrometerMonitoringManagerSettings.getRttTimerSettings())
+                    ? MicrometerMeters.timer(SESSION_RTT, RTT_DESCRIPTION, meterRegistry, tags, micrometerMonitoringManagerSettings.getRttTimerSettings())
                     : null;
             if (micrometerMonitoringManagerSettings.isClockOffsetEnabled()) {
                 this.clockOffsetNanos = new AtomicLong(0L);
@@ -256,51 +256,6 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                 this.clockOffsetNanos = null;
                 this.clockOffsetGauge = null;
             }
-        }
-
-        private static Timer getTimer(String name, String description, MeterRegistry meterRegistry, Tags tagsForTimer,
-                                      MicrometerMonitoringManagerSettings.TimerSettings timerSettings) {
-            return Timer.builder(name)
-                    .tags(tagsForTimer)
-                    .description(description)
-                    .publishPercentileHistogram(timerSettings.isPublishPercentileHistogram())
-                    .publishPercentiles(timerSettings.getHistogramsPercentiles().stream().mapToDouble(Double::doubleValue).toArray())
-                    .distributionStatisticExpiry(timerSettings.getDistributionStatisticExpiry())
-                    .minimumExpectedValue(timerSettings.getMinExpectedValue())
-                    .maximumExpectedValue(timerSettings.getMaxExpectedValue())
-                    .distributionStatisticBufferLength(timerSettings.getDistributionStatisticBufferLength())
-                    .percentilePrecision(timerSettings.getPercentilePrecision())
-                    .serviceLevelObjectives(timerSettings.getServiceLevelObjectives().toArray(new Duration[0]))
-                    .register(meterRegistry);
-        }
-
-        private static String meterKey(String id, Map<String, String> tags) {
-            if (tags.isEmpty()) {
-                return id;
-            }
-            StringBuilder tagsToString = new StringBuilder();
-            tags.forEach((k, v) -> tagsToString.append(k).append(v));
-            return id + "-" + tagsToString.toString().hashCode();
-        }
-
-        private static FixMeterDescriptor customMeter(String id, String description, Collection<String> tagKeys,
-                                                      MicrometerMonitoringManagerSettings.TimerSettings timerSettings) {
-            return FixMeterDescriptor.builder()
-                    .name(id)
-                    .type(FixMeterDescriptor.Type.TIMER)
-                    .description(description)
-                    .tagKeys(tagKeys)
-                    .percentiles(timerSettings.isPublishPercentileHistogram())
-                    .custom(true)
-                    .build();
-        }
-
-        private static FixMeterDescriptor withTagKeysOf(FixMeterDescriptor known, FixMeterDescriptor added) {
-            Set<String> tagKeys = new LinkedHashSet<>(known.getTagKeys());
-            if (!tagKeys.addAll(added.getTagKeys())) {
-                return known;
-            }
-            return known.toBuilder().clearTagKeys().tagKeys(tagKeys).build();
         }
 
         private void registerTimers(String msgDirection, String fixInstanceId, FixSessionId fixSessionId, MeterRegistry meterRegistry, MicrometerMonitoringManagerSettings micrometerMonitoringManagerSettings,
@@ -319,19 +274,19 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                         Tag.of(FixMonitoringAttributes.FIX_SESSION_GROUP.getKey(), fixSessionId.getGroup()),
                         Tag.of(FixMonitoringAttributes.FIX_MESSAGE_DIRECTION.getKey(), msgDirection));
                 if (readLatencyEnabled) {
-                    readsTimersPerMsgType.put(mt, getTimer(MESSAGES_READ_LATENCY,
+                    readsTimersPerMsgType.put(mt, MicrometerMeters.timer(MESSAGES_READ_LATENCY,
                             READ_LATENCY_DESCRIPTION, meterRegistry, tagsForTimer, timerSettings));
                 }
                 if (writeLatencyEnabled) {
-                    writesTimersPerMsgType.put(mt, getTimer(MESSAGES_WRITE_LATENCY,
+                    writesTimersPerMsgType.put(mt, MicrometerMeters.timer(MESSAGES_WRITE_LATENCY,
                             WRITE_LATENCY_DESCRIPTION, meterRegistry, tagsForTimer, timerSettings));
                 }
                 if (decodingLatencyEnabled) {
-                    decodingTimersPerMsgType.put(mt, getTimer(MESSAGES_DECODING_LATENCY,
+                    decodingTimersPerMsgType.put(mt, MicrometerMeters.timer(MESSAGES_DECODING_LATENCY,
                             DECODING_LATENCY_DESCRIPTION, meterRegistry, tagsForTimer, timerSettings));
                 }
                 if (encodingLatencyEnabled) {
-                    encodingTimersPerMsgType.put(mt, getTimer(MESSAGES_ENCODING_LATENCY,
+                    encodingTimersPerMsgType.put(mt, MicrometerMeters.timer(MESSAGES_ENCODING_LATENCY,
                             ENCODING_LATENCY_DESCRIPTION, meterRegistry, tagsForTimer, timerSettings));
                 }
             });
@@ -349,70 +304,27 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
 
         @Override
         public org.lolaf.staffix.api.monitoring.Timer getTimer(String id, String description, Map<String, String> tags) {
-            MicrometerMonitoringManagerSettings.TimerSettings timerSettings = settings.getTimerSettings().getOrDefault(id, settings.getDefaultTimersSettings());
-            return timersForSession.computeIfAbsent(meterKey(id, tags), i -> {
-                Timer raw = getTimer(id, description, meterRegistry, customTags(tags), timerSettings);
-                customMeters.merge(id, customMeter(id, description, tags.keySet(), timerSettings), FixSessionEventsListenerImpl::withTagKeysOf);
-                return new MicrometerTimerWrapper(raw);
-            });
+            return customMeters.getTimer(id, description, tags);
         }
 
         @Override
         public org.lolaf.staffix.api.monitoring.Counter getCounter(String id, String description, Map<String, String> tags) {
-            return countersForSession.computeIfAbsent(meterKey(id, tags), i -> {
-                Counter counter = Counter.builder(id)
-                        .description(description)
-                        .tags(customTags(tags))
-                        .register(meterRegistry);
-                describeCustomMeter(id, description, tags, FixMeterDescriptor.Type.COUNTER);
-                return new MicrometerCounterWrapper(counter);
-            });
+            return customMeters.getCounter(id, description, tags);
+        }
+
+        @Override
+        public org.lolaf.staffix.api.monitoring.Counter getCounter(String id, String description, Map<String, String> tags, LongSupplier total) {
+            return customMeters.getCounter(id, description, tags, total);
         }
 
         @Override
         public org.lolaf.staffix.api.monitoring.Gauge getGauge(String id, String description, Map<String, String> tags) {
-            return gaugesForSession.computeIfAbsent(meterKey(id, tags), i -> {
-                PushedGauge gauge = new PushedGauge();
-                gauge.meter = registerGauge(id, description, tags, gauge, PushedGauge::value);
-                return gauge;
-            });
+            return customMeters.getGauge(id, description, tags);
         }
 
         @Override
         public org.lolaf.staffix.api.monitoring.Gauge getGauge(String id, String description, Map<String, String> tags, DoubleSupplier value) {
-            return gaugesForSession.computeIfAbsent(meterKey(id, tags), i -> {
-                PulledGauge gauge = new PulledGauge();
-                gauge.meter = registerGauge(id, description, tags, value, DoubleSupplier::getAsDouble);
-                return gauge;
-            });
-        }
-
-        private <T> Gauge registerGauge(String id, String description, Map<String, String> tags, T state, ToDoubleFunction<T> value) {
-            Gauge gauge = Gauge.builder(id, state, value)
-                    .description(description)
-                    .tags(customTags(tags))
-                    .strongReference(true)
-                    .register(meterRegistry);
-            describeCustomMeter(id, description, tags, FixMeterDescriptor.Type.GAUGE);
-            return gauge;
-        }
-
-        private void describeCustomMeter(String id, String description, Map<String, String> tags, FixMeterDescriptor.Type type) {
-            customMeters.merge(id, FixMeterDescriptor.builder()
-                    .name(id)
-                    .type(type)
-                    .description(description)
-                    .tagKeys(tags.keySet())
-                    .custom(true)
-                    .build(), FixSessionEventsListenerImpl::withTagKeysOf);
-        }
-
-        private Tags customTags(Map<String, String> tags) {
-            Tags all = sessionTags;
-            for (Map.Entry<String, String> tag : tags.entrySet()) {
-                all = all.and(tag.getKey(), tag.getValue());
-            }
-            return all;
+            return customMeters.getGauge(id, description, tags, value);
         }
 
         @Override
@@ -421,7 +333,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
                 return builtInMeters;
             }
             List<FixMeterDescriptor> meters = new ArrayList<>(builtInMeters);
-            meters.addAll(customMeters.values());
+            meters.addAll(customMeters.getMeterDescriptors());
             return meters;
         }
 
@@ -440,9 +352,7 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
          */
         void destroy(MeterRegistry meterRegistry) {
             destroyed = true;
-            timersForSession.values().forEach(timer -> timer.destroy(meterRegistry));
-            countersForSession.values().forEach(counter -> meterRegistry.remove(counter.counter));
-            gaugesForSession.values().forEach(gauge -> meterRegistry.remove(gauge.meter));
+            customMeters.remove();
             if (readsTimersPerMsgType != null) {
                 readsTimersPerMsgType.values().forEach(meterRegistry::remove);
                 readsTimersPerMsgType.clear();
@@ -537,87 +447,6 @@ public class MicrometerMonitoringManager extends Startable.SimpleStartable<FixSe
             }
             if (clockOffsetNanos != null) {
                 clockOffsetNanos.set(measurement.getClockOffset().toNanos());
-            }
-        }
-
-        private abstract static class RegisteredGauge implements org.lolaf.staffix.api.monitoring.Gauge {
-            Gauge meter;
-        }
-
-        private static final class PushedGauge extends RegisteredGauge {
-
-            private final AtomicLong bits = new AtomicLong(Double.doubleToRawLongBits(0));
-
-            @Override
-            public void set(double value) {
-                bits.set(Double.doubleToRawLongBits(value));
-            }
-
-            @Override
-            public void add(double delta) {
-                long current;
-                do {
-                    current = bits.get();
-                } while (!bits.compareAndSet(current, Double.doubleToRawLongBits(Double.longBitsToDouble(current) + delta)));
-            }
-
-            double value() {
-                return Double.longBitsToDouble(bits.get());
-            }
-        }
-
-        private static final class PulledGauge extends RegisteredGauge {
-
-            @Override
-            public void set(double value) {
-                // the supplier gives the value
-            }
-
-            @Override
-            public void add(double delta) {
-                // the supplier gives the value
-            }
-        }
-
-        @RequiredArgsConstructor
-        private static final class MicrometerCounterWrapper implements org.lolaf.staffix.api.monitoring.Counter {
-
-            private final Counter counter;
-
-            @Override
-            public void increment() {
-                counter.increment();
-            }
-
-            @Override
-            public void increment(long amount) {
-                counter.increment(amount);
-            }
-        }
-
-        @RequiredArgsConstructor
-        private static class MicrometerTimerWrapper implements org.lolaf.staffix.api.monitoring.Timer {
-
-            protected final Timer timer;
-            protected long startTime;
-
-            @Override
-            public void start() {
-                startTime = System.nanoTime();
-            }
-
-            @Override
-            public void stop() {
-                timer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
-            }
-
-            @Override
-            public void record(long duration, TimeUnit unit) {
-                timer.record(duration, unit);
-            }
-
-            void destroy(MeterRegistry meterRegistry) {
-                meterRegistry.remove(timer);
             }
         }
     }

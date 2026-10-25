@@ -44,7 +44,8 @@ class TestReplicationHaAutoConfiguration {
                         "staffix.ha-replication.peers.1=localhost:17101",
                         "staffix.ha-replication.peers.2=127.0.0.1:17102",
                         "staffix.ha-replication.log-capacity=1048576",
-                        "staffix.ha-replication.hand-over-timeout=2s")
+                        "staffix.ha-replication.hand-over-timeout=2s",
+                        "staffix.ha-replication.monitoring-instance-id=metrics")
                 .run(context -> {
                     ReplicationHaSettings settings = contribute(context.getBean(ReplicationHaContributor.class));
 
@@ -54,6 +55,7 @@ class TestReplicationHaAutoConfiguration {
                     assertThat(settings.getPeers().get("2")).isEqualTo(new InetSocketAddress("127.0.0.1", 17102));
                     assertThat(settings.getLogCapacity()).isEqualTo(1 << 20);
                     assertThat(settings.getHandOverTimeout()).isEqualTo(Duration.ofSeconds(2));
+                    assertThat(settings.getMonitoringInstanceId()).isEqualTo("metrics");
                     assertThat(settings.getSnapshotMaxMessages()).isEqualTo(ReplicationHaSettings.builder().build().getSnapshotMaxMessages());
                 });
     }

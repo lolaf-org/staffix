@@ -76,6 +76,11 @@ public final class ThrottlingFixSessionsPlugin<C extends PluginContext>
     }
 
     @Override
+    public <T> Optional<T> unwrap(Class<T> type) {
+        return type.isInstance(this) ? Optional.of(type.cast(this)) : delegate.unwrap(type);
+    }
+
+    @Override
     public boolean requiresTimeMeasurement(FixSessionId fixSessionId, FixSessionSettings fixSessionSettings) {
         // Admission reuses the engine-provided timestamps, so they must always be captured.
         return true;

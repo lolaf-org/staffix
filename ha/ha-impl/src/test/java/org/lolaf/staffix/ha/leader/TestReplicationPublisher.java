@@ -61,7 +61,7 @@ class TestReplicationPublisher {
     private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
     private final ReplicationPublisher publisher = new ReplicationPublisher(address, ha.getReplicationLog(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
-            "leader-a", Duration.ofMillis(100), 100);
+            "leader-a", Duration.ofMillis(100), 100, new ReplicationStats());
     private final RecordingHandler received = new RecordingHandler();
     private Client follower;
 

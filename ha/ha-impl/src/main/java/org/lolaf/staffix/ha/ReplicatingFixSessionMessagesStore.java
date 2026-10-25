@@ -20,6 +20,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
+import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
@@ -29,6 +30,7 @@ import org.lolaf.staffix.ha.log.StoreEventRecord;
 
 import java.nio.ByteBuffer;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A replicated session's store: each write is applied to the session's own store, then appended to the replication
@@ -48,9 +50,14 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     private final StoreEventRecord storeEventRecord;
     private final IdleStrategy ackIdle;
     private final ReplicatedAhead replicatedAhead;
+    private final Timer syncAckLatency;
     private long lastAppendedOffset = -1;
 
-    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog, ReplicatedSession session, Followers followers) {
+    /**
+     * @param syncAckLatency records how long a {@code SYNC} send waited for the follower's ack, when it came
+     */
+    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog, ReplicatedSession session,
+                                       Followers followers, Timer syncAckLatency) {
         this.store = store;
         this.replicationLog = replicationLog;
         this.session = session;
@@ -58,6 +65,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         this.storeEventRecord = new StoreEventRecord();
         this.ackIdle = new BackoffIdleStrategy();
         this.replicatedAhead = new ReplicatedAhead();
+        this.syncAckLatency = syncAckLatency;
     }
 
     /**
@@ -77,7 +85,12 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void awaitReplicated() {
         if (lastAppendedOffset >= 0) {
-            session.acknowledged(followers.awaitApplied(session.getKey(), lastAppendedOffset, session.getConfig().getReplicationAckTimeoutNanos(), ackIdle));
+            long startNanos = System.nanoTime();
+            Followers.Ack ack = followers.awaitApplied(session.getKey(), lastAppendedOffset, session.getConfig().getReplicationAckTimeoutNanos(), ackIdle);
+            if (ack == Followers.Ack.APPLIED) {
+                syncAckLatency.record(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
+            }
+            session.acknowledged(ack);
         }
     }
 

@@ -26,6 +26,7 @@ import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.leader.FollowerLink;
 import org.lolaf.staffix.ha.leader.ReplicationPublisher;
+import org.lolaf.staffix.ha.leader.ReplicationStats;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -51,7 +52,7 @@ class TestReplicationReceiver {
     private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
     private final ReplicationPublisher publisher = new ReplicationPublisher(address, leader.getReplicationLog(), leader.getSessions(),
-            leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100);
+            leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100, new ReplicationStats());
     private final RecordingEngine follower = new RecordingEngine().with(MAIN);
     private final Replica replica = new Replica(follower);
     private final ReplicatingStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore());

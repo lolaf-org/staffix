@@ -46,6 +46,12 @@ public class ReplicationHaProps {
     private Map<String, String> peers = new LinkedHashMap<>();
 
     /**
+     * The instance id of the monitoring publishing the replication's meters, such as the one staffix.monitoring sets up;
+     * none when unset.
+     */
+    private String monitoringInstanceId;
+
+    /**
      * Bytes of off-heap memory holding the store events not yet sent to the follower, a power of two; unset keeps
      * 16 MiB.
      */
