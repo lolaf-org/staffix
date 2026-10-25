@@ -90,9 +90,30 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     @Override
     public ReplicatingStore replicatingStore(FixSessionSettings sessionSettings, FixSessionMessagesStore store, Probes probes) {
+        ReplicatedSession known = sessions.find(sessionSettings.getFixSessionId(), sessionSettings.getFixSessionType());
+        boolean resumed = known != null && !known.isReplicated();
         ReplicatedSession session = sessions.register(sessionSettings, store);
+        if (resumed) {
+            log.info("FIX session {} {} is replicated again, {}: its followers catch up by snapshot",
+                    session.getFixSessionType(), session.getFixSessionId(), session.getConfig().getReplicationMode());
+            followers.reannounce(session.getKey());
+        }
         probes.add(HaProbes.sessionProbe(session, followers));
         return new ReplicatingFixSessionMessagesStore(store, replicationLog, session, followers, syncAckLatency);
+    }
+
+    /**
+     * Its followers are told, and stop holding it: they would otherwise count a copy that no longer moves as in sync.
+     */
+    @Override
+    public void notReplicated(FixSessionSettings sessionSettings) {
+        ReplicatedSession session = sessions.find(sessionSettings.getFixSessionId(), sessionSettings.getFixSessionType());
+        if (session == null || !session.isReplicated()) {
+            return;
+        }
+        session.update(session.getConfig().notReplicated());
+        log.info("FIX session {} {} is no longer replicated", session.getFixSessionType(), session.getFixSessionId());
+        followers.reannounce(session.getKey());
     }
 
     @Override

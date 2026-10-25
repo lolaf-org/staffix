@@ -68,6 +68,13 @@ public final class ReplicatedSession {
     }
 
     /**
+     * False once built with replication mode {@code NONE}, until built with another.
+     */
+    public boolean isReplicated() {
+        return config.getReplicationMode() != ReplicationMode.NONE;
+    }
+
+    /**
      * From the session's thread only. Logs the change from protected to not and back, never each send.
      */
     void acknowledged(Followers.Ack ack) {
@@ -119,6 +126,10 @@ public final class ReplicatedSession {
          * The session's own store, which a snapshot reads off the session's thread.
          */
         FixSessionMessagesStore store;
+
+        Config notReplicated() {
+            return new Config(ReplicationMode.NONE, replicationAckTimeoutNanos, storageIdentity, store);
+        }
 
         static Config of(HaSessionSettings settings, FixSessionMessagesStore store) {
             return new Config(settings.getReplicationMode(), settings.getReplicationAckTimeout().toNanos(),

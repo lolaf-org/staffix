@@ -45,7 +45,13 @@ final class NoHighAvailability implements FixEngineHa {
     }
 
     @Override
+    public void notReplicated(FixSessionSettings settings) {
+        // nothing to do
+    }
+
+    @Override
     public void bind(EngineAccess engine) {
+        // nothing to do
     }
 
     /**

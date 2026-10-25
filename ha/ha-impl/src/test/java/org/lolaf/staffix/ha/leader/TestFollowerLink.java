@@ -286,6 +286,23 @@ class TestFollowerLink {
     }
 
     @Test
+    void aSessionNoLongerReplicatedIsAnnouncedAgainAndLeftOutOfTheFollowersSync() {
+        replicated("main").storeNextIncomingSeqNum(5);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        fill();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
+
+        ha.notReplicated(settings("main"));
+        link.reannounce(0);
+        fill();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.NOT_REPLICATED);
+
+        assertThat(sent.frames).endsWith("SESSION epoch=7 key=0 INITIATOR NONE id=" + SESSION + " identity=null");
+        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.NOT_REPLICATED);
+        assertThat(link.isInSyncForAll(1)).as("a session not replicated is not waited for").isTrue();
+    }
+
+    @Test
     void aStatusForASessionNeverAnnouncedClosesTheStream() {
         link.onSessionStatus(EPOCH, 3, SessionStatus.REPLICATING);
 

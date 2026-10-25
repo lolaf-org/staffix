@@ -109,7 +109,7 @@ public final class LeaderLink implements FrameHandler {
         if (!fromLeader(epoch)) {
             return;
         }
-        sessionStatus(sessionKey, replica.bind(sessionKey, fixSessionType, fixSessionId, storageIdentity));
+        sessionStatus(sessionKey, replica.bind(sessionKey, fixSessionType, fixSessionId, replicationMode, storageIdentity));
     }
 
     private void sessionStatus(int sessionKey, SessionStatus status) {

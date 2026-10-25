@@ -367,6 +367,21 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         logonClient();
 
         verify(ha, never()).replicatingStore(any(), any(), any());
+        verify(ha).notReplicated(argThat(settings -> settings.getFixSessionId().equals(fixInitiatorSession.getFixSessionId())));
+    }
+
+    @Test
+    void aReplicationTurnedOffThroughTheAdminApiReachesTheHighAvailabilityAsTheSessionRestarts() {
+        withHighAvailability();
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC)).build());
+        logonClient();
+        AdminApi admin = (AdminApi) initiatorFixEngine;
+        FixSessionSettings sync = admin.getManagedFixSessionsSettings().get(0);
+
+        admin.updateFixSessionSettings(sync.getFixSessionId(), sync.toBuilder().haSessionSettings(replicated(ReplicationMode.NONE)).build());
+
+        await().untilAsserted(() -> verify(ha).notReplicated(argThat(settings -> settings.getFixSessionId().equals(sync.getFixSessionId()))));
+        verify(ha).replicatingStore(any(), any(), any());
     }
 
     @Test

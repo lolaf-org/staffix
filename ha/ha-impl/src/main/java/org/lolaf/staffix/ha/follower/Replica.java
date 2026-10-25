@@ -100,11 +100,14 @@ public final class Replica {
     /**
      * Binds the leader's key to the session configured here with that id and type, opening and starting its store
      * the first time, when it is not the leader's own storage. A session refused is looked at again on the next
-     * connection, its storage being readable by then perhaps.
+     * connection, its storage being readable by then perhaps. One the leader no longer replicates has its store
+     * closed, and is caught up again by snapshot once the leader replicates it again.
      */
-    SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId, @Nullable String leaderStorageIdentity) {
+    SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId, ReplicationMode replicationMode,
+                       @Nullable String leaderStorageIdentity) {
         ReplicaSession bound = key < sessions.length ? sessions[key] : null;
-        if (bound != null && bound.matches(fixSessionType, fixSessionId) && bound.store != null) {
+        if (bound != null && bound.matches(fixSessionType, fixSessionId) && bound.store != null
+                && replicationMode != ReplicationMode.NONE) {
             return bound.status();
         }
         if (bound != null) {
@@ -113,9 +116,13 @@ public final class Replica {
         if (key >= sessions.length) {
             sessions = Arrays.copyOf(sessions, Math.max(key + 1, sessions.length * 2));
         }
-        sessions[key] = open(fixSessionType, fixSessionId, leaderStorageIdentity);
+        sessions[key] = replicationMode == ReplicationMode.NONE
+                ? new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.NOT_REPLICATED)
+                : open(fixSessionType, fixSessionId, leaderStorageIdentity);
         SessionStatus status = sessions[key].status();
-        if (status == SessionStatus.SHARED_STORAGE) {
+        if (status == SessionStatus.NOT_REPLICATED) {
+            log.info("FIX session {} {} is not replicated: the leader's settings do not ask for it", fixSessionType, fixSessionId);
+        } else if (status == SessionStatus.SHARED_STORAGE) {
             log.info("FIX session {} {} is not replicated: its storage is the leader's own", fixSessionType, fixSessionId);
         } else if (status != SessionStatus.SNAPSHOT_NEEDED) {
             log.warn("FIX session {} {} is not replicated here: {}", fixSessionType, fixSessionId, status);

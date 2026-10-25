@@ -41,7 +41,9 @@ import org.lolaf.staffix.ha.wire.WireFormat;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -109,6 +111,10 @@ public final class FollowerLink implements FrameHandler {
      * What the follower last said of each session, by key, which tells a shared storage and a refusal's reason apart.
      */
     private final Map<Integer, SessionStatus> reportedStatuses = new ConcurrentHashMap<>();
+    /**
+     * Keys of sessions already announced whose replication mode changed to or from {@code NONE} since.
+     */
+    private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
     private volatile boolean snapshotRequested;
     private volatile boolean paused;
     /**
@@ -239,6 +245,9 @@ public final class FollowerLink implements FrameHandler {
                 sessionSync(sessionKey, SessionSync.SNAPSHOT_PENDING);
                 snapshotRequested = true;
                 break;
+            case NOT_REPLICATED:
+                sessionSync(sessionKey, SessionSync.NOT_REPLICATED);
+                break;
             default:
                 sessionSync(sessionKey, SessionSync.NOT_REPLICATED);
                 ReplicatedSession session = sessions.get(sessionKey);
@@ -279,7 +288,7 @@ public final class FollowerLink implements FrameHandler {
      */
     public boolean isInSyncForAll(int sessionCount) {
         for (int key = 0; key < sessionCount; key++) {
-            if (!isInSync(key)) {
+            if (!isInSync(key) && sessions.get(key).isReplicated()) {
                 return false;
             }
         }
@@ -377,18 +386,47 @@ public final class FollowerLink implements FrameHandler {
         int filled = index;
         long leaderEpoch = epoch.getAsLong();
         while (announced < sessions.count()) {
-            ReplicatedSession session = sessions.get(announced);
-            String id = session.getFixSessionId().toString();
-            ReplicatedSession.Config config = session.getConfig();
-            if (dst.limit() - filled < FrameEncoder.bytesWith(FrameType.SESSION, id, config.getStorageIdentity())) {
-                break;
+            int bytes = announce(dst, filled, leaderEpoch, sessions.get(announced));
+            if (bytes == 0) {
+                return filled;
             }
-            filled += FrameEncoder.session(dst, filled, leaderEpoch, session.getKey(), session.getFixSessionType(),
-                    config.getReplicationMode(), id, config.getStorageIdentity());
-            sessionSync(announced, SessionSync.ANNOUNCED);
+            filled += bytes;
             announced++;
         }
+        Integer key;
+        while ((key = reannouncements.peek()) != null) {
+            // a key not announced yet goes out with its current mode once it is
+            if (key < announced) {
+                int bytes = announce(dst, filled, leaderEpoch, sessions.get(key));
+                if (bytes == 0) {
+                    return filled;
+                }
+                filled += bytes;
+            }
+            reannouncements.poll();
+        }
         return filled;
+    }
+
+    /**
+     * @return the bytes written, 0 when the frame does not fit
+     */
+    private int announce(ByteBuffer dst, int index, long leaderEpoch, ReplicatedSession session) {
+        String id = session.getFixSessionId().toString();
+        ReplicatedSession.Config config = session.getConfig();
+        if (dst.limit() - index < FrameEncoder.bytesWith(FrameType.SESSION, id, config.getStorageIdentity())) {
+            return 0;
+        }
+        sessionSync(session.getKey(), SessionSync.ANNOUNCED);
+        return FrameEncoder.session(dst, index, leaderEpoch, session.getKey(), session.getFixSessionType(),
+                config.getReplicationMode(), id, config.getStorageIdentity());
+    }
+
+    /**
+     * The session's replication mode changed to or from {@code NONE}: the follower stops holding it, or catches up.
+     */
+    void reannounce(int sessionKey) {
+        reannouncements.add(sessionKey);
     }
 
     /**

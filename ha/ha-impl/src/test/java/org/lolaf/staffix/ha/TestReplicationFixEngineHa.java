@@ -261,6 +261,23 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void aSessionBuiltWithoutReplicationIsDroppedByTheFollowerThenCaughtUpBySnapshotOnceReplicatedAgain() {
+        aLeadsBFollows();
+        RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);
+
+        a.ha.notReplicated(MAIN);
+
+        await().until(() -> "NOT_REPLICATED".equals(b.ha.getSessionsStatus().get(0).getNotReplicatedReason()));
+        assertThat(b.ha.getReplica().isComplete()).isTrue();
+        assertThat(a.ha.getStatus().getFollowers()).singleElement().satisfies(follower -> assertThat(follower.isInSync()).isTrue());
+
+        a.ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore(), new RecordingProbes());
+
+        await().until(() -> b.engine.store(MAIN) != replicaStore && b.ha.getSessionsStatus().get(0).isInSync());
+        assertThat(a.engine.meters.read("ha.snapshots")).as("b caught up twice").isEqualTo(2);
+    }
+
+    @Test
     void theMetersFollowTheReplicationOnBothNodes() {
         aLeadsBFollows();
         RecordingMeters leader = a.engine.meters;

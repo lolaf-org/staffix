@@ -47,6 +47,13 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
     ReplicatingStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store, Probes probes);
 
     /**
+     * Called in place of {@link #replicatingStore} each time a session whose replication mode is
+     * {@link FixSessionSettings.HaSessionSettings.ReplicationMode#NONE NONE} is built, so one replicated until its
+     * settings changed stops being. Once per build, never per message.
+     */
+    void notReplicated(FixSessionSettings settings);
+
+    /**
      * Called once by the engine, before {@link #start()}.
      */
     void bind(EngineAccess engine);

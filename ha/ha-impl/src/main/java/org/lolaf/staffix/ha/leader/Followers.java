@@ -49,6 +49,15 @@ public final class Followers {
         return List.of(links);
     }
 
+    /**
+     * Announces the session again to every follower, its replication mode having changed to or from {@code NONE}.
+     */
+    public void reannounce(int sessionKey) {
+        for (FollowerLink link : links) {
+            link.reannounce(sessionKey);
+        }
+    }
+
 
     /**
      * Waits until every follower in sync for the session applied the event at {@code offset}. A follower falling out

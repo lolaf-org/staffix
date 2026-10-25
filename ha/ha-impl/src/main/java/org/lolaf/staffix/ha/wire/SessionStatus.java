@@ -39,7 +39,11 @@ public enum SessionStatus {
     /**
      * The follower replicates the session but misses part of its history: it needs a snapshot to be in sync.
      */
-    SNAPSHOT_NEEDED(4);
+    SNAPSHOT_NEEDED(4),
+    /**
+     * The leader announced the session with replication mode {@code NONE}: its settings stopped its replication.
+     */
+    NOT_REPLICATED(5);
 
     private final int code;
 
@@ -62,6 +66,8 @@ public enum SessionStatus {
                 return UNKNOWN_SESSION;
             case 4:
                 return SNAPSHOT_NEEDED;
+            case 5:
+                return NOT_REPLICATED;
             default:
                 return null;
         }

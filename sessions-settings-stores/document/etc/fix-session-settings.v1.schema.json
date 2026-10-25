@@ -400,7 +400,7 @@
         "replicationMode" : {
           "type" : "string",
           "enum" : [ "NONE", "ASYNC", "SYNC" ],
-          "description" : "Whether the session's store is replicated, and whether a send waits for the standby.",
+          "description" : "Whether the session's store is replicated, and whether a send waits for the standby. A change applies when the session is next built, as restartLiveSessionOnUpdate decides: turned on, the standby catches up by snapshot; turned off, it stops holding the session.",
           "default" : "NONE"
         }
       },

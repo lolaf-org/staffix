@@ -386,7 +386,9 @@ public class FixSessionSettings {
     public static class HaSessionSettings {
 
         /**
-         * Whether the session's store is replicated, and whether a send waits for the standby.
+         * Whether the session's store is replicated, and whether a send waits for the standby. A change applies when the
+         * session is next built, as {@code restartLiveSessionOnUpdate} decides: turned on, the standby catches up
+         * by snapshot; turned off, it stops holding the session.
          */
         @Builder.Default
         ReplicationMode replicationMode = ReplicationMode.NONE;

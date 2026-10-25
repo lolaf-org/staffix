@@ -36,9 +36,9 @@ class TestReplica {
 
     @Test
     void promotionMovesTheOutgoingSeqNumOfEveryReplicatedSessionAhead() {
-        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), "leader-storage"))
+        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage"))
                 .isEqualTo(SessionStatus.SNAPSHOT_NEEDED);
-        assertThat(replica.bind(1, SHARED.getFixSessionType(), SHARED.getFixSessionId().toString(), "follower-storage"))
+        assertThat(replica.bind(1, SHARED.getFixSessionType(), SHARED.getFixSessionId().toString(), ReplicationMode.ASYNC, "follower-storage"))
                 .isEqualTo(SessionStatus.SHARED_STORAGE);
 
         replica.jumpOutgoingSeqNums(1_000);
@@ -48,6 +48,24 @@ class TestReplica {
         assertThat(engine.store(SHARED).writes).as("its storage, shared with the old leader").containsExactly("outgoing 1001");
         assertThat(engine.store(SHARED).started).as("opened for the jump only").isFalse();
         assertThat(engine.store(NOT_REPLICATED)).isNull();
+    }
+
+    @Test
+    void aSessionTheLeaderStopsReplicatingIsClosedThenCaughtUpAgainBySnapshot() {
+        String id = REPLICATED.getFixSessionId().toString();
+        replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage");
+        RecordingEngine.RecordingStore first = engine.store(REPLICATED);
+        assertThat(replica.snapshotBegin(0, 1, 1) && replica.snapshotEnd(0, 0)).isTrue();
+
+        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.NONE, "leader-storage"))
+                .isEqualTo(SessionStatus.NOT_REPLICATED);
+        assertThat(first.started).isFalse();
+        assertThat(replica.isComplete()).as("a session not replicated is not waited for").isTrue();
+
+        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.SYNC, "leader-storage"))
+                .isEqualTo(SessionStatus.SNAPSHOT_NEEDED);
+        assertThat(engine.store(REPLICATED)).isNotSameAs(first);
+        assertThat(replica.isComplete()).isFalse();
     }
 
     @Test

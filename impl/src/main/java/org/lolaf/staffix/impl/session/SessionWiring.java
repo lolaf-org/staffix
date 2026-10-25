@@ -173,8 +173,11 @@ final class SessionWiring {
      */
     private static FixSessionMessagesStore replicated(FixSessionSettings settings, FailSafeFixSessionMessagesStore store,
                                                       ProbesImpl probes, FixSessionRuntimeDependencies runtimeDependencies) {
-        return settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE
-                ? store : runtimeDependencies.getFixEngineHa().replicatingStore(settings, store, probes);
+        if (settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE) {
+            runtimeDependencies.getFixEngineHa().notReplicated(settings);
+            return store;
+        }
+        return runtimeDependencies.getFixEngineHa().replicatingStore(settings, store, probes);
     }
 
     private static ReplicatingStore syncReplicatingStore(FixSessionSettings settings, FixSessionMessagesStore store) {
