@@ -65,6 +65,18 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-spring-boot</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-primos-spring-boot</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-admin-api-jmx-spring-boot</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>

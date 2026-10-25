@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.lolaf.staffix</groupId>
+        <artifactId>staffix-spring-boot-parent</artifactId>
+        <version>0.9.2-SNAPSHOT</version>
+        <relativePath>../../spring-boot/pom.xml</relativePath>
+    </parent>
+    <artifactId>staffix-ha-spring-boot</artifactId>
+
+    <name>Staffix High Availability (Spring Boot)</name>
+    <description>
+        Spring Boot auto-configuration for store replication to a standby engine, bound from staffix.* properties, with
+        the leader election taken from the application context.
+    </description>
+
+    <properties>
+        <automatic.module.name>org.lolaf.staffix.ha.spring</automatic.module.name>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-impl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-spring-boot-spi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-test</artifactId>
+            <version>${spring-boot.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-component-metadata-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

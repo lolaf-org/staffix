@@ -18,6 +18,8 @@
     <modules>
         <module>ha-impl</module>
         <module>ha-primos</module>
+        <module>ha-spring-boot</module>
+        <module>ha-primos-spring-boot</module>
         <module>ha-integration-tests</module>
     </modules>
 

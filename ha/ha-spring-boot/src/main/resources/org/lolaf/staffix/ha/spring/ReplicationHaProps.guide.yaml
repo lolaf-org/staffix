@@ -1,0 +1,11 @@
+summary: >-
+  Declares store replication to a standby engine in Spring Boot properties. The leader election is a
+  LeaderElectionSettings bean, such as the one staffix-ha-primos-spring-boot declares from the primos starter's node.
+production:
+  - >-
+    Give every node the same peers, and its own node-id; with primos, node ids are the primos node ids.
+failures:
+  - symptom: >-
+      The application fails to start with "Store replication needs a LeaderElectionSettings bean".
+    fix: >-
+      Add staffix-ha-primos-spring-boot with the primos starter configured, or declare a LeaderElectionSettings bean.
