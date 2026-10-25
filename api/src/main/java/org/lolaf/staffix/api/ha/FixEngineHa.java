@@ -17,9 +17,11 @@ package org.lolaf.staffix.api.ha;
 
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 
 /**
@@ -82,10 +84,17 @@ public interface FixEngineHa extends Startable<FixEngineHa> {
     interface ReplicatingStore extends FixSessionMessagesStore {
 
         /**
-         * Called by a {@link FixSessionSettings.HaSessionSettings.ReplicationMode#SYNC SYNC} session once a message
-         * is in its store and before it goes out, from the session's thread. Returns when the standby has every write
-         * made so far, when {@link FixSessionSettings.HaSessionSettings#getReplicationAckTimeout()} runs out, or at
-         * once while no standby is in sync, so that a lost standby never stops trading.
+         * Called by a {@link FixSessionSettings.HaSessionSettings.ReplicationMode#SYNC SYNC} session as a message is
+         * built, before it goes out: replicates the store write its sending makes afterwards, which then only applies
+         * locally. {@code message} is read from its position to its limit and left as it is.
+         */
+        void replicateSent(MessageType messageType, long outgoingSeqNum, ByteBuffer message);
+
+        /**
+         * Called by a {@code SYNC} session after {@link #replicateSent}, before the message goes out, from the
+         * session's thread. Returns when the standby has every write replicated so far, when
+         * {@link FixSessionSettings.HaSessionSettings#getReplicationAckTimeout()} runs out, or at once while no standby
+         * is in sync, so that a lost standby never stops trading.
          */
         void awaitReplicated();
     }

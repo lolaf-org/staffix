@@ -62,8 +62,8 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
     private final FixApplication fixApplication;
     private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
     /**
-     * A {@code SYNC} session's store, null for any other: its messages are stored as they are built, before the write,
-     * so the standby has them before the counterparty does.
+     * A {@code SYNC} session's store, null for any other: its messages are replicated as they are built, before the
+     * write, so the standby has them before the counterparty does, then stored after the write like any other.
      */
     private final ReplicatingStore syncReplicatingStore;
     private final Consumer<FixSessionFixMessageContext> beforeWrite;
@@ -90,8 +90,8 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         this.fixApplication = fixApplication;
         this.fixSessionMessagesStore = fixSessionMessagesStore;
         this.syncReplicatingStore = syncReplicatingStore;
-        this.beforeWrite = syncReplicatingStore == null ? null : this::storeAndAwaitReplication;
-        this.beforeBufferedWrite = syncReplicatingStore == null ? null : this::storeAndAwaitReplication;
+        this.beforeWrite = syncReplicatingStore == null ? null : this::replicateAndAwait;
+        this.beforeBufferedWrite = syncReplicatingStore == null ? null : this::replicateAndAwait;
         this.fixMessagesLogger = fixMessagesLogger;
         this.fixSessionId = fixSessionId;
         this.clock = clock;
@@ -304,8 +304,10 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         if (sendingError != null) {
             fixApplication.onMessageSendingFailure(fixSession, sentMessageType, message.position(0), sendingError);
         }
-        if (syncReplicatingStore == null) {
-            store(fixSessionMessagesStore, sentMessageType, outgoingSeqNum, message);
+        if (sentMessageType.isStorable() && !fixSessionMessagesStore.filter(sentMessageType, message)) {
+            fixSessionMessagesStore.storeMessageSent(outgoingSeqNum, message.position(0));
+        } else {
+            fixSessionMessagesStore.storeNextOutgoingSeqNum(outgoingSeqNum + 1);
         }
 
         logOutgoingFixMessage(message.position(0), context, sendingError);
@@ -314,15 +316,15 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         fixSessionLayerComponents.onMessageSent(context.getSendingTime());
     }
 
-    private void storeAndAwaitReplication(FixSessionFixMessageContext ctx) {
-        storeBeforeWrite(ctx);
+    private void replicateAndAwait(FixSessionFixMessageContext ctx) {
+        replicateBeforeWrite(ctx);
         syncReplicatingStore.awaitReplicated();
     }
 
-    private void storeAndAwaitReplication(FixSessionBufferedFixMessageContext batch) {
+    private void replicateAndAwait(FixSessionBufferedFixMessageContext batch) {
         FixSessionFixMessageContext[] sendingContexts = batch.getSendingContexts();
         for (int i = 0; i < batch.getSendingContextsCount(); i++) {
-            storeBeforeWrite(sendingContexts[i]);
+            replicateBeforeWrite(sendingContexts[i]);
         }
         syncReplicatingStore.awaitReplicated();
     }
@@ -330,20 +332,12 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
     /**
      * The message is written up to its position, not yet flipped by the IO session.
      */
-    private void storeBeforeWrite(FixSessionFixMessageContext ctx) {
+    private void replicateBeforeWrite(FixSessionFixMessageContext ctx) {
         ByteBuffer message = ctx.getMessage();
         int end = message.position();
         int limit = message.limit();
-        store(syncReplicatingStore, ctx.getEncoder().getMessageType(), ctx.getOutgoingSeqNum(), message.limit(end).position(0));
+        syncReplicatingStore.replicateSent(ctx.getEncoder().getMessageType(), ctx.getOutgoingSeqNum(), message.limit(end).position(0));
         message.limit(limit).position(end);
-    }
-
-    private static void store(FixMessagesStore.FixSessionMessagesStore store, MessageType sentMessageType, long outgoingSeqNum, ByteBuffer message) {
-        if (sentMessageType.isStorable() && !store.filter(sentMessageType, message)) {
-            store.storeMessageSent(outgoingSeqNum, message.position(0));
-        } else {
-            store.storeNextOutgoingSeqNum(outgoingSeqNum + 1);
-        }
     }
 
     private void bufferedMessagesSentCallback(ByteBuffer bufferedWritesMessage, Exception sendingError, FixSessionBufferedFixMessageContext bufferedMessagesSendingContext) {

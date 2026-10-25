@@ -43,8 +43,9 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     private final ReplicationLog log;
     private final ReplicatedSession session;
     private final Followers followers;
-    private final StoreEventRecord record = new StoreEventRecord();
-    private final IdleStrategy ackIdle = new BackoffIdleStrategy();
+    private final StoreEventRecord storeEventRecord;
+    private final IdleStrategy ackIdle;
+    private final ReplicatedAhead replicatedAhead;
     private long lastAppendedOffset = -1;
 
     ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog log, ReplicatedSession session, Followers followers) {
@@ -52,6 +53,23 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         this.log = log;
         this.session = session;
         this.followers = followers;
+        this.storeEventRecord = new StoreEventRecord();
+        this.ackIdle = new BackoffIdleStrategy();
+        this.replicatedAhead = new ReplicatedAhead();
+    }
+
+    /**
+     * Appends what the session's store write will be once the message is sent, deciding as the session does: the
+     * message itself when storable and not filtered, else the next outgoing seqnum.
+     */
+    @Override
+    public void replicateSent(MessageType messageType, long outgoingSeqNum, ByteBuffer message) {
+        if (messageType.isStorable() && !store.filter(messageType, message)) {
+            append(StoreEventType.STORE_MESSAGE, outgoingSeqNum, message);
+        } else {
+            append(StoreEventType.STORE_OUTGOING_SEQ_NUM, outgoingSeqNum + 1, null);
+        }
+        replicatedAhead.add(outgoingSeqNum);
     }
 
     @Override
@@ -101,6 +119,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void resetSequenceNumbers() {
         store.resetSequenceNumbers();
+        replicatedAhead.clear();
         append(StoreEventType.RESET_SEQ_NUM, 0, null);
     }
 
@@ -128,6 +147,9 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void storeNextOutgoingSeqNum(long nextOutgoingSeqNum) {
         store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
+        if (replicatedAhead.remove(nextOutgoingSeqNum - 1)) {
+            return;
+        }
         append(StoreEventType.STORE_OUTGOING_SEQ_NUM, nextOutgoingSeqNum, null);
     }
 
@@ -140,6 +162,9 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         int limit = message.limit();
         store.storeMessageSent(outgoingSeqNum, message);
         message.limit(limit).position(position);
+        if (replicatedAhead.remove(outgoingSeqNum)) {
+            return;
+        }
         append(StoreEventType.STORE_MESSAGE, outgoingSeqNum, message);
     }
 
@@ -153,9 +178,58 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      */
     private void append(StoreEventType eventType, long sequenceNumber, ByteBuffer message) {
         try {
-            lastAppendedOffset = log.append(record.set(session.getKey(), eventType, sequenceNumber, message));
+            lastAppendedOffset = log.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber, message));
         } catch (IllegalArgumentException e) {
             session.unreplicated(e.getMessage());
+        }
+    }
+
+    /**
+     * The outgoing seqnums replicated ahead of their store write, oldest first: a write of one of them is the one
+     * already in the log. Seqnums only grow between resets, so one older than the write looked at is a write that
+     * never came, and is dropped. One thread at a time, like the writes.
+     */
+    static final class ReplicatedAhead {
+
+        private long[] seqNums = new long[16];
+        private int head;
+        private int size;
+
+        void add(long seqNum) {
+            if (size == seqNums.length) {
+                long[] grown = new long[seqNums.length * 2];
+                for (int i = 0; i < size; i++) {
+                    grown[i] = seqNums[(head + i) % seqNums.length];
+                }
+                seqNums = grown;
+                head = 0;
+            }
+            seqNums[(head + size) % seqNums.length] = seqNum;
+            size++;
+        }
+
+        /**
+         * @return whether {@code seqNum} was replicated ahead, and is now taken off
+         */
+        boolean remove(long seqNum) {
+            while (size > 0 && seqNums[head] < seqNum) {
+                pop();
+            }
+            if (size > 0 && seqNums[head] == seqNum) {
+                pop();
+                return true;
+            }
+            return false;
+        }
+
+        void clear() {
+            head = 0;
+            size = 0;
+        }
+
+        private void pop() {
+            head = (head + 1) % seqNums.length;
+            size--;
         }
     }
 }

@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
+import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -213,24 +214,24 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     }
 
     @Test
-    void aSyncSessionStoresEachMessageThenWaitsForItsReplicationBeforeWritingIt() {
+    void aSyncSessionReplicatesEachMessageAndWaitsBeforeWritingItThenStoresIt() {
         withHighAvailability();
 
         setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC)).build());
         logonClient();
 
         await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
-                .startsWith("outgoing 2", "await")
+                .startsWith("replicate 1", "await", "outgoing 2")
                 .containsOnlyOnce("outgoing 2"));
     }
 
     @Test
-    void aSyncBatchStoresAllItsMessagesThenWaitsOnce() {
+    void aSyncBatchReplicatesAllItsMessagesThenWaitsOnce() {
         withHighAvailability();
         setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC)).build());
         logonClient();
         FixSession fixSession = getFixSession(ConnectorType.INITIATOR);
-        await().until(() -> stores.get(0).outgoingWrites.contains("await"));
+        await().until(() -> stores.get(0).outgoingWrites.contains("outgoing 2"));
         stores.get(0).outgoingWrites.clear();
 
         for (int i = 1; i <= 3; i++) {
@@ -239,7 +240,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         fixSession.flush();
 
         await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
-                .containsExactly("message 2", "message 3", "message 4", "await"));
+                .containsExactly("replicate 2", "replicate 3", "replicate 4", "await", "message 2", "message 3", "message 4"));
         List<TestingDecodedFixMessage> received = getDecodedFixMessages(ConnectorType.ACCEPTOR);
         assertMessageReceived(received, Subject.get(), "subject-1");
         assertMessageReceived(received, Subject.get(), "subject-3");
@@ -254,7 +255,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
 
         await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
                 .containsOnlyOnce("outgoing 2")
-                .doesNotContain("await"));
+                .noneMatch(write -> write.startsWith("replicate") || write.equals("await")));
     }
 
     @Test
@@ -310,6 +311,11 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         public void storeNextOutgoingSeqNum(long nextOutgoingSeqNum) {
             outgoingWrites.add("outgoing " + nextOutgoingSeqNum);
             store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
+        }
+
+        @Override
+        public void replicateSent(MessageType messageType, long outgoingSeqNum, ByteBuffer message) {
+            outgoingWrites.add("replicate " + outgoingSeqNum);
         }
 
         @Override

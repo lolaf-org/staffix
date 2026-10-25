@@ -37,9 +37,9 @@ public class ReplicationLog {
 
     static final int STORE_EVENT = 0;
 
-    private static final ByteTranslator<StoreEventRecord> ENCODE = (buffer, index, length, record) ->
-            FrameEncoder.storeEventBody(buffer, index, record.getSessionKey(), record.getEventType(), record.getSequenceNumber(),
-                    record.getMessage());
+    private static final ByteTranslator<StoreEventRecord> ENCODE = (buffer, index, length, storeEventRecord) ->
+            FrameEncoder.storeEventBody(buffer, index, storeEventRecord.getSessionKey(), storeEventRecord.getEventType(),
+                    storeEventRecord.getSequenceNumber(), storeEventRecord.getMessage());
 
     private final BroadcastByteRingBuffer ring;
 
@@ -70,13 +70,13 @@ public class ReplicationLog {
      * @return the event's offset
      * @throws IllegalArgumentException for a message longer than {@link #getMaxMessageLength()}
      */
-    public long append(StoreEventRecord record) {
-        int messageLength = record.messageLength();
+    public long append(StoreEventRecord storeEventRecord) {
+        int messageLength = storeEventRecord.messageLength();
         if (messageLength > getMaxMessageLength()) {
             throw new IllegalArgumentException("A message of " + messageLength + " bytes exceeds the "
                     + getMaxMessageLength() + " a replication log of " + ring.getCapacity() + " bytes can hold");
         }
-        return ring.write(STORE_EVENT, FrameEncoder.storeEventBodyBytes(messageLength), ENCODE, record);
+        return ring.write(STORE_EVENT, FrameEncoder.storeEventBodyBytes(messageLength), ENCODE, storeEventRecord);
     }
 
     /**
@@ -109,10 +109,10 @@ public class ReplicationLog {
          */
         public static final int NO_EVENT = ByteRingReader.NO_FRAME;
 
-        private final ByteRingReader reader;
+        private final ByteRingReader byteRingReader;
 
-        private Reader(ByteRingReader reader) {
-            this.reader = reader;
+        private Reader(ByteRingReader byteRingReader) {
+            this.byteRingReader = byteRingReader;
         }
 
         /**
@@ -122,21 +122,21 @@ public class ReplicationLog {
          * {@link #seek} or {@link #seekToTail}
          */
         public int readInto(ByteBuffer dst, int dstIndex) {
-            return reader.readInto(dst, dstIndex);
+            return byteRingReader.readInto(dst, dstIndex);
         }
 
         /**
          * The offset of the event last read.
          */
         public long getEventOffset() {
-            return reader.getFramePosition();
+            return byteRingReader.getFramePosition();
         }
 
         /**
          * The offset of the next event to read.
          */
         public long getOffset() {
-            return reader.getPosition();
+            return byteRingReader.getPosition();
         }
 
         /**
@@ -145,11 +145,11 @@ public class ReplicationLog {
          * @return false, and the reader left where it was, when that event is no longer in the log
          */
         public boolean seek(long offset) {
-            return reader.seek(offset);
+            return byteRingReader.seek(offset);
         }
 
         public void seekToTail() {
-            reader.seekToTail();
+            byteRingReader.seekToTail();
         }
     }
 }

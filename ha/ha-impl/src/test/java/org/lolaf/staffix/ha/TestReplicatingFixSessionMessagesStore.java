@@ -35,6 +35,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class TestReplicatingFixSessionMessagesStore {
 
@@ -138,6 +140,99 @@ class TestReplicatingFixSessionMessagesStore {
      * Fewer bytes than writes rather than zero: a one-off may land in the window while the JIT settles, whereas an
      * object per write would cost at least 16 bytes each.
      */
+    private static MessageType messageType(boolean storable) {
+        MessageType type = mock(MessageType.class);
+        when(type.isStorable()).thenReturn(storable);
+        return type;
+    }
+
+    private ReplicatingStore syncStore() {
+        return ha.replicatingStore(session("main", FixSessionType.INITIATOR), local);
+    }
+
+    @Test
+    void aMessageReplicatedBeforeItIsSentIsOnlyStoredLocallyAfter() {
+        ReplicatingStore store = syncStore();
+
+        store.replicateSent(messageType(true), 5, message());
+        assertThat(local.calls).as("the local store waits for the send").isEmpty();
+        store.storeMessageSent(5, message());
+
+        assertThat(local.calls).containsExactly("message 5");
+        assertThat(nextEvent()).isEqualTo("0 0 5 " + MESSAGE);
+        assertThat(nextEvent()).as("logged once").isEqualTo("none");
+    }
+
+    @Test
+    void anAdminMessageReplicatedBeforeItIsSentLogsTheNextOutgoingSeqNumOnce() {
+        ReplicatingStore store = syncStore();
+
+        store.replicateSent(messageType(false), 5, message());
+        store.storeNextOutgoingSeqNum(6);
+
+        assertThat(local.calls).containsExactly("outgoing 6");
+        assertThat(nextEvent()).isEqualTo("0 2 6 ");
+        assertThat(nextEvent()).isEqualTo("none");
+    }
+
+    @Test
+    void aBatchReplicatedBeforeItIsSentIsLoggedOnce() {
+        ReplicatingStore store = syncStore();
+
+        for (long seq = 5; seq <= 7; seq++) {
+            store.replicateSent(messageType(true), seq, message());
+        }
+        for (long seq = 5; seq <= 7; seq++) {
+            store.storeMessageSent(seq, message());
+        }
+
+        assertThat(nextEvent()).startsWith("0 0 5 ");
+        assertThat(nextEvent()).startsWith("0 0 6 ");
+        assertThat(nextEvent()).startsWith("0 0 7 ");
+        assertThat(nextEvent()).isEqualTo("none");
+    }
+
+    @Test
+    void aWriteNotReplicatedAheadIsLoggedAsAlways() {
+        ReplicatingStore store = syncStore();
+        store.replicateSent(messageType(true), 5, message());
+
+        store.storeNextOutgoingSeqNum(3);
+        store.storeMessageSent(5, message());
+
+        assertThat(nextEvent()).startsWith("0 0 5 ");
+        assertThat(nextEvent()).as("an operator setting it lower meanwhile").isEqualTo("0 2 3 ");
+        assertThat(nextEvent()).isEqualTo("none");
+    }
+
+    @Test
+    void aSendWhoseWriteNeverCameIsForgottenByTheNext() {
+        ReplicatingStore store = syncStore();
+        store.replicateSent(messageType(true), 5, message());
+        store.replicateSent(messageType(true), 6, message());
+
+        store.storeMessageSent(6, message());
+        store.storeMessageSent(5, message());
+
+        assertThat(nextEvent()).startsWith("0 0 5 ");
+        assertThat(nextEvent()).startsWith("0 0 6 ");
+        assertThat(nextEvent()).as("5 dropped from those replicated ahead").startsWith("0 0 5 ");
+        assertThat(nextEvent()).isEqualTo("none");
+    }
+
+    @Test
+    void aResetForgetsWhatWasReplicatedAhead() {
+        ReplicatingStore store = syncStore();
+        store.replicateSent(messageType(true), 5, message());
+
+        store.resetSequenceNumbers();
+        store.storeMessageSent(5, message());
+
+        assertThat(nextEvent()).startsWith("0 0 5 ");
+        assertThat(nextEvent()).startsWith("0 3 0");
+        assertThat(nextEvent()).startsWith("0 0 5 ");
+    }
+
     @Test
     @Timeout(5)
     void aSyncSendWithoutAFollowerInSyncGoesOutAtOnceUnacknowledged() {

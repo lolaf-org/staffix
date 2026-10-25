@@ -15,9 +15,8 @@
  */
 package org.lolaf.staffix.impl;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.betty.api.Server;
 import org.lolaf.betty.api.ServerBuilder;
@@ -41,7 +40,10 @@ import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.serde.SerDe;
-import org.lolaf.staffix.api.session.*;
+import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -99,11 +101,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private final Collection<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final FixSessionsObserver fixSessionsObserver;
     private final Map<IOSession, ScheduledFuture<?>> logonTimeouts;
+    private final Object lifecycleLock = new Object();
+    private final BooleanSupplier engineActive;
     private volatile FixSessionImpl[] connectedSessionsArray;
     private volatile FixAcceptorSessions fixAcceptorSessions;
     private ScheduledExecutorService scheduledExecutorService;
-    private final Object lifecycleLock = new Object();
-    private final BooleanSupplier engineActive;
     private Server ioServer;
     private boolean shuttingDown;
     private boolean running;
@@ -740,21 +742,19 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         }
     }
 
-    @Getter
+    @Value
     @Builder
-    @AllArgsConstructor
-
     private static class ReceivedFixSessionId {
-        private final FixRegularVersion fixVersion;
-        private final FixtVersion fixtVersion;
-        private final FixApplVerID fixApplVerId;
-        private final String defaultApplVerId;
-        private final String senderCompID;
-        private final String senderSubID;
-        private final String senderLocationID;
-        private final String targetCompID;
-        private final String targetSubID;
-        private final String targetLocationID;
+        FixRegularVersion fixVersion;
+        FixtVersion fixtVersion;
+        FixApplVerID fixApplVerId;
+        String defaultApplVerId;
+        String senderCompID;
+        String senderSubID;
+        String senderLocationID;
+        String targetCompID;
+        String targetSubID;
+        String targetLocationID;
 
         @Override
         public String toString() {
