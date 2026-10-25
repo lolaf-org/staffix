@@ -132,10 +132,10 @@ public final class FollowerLink implements FrameHandler {
     }
 
     /**
-     * The size of the write buffers a sender fills: room for the largest event, and for many small ones at once.
+     * The size of the write buffers a sender fills; see {@link WireFormat#bufferBytes(int)}.
      */
     static int batchBytesFor(ReplicationLog log) {
-        return Math.max(64 * 1024, log.getMaxEventFrameBytes());
+        return WireFormat.bufferBytes(log.getMaxEventFrameBytes());
     }
 
     @Override

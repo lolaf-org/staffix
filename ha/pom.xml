@@ -18,6 +18,7 @@
     <modules>
         <module>ha-impl</module>
         <module>ha-primos</module>
+        <module>ha-integration-tests</module>
     </modules>
 
 </project>

@@ -76,4 +76,12 @@ public class WireFormat {
      * {@link FrameType#ACK}: the follower has applied everything it needs to take over.
      */
     public static final int FLAG_IN_SYNC = 0x01;
+
+    /**
+     * The size of a buffer holding frames up to {@code maxFrameBytes}, and many small ones at once. A multiple of 64,
+     * the only buffer sizes betty pools.
+     */
+    public static int bufferBytes(int maxFrameBytes) {
+        return (Math.max(64 * 1024, maxFrameBytes) + 63) & ~63;
+    }
 }

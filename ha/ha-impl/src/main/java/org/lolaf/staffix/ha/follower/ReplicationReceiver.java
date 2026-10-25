@@ -27,6 +27,7 @@ import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
+import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.ha.wire.WireFormatException;
 
 import java.net.InetSocketAddress;
@@ -75,7 +76,7 @@ public final class ReplicationReceiver {
                 .connectionRetry(connectionRetry)
                 .ioWorkersGroup(ioWorkers)
                 .ioSettings(IOSettings.builder()
-                        .readBufferSize(Math.max(64 * 1024, maxFrameBytes))
+                        .readBufferSize(WireFormat.bufferBytes(maxFrameBytes))
                         .socketOptions(Map.of(StandardSocketOptions.TCP_NODELAY, true))
                         .build())
                 .ioEventsListener(new Listener())
