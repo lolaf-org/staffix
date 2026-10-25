@@ -16,7 +16,7 @@
 package org.lolaf.staffix.stores.loggers.core;
 
 
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.logging.LogObfuscator;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -41,7 +41,7 @@ public abstract class MessagesCoreBatchingLogger extends MessagesCoreLogger {
 
     @Override
     public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
-                            FixSessionProbes probes) {
+                            Probes probes) {
         return getLoggers().computeIfAbsent(fixSessionId, sid -> new BatchingLoggerWrapperImpl(
                 fixSessionId, instanciateLogger(fixEngineId, fixInstanceId, fixSessionId, messageTypeRegistry), getMessageTypeFilter(), getObfuscators(), this::cleanupLoggerFromCache));
     }

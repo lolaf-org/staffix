@@ -896,7 +896,7 @@ components:
       enum: [WARNING, MAJOR, CRITICAL]
     ProbeDescription:
       type: object
-      required: [name, description, evaluationInterval, labels, onlyWhileLoggedIn]
+      required: [name, description, evaluationInterval, labels, onlyWhileActive]
       properties:
         name:
           type: string
@@ -918,9 +918,9 @@ components:
           type: string
           format: uri
           description: What to do about the probe's alerts; absent when it has none.
-        onlyWhileLoggedIn:
+        onlyWhileActive:
           type: boolean
-          description: Evaluated only while the session is LOGGED_IN, suspended in every other status.
+          description: Evaluated only while its scope is active (a session while LOGGED_IN), suspended otherwise.
     ProbeStatus:
       type: object
       required: [probe, suspended]

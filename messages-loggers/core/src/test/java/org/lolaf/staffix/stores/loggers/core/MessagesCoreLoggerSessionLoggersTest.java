@@ -17,7 +17,7 @@ package org.lolaf.staffix.stores.loggers.core;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.logging.LogObfuscator;
@@ -101,6 +101,6 @@ class MessagesCoreLoggerSessionLoggersTest {
     }
 
     private FixMessagesLogger.Logger sessionLogger() {
-        return logger.getLogger("engine", "initiator", SESSION, mock(MessageTypeRegistry.class), mock(FixSessionProbes.class));
+        return logger.getLogger("engine", "initiator", SESSION, mock(MessageTypeRegistry.class), mock(Probes.class));
     }
 }

@@ -39,7 +39,7 @@ import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
-import org.lolaf.staffix.impl.alerting.FixSessionProbesImpl;
+import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.impl.alerting.ProbesListeners;
 import org.lolaf.staffix.impl.alerting.ProbesManager;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
@@ -590,14 +590,15 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     public List<ProbeDefinition> getProbeDefinitions(ProbeScope scope) {
-        return probedSession(scope).getProbes().list().stream()
+        return probesOf(scope).list().stream()
                 .map(ProbeDefinition::of)
                 .collect(Collectors.toUnmodifiableList());
     }
 
     @Override
     public List<ProbeState> getProbeStates(ProbeScope scope) {
-        return probesManager.getProbeStates(probedSession(scope));
+        probesOf(scope);
+        return probesManager.getProbeStates(scope);
     }
 
     @Override
@@ -612,14 +613,21 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     public boolean clearAlert(ProbeId probeId) {
-        return probesManager.clearAlert(probedSession(probeId.getScope()), probeId.getName());
+        if (probesOf(probeId.getScope()).list().stream().noneMatch(probe -> probe.getName().equals(probeId.getName()))) {
+            throw new IllegalArgumentException(probeId.getScope() + " has no probe named " + probeId.getName());
+        }
+        return probesManager.clearAlert(probeId);
     }
 
-    private FixSession probedSession(ProbeScope scope) {
+    /**
+     * A session's probes through the sessions it manages rather than the probes manager, which only knows the
+     * registered ones: a session stays managed, with its probes, while not registered.
+     */
+    private Probes probesOf(ProbeScope scope) {
         if (FixSessionProbeScope.isSession(scope)) {
             for (FixSession session : getManagedFixSessions()) {
                 if (session.getFixSessionId().getQualifiedName().equals(scope.getName())) {
-                    return session;
+                    return session.getProbes();
                 }
             }
         }
@@ -656,14 +664,14 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     public void onSessionRegistered(FixSession fixSession) {
         fixSessionRegistry.register(fixSession);
         FixSessionImpl fixSessionImpl = (FixSessionImpl) fixSession;
-        probesManager.register(fixSessionImpl, fixSessionImpl.getProbes(), fixSessionImpl.getAlertsPublisher());
+        probesManager.register(fixSessionImpl.getProbes(), fixSessionImpl.getAlertsPublisher(), fixSessionImpl::isLoggedIn);
         sessionLifecycleListeners.forEach(l -> l.onSessionRegistered(fixSession));
     }
 
     @Override
     public void onSessionUnregistered(FixSession fixSession) {
         fixSessionRegistry.unregister(fixSession);
-        probesManager.unregister(fixSession, ((FixSessionImpl) fixSession).getProbes());
+        probesManager.unregister(((FixSessionImpl) fixSession).getProbes());
         sessionLifecycleListeners.forEach(l -> l.onSessionUnregistered(fixSession));
     }
 
@@ -827,7 +835,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
         @Override
         public FixMessagesStore.FixSessionMessagesStore openStore(FixSessionSettings settings) {
-            return findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), new FixSessionProbesImpl(FixSessionProbeScope.of(settings.getFixSessionId())));
+            return findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), new ProbesImpl(FixSessionProbeScope.of(settings.getFixSessionId())));
         }
 
         @Override

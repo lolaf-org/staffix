@@ -18,27 +18,26 @@ package org.lolaf.staffix.api.alerting;
 import java.util.List;
 
 /**
- * The probes of one session, added and removed at runtime from any thread. They live as long as the session: a
- * session rebuilt after a settings change starts with none, which is why an application adds its probes in
- * {@link org.lolaf.staffix.api.application.FixApplication#onSessionCreated}, the first callback where an alerting meter
- * can read the session's monitoring. A probe need not be removed on logout: unless
- * {@link Probe#isOnlyWhileLoggedIn()} says otherwise, it is suspended until the next logon.
+ * The probes of one {@link ProbeScope}, added and removed at runtime from any thread. A probe need not be removed
+ * when its scope goes inactive: unless {@link Probe#isOnlyWhileActive()} says otherwise, it is suspended until the
+ * scope is active again.
  */
-public interface FixSessionProbes {
+public interface Probes {
 
     /**
      * Starts evaluating the probe on the next tick.
      *
-     * @throws IllegalArgumentException if the session already has a probe of that name
+     * @throws IllegalArgumentException if the scope already has a probe of that name, or the probe reuses a label of
+     *                                  the scope
      */
     void add(Probe probe);
 
     /**
-     * Adds a probe evaluated by {@code evaluator}, with the defaults of {@link Probe}, so only while logged in, and
+     * Adds a probe evaluated by {@code evaluator}, with the defaults of {@link Probe}, so only while active, and
      * returns the evaluator, so an alerting meter such as {@link AlertingTimer} is kept with its own type. Use
-     * {@link #add(Probe)} for labels, a runbook, other intervals or a probe that runs while logged out.
+     * {@link #add(Probe)} for labels, a runbook, other intervals or a probe that runs while inactive.
      *
-     * @throws IllegalArgumentException if the session already has a probe of that name
+     * @throws IllegalArgumentException if the scope already has a probe of that name
      */
     default <T extends ProbeEvaluator> T watch(String name, String description, T evaluator) {
         add(Probe.builder().name(name).description(description).evaluator(evaluator).build());
@@ -48,7 +47,7 @@ public interface FixSessionProbes {
     /**
      * Stops evaluating the probe; an alert it had ongoing is published as cleared.
      *
-     * @return false if the session has no probe of that name
+     * @return false if the scope has no probe of that name
      */
     boolean remove(String name);
 

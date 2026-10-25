@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.impl.alerting;
+package org.lolaf.staffix.impl.session;
 
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.Probe;
@@ -57,7 +57,7 @@ public final class SessionDownEvaluator implements ProbeEvaluator {
                 .name(PROBE_NAME)
                 .description("The session is logged out while its schedule says it should be logged in")
                 .evaluator(delayed(fixSession, delay, System::nanoTime))
-                .onlyWhileLoggedIn(false)
+                .onlyWhileActive(false)
                 .build());
     }
 

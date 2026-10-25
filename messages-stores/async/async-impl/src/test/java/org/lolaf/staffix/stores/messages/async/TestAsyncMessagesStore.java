@@ -23,7 +23,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLevel;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
@@ -54,7 +54,7 @@ class TestAsyncMessagesStore {
 
     private static final String TEST_MESSAGE_STORE_DESCRIPTION = "test message store description";
 
-    private final FixSessionProbes probes = mock(FixSessionProbes.class);
+    private final Probes probes = mock(Probes.class);
 
     AsyncMessagesStore asyncMessagesStore;
     AsyncMessageStore asyncMessageStore;

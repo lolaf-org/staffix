@@ -58,7 +58,7 @@ public class FailSafeFixMessagesLogger implements FixMessagesLogger.Logger {
                 logger::isUnderlyingStorageResourceAvailable, logger::getUnderlyingStorageResourceDescription,
                 settings.getResourceCheckInterval(), checker, this::raiseResourceDown);
         this.probe = Probe.builder().name(PROBE_NAME).description("Messages logger")
-                .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).onlyWhileLoggedIn(false).build();
+                .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).onlyWhileActive(false).build();
         this.alertLock = new Object();
     }
 

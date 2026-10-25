@@ -18,7 +18,7 @@ package org.lolaf.staffix.api.session;
 import lombok.Getter;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.staffix.api.FixEngineBuilder;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
@@ -352,9 +352,15 @@ public interface FixSession {
 
     /**
      * The probes watching this session, which application code adds and removes at runtime; see
-     * {@link org.lolaf.staffix.api.alerting.Probe}.
+     * {@link org.lolaf.staffix.api.alerting.Probe}. They live as long as the session: one rebuilt after a settings
+     * change starts with none, which is why an application adds its probes in
+     * {@link org.lolaf.staffix.api.application.FixApplication#onSessionCreated}, the first callback where an alerting
+     * meter can read the session's monitoring. The session is active while {@link FixSessionStatus#LOGGED_IN}: a probe
+     * {@link org.lolaf.staffix.api.alerting.Probe#isOnlyWhileActive() only run while active} is suspended in every
+     * other status, {@link FixSessionStatus#LOGGED_OUT_INSIDE_SESSION_TIME} included, where the built-in
+     * {@code session-down} probe alerts instead.
      */
-    FixSessionProbes getProbes();
+    Probes getProbes();
 
     /**
      * Indicates whether a FIX session is operated as an {@link #INITIATOR} (it establishes the connection) or an

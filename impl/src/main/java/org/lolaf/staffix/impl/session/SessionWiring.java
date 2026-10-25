@@ -42,7 +42,7 @@ import org.lolaf.staffix.codec.decoders.FixTMessageTypeRegistry;
 import org.lolaf.staffix.impl.ApplicationDictionary;
 import org.lolaf.staffix.impl.FailSafeFixApplication;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
-import org.lolaf.staffix.impl.alerting.FixSessionProbesImpl;
+import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.executor.SessionMessageExecutors;
 import org.lolaf.staffix.impl.session.codec.*;
@@ -83,7 +83,7 @@ final class SessionWiring {
     final SessionMessageExecutors messageExecutors;
     final ExecutorService disconnectedSessionsExecutor;
 
-    SessionWiring(FixSessionImpl fixSession, String fixInstanceId, FixSessionSettings settings, FixSessionProbesImpl probes,
+    SessionWiring(FixSessionImpl fixSession, String fixInstanceId, FixSessionSettings settings, ProbesImpl probes,
                   FixSessionRuntimeDependencies runtimeDependencies, ScheduledExecutorService scheduler,
                   IOSettings ioSettings, MessageExecutorsRuntime messageExecutorsRuntime, Clock providedClock) {
         this.fixSessionId = settings.getFixSessionId();
@@ -155,7 +155,7 @@ final class SessionWiring {
         components.register(plugins);
     }
 
-    private FixMessagesLogger.Logger messagesLogger(String fixInstanceId, FixSessionProbesImpl probes,
+    private FixMessagesLogger.Logger messagesLogger(String fixInstanceId, ProbesImpl probes,
                                                     FixSessionRuntimeDependencies runtimeDependencies) {
         if (runtimeDependencies.getFixMessagesLogger() == null) {
             return VoidMessageLogger.getInstance();

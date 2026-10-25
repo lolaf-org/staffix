@@ -20,7 +20,7 @@ import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.FixInitiatorBuilder;
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -47,7 +47,7 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
      * @param probes              the session's probes, where a logger adds what is worth watching, such as a queue depth
      */
     Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
-                     FixSessionProbes probes);
+                     Probes probes);
 
     /**
      * What a log entry records: a message in, a message out, or a session event.

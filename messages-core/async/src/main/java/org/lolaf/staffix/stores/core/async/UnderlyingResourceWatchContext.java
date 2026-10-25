@@ -73,7 +73,7 @@ public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Starta
                 .name(probeName)
                 .description(probeDescription)
                 .evaluator(() -> resourceDownAlert)
-                .onlyWhileLoggedIn(false)
+                .onlyWhileActive(false)
                 .build();
     }
 

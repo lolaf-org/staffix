@@ -16,10 +16,10 @@
 package org.lolaf.staffix.impl.alerting;
 
 import lombok.Getter;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
 import org.lolaf.staffix.api.alerting.ProbeScope;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.alerting.ProbesListener;
 
 import java.util.Arrays;
@@ -29,7 +29,7 @@ import java.util.List;
  * Copy on write: probes are added or removed rarely, while the evaluation reads them every tick without locking or
  * allocating. The listener is told under the same lock as the change, so it never sees two changes out of order.
  */
-public final class FixSessionProbesImpl implements FixSessionProbes {
+public final class ProbesImpl implements Probes {
 
     private static final Probe[] NO_PROBES = new Probe[0];
 
@@ -38,7 +38,7 @@ public final class FixSessionProbesImpl implements FixSessionProbes {
     private volatile Probe[] probes = NO_PROBES;
     private ProbesListener listener;
 
-    public FixSessionProbesImpl(ProbeScope scope) {
+    public ProbesImpl(ProbeScope scope) {
         this.scope = scope;
     }
 

@@ -39,8 +39,7 @@ import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.codec.decoders.FixMessageParser;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
-import org.lolaf.staffix.impl.alerting.FixSessionProbesImpl;
-import org.lolaf.staffix.impl.alerting.SessionDownEvaluator;
+import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.executor.SessionMessageExecutors;
 import org.lolaf.staffix.impl.threading.ExternalThread;
@@ -113,7 +112,7 @@ public class FixSessionImpl implements FixSession {
     private final PluginsComponent plugins;
     private final ReentrantLock ownershipHandover;
     @Getter
-    private final FixSessionProbesImpl probes;
+    private final ProbesImpl probes;
     @Getter
     private final FixAlertsPublisher alertsPublisher;
     @SuppressWarnings("java:S3077")
@@ -135,7 +134,7 @@ public class FixSessionImpl implements FixSession {
                           Clock providedClock) {
         this.fixSessionSettings = fixSessionSettings;
         this.fixSessionRegistry = fixSessionRuntimeDependencies.getFixSessionRegistry();
-        this.probes = new FixSessionProbesImpl(FixSessionProbeScope.of(fixSessionSettings.getFixSessionId()));
+        this.probes = new ProbesImpl(FixSessionProbeScope.of(fixSessionSettings.getFixSessionId()));
         this.wiring = new SessionWiring(this, fixInstanceId, fixSessionSettings, probes, fixSessionRuntimeDependencies,
                 scheduledExecutorService, ioSettings, messageExecutorsRuntime, providedClock);
         SessionDownEvaluator.probe(this, fixSessionSettings.getSessionDownAlertDelay()).ifPresent(probes::add);

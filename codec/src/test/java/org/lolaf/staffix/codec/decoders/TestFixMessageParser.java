@@ -23,7 +23,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.lolaf.staffix.TestingClock;
 import org.lolaf.staffix.api.FixDictionaryId;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.*;
 import org.lolaf.staffix.api.fields.CoreFields;
@@ -188,7 +188,7 @@ class TestFixMessageParser {
                 .maxSendingTime(null)
                 .build();
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(FixSessionProbes.class)), validationSettings, TestingClock.get(), fixMessageParserEventsListener);
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(Probes.class)), validationSettings, TestingClock.get(), fixMessageParserEventsListener);
         logon = MessageTypeRegistry.Registry.getInstance(fixDictionaryId).find("A");
     }
 
@@ -234,7 +234,7 @@ class TestFixMessageParser {
                 .maxMessageSize(32).build();
 
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(FixSessionProbes.class)), validationSettings,
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(Probes.class)), validationSettings,
                 TestingClock.get(), fixMessageParserEventsListener);
 
         StringBuilder message = new StringBuilder("8=FIX.4.49=8335=A34=149=TARGET_TEST52=20241013-19:07:17.86156=SENDER_TEST98=0108=30141=Y10=249");
@@ -825,7 +825,7 @@ class TestFixMessageParser {
     private FixMessageParser outOfOrderValidatingParser() {
         FixSessionSettings.ValidationSettings settings = validationSettings.toBuilder().validateFieldsOutOfOrder(true).build();
         return new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(FixSessionProbes.class)), settings, TestingClock.get(), fixMessageParserEventsListener);
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(Probes.class)), settings, TestingClock.get(), fixMessageParserEventsListener);
     }
 
     private ByteBuffer encodeQuoteCancel(QuoteCancelEncoder encoder) {
@@ -987,7 +987,7 @@ class TestFixMessageParser {
 
         Duration maxAge = Duration.ofMillis(100);
         validationSettings = validationSettings.toBuilder().maxSendingTime(maxAge).build();
-        fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, fixMessagesLogger.getLogger("engine", "test", fixSessionId, mock(MessageTypeRegistry.class), mock(FixSessionProbes.class)),
+        fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, fixMessagesLogger.getLogger("engine", "test", fixSessionId, mock(MessageTypeRegistry.class), mock(Probes.class)),
                 validationSettings, testClock, fixMessageParserEventsListener);
 
         fixMessageParser.parseMessages((ByteBuffer.wrap(message.getBytes())), getFixMessageDecoderFunction(mock(FixMessageDecoder.class)), () -> 1, 0);
@@ -1011,7 +1011,7 @@ class TestFixMessageParser {
 
         Duration maxDeviation = Duration.ofMillis(100);
         validationSettings = validationSettings.toBuilder().maxSendingTime(maxDeviation).build();
-        fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, fixMessagesLogger.getLogger("engine", "test", fixSessionId, mock(MessageTypeRegistry.class), mock(FixSessionProbes.class)),
+        fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, fixMessagesLogger.getLogger("engine", "test", fixSessionId, mock(MessageTypeRegistry.class), mock(Probes.class)),
                 validationSettings, testClock, fixMessageParserEventsListener);
 
         // the message is dated 101ms ahead of the local clock, one millisecond past the tolerance
@@ -1488,7 +1488,7 @@ class TestFixMessageParser {
         validationSettings = validationSettings.toBuilder().validateCompId(true).build();
 
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(FixSessionProbes.class)), validationSettings, TestingClock.get(), fixMessageParserEventsListener);
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(Probes.class)), validationSettings, TestingClock.get(), fixMessageParserEventsListener);
 
         String message = "8=FIX.4.49=8335=A34=149=SENDER_TEST52=20241013-19:07:17.86156=TARGET_TEST98=0108=30141=Y10=249";
         ByteBuffer bb = ByteBuffer.wrap(message.getBytes());
@@ -1671,7 +1671,7 @@ class TestFixMessageParser {
 
     private FixMessageParser parserWith(FixSessionSettings.ValidationSettings settings) {
         return new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(FixSessionProbes.class)), settings, TestingClock.get(), fixMessageParserEventsListener);
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(Probes.class)), settings, TestingClock.get(), fixMessageParserEventsListener);
     }
 
     @Test
@@ -1763,7 +1763,7 @@ class TestFixMessageParser {
                 .build();
 
         fixMessageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry,
-                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(FixSessionProbes.class)), validationSettings,
+                fixMessagesLogger.getLogger("engine", "test", fixSessionId, messageTypeRegistry, mock(Probes.class)), validationSettings,
                 TestingClock.get(), fixMessageParserEventsListener);
 
         FixMessageDecoder decoder = mock(FixMessageDecoder.class);

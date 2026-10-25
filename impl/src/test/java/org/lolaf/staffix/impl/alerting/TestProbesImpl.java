@@ -27,9 +27,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class TestFixSessionProbesImpl {
+class TestProbesImpl {
 
-    private final FixSessionProbesImpl probes = new FixSessionProbesImpl(ProbeScope.builder().type("session").name("orders").label("desk", "fx").build());
+    private final ProbesImpl probes = new ProbesImpl(ProbeScope.builder().type("session").name("orders").label("desk", "fx").build());
 
     @Test
     void listsProbesInTheOrderTheyWereAdded() {

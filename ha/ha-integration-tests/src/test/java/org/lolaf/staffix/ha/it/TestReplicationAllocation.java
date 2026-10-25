@@ -21,8 +21,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
 import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
@@ -76,7 +76,7 @@ class TestReplicationAllocation {
             (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
     private static final FixSessionId ACCEPTOR_ID = FixSessionId.of("ha", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR");
     private static final FixSessionId INITIATOR_ID = FixSessionId.of("ha", FixRegularVersion.VERSION_44, "INITIATOR", "ACCEPTOR");
-    private static final FixSessionProbes NO_PROBES = new FixSessionProbes() {
+    private static final Probes NO_PROBES = new Probes() {
         @Override
         public void add(Probe probe) {
         }

@@ -16,7 +16,7 @@
 package org.lolaf.staffix.stores.messages.file;
 
 import org.junit.jupiter.api.Test;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -43,7 +43,7 @@ class TestFileMessagesStore extends AbstractMessagesStoreTest {
         return new FileMessagesStore(settings);
     }
 
-    private final FixSessionProbes probes = mock(FixSessionProbes.class);
+    private final Probes probes = mock(Probes.class);
 
     private static FileMessagesStore storeIn(File directory) {
         return new FileMessagesStore(FileMessageStoreSettings.builder().storageDirectoryPath(directory.getPath()).build());

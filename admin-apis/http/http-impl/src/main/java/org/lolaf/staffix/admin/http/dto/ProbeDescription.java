@@ -38,11 +38,11 @@ public class ProbeDescription {
      * Absent for a probe without a runbook.
      */
     String runbookUrl;
-    boolean onlyWhileLoggedIn;
+    boolean onlyWhileActive;
 
     public static ProbeDescription of(ProbeDefinition probe) {
         return new ProbeDescription(probe.getName(), probe.getDescription(), probe.getEvaluationInterval(),
                 probe.getReminderInterval().orElse(null), probe.getLabels(),
-                probe.getRunbookUrl().map(Object::toString).orElse(null), probe.isOnlyWhileLoggedIn());
+                probe.getRunbookUrl().map(Object::toString).orElse(null), probe.isOnlyWhileActive());
     }
 }

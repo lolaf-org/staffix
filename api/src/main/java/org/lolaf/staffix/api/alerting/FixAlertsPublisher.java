@@ -20,14 +20,8 @@ import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
 
 /**
- * Where the alerts of the sessions bound to it go. One instance serves every such session of an engine; publishing to
- * several destinations is the job of a publisher that forwards to others.
+ * An {@link AlertsPublisher} as an engine component: named, so sessions select it by instance id, and started and
+ * stopped with the engine. One instance serves every session bound to it.
  */
-public interface FixAlertsPublisher extends InstanceIdSupplier, Startable<FixAlertsPublisher> {
-
-    /**
-     * Called on the engine's probes thread, one event at a time: a slow publisher delays the next evaluations. An
-     * exception is logged and the event dropped.
-     */
-    void publish(AlertEvent event);
+public interface FixAlertsPublisher extends AlertsPublisher, InstanceIdSupplier, Startable<FixAlertsPublisher> {
 }

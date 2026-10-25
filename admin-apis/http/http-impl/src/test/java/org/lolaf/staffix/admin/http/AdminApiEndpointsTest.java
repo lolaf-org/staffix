@@ -188,14 +188,14 @@ class AdminApiEndpointsTest {
                 .name("order-flow").description("Time since the last order")
                 .evaluationInterval(Duration.ofSeconds(1)).reminderInterval(Duration.ofMinutes(1))
                 .label("team", "fix_ops").runbookUrl(URI.create("https://wiki.example.com/order-flow"))
-                .onlyWhileLoggedIn(false).build()));
+                .onlyWhileActive(false).build()));
 
         HttpResponse<String> probes = call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null);
 
         assertThat(probes.statusCode()).isEqualTo(200);
         assertThat(probes.body()).isEqualTo("[{\"name\":\"order-flow\",\"description\":\"Time since the last order\","
                 + "\"evaluationInterval\":\"PT1S\",\"reminderInterval\":\"PT1M\",\"labels\":{\"team\":\"fix_ops\"},"
-                + "\"runbookUrl\":\"https://wiki.example.com/order-flow\",\"onlyWhileLoggedIn\":false}]");
+                + "\"runbookUrl\":\"https://wiki.example.com/order-flow\",\"onlyWhileActive\":false}]");
         String etag = probes.headers().firstValue("ETag").orElseThrow();
         assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"probesVersion\":" + etag);
         HttpResponse<String> unchanged = client.send(HttpRequest.newBuilder(

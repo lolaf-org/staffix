@@ -205,7 +205,7 @@ class JmxAdminApiTest {
             assertThat(probe.getReminderInterval()).isNull();
             assertThat(probe.getLabels()).containsExactly(Map.entry("team", "fix_ops"));
             assertThat(probe.getRunbookUrl()).isEqualTo("https://wiki.example.com/order-flow");
-            assertThat(probe.isOnlyWhileLoggedIn()).isTrue();
+            assertThat(probe.isOnlyWhileActive()).isTrue();
         });
         assertThat(proxy.getProbeStates()).extracting(FixSessionMXBean.ProbeStatus::getProbe,
                         FixSessionMXBean.ProbeStatus::getLevel, FixSessionMXBean.ProbeStatus::getMessage,

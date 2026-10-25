@@ -18,44 +18,44 @@ package org.lolaf.staffix.impl.alerting;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.alerting.AlertEvent;
-import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
+import org.lolaf.staffix.api.alerting.AlertsPublisher;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.alerting.ScopedProbeState;
-import org.lolaf.staffix.api.session.FixSession;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
- * The probes of one session as the probes thread sees them. The evaluations are rebuilt only when the session's probe
- * array is replaced, so a tick where nothing was added or removed allocates nothing. A probe run only while logged in
- * is suspended and resumed as the session logs out and in; a session without one never has its logon read.
+ * The probes of one scope as the probes thread sees them. The evaluations are rebuilt only when the scope's probe
+ * array is replaced, so a tick where nothing was added or removed allocates nothing. A probe run only while active is
+ * suspended and resumed as the scope goes inactive and active again; a scope without one never has its activity read.
  */
 @Slf4j
-final class SessionProbesEvaluation {
+final class ScopeProbesEvaluation {
 
     private static final Probe[] NO_PROBES = new Probe[0];
     private static final ProbeEvaluation[] NO_EVALUATIONS = new ProbeEvaluation[0];
 
     private final String source;
     @Getter
-    private final FixSession fixSession;
-    private final FixSessionProbesImpl probes;
-    private final FixAlertsPublisher publisher;
+    private final ProbesImpl probes;
+    private final AlertsPublisher publisher;
+    private final BooleanSupplier active;
     private final ProbesListener listener;
     private Probe[] evaluatedProbes = NO_PROBES;
-    private boolean anyOnlyWhileLoggedIn;
+    private boolean anyOnlyWhileActive;
     private volatile ProbeEvaluation[] evaluations = NO_EVALUATIONS;
 
-    SessionProbesEvaluation(String source, FixSession fixSession, FixSessionProbesImpl probes,
-                            FixAlertsPublisher publisher, ProbesListener listener) {
+    ScopeProbesEvaluation(String source, ProbesImpl probes, AlertsPublisher publisher, BooleanSupplier active,
+                          ProbesListener listener) {
         this.source = source;
-        this.fixSession = fixSession;
         this.probes = probes;
         this.publisher = publisher;
+        this.active = active;
         this.listener = listener;
     }
 
@@ -74,22 +74,22 @@ final class SessionProbesEvaluation {
             reconcile(current, tick, nowMillis);
         }
         ProbeEvaluation[] local = evaluations;
-        if (anyOnlyWhileLoggedIn) {
-            followLogon(local, fixSession.isLoggedIn(), tick, nowMillis);
+        if (anyOnlyWhileActive) {
+            followActivity(local, active.getAsBoolean(), tick, nowMillis);
         }
         for (ProbeEvaluation probeEvaluation : local) {
             publish(probeEvaluation, probeEvaluation.evaluateIfDue(tick, nowMillis));
         }
     }
 
-    private void followLogon(ProbeEvaluation[] local, boolean loggedIn, long tick, long nowMillis) {
+    private void followActivity(ProbeEvaluation[] local, boolean isActive, long tick, long nowMillis) {
         for (ProbeEvaluation probeEvaluation : local) {
-            if (!probeEvaluation.getProbe().isOnlyWhileLoggedIn()) {
+            if (!probeEvaluation.getProbe().isOnlyWhileActive()) {
                 continue;
             }
-            if (loggedIn && probeEvaluation.isSuspended()) {
+            if (isActive && probeEvaluation.isSuspended()) {
                 probeEvaluation.resume(tick);
-            } else if (!loggedIn && !probeEvaluation.isSuspended()) {
+            } else if (!isActive && !probeEvaluation.isSuspended()) {
                 publish(probeEvaluation, probeEvaluation.suspend(nowMillis));
             }
         }
@@ -121,8 +121,6 @@ final class SessionProbesEvaluation {
 
     /**
      * Readable from any thread. A probe added since the last tick is not evaluated yet, so it cannot be in alert.
-     *
-     * @throws IllegalArgumentException if the session has no such probe
      */
     boolean clearAlert(String probeName) {
         for (ProbeEvaluation probeEvaluation : evaluations) {
@@ -130,12 +128,7 @@ final class SessionProbesEvaluation {
                 return probeEvaluation.requestClear();
             }
         }
-        for (Probe probe : probes.array()) {
-            if (probe.getName().equals(probeName)) {
-                return false;
-            }
-        }
-        throw new IllegalArgumentException(probes.getScope() + " has no probe named " + probeName);
+        return false;
     }
 
     /**
@@ -175,9 +168,9 @@ final class SessionProbesEvaluation {
         }
         evaluatedProbes = current;
         evaluations = updated;
-        anyOnlyWhileLoggedIn = false;
+        anyOnlyWhileActive = false;
         for (Probe probe : current) {
-            anyOnlyWhileLoggedIn |= probe.isOnlyWhileLoggedIn();
+            anyOnlyWhileActive |= probe.isOnlyWhileActive();
         }
     }
 
@@ -188,7 +181,7 @@ final class SessionProbesEvaluation {
         try {
             publisher.publish(event);
         } catch (Exception e) {
-            log.warn("Alerts publisher {} failed to publish {}", publisher.getInstanceId(), event, e);
+            log.warn("Alerts publisher {} failed to publish {}", publisher, event, e);
         }
         if (event.getType() != AlertEvent.Type.REMINDED) {
             listener.onAlertTransition(probes.getScope(), probeEvaluation.state(event.isClearedManually()));

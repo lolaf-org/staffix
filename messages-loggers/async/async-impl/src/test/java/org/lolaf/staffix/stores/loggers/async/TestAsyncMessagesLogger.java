@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLevel;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
@@ -55,7 +55,7 @@ class TestAsyncMessagesLogger {
     private static final int DEFAULT_LOG_BYTE_BUFFER_SIZE = 8;
     private static final String TEST_LOGGER_STORE_DESCRIPTION = "test logger store description";
 
-    private final FixSessionProbes probes = mock(FixSessionProbes.class);
+    private final Probes probes = mock(Probes.class);
 
     AsyncMessagesLogger asyncMessagesLogger;
     FixMessagesLogger.Logger logger;

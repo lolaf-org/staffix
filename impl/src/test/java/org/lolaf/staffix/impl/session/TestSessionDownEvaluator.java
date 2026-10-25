@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.impl.alerting;
+package org.lolaf.staffix.impl.session;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.alerting.AlertLevel;
@@ -85,7 +85,7 @@ class TestSessionDownEvaluator {
     @Test
     void isEvaluatedWhileLoggedOut() {
         assertThat(SessionDownEvaluator.probe(session, Duration.ofSeconds(10)))
-                .hasValueSatisfying(probe -> assertThat(probe.isOnlyWhileLoggedIn()).isFalse());
+                .hasValueSatisfying(probe -> assertThat(probe.isOnlyWhileActive()).isFalse());
     }
 
     private void advance(Duration duration) {

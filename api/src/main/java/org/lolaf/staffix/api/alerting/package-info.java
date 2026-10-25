@@ -15,8 +15,8 @@
  */
 
 /**
- * Stateful alerts on FIX sessions: a {@link org.lolaf.staffix.api.alerting.Probe} watches one thing of a session, the
- * engine evaluates it periodically and hands each change of alert state to the session's
- * {@link org.lolaf.staffix.api.alerting.FixAlertsPublisher}.
+ * Stateful alerts: a {@link org.lolaf.staffix.api.alerting.Probe} watches one thing of its
+ * {@link org.lolaf.staffix.api.alerting.ProbeScope}, such as a FIX session; the probes thread evaluates it periodically
+ * and hands each change of alert state to the scope's {@link org.lolaf.staffix.api.alerting.AlertsPublisher}.
  */
 package org.lolaf.staffix.api.alerting;

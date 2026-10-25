@@ -33,7 +33,7 @@ Probe probe = Probe.builder()
         .reminderInterval(Duration.ofMinutes(1))     // default none
         .label("team", "fix_ops")                    // default none
         .runbookUrl(URI.create("https://wiki.example.com/runbooks/order-flow"))
-        .onlyWhileLoggedIn(true)                     // default true
+        .onlyWhileActive(true)                     // default true
         .build();
 
 session.getProbes().add(probe);
@@ -82,9 +82,10 @@ earlier, before the session's plugins are ready, so an alerting meter could not 
 
 ### Only while the session is logged in
 
-**A probe is evaluated only while its session is logged in**, by default. An application probe usually watches
-business traffic, which stops at logout: without this, a probe on the order flow would alert all night. While the
-session is logged out, whether by an operator, outside its session time or inside it, the probe is suspended:
+**A probe is evaluated only while its session is logged in**, by default (`onlyWhileActive`: a probe's scope is
+active, and a session is active while logged in). An application probe usually watches business traffic, which stops
+at logout: without this, a probe on the order flow would alert all night. While the session is logged out, whether
+by an operator, outside its session time or inside it, the probe is suspended:
 
 - **at logout, an ongoing alert is cleared**, published as any other clear;
 - **nothing is evaluated** until the next logon, and an operator has nothing to clear;
@@ -96,8 +97,8 @@ A logout inside session time suspends the probe too: the built-in `session-down`
 matters then, and a probe on the order flow would only add a consequence of it.
 
 **For a probe whose subject outlives the logon**, such as a disk, a queue still draining, or a connection of your own,
-build it with `.onlyWhileLoggedIn(false)`: it is then evaluated whatever the session's state, as every built-in probe
-is. The admin API shows both: `onlyWhileLoggedIn` on the probe, and `suspended` on its state while it waits for a
+build it with `.onlyWhileActive(false)`: it is then evaluated whatever the session's state, as every built-in probe
+is. The admin API shows both: `onlyWhileActive` on the probe, and `suspended` on its state while it waits for a
 logon, its last evaluation then dating from before the logout.
 
 ### Raising an alert from your own code

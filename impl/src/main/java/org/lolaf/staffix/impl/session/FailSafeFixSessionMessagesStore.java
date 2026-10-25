@@ -63,7 +63,7 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
                 fixSessionMessagesStore::getUnderlyingStorageResourceDescription, settings.getResourceCheckInterval(),
                 checker, this::raiseResourceDown);
         this.probe = Probe.builder().name(PROBE_NAME).description("Messages store")
-                .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).onlyWhileLoggedIn(false).build();
+                .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).onlyWhileActive(false).build();
         this.alertLock = new Object();
     }
 

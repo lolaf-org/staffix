@@ -20,8 +20,6 @@ import lombok.Builder;
 import lombok.NonNull;
 import lombok.Singular;
 import lombok.Value;
-import org.lolaf.staffix.api.session.FixSessionStatus;
-
 import java.net.URI;
 import java.time.Duration;
 import java.util.Collections;
@@ -36,7 +34,7 @@ import java.util.Map;
 public class Probe {
 
     /**
-     * The engine evaluates probes on a one-second tick, so no interval can be shorter.
+     * Probes are evaluated on a one-second tick, so no interval can be shorter.
      */
     public static final Duration MIN_INTERVAL = Duration.ofSeconds(1);
 
@@ -71,19 +69,18 @@ public class Probe {
      */
     URI runbookUrl;
     /**
-     * Evaluate the probe only while the session is {@link FixSessionStatus#LOGGED_IN}; {@code true} by default, since an
-     * application probe usually watches business traffic, which stops outside a logon. Suspended in every other status,
-     * {@link FixSessionStatus#LOGGED_OUT_INSIDE_SESSION_TIME} included: the built-in {@code session-down} probe alerts
-     * then, and this probe would only report a consequence of it. Suspending clears an ongoing alert, resuming
+     * Evaluate the probe only while its scope is active, as its owner defines it (a session while logged in);
+     * {@code true} by default, since a probe usually watches activity that stops when its scope is inactive, and would
+     * only report a consequence of that. Suspending clears an ongoing alert, resuming
      * {@link ProbeEvaluator#reset() resets} the evaluator. Set {@code false} for a probe whose subject outlives the
-     * logon, such as a queue or a disk.
+     * activity, such as a queue or a disk.
      */
-    boolean onlyWhileLoggedIn;
+    boolean onlyWhileActive;
 
     @Builder
     private Probe(@NonNull String name, @NonNull String description, @NonNull ProbeEvaluator evaluator,
                   Duration evaluationInterval, Duration reminderInterval, @Singular Map<String, String> labels, URI runbookUrl,
-                  Boolean onlyWhileLoggedIn) {
+                  Boolean onlyWhileActive) {
         this.name = name;
         this.description = description;
         this.evaluator = evaluator;
@@ -91,7 +88,7 @@ public class Probe {
         this.reminderInterval = reminderInterval == null ? null : requireAtLeastMinInterval("reminderInterval", reminderInterval);
         this.labels = Collections.unmodifiableMap(new LinkedHashMap<>(Labels.requireValid(labels)));
         this.runbookUrl = runbookUrl;
-        this.onlyWhileLoggedIn = onlyWhileLoggedIn == null || onlyWhileLoggedIn;
+        this.onlyWhileActive = onlyWhileActive == null || onlyWhileActive;
     }
 
     private static Duration requireAtLeastMinInterval(String name, Duration interval) {

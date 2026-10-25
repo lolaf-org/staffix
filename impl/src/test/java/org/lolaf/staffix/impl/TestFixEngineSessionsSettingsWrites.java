@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.alerting.AlertEvent;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeId;
 import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
@@ -43,7 +44,7 @@ import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
-import org.lolaf.staffix.impl.alerting.SessionDownEvaluator;
+import org.lolaf.staffix.impl.session.SessionDownEvaluator;
 import org.lolaf.staffix.tests.TestingFixAlertsPublisherSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
@@ -314,7 +315,7 @@ class TestFixEngineSessionsSettingsWrites {
                 .findFirst().orElseThrow();
 
         session.getProbes().add(Probe.builder().name("queue").description("Orders waiting")
-                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).onlyWhileLoggedIn(false).build());
+                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).onlyWhileActive(false).build());
         await().atMost(Duration.ofSeconds(5)).until(() -> !alertsPublisher.getEvents().isEmpty());
         adminApi.removeFixSessionSettings(alpha.getFixSessionId(), FixSession.FixSessionType.ACCEPTOR);
 
@@ -350,7 +351,7 @@ class TestFixEngineSessionsSettingsWrites {
                 .findFirst().orElseThrow();
 
         session.getProbes().add(Probe.builder().name("queue").description("Orders waiting")
-                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).onlyWhileLoggedIn(false).build());
+                .evaluator(() -> Optional.of(Alert.warning("100 queued"))).onlyWhileActive(false).build());
 
         assertThat(adminApi.getProbeDefinitions(FixSessionProbeScope.of(alpha.getFixSessionId()))).extracting(ProbeDefinition::getName)
                 .containsExactlyElementsOf(added).contains(SessionDownEvaluator.PROBE_NAME, "queue");
@@ -362,6 +363,8 @@ class TestFixEngineSessionsSettingsWrites {
         assertThat(adminApi.getProbeStates(FixSessionProbeScope.of(alpha.getFixSessionId()))).extracting(ProbeState::getProbeName).contains("queue");
         assertThat(transitions).extracting(ProbeState::getProbeName).containsExactly("queue");
         assertThatThrownBy(() -> adminApi.getProbeStates(FixSessionProbeScope.of(session("beta", "BETA").getFixSessionId())))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> adminApi.clearAlert(ProbeId.of(FixSessionProbeScope.of(alpha.getFixSessionId()), "unknown")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

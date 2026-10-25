@@ -47,7 +47,7 @@ public final class QueueSizeEvaluator implements ProbeEvaluator {
                 .description(description)
                 .evaluator(new QueueSizeEvaluator(queue::getSize, thresholds))
                 .evaluationInterval(thresholds.getEvaluationInterval())
-                .onlyWhileLoggedIn(false)
+                .onlyWhileActive(false)
                 .build();
     }
 

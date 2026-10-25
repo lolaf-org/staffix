@@ -17,7 +17,7 @@ package org.lolaf.staffix.stores.messages.async;
 
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
@@ -67,7 +67,7 @@ public class AsyncMessagesStore extends Startable.SimpleStartable<FixMessagesSto
     }
 
     @Override
-    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {
+    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, Probes probes) {
         AsyncMessageStore store = contexts.computeIfAbsent(fixSessionId, sid -> new AsyncMessageStore(wrappedFixMessagesStore.getStore(fixSessionId, probes),
                 fixSessionId, asyncMessagesStoreSettings, asyncStoreThreads, asyncEventInstanceProvider));
         probes.add(store.getQueueSizeProbe());

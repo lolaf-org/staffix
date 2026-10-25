@@ -17,11 +17,9 @@ package org.lolaf.staffix.impl.alerting;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertEvent;
 import org.lolaf.staffix.api.alerting.AlertLevel;
-import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeEvaluator;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
@@ -30,7 +28,6 @@ import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
-import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -46,54 +43,52 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.awaitility.Awaitility.await;
 import static org.lolaf.staffix.api.alerting.AlertEvent.Type.CHANGED;
 import static org.lolaf.staffix.api.alerting.AlertEvent.Type.CLEARED;
 import static org.lolaf.staffix.api.alerting.AlertEvent.Type.RAISED;
 import static org.lolaf.staffix.api.alerting.AlertEvent.Type.REMINDED;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 class TestProbesManager {
 
     private static final Instant NOW = Instant.parse("2026-10-10T10:00:00Z");
     private static final FixSessionId SESSION_ID = FixSessionId.of("orders", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
     private static final FixSessionId OTHER_SESSION_ID = FixSessionId.of("other", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
+    private static final ProbeScope SCOPE = FixSessionProbeScope.of(SESSION_ID);
+    private static final ProbeScope OTHER_SCOPE = FixSessionProbeScope.of(OTHER_SESSION_ID);
 
     private final TestingFixAlertsPublisherSettings publisherSettings = TestingFixAlertsPublisherSettings.builder().build();
-    private final FixSession session = mock(FixSession.class);
-    private final FixSessionProbesImpl probes = new FixSessionProbesImpl(FixSessionProbeScope.of(SESSION_ID));
+    private final AtomicBoolean active = new AtomicBoolean(true);
+    private final AtomicInteger activityReads = new AtomicInteger();
+    private final ProbesImpl probes = new ProbesImpl(SCOPE);
     private final AtomicReference<Optional<Alert>> result = new AtomicReference<>(Optional.empty());
     private final List<String> listened = new CopyOnWriteArrayList<>();
     private final ProbesListeners listeners = new ProbesListeners();
     private final ProbesManager manager = new ProbesManager("engine", Clock.fixed(NOW, ZoneOffset.UTC), listeners);
 
     TestProbesManager() {
-        when(session.getFixSessionId()).thenReturn(SESSION_ID);
-        when(session.isLoggedIn()).thenReturn(true);
         listeners.add(new RecordingListener(listened));
-        manager.register(session, probes, new TestingFixAlertsPublisher(publisherSettings));
+        manager.register(probes, new TestingFixAlertsPublisher(publisherSettings), () -> {
+            activityReads.incrementAndGet();
+            return active.get();
+        });
     }
 
     @Test
-    void theListenerIsToldOfTheProbesASessionHadWhenRegisteredAndOfEachChange() {
-        FixSession other = mock(FixSession.class);
-        when(other.getFixSessionId()).thenReturn(OTHER_SESSION_ID);
-        FixSessionProbesImpl otherProbes = new FixSessionProbesImpl(FixSessionProbeScope.of(OTHER_SESSION_ID));
+    void theListenerIsToldOfTheProbesAScopeHadWhenRegisteredAndOfEachChange() {
+        ProbesImpl otherProbes = new ProbesImpl(OTHER_SCOPE);
         otherProbes.add(probe("before", result::get));
 
-        manager.register(other, otherProbes, new TestingFixAlertsPublisher(publisherSettings));
+        manager.register(otherProbes, new TestingFixAlertsPublisher(publisherSettings), () -> true);
         otherProbes.add(probe("after", result::get));
         otherProbes.remove("before");
-        manager.unregister(other, otherProbes);
+        manager.unregister(otherProbes);
         otherProbes.add(probe("unregistered", result::get));
 
         assertThat(listened).containsExactly("added other before", "added other after", "removed other before",
@@ -140,9 +135,9 @@ class TestProbesManager {
 
         manager.tick();
 
-        assertThat(manager.getActiveAlerts()).singleElement().satisfies(active -> {
-            assertThat(active.getScope()).isEqualTo(FixSessionProbeScope.of(SESSION_ID));
-            assertThat(active.getProbeState().getProbeName()).isEqualTo("alerting");
+        assertThat(manager.getActiveAlerts()).singleElement().satisfies(alert -> {
+            assertThat(alert.getScope()).isEqualTo(SCOPE);
+            assertThat(alert.getProbeState().getProbeName()).isEqualTo("alerting");
         });
     }
 
@@ -159,7 +154,7 @@ class TestProbesManager {
             assertThat(event.getProbeRunbookUrl()).contains(runbook);
         });
         assertThat(manager.getActiveAlerts()).singleElement()
-                .satisfies(active -> assertThat(active.getRunbookUrl()).contains(runbook));
+                .satisfies(alert -> assertThat(alert.getRunbookUrl()).contains(runbook));
     }
 
     @Test
@@ -171,13 +166,13 @@ class TestProbesManager {
         manager.tick();
         listened.clear();
 
-        assertThat(manager.clearAlert(session, "rejects")).isTrue();
+        assertThat(manager.clearAlert(ProbeId.of(SCOPE, "rejects"))).isTrue();
         manager.tick();
 
         assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType, AlertEvent::isClearedManually)
                 .containsExactly(tuple(RAISED, false), tuple(CLEARED, true));
         assertThat(listened).containsExactly("transition orders rejects normal manually");
-        assertThat(manager.getProbeStates(session)).singleElement()
+        assertThat(manager.getProbeStates(SCOPE)).singleElement()
                 .satisfies(state -> assertThat(state.isClearedManually()).isFalse());
     }
 
@@ -185,11 +180,11 @@ class TestProbesManager {
     void aManualClearIsRefusedOutOfAlertAndByAPolledCondition() {
         probes.add(probe("queue", result::get));
         manager.tick();
-        assertThat(manager.clearAlert(session, "queue")).isFalse();
+        assertThat(manager.clearAlert(ProbeId.of(SCOPE, "queue"))).isFalse();
 
         result.set(Optional.of(Alert.warning("100 queued")));
         manager.tick();
-        assertThat(manager.clearAlert(session, "queue")).isFalse();
+        assertThat(manager.clearAlert(ProbeId.of(SCOPE, "queue"))).isFalse();
         result.set(Optional.empty());
         manager.tick();
 
@@ -198,11 +193,13 @@ class TestProbesManager {
     }
 
     @Test
-    void aManualClearOfAnUnknownProbeIsRefusedAsAnError() {
+    void aManualClearOfAProbeNotEvaluatedYetUnknownOrOfAnUnregisteredScopeIsRefused() {
         probes.add(probe("added", result::get));
 
-        assertThat(manager.clearAlert(session, "added")).isFalse();
-        assertThatThrownBy(() -> manager.clearAlert(session, "unknown")).isInstanceOf(IllegalArgumentException.class);
+        assertThat(manager.clearAlert(ProbeId.of(SCOPE, "added"))).isFalse();
+        assertThat(manager.clearAlert(ProbeId.of(SCOPE, "unknown"))).isFalse();
+        assertThat(manager.clearAlert(ProbeId.of(OTHER_SCOPE, "added"))).isFalse();
+        assertThat(manager.getProbeStates(OTHER_SCOPE)).isEmpty();
     }
 
     @Test
@@ -211,7 +208,7 @@ class TestProbesManager {
         failingFirst.add(new RecordingListener(null));
         failingFirst.add(new RecordingListener(listened));
 
-        failingFirst.onProbeRemoved(FixSessionProbeScope.of(SESSION_ID), "queue");
+        failingFirst.onProbeRemoved(SCOPE, "queue");
 
         assertThat(listened).containsExactly("removed orders queue");
     }
@@ -233,7 +230,7 @@ class TestProbesManager {
                 .containsExactly("100 queued", "1000 queued", "1000 queued");
         assertThat(publisherSettings.getEvents()).allSatisfy(event -> {
             assertThat(event.getSource()).isEqualTo("engine");
-            assertThat(event.getProbeId()).isEqualTo(ProbeId.of(FixSessionProbeScope.of(SESSION_ID), "queue"));
+            assertThat(event.getProbeId()).isEqualTo(ProbeId.of(SCOPE, "queue"));
             assertThat(event.getProbeDescription()).isEqualTo("queue description");
             assertThat(event.getSince()).isEqualTo(NOW);
         });
@@ -248,7 +245,7 @@ class TestProbesManager {
         manager.tick();
 
         assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED);
-        assertThat(manager.getProbeStates(session)).singleElement().satisfies(state -> {
+        assertThat(manager.getProbeStates(SCOPE)).singleElement().satisfies(state -> {
             assertThat(state.getAlert()).contains(Alert.warning("150 queued"));
             assertThat(state.getSince()).contains(NOW);
             assertThat(state.getLastEvaluation()).contains(NOW);
@@ -315,44 +312,43 @@ class TestProbesManager {
                         tuple(CLEARED, "100 queued"),
                         tuple(RAISED, "replaced"),
                         tuple(CLEARED, "replaced"));
-        assertThat(manager.getProbeStates(session)).isEmpty();
+        assertThat(manager.getProbeStates(SCOPE)).isEmpty();
     }
 
     @Test
     void aFailingPublisherDoesNotStopTheEvaluation() {
-        FixSession other = mock(FixSession.class);
-        when(other.getFixSessionId()).thenReturn(SESSION_ID);
-        when(other.isLoggedIn()).thenReturn(true);
-        FixSessionProbesImpl otherProbes = new FixSessionProbesImpl(FixSessionProbeScope.of(SESSION_ID));
-        manager.register(other, otherProbes, new FailingPublisher());
+        ProbesImpl otherProbes = new ProbesImpl(OTHER_SCOPE);
+        manager.register(otherProbes, event -> {
+            throw new IllegalStateException("publisher down");
+        }, () -> true);
         otherProbes.add(probe("failing", () -> Optional.of(Alert.warning("x"))));
         probes.add(probe("queue", () -> Optional.of(Alert.warning("y"))));
 
         manager.tick();
 
         assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED);
-        assertThat(manager.getProbeStates(other)).hasSize(1);
+        assertThat(manager.getProbeStates(OTHER_SCOPE)).hasSize(1);
     }
 
     @Test
     void aProbeHasNoStateUntilItsFirstEvaluation() {
         probes.add(probe("queue", result::get));
-        assertThat(manager.getProbeStates(session)).isEmpty();
+        assertThat(manager.getProbeStates(SCOPE)).isEmpty();
 
         manager.tick();
 
-        assertThat(manager.getProbeStates(session)).extracting(ProbeState::getProbeName).containsExactly("queue");
-        assertThat(manager.getProbeStates(session).get(0).getAlert()).isEmpty();
+        assertThat(manager.getProbeStates(SCOPE)).extracting(ProbeState::getProbeName).containsExactly("queue");
+        assertThat(manager.getProbeStates(SCOPE).get(0).getAlert()).isEmpty();
     }
 
     @Test
-    void aStartedManagerEvaluatesEverySecondAndClearsTheAlertsOfAnUnregisteredSession() {
+    void aStartedManagerEvaluatesEverySecondAndClearsTheAlertsOfAnUnregisteredScope() {
         probes.add(probe("queue", () -> Optional.of(Alert.warning("100 queued"))));
         manager.start();
         try {
             await().atMost(Duration.ofSeconds(5)).until(() -> !publisherSettings.getEvents().isEmpty());
 
-            manager.unregister(session, probes);
+            manager.unregister(probes);
 
             await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(publisherSettings.getEvents())
                     .extracting(AlertEvent::getType).containsExactly(RAISED, CLEARED));
@@ -362,85 +358,85 @@ class TestProbesManager {
     }
 
     @Test
-    void aStoppedManagerDoesNotClearTheAlertsOfAnUnregisteredSession() {
+    void aStoppedManagerDoesNotClearTheAlertsOfAnUnregisteredScope() {
         probes.add(probe("queue", () -> Optional.of(Alert.warning("100 queued"))));
         manager.tick();
         manager.start();
         manager.stop(Deadline.unlimited());
 
-        manager.unregister(session, probes);
+        manager.unregister(probes);
 
         assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED);
     }
 
     @Test
-    void aProbeOnlyRunWhileLoggedInIsClearedOnLogoutAndNotEvaluatedUntilLogon() {
+    void aProbeOnlyRunWhileActiveIsClearedWhenInactiveAndNotEvaluatedUntilActive() {
         CountingEvaluator evaluator = new CountingEvaluator(result::get);
         probes.add(probe("orders", evaluator));
         result.set(Optional.of(Alert.warning("no order")));
         manager.tick();
         listened.clear();
 
-        when(session.isLoggedIn()).thenReturn(false);
+        active.set(false);
         tick(3);
 
         assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED, CLEARED);
         assertThat(listened).containsExactly("transition orders orders normal");
-        assertThat(manager.getProbeStates(session)).singleElement().satisfies(state -> {
+        assertThat(manager.getProbeStates(SCOPE)).singleElement().satisfies(state -> {
             assertThat(state.isSuspended()).isTrue();
             assertThat(state.getAlert()).isEmpty();
         });
         assertThat(evaluator.evaluations).isEqualTo(1);
         assertThat(manager.getActiveAlerts()).isEmpty();
-        assertThat(manager.clearAlert(session, "orders")).isFalse();
+        assertThat(manager.clearAlert(ProbeId.of(SCOPE, "orders"))).isFalse();
     }
 
     @Test
-    void onLogonTheEvaluatorIsResetAndEvaluatedAtOnceWhateverItsInterval() {
+    void onceActiveTheEvaluatorIsResetAndEvaluatedAtOnceWhateverItsInterval() {
         CountingEvaluator evaluator = new CountingEvaluator(result::get);
         probes.add(Probe.builder().name("orders").description("d").evaluator(evaluator)
                 .evaluationInterval(Duration.ofSeconds(10)).build());
         manager.tick();
-        when(session.isLoggedIn()).thenReturn(false);
+        active.set(false);
         manager.tick();
         result.set(Optional.of(Alert.warning("no order")));
 
-        when(session.isLoggedIn()).thenReturn(true);
+        active.set(true);
         manager.tick();
 
         assertThat(evaluator.resets).isEqualTo(1);
-        assertThat(manager.getProbeStates(session)).singleElement()
+        assertThat(manager.getProbeStates(SCOPE)).singleElement()
                 .satisfies(state -> assertThat(state.isSuspended()).isFalse());
         assertThat(evaluator.evaluations).isEqualTo(2);
         assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED);
     }
 
     @Test
-    void aProbeAddedWhileLoggedOutIsSuspendedWithoutAnEvaluationUntilTheLogon() {
-        when(session.isLoggedIn()).thenReturn(false);
+    void aProbeAddedWhileInactiveIsSuspendedWithoutAnEvaluationUntilActive() {
+        active.set(false);
         CountingEvaluator evaluator = new CountingEvaluator(result::get);
         probes.add(probe("orders", evaluator));
         tick(2);
 
         assertThat(evaluator.evaluations).isZero();
-        assertThat(manager.getProbeStates(session)).singleElement().satisfies(state -> {
+        assertThat(manager.getProbeStates(SCOPE)).singleElement().satisfies(state -> {
             assertThat(state.isSuspended()).isTrue();
             assertThat(state.getLastEvaluation()).isEmpty();
         });
-        when(session.isLoggedIn()).thenReturn(true);
+        active.set(true);
         manager.tick();
         assertThat(evaluator.evaluations).isEqualTo(1);
-        assertThat(manager.getProbeStates(session)).singleElement()
+        assertThat(manager.getProbeStates(SCOPE)).singleElement()
                 .satisfies(state -> assertThat(state.getLastEvaluation()).contains(NOW));
     }
 
     @Test
-    void aProbeRunWhetherLoggedInOrNotKeepsItsAlertOnLogout() {
+    void aProbeRunWhetherActiveOrNotKeepsItsAlertWhenInactive() {
         result.set(Optional.of(Alert.critical("disk full")));
-        probes.add(Probe.builder().name("disk").description("d").evaluator(result::get).onlyWhileLoggedIn(false).build());
+        probes.add(Probe.builder().name("disk").description("d").evaluator(result::get).onlyWhileActive(false).build());
         manager.tick();
 
-        when(session.isLoggedIn()).thenReturn(false);
+        active.set(false);
         tick(2);
 
         assertThat(publisherSettings.getEvents()).extracting(AlertEvent::getType).containsExactly(RAISED);
@@ -448,11 +444,11 @@ class TestProbesManager {
     }
 
     @Test
-    void aSessionWithoutAProbeOnlyRunWhileLoggedInNeverHasItsLogonRead() {
-        probes.add(Probe.builder().name("disk").description("d").evaluator(result::get).onlyWhileLoggedIn(false).build());
+    void aScopeWithoutAProbeOnlyRunWhileActiveNeverHasItsActivityRead() {
+        probes.add(Probe.builder().name("disk").description("d").evaluator(result::get).onlyWhileActive(false).build());
         tick(2);
 
-        verify(session, never()).isLoggedIn();
+        assertThat(activityReads).hasValue(0);
     }
 
     private void tick(int times) {
@@ -517,19 +513,6 @@ class TestProbesManager {
 
         private static String sessionName(ProbeScope scope) {
             return scope.getLabels().get(FixSessionProbeScope.NAME_LABEL);
-        }
-    }
-
-    private static final class FailingPublisher extends Startable.VoidStartable<FixAlertsPublisher> implements FixAlertsPublisher {
-
-        @Override
-        public String getInstanceId() {
-            return "failing";
-        }
-
-        @Override
-        public void publish(AlertEvent event) {
-            throw new IllegalStateException("publisher down");
         }
     }
 }

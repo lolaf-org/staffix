@@ -90,7 +90,7 @@ public interface FixSessionMXBean {
 
         String getRunbookUrl();
 
-        boolean isOnlyWhileLoggedIn();
+        boolean isOnlyWhileActive();
     }
 
     /**

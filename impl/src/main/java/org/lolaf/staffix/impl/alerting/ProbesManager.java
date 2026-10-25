@@ -18,12 +18,13 @@ package org.lolaf.staffix.impl.alerting;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
+import org.lolaf.staffix.api.alerting.AlertsPublisher;
 import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.alerting.ScopedProbeState;
-import org.lolaf.staffix.api.session.FixSession;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -34,52 +35,69 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 /**
- * Evaluates the probes of every session of an engine on one thread, ticking every second, and publishes the changes
- * of alert state to each session's publisher.
+ * Evaluates the probes of every registered scope on one thread, ticking every second, and publishes the changes of
+ * alert state to each scope's publisher.
  *
- * <p>All alert state is confined to that thread: a session unregistered from elsewhere has its ongoing alerts cleared
- * by a task queued to it. Once stopped, unregistered sessions are dropped silently, so an engine shutting down does
- * not report its alerts as resolved.
+ * <p>All alert state is confined to that thread: a scope unregistered from elsewhere has its ongoing alerts cleared
+ * by a task queued to it. Once stopped, unregistered scopes are dropped silently, so a source shutting down does not
+ * report its alerts as resolved.
  */
 @Slf4j
 public final class ProbesManager extends Startable.SimpleStartable<ProbesManager> {
 
     static final Duration TICK = Probe.MIN_INTERVAL;
 
-    private final String engineId;
+    private final String source;
     private final Clock clock;
     private final ProbesListener listener;
-    private volatile SessionProbesEvaluation[] sessions = new SessionProbesEvaluation[0];
+    private volatile ScopeProbesEvaluation[] scopes = new ScopeProbesEvaluation[0];
     private volatile ScheduledExecutorService scheduler;
     private long tick;
 
-    public ProbesManager(String engineId, Clock clock, ProbesListener listener) {
-        this.engineId = engineId;
+    /**
+     * @param source names this manager on every {@link org.lolaf.staffix.api.alerting.AlertEvent}
+     */
+    public ProbesManager(String source, Clock clock, ProbesListener listener) {
+        this.source = source;
         this.clock = clock;
         this.listener = listener;
     }
 
-    private static int indexOf(SessionProbesEvaluation[] evaluations, FixSession fixSession) {
+    private static int indexOf(ScopeProbesEvaluation[] evaluations, ProbesImpl probes) {
         for (int i = 0; i < evaluations.length; i++) {
-            if (evaluations[i].getFixSession() == fixSession) {
+            if (evaluations[i].getProbes() == probes) {
                 return i;
             }
         }
         return -1;
     }
 
-    public synchronized void register(FixSession fixSession, FixSessionProbesImpl probes, FixAlertsPublisher publisher) {
-        SessionProbesEvaluation[] updated = Arrays.copyOf(sessions, sessions.length + 1);
-        updated[sessions.length] = new SessionProbesEvaluation(engineId, fixSession, probes, publisher, listener);
-        sessions = updated;
+    private static ScopeProbesEvaluation find(ScopeProbesEvaluation[] evaluations, ProbeScope scope) {
+        for (ScopeProbesEvaluation evaluation : evaluations) {
+            if (evaluation.getProbes().getScope().equals(scope)) {
+                return evaluation;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @param active whether the scope is active, read on the probes thread, and only while it has a probe
+     *               {@link org.lolaf.staffix.api.alerting.Probe#isOnlyWhileActive() run only while active}
+     */
+    public synchronized void register(ProbesImpl probes, AlertsPublisher publisher, BooleanSupplier active) {
+        ScopeProbesEvaluation[] updated = Arrays.copyOf(scopes, scopes.length + 1);
+        updated[scopes.length] = new ScopeProbesEvaluation(source, probes, publisher, active, listener);
+        scopes = updated;
         probes.attach(listener);
     }
 
-    public void unregister(FixSession fixSession, FixSessionProbesImpl probes) {
+    public void unregister(ProbesImpl probes) {
         probes.detach();
-        SessionProbesEvaluation evaluation = remove(fixSession);
+        ScopeProbesEvaluation evaluation = remove(probes);
         ScheduledExecutorService current = scheduler;
         if (evaluation == null || current == null) {
             return;
@@ -87,40 +105,31 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
         try {
             current.execute(() -> evaluation.clearAll(clock.millis()));
         } catch (RejectedExecutionException stopping) {
-            log.debug("Probes of {} not cleared, the probes manager of engine {} is stopping", fixSession.getFixSessionId(), engineId);
+            log.debug("Probes of {} not cleared, the probes manager of {} is stopping", probes.getScope(), source);
         }
     }
 
     /**
-     * Empty for a session that is not registered.
+     * Empty for a scope that is not registered.
      */
-    public List<ProbeState> getProbeStates(FixSession fixSession) {
-        SessionProbesEvaluation[] local = sessions;
-        int index = indexOf(local, fixSession);
-        return index < 0 ? List.of() : local[index].getStates();
+    public List<ProbeState> getProbeStates(ProbeScope scope) {
+        ScopeProbesEvaluation evaluation = find(scopes, scope);
+        return evaluation == null ? List.of() : evaluation.getStates();
     }
 
     /**
-     * False for a session that is not registered, since none of its probes can be in alert.
-     *
-     * @throws IllegalArgumentException if the session has no such probe
+     * False for a scope that is not registered, since none of its probes can be in alert, and for a probe it does not
+     * have.
      */
-    public boolean clearAlert(FixSession fixSession, String probeName) {
-        SessionProbesEvaluation[] local = sessions;
-        int index = indexOf(local, fixSession);
-        if (index >= 0) {
-            return local[index].clearAlert(probeName);
-        }
-        if (fixSession.getProbes().list().stream().noneMatch(probe -> probe.getName().equals(probeName))) {
-            throw new IllegalArgumentException("Session " + fixSession.getFixSessionId() + " has no probe named " + probeName);
-        }
-        return false;
+    public boolean clearAlert(ProbeId probeId) {
+        ScopeProbesEvaluation evaluation = find(scopes, probeId.getScope());
+        return evaluation != null && evaluation.clearAlert(probeId.getName());
     }
 
     public List<ScopedProbeState> getActiveAlerts() {
         List<ScopedProbeState> active = null;
-        for (SessionProbesEvaluation session : sessions) {
-            active = session.addActiveAlerts(active);
+        for (ScopeProbesEvaluation scope : scopes) {
+            active = scope.addActiveAlerts(active);
         }
         return active == null ? List.of() : Collections.unmodifiableList(active);
     }
@@ -128,7 +137,7 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
     @Override
     protected void startMe() {
         ScheduledExecutorService newScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "Staffix-probes-" + engineId);
+            Thread thread = new Thread(r, "Staffix-probes-" + source);
             thread.setDaemon(true);
             return thread;
         });
@@ -143,7 +152,7 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
         current.shutdown();
         try {
             if (!current.awaitTermination(Math.max(1L, stopDeadline.getRemainingTime().toMillis()), TimeUnit.MILLISECONDS)) {
-                log.warn("Probes manager of engine {} still evaluating at the stop deadline", engineId);
+                log.warn("Probes manager of {} still evaluating at the stop deadline", source);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -153,22 +162,22 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
     void tick() {
         long currentTick = tick++;
         long nowMillis = clock.millis();
-        SessionProbesEvaluation[] local = sessions;
-        for (SessionProbesEvaluation sessionProbesEvaluation : local) {
-            sessionProbesEvaluation.tick(currentTick, nowMillis);
+        ScopeProbesEvaluation[] local = scopes;
+        for (ScopeProbesEvaluation scopeProbesEvaluation : local) {
+            scopeProbesEvaluation.tick(currentTick, nowMillis);
         }
     }
 
-    private synchronized SessionProbesEvaluation remove(FixSession fixSession) {
-        int index = indexOf(sessions, fixSession);
+    private synchronized ScopeProbesEvaluation remove(ProbesImpl probes) {
+        int index = indexOf(scopes, probes);
         if (index < 0) {
             return null;
         }
-        SessionProbesEvaluation removed = sessions[index];
-        SessionProbesEvaluation[] updated = new SessionProbesEvaluation[sessions.length - 1];
-        System.arraycopy(sessions, 0, updated, 0, index);
-        System.arraycopy(sessions, index + 1, updated, index, updated.length - index);
-        sessions = updated;
+        ScopeProbesEvaluation removed = scopes[index];
+        ScopeProbesEvaluation[] updated = new ScopeProbesEvaluation[scopes.length - 1];
+        System.arraycopy(scopes, 0, updated, 0, index);
+        System.arraycopy(scopes, index + 1, updated, index, updated.length - index);
+        scopes = updated;
         return removed;
     }
 
@@ -176,7 +185,7 @@ public final class ProbesManager extends Startable.SimpleStartable<ProbesManager
         try {
             tick();
         } catch (RuntimeException e) {
-            log.error("Probes evaluation of engine {} failed", engineId, e);
+            log.error("Probes evaluation of {} failed", source, e);
         }
     }
 }
