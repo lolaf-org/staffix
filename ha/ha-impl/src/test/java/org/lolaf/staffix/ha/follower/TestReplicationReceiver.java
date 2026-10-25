@@ -124,7 +124,7 @@ class TestReplicationReceiver {
 
     @Test
     void aSessionWhoseStorageTheFollowerSharesIsInSyncWithoutBeingWritten() {
-        follower.nextStorageIdentity = leader.getSessions().get(0).getStorageIdentity();
+        follower.nextStorageIdentity = leader.getSessions().get(0).getConfig().getStorageIdentity();
         connect();
         inSync();
 

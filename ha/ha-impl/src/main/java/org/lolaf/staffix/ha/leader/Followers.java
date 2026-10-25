@@ -50,6 +50,15 @@ public final class Followers {
     }
 
     /**
+     * See {@link FollowerLink#resnapshot(int)}.
+     */
+    public void resnapshot(int sessionKey) {
+        for (FollowerLink link : links) {
+            link.resnapshot(sessionKey);
+        }
+    }
+
+    /**
      * Waits until every follower in sync for the session applied the event at {@code offset}. A follower falling out
      * of sync stops being waited for, and with none left the wait ends at once. Allocates nothing.
      *

@@ -125,7 +125,7 @@ class TestReplicatingFixSessionMessagesStore {
     }
 
     @Test
-    void aMessageTooLongForTheLogIsStoredLocallyAndLeavesTheSessionNeedingASnapshot() {
+    void aMessageTooLongForTheLogIsStoredLocallyOnly() {
         FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local);
         ByteBuffer tooLong = ByteBuffer.allocate(ha.getReplicationLog().getMaxMessageLength() + 1);
 
@@ -133,7 +133,6 @@ class TestReplicatingFixSessionMessagesStore {
 
         assertThat(local.calls).containsExactly("message 5");
         assertThat(nextEvent()).isEqualTo("none");
-        assertThat(ha.getSessions().all()).singleElement().satisfies(session -> assertThat(session.isSnapshotNeeded()).isTrue());
     }
 
     /**

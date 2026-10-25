@@ -210,8 +210,21 @@ public final class FollowerLink implements FrameHandler {
         syncs.set(sessionKey, sync);
     }
 
-    private synchronized void sessionSync(int sessionKey, SessionSync expected, SessionSync sync) {
-        sessionSyncs.compareAndSet(sessionKey, expected, sync);
+    /**
+     * The leader could not log one of the session's events, so the follower's copy has a gap: the session is no
+     * longer in sync here until a snapshot refills it. A session not announced yet, or not replicated by this
+     * follower, needs nothing.
+     */
+    public void resnapshot(int sessionKey) {
+        SessionSync sync = getSessionSync(sessionKey);
+        if (sync != null && sync != SessionSync.NOT_REPLICATED) {
+            sessionSync(sessionKey, SessionSync.SNAPSHOT_PENDING);
+            snapshotRequested = true;
+        }
+    }
+
+    private synchronized boolean sessionSync(int sessionKey, SessionSync expected, SessionSync sync) {
+        return sessionSyncs.compareAndSet(sessionKey, expected, sync);
     }
 
     @Override
@@ -223,7 +236,10 @@ public final class FollowerLink implements FrameHandler {
         switch (status) {
             case REPLICATING:
             case SHARED_STORAGE:
-                sessionSync(sessionKey, SessionSync.IN_SYNC);
+                // a snapshot the leader asked for meanwhile still has to come
+                if (getSessionSync(sessionKey) != SessionSync.SNAPSHOT_PENDING) {
+                    sessionSync(sessionKey, SessionSync.IN_SYNC);
+                }
                 break;
             case SNAPSHOT_NEEDED:
                 sessionSync(sessionKey, SessionSync.SNAPSHOT_PENDING);
@@ -322,11 +338,12 @@ public final class FollowerLink implements FrameHandler {
         while (announced < sessions.count()) {
             ReplicatedSession session = sessions.get(announced);
             String id = session.getFixSessionId().toString();
-            if (dst.limit() - filled < FrameEncoder.bytesWith(FrameType.SESSION, id, session.getStorageIdentity())) {
+            ReplicatedSession.Config config = session.getConfig();
+            if (dst.limit() - filled < FrameEncoder.bytesWith(FrameType.SESSION, id, config.getStorageIdentity())) {
                 break;
             }
             filled += FrameEncoder.session(dst, filled, leaderEpoch, session.getKey(), session.getFixSessionType(),
-                    session.getReplicationMode(), id, session.getStorageIdentity());
+                    config.getReplicationMode(), id, config.getStorageIdentity());
             sessionSync(announced, SessionSync.ANNOUNCED);
             announced++;
         }
@@ -394,15 +411,17 @@ public final class FollowerLink implements FrameHandler {
      */
     void snapshotPending() {
         for (int key = 0; key < announced && state == State.STREAMING; key++) {
-            if (getSessionSync(key) == SessionSync.SNAPSHOT_PENDING && snapshot(key)) {
-                sessionSync(key, SessionSync.SNAPSHOT_PENDING, SessionSync.SNAPSHOT_SENT);
+            // marked sent before it goes: the follower's REPLICATING may come back before the snapshot's last frame
+            // is handed over, and a session still pending then would wait for a second snapshot
+            if (sessionSync(key, SessionSync.SNAPSHOT_PENDING, SessionSync.SNAPSHOT_SENT) && !snapshot(key)) {
+                sessionSync(key, SessionSync.SNAPSHOT_SENT, SessionSync.SNAPSHOT_PENDING);
             }
         }
     }
 
     private boolean snapshot(int sessionKey) {
         ReplicatedSession session = sessions.get(sessionKey);
-        FixSessionMessagesStore store = session.getStore();
+        FixSessionMessagesStore store = session.getConfig().getStore();
         SnapshotWriter writer = new SnapshotWriter(sessionKey, epoch.getAsLong());
         try {
             long nextOutgoingSeqNum = store.getOutgoingSeqNum();

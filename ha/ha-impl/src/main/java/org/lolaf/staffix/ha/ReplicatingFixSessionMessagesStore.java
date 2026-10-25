@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha;
 
+import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
@@ -37,10 +38,11 @@ import java.util.Optional;
  * the session's thread one at a time, which is what keeps the log in the order the writes were applied and lets one
  * {@link StoreEventRecord} serve them all.
  */
+@Slf4j
 final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
 
     private final FixSessionMessagesStore store;
-    private final ReplicationLog log;
+    private final ReplicationLog replicationLog;
     private final ReplicatedSession session;
     private final Followers followers;
     private final StoreEventRecord storeEventRecord;
@@ -48,9 +50,9 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     private final ReplicatedAhead replicatedAhead;
     private long lastAppendedOffset = -1;
 
-    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog log, ReplicatedSession session, Followers followers) {
+    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog, ReplicatedSession session, Followers followers) {
         this.store = store;
-        this.log = log;
+        this.replicationLog = replicationLog;
         this.session = session;
         this.followers = followers;
         this.storeEventRecord = new StoreEventRecord();
@@ -75,7 +77,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void awaitReplicated() {
         if (lastAppendedOffset >= 0) {
-            session.acknowledged(followers.awaitApplied(session.getKey(), lastAppendedOffset, session.getReplicationAckTimeoutNanos(), ackIdle));
+            session.acknowledged(followers.awaitApplied(session.getKey(), lastAppendedOffset, session.getConfig().getReplicationAckTimeoutNanos(), ackIdle));
         }
     }
 
@@ -174,13 +176,15 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     }
 
     /**
-     * Never throws into the session: an event the log cannot take leaves the session needing a snapshot instead.
+     * Never throws into the session: an event the log cannot take is replaced by a snapshot of the session.
      */
     private void append(StoreEventType eventType, long sequenceNumber, ByteBuffer message) {
         try {
-            lastAppendedOffset = log.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber, message));
+            lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber, message));
         } catch (IllegalArgumentException e) {
-            session.unreplicated(e.getMessage());
+            log.warn("FIX session {} {} is snapshot to its follower instead: {}", session.getFixSessionType(),
+                    session.getFixSessionId(), e.getMessage());
+            followers.resnapshot(session.getKey());
         }
     }
 

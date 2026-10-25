@@ -39,15 +39,18 @@ public final class ReplicatedSessions {
      * Registers a session as it is built, or takes the latest settings and store of one already known.
      */
     synchronized ReplicatedSession register(FixSessionSettings settings, FixSessionMessagesStore store) {
-        ReplicatedSession session = byId.computeIfAbsent(new Id(settings.getFixSessionId().toString(), settings.getFixSessionType()),
-                id -> {
-                    ReplicatedSession added = new ReplicatedSession(byKey.size(), settings.getFixSessionId(), settings.getFixSessionType());
-                    byKey.add(added);
-                    return added;
-                });
-        FixSessionSettings.HaSessionSettings haSettings = settings.getHaSessionSettings();
-        session.update(haSettings.getReplicationMode(), haSettings.getReplicationAckTimeout(), store);
-        return session;
+        ReplicatedSession.Config config = ReplicatedSession.Config.of(settings.getHaSessionSettings(), store);
+        Id id = new Id(settings.getFixSessionId().toString(), settings.getFixSessionType());
+        ReplicatedSession known = byId.get(id);
+        if (known != null) {
+            known.update(config);
+            return known;
+        }
+        // built with its config before it is listed, so a sender never finds it without one
+        ReplicatedSession added = new ReplicatedSession(byKey.size(), settings.getFixSessionId(), settings.getFixSessionType(), config);
+        byId.put(id, added);
+        byKey.add(added);
+        return added;
     }
 
     /**

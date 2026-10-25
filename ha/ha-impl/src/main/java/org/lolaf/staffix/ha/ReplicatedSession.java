@@ -16,15 +16,15 @@
 package org.lolaf.staffix.ha;
 
 import lombok.Getter;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.leader.Followers;
-
-import java.time.Duration;
 
 /**
  * A replicated session as the leader knows it: the key its events carry in the log and on the wire.
@@ -36,34 +36,25 @@ public final class ReplicatedSession {
     private final int key;
     private final FixSessionId fixSessionId;
     private final FixSessionType fixSessionType;
-    private volatile ReplicationMode replicationMode = ReplicationMode.ASYNC;
-    private volatile long replicationAckTimeoutNanos;
-    private volatile @Nullable String storageIdentity;
     /**
-     * The session's own store, which a snapshot reads off the session's thread.
+     * Replaced whole each time the session is built, so a reader on another thread never sees half of an update.
      */
-    private volatile FixSessionMessagesStore store;
-    /**
-     * Set when an event could not be replicated, so the follower's copy has a gap only a snapshot fills.
-     */
-    private volatile boolean snapshotNeeded;
+    private volatile Config config;
     /**
      * {@code SYNC} sends that went out without the standby's ack, on a timeout or with no standby in sync.
      */
     private volatile long unacknowledgedSends;
     private volatile boolean unprotected;
 
-    ReplicatedSession(int key, FixSessionId fixSessionId, FixSessionType fixSessionType) {
+    ReplicatedSession(int key, FixSessionId fixSessionId, FixSessionType fixSessionType, Config config) {
         this.key = key;
         this.fixSessionId = fixSessionId;
         this.fixSessionType = fixSessionType;
+        this.config = config;
     }
 
-    void update(ReplicationMode replicationMode, Duration replicationAckTimeout, FixSessionMessagesStore store) {
-        this.store = store;
-        this.replicationMode = replicationMode;
-        this.replicationAckTimeoutNanos = replicationAckTimeout.toNanos();
-        this.storageIdentity = store.getStorageIdentity().orElse(null);
+    void update(Config config) {
+        this.config = config;
     }
 
     /**
@@ -85,8 +76,23 @@ public final class ReplicatedSession {
         }
     }
 
-    void unreplicated(String reason) {
-        snapshotNeeded = true;
-        log.warn("FIX session {} {} needs a snapshot to its follower: {}", fixSessionType, fixSessionId, reason);
+    /**
+     * What the session was last built with.
+     */
+    @Value
+    public static class Config {
+
+        ReplicationMode replicationMode;
+        long replicationAckTimeoutNanos;
+        @Nullable String storageIdentity;
+        /**
+         * The session's own store, which a snapshot reads off the session's thread.
+         */
+        FixSessionMessagesStore store;
+
+        static Config of(HaSessionSettings settings, FixSessionMessagesStore store) {
+            return new Config(settings.getReplicationMode(), settings.getReplicationAckTimeout().toNanos(),
+                    store.getStorageIdentity().orElse(null), store);
+        }
     }
 }
