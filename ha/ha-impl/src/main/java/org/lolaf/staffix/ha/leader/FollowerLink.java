@@ -210,19 +210,6 @@ public final class FollowerLink implements FrameHandler {
         syncs.set(sessionKey, sync);
     }
 
-    /**
-     * The leader could not log one of the session's events, so the follower's copy has a gap: the session is no
-     * longer in sync here until a snapshot refills it. A session not announced yet, or not replicated by this
-     * follower, needs nothing.
-     */
-    public void resnapshot(int sessionKey) {
-        SessionSync sync = getSessionSync(sessionKey);
-        if (sync != null && sync != SessionSync.NOT_REPLICATED) {
-            sessionSync(sessionKey, SessionSync.SNAPSHOT_PENDING);
-            snapshotRequested = true;
-        }
-    }
-
     private synchronized boolean sessionSync(int sessionKey, SessionSync expected, SessionSync sync) {
         return sessionSyncs.compareAndSet(sessionKey, expected, sync);
     }
@@ -236,10 +223,7 @@ public final class FollowerLink implements FrameHandler {
         switch (status) {
             case REPLICATING:
             case SHARED_STORAGE:
-                // a snapshot the leader asked for meanwhile still has to come
-                if (getSessionSync(sessionKey) != SessionSync.SNAPSHOT_PENDING) {
-                    sessionSync(sessionKey, SessionSync.IN_SYNC);
-                }
+                sessionSync(sessionKey, SessionSync.IN_SYNC);
                 break;
             case SNAPSHOT_NEEDED:
                 sessionSync(sessionKey, SessionSync.SNAPSHOT_PENDING);
@@ -412,7 +396,7 @@ public final class FollowerLink implements FrameHandler {
     void snapshotPending() {
         for (int key = 0; key < announced && state == State.STREAMING; key++) {
             // marked sent before it goes: the follower's REPLICATING may come back before the snapshot's last frame
-            // is handed over, and a session still pending then would wait for a second snapshot
+            // is handed over
             if (sessionSync(key, SessionSync.SNAPSHOT_PENDING, SessionSync.SNAPSHOT_SENT) && !snapshot(key)) {
                 sessionSync(key, SessionSync.SNAPSHOT_SENT, SessionSync.SNAPSHOT_PENDING);
             }

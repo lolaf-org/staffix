@@ -176,15 +176,17 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     }
 
     /**
-     * Never throws into the session: an event the log cannot take is replaced by a snapshot of the session.
+     * Never throws into the session: an event the log cannot take, a message longer than it holds, is left out. Its
+     * follower never gets that message, and a resend of it after a failover is gap filled; the session's next event
+     * brings the follower's seqnums back in line.
      */
     private void append(StoreEventType eventType, long sequenceNumber, ByteBuffer message) {
         try {
             lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber, message));
         } catch (IllegalArgumentException e) {
-            log.warn("FIX session {} {} is snapshot to its follower instead: {}", session.getFixSessionType(),
-                    session.getFixSessionId(), e.getMessage());
-            followers.resnapshot(session.getKey());
+            log.error("FIX session {} {} {} {} not replicated, its follower will not have it: {}. Raise logCapacity to "
+                    + "replicate messages this long", session.getFixSessionType(), session.getFixSessionId(), eventType,
+                    sequenceNumber, e.getMessage());
         }
     }
 

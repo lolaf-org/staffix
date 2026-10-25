@@ -271,50 +271,6 @@ class TestFollowerLink {
     }
 
     @Test
-    void aSessionTheLeaderCouldNotLogIsSnapshotAgain() {
-        FixSessionMessagesStore store = replicated("main");
-        store.storeNextIncomingSeqNum(5);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
-        fill();
-        link.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
-        ha.getFollowers().add(link);
-        sent.frames.clear();
-
-        store.storeMessageSent(6, ByteBuffer.allocate(ha.getReplicationLog().getMaxMessageLength() + 1));
-
-        assertThat(link.isInSync(0)).as("its follower missed an event").isFalse();
-        link.snapshotPending();
-        assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0");
-        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_SENT);
-    }
-
-    @Test
-    void aReplicatingStatusDoesNotCancelASnapshotTheLeaderAskedFor() {
-        replicated("main").storeNextIncomingSeqNum(5);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
-        fill();
-
-        link.resnapshot(0);
-        link.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
-
-        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_PENDING);
-    }
-
-    @Test
-    void aSessionNotAnnouncedOrNotReplicatedNeedsNoSnapshot() {
-        replicated("main").storeNextIncomingSeqNum(5);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
-        link.resnapshot(0);
-        assertThat(link.getSessionSync(0)).as("not announced").isNull();
-
-        fill();
-        link.onSessionStatus(EPOCH, 0, SessionStatus.UNKNOWN_SESSION);
-        link.resnapshot(0);
-
-        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.NOT_REPLICATED);
-    }
-
-    @Test
     void aSessionTheFollowerDoesNotReplicateIsNeverInSync() {
         replicated("main").storeNextIncomingSeqNum(5);
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);

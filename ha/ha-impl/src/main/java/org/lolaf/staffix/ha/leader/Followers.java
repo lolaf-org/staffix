@@ -49,14 +49,6 @@ public final class Followers {
         return List.of(links);
     }
 
-    /**
-     * See {@link FollowerLink#resnapshot(int)}.
-     */
-    public void resnapshot(int sessionKey) {
-        for (FollowerLink link : links) {
-            link.resnapshot(sessionKey);
-        }
-    }
 
     /**
      * Waits until every follower in sync for the session applied the event at {@code offset}. A follower falling out
