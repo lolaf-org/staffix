@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.it;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -37,6 +38,7 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.version.FixApiVersion;
@@ -45,11 +47,13 @@ import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySe
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.stores.messages.file.FileMessageStoreSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.TestPorts;
 
 import java.net.InetSocketAddress;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -79,6 +83,10 @@ class TestSwitchover {
     private HaAdmin b;
     private AdminApi counterpartyEngine;
     private FixSessionId counterpartySession;
+    private Storage storage;
+
+    @TempDir
+    Path sharedDirectory;
 
     /**
      * Which side of the session the highly available pair runs.
@@ -88,9 +96,19 @@ class TestSwitchover {
         INITIATORS
     }
 
+    /**
+     * Where the pair's nodes store the session: each its own, replicated, or one file directory both see, which the
+     * follower detects and replicates nothing into.
+     */
+    enum Storage {
+        SEPARATE,
+        SHARED
+    }
+
     static Stream<Arguments> pairs() {
-        return Stream.of(Pair.values()).flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC)
-                .map(mode -> Arguments.of(pair, mode)));
+        return Stream.of(Storage.values()).flatMap(storage -> Stream.of(Pair.values())
+                .flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC)
+                        .map(mode -> Arguments.of(storage, pair, mode))));
     }
 
     private static FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode) {
@@ -104,10 +122,11 @@ class TestSwitchover {
                 .build();
     }
 
-    private static FixEngineBuilder.FixEngineBuilderBuilder engine(String name, FixApplication application, FixSessionSettings settings) {
+    private static FixEngineBuilder.FixEngineBuilderBuilder engine(String name, FixApplication application, FixSessionSettings settings,
+                                                                   FixMessagesStoreSettings store) {
         return FixEngineBuilder.builder()
                 .instanceId(name)
-                .fixMessagesStore(MemoryMessageStoreSettings.builder().build())
+                .fixMessagesStore(store)
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder().instanceId("app").application("app", application).build())
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSetting(settings).build());
     }
@@ -123,7 +142,8 @@ class TestSwitchover {
     /**
      * Starts the pair, a leading and b following, and the counterparty, then trades until b holds the session.
      */
-    private void start(Pair pair, ReplicationMode mode) {
+    private void start(Storage storage, Pair pair, ReplicationMode mode) {
+        this.storage = storage;
         InetSocketAddress replicationA = new InetSocketAddress("localhost", TestPorts.findFree());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", TestPorts.findFree());
         if (pair == Pair.ACCEPTORS) {
@@ -134,14 +154,16 @@ class TestSwitchover {
             FixEngine engineB = haEngine("b", sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, mode), replicationA, replicationB);
             engineB.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixB).build()).start();
             FixEngine counterpartyFixEngine = start(engine("counterparty", counterparty,
-                    sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, ReplicationMode.NONE)).build().instance());
+                    sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, ReplicationMode.NONE),
+                    MemoryMessageStoreSettings.builder().build()).build().instance());
             counterpartyFixEngine.newInitiator(initiator(INITIATOR_ID, fixA, fixB)).start();
             counterpartyEngine = (AdminApi) counterpartyFixEngine;
             counterpartySession = INITIATOR_ID;
         } else {
             InetSocketAddress fix = new InetSocketAddress("localhost", TestPorts.findFree());
             FixEngine counterpartyFixEngine = start(engine("counterparty", counterparty,
-                    sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, ReplicationMode.NONE)).build().instance());
+                    sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, ReplicationMode.NONE),
+                    MemoryMessageStoreSettings.builder().build()).build().instance());
             counterpartyFixEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fix).build()).start();
             counterpartyEngine = (AdminApi) counterpartyFixEngine;
             counterpartySession = ACCEPTOR_ID;
@@ -153,10 +175,14 @@ class TestSwitchover {
         await().until(() -> counterparty.logons.get() == 1);
         counterparty.roundTrips(10);
         await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
+        assertThat(b.getSessionsStatus()).singleElement().satisfies(session -> assertThat(session.isSharedStorage())
+                .as("the follower sees whether its storage is the leader's").isEqualTo(storage == Storage.SHARED));
     }
 
     private FixEngine haEngine(String nodeId, FixSessionSettings settings, InetSocketAddress replicationA, InetSocketAddress replicationB) {
-        FixEngine engine = start(engine(nodeId, new Echo(), settings)
+        FixEngine engine = start(engine(nodeId, new Echo(), settings, storage == Storage.SHARED
+                ? FileMessageStoreSettings.builder().storageDirectoryPath(sharedDirectory.toString()).build()
+                : MemoryMessageStoreSettings.builder().build())
                 .highAvailability(ReplicationHaSettings.builder()
                         .nodeId(nodeId)
                         .peer("a", replicationA)
@@ -191,10 +217,11 @@ class TestSwitchover {
         stops.forEach(Runnable::run);
     }
 
-    @ParameterizedTest(name = "{0} {1}")
+    @ParameterizedTest(name = "{0} {1} {2}")
     @MethodSource("pairs")
-    void aSwitchoverLogsTheCounterpartyOutAndTheNewLeaderCarriesOnFromTheSameSequenceNumbers(Pair pair, ReplicationMode mode) {
-        start(pair, mode);
+    void aSwitchoverLogsTheCounterpartyOutAndTheNewLeaderCarriesOnFromTheSameSequenceNumbers(Storage storage, Pair pair,
+                                                                                              ReplicationMode mode) {
+        start(storage, pair, mode);
         long expected = counterpartyIncomingSeqNum();
 
         assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
@@ -207,10 +234,14 @@ class TestSwitchover {
         assertThat(b.getStatus().getRole()).isEqualTo(org.lolaf.staffix.api.ha.LeaderElection.Role.LEADER);
     }
 
-    @ParameterizedTest(name = "{0} {1}")
+    /**
+     * Shared storage too: the old leader may have sent a message it never stored.
+     */
+    @ParameterizedTest(name = "{0} {1} {2}")
     @MethodSource("pairs")
-    void aFailoverDropsTheCounterpartyWithoutALogoutAndTheNewLeaderMovesItsSequenceNumbersAhead(Pair pair, ReplicationMode mode) {
-        start(pair, mode);
+    void aFailoverDropsTheCounterpartyWithoutALogoutAndTheNewLeaderMovesItsSequenceNumbersAhead(Storage storage, Pair pair,
+                                                                                                 ReplicationMode mode) {
+        start(storage, pair, mode);
         long expected = counterpartyIncomingSeqNum();
 
         ballot.elect("b");
