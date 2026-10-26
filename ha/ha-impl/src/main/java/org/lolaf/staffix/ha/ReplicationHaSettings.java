@@ -107,4 +107,11 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final Duration handOverTimeout = Duration.ofSeconds(5);
+
+    /**
+     * How long a switchover may take, from waiting for a follower in sync to leadership leaving this node; past it,
+     * this node leads its sessions again.
+     */
+    @Builder.Default
+    private final Duration switchoverTimeout = Duration.ofSeconds(30);
 }

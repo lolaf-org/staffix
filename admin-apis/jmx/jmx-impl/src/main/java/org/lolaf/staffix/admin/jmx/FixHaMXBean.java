@@ -45,6 +45,13 @@ public interface FixHaMXBean {
     void resyncSession(String fixSessionId, String fixSessionType);
 
     /**
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#switchover()}.
+     *
+     * @return its {@link org.lolaf.staffix.api.ha.SwitchoverOutcome} name
+     */
+    String switchover();
+
+    /**
      * See {@link org.lolaf.staffix.api.ha.HaStatus}; leader is null unless this node follows one.
      */
     interface Status {

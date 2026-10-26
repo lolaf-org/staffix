@@ -52,7 +52,7 @@ class TestLeaderLink {
     private final RecordingHandler sent = new RecordingHandler();
     private final RecordingEngine engine = new RecordingEngine().with(MAIN);
     private final Replica replica = new Replica(engine);
-    private final LeaderLink link = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+    private final LeaderLink link = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0);
 
     TestLeaderLink() {
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
@@ -144,13 +144,27 @@ class TestLeaderLink {
     }
 
     @Test
+    void aSessionConfiguredHereAfterItWasAnnouncedIsBoundAndCaughtUp() {
+        FixSessionSettings late = RecordingEngine.session("late", FixSessionType.INITIATOR);
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(3, late));
+        sent.frames.clear();
+
+        engine.with(late);
+        read(event(EPOCH, 0, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
+
+        assertThat(engine.store(late).started).isTrue();
+        assertThat(sent.frames).contains("SESSION_STATUS epoch=7 key=3 SNAPSHOT_NEEDED");
+    }
+
+    @Test
     void aSessionUnknownHereIsReportedAndNotReplicated() {
         FixSessionSettings other = RecordingEngine.session("other", FixSessionType.INITIATOR);
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(3, other),
                 event(EPOCH, 0, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
 
         assertThat(engine.stores).isEmpty();
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=true");
+        assertThat(sent.frames).as("a session it should hold is missing, so it is not in sync")
+                .containsExactly("SESSION_STATUS epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=false");
     }
 
     @Test

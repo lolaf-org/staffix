@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha;
 
 import lombok.Getter;
+import org.jspecify.annotations.Nullable;
 import lombok.experimental.SuperBuilder;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.LeaderElection;
@@ -38,6 +39,15 @@ public final class FakeLeaderElection implements LeaderElection {
     private volatile boolean started;
     private volatile boolean candidacySupported;
     private volatile boolean candidate = true;
+    private volatile @Nullable Runnable transfer;
+
+    /**
+     * Lets {@link #transferLeadership()} start a transfer, which runs {@code transfer}: electing another node, or
+     * nothing for a transfer that never lands.
+     */
+    public void transfersWith(Runnable transfer) {
+        this.transfer = transfer;
+    }
 
     public void candidacySupported(boolean candidacySupported) {
         this.candidacySupported = candidacySupported;
@@ -73,6 +83,17 @@ public final class FakeLeaderElection implements LeaderElection {
     @Override
     public boolean isLeadershipValid() {
         return leadershipValid;
+    }
+
+    @Override
+    public boolean isTransferLeadershipSupported() {
+        return transfer != null;
+    }
+
+    @Override
+    public boolean transferLeadership() {
+        transfer.run();
+        return true;
     }
 
     @Override

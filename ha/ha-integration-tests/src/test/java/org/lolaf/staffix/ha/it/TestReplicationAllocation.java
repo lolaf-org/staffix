@@ -257,6 +257,10 @@ class TestReplicationAllocation {
             @Override
             public void deactivate() {
             }
+
+            @Override
+            public void deactivateWithLogout(Deadline deadline) {
+            }
         });
         follower.start();
         stops.add(() -> {

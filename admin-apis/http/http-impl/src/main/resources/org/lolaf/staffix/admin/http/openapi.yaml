@@ -430,6 +430,29 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/ha/switchover:
+    post:
+      summary: Hands leadership to a follower while this node keeps running
+      description: Once a follower holds every replicated session, this node logs its sessions out, sends the follower
+        every write and tells it so, which spares it the sequence number jump of a failover, then has the leader
+        election transfer leadership. Answers once it ended, at most the switchover timeout later. Refused unless this
+        node leads with a leader election that can transfer leadership.
+      operationId: switchoverHa
+      responses:
+        '200':
+          description: How the switchover ended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SwitchoverResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/ha/resync:
     post:
       summary: Sends every replicated session again to every follower, replacing its copy
@@ -1387,6 +1410,15 @@ components:
         outgoing:
           type: integer
           format: int64
+    SwitchoverResult:
+      type: object
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [TRANSFERRED, NO_FOLLOWER_IN_SYNC, NOT_HANDED_OVER, NOT_TRANSFERRED]
+          description: TRANSFERRED, this node now follows; NO_FOLLOWER_IN_SYNC, nothing was changed; NOT_HANDED_OVER
+            and NOT_TRANSFERRED, this node leads its sessions again.
     CandidacyRequest:
       type: object
       required: [candidate]

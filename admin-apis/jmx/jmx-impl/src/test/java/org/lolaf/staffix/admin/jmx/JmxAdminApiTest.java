@@ -36,6 +36,7 @@ import org.lolaf.staffix.api.ha.HaAdmin;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
+import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
@@ -327,12 +328,14 @@ class JmxAdminApiTest {
         proxy.updateCandidacy(false);
         proxy.resync();
         proxy.resyncSession(ACCEPTOR_SESSION.toString(), "ACCEPTOR");
+        when(ha.switchover()).thenReturn(SwitchoverOutcome.TRANSFERRED);
+        assertThat(proxy.switchover()).isEqualTo("TRANSFERRED");
 
         verify(ha).setCandidate(false);
         verify(ha).resync();
         verify(ha).resync(ACCEPTOR_SESSION, FixSession.FixSessionType.ACCEPTOR);
         assertThat(mBeanServer.getMBeanInfo(haName()).getOperations()).extracting(MBeanOperationInfo::getName)
-                .contains("updateCandidacy", "resync", "resyncSession");
+                .contains("updateCandidacy", "resync", "resyncSession", "switchover");
     }
 
     private ObjectName haName() throws Exception {

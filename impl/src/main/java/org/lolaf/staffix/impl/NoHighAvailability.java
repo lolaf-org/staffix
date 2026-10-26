@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
+import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -81,6 +82,11 @@ final class NoHighAvailability implements FixEngineHa {
 
     @Override
     public void resync(FixSessionId fixSessionId, FixSessionType fixSessionType) {
+        throw noHighAvailability();
+    }
+
+    @Override
+    public SwitchoverOutcome switchover() {
         throw noHighAvailability();
     }
 

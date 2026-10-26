@@ -111,6 +111,11 @@ class TestReplicationOverPrimos {
         public void deactivate() {
             active = false;
         }
+
+        @Override
+        public void deactivateWithLogout(Deadline deadline) {
+            active = false;
+        }
     }
 
     private PrimosLeaderElectionSettings election(int nodeId) {

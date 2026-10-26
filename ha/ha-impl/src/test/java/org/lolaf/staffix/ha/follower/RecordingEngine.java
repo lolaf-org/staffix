@@ -122,6 +122,11 @@ public final class RecordingEngine implements EngineAccess {
         activity.add("deactivate");
     }
 
+    @Override
+    public void deactivateWithLogout(Deadline deadline) {
+        activity.add("deactivate with logout");
+    }
+
     private long openStores() {
         return stores.values().stream().filter(store -> store.started).count();
     }

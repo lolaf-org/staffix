@@ -52,6 +52,7 @@ public final class LeaderLink implements FrameHandler {
     }
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
+    private static final long UNKNOWN_SESSIONS_CHECK_NANOS = Duration.ofSeconds(1).toNanos();
 
     private final IOSession connection;
     private final Replica replica;
@@ -63,8 +64,15 @@ public final class LeaderLink implements FrameHandler {
     private volatile @Nullable String leaderId;
     private long leaderEpoch;
     private boolean ackDue;
+    private final long unknownSessionsCheckNanos;
+    private long unknownSessionsCheckedNanos;
 
     LeaderLink(IOSession connection, Replica replica, LongSupplier epoch, String nodeId) {
+        this(connection, replica, epoch, nodeId, UNKNOWN_SESSIONS_CHECK_NANOS);
+    }
+
+    LeaderLink(IOSession connection, Replica replica, LongSupplier epoch, String nodeId, long unknownSessionsCheckNanos) {
+        this.unknownSessionsCheckNanos = unknownSessionsCheckNanos;
         this.connection = connection;
         this.replica = replica;
         this.epoch = epoch;
@@ -153,6 +161,9 @@ public final class LeaderLink implements FrameHandler {
      * Acknowledges what the read applied, once for all of its frames.
      */
     void afterRead() {
+        if (state == State.STREAMING) {
+            bindNewlyKnownSessions();
+        }
         if (!ackDue || state != State.STREAMING) {
             return;
         }
@@ -160,6 +171,19 @@ public final class LeaderLink implements FrameHandler {
         ByteBuffer frame = connection.borrow(FrameEncoder.fixedBytes(FrameType.ACK));
         int length = FrameEncoder.ack(frame.clear(), 0, leaderEpoch, replica.getLastAppliedOffset(), replica.isComplete());
         connection.send(written(frame, length), true);
+    }
+
+    /**
+     * At most once a check interval, a second outside tests: the engine's sessions are listed to find them, and a
+     * refusal is rare.
+     */
+    private void bindNewlyKnownSessions() {
+        long now = System.nanoTime();
+        if (now - unknownSessionsCheckedNanos < unknownSessionsCheckNanos || !replica.hasUnknownSessions()) {
+            return;
+        }
+        unknownSessionsCheckedNanos = now;
+        replica.bindNewlyKnown((status, key) -> sessionStatus(key, status));
     }
 
     private boolean fromLeader(long epoch) {

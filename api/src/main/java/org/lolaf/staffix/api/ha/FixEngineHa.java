@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.api.ha;
 
+import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Factory;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Probes;
@@ -106,6 +107,13 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
          * The initiators and acceptors stay started for the next {@link #activate()}.
          */
         void deactivate();
+
+        /**
+         * {@link #deactivate()} for a node handing leadership over while it still leads: logs every session out, as
+         * a clean engine stop does, waiting for each until {@code deadline}, so its counterparty sees an orderly
+         * Logout. The Logouts are written to the stores, so they are replicated like any write.
+         */
+        void deactivateWithLogout(Deadline deadline);
     }
 
     /**

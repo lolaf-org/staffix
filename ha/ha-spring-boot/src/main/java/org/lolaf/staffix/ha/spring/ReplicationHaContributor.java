@@ -53,6 +53,7 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         if (props.getSnapshotMaxMessages() != null) b.snapshotMaxMessages(props.getSnapshotMaxMessages());
         if (props.getPromotionOutgoingSeqNumJump() != null) b.promotionOutgoingSeqNumJump(props.getPromotionOutgoingSeqNumJump());
         if (props.getHandOverTimeout() != null) b.handOverTimeout(props.getHandOverTimeout());
+        if (props.getSwitchoverTimeout() != null) b.switchoverTimeout(props.getSwitchoverTimeout());
         sink.accept(b.build());
     }
 

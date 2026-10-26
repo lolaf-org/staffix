@@ -195,6 +195,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 startAcceptor();
             } else {
                 log.info("Started FIX server {} on a standby engine: it binds once the engine leads", fixAcceptorBuilder.getInstanceId());
+                listStandbySessions();
             }
         }
     }
@@ -221,7 +222,35 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             if (running) {
                 log.info("Engine on standby, dropping the sessions of FIX server {}", fixAcceptorBuilder.getInstanceId());
                 stopAcceptor(Deadline.of(fixAcceptorBuilder.getShutdownMaxDelay()), false);
+                listStandbySessions();
             }
+        }
+    }
+
+    /**
+     * {@link #deactivate()} for an engine handing leadership over: every session is logged out first.
+     */
+    void deactivateWithLogout(Deadline deadline) {
+        synchronized (lifecycleLock) {
+            if (running) {
+                log.info("Engine hands leadership over, logging out the sessions of FIX server {}", fixAcceptorBuilder.getInstanceId());
+                stopAcceptor(deadline, true);
+                listStandbySessions();
+            }
+        }
+    }
+
+    /**
+     * Lists the settings of this acceptor's sessions without building any, for a standby engine whose high availability
+     * replicates them before the acceptor runs one. Read once, so a settings store changed meanwhile is seen when the
+     * engine leads.
+     */
+    private void listStandbySessions() {
+        synchronized (configuredSessionsSettings) {
+            configuredSessionsSettings.clear();
+            fixSessionsSettingsStores.forEach(store -> store.getSettings().stream()
+                    .filter(FixAcceptorImpl::isAcceptorSession)
+                    .forEach(configuredSessionsSettings::add));
         }
     }
 

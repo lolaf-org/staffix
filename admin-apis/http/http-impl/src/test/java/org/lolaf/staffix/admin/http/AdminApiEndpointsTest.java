@@ -48,6 +48,7 @@ import org.lolaf.staffix.api.ha.HaAdmin;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
+import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.mockito.ArgumentCaptor;
 
@@ -611,6 +612,11 @@ class AdminApiEndpointsTest {
         assertThat(call("POST", "/engines/alpha-engine/v1/ha/resync", null).statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/trading/resync", null).statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/drop-copy/resync", null).statusCode()).isEqualTo(404);
+
+        when(ha.switchover()).thenReturn(SwitchoverOutcome.NOT_TRANSFERRED);
+        HttpResponse<String> switchover = call("POST", "/engines/alpha-engine/v1/ha/switchover", null);
+        assertThat(switchover.statusCode()).isEqualTo(200);
+        assertThat(switchover.body()).isEqualTo("{\"outcome\":\"NOT_TRANSFERRED\"}");
 
         verify(ha).setCandidate(false);
         verify(ha).resync();

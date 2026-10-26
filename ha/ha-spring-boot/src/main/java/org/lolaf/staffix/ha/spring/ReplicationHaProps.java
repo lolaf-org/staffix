@@ -87,4 +87,9 @@ public class ReplicationHaProps {
      * How long a leader stopping cleanly waits to send its follower every event; unset keeps 5s.
      */
     private Duration handOverTimeout;
+
+    /**
+     * How long a switchover may take before this node leads its sessions again; unset keeps 30s.
+     */
+    private Duration switchoverTimeout;
 }

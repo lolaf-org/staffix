@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
+import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -48,6 +49,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -77,7 +79,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private volatile EngineAccess engine;
     private volatile Replica replica;
     private volatile LeaderElection election;
-    private ScheduledExecutorService roleThread;
+    private volatile ScheduledExecutorService roleThread;
     private volatile Role followedRole = Role.UNKNOWN;
     private long followedEpoch = -1;
     private @Nullable InetSocketAddress followedLeader;
@@ -181,6 +183,82 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         requireLeading();
         log.info("FIX session {} {} is sent again to the followers by snapshot", fixSessionType, fixSessionId);
         followers.resync(session.getKey());
+    }
+
+    /**
+     * Runs on the role thread, so no role change interleaves: one the election makes meanwhile is followed once this
+     * returns.
+     */
+    @Override
+    public SwitchoverOutcome switchover() {
+        ScheduledExecutorService thread = roleThread;
+        if (thread == null) {
+            throw new IllegalStateException("The high availability of node " + settings.getNodeId() + " has not started");
+        }
+        try {
+            return thread.submit(this::switchOverOnRoleThread).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while node " + settings.getNodeId() + " switched over", e);
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof RuntimeException) {
+                throw (RuntimeException) e.getCause();
+            }
+            throw new IllegalStateException("The switchover of node " + settings.getNodeId() + " failed", e.getCause());
+        }
+    }
+
+    private SwitchoverOutcome switchOverOnRoleThread() {
+        LeaderElection currentElection = election;
+        if (followedRole != Role.LEADER) {
+            throw new IllegalStateException("Only the leader switches over; node " + settings.getNodeId() + " is " + followedRole);
+        }
+        if (!currentElection.isTransferLeadershipSupported()) {
+            throw new IllegalStateException("The leader election " + currentElection.getClass().getSimpleName()
+                    + " cannot transfer leadership");
+        }
+        Deadline deadline = Deadline.of(settings.getSwitchoverTimeout());
+        if (!deadline.waitAsLongAs(() -> !isAnyFollowerInSyncForAll())) {
+            log.warn("Node {} does not switch over: no follower holds every replicated session", settings.getNodeId());
+            return SwitchoverOutcome.NO_FOLLOWER_IN_SYNC;
+        }
+        log.info("Node {} switches over at epoch {}: logging its sessions out", settings.getNodeId(), followedEpoch);
+        engine.deactivateWithLogout(deadline);
+        if (!publisher.handOver(deadline)) {
+            resumeLeading("its follower was not sent every write");
+            return SwitchoverOutcome.NOT_HANDED_OVER;
+        }
+        // a follower reconnecting to this node, which still leads, would start a stream and forget it was handed over
+        stopPublisher(deadline);
+        boolean transferring = currentElection.transferLeadership();
+        if (!transferring || !deadline.waitAsLongAs(() -> currentElection.getRole() == Role.LEADER)) {
+            if (currentElection.getRole() == Role.LEADER) {
+                resumeLeading(transferring ? "leadership did not move in time" : "the leader election did not transfer leadership");
+                return SwitchoverOutcome.NOT_TRANSFERRED;
+            }
+        }
+        log.info("Node {} handed leadership over", settings.getNodeId());
+        return SwitchoverOutcome.TRANSFERRED;
+    }
+
+    private boolean isAnyFollowerInSyncForAll() {
+        for (FollowerLink link : followers.all()) {
+            if (link.isInSyncForAll(sessions.count())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Same leadership, so no seqnum jump; the follower reconnects, and its new stream clears the hand over.
+     */
+    private void resumeLeading(String reason) {
+        log.warn("Node {} leads its sessions again at epoch {}: {}", settings.getNodeId(), followedEpoch, reason);
+        if (publisher == null) {
+            startPublisher(followedEpoch);
+        }
+        engine.activate();
     }
 
     private void requireLeading() {
@@ -345,11 +423,15 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             replica.jumpOutgoingSeqNums(settings.getPromotionOutgoingSeqNumJump());
         }
         replica.close(deadline);
+        startPublisher(epoch);
+        engine.activate();
+        changed(Role.LEADER, epoch, null);
+    }
+
+    private void startPublisher(long epoch) {
         publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLog, sessions, followers,
                 () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getSnapshotMaxMessages(), stats);
         publisher.start();
-        engine.activate();
-        changed(Role.LEADER, epoch, null);
     }
 
     private void follow(long epoch, @Nullable InetSocketAddress leader) {

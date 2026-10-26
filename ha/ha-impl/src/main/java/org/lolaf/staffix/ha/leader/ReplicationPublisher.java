@@ -99,9 +99,15 @@ public final class ReplicationPublisher {
 
     /**
      * Hands over to every follower, for a leader stopping cleanly; see {@link FollowerLink#handOver(Deadline)}.
+     *
+     * @return whether a follower was told
      */
-    public void handOver(Deadline deadline) {
-        followers.all().forEach(link -> link.handOver(deadline));
+    public boolean handOver(Deadline deadline) {
+        boolean told = false;
+        for (FollowerLink link : followers.all()) {
+            told |= link.handOver(deadline);
+        }
+        return told;
     }
 
     public void stop(Deadline deadline) {

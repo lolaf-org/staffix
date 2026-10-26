@@ -165,6 +165,38 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     }
 
     @Test
+    void anEngineHandingLeadershipOverLogsItsSessionsOutAndClosesTheirStores() {
+        withHighAvailability();
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        logonClient();
+
+        engine.deactivateWithLogout(Deadline.of(Duration.ofSeconds(5)));
+
+        await().untilAsserted(() -> verify(fixAcceptorApplication).onLogout(any(), any(), notNull()));
+        assertThat(fixInitiator.isConnected()).isFalse();
+        assertThat(stores.get(0).isStarted()).as("the session's store is closed").isFalse();
+    }
+
+    @Test
+    void aStandbyAcceptorListsItsSessionsForItsHighAvailabilityWithoutRunningThem() {
+        acceptorFixEngineBuilder = acceptorFixEngineBuilder.toBuilder()
+                .highAvailability(TestingHaSettings.builder().mock(ha).build())
+                .build();
+        withStandbyHighAvailability();
+        setupAcceptorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);
+
+        fixAcceptor.start();
+
+        assertThat(engine.getFixSessionsSettings()).extracting(FixSessionSettings::getFixSessionType)
+                .contains(FixSession.FixSessionType.ACCEPTOR);
+        assertThat(listening(fixAcceptorBuilder.getBindAddress())).isFalse();
+        engine.activate();
+        engine.deactivate();
+        assertThat(engine.getFixSessionsSettings()).as("still listed once the engine stood down")
+                .extracting(FixSessionSettings::getFixSessionType).contains(FixSession.FixSessionType.ACCEPTOR);
+    }
+
+    @Test
     void aStandbyRefusesEverySessionActionWithAClearMessage() {
         withStandbyHighAvailability();
         setupInitiatorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);

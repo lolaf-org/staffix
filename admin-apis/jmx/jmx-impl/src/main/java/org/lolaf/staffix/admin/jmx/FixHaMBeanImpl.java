@@ -77,6 +77,11 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         delegate.resync(session.getFixSessionId(), session.getFixSessionType());
     }
 
+    @Override
+    public String switchover() {
+        return delegate.switchover().name();
+    }
+
     private static Session session(HaSessionStatus status) {
         return new SessionImpl(status.getFixSessionId().toString(), status.getFixSessionType().name(),
                 status.getReplicationMode().name(), status.getReplicationAckTimeout().toString(), status.isInSync(),

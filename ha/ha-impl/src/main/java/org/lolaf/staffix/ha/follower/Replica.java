@@ -30,6 +30,7 @@ import org.lolaf.staffix.ha.wire.SessionStatus;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.function.ObjIntConsumer;
 
 /**
  * What the follower holds of the leader's sessions, kept across connections so a reconnection can resume: each
@@ -86,11 +87,12 @@ public final class Replica {
     }
 
     /**
-     * Every session replicated here is complete.
+     * Every session the leader replicates is complete here, or held by the leader's own storage: one refused for an
+     * unknown session or storage is missing, although nothing is replicated into it.
      */
     public boolean isComplete() {
         for (ReplicaSession session : sessions) {
-            if (session != null && session.store != null && !session.complete) {
+            if (session != null && (session.store != null ? !session.complete : session.isMissing())) {
                 return false;
             }
         }
@@ -133,7 +135,9 @@ public final class Replica {
     private ReplicaSession open(FixSessionType fixSessionType, String fixSessionId, @Nullable String leaderStorageIdentity) {
         FixSessionSettings settings = findSettings(fixSessionType, fixSessionId);
         if (settings == null) {
-            return new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.UNKNOWN_SESSION);
+            ReplicaSession unknown = new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.UNKNOWN_SESSION);
+            unknown.leaderStorageIdentity = leaderStorageIdentity;
+            return unknown;
         }
         FixSessionMessagesStore store = engine.openStore(settings);
         String storageIdentity = store.getStorageIdentity().orElse(null);
@@ -145,6 +149,36 @@ public final class Replica {
         }
         store.start();
         return new ReplicaSession(fixSessionType, fixSessionId, store, SessionStatus.SNAPSHOT_NEEDED);
+    }
+
+    /**
+     * Binds again each session refused as unknown whose settings the engine has by now: a standby's connectors may
+     * register their sessions after the leader announced them, which would otherwise stay refused until the next
+     * connection.
+     *
+     * @param bound told each key bound now, with its status for the leader
+     */
+    void bindNewlyKnown(ObjIntConsumer<SessionStatus> bound) {
+        for (int key = 0; key < sessions.length; key++) {
+            ReplicaSession session = sessions[key];
+            if (session == null || session.store != null || session.refusal != SessionStatus.UNKNOWN_SESSION
+                    || findSettings(session.fixSessionType, session.fixSessionId) == null) {
+                continue;
+            }
+            sessions[key] = open(session.fixSessionType, session.fixSessionId, session.leaderStorageIdentity);
+            SessionStatus status = sessions[key].status();
+            log.info("FIX session {} {} is now configured here: {}", session.fixSessionType, session.fixSessionId, status);
+            bound.accept(status, key);
+        }
+    }
+
+    boolean hasUnknownSessions() {
+        for (ReplicaSession session : sessions) {
+            if (session != null && session.store == null && session.refusal == SessionStatus.UNKNOWN_SESSION) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private @Nullable FixSessionSettings findSettings(FixSessionType fixSessionType, String fixSessionId) {
@@ -311,6 +345,10 @@ public final class Replica {
         private final String fixSessionId;
         private final @Nullable FixSessionMessagesStore store;
         private final SessionStatus refusal;
+        /**
+         * Kept by a session refused as unknown, to bind it once it is configured.
+         */
+        private @Nullable String leaderStorageIdentity;
         private volatile boolean complete;
         private volatile boolean handedOver;
         private long snapshotNextOutgoingSeqNum;
@@ -332,6 +370,10 @@ public final class Replica {
                 return refusal;
             }
             return complete ? SessionStatus.REPLICATING : SessionStatus.SNAPSHOT_NEEDED;
+        }
+
+        boolean isMissing() {
+            return refusal == SessionStatus.UNKNOWN_SESSION || refusal == SessionStatus.UNKNOWN_STORAGE;
         }
 
         boolean matches(FixSessionType fixSessionType, String fixSessionId) {

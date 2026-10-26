@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
+import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -94,6 +95,7 @@ class TestReplicationFixEngineHa {
                     .logCapacity(1 << 16)
                     .heartbeatInterval(Duration.ofMillis(50))
                     .reconnectInterval(Duration.ofMillis(50))
+                    .switchoverTimeout(Duration.ofSeconds(2))
                     .leaderElection(FakeLeaderElection.Settings.builder().election(election).build())
                     .monitoringInstanceId("monitoring")
                     .alertsPublisherInstanceId("alerts")
@@ -172,6 +174,66 @@ class TestReplicationFixEngineHa {
         await().until(() -> b.engine.activity.contains("activate, stores open 0"));
         assertThat(b.engine.store(MAIN).writes).as("the last write reached b before the handover").contains("incoming 7")
                 .doesNotContain("outgoing 10001");
+    }
+
+    @Test
+    void aSwitchoverLogsTheSessionsOutAndTheFollowerTakesThemOverWithoutMovingThemAhead() {
+        aLeadsBFollows();
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        a.store.storeNextIncomingSeqNum(7);
+        a.election.transfersWith(() -> {
+            a.election.elect(Role.FOLLOWER, 4, "b");
+            b.election.elect(Role.LEADER, 4, "b");
+        });
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+
+        assertThat(a.engine.activity).contains("deactivate with logout");
+        await().until(() -> b.engine.activity.contains("activate, stores open 0"));
+        assertThat(b.engine.store(MAIN).writes).as("every write reached b before the transfer").contains("incoming 7")
+                .doesNotContain("outgoing 10001");
+        await().until(() -> a.ha.getStatus().getRole() == Role.FOLLOWER);
+    }
+
+    @Test
+    void aSwitchoverWhoseTransferNeverLandsResumesAndALaterFailoverStillMovesTheSessionsAhead() {
+        aLeadsBFollows();
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        a.election.transfersWith(() -> {
+        });
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.NOT_TRANSFERRED);
+
+        assertThat(a.engine.activity).endsWith("deactivate with logout", "activate, stores open 0");
+        await().until(() -> listening(addressA));
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        a.election.elect(Role.FOLLOWER, 4, "b");
+        b.election.elect(Role.LEADER, 4, "b");
+        await().until(() -> b.engine.activity.contains("activate, stores open 0"));
+        assertThat(b.engine.store(MAIN).writes).as("b reconnected since the hand over, which no longer holds")
+                .endsWith("outgoing 10001");
+    }
+
+    @Test
+    void aSwitchoverWaitsForAFollowerInSyncAndChangesNothingWithoutOne() {
+        a.election.elect(Role.LEADER, 3, "a");
+        a.start();
+        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
+        a.election.transfersWith(() -> {
+        });
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.NO_FOLLOWER_IN_SYNC);
+        assertThat(a.engine.activity).containsExactly("activate, stores open 0");
+    }
+
+    @Test
+    void onlyALeaderWithAnElectionThatCanTransferSwitchesOver() {
+        aLeadsBFollows();
+
+        assertThatThrownBy(() -> a.ha.switchover()).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cannot transfer leadership");
+        assertThatThrownBy(() -> b.ha.switchover()).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Only the leader switches over; node b is FOLLOWER");
     }
 
     @Test

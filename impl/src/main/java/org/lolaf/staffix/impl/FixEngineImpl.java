@@ -890,5 +890,12 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             initiators.values().forEach(FixInitiatorImpl::deactivate);
             acceptors.values().forEach(FixAcceptorImpl::deactivate);
         }
+
+        @Override
+        public synchronized void deactivateWithLogout(Deadline deadline) {
+            active = false;
+            initiators.values().forEach(initiator -> initiator.deactivateWithLogout(deadline));
+            acceptors.values().forEach(acceptor -> acceptor.deactivateWithLogout(deadline));
+        }
     }
 }

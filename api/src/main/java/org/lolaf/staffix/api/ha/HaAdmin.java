@@ -55,4 +55,14 @@ public interface HaAdmin {
      * @throws IllegalStateException    unless this node leads
      */
     void resync(FixSessionId fixSessionId, FixSessionType fixSessionType);
+
+    /**
+     * Hands leadership to a follower while this node keeps running, for planned maintenance: once a follower holds
+     * every replicated session, this node logs its sessions out, sends the follower every write and tells it so,
+     * which spares it the seqnum jump of a failover, then has the leader election transfer leadership. Blocks until
+     * it ends, at most the switchover timeout of the implementation.
+     *
+     * @throws IllegalStateException unless this node leads, with a leader election that can transfer leadership
+     */
+    SwitchoverOutcome switchover();
 }

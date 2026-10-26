@@ -285,6 +285,18 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         }
     }
 
+    /**
+     * {@link #deactivate()} for an engine handing leadership over: the session is logged out first.
+     */
+    void deactivateWithLogout(Deadline deadline) {
+        synchronized (lifecycleLock) {
+            if (targetRunning) {
+                log.info("Engine hands leadership over, logging out FIX session {}", fixSessionSettings.getFixSessionId());
+                stopTarget("Fix engine hands leadership over", deadline, true);
+            }
+        }
+    }
+
     private void startInitiatorResources() {
         if (fixInitiatorBuilder.getScheduledExecutorService() == null) {
             scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(r -> {
