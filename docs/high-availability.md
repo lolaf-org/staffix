@@ -157,13 +157,17 @@ application shares. `v1/ha` reports what the election supports.
 ## Fencing
 
 **A leader that can no longer prove it leads stops its sessions at once, without a Logout.** With primos, that is a
-leader cut off from the majority (its follower and the witness): primos stands it down after one minimum election
-timeout without hearing from them, and staffix drops its sessions. The other node can only be elected after its own
-election timeout, with the witness's vote.
+leader cut off from the majority (its follower and the witness). No other node can be elected until one minimum
+election timeout (`electionTimeoutMin`) after the last heartbeat the majority answered was sent: the witness refuses to
+vote before then. Staffix drops the leader's sessions `fencingMargin` (`PrimosLeaderElectionSettings`, Spring
+`staffix.ha-replication.fencing-margin`, 50 ms by default) before that instant, so they are down before the other node
+can even be elected.
 
-The order between the two rests on those timings, not on a guarantee: in tests the old leader stood down between 5 and
-360 ms before the new one led. Keep the primos timings the same on all three nodes, and put the witness where neither node's
-network failure takes it down too.
+Raise `fencingMargin` when dropping your sessions takes longer, or your machines' clocks may drift apart over an
+election timeout (they rarely do by more than a fraction of a millisecond). It must stay below `electionTimeoutMin`:
+a leader whose heartbeats go unanswered for longer than the difference drops its sessions, then leads them again with
+a sequence number jump once contact is back. Keep the primos timings the same on all three nodes, and put the witness
+where neither node's network failure takes it down too.
 
 ## Shared storage
 

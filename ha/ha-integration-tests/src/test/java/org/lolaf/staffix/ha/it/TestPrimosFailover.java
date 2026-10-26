@@ -278,7 +278,8 @@ class TestPrimosFailover {
 
     /**
      * The leader's process runs on, so only fencing stands between the two nodes running the session at once: it must
-     * stop its sessions, without a Logout, before the other node is elected, which then moves its seqnums ahead.
+     * stop its sessions, without a Logout, at least the fencing margin (50 ms by default) before the other node could
+     * be elected, which then moves its seqnums ahead.
      */
     @ParameterizedTest
     @EnumSource(Pair.class)
@@ -295,13 +296,13 @@ class TestPrimosFailover {
         HaStatus elected = nodes[3 - leader].getStatus();
         assertThat(fenced.getRole()).as("cut off, it cannot prove it leads").isNotEqualTo(Role.LEADER);
         assertThat(elected.getRole()).isEqualTo(Role.LEADER);
-        assertThat(fenced.getRoleSince()).as("stopped its sessions before the other node ran them")
-                .isBefore(elected.getRoleSince());
+        assertThat(Duration.between(fenced.getRoleSince(), elected.getRoleSince()))
+                .as("stopped its sessions well before the other node ran them: the fencing margin, less dropping them")
+                .isGreaterThanOrEqualTo(Duration.ofMillis(25));
         assertThat(counterparty.logoutsReceived.get()).isZero();
         await().until(() -> counterparty.resendRequests.get() == resendRequests + 1);
         counterparty.roundTrips(10);
         assertThat(counterpartyIncomingSeqNum()).isGreaterThan(expected + JUMP);
         assertThat(loggedOnNodes.most()).as("never logged on from both nodes at once").isEqualTo(1);
-        System.out.println("FENCING " + pair + " margin: " + Duration.between(fenced.getRoleSince(), elected.getRoleSince()).toMillis() + " ms");
     }
 }

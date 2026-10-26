@@ -23,9 +23,10 @@ could mean.
   `ASYNC` (nothing waits) or `SYNC` (a message reaches the counterparty only once the standby has it), with
   `haSessionSettings.replicationMode`. The leader is elected by primos with a witness, or by an election of your own.
   A planned switchover logs the sessions out and the other engine carries on at the same sequence numbers; after a
-  failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. Two engines sharing
-  one database or directory are detected and not replicated into. Modules `staffix-ha-impl`, `staffix-ha-primos`,
-  `staffix-ha-spring-boot` and `staffix-ha-primos-spring-boot`; see [High availability](docs/high-availability.md),
+  failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. A leader cut off from
+  the others drops its sessions a fencing margin (50 ms by default) before the other engine can be elected. Two
+  engines sharing one database or directory are detected and not replicated into. Modules `staffix-ha-impl`,
+  `staffix-ha-primos`, `staffix-ha-spring-boot` and `staffix-ha-primos-spring-boot`; see [High availability](docs/high-availability.md),
   including what it does not do.
 - **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
   switchover, maintenance mode and a re-sync of the standby; it publishes `ha.*` meters and alerts when the standby

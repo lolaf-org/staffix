@@ -182,6 +182,8 @@ staffix.ha-replication.alerts-publisher-instance-id=alerts
 
 # switchover and maintenance mode move a leadership the application shares, so they are off unless allowed
 staffix.ha-replication.leadership-control=true
+# how long before any successor's election this node's sessions are dropped; unset keeps 50ms
+staffix.ha-replication.fencing-margin=50ms
 
 # per session
 …sessions[0].ha.replication-mode=SYNC
