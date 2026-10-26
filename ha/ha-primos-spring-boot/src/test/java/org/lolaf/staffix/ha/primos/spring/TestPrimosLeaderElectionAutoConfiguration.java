@@ -58,6 +58,15 @@ class TestPrimosLeaderElectionAutoConfiguration {
     }
 
     @Test
+    void controlsTheApplicationsLeadershipOnlyWhenAllowed() {
+        runner.withPropertyValues(singleNodeCluster()).withPropertyValues("primos.lifecycle=manual")
+                .run(context -> assertThat(context.getBean(PrimosLeaderElectionSettings.class).isLeadershipControl()).isFalse());
+        runner.withPropertyValues(singleNodeCluster()).withPropertyValues("primos.lifecycle=manual",
+                        "staffix.ha-primos.leadership-control=true")
+                .run(context -> assertThat(context.getBean(PrimosLeaderElectionSettings.class).isLeadershipControl()).isTrue());
+    }
+
+    @Test
     void refusesToStartWithoutAPrimosNode() {
         runner.run(context -> assertThat(context).getFailure()
                 .rootCause().hasMessageContaining("No PrimosNode bean to elect the leading engine with"));

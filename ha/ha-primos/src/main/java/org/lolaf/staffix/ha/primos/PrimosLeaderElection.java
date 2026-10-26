@@ -44,14 +44,16 @@ public final class PrimosLeaderElection implements LeaderElection {
 
     private final PrimosNode node;
     private final boolean owned;
+    private final boolean leadershipControl;
     private final long leaseNanos;
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private volatile Role reportedRole = Role.UNKNOWN;
     private volatile boolean started;
 
-    PrimosLeaderElection(PrimosNode node, boolean owned) {
+    PrimosLeaderElection(PrimosNode node, boolean owned, boolean leadershipControl) {
         this.node = node;
         this.owned = owned;
+        this.leadershipControl = owned || leadershipControl;
         this.leaseNanos = node.config().timings().electionTimeoutMin().toNanos();
         node.addListener(new PrimosListener() {
             @Override
@@ -107,6 +109,43 @@ public final class PrimosLeaderElection implements LeaderElection {
     }
 
     @Override
+    public boolean isTransferLeadershipSupported() {
+        return leadershipControl;
+    }
+
+    /**
+     * Primos's own transfer: this node keeps leading until its successor campaigns.
+     */
+    @Override
+    public boolean transferLeadership() {
+        requireLeadershipControl("transfer leadership");
+        return node.transferLeadership();
+    }
+
+    @Override
+    public boolean isCandidacySupported() {
+        return leadershipControl;
+    }
+
+    @Override
+    public void setCandidate(boolean candidate) {
+        requireLeadershipControl("decline candidacy");
+        node.setCandidate(candidate);
+    }
+
+    @Override
+    public boolean isCandidate() {
+        return node.isCandidate();
+    }
+
+    private void requireLeadershipControl(String action) {
+        if (!leadershipControl) {
+            throw new UnsupportedOperationException("The application's primos node " + node.config().nodeId()
+                    + " cannot " + action + " through staffix unless leadershipControl allows it");
+        }
+    }
+
+    @Override
     public void addListener(Listener listener) {
         listeners.add(listener);
     }
@@ -156,13 +195,13 @@ public final class PrimosLeaderElection implements LeaderElection {
                         + "application runs, or a cluster, for a node staffix runs");
             }
             if (settings.getNode() != null) {
-                return new PrimosLeaderElection(settings.getNode(), false);
+                return new PrimosLeaderElection(settings.getNode(), false, settings.isLeadershipControl());
             }
             if (settings.getStateDirectory() == null || settings.getBindAddress() == null) {
                 throw new IllegalArgumentException("A primos node staffix runs needs a stateDirectory, to remember its "
                         + "term and vote across restarts, and a bindAddress");
             }
-            return new PrimosLeaderElection(ownedNode(settings), true);
+            return new PrimosLeaderElection(ownedNode(settings), true, true);
         }
 
         private static PrimosNode ownedNode(PrimosLeaderElectionSettings settings) {

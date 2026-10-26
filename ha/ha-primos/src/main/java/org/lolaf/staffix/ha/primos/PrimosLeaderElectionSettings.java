@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.primos;
 
+import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
 import org.jspecify.annotations.NullMarked;
@@ -44,6 +45,14 @@ public class PrimosLeaderElectionSettings extends LeaderElectionSettings {
      * that can disagree.
      */
     private final @Nullable PrimosNode node;
+
+    /**
+     * Whether an operator may, through staffix, transfer the leadership of the application's {@link #getNode() node}
+     * or withdraw it from elections. Off by default: that leadership is the application's too. Always allowed for a
+     * node staffix runs.
+     */
+    @Builder.Default
+    private final boolean leadershipControl = false;
 
     /**
      * The cluster of the node staffix runs.

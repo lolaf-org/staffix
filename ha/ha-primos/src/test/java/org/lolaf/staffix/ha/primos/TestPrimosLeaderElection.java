@@ -159,6 +159,59 @@ class TestPrimosLeaderElection {
     }
 
     @Test
+    void aLeaderTransfersLeadershipAndStaysAsAFollower() {
+        List<LeaderElection> cluster = startCluster();
+        await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).isPresent());
+        LeaderElection old = leader(cluster).get();
+        long epoch = old.getEpoch();
+        assertThat(old.isTransferLeadershipSupported()).isTrue();
+
+        assertThat(old.transferLeadership()).isTrue();
+
+        await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).filter(next -> next != old).isPresent());
+        assertThat(leader(cluster).get().getEpoch()).isGreaterThan(epoch);
+        assertThat(old.getRole()).isEqualTo(Role.FOLLOWER);
+        assertThat(old.isStarted()).isTrue();
+    }
+
+    @Test
+    void aLeaderWithdrawingFromElectionsHandsOverAndNoLongerStands() {
+        List<LeaderElection> cluster = startCluster();
+        await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).isPresent());
+        LeaderElection old = leader(cluster).get();
+
+        old.setCandidate(false);
+
+        await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).filter(next -> next != old).isPresent());
+        assertThat(old.isCandidate()).isFalse();
+    }
+
+    @Test
+    void theApplicationsNodeIsControlledOnlyWhenTheSettingsAllowIt() {
+        PrimosNode node = PrimosNode.builder()
+                .clusterConfig(cluster(1))
+                .store(MemoryStateStore::new)
+                .transport(UdpTransport.builder()
+                        .bindAddress(new InetSocketAddress("localhost", ports[1]))
+                        .peers(cluster(1).allPeers())
+                        .clusterName("staffix-test"))
+                .build();
+        LeaderElection listening = PrimosLeaderElectionSettings.builder().node(node).build().instance();
+        LeaderElection controlling = PrimosLeaderElectionSettings.builder().node(node).leadershipControl(true).build().instance();
+
+        assertThat(listening.isTransferLeadershipSupported()).isFalse();
+        assertThat(listening.isCandidacySupported()).isFalse();
+        assertThatThrownBy(listening::transferLeadership).isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining("unless leadershipControl allows it");
+        assertThatThrownBy(() -> listening.setCandidate(false)).isInstanceOf(UnsupportedOperationException.class);
+
+        assertThat(controlling.isCandidacySupported()).isTrue();
+        controlling.setCandidate(false);
+        assertThat(node.isCandidate()).isFalse();
+        assertThat(listening.isCandidate()).as("reads the node, whoever may change it").isFalse();
+    }
+
+    @Test
     void exactlyOneOfANodeOrAClusterIsTaken() {
         assertThatThrownBy(() -> PrimosLeaderElectionSettings.builder().build().instance())
                 .hasMessageContaining("exactly one of a node");
