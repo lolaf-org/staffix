@@ -60,6 +60,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -84,6 +85,8 @@ class TestSwitchover {
     private AdminApi counterpartyEngine;
     private FixSessionId counterpartySession;
     private Storage storage;
+    private Supplier<FixEngine> startFollower;
+    private FixEngine follower;
 
     @TempDir
     Path sharedDirectory;
@@ -103,6 +106,11 @@ class TestSwitchover {
     enum Storage {
         SEPARATE,
         SHARED
+    }
+
+    static Stream<Arguments> pairsAndModes() {
+        return Stream.of(Pair.values()).flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC)
+                .map(mode -> Arguments.of(pair, mode)));
     }
 
     static Stream<Arguments> pairs() {
@@ -151,8 +159,12 @@ class TestSwitchover {
             InetSocketAddress fixB = new InetSocketAddress("localhost", TestPorts.findFree());
             FixEngine engineA = haEngine("a", sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, mode), replicationA, replicationB);
             engineA.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixA).build()).start();
-            FixEngine engineB = haEngine("b", sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, mode), replicationA, replicationB);
-            engineB.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixB).build()).start();
+            startFollower = () -> {
+                FixEngine engineB = haEngine("b", sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, mode), replicationA, replicationB);
+                engineB.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixB).build()).start();
+                return engineB;
+            };
+            follower = startFollower.get();
             FixEngine counterpartyFixEngine = start(engine("counterparty", counterparty,
                     sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, ReplicationMode.NONE),
                     MemoryMessageStoreSettings.builder().build()).build().instance());
@@ -169,8 +181,12 @@ class TestSwitchover {
             counterpartySession = ACCEPTOR_ID;
             haEngine("a", sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, mode), replicationA, replicationB)
                     .newInitiator(initiator(INITIATOR_ID, fix)).start();
-            haEngine("b", sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, mode), replicationA, replicationB)
-                    .newInitiator(initiator(INITIATOR_ID, fix)).start();
+            startFollower = () -> {
+                FixEngine engineB = haEngine("b", sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, mode), replicationA, replicationB);
+                engineB.newInitiator(initiator(INITIATOR_ID, fix)).start();
+                return engineB;
+            };
+            follower = startFollower.get();
         }
         await().until(() -> counterparty.logons.get() == 1);
         counterparty.roundTrips(10);
@@ -251,6 +267,30 @@ class TestSwitchover {
         await().until(() -> counterparty.resendRequests.get() == 1);
         counterparty.roundTrips(10);
         assertThat(counterpartyIncomingSeqNum()).as("past the jump").isGreaterThan(expected + JUMP);
+    }
+
+    /**
+     * A restarted follower holds nothing, its replica being in memory: only a full snapshot lets it take over without
+     * a jump.
+     */
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("pairsAndModes")
+    void aFollowerRestartedWhileTheLeaderTradesIsCaughtUpAndTakesOverCleanly(Pair pair, ReplicationMode mode) {
+        start(Storage.SEPARATE, pair, mode);
+
+        follower.stop(Deadline.of(Duration.ofSeconds(5)));
+        counterparty.roundTrips(10);
+        follower = startFollower.get();
+        await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
+        counterparty.roundTrips(10);
+        long expected = counterpartyIncomingSeqNum();
+
+        assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+
+        await().until(() -> counterparty.logons.get() == 2);
+        counterparty.roundTrips(10);
+        assertThat(counterparty.resendRequests.get()).as("no gap: the snapshot gave b all of a's state").isZero();
+        assertThat(counterpartyIncomingSeqNum()).as("a's Logout, b's Logon and ten answers").isEqualTo(expected + 12);
     }
 
     private abstract static class Fix44Application implements FixApplication {
