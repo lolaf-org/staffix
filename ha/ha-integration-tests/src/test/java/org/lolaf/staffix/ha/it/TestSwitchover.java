@@ -16,8 +16,9 @@
 package org.lolaf.staffix.ha.it;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.FixDictionaryId;
@@ -55,13 +56,15 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 /**
- * An acceptor pair, a leading and a follower engine, and the counterparty's initiator connecting to both: leadership
- * moving by a switchover or by a failover, as the counterparty sees it.
+ * A highly available pair, a leading and a following engine, and the counterparty they trade with: leadership moving
+ * by a switchover or by a failover, as the counterparty sees it, whichever side of the session the pair runs and in
+ * either replication mode.
  */
 class TestSwitchover {
 
@@ -74,7 +77,21 @@ class TestSwitchover {
     private final Counterparty counterparty = new Counterparty();
     private HaAdmin a;
     private HaAdmin b;
-    private AdminApi initiator;
+    private AdminApi counterpartyEngine;
+    private FixSessionId counterpartySession;
+
+    /**
+     * Which side of the session the highly available pair runs.
+     */
+    enum Pair {
+        ACCEPTORS,
+        INITIATORS
+    }
+
+    static Stream<Arguments> pairs() {
+        return Stream.of(Pair.values()).flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC)
+                .map(mode -> Arguments.of(pair, mode)));
+    }
 
     private static FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode) {
         return FixSessionSettings.builder()
@@ -95,28 +112,51 @@ class TestSwitchover {
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSetting(settings).build());
     }
 
-    @BeforeEach
-    void startThePairAndTheCounterparty() {
-        InetSocketAddress fixA = new InetSocketAddress("localhost", TestPorts.findFree());
-        InetSocketAddress fixB = new InetSocketAddress("localhost", TestPorts.findFree());
+    private static FixInitiatorBuilder initiator(FixSessionId id, InetSocketAddress... addresses) {
+        FixInitiatorTarget.FixInitiatorTargetBuilder target = FixInitiatorTarget.builder().fixSessionId(id);
+        for (InetSocketAddress address : addresses) {
+            target.connectAddress(address);
+        }
+        return FixInitiatorBuilder.builder().connectionRetry(Duration.ofMillis(100)).mainTarget(target.build()).build();
+    }
+
+    /**
+     * Starts the pair, a leading and b following, and the counterparty, then trades until b holds the session.
+     */
+    private void start(Pair pair, ReplicationMode mode) {
         InetSocketAddress replicationA = new InetSocketAddress("localhost", TestPorts.findFree());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", TestPorts.findFree());
-        a = acceptor("a", fixA, replicationA, replicationB);
-        b = acceptor("b", fixB, replicationA, replicationB);
-        FixEngine initiatorEngine = start(engine("initiator", counterparty,
-                sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, ReplicationMode.NONE)).build().instance());
-        initiator = (AdminApi) initiatorEngine;
-        initiatorEngine.newInitiator(FixInitiatorBuilder.builder()
-                        .connectionRetry(Duration.ofMillis(100))
-                        .mainTarget(FixInitiatorTarget.builder().fixSessionId(INITIATOR_ID).connectAddress(fixA).connectAddress(fixB).build())
-                        .build()).start();
+        if (pair == Pair.ACCEPTORS) {
+            InetSocketAddress fixA = new InetSocketAddress("localhost", TestPorts.findFree());
+            InetSocketAddress fixB = new InetSocketAddress("localhost", TestPorts.findFree());
+            FixEngine engineA = haEngine("a", sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, mode), replicationA, replicationB);
+            engineA.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixA).build()).start();
+            FixEngine engineB = haEngine("b", sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, mode), replicationA, replicationB);
+            engineB.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixB).build()).start();
+            FixEngine counterpartyFixEngine = start(engine("counterparty", counterparty,
+                    sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, ReplicationMode.NONE)).build().instance());
+            counterpartyFixEngine.newInitiator(initiator(INITIATOR_ID, fixA, fixB)).start();
+            counterpartyEngine = (AdminApi) counterpartyFixEngine;
+            counterpartySession = INITIATOR_ID;
+        } else {
+            InetSocketAddress fix = new InetSocketAddress("localhost", TestPorts.findFree());
+            FixEngine counterpartyFixEngine = start(engine("counterparty", counterparty,
+                    sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, ReplicationMode.NONE)).build().instance());
+            counterpartyFixEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fix).build()).start();
+            counterpartyEngine = (AdminApi) counterpartyFixEngine;
+            counterpartySession = ACCEPTOR_ID;
+            haEngine("a", sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, mode), replicationA, replicationB)
+                    .newInitiator(initiator(INITIATOR_ID, fix)).start();
+            haEngine("b", sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, mode), replicationA, replicationB)
+                    .newInitiator(initiator(INITIATOR_ID, fix)).start();
+        }
         await().until(() -> counterparty.logons.get() == 1);
         counterparty.roundTrips(10);
         await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
     }
 
-    private HaAdmin acceptor(String nodeId, InetSocketAddress fix, InetSocketAddress replicationA, InetSocketAddress replicationB) {
-        FixEngine engine = start(engine(nodeId, new EchoAcceptor(), sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, ReplicationMode.ASYNC))
+    private FixEngine haEngine(String nodeId, FixSessionSettings settings, InetSocketAddress replicationA, InetSocketAddress replicationB) {
+        FixEngine engine = start(engine(nodeId, new Echo(), settings)
                 .highAvailability(ReplicationHaSettings.builder()
                         .nodeId(nodeId)
                         .peer("a", replicationA)
@@ -127,8 +167,13 @@ class TestSwitchover {
                         .leaderElection(SharedLeaderElection.Settings.builder().ballot(ballot).nodeId(nodeId).build())
                         .build())
                 .build().instance());
-        engine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fix).build()).start();
-        return ((AdminApi) engine).getHa().orElseThrow();
+        HaAdmin ha = ((AdminApi) engine).getHa().orElseThrow();
+        if (nodeId.equals("a")) {
+            a = ha;
+        } else {
+            b = ha;
+        }
+        return engine;
     }
 
     private FixEngine start(FixEngine engine) {
@@ -137,14 +182,20 @@ class TestSwitchover {
         return engine;
     }
 
+    private long counterpartyIncomingSeqNum() {
+        return counterpartyEngine.getIncomingSeqNum(counterpartySession);
+    }
+
     @AfterEach
     void stop() {
         stops.forEach(Runnable::run);
     }
 
-    @Test
-    void aSwitchoverLogsTheCounterpartyOutAndTheNewLeaderCarriesOnFromTheSameSequenceNumbers() {
-        long expected = initiator.getIncomingSeqNum(INITIATOR_ID);
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("pairs")
+    void aSwitchoverLogsTheCounterpartyOutAndTheNewLeaderCarriesOnFromTheSameSequenceNumbers(Pair pair, ReplicationMode mode) {
+        start(pair, mode);
+        long expected = counterpartyIncomingSeqNum();
 
         assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
 
@@ -152,13 +203,15 @@ class TestSwitchover {
         assertThat(counterparty.logoutsReceived.get()).as("a Logout from the old leader").isEqualTo(1);
         counterparty.roundTrips(10);
         assertThat(counterparty.resendRequests.get()).as("no gap: b took over where a left").isZero();
-        assertThat(initiator.getIncomingSeqNum(INITIATOR_ID)).as("a's Logout, b's Logon and ten answers").isEqualTo(expected + 12);
+        assertThat(counterpartyIncomingSeqNum()).as("a's Logout, b's Logon and ten answers").isEqualTo(expected + 12);
         assertThat(b.getStatus().getRole()).isEqualTo(org.lolaf.staffix.api.ha.LeaderElection.Role.LEADER);
     }
 
-    @Test
-    void aFailoverDropsTheCounterpartyWithoutALogoutAndTheNewLeaderMovesItsSequenceNumbersAhead() {
-        long expected = initiator.getIncomingSeqNum(INITIATOR_ID);
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("pairs")
+    void aFailoverDropsTheCounterpartyWithoutALogoutAndTheNewLeaderMovesItsSequenceNumbersAhead(Pair pair, ReplicationMode mode) {
+        start(pair, mode);
+        long expected = counterpartyIncomingSeqNum();
 
         ballot.elect("b");
 
@@ -166,7 +219,7 @@ class TestSwitchover {
         assertThat(counterparty.logoutsReceived.get()).as("the old leader stopped without a Logout").isZero();
         await().until(() -> counterparty.resendRequests.get() == 1);
         counterparty.roundTrips(10);
-        assertThat(initiator.getIncomingSeqNum(INITIATOR_ID)).as("past the jump").isGreaterThan(expected + JUMP);
+        assertThat(counterpartyIncomingSeqNum()).as("past the jump").isGreaterThan(expected + JUMP);
     }
 
     private abstract static class Fix44Application implements FixApplication {
@@ -182,7 +235,7 @@ class TestSwitchover {
         }
     }
 
-    private static final class EchoAcceptor extends Fix44Application {
+    private static final class Echo extends Fix44Application {
 
         @Override
         public List<FixMessageDecoder> setup(FixSessionSettings settings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
@@ -202,7 +255,7 @@ class TestSwitchover {
     }
 
     /**
-     * The initiator, recording what the acceptor pair looks like from outside.
+     * The other side of the session, recording what the pair looks like from outside.
      */
     private static final class Counterparty extends Fix44Application {
 
