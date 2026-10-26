@@ -531,6 +531,7 @@
                                 <excludeArtifact>staffix-compatibility-tests-quickfixj</excludeArtifact>
                                 <excludeArtifact>staffix-fix-conformance-tests</excludeArtifact>
                                 <excludeArtifact>staffix-module-path-tests</excludeArtifact>
+                                <excludeArtifact>staffix-ha-integration-tests</excludeArtifact>
                                 <excludeArtifact>staffix-coverage-report</excludeArtifact>
                                 <excludeArtifact>staffix-test-utils</excludeArtifact>
                                 <excludeArtifact>fix-sanitizer-test</excludeArtifact>
