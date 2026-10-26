@@ -16,8 +16,8 @@
 package org.lolaf.staffix.ha.it;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.api.io.TempDir;
 import org.lolaf.primos.ClusterConfig;
 import org.lolaf.primos.Peer;
@@ -90,7 +90,9 @@ class TestPrimosFailover {
     private final Counterparty counterparty = new Counterparty();
     private final CuttableTransport[] transports = new CuttableTransport[3];
     private final HaAdmin[] nodes = new HaAdmin[3];
+    private final LoggedOnNodes loggedOnNodes = new LoggedOnNodes();
     private AdminApi counterpartyEngine;
+    private FixSessionId counterpartySession;
 
     private static int freeUdpPort() {
         try (DatagramSocket socket = new DatagramSocket(0)) {
@@ -119,17 +121,36 @@ class TestPrimosFailover {
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSetting(settings).build());
     }
 
-    @BeforeEach
-    void startTheWitnessThePairAndTheCounterparty() throws IOException {
+    /**
+     * Which side of the session the pair runs. An initiator pair is the one where both nodes could be logged on at
+     * once, each from its own connection to the counterparty.
+     */
+    enum Pair {
+        ACCEPTORS,
+        INITIATORS
+    }
+
+    private void start(Pair pair) throws IOException {
         InetSocketAddress witness = startWitness();
         int[] electionPorts = {0, freeUdpPort(), freeUdpPort()};
         InetSocketAddress[] replication = {null, new InetSocketAddress("localhost", TestPorts.findFree()),
                 new InetSocketAddress("localhost", TestPorts.findFree())};
         InetSocketAddress[] fix = {null, new InetSocketAddress("localhost", TestPorts.findFree()),
                 new InetSocketAddress("localhost", TestPorts.findFree())};
+        InetSocketAddress counterpartyAddress = new InetSocketAddress("localhost", TestPorts.findFree());
+        FixSessionId pairSession = pair == Pair.ACCEPTORS ? ACCEPTOR_ID : INITIATOR_ID;
+        FixSession.FixSessionType pairType = pair == Pair.ACCEPTORS ? FixSession.FixSessionType.ACCEPTOR : FixSession.FixSessionType.INITIATOR;
+        counterpartySession = pair == Pair.ACCEPTORS ? INITIATOR_ID : ACCEPTOR_ID;
+        FixEngine counterpartyFixEngine = start(engine("counterparty", counterparty, sessionSettings(counterpartySession,
+                pair == Pair.ACCEPTORS ? FixSession.FixSessionType.INITIATOR : FixSession.FixSessionType.ACCEPTOR,
+                ReplicationMode.NONE)).build().instance());
+        counterpartyEngine = (AdminApi) counterpartyFixEngine;
+        if (pair == Pair.INITIATORS) {
+            counterpartyFixEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(counterpartyAddress).build()).start();
+        }
         for (int id = 1; id <= 2; id++) {
             PrimosNode election = election(id, electionPorts, witness);
-            FixEngine engine = start(engine("node-" + id, new Echo(), sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, ReplicationMode.ASYNC))
+            FixEngine engine = start(engine("node-" + id, new Echo(loggedOnNodes), sessionSettings(pairSession, pairType, ReplicationMode.ASYNC))
                     .highAvailability(ReplicationHaSettings.builder()
                             .nodeId(String.valueOf(id))
                             .peer("1", replication[1])
@@ -140,19 +161,27 @@ class TestPrimosFailover {
                             .leaderElection(PrimosLeaderElectionSettings.builder().node(election).leadershipControl(true).build())
                             .build())
                     .build().instance());
-            engine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fix[id]).build()).start();
+            if (pair == Pair.ACCEPTORS) {
+                engine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fix[id]).build()).start();
+            } else {
+                engine.newInitiator(initiator(INITIATOR_ID, counterpartyAddress)).start();
+            }
             nodes[id] = ((AdminApi) engine).getHa().orElseThrow();
         }
-        FixEngine counterpartyFixEngine = start(engine("counterparty", counterparty,
-                sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, ReplicationMode.NONE)).build().instance());
-        counterpartyFixEngine.newInitiator(FixInitiatorBuilder.builder()
-                .connectionRetry(Duration.ofMillis(100))
-                .mainTarget(FixInitiatorTarget.builder().fixSessionId(INITIATOR_ID).connectAddress(fix[1]).connectAddress(fix[2]).build())
-                .build()).start();
-        counterpartyEngine = (AdminApi) counterpartyFixEngine;
+        if (pair == Pair.ACCEPTORS) {
+            counterpartyFixEngine.newInitiator(initiator(INITIATOR_ID, fix[1], fix[2])).start();
+        }
         await().atMost(Duration.ofSeconds(30)).until(() -> counterparty.logons.get() == 1);
         counterparty.roundTrips(10);
         await().until(() -> follower().getStatus().getLeader() != null && follower().getStatus().getLeader().isInSync());
+    }
+
+    private static FixInitiatorBuilder initiator(FixSessionId id, InetSocketAddress... addresses) {
+        FixInitiatorTarget.FixInitiatorTargetBuilder target = FixInitiatorTarget.builder().fixSessionId(id);
+        for (InetSocketAddress address : addresses) {
+            target.connectAddress(address);
+        }
+        return FixInitiatorBuilder.builder().connectionRetry(Duration.ofMillis(100)).mainTarget(target.build()).build();
     }
 
     private InetSocketAddress startWitness() throws IOException {
@@ -225,11 +254,13 @@ class TestPrimosFailover {
     }
 
     private long counterpartyIncomingSeqNum() {
-        return counterpartyEngine.getIncomingSeqNum(INITIATOR_ID);
+        return counterpartyEngine.getIncomingSeqNum(counterpartySession);
     }
 
-    @Test
-    void aSwitchoverThroughPrimosLogsTheCounterpartyOutAndTheOtherNodeCarriesOnWithoutAJump() {
+    @ParameterizedTest
+    @EnumSource(Pair.class)
+    void aSwitchoverThroughPrimosLogsTheCounterpartyOutAndTheOtherNodeCarriesOnWithoutAJump(Pair pair) throws IOException {
+        start(pair);
         int leader = leaderId();
         long expected = counterpartyIncomingSeqNum();
         int resendRequests = counterparty.resendRequests.get();
@@ -242,14 +273,17 @@ class TestPrimosFailover {
         counterparty.roundTrips(10);
         assertThat(counterparty.resendRequests.get()).as("no new gap").isEqualTo(resendRequests);
         assertThat(counterpartyIncomingSeqNum()).isEqualTo(expected + 12);
+        assertThat(loggedOnNodes.most()).as("never logged on from both nodes at once").isEqualTo(1);
     }
 
     /**
      * The leader's process runs on, so only fencing stands between the two nodes running the session at once: it must
      * stop its sessions, without a Logout, before the other node is elected, which then moves its seqnums ahead.
      */
-    @Test
-    void aLeaderCutOffFromItsPeerAndItsWitnessStopsItsSessionsBeforeTheOtherNodeLeads() {
+    @ParameterizedTest
+    @EnumSource(Pair.class)
+    void aLeaderCutOffFromItsPeerAndItsWitnessStopsItsSessionsBeforeTheOtherNodeLeads(Pair pair) throws IOException {
+        start(pair);
         int leader = leaderId();
         long expected = counterpartyIncomingSeqNum();
         int resendRequests = counterparty.resendRequests.get();
@@ -267,6 +301,7 @@ class TestPrimosFailover {
         await().until(() -> counterparty.resendRequests.get() == resendRequests + 1);
         counterparty.roundTrips(10);
         assertThat(counterpartyIncomingSeqNum()).isGreaterThan(expected + JUMP);
-        System.out.println("FENCING margin: " + Duration.between(fenced.getRoleSince(), elected.getRoleSince()).toMillis() + " ms");
+        assertThat(loggedOnNodes.most()).as("never logged on from both nodes at once").isEqualTo(1);
+        System.out.println("FENCING " + pair + " margin: " + Duration.between(fenced.getRoleSince(), elected.getRoleSince()).toMillis() + " ms");
     }
 }

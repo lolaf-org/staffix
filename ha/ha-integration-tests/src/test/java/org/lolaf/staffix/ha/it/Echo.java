@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.it;
 
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
+import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -29,9 +30,30 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Answers each Email with an Email, counting what it receives again as possible duplicates.
+ * Answers each Email with an Email, counting what it receives again as possible duplicates, and telling a
+ * {@link LoggedOnNodes} its pair shares when its session logs on and off.
  */
 final class Echo extends Fix44Application {
+
+    private final LoggedOnNodes loggedOnNodes;
+
+    Echo() {
+        this(new LoggedOnNodes());
+    }
+
+    Echo(LoggedOnNodes loggedOnNodes) {
+        this.loggedOnNodes = loggedOnNodes;
+    }
+
+    @Override
+    public void onLogon(FixSession fixSession, DecodedFixMessage logonMessage) {
+        loggedOnNodes.loggedOn();
+    }
+
+    @Override
+    public void onLogout(FixSession fixSession, String message, DecodedFixMessage logoutMessage) {
+        loggedOnNodes.loggedOff();
+    }
 
     /**
      * Messages received again as possible duplicates, by session name.
