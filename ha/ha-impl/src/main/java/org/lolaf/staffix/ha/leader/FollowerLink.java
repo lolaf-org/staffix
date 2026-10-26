@@ -23,6 +23,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.HaStatus;
+import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
@@ -31,12 +32,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.log.ReplicationLog;
-import org.lolaf.staffix.ha.wire.CloseReason;
-import org.lolaf.staffix.ha.wire.FrameEncoder;
-import org.lolaf.staffix.ha.wire.FrameHandler;
-import org.lolaf.staffix.ha.wire.FrameType;
-import org.lolaf.staffix.ha.wire.SessionStatus;
-import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.wire.*;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -61,26 +57,7 @@ import java.util.function.LongSupplier;
 @Slf4j
 public final class FollowerLink implements FrameHandler {
 
-    public enum State {
-        AWAITING_HELLO,
-        STREAMING,
-        CLOSED
-    }
-
-    /**
-     * Where a session stands on this follower, as the leader knows it. A session whose storage the follower shares
-     * is in sync: what the leader stored is already there.
-     */
-    public enum SessionSync {
-        ANNOUNCED,
-        SNAPSHOT_PENDING,
-        SNAPSHOT_SENT,
-        IN_SYNC,
-        NOT_REPLICATED
-    }
-
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
-
     private final IOSession connection;
     private final ReplicationLog replicationLog;
     private final ReplicationLog.Reader reader;
@@ -92,6 +69,15 @@ public final class FollowerLink implements FrameHandler {
     private final int batchBytes;
     private final int snapshotMaxMessages;
     private final ReplicationStats stats;
+    /**
+     * What the follower last said of each session, by key, which tells a shared storage and a refusal's reason apart.
+     */
+    private final Map<Integer, SessionStatus> reportedStatuses = new ConcurrentHashMap<>();
+    /**
+     * Keys of sessions already announced whose replication mode changed to or from {@code NONE} since.
+     */
+    private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
+    private final Consumer<Runnable> senderLauncher;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
     @Getter
@@ -107,14 +93,6 @@ public final class FollowerLink implements FrameHandler {
     @Getter
     private volatile boolean reportedInSync;
     private volatile AtomicReferenceArray<SessionSync> sessionSyncs = new AtomicReferenceArray<>(16);
-    /**
-     * What the follower last said of each session, by key, which tells a shared storage and a refusal's reason apart.
-     */
-    private final Map<Integer, SessionStatus> reportedStatuses = new ConcurrentHashMap<>();
-    /**
-     * Keys of sessions already announced whose replication mode changed to or from {@code NONE} since.
-     */
-    private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
     private volatile boolean snapshotRequested;
     private volatile boolean paused;
     /**
@@ -125,8 +103,11 @@ public final class FollowerLink implements FrameHandler {
     private volatile boolean senderRunning;
     private int announced;
     private long lastSendNanos;
-    private final Consumer<Runnable> senderLauncher;
-
+    /**
+     * The offset of the last event the last {@link #fill} took, -1 when it took none.
+     */
+    private long filledEventOffset = -1;
+    private AckLatencySampler ackLatency = new AckLatencySampler(Timer.VoidTimer.getInstance());
     /**
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
@@ -153,6 +134,13 @@ public final class FollowerLink implements FrameHandler {
         return WireFormat.bufferBytes(log.getMaxEventFrameBytes());
     }
 
+    /**
+     * A buffer written from index 0 with absolute puts, as a send takes it: up to its position, which betty flips.
+     */
+    private static ByteBuffer written(ByteBuffer buffer, int length) {
+        return buffer.clear().position(length);
+    }
+
     @Override
     public void onHello(long followerEpoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset) {
         followerId = nodeId;
@@ -174,6 +162,7 @@ public final class FollowerLink implements FrameHandler {
             reader.seekToTail();
         }
         appliedOffset = lastAppliedOffset;
+        ackLatency = new AckLatencySampler(stats.ackLatency(nodeId));
         state = State.STREAMING;
         log.info("Follower {} connected at epoch {}, {}", nodeId, leaderEpoch,
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
@@ -198,6 +187,7 @@ public final class FollowerLink implements FrameHandler {
     public void onAck(long epoch, long appliedOffset, boolean inSync) {
         this.appliedOffset = appliedOffset;
         this.reportedInSync = inSync;
+        ackLatency.acked(appliedOffset);
     }
 
     /**
@@ -359,8 +349,9 @@ public final class FollowerLink implements FrameHandler {
      * @return the bytes filled
      */
     int fill(ByteBuffer dst) {
-        int filled = announce(dst, 0);
+        int filled = announce(dst);
         long leaderEpoch = epoch.getAsLong();
+        filledEventOffset = -1;
         while (state == State.STREAMING && dst.limit() - filled >= maxEventFrameBytes) {
             int body = reader.readInto(dst, filled + WireFormat.STORE_EVENT_BODY_OFFSET);
             if (body == ReplicationLog.Reader.NO_EVENT) {
@@ -376,14 +367,15 @@ public final class FollowerLink implements FrameHandler {
                 }
                 break;
             }
-            filled += FrameEncoder.storeEventHeader(dst, filled, leaderEpoch, reader.getEventOffset(), body);
+            filledEventOffset = reader.getEventOffset();
+            filled += FrameEncoder.storeEventHeader(dst, filled, leaderEpoch, filledEventOffset, body);
         }
         sentOffset = reader.getOffset();
         return filled;
     }
 
-    private int announce(ByteBuffer dst, int index) {
-        int filled = index;
+    private int announce(ByteBuffer dst) {
+        int filled = 0;
         long leaderEpoch = epoch.getAsLong();
         while (announced < sessions.count()) {
             int bytes = announce(dst, filled, leaderEpoch, sessions.get(announced));
@@ -479,6 +471,10 @@ public final class FollowerLink implements FrameHandler {
                 idle.idle();
                 continue;
             }
+            if (filledEventOffset >= 0) {
+                // before the send: an ack processed in between would otherwise leave the sample to the next one
+                ackLatency.sent(filledEventOffset, System.nanoTime());
+            }
             connection.send(written(batch, filled), true);
             lastSendNanos = System.nanoTime();
             idle.reset();
@@ -516,6 +512,77 @@ public final class FollowerLink implements FrameHandler {
             close(CloseReason.SNAPSHOT_FAILED, "FIX session " + session.getFixSessionId() + ": " + e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * For a leader stopping cleanly, its sessions already stopped: waits for every event of the log to be sent, then
+     * closes with {@link CloseReason#SHUTDOWN}. Arriving after them on the same connection, it tells the follower it
+     * holds everything, so the follower takes over without moving its seqnums ahead. When the deadline passes first,
+     * the link is dropped without it.
+     *
+     * @return whether the follower was told
+     */
+    boolean handOver(Deadline deadline) {
+        if (state != State.STREAMING) {
+            return false;
+        }
+        boolean sentAll = deadline.waitAsLongAs(() -> state == State.STREAMING && sentOffset != replicationLog.getTailOffset())
+                && state == State.STREAMING;
+        handingOver = true;
+        boolean senderStopped = deadline.waitAsLongAs(() -> senderRunning);
+        if (!sentAll || !senderStopped) {
+            log.warn("Follower {} was not sent every event before the deadline: it will take over with its seqnums moved ahead",
+                    followerId);
+            state = State.CLOSED;
+            connection.stop(Deadline.immediate());
+            return false;
+        }
+        close(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent");
+        return true;
+    }
+
+    /**
+     * Sends a CLOSE and disconnects, the connection flushing it first.
+     */
+    void close(CloseReason reason, String text) {
+        if (reason == CloseReason.SHUTDOWN) {
+            log.info("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
+        } else {
+            log.warn("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
+        }
+        state = State.CLOSED;
+        if (reason == CloseReason.LAPPED) {
+            stats.lapped();
+        }
+        ByteBuffer frame = connection.borrow(FrameEncoder.bytesWith(FrameType.CLOSE, text));
+        int length = FrameEncoder.close(frame.clear(), 0, epoch.getAsLong(), reason, text);
+        connection.send(written(frame, length), true);
+        connection.stop(Deadline.of(CLOSE_FLUSH));
+    }
+
+    /**
+     * The connection is gone: the send loop ends at its next turn.
+     */
+    void disconnected() {
+        state = State.CLOSED;
+    }
+
+    public enum State {
+        AWAITING_HELLO,
+        STREAMING,
+        CLOSED
+    }
+
+    /**
+     * Where a session stands on this follower, as the leader knows it. A session whose storage the follower shares
+     * is in sync: what the leader stored is already there.
+     */
+    public enum SessionSync {
+        ANNOUNCED,
+        SNAPSHOT_PENDING,
+        SNAPSHOT_SENT,
+        IN_SYNC,
+        NOT_REPLICATED
     }
 
     /**
@@ -575,65 +642,5 @@ public final class FollowerLink implements FrameHandler {
             batch = connection.borrow(batchBytes);
             filled = 0;
         }
-    }
-
-    /**
-     * For a leader stopping cleanly, its sessions already stopped: waits for every event of the log to be sent, then
-     * closes with {@link CloseReason#SHUTDOWN}. Arriving after them on the same connection, it tells the follower it
-     * holds everything, so the follower takes over without moving its seqnums ahead. When the deadline passes first,
-     * the link is dropped without it.
-     *
-     * @return whether the follower was told
-     */
-    boolean handOver(Deadline deadline) {
-        if (state != State.STREAMING) {
-            return false;
-        }
-        boolean sentAll = deadline.waitAsLongAs(() -> state == State.STREAMING && sentOffset != replicationLog.getTailOffset())
-                && state == State.STREAMING;
-        handingOver = true;
-        boolean senderStopped = deadline.waitAsLongAs(() -> senderRunning);
-        if (!sentAll || !senderStopped) {
-            log.warn("Follower {} was not sent every event before the deadline: it will take over with its seqnums moved ahead",
-                    followerId);
-            state = State.CLOSED;
-            connection.stop(Deadline.immediate());
-            return false;
-        }
-        close(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent");
-        return true;
-    }
-
-    /**
-     * Sends a CLOSE and disconnects, the connection flushing it first.
-     */
-    void close(CloseReason reason, String text) {
-        if (reason == CloseReason.SHUTDOWN) {
-            log.info("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
-        } else {
-            log.warn("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
-        }
-        state = State.CLOSED;
-        if (reason == CloseReason.LAPPED) {
-            stats.lapped();
-        }
-        ByteBuffer frame = connection.borrow(FrameEncoder.bytesWith(FrameType.CLOSE, text));
-        int length = FrameEncoder.close(frame.clear(), 0, epoch.getAsLong(), reason, text);
-        connection.send(written(frame, length), true);
-        connection.stop(Deadline.of(CLOSE_FLUSH));
-    }
-
-    /**
-     * A buffer written from index 0 with absolute puts, as a send takes it: up to its position, which betty flips.
-     */
-    private static ByteBuffer written(ByteBuffer buffer, int length) {
-        return buffer.clear().position(length);
-    }
-
-    /**
-     * The connection is gone: the send loop ends at its next turn.
-     */
-    void disconnected() {
-        state = State.CLOSED;
     }
 }

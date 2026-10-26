@@ -56,7 +56,11 @@ public final class RecordingMeters implements FixEngineMonitoringContext, FixSes
     }
 
     public long recordings(String id) {
-        AtomicLong count = recordings.get(key(id, Map.of()));
+        return recordings(id, Map.of());
+    }
+
+    public long recordings(String id, Map<String, String> tags) {
+        AtomicLong count = recordings.get(key(id, tags));
         return count == null ? 0 : count.get();
     }
 

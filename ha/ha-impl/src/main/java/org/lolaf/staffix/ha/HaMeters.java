@@ -30,7 +30,7 @@ import java.util.function.Predicate;
 import java.util.function.ToLongFunction;
 
 /**
- * The replication's meters. All but the {@code SYNC} ack latency are read from the replication's own state at each
+ * The replication's meters. All but the ack latency timers are read from the replication's own state at each
  * export, on the exporter's thread, so they cost the session thread nothing; each reads 0 in a role it does not apply
  * to.
  */
@@ -39,6 +39,7 @@ class HaMeters {
 
     static final String SYNC_ACK_LATENCY = "ha.sync.ack.latency";
     static final String SESSION_SYNC_ACK_LATENCY = "ha.session.sync.ack.latency";
+    static final String FOLLOWER_ACK_LATENCY = "ha.follower.ack.latency";
 
     /**
      * @return the timer of the {@code SYNC} sends' wait for the follower's ack
@@ -72,6 +73,9 @@ class HaMeters {
                 + " late.", Map.of("reason", "timed_out"), () -> sum(ha, ReplicatedSession::getTimedOutSends));
         meters.getCounter("ha.sync.unacknowledged", "SYNC sends that went out without the follower's ack, no follower being"
                 + " in sync.", Map.of("reason", "no_follower"), () -> sum(ha, ReplicatedSession::getNoFollowerSends));
+        stats.ackLatencyTimers(followerId -> meters.getTimer(FOLLOWER_ACK_LATENCY, "A follower's round trip, from a"
+                + " batch of writes sent to its ack, sampled once per round trip, whatever the sessions' replication modes.",
+                Map.of("follower", followerId)));
         meters.getCounter("ha.follower.laps", "Followers dropped for falling the replication log's capacity behind.",
                 Map.of(), stats::getLaps);
         meters.getCounter("ha.snapshots", "Session snapshots sent to followers catching up.", Map.of(), stats::getSnapshots);

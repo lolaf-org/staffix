@@ -15,7 +15,10 @@
  */
 package org.lolaf.staffix.ha.leader;
 
+import org.lolaf.staffix.api.monitoring.Timer;
+
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 /**
  * What the leader's links did over the engine's life, across connections, read by the meters on another thread.
@@ -25,6 +28,18 @@ public final class ReplicationStats {
     private final AtomicLong laps = new AtomicLong();
     private final AtomicLong snapshots = new AtomicLong();
     private final AtomicLong snapshotMessages = new AtomicLong();
+    private Function<String, Timer> ackLatencyTimers = followerId -> Timer.VoidTimer.getInstance();
+
+    /**
+     * Where the links time their followers' round trips, by follower node id, once the engine's meters exist.
+     */
+    public void ackLatencyTimers(Function<String, Timer> timers) {
+        ackLatencyTimers = timers;
+    }
+
+    Timer ackLatency(String followerId) {
+        return ackLatencyTimers.apply(followerId);
+    }
 
     void lapped() {
         laps.incrementAndGet();

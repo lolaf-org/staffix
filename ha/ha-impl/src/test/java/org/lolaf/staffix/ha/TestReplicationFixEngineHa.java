@@ -305,6 +305,7 @@ class TestReplicationFixEngineHa {
         assertThat(leader.recordings(HaMeters.SYNC_ACK_LATENCY)).isEqualTo(1);
         await().until(() -> leader.read("ha.follower.unsent") == 0);
         assertThat(leader.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isZero();
+        await().until(() -> leader.recordings(HaMeters.FOLLOWER_ACK_LATENCY, Map.of("follower", "b")) > 0);
     }
 
     @Test
