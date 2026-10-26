@@ -18,9 +18,24 @@ could mean.
 
 ### Added
 
+- **High availability.** Two engines run the same sessions: one leads and runs them, the other is a standby that
+  receives every write to their stores and takes them over when the leader fails. Each session chooses `NONE`,
+  `ASYNC` (nothing waits) or `SYNC` (a message reaches the counterparty only once the standby has it), with
+  `haSessionSettings.replicationMode`. The leader is elected by primos with a witness, or by an election of your own.
+  A planned switchover logs the sessions out and the other engine carries on at the same sequence numbers; after a
+  failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. Two engines sharing
+  one database or directory are detected and not replicated into. Modules `staffix-ha-impl`, `staffix-ha-primos`,
+  `staffix-ha-spring-boot` and `staffix-ha-primos-spring-boot`; see [High availability](docs/high-availability.md),
+  including what it does not do.
+- **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
+  switchover, maintenance mode and a re-sync of the standby; it publishes `ha.*` meters and alerts when the standby
+  is missing, out of sync or behind.
+- **The engine's own components have meters and probes**, beside the sessions': a monitoring manager that supports
+  it (Micrometer's does) publishes engine meters, listed by the HTTP admin API's `GET engine/meters`, and their probes
+  are listed and cleared under `engine/{component}/probes`, or through JMX.
 - **Applications can publish counters**, with `FixSessionsMonitoringContext.getCounter`.
 - **A counter, timer or gauge can raise its own alerts**: add an `AlertingCounter`, `AlertingTimer` or `AlertingGauge`
-  with `FixSessionProbes.watch`, and what the application records is both published and alerted on. A timer alerts
+  with `Probes.watch`, and what the application records is both published and alerted on. A timer alerts
   on a latency percentile, so a short spike does not alert; a gauge alerts above or below thresholds.
 - **The file messages logger has a choice of line format**, set with `lineFormat`. The plain format, the default,
   writes the same lines as before. The new logfmt format (`LogfmtFileLogLineFormat`) starts each line with the time,
@@ -59,6 +74,16 @@ could mean.
   Spring Boot, its `MeterRegistry` bean): the application closes what it creates. To close it when the engine stops,
   with a last publish, pass `MeterRegistry::close` as `stoppingMeterRegistryConsumer`. The OTLP variant still closes
   the registry it builds.
+
+- **Probes and alerts belong to a scope**, a session or one of the engine's components, so the alerting API no longer
+  assumes a session. `FixSessionProbes` is now `Probes` and `SessionProbeState` is `ScopedProbeState`; the
+  `AdminApi` probe methods take a `ProbeScope` (`FixSessionProbeScope.of(sessionId)` for a session) or a `ProbeId`;
+  `AlertEvent` gives `getSource()` and `getProbeId()` instead of `getEngineId()`, `getFixSessionId()` and
+  `getProbeName()`. An alerts publisher of your own implements `AlertsPublisher`.
+- **The Alertmanager label `engine` is now `source`**, still the engine's instance id: update the routes and
+  silences that match on it. A session's alerts keep `fixSessionGroup` and `fixSessionName`; a component's carry
+  `component` instead.
+- **The HTTP admin API's `GET meters` is now `GET sessions/meters`**, beside the new `GET engine/meters`.
 
 ### Removed
 
