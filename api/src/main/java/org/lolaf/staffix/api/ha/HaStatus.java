@@ -56,6 +56,18 @@ public class HaStatus {
      */
     @Nullable Instant roleSince;
     /**
+     * Whether the leader election can hand leadership over, for a planned switchover.
+     */
+    boolean transferLeadershipSupported;
+    /**
+     * Whether the leader election lets this node decline to stand, for maintenance.
+     */
+    boolean candidacySupported;
+    /**
+     * Whether this node stands for election.
+     */
+    boolean candidate;
+    /**
      * The followers connected to this node, while it leads.
      */
     @Singular

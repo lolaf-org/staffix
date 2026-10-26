@@ -84,6 +84,13 @@ public interface LeaderElection extends Startable<LeaderElection> {
         throw new UnsupportedOperationException(getClass().getName() + " cannot decline candidacy");
     }
 
+    /**
+     * Always true unless {@link #isCandidacySupported()}.
+     */
+    default boolean isCandidate() {
+        return true;
+    }
+
     enum Role {
         LEADER,
         FOLLOWER,

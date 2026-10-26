@@ -47,6 +47,7 @@ import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import javax.management.JMX;
+import javax.management.MBeanOperationInfo;
 import javax.management.MBeanServer;
 import javax.management.MBeanServerFactory;
 import javax.management.ObjectName;
@@ -64,6 +65,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class JmxAdminApiTest {
@@ -307,6 +309,30 @@ class JmxAdminApiTest {
 
         exporter.shutdown(Deadline.immediate());
         assertThat(mBeanServer.isRegistered(haName())).isFalse();
+    }
+
+    @Test
+    void theHighAvailabilityActionsReachItsAdmin() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
+                .leaderElection("PrimosLeaderElection").candidacySupported(true).candidate(true).build());
+        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
+                .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC)
+                .replicationAckTimeout(Duration.ZERO).build()));
+        adminApi.ha = ha;
+        exporter.export(adminApi);
+        FixHaMXBean proxy = JMX.newMXBeanProxy(mBeanServer, haName(), FixHaMXBean.class);
+
+        assertThat(proxy.getStatus().isCandidacySupported()).isTrue();
+        proxy.updateCandidacy(false);
+        proxy.resync();
+        proxy.resyncSession(ACCEPTOR_SESSION.toString(), "ACCEPTOR");
+
+        verify(ha).setCandidate(false);
+        verify(ha).resync();
+        verify(ha).resync(ACCEPTOR_SESSION, FixSession.FixSessionType.ACCEPTOR);
+        assertThat(mBeanServer.getMBeanInfo(haName()).getOperations()).extracting(MBeanOperationInfo::getName)
+                .contains("updateCandidacy", "resync", "resyncSession");
     }
 
     private ObjectName haName() throws Exception {

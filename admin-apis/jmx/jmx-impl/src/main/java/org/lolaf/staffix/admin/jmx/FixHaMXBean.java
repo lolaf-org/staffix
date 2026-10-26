@@ -28,6 +28,23 @@ public interface FixHaMXBean {
     List<Session> getSessionsStatus();
 
     /**
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#setCandidate(boolean)}; not a setter, which JMX would show as a
+     * write-only attribute rather than an operation.
+     */
+    void updateCandidacy(boolean candidate);
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#resync()}.
+     */
+    void resync();
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#resync(org.lolaf.staffix.api.session.FixSessionId,
+     * org.lolaf.staffix.api.session.FixSession.FixSessionType)}; the session as {@link Session} names it.
+     */
+    void resyncSession(String fixSessionId, String fixSessionType);
+
+    /**
      * See {@link org.lolaf.staffix.api.ha.HaStatus}; leader is null unless this node follows one.
      */
     interface Status {
@@ -45,6 +62,12 @@ public interface FixHaMXBean {
         String getLeaderElection();
 
         String getRoleSince();
+
+        boolean isTransferLeadershipSupported();
+
+        boolean isCandidacySupported();
+
+        boolean isCandidate();
 
         List<Follower> getFollowers();
 

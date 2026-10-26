@@ -41,6 +41,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         return new StatusImpl(status.getNodeId(), status.getRole().name(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElection(),
                 status.getRoleSince() == null ? null : status.getRoleSince().toString(),
+                status.isTransferLeadershipSupported(), status.isCandidacySupported(), status.isCandidate(),
                 status.getFollowers().stream()
                         .map(follower -> new FollowerImpl(follower.getNodeId(), follower.getAddress(), follower.isConnected(),
                                 follower.isInSync(), follower.isSnapshotInProgress(), follower.getUnsentBytes()))
@@ -51,6 +52,29 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     @Override
     public List<Session> getSessionsStatus() {
         return delegate.getSessionsStatus().stream().map(FixHaMBeanImpl::session).collect(Collectors.toList());
+    }
+
+    @Override
+    public void updateCandidacy(boolean candidate) {
+        delegate.setCandidate(candidate);
+    }
+
+    @Override
+    public void resync() {
+        delegate.resync();
+    }
+
+    /**
+     * @throws IllegalArgumentException for a session not replicated
+     */
+    @Override
+    public void resyncSession(String fixSessionId, String fixSessionType) {
+        HaSessionStatus session = delegate.getSessionsStatus().stream()
+                .filter(candidate -> candidate.getFixSessionId().toString().equals(fixSessionId)
+                        && candidate.getFixSessionType().name().equals(fixSessionType))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("No replicated session " + fixSessionType + " " + fixSessionId));
+        delegate.resync(session.getFixSessionId(), session.getFixSessionType());
     }
 
     private static Session session(HaSessionStatus status) {
@@ -70,6 +94,9 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         boolean leadershipValid;
         String leaderElection;
         String roleSince;
+        boolean transferLeadershipSupported;
+        boolean candidacySupported;
+        boolean candidate;
         List<Follower> followers;
         Leader leader;
     }

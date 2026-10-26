@@ -303,6 +303,31 @@ class TestFollowerLink {
     }
 
     @Test
+    void aResyncSnapshotsAgainASessionTheFollowerHoldsAndLeavesTheOthers() {
+        replicated("main").storeNextIncomingSeqNum(5);
+        replicated("shared").storeNextIncomingSeqNum(6);
+        replicated("refused").storeNextIncomingSeqNum(7);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        fill();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
+        link.onSessionStatus(EPOCH, 1, SessionStatus.SHARED_STORAGE);
+        link.onSessionStatus(EPOCH, 2, SessionStatus.UNKNOWN_SESSION);
+
+        for (int key = 0; key < 3; key++) {
+            link.resync(key);
+        }
+
+        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_PENDING);
+        assertThat(link.isInSync(0)).as("not waited for until the snapshot lands").isFalse();
+        assertThat(link.getSessionSync(1)).isEqualTo(FollowerLink.SessionSync.IN_SYNC);
+        assertThat(link.getSessionSync(2)).isEqualTo(FollowerLink.SessionSync.NOT_REPLICATED);
+        sent.frames.clear();
+        link.snapshotPending();
+        assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
+        assertThat(sent.frames).noneMatch(frame -> frame.contains("key=1") || frame.contains("key=2"));
+    }
+
+    @Test
     void aStatusForASessionNeverAnnouncedClosesTheStream() {
         link.onSessionStatus(EPOCH, 3, SessionStatus.REPLICATING);
 

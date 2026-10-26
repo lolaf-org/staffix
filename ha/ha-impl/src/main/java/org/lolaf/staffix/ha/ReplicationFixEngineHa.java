@@ -27,6 +27,8 @@ import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.monitoring.Timer;
+import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -134,7 +136,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                 .leadershipValid(currentElection != null && currentElection.getRole() == Role.LEADER
                         && currentElection.isLeadershipValid())
                 .leaderElection(currentElection == null ? "" : currentElection.getClass().getSimpleName())
-                .roleSince(roleSince);
+                .roleSince(roleSince)
+                .transferLeadershipSupported(currentElection != null && currentElection.isTransferLeadershipSupported())
+                .candidacySupported(currentElection != null && currentElection.isCandidacySupported())
+                .candidate(currentElection == null || currentElection.isCandidate());
         if (role == Role.LEADER) {
             for (FollowerLink link : followers.all()) {
                 status.follower(link.status(sessions.count()));
@@ -145,6 +150,44 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             status.leader(currentReceiver.status());
         }
         return status.build();
+    }
+
+    @Override
+    public void setCandidate(boolean candidate) {
+        LeaderElection currentElection = election;
+        if (currentElection == null || !currentElection.isCandidacySupported()) {
+            throw new IllegalStateException("The leader election "
+                    + (currentElection == null ? "has not started" : currentElection.getClass().getSimpleName() + " cannot decline candidacy"));
+        }
+        log.info("Node {} {} elections", settings.getNodeId(), candidate ? "stands for" : "withdraws from");
+        currentElection.setCandidate(candidate);
+    }
+
+    @Override
+    public void resync() {
+        requireLeading();
+        log.info("Every replicated session is sent again to the followers by snapshot");
+        for (int key = 0; key < sessions.count(); key++) {
+            followers.resync(key);
+        }
+    }
+
+    @Override
+    public void resync(FixSessionId fixSessionId, FixSessionType fixSessionType) {
+        ReplicatedSession session = sessions.find(fixSessionId, fixSessionType);
+        if (session == null || !session.isReplicated()) {
+            throw new IllegalArgumentException("FIX session " + fixSessionType + " " + fixSessionId + " is not replicated");
+        }
+        requireLeading();
+        log.info("FIX session {} {} is sent again to the followers by snapshot", fixSessionType, fixSessionId);
+        followers.resync(session.getKey());
+    }
+
+    private void requireLeading() {
+        if (followedRole != Role.LEADER) {
+            throw new IllegalStateException("Only the leader re-syncs its followers; node " + settings.getNodeId() + " is "
+                    + followedRole);
+        }
     }
 
     @Override

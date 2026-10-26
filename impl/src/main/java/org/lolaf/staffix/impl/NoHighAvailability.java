@@ -22,6 +22,8 @@ import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
+import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
@@ -65,6 +67,25 @@ final class NoHighAvailability implements FixEngineHa {
     @Override
     public List<HaSessionStatus> getSessionsStatus() {
         return List.of();
+    }
+
+    @Override
+    public void setCandidate(boolean candidate) {
+        throw noHighAvailability();
+    }
+
+    @Override
+    public void resync() {
+        throw noHighAvailability();
+    }
+
+    @Override
+    public void resync(FixSessionId fixSessionId, FixSessionType fixSessionType) {
+        throw noHighAvailability();
+    }
+
+    private static IllegalStateException noHighAvailability() {
+        return new IllegalStateException("The engine has no high availability configured");
     }
 
     @Override

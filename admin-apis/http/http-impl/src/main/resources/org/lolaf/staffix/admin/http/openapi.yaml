@@ -405,6 +405,70 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/ha/candidacy:
+    post:
+      summary: Takes this node out of elections for maintenance, or puts it back
+      description: A node out of elections keeps voting but never leads. Refused when the leader election cannot,
+        as candidacySupported in the high availability's status tells.
+      operationId: setHaCandidacy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CandidacyRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/ha/resync:
+    post:
+      summary: Sends every replicated session again to every follower, replacing its copy
+      description: Leader only. Until a follower holds a session again, its SYNC sends do not wait for that follower.
+        A session whose storage the follower shares, or which it refuses, is left as it is.
+      operationId: resyncHa
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/ha/sessions/{group}/{name}/resync:
+    post:
+      summary: Sends one replicated session again to every follower, replacing its copy
+      description: Leader only, as v1/ha/resync for this session. The session is named as v1/ha/sessions lists it, by
+        the config it runs, so an initiator running a backup is named after the backup. An initiator and an acceptor of
+        the same name are both re-synced. A session whose settings were changed to replicate it, but which was not
+        rebuilt since, is a conflict.
+      operationId: resyncHaSession
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/session-settings-stores/{storeId}/reload:
     post:
       summary: Reloads a session settings store, starting, stopping or restarting the sessions it changed
@@ -1094,7 +1158,8 @@ components:
           description: The probe's runbook; absent when it has none.
     HaNodeStatus:
       type: object
-      required: [nodeId, role, epoch, leadershipValid, leaderElection, followers]
+      required: [nodeId, role, epoch, leadershipValid, leaderElection, transferLeadershipSupported, candidacySupported,
+        candidate, followers]
       properties:
         nodeId:
           type: string
@@ -1118,6 +1183,15 @@ components:
           type: string
           format: date-time
           description: When the engine took its role; absent before it took any.
+        transferLeadershipSupported:
+          type: boolean
+          description: The leader election can hand leadership over, for a planned switchover.
+        candidacySupported:
+          type: boolean
+          description: The leader election lets this node decline to stand, for maintenance.
+        candidate:
+          type: boolean
+          description: This node stands for election.
         followers:
           type: array
           description: The followers connected to this node, while it leads.
@@ -1313,6 +1387,13 @@ components:
         outgoing:
           type: integer
           format: int64
+    CandidacyRequest:
+      type: object
+      required: [candidate]
+      properties:
+        candidate:
+          type: boolean
+          description: False takes the node out of elections, true puts it back.
     ActivateRequest:
       type: object
       required: [config]

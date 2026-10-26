@@ -246,6 +246,17 @@ public final class FollowerLink implements FrameHandler {
         }
     }
 
+    /**
+     * Sends the session again by snapshot, which resets the follower's copy first. Only a copy the follower holds is
+     * replaced: a session it shares the storage of, refuses or is still catching up on is left as it is.
+     */
+    void resync(int sessionKey) {
+        if (reportedStatuses.get(sessionKey) == SessionStatus.REPLICATING
+                && sessionSync(sessionKey, SessionSync.IN_SYNC, SessionSync.SNAPSHOT_PENDING)) {
+            snapshotRequested = true;
+        }
+    }
+
     public @Nullable SessionStatus getReportedStatus(int sessionKey) {
         return reportedStatuses.get(sessionKey);
     }

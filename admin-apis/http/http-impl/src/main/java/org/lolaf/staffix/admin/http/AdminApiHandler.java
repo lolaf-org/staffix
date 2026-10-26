@@ -113,7 +113,10 @@ public class AdminApiHandler implements HttpHandler {
                 new ResetRoute(adminApi, sessions, mapper),
                 new SeqNumsRoute(adminApi, sessions, mapper),
                 new SendMessagesRoute(adminApi, sessions, mapper),
-                new ActivateRoute(adminApi, sessions, mapper)
+                new ActivateRoute(adminApi, sessions, mapper),
+                new HaCandidacyRoute(adminApi, mapper),
+                new HaResyncRoute(adminApi),
+                new HaSessionResyncRoute(adminApi)
         };
     }
 

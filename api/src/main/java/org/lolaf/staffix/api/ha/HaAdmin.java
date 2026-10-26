@@ -15,10 +15,14 @@
  */
 package org.lolaf.staffix.api.ha;
 
+import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSessionId;
+
 import java.util.List;
 
 /**
- * Where an engine's high availability stands, through {@link org.lolaf.staffix.api.admin.AdminApi#getHa()}.
+ * Where an engine's high availability stands, and what an operator can do with it, through
+ * {@link org.lolaf.staffix.api.admin.AdminApi#getHa()}.
  */
 public interface HaAdmin {
 
@@ -28,4 +32,27 @@ public interface HaAdmin {
      * Every session configured with replication, whether this node leads or follows.
      */
     List<HaSessionStatus> getSessionsStatus();
+
+    /**
+     * Takes this node out of elections for maintenance, or back in; see {@link LeaderElection#setCandidate(boolean)}.
+     *
+     * @throws IllegalStateException when the leader election cannot, as {@link HaStatus#isCandidacySupported()} tells
+     */
+    void setCandidate(boolean candidate);
+
+    /**
+     * Replaces every follower's copy of every replicated session with a fresh one. Until a follower holds it again,
+     * the session's {@code SYNC} sends do not wait for that follower.
+     *
+     * @throws IllegalStateException unless this node leads
+     */
+    void resync();
+
+    /**
+     * {@link #resync()} for one session.
+     *
+     * @throws IllegalArgumentException for a session this node does not replicate
+     * @throws IllegalStateException    unless this node leads
+     */
+    void resync(FixSessionId fixSessionId, FixSessionType fixSessionType);
 }

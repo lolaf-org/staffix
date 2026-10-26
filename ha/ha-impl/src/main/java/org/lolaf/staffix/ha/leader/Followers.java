@@ -58,6 +58,15 @@ public final class Followers {
         }
     }
 
+    /**
+     * Sends the session again by snapshot to every follower holding a copy of it.
+     */
+    public void resync(int sessionKey) {
+        for (FollowerLink link : links) {
+            link.resync(sessionKey);
+        }
+    }
+
 
     /**
      * Waits until every follower in sync for the session applied the event at {@code offset}. A follower falling out

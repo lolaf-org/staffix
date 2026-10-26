@@ -37,12 +37,16 @@ public class HaNodeStatus {
      * Absent before the engine took a role.
      */
     Instant roleSince;
+    boolean transferLeadershipSupported;
+    boolean candidacySupported;
+    boolean candidate;
     List<HaStatus.Follower> followers;
     HaStatus.Leader leader;
 
     public static HaNodeStatus of(HaStatus status) {
         return new HaNodeStatus(status.getNodeId(), status.getRole(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElection(),
-                status.getRoleSince(), status.getFollowers(), status.getLeader());
+                status.getRoleSince(), status.isTransferLeadershipSupported(), status.isCandidacySupported(),
+                status.isCandidate(), status.getFollowers(), status.getLeader());
     }
 }

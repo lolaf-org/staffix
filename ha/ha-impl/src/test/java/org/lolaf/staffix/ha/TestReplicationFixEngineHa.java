@@ -334,6 +334,52 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void aResyncSendsEverySessionAgainToTheFollowerWhichHoldsItInSyncAgain() {
+        aLeadsBFollows();
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+
+        a.ha.resync();
+
+        await().until(() -> a.engine.meters.read("ha.snapshots") == 2 && a.engine.meters.read("ha.followers.in.sync") == 1);
+        assertThat(b.engine.store(MAIN).writes).as("reset once per snapshot").filteredOn("reset"::equals).hasSize(2);
+    }
+
+    @Test
+    void aResyncOfOneSessionNamesAReplicatedSession() {
+        aLeadsBFollows();
+
+        a.ha.resync(MAIN.getFixSessionId(), MAIN.getFixSessionType());
+
+        await().until(() -> a.engine.meters.read("ha.snapshots") == 2);
+        assertThatThrownBy(() -> a.ha.resync(MAIN.getFixSessionId(), FixSessionType.INITIATOR))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("is not replicated");
+    }
+
+    @Test
+    void onlyTheLeaderResyncs() {
+        aLeadsBFollows();
+
+        assertThatThrownBy(() -> b.ha.resync()).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Only the leader re-syncs its followers; node b is FOLLOWER");
+    }
+
+    @Test
+    void aNodeWithdrawsFromElectionsOnlyThroughAnElectionThatCan() {
+        a.start();
+        assertThat(a.ha.getStatus().isCandidacySupported()).isFalse();
+        assertThatThrownBy(() -> a.ha.setCandidate(false)).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("FakeLeaderElection cannot decline candidacy");
+
+        a.election.candidacySupported(true);
+        a.ha.setCandidate(false);
+
+        HaStatus status = a.ha.getStatus();
+        assertThat(status.isCandidacySupported()).isTrue();
+        assertThat(status.isCandidate()).isFalse();
+        assertThat(status.isTransferLeadershipSupported()).isFalse();
+    }
+
+    @Test
     void aSyncSendWithoutAFollowerIsCountedUnacknowledged() {
         a.election.elect(Role.LEADER, 3, "a");
         a.start();

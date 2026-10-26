@@ -590,12 +590,59 @@ class AdminApiEndpointsTest {
         assertThat(call("GET", "/engines/alpha-engine/v1/ha", null).body())
                 .isEqualTo("{\"nodeId\":\"1\",\"role\":\"LEADER\",\"epoch\":7,\"leaderId\":\"1\",\"leadershipValid\":true,"
                         + "\"leaderElection\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
+                        + "\"transferLeadershipSupported\":false,\"candidacySupported\":false,\"candidate\":false,"
                         + "\"followers\":[{\"nodeId\":\"2\",\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
                         + "\"snapshotInProgress\":false,\"unsentBytes\":0}]}");
         assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
                         + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"sharedStorage\":false,\"unprotected\":false,"
                         + "\"unacknowledgedSends\":0,\"nextIncomingSeqNum\":-1,\"nextOutgoingSeqNum\":-1,\"handedOver\":false}]");
+    }
+
+    @Test
+    void theHighAvailabilityActionsReachItsAdmin() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
+                .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
+                .replicationAckTimeout(Duration.ZERO).build()));
+        when(adminApi.getHa()).thenReturn(Optional.of(ha));
+
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/candidacy", "{\"candidate\":false}").statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/resync", null).statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/trading/resync", null).statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/drop-copy/resync", null).statusCode()).isEqualTo(404);
+
+        verify(ha).setCandidate(false);
+        verify(ha).resync();
+        verify(ha).resync(TRADING, FixSession.FixSessionType.INITIATOR);
+    }
+
+    @Test
+    void aSessionListedButNotYetReplicatedCannotBeResynced() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
+                .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
+                .replicationAckTimeout(Duration.ZERO).build()));
+        doThrow(new IllegalArgumentException("FIX session INITIATOR " + TRADING + " is not replicated"))
+                .when(ha).resync(TRADING, FixSession.FixSessionType.INITIATOR);
+        when(adminApi.getHa()).thenReturn(Optional.of(ha));
+
+        HttpResponse<String> response = call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/trading/resync", null);
+
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.body()).contains("is not replicated until it is next built");
+    }
+
+    @Test
+    void aHighAvailabilityActionTheNodeCannotTakeIsAConflict() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        doThrow(new IllegalStateException("Only the leader re-syncs its followers")).when(ha).resync();
+        when(adminApi.getHa()).thenReturn(Optional.of(ha));
+
+        HttpResponse<String> response = call("POST", "/engines/alpha-engine/v1/ha/resync", null);
+
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.body()).contains("Only the leader re-syncs its followers");
     }
 
     @Test

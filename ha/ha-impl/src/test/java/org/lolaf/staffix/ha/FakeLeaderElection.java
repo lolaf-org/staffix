@@ -36,6 +36,12 @@ public final class FakeLeaderElection implements LeaderElection {
     private volatile String leaderId;
     private volatile boolean leadershipValid = true;
     private volatile boolean started;
+    private volatile boolean candidacySupported;
+    private volatile boolean candidate = true;
+
+    public void candidacySupported(boolean candidacySupported) {
+        this.candidacySupported = candidacySupported;
+    }
 
     public void elect(Role role, long epoch, String leaderId) {
         Role previous = this.role;
@@ -67,6 +73,21 @@ public final class FakeLeaderElection implements LeaderElection {
     @Override
     public boolean isLeadershipValid() {
         return leadershipValid;
+    }
+
+    @Override
+    public boolean isCandidacySupported() {
+        return candidacySupported;
+    }
+
+    @Override
+    public void setCandidate(boolean candidate) {
+        this.candidate = candidate;
+    }
+
+    @Override
+    public boolean isCandidate() {
+        return candidate;
     }
 
     @Override
