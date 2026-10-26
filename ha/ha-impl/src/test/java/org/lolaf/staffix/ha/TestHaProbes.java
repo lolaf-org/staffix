@@ -62,7 +62,7 @@ class TestHaProbes {
         session.unreplicated();
 
         assertThat(evaluator.evaluate()).hasValueSatisfying(alert -> assertThat(alert.getMessage())
-                .isEqualTo("1 store events too long for the replication log, missing on the follower"));
+                .isEqualTo("1 messages longer than half the replication log, missing on the follower"));
         elapsedNanos.set(Duration.ofMinutes(5).toNanos());
         assertThat(evaluator.evaluate()).isEmpty();
     }

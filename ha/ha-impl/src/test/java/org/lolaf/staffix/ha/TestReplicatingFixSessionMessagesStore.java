@@ -136,7 +136,7 @@ class TestReplicatingFixSessionMessagesStore {
         assertThat(local.calls).containsExactly("message 5");
         assertThat(nextEvent()).isEqualTo("none");
         assertThat(probes.evaluate(HaProbes.REPLICATION)).hasValueSatisfying(alert ->
-                assertThat(alert.getMessage()).contains("too long for the replication log"));
+                assertThat(alert.getMessage()).contains("longer than half the replication log"));
     }
 
     /**

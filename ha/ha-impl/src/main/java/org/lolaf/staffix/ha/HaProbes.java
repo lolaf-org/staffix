@@ -78,7 +78,7 @@ class HaProbes {
     static Probe sessionProbe(ReplicatedSession session, Followers followers) {
         return Probe.builder()
                 .name(REPLICATION)
-                .description("While leading: SYNC sends the follower did not ack in time, store events too long for the"
+                .description("While leading: SYNC sends the follower did not ack in time, messages longer than half the"
                         + " replication log, and a follower refusing to replicate the session.")
                 .evaluator(new SessionReplicationEvaluator(session, followers, System::nanoTime, SESSION_ALERT_EXPIRY.toNanos()))
                 .onlyWhileActive(false)
@@ -169,7 +169,7 @@ class HaProbes {
                 problems.add(session.getTimedOutSends() + " SYNC sends went out without the follower's ack in time");
             }
             if (session.getUnreplicatedEvents() > 0 && now - session.getLastUnreplicatedNanos() < expiryNanos) {
-                problems.add(session.getUnreplicatedEvents() + " store events too long for the replication log, missing"
+                problems.add(session.getUnreplicatedEvents() + " messages longer than half the replication log, missing"
                         + " on the follower");
             }
             return problems.isEmpty() ? Optional.empty() : Optional.of(Alert.major(String.join("; ", problems)));

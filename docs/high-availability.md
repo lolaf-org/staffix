@@ -82,7 +82,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 
 | setting | default | what it decides |
 |---|---|---|
-| `logCapacity` | 16 MiB | Off-heap memory holding the writes the follower has not received yet. A follower falling further behind is caught up by snapshot. The largest message replicated is an eighth of it. |
+| `logCapacity` | 16 MiB | Off-heap memory holding the writes the follower has not received yet. A follower falling further behind is caught up by snapshot. The largest message replicated is half of it. |
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
 | `snapshotMaxMessages` | 10 000 | The most recent messages of a session a snapshot copies. |
@@ -186,9 +186,10 @@ message it never stored. A clean handover does not.
   and **the counterparty's old messages, which the old leader already processed, reach your application again**, as
   possible duplicates. Replicate every session that must survive a failover, or give it `resetSeqNumOnLogon` or a
   shared store.
-- **A message longer than an eighth of `logCapacity` is not replicated** (about 2 MiB with the default). The session
-  logs an error and alerts; a resend of that message after a failover is gap filled. Raise `logCapacity` if you send
-  such messages.
+- **A message longer than half of `logCapacity` is not replicated** (8 MiB with the default). The session logs an
+  error and alerts; a resend of that message after a failover is gap filled. Messages up to that size are replicated
+  in pieces, but a large message takes a large share of the log, and a follower that falls a whole log behind is
+  caught up by snapshot: size `logCapacity` to at least four times your largest message.
 - **A snapshot copies the last `snapshotMaxMessages` messages of a session.** A follower caught up by snapshot answers
   an older resend request with a gap fill once it leads, even when the old leader's store kept everything. Size it to
   how far back your counterparties ask.

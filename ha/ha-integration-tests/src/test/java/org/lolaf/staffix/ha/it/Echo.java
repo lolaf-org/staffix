@@ -15,12 +15,16 @@
  */
 package org.lolaf.staffix.ha.it;
 
+import org.lolaf.staffix.api.codec.FixFieldsDecoderMapper;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
+import org.lolaf.staffix.api.fields.FieldsRegistry;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
+import org.lolaf.staffix.fix44.encoders.group.NoLinesOfTextEncoder;
+import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 
 import java.util.List;
@@ -30,7 +34,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Answers each Email with an Email, counting what it receives again as possible duplicates, and telling a
+ * Answers each Email with an Email, with {@link Counterparty#BIG_ANSWER_LENGTH} bytes of Text when asked with
+ * {@link Counterparty#BIG_REQUEST}, counting what it receives again as possible duplicates, and telling a
  * {@link LoggedOnNodes} its pair shares when its session logs on and off.
  */
 final class Echo extends Fix44Application {
@@ -65,9 +70,16 @@ final class Echo extends Fix44Application {
         EmailEncoder answer = fixSession.newEncoder(EmailEncoder.class).asReusable();
         AtomicInteger duplicates = possibleDuplicates.computeIfAbsent(settings.getFixSessionId().getName(), name -> new AtomicInteger());
         return List.of(new FixMessageDecoder() {
+            private String subject;
+
             @Override
             public MessageType getMessageType() {
                 return MessageTypes.Email;
+            }
+
+            @Override
+            public void mapFieldsForDecoding(FixFieldsDecoderMapper mapper, FieldsRegistry fieldsRegistry) {
+                mapper.mapStringField(Subject.get(), value -> subject = value, null);
             }
 
             @Override
@@ -75,7 +87,15 @@ final class Echo extends Fix44Application {
                 if (possDupFlag) {
                     duplicates.incrementAndGet();
                 }
-                session.send(answer.begin().setSubject("pong"), null);
+                if (!Counterparty.BIG_REQUEST.equals(subject)) {
+                    session.send(answer.begin().setSubject("pong"), null);
+                    return;
+                }
+                NoLinesOfTextEncoder lines = answer.begin().setSubject("pong").addNoLinesOfText(Counterparty.BIG_ANSWER_LINES);
+                for (int i = 0; i < Counterparty.BIG_ANSWER_LINES; i++) {
+                    lines.setText(Counterparty.BIG_ANSWER_LINE);
+                }
+                session.send(answer, null);
             }
         });
     }

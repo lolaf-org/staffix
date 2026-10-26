@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.log;
 
+import lombok.Getter;
 import org.lolaf.ringos.rb.BroadcastByteRingBuffer;
 import org.lolaf.ringos.rb.ByteRingBufferFactory;
 import org.lolaf.ringos.rb.ByteRingReader;
@@ -45,32 +46,32 @@ public class ReplicationLog {
     private final BroadcastByteRingBuffer ring;
 
     /**
-     * @param capacity bytes, a power of two of at least 1024
-     */
-    public ReplicationLog(int capacity) {
-        this.ring = ByteRingBufferFactory.broadcast(capacity, ProducerType.MULTI);
-    }
-
-    /**
      * The longest message an event can carry, in fragments past {@link #getMaxFragmentLength()}: half the log, so a
      * follower reading it still has the other half before it is lapped.
      */
-    public int getMaxMessageLength() {
-        return ring.getCapacity() / 2;
-    }
+    @Getter
+    private final int maxMessageLength;
 
     /**
      * The longest message one event carries whole, the ring's largest frame.
      */
-    public int getMaxFragmentLength() {
-        return ring.getMaxPayloadLength() - FrameEncoder.storeEventBodyBytes(0);
+    @Getter
+    private final int maxFragmentLength;
+
+    /**
+     * @param capacity bytes, a power of two of at least 1024
+     */
+    public ReplicationLog(int capacity) {
+        this.ring = ByteRingBufferFactory.broadcast(capacity, ProducerType.MULTI);
+        this.maxMessageLength = ring.getCapacity() / 2;
+        this.maxFragmentLength = ring.getMaxPayloadLength() - FrameEncoder.storeEventBodyBytes(0);
     }
 
     /**
      * The longest STORE_EVENT frame this log can produce, which a follower's receive buffer must hold.
      */
     public int getMaxEventFrameBytes() {
-        return WireFormat.STORE_EVENT_BODY_OFFSET + FrameEncoder.storeEventBodyBytes(getMaxFragmentLength());
+        return WireFormat.STORE_EVENT_BODY_OFFSET + FrameEncoder.storeEventBodyBytes(maxFragmentLength);
     }
 
     /**
@@ -83,13 +84,12 @@ public class ReplicationLog {
      */
     public long append(StoreEventRecord storeEventRecord) {
         int messageLength = storeEventRecord.messageLength();
-        int maxFragmentLength = getMaxFragmentLength();
         if (messageLength <= maxFragmentLength) {
             return write(storeEventRecord);
         }
-        if (messageLength > getMaxMessageLength()) {
+        if (messageLength > maxMessageLength) {
             throw new IllegalArgumentException("A message of " + messageLength + " bytes exceeds the "
-                    + getMaxMessageLength() + " a replication log of " + ring.getCapacity() + " bytes can hold");
+                    + maxMessageLength + " a replication log of " + ring.getCapacity() + " bytes can hold");
         }
         int start = storeEventRecord.getMessage().position();
         long offset = -1;

@@ -19,7 +19,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.FixEngine;
@@ -141,7 +143,9 @@ class TestSwitchover {
         for (InetSocketAddress address : addresses) {
             target.connectAddress(address);
         }
-        return FixInitiatorBuilder.builder().connectionRetry(Duration.ofMillis(100)).mainTarget(target.build()).build();
+        // betty reads 8 KiB at most by default, and the counterparty receives a message of several MiB
+        return FixInitiatorBuilder.builder().connectionRetry(Duration.ofMillis(100)).mainTarget(target.build())
+                .ioSettings(IOSettings.builder().readBufferSize(8 << 20).build()).build();
     }
 
     /**
@@ -300,6 +304,26 @@ class TestSwitchover {
         counterparty.roundTrips(10);
         assertThat(counterparty.resendRequests.get()).as("no gap: the snapshot gave b all of a's state").isZero();
         assertThat(counterpartyIncomingSeqNum()).as("a's Logout, b's Logon and ten answers").isEqualTo(expected + 12);
+    }
+
+    /**
+     * Longer than two frames of the default replication log, so it reaches the follower in fragments; resent by the
+     * new leader from what it replicated, whole.
+     */
+    @ParameterizedTest
+    @EnumSource(value = ReplicationMode.class, names = {"ASYNC", "SYNC"})
+    void aMessageLongerThanALogFrameReachesTheFollowerWholeAndTheNewLeaderResendsIt(ReplicationMode mode) {
+        start(Storage.SEPARATE, Pair.ACCEPTORS, mode);
+        long bigSeqNum = counterpartyIncomingSeqNum();
+        counterparty.bigRoundTrip();
+        assertThat(counterparty.lastTextLength.get()).isEqualTo(Counterparty.BIG_ANSWER_LENGTH);
+
+        assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+        await().until(() -> counterparty.logons.get() == 2);
+        counterpartyEngine.setIncomingSeqNum(counterpartySession, bigSeqNum);
+        counterparty.roundTrips(1);
+
+        await().atMost(Duration.ofSeconds(30)).until(() -> counterparty.longestPossibleDuplicate.get() == Counterparty.BIG_ANSWER_LENGTH);
     }
 
     @ParameterizedTest(name = "{0} {1}")
