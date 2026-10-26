@@ -58,6 +58,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -87,6 +89,8 @@ class TestSwitchover {
     private Storage storage;
     private Supplier<FixEngine> startFollower;
     private FixEngine follower;
+    private FixEngine leader;
+    private Echo followerApplication;
 
     @TempDir
     Path sharedDirectory;
@@ -120,11 +124,16 @@ class TestSwitchover {
     }
 
     private static FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode) {
+        return sessionSettings(id, type, mode, "app");
+    }
+
+    private static FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode,
+                                                      String applicationId) {
         return FixSessionSettings.builder()
                 .fixSessionId(id)
                 .fixSessionType(type)
                 .fixApplicationFactoryInstanceId("app")
-                .fixApplicationInstanceId("app")
+                .fixApplicationInstanceId(applicationId)
                 .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
                 .haSessionSettings(HaSessionSettings.builder().replicationMode(mode).build())
                 .build();
@@ -196,9 +205,20 @@ class TestSwitchover {
     }
 
     private FixEngine haEngine(String nodeId, FixSessionSettings settings, InetSocketAddress replicationA, InetSocketAddress replicationB) {
-        FixEngine engine = start(engine(nodeId, new Echo(), settings, storage == Storage.SHARED
+        return haEngine(nodeId, replicationA, replicationB, settings);
+    }
+
+    private FixEngine haEngine(String nodeId, InetSocketAddress replicationA, InetSocketAddress replicationB,
+                               FixSessionSettings... settings) {
+        Echo echo = new Echo();
+        if (nodeId.equals("b")) {
+            followerApplication = echo;
+        }
+        FixEngine engine = start(engine(nodeId, echo, settings[0], storage == Storage.SHARED
                 ? FileMessageStoreSettings.builder().storageDirectoryPath(sharedDirectory.toString()).build()
                 : MemoryMessageStoreSettings.builder().build())
+                .clearFixSessionsSettingsStores()
+                .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSettings(List.of(settings)).build())
                 .highAvailability(ReplicationHaSettings.builder()
                         .nodeId(nodeId)
                         .peer("a", replicationA)
@@ -212,6 +232,7 @@ class TestSwitchover {
         HaAdmin ha = ((AdminApi) engine).getHa().orElseThrow();
         if (nodeId.equals("a")) {
             a = ha;
+            leader = engine;
         } else {
             b = ha;
         }
@@ -293,6 +314,117 @@ class TestSwitchover {
         assertThat(counterpartyIncomingSeqNum()).as("a's Logout, b's Logon and ten answers").isEqualTo(expected + 12);
     }
 
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("pairsAndModes")
+    void aLeaderStoppingCleanlyLogsTheCounterpartyOutAndItsFollowerCarriesOnWithoutAJump(Pair pair, ReplicationMode mode) {
+        start(Storage.SEPARATE, pair, mode);
+        long expected = counterpartyIncomingSeqNum();
+
+        leader.stop(Deadline.of(Duration.ofSeconds(5)));
+        // a primos node staffix runs hands leadership over as it stops, after the engine
+        ballot.elect("b");
+
+        await().until(() -> counterparty.logons.get() == 2);
+        assertThat(counterparty.logoutsReceived.get()).as("a Logout from the stopping leader").isEqualTo(1);
+        counterparty.roundTrips(10);
+        assertThat(counterparty.resendRequests.get()).as("no gap: a handed over every write as it stopped").isZero();
+        assertThat(counterpartyIncomingSeqNum()).as("a's Logout, b's Logon and ten answers").isEqualTo(expected + 12);
+    }
+
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("pairsAndModes")
+    void aPairThatFailedOverFailsBackCleanlyOnceTheOldLeaderCaughtUp(Pair pair, ReplicationMode mode) {
+        start(Storage.SEPARATE, pair, mode);
+        ballot.elect("b");
+        await().until(() -> counterparty.logons.get() == 2 && counterparty.resendRequests.get() == 1);
+        counterparty.roundTrips(10);
+        await().until(() -> a.getStatus().getLeader() != null && a.getStatus().getLeader().isInSync());
+        long expected = counterpartyIncomingSeqNum();
+
+        assertThat(b.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+
+        await().until(() -> counterparty.logons.get() == 3);
+        counterparty.roundTrips(10);
+        assertThat(counterparty.resendRequests.get()).as("only the failover's gap: a caught up on b, newer epoch included")
+                .isEqualTo(1);
+        assertThat(counterpartyIncomingSeqNum()).as("b's Logout, a's Logon and ten answers").isEqualTo(expected + 12);
+        assertThat(a.getStatus().getRole()).isEqualTo(org.lolaf.staffix.api.ha.LeaderElection.Role.LEADER);
+    }
+
+    /**
+     * One pair of acceptors serving three sessions: the replicated ones move together. The one that is not starts on the
+     * new leader from that node's own empty store: its counterparty refuses its Logons as MsgSeqNum too low until the
+     * refused Logons have carried its seqnum past the counterparty's, then the new leader asks for everything from 1 and
+     * its application receives again what the old leader already processed.
+     */
+    @org.junit.jupiter.api.Test
+    void severalSessionsSwitchOverTogetherAndOnlyTheUnreplicatedOneIsRefused() {
+        storage = Storage.SEPARATE;
+        ReplicationMode[] modes = {ReplicationMode.ASYNC, ReplicationMode.SYNC, ReplicationMode.NONE};
+        InetSocketAddress replicationA = new InetSocketAddress("localhost", TestPorts.findFree());
+        InetSocketAddress replicationB = new InetSocketAddress("localhost", TestPorts.findFree());
+        InetSocketAddress fixA = new InetSocketAddress("localhost", TestPorts.findFree());
+        InetSocketAddress fixB = new InetSocketAddress("localhost", TestPorts.findFree());
+        FixSessionSettings[] pairSessions = new FixSessionSettings[modes.length];
+        FixSessionSettings[] counterpartySessions = new FixSessionSettings[modes.length];
+        Counterparty[] counterparties = new Counterparty[modes.length];
+        SimpleApplicationFactorySettings.SimpleApplicationFactorySettingsBuilder applications =
+                SimpleApplicationFactorySettings.builder().instanceId("app");
+        for (int i = 0; i < modes.length; i++) {
+            String name = modes[i].name().toLowerCase();
+            pairSessions[i] = sessionSettings(FixSessionId.of(name, FixRegularVersion.VERSION_44, "ACCEPTOR", name.toUpperCase()),
+                    FixSession.FixSessionType.ACCEPTOR, modes[i]);
+            counterpartySessions[i] = sessionSettings(FixSessionId.of(name, FixRegularVersion.VERSION_44, name.toUpperCase(), "ACCEPTOR"),
+                    FixSession.FixSessionType.INITIATOR, ReplicationMode.NONE, name);
+            counterparties[i] = new Counterparty();
+            applications.application(name, counterparties[i]);
+        }
+        haEngine("a", replicationA, replicationB, pairSessions).newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixA).build()).start();
+        haEngine("b", replicationA, replicationB, pairSessions).newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixB).build()).start();
+        FixEngine counterpartyFixEngine = start(FixEngineBuilder.builder()
+                .instanceId("counterparty")
+                .fixMessagesStore(MemoryMessageStoreSettings.builder().build())
+                .fixApplicationFactory(applications.build())
+                .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSettings(List.of(counterpartySessions)).build())
+                .build().instance());
+        for (FixSessionSettings session : counterpartySessions) {
+            counterpartyFixEngine.newInitiator(initiator(session.getFixSessionId(), fixA, fixB).toBuilder()
+                    .instanceId(session.getFixSessionId().getName()).build()).start();
+        }
+        AdminApi counterpartyAdmin = (AdminApi) counterpartyFixEngine;
+        for (Counterparty counterparty : counterparties) {
+            await().until(() -> counterparty.logons.get() == 1);
+            counterparty.roundTrips(10);
+        }
+        await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
+        assertThat(b.getSessionsStatus()).as("the session not replicated is not listed").hasSize(2);
+        long[] expected = new long[modes.length];
+        for (int i = 0; i < modes.length; i++) {
+            expected[i] = counterpartyAdmin.getIncomingSeqNum(counterpartySessions[i].getFixSessionId());
+        }
+
+        assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+
+        Counterparty unreplicated = counterparties[2];
+        await().until(() -> counterparties[0].logons.get() == 2 && counterparties[1].logons.get() == 2);
+        assertThat(unreplicated.logons.get()).as("b's Logons are refused as MsgSeqNum too low, its store being empty")
+                .isEqualTo(1);
+        for (int i = 0; i < 2; i++) {
+            Counterparty counterparty = counterparties[i];
+            counterparty.roundTrips(10);
+            assertThat(counterparty.resendRequests.get()).as("%s: no gap", modes[i]).isZero();
+            assertThat(counterpartyAdmin.getIncomingSeqNum(counterpartySessions[i].getFixSessionId()))
+                    .as("%s: a's Logout, b's Logon and ten answers", modes[i]).isEqualTo(expected[i] + 12);
+        }
+        assertThat(unreplicated.logoutsReceived.get()).as("logged out cleanly by a, like the others").isEqualTo(1);
+        await().until(() -> unreplicated.logons.get() == 2);
+        await().untilAsserted(() -> assertThat(followerApplication.possibleDuplicates.get("none")).as("b's seqnums climbed past "
+                + "the counterparty's through the refused Logons, then b asked it to resend from 1: the counterparty's old "
+                + "messages, which a already processed, reach b's application again").hasValueGreaterThanOrEqualTo(10));
+        assertThat(followerApplication.possibleDuplicates.get("async")).hasValue(0);
+        assertThat(followerApplication.possibleDuplicates.get("sync")).hasValue(0);
+    }
+
     private abstract static class Fix44Application implements FixApplication {
 
         @Override
@@ -308,9 +440,15 @@ class TestSwitchover {
 
     private static final class Echo extends Fix44Application {
 
+        /**
+         * Messages received again as possible duplicates, by session name.
+         */
+        final Map<String, AtomicInteger> possibleDuplicates = new ConcurrentHashMap<>();
+
         @Override
         public List<FixMessageDecoder> setup(FixSessionSettings settings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
             EmailEncoder answer = fixSession.newEncoder(EmailEncoder.class).asReusable();
+            AtomicInteger duplicates = possibleDuplicates.computeIfAbsent(settings.getFixSessionId().getName(), name -> new AtomicInteger());
             return List.of(new FixMessageDecoder() {
                 @Override
                 public MessageType getMessageType() {
@@ -319,6 +457,9 @@ class TestSwitchover {
 
                 @Override
                 public void onDecoded(FixSession session, boolean possDupFlag, boolean possResend) {
+                    if (possDupFlag) {
+                        duplicates.incrementAndGet();
+                    }
                     session.send(answer.begin().setSubject("pong"), null);
                 }
             });
