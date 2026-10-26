@@ -20,13 +20,14 @@ import org.lolaf.primos.spring.PrimosAutoConfiguration;
 import org.lolaf.primos.spring.PrimosNodeLifecycle;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
 import org.lolaf.staffix.ha.primos.PrimosLeaderElectionSettings;
+import org.lolaf.staffix.ha.spring.ReplicationHaProps;
 import org.lolaf.staffix.spring.boot.ManagedFixEngine;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 
@@ -37,22 +38,18 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration(after = PrimosAutoConfiguration.class)
 @ConditionalOnClass({PrimosNode.class, PrimosLeaderElectionSettings.class})
 @ConditionalOnProperty(prefix = "staffix", name = "enabled", havingValue = "true", matchIfMissing = true)
+@EnableConfigurationProperties(ReplicationHaProps.class)
 public class PrimosLeaderElectionAutoConfiguration {
 
-    /**
-     * @param leadershipControl {@code staffix.ha-primos.leadership-control}, see
-     *                          {@link PrimosLeaderElectionSettings#isLeadershipControl()}
-     */
     @Bean
     @ConditionalOnMissingBean(LeaderElectionSettings.class)
-    public PrimosLeaderElectionSettings staffixPrimosLeaderElection(ObjectProvider<PrimosNode> node,
-                                                                    @Value("${staffix.ha-primos.leadership-control:false}") boolean leadershipControl) {
+    public PrimosLeaderElectionSettings staffixPrimosLeaderElection(ObjectProvider<PrimosNode> node, ReplicationHaProps props) {
         PrimosNode primosNode = node.getIfAvailable();
         if (primosNode == null) {
             throw new IllegalStateException("No PrimosNode bean to elect the leading engine with: configure the primos"
                     + " starter, at least primos.application-name");
         }
-        return PrimosLeaderElectionSettings.builder().node(primosNode).leadershipControl(leadershipControl).build();
+        return PrimosLeaderElectionSettings.builder().node(primosNode).leadershipControl(props.isLeadershipControl()).build();
     }
 
     /**

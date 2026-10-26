@@ -62,7 +62,7 @@ class TestPrimosLeaderElectionAutoConfiguration {
         runner.withPropertyValues(singleNodeCluster()).withPropertyValues("primos.lifecycle=manual")
                 .run(context -> assertThat(context.getBean(PrimosLeaderElectionSettings.class).isLeadershipControl()).isFalse());
         runner.withPropertyValues(singleNodeCluster()).withPropertyValues("primos.lifecycle=manual",
-                        "staffix.ha-primos.leadership-control=true")
+                        "staffix.ha-replication.leadership-control=true")
                 .run(context -> assertThat(context.getBean(PrimosLeaderElectionSettings.class).isLeadershipControl()).isTrue());
     }
 

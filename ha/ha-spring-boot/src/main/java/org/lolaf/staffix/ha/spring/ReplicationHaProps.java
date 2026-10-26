@@ -92,4 +92,11 @@ public class ReplicationHaProps {
      * How long a switchover may take before this node leads its sessions again; unset keeps 30s.
      */
     private Duration switchoverTimeout;
+
+    /**
+     * Whether an operator may, through staffix, hand the leadership over or take this node out of elections (the
+     * switchover and maintenance mode) when the election is one the application shares, such as the primos starter's
+     * node with staffix-ha-primos-spring-boot. Off by default, since that leadership is the application's too.
+     */
+    private boolean leadershipControl;
 }

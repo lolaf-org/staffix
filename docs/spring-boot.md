@@ -167,6 +167,38 @@ registered in its place. Same result, and the wrapper is transparent either way:
 
 ---
 
+## High availability
+
+`staffix-ha-spring-boot` replicates the sessions' stores to a standby engine, and `staffix-ha-primos-spring-boot`
+elects the leading engine with the node of `primos-spring-boot-starter`, so your own leader-only beans and the FIX
+sessions follow one election. See [High availability](high-availability.md) for what it does and what it does not.
+
+```properties
+staffix.ha-replication.node-id=1
+staffix.ha-replication.peers.1=fix-a.internal:17101
+staffix.ha-replication.peers.2=fix-b.internal:17101
+staffix.ha-replication.monitoring-instance-id=metrics
+staffix.ha-replication.alerts-publisher-instance-id=alerts
+
+# switchover and maintenance mode move a leadership the application shares, so they are off unless allowed
+staffix.ha-replication.leadership-control=true
+
+# per session
+…sessions[0].ha.replication-mode=SYNC
+…sessions[0].ha.replication-ack-timeout=50ms
+…sessions[0].ha.sync-ack-latency-enabled=true
+```
+
+**`node-id` and the `peers` keys are the primos node ids**: primos names the leader by its id, and the replication
+looks that name up in `peers`. The other `ReplicationHaSettings` settings bind the same way (`log-capacity`,
+`heartbeat-interval`, `reconnect-interval`, `snapshot-max-messages`, `promotion-outgoing-seq-num-jump`,
+`hand-over-timeout`, `switchover-timeout`); their defaults are in the guide.
+
+The engine stops one lifecycle phase before the primos node, so a leader shutting down hands its sessions over
+before primos hands its leadership over, and its follower takes them over without moving its sequence numbers.
+
+---
+
 ## Extending it
 
 The starter is built on an SPI, so a component of your own can join the same configuration model rather than being

@@ -58,6 +58,12 @@ components) and runbook URL. Levels are strings, times ISO-8601. The session MBe
 as its high availability, are listed by the engine-level MBean's `ProbedComponents`, with `getComponentProbes`,
 `getComponentProbeStates` and `clearComponentAlert` taking the component's name.
 
+An engine with [high availability](high-availability.md) also registers `type=FixHa`: `Status` and `SessionsStatus`
+(the role, the epoch, the leader, what the election supports, each follower and replicated session), and the
+operations `switchover()` (answering its outcome), `updateCandidacy(boolean)` (maintenance mode), `resync()` and
+`resyncSession(String fixSessionId, String fixSessionType)`. A standby engine refuses the session actions above, since
+running one there would put the session up on both nodes.
+
 The engine-level MBean names a session by its full `toString()` form, `alpha.trading:VERSION_44:SENDER->TARGET`, in
 both `getInitiatorsTargets()` and `switchInitiatorSession(String)`: a session name is unique only within its group.
 Copy the string from the first into the second.
@@ -130,6 +136,10 @@ state: read `status` again to see it.
 | `POST sessions/{group}/{name}/activate` | `{"config": "trading-drp"}` switches an initiator session to one of its configs |
 | `GET sessions/meters`, `GET sessions/{group}/{name}/meters` | the meters each running session (or this one) publishes, with their descriptions: the monitoring's own and the application's custom timers once it asked for them |
 | `GET engine/meters` | the meters of the engine's own components, such as its high availability, tagged with the engine alone |
+| `GET ha`, `GET ha/sessions` | the engine's [high availability](high-availability.md): role, epoch, leader, what its election supports, each follower (connected, in sync, unsent bytes) or the link to the leader; and per replicated session, its mode, whether a follower holds it, and on a follower whether it would be taken over cleanly now. 404 on an engine without |
+| `POST ha/switchover` | hands leadership to the follower: logs the sessions out, hands every write over, transfers; answers `{"outcome": "TRANSFERRED"}`, or `NO_FOLLOWER_IN_SYNC`, `NOT_HANDED_OVER`, `NOT_TRANSFERRED` (this node leads again) |
+| `POST ha/candidacy` | `{"candidate": false}` takes the node out of elections for maintenance, `true` puts it back; 409 when the election cannot |
+| `POST ha/resync`, `POST ha/sessions/{group}/{name}/resync` | sends the follower a fresh copy of every replicated session, or of one, named as `ha/sessions` lists it; leader only (409 otherwise) |
 | `GET session-components` | what a session's settings can name: application factories with their application ids, message stores, messages loggers, session plugins with the plugin types (full class names) they serve |
 | `GET session-settings-stores`, `POST session-settings-stores/{id}/reload` | each store says whether a change made through the API survives a restart (`persistent`) |
 | `POST session-settings-stores/{id}/sessions` | adds a session, a settings document, to the store, which starts it; answers `201` with its `Location` |

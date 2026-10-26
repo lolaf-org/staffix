@@ -94,6 +94,29 @@ in the same place as the FIX ones:
 })
 ```
 
+### The high availability's meters
+
+An engine with [high availability](high-availability.md) publishes meters of its own, tagged with the engine alone,
+through the monitoring manager `ReplicationHaSettings.monitoringInstanceId` names. Each reads 0 in a role it does not
+apply to, and all but the timers are read at export, so they cost the session thread nothing.
+
+| meter | what it says |
+|---|---|
+| `ha.role` | 2 leader, 1 follower, 0 unknown |
+| `ha.epoch` | the election's epoch, -1 when unknown |
+| `ha.leadership.valid` | 1 while this node leads and can prove it |
+| `ha.followers.connected`, `ha.followers.in.sync` | followers streaming this leader's writes, and holding every replicated session |
+| `ha.follower.unsent` | the most bytes written and not yet sent to a follower; one falling the log's capacity behind is caught up by snapshot |
+| `ha.log.written` | bytes written to the replication log: its rate is the replication's throughput |
+| `ha.sync.ack.latency` | how long `SYNC` sends waited for the follower, for those it acknowledged |
+| `ha.sync.unacknowledged` | `SYNC` sends that went out unacknowledged, tagged `reason` = `timed_out` or `no_follower` |
+| `ha.follower.ack.latency` | a follower's round trip, from a batch of writes sent to its acknowledgement, tagged `follower`; covers `ASYNC` too |
+| `ha.follower.laps`, `ha.snapshots`, `ha.snapshot.messages` | followers dropped for falling behind, snapshots sent, messages they copied |
+| `ha.replica.connected`, `ha.replica.in.sync` | on a follower: streaming its leader's writes, and holding every replicated session |
+
+A session with `haSessionSettings.syncAckLatencyEnabled` also gets `ha.session.sync.ack.latency` in its own meters,
+the same wait as `ha.sync.ack.latency` for that session alone.
+
 ---
 
 ## Tracing
