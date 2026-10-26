@@ -22,18 +22,14 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixAcceptorBuilder;
-import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.FixInitiatorBuilder;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.application.FixApplication;
-import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.ha.HaAdmin;
 import org.lolaf.staffix.api.ha.SwitchoverOutcome;
-import org.lolaf.staffix.api.msg.DecodedFixMessage;
-import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -41,11 +37,8 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
-import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
-import org.lolaf.staffix.fix44.encoders.EmailEncoder;
-import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.stores.messages.file.FileMessageStoreSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
@@ -57,11 +50,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -423,100 +411,5 @@ class TestSwitchover {
                 + "messages, which a already processed, reach b's application again").hasValueGreaterThanOrEqualTo(10));
         assertThat(followerApplication.possibleDuplicates.get("async")).hasValue(0);
         assertThat(followerApplication.possibleDuplicates.get("sync")).hasValue(0);
-    }
-
-    private abstract static class Fix44Application implements FixApplication {
-
-        @Override
-        public FixApiVersion getFixApiVersion() {
-            return FixApiVersion.of(FixRegularVersion.VERSION_44);
-        }
-
-        @Override
-        public FixDictionaryId getDictionaryId() {
-            return FixDictionaryId.of(FixRegularVersion.VERSION_44);
-        }
-    }
-
-    private static final class Echo extends Fix44Application {
-
-        /**
-         * Messages received again as possible duplicates, by session name.
-         */
-        final Map<String, AtomicInteger> possibleDuplicates = new ConcurrentHashMap<>();
-
-        @Override
-        public List<FixMessageDecoder> setup(FixSessionSettings settings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
-            EmailEncoder answer = fixSession.newEncoder(EmailEncoder.class).asReusable();
-            AtomicInteger duplicates = possibleDuplicates.computeIfAbsent(settings.getFixSessionId().getName(), name -> new AtomicInteger());
-            return List.of(new FixMessageDecoder() {
-                @Override
-                public MessageType getMessageType() {
-                    return MessageTypes.Email;
-                }
-
-                @Override
-                public void onDecoded(FixSession session, boolean possDupFlag, boolean possResend) {
-                    if (possDupFlag) {
-                        duplicates.incrementAndGet();
-                    }
-                    session.send(answer.begin().setSubject("pong"), null);
-                }
-            });
-        }
-    }
-
-    /**
-     * The other side of the session, recording what the pair looks like from outside.
-     */
-    private static final class Counterparty extends Fix44Application {
-
-        final AtomicInteger logons = new AtomicInteger();
-        final AtomicInteger logoutsReceived = new AtomicInteger();
-        final AtomicInteger resendRequests = new AtomicInteger();
-        final AtomicLong answers = new AtomicLong();
-        private volatile FixSession session;
-
-        @Override
-        public void onLogon(FixSession fixSession, DecodedFixMessage logonMessage) {
-            session = fixSession;
-            logons.incrementAndGet();
-        }
-
-        @Override
-        public void onPreLogout(FixSession fixSession, String message, boolean logoutInitiated) {
-            if (!logoutInitiated) {
-                logoutsReceived.incrementAndGet();
-            }
-        }
-
-        @Override
-        public void onResendRequestInitiated(FixSession fixSession, long fromSeqNum, long toSeqNum) {
-            resendRequests.incrementAndGet();
-        }
-
-        @Override
-        public List<FixMessageDecoder> setup(FixSessionSettings settings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
-            return List.of(new FixMessageDecoder() {
-                @Override
-                public MessageType getMessageType() {
-                    return MessageTypes.Email;
-                }
-
-                @Override
-                public void onDecoded(FixSession session, boolean possDupFlag, boolean possResend) {
-                    answers.incrementAndGet();
-                }
-            });
-        }
-
-        void roundTrips(int count) {
-            EmailEncoder ping = session.newEncoder(EmailEncoder.class).asReusable();
-            for (int i = 0; i < count; i++) {
-                long expected = answers.get() + 1;
-                session.send(ping.begin().setSubject("ping"), null);
-                await().until(() -> answers.get() >= expected);
-            }
-        }
     }
 }
