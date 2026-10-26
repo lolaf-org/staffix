@@ -36,6 +36,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
@@ -119,6 +120,31 @@ class TestPrimosLeaderElection {
                 && e.getEpoch() == leader.getEpoch()));
         await().until(leader::isLeadershipValid);
         assertThat(cluster.stream().filter(e -> e != leader)).noneMatch(LeaderElection::isLeadershipValid);
+    }
+
+    @Test
+    void theLeaseEndsTheFencingMarginBeforeAnySuccessorCouldBeElected() {
+        List<LeaderElection> cluster = startCluster();
+        await().until(() -> leader(cluster).filter(LeaderElection::isLeadershipValid).isPresent());
+        LeaderElection leader = leader(cluster).orElseThrow();
+        long lease = cluster(1).timings().electionTimeoutMin().minus(Duration.ofMillis(50)).toNanos();
+
+        long before = System.nanoTime();
+        OptionalLong end = leader.getLeaseEndNanos();
+        long after = System.nanoTime();
+
+        assertThat(end).isPresent();
+        assertThat(end.getAsLong()).isGreaterThan(after).isLessThanOrEqualTo(before + lease);
+        assertThat(cluster.stream().filter(e -> e != leader)).allMatch(e -> e.getLeaseEndNanos().isEmpty());
+    }
+
+    @Test
+    void aFencingMarginOfAWholeElectionTimeoutIsRefused() {
+        Duration electionTimeoutMin = cluster(1).timings().electionTimeoutMin();
+
+        assertThatThrownBy(() -> owned(1).fencingMargin(electionTimeoutMin).build().instance())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("fencing margin");
     }
 
     @Test

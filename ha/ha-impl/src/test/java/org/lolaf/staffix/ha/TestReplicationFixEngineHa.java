@@ -87,13 +87,17 @@ class TestReplicationFixEngineHa {
         }
 
         Node(String nodeId, RecordingEngine engine) {
+            this(nodeId, engine, Duration.ofMillis(50));
+        }
+
+        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval) {
             this.engine = engine;
             ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
                     .nodeId(nodeId)
                     .peer("a", addressA)
                     .peer("b", addressB)
                     .logCapacity(1 << 16)
-                    .heartbeatInterval(Duration.ofMillis(50))
+                    .heartbeatInterval(heartbeatInterval)
                     .reconnectInterval(Duration.ofMillis(50))
                     .switchoverTimeout(Duration.ofSeconds(2))
                     .leaderElection(FakeLeaderElection.Settings.builder().election(election).build())
@@ -265,6 +269,18 @@ class TestReplicationFixEngineHa {
 
         await().until(() -> a.engine.activity.contains("deactivate"));
         await().until(() -> !listening(addressA));
+    }
+
+    @Test
+    void aLeaderStopsItsSessionsWhenItsLeaseEndsNotOnItsNextPoll() {
+        Node leader = new Node("a", new RecordingEngine().with(MAIN), Duration.ofSeconds(30));
+        leader.election.elect(Role.LEADER, 3, "a");
+        leader.election.leaseFor(Duration.ofSeconds(1));
+        leader.start();
+        await().until(() -> leader.engine.activity.contains("activate, stores open 0"));
+        assertThat(leader.engine.activity).doesNotContain("deactivate");
+
+        await().atMost(Duration.ofSeconds(3)).until(() -> leader.engine.activity.contains("deactivate"));
     }
 
     @Test

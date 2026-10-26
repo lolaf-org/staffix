@@ -26,6 +26,7 @@ import org.lolaf.primos.transport.UdpTransport;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.LeaderElection;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -35,9 +36,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * A primos node seen as a {@link LeaderElection}: its term is the epoch, its node id the leader id.
  *
  * <p>A follower that knows no leader, a candidate and a failed node are all {@link Role#UNKNOWN}: none can tell the
- * engine where to replicate from. Leadership is valid while a quorum confirmed it less than one minimum election
- * timeout ago, since no successor can be elected sooner. Listeners are also called when the leader changes and the
- * role does not.
+ * engine where to replicate from. Leadership is valid until the fencing margin before one minimum election timeout
+ * after the latest heartbeat a quorum answered was sent, since no successor can be elected sooner. Listeners are also
+ * called when the leader changes and the role does not.
  */
 @Slf4j
 public final class PrimosLeaderElection implements LeaderElection {
@@ -50,11 +51,16 @@ public final class PrimosLeaderElection implements LeaderElection {
     private volatile Role reportedRole = Role.UNKNOWN;
     private volatile boolean started;
 
-    PrimosLeaderElection(PrimosNode node, boolean owned, boolean leadershipControl) {
+    PrimosLeaderElection(PrimosNode node, boolean owned, boolean leadershipControl, Duration fencingMargin) {
         this.node = node;
         this.owned = owned;
         this.leadershipControl = owned || leadershipControl;
-        this.leaseNanos = node.config().timings().electionTimeoutMin().toNanos();
+        Duration electionTimeoutMin = node.config().timings().electionTimeoutMin();
+        if (fencingMargin.isNegative() || fencingMargin.compareTo(electionTimeoutMin) >= 0) {
+            throw new IllegalArgumentException("The fencing margin " + fencingMargin + " must be at least zero and "
+                    + "less than the minimum election timeout " + electionTimeoutMin);
+        }
+        this.leaseNanos = electionTimeoutMin.minus(fencingMargin).toNanos();
         node.addListener(new PrimosListener() {
             @Override
             public void onRoleChanged(org.lolaf.primos.Role previous, org.lolaf.primos.Role current, long term) {
@@ -106,6 +112,13 @@ public final class PrimosLeaderElection implements LeaderElection {
     public boolean isLeadershipValid() {
         OptionalLong confirmed = node.leadershipConfirmedNanos();
         return confirmed.isPresent() && System.nanoTime() - confirmed.getAsLong() < leaseNanos;
+    }
+
+    @Override
+    public OptionalLong getLeaseEndNanos() {
+        OptionalLong confirmed = node.leadershipConfirmedNanos();
+        return confirmed.isPresent() && System.nanoTime() - confirmed.getAsLong() < leaseNanos
+                ? OptionalLong.of(confirmed.getAsLong() + leaseNanos) : OptionalLong.empty();
     }
 
     @Override
@@ -195,13 +208,14 @@ public final class PrimosLeaderElection implements LeaderElection {
                         + "application runs, or a cluster, for a node staffix runs");
             }
             if (settings.getNode() != null) {
-                return new PrimosLeaderElection(settings.getNode(), false, settings.isLeadershipControl());
+                return new PrimosLeaderElection(settings.getNode(), false, settings.isLeadershipControl(),
+                        settings.getFencingMargin());
             }
             if (settings.getStateDirectory() == null || settings.getBindAddress() == null) {
                 throw new IllegalArgumentException("A primos node staffix runs needs a stateDirectory, to remember its "
                         + "term and vote across restarts, and a bindAddress");
             }
-            return new PrimosLeaderElection(ownedNode(settings), true, true);
+            return new PrimosLeaderElection(ownedNode(settings), true, true, settings.getFencingMargin());
         }
 
         private static PrimosNode ownedNode(PrimosLeaderElectionSettings settings) {

@@ -99,4 +99,10 @@ public class ReplicationHaProps {
      * node with staffix-ha-primos-spring-boot. Off by default, since that leadership is the application's too.
      */
     private boolean leadershipControl;
+
+    /**
+     * How much sooner than any successor's election this node stops leading when the election is primos: the time to
+     * drop the sessions, plus clock drift. Unset keeps 50ms; less than primos's minimum election timeout.
+     */
+    private Duration fencingMargin;
 }

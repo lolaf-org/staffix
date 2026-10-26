@@ -22,8 +22,10 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -36,6 +38,7 @@ public final class FakeLeaderElection implements LeaderElection {
     private volatile long epoch;
     private volatile String leaderId;
     private volatile boolean leadershipValid = true;
+    private volatile long leaseEndNanos = Long.MAX_VALUE;
     private volatile boolean started;
     private volatile boolean candidacySupported;
     private volatile boolean candidate = true;
@@ -65,6 +68,14 @@ public final class FakeLeaderElection implements LeaderElection {
         this.leadershipValid = leadershipValid;
     }
 
+    /**
+     * Leadership stays valid for {@code lease} from now, then lapses.
+     */
+    public long leaseFor(Duration lease) {
+        leaseEndNanos = System.nanoTime() + lease.toNanos();
+        return leaseEndNanos;
+    }
+
     @Override
     public Role getRole() {
         return role;
@@ -82,7 +93,12 @@ public final class FakeLeaderElection implements LeaderElection {
 
     @Override
     public boolean isLeadershipValid() {
-        return leadershipValid;
+        return leadershipValid && System.nanoTime() - leaseEndNanos < 0;
+    }
+
+    @Override
+    public OptionalLong getLeaseEndNanos() {
+        return isLeadershipValid() && leaseEndNanos != Long.MAX_VALUE ? OptionalLong.of(leaseEndNanos) : OptionalLong.empty();
     }
 
     @Override

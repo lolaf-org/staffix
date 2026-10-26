@@ -49,7 +49,13 @@ public class PrimosLeaderElectionAutoConfiguration {
             throw new IllegalStateException("No PrimosNode bean to elect the leading engine with: configure the primos"
                     + " starter, at least primos.application-name");
         }
-        return PrimosLeaderElectionSettings.builder().node(primosNode).leadershipControl(props.isLeadershipControl()).build();
+        PrimosLeaderElectionSettings.PrimosLeaderElectionSettingsBuilder<?, ?> settings = PrimosLeaderElectionSettings.builder()
+                .node(primosNode)
+                .leadershipControl(props.isLeadershipControl());
+        if (props.getFencingMargin() != null) {
+            settings.fencingMargin(props.getFencingMargin());
+        }
+        return settings.build();
     }
 
     /**

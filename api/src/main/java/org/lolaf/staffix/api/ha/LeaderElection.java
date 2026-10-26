@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.Startable;
 
 import java.net.InetSocketAddress;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 /**
  * Tells this node whether it leads, whatever technology elects the leader. An implementation wrapping an election the
@@ -45,6 +46,15 @@ public interface LeaderElection extends Startable<LeaderElection> {
      * its sessions before another node starts them.
      */
     boolean isLeadershipValid();
+
+    /**
+     * While leadership is valid, the {@link System#nanoTime()} instant it stops being so unless renewed; empty when
+     * not valid, or for an election that cannot tell. The engine checks again at that instant rather than on its next
+     * poll.
+     */
+    default OptionalLong getLeaseEndNanos() {
+        return OptionalLong.empty();
+    }
 
     /**
      * Where the leader accepts replication, for a technology that advertises it with the leadership. Empty falls back

@@ -49,10 +49,12 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -80,6 +82,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private volatile Replica replica;
     private volatile LeaderElection election;
     private volatile ScheduledExecutorService roleThread;
+    private @Nullable ScheduledFuture<?> leaseCheck;
     private volatile Role followedRole = Role.UNKNOWN;
     private long followedEpoch = -1;
     private @Nullable InetSocketAddress followedLeader;
@@ -396,8 +399,25 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                 default:
                     stand();
             }
+            checkAtLeaseEnd();
         } catch (RuntimeException e) {
             log.error("Node {} failed to follow its leader election", settings.getNodeId(), e);
+        }
+    }
+
+    private void checkAtLeaseEnd() {
+        if (leaseCheck != null) {
+            leaseCheck.cancel(false);
+            leaseCheck = null;
+        }
+        OptionalLong leaseEnd = followedRole == Role.LEADER ? election.getLeaseEndNanos() : OptionalLong.empty();
+        if (leaseEnd.isPresent()) {
+            long delay = Math.max(0, leaseEnd.getAsLong() - System.nanoTime());
+            try {
+                leaseCheck = roleThread.schedule(this::followRole, delay, TimeUnit.NANOSECONDS);
+            } catch (RejectedExecutionException stopped) {
+                // stopping: the engine deactivates the sessions itself
+            }
         }
     }
 

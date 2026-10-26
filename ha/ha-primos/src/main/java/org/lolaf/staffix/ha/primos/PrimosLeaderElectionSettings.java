@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.ha.LeaderElectionSettings;
 
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.time.Duration;
 
 /**
  * Elects the leader with primos, from exactly one of: a {@link #getNode() node} the application runs, or a node
@@ -53,6 +54,13 @@ public class PrimosLeaderElectionSettings extends LeaderElectionSettings {
      */
     @Builder.Default
     private final boolean leadershipControl = false;
+
+    /**
+     * How much sooner than any successor's election this node's leadership stops being valid: the time to drop the
+     * sessions, plus clock drift. Less than the cluster's minimum election timeout, which bounds the lease.
+     */
+    @Builder.Default
+    private final Duration fencingMargin = Duration.ofMillis(50);
 
     /**
      * The cluster of the node staffix runs.
