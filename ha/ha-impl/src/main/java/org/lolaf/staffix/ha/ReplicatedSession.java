@@ -121,6 +121,7 @@ public final class ReplicatedSession {
 
         ReplicationMode replicationMode;
         long replicationAckTimeoutNanos;
+        boolean syncAckLatencyEnabled;
         @Nullable String storageIdentity;
         /**
          * The session's own store, which a snapshot reads off the session's thread.
@@ -128,11 +129,12 @@ public final class ReplicatedSession {
         FixSessionMessagesStore store;
 
         Config notReplicated() {
-            return new Config(ReplicationMode.NONE, replicationAckTimeoutNanos, storageIdentity, store);
+            return new Config(ReplicationMode.NONE, replicationAckTimeoutNanos, syncAckLatencyEnabled, storageIdentity, store);
         }
 
         static Config of(HaSessionSettings settings, FixSessionMessagesStore store) {
             return new Config(settings.getReplicationMode(), settings.getReplicationAckTimeout().toNanos(),
+                    settings.isSyncAckLatencyEnabled(),
                     store.getStorageIdentity().orElse(null), store);
         }
     }

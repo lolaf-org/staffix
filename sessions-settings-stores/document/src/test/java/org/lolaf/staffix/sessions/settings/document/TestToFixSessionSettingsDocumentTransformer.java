@@ -220,6 +220,7 @@ class TestToFixSessionSettingsDocumentTransformer {
                 .haSessionSettings(FixSessionSettings.HaSessionSettings.builder()
                         .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC)
                         .replicationAckTimeout(Duration.ofMillis(500))
+                        .syncAckLatencyEnabled(true)
                         .build())
                 .allowedAddress(InetAddress.getByName("127.0.0.1"))
                 .build();

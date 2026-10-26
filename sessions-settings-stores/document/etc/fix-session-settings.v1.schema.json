@@ -402,6 +402,17 @@
           "enum" : [ "NONE", "ASYNC", "SYNC" ],
           "description" : "Whether the session's store is replicated, and whether a send waits for the standby. A change applies when the session is next built, as restartLiveSessionOnUpdate decides: turned on, the standby catches up by snapshot; turned off, it stops holding the session.",
           "default" : "NONE"
+        },
+        "syncAckLatencyEnabled" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ],
+          "description" : "Whether the session's monitoring times each SYNC send's wait for the standby's acknowledgement. Off by default: recording costs the session's thread on every send.",
+          "default" : false
         }
       },
       "description" : "Whether and how this session's store is replicated to the standby engine."

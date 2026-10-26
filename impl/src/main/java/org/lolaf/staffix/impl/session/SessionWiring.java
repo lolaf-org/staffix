@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.fields.FieldsRegistry;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.VoidMessageLogger;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -202,8 +203,11 @@ final class SessionWiring {
                                     List<FixMessageDecoder> decoders) {
         CodecsComponent codecs = components.get(CodecsComponent.class);
         codecs.setupApplicationDecoders(decoders);
-        components.get(PluginsComponent.class).setup(runtimeDependencies, codecs.getIncomingMessageTypes(),
-                codecs.getOutgoingMessageTypes());
+        PluginsComponent plugins = components.get(PluginsComponent.class);
+        plugins.setup(runtimeDependencies, codecs.getIncomingMessageTypes(), codecs.getOutgoingMessageTypes());
+        if (messagesStore instanceof ReplicatingStore) {
+            plugins.getPluginContext(FixSessionsMonitoringContext.class).ifPresent(((ReplicatingStore) messagesStore)::sessionMeters);
+        }
         components.register(new ApplicationNotifierComponent(fixApplication, fixSession, fieldsRegistry, messageTypeRegistry, decoders));
     }
 

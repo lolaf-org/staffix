@@ -107,7 +107,7 @@ class TestFixSessionSettingsMapper {
     }
 
     @Test
-    void mapsTheReplicationModeAndKeepsTheDefaultAckTimeoutWhenUnset() {
+    void mapsTheReplicationModeAndKeepsTheDefaultAckTimeoutAndLatencyFlagWhenUnset() {
         FixSessionSettingsProps.HaProps ha = new FixSessionSettingsProps.HaProps();
         ha.setReplicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC);
         FixSessionSettingsProps props = sessionProps();
@@ -117,6 +117,18 @@ class TestFixSessionSettingsMapper {
 
         assertThat(mapped.getReplicationMode()).isEqualTo(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC);
         assertThat(mapped.getReplicationAckTimeout()).isZero();
+        assertThat(mapped.isSyncAckLatencyEnabled()).isFalse();
+    }
+
+    @Test
+    void mapsTheSyncAckLatencyFlag() {
+        FixSessionSettingsProps.HaProps ha = new FixSessionSettingsProps.HaProps();
+        ha.setReplicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC);
+        ha.setSyncAckLatencyEnabled(true);
+        FixSessionSettingsProps props = sessionProps();
+        props.setHa(ha);
+
+        assertThat(FixSessionSettingsMapper.toSettings(props).getHaSessionSettings().isSyncAckLatencyEnabled()).isTrue();
     }
 
     @Test

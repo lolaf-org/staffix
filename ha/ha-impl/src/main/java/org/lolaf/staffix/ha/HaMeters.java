@@ -19,6 +19,7 @@ import lombok.experimental.UtilityClass;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
+import org.lolaf.staffix.api.monitoring.MetersContext;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.ha.follower.ReplicationReceiver;
 import org.lolaf.staffix.ha.leader.FollowerLink;
@@ -37,6 +38,7 @@ import java.util.function.ToLongFunction;
 class HaMeters {
 
     static final String SYNC_ACK_LATENCY = "ha.sync.ack.latency";
+    static final String SESSION_SYNC_ACK_LATENCY = "ha.session.sync.ack.latency";
 
     /**
      * @return the timer of the {@code SYNC} sends' wait for the follower's ack
@@ -81,6 +83,11 @@ class HaMeters {
                 () -> following(ha, ReplicationReceiver::isInSync));
         return meters.getTimer(SYNC_ACK_LATENCY, "How long a SYNC send waited for the follower's ack, for the sends it"
                 + " acknowledged.", Map.of());
+    }
+
+    static Timer sessionSyncAckLatency(MetersContext sessionMeters) {
+        return sessionMeters.getTimer(SESSION_SYNC_ACK_LATENCY, "How long this session's SYNC sends waited for the"
+                + " follower's ack back", Map.of());
     }
 
     private static int role(Role role) {

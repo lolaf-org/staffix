@@ -69,6 +69,7 @@ rttMeasurementSettings:
 haSessionSettings:
   replicationMode: "NONE"
   replicationAckTimeout: "PT0S"
+  syncAckLatencyEnabled: false
 sessionScheduleSettings:
   outsideSessionTimePreTriggerDelay: "PT2S"
   timeZone: "$expectedTz"

@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
@@ -126,6 +127,13 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
          * is in sync, so that a lost standby never stops trading.
          */
         void awaitReplicated();
+
+        /**
+         * Called each time the session starts, before it connects, with its monitoring's meters, which only exist
+         * from then on: the session's plugins are created after its store. Not called for a session without
+         * monitoring.
+         */
+        void sessionMeters(FixSessionsMonitoringContext meters);
     }
 
     /**

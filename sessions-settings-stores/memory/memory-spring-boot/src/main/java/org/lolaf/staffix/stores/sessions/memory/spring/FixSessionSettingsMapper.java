@@ -212,6 +212,7 @@ public class FixSessionSettingsMapper {
             FixSessionSettingsProps.HaProps h = p.getHa();
             if (h.getReplicationMode() != null) hb.replicationMode(h.getReplicationMode());
             if (h.getReplicationAckTimeout() != null) hb.replicationAckTimeout(h.getReplicationAckTimeout());
+            if (h.getSyncAckLatencyEnabled() != null) hb.syncAckLatencyEnabled(h.getSyncAckLatencyEnabled());
             b.haSessionSettings(hb.build());
         }
         if (p.getSchedule() != null) {

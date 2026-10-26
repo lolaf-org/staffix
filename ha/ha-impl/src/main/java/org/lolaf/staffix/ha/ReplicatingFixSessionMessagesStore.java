@@ -20,8 +20,10 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.leader.Followers;
@@ -51,6 +53,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     private final IdleStrategy ackIdle;
     private final ReplicatedAhead replicatedAhead;
     private final Timer syncAckLatency;
+    private Timer sessionSyncAckLatency;
     private long lastAppendedOffset = -1;
 
     /**
@@ -66,6 +69,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         this.ackIdle = new BackoffIdleStrategy();
         this.replicatedAhead = new ReplicatedAhead();
         this.syncAckLatency = syncAckLatency;
+        this.sessionSyncAckLatency = Timer.VoidTimer.getInstance();
     }
 
     /**
@@ -88,9 +92,19 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
             long startNanos = System.nanoTime();
             Followers.Ack ack = followers.awaitApplied(session.getKey(), lastAppendedOffset, session.getConfig().getReplicationAckTimeoutNanos(), ackIdle);
             if (ack == Followers.Ack.APPLIED) {
-                syncAckLatency.record(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
+                long waitedNanos = System.nanoTime() - startNanos;
+                syncAckLatency.record(waitedNanos, TimeUnit.NANOSECONDS);
+                sessionSyncAckLatency.record(waitedNanos, TimeUnit.NANOSECONDS);
             }
             session.acknowledged(ack);
+        }
+    }
+
+    @Override
+    public void sessionMeters(FixSessionsMonitoringContext meters) {
+        ReplicatedSession.Config config = session.getConfig();
+        if (config.getReplicationMode() == ReplicationMode.SYNC && config.isSyncAckLatencyEnabled()) {
+            sessionSyncAckLatency = HaMeters.sessionSyncAckLatency(meters);
         }
     }
 
@@ -199,7 +213,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         } catch (IllegalArgumentException e) {
             session.unreplicated();
             log.error("FIX session {} {} {} {} not replicated, its follower will not have it: {}. Raise logCapacity to "
-                    + "replicate messages this long", session.getFixSessionType(), session.getFixSessionId(), eventType,
+                            + "replicate messages this long", session.getFixSessionType(), session.getFixSessionId(), eventType,
                     sequenceNumber, e.getMessage());
         }
     }

@@ -400,6 +400,13 @@ public class FixSessionSettings {
         @Builder.Default
         Duration replicationAckTimeout = Duration.ZERO;
 
+        /**
+         * Whether the session's monitoring times each {@link ReplicationMode#SYNC SYNC} send's wait for the standby's
+         * acknowledgement. Off by default: recording costs the session's thread on every send.
+         */
+        @Builder.Default
+        boolean syncAckLatencyEnabled = false;
+
         @Getter
         public enum ReplicationMode {
             /**

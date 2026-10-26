@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.follower;
 
 import org.lolaf.staffix.api.monitoring.Counter;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.Gauge;
 import org.lolaf.staffix.api.monitoring.Timer;
@@ -31,9 +32,9 @@ import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
 
 /**
- * Engine meters a test reads back: pulled values by name and tags, and how many times each timer recorded.
+ * Engine or session meters a test reads back: pulled values by name and tags, and how many times each timer recorded.
  */
-public final class RecordingMeters implements FixEngineMonitoringContext {
+public final class RecordingMeters implements FixEngineMonitoringContext, FixSessionsMonitoringContext {
 
     private final Map<String, DoubleSupplier> pulled = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> recordings = new ConcurrentHashMap<>();

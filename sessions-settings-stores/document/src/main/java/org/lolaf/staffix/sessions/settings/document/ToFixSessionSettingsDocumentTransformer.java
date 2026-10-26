@@ -199,6 +199,7 @@ public class ToFixSessionSettingsDocumentTransformer {
             FixSessionSettings.HaSessionSettings ha = settings.getHaSessionSettings();
             mergeIfNeeded(ha::getReplicationMode, hb::replicationMode);
             mergeIfNeeded(ha::getReplicationAckTimeout, hb::replicationAckTimeout);
+            mergeIfNeeded(ha::isSyncAckLatencyEnabled, hb::syncAckLatencyEnabled);
             builder.haSessionSettings(hb.build());
         }
     }

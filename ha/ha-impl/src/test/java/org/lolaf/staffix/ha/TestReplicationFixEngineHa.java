@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.ha.follower.RecordingEngine;
 import org.lolaf.staffix.ha.follower.RecordingMeters;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
@@ -304,6 +305,31 @@ class TestReplicationFixEngineHa {
         assertThat(leader.recordings(HaMeters.SYNC_ACK_LATENCY)).isEqualTo(1);
         await().until(() -> leader.read("ha.follower.unsent") == 0);
         assertThat(leader.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isZero();
+    }
+
+    @Test
+    void aSyncSessionTimesItsAcksInItsOwnMetersOnlyWhenAsked() {
+        aLeadsBFollows();
+        RecordingMeters timedMeters = new RecordingMeters();
+        RecordingMeters untimedMeters = new RecordingMeters();
+
+        ReplicatingStore timed = a.ha.replicatingStore(sync(MAIN, true), new RecordingEngine.RecordingStore(), new RecordingProbes());
+        timed.sessionMeters(timedMeters);
+        timed.storeNextIncomingSeqNum(7);
+        timed.awaitReplicated();
+        ReplicatingStore untimed = a.ha.replicatingStore(sync(MAIN, false), new RecordingEngine.RecordingStore(), new RecordingProbes());
+        untimed.sessionMeters(untimedMeters);
+        untimed.storeNextIncomingSeqNum(8);
+        untimed.awaitReplicated();
+
+        assertThat(timedMeters.recordings(HaMeters.SESSION_SYNC_ACK_LATENCY)).isEqualTo(1);
+        assertThat(untimedMeters.recordings(HaMeters.SESSION_SYNC_ACK_LATENCY)).isZero();
+        assertThat(a.engine.meters.recordings(HaMeters.SYNC_ACK_LATENCY)).as("the engine's timer counts both").isEqualTo(2);
+    }
+
+    private static FixSessionSettings sync(FixSessionSettings settings, boolean syncAckLatencyEnabled) {
+        return settings.toBuilder().haSessionSettings(FixSessionSettings.HaSessionSettings.builder()
+                .replicationMode(ReplicationMode.SYNC).syncAckLatencyEnabled(syncAckLatencyEnabled).build()).build();
     }
 
     @Test

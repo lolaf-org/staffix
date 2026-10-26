@@ -444,6 +444,10 @@ public class FixSessionSettingsProps {
          * How long a SYNC send waits for the standby before going out anyway; zero waits forever.
          */
         private Duration replicationAckTimeout;
+        /**
+         * Whether the session's monitoring times each SYNC send's wait for the standby's acknowledgement.
+         */
+        private Boolean syncAckLatencyEnabled;
     }
 
     @Data

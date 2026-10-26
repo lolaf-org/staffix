@@ -32,12 +32,14 @@ import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
@@ -69,6 +71,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.notNull;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -299,6 +302,28 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void theReplicatingStoreGetsTheSessionsMetersOnceItsPluginsExist() {
+        FixSessionsMonitoringManager monitoring = mock(FixSessionsMonitoringManager.class);
+        FixSessionPlugin<FixSessionsMonitoringContext, Void> plugin = mock(FixSessionPlugin.class);
+        FixSessionsMonitoringContext sessionMeters = mock(FixSessionsMonitoringContext.class);
+        when(plugin.isForPluginContext(FixSessionsMonitoringContext.class)).thenReturn(true);
+        when(plugin.getPluginContext()).thenReturn(Optional.of(sessionMeters));
+        when(monitoring.matchesPluginClass(FixSessionsMonitoringManager.class)).thenReturn(true);
+        doReturn(Optional.of(plugin)).when(monitoring).onSessionCreated(any(), any(), any(), any(), any());
+        initiatorFixEngineBuilder = initiatorFixEngineBuilder.toBuilder()
+                .fixSessionsPlugin(TestingFixSessionMonitoringManagerSettings.builder().instanceId("monitoring").mock(monitoring).build())
+                .build();
+        withHighAvailability();
+
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC))
+                .fixSessionPluginsInstanceId(FixSessionsMonitoringManager.class, "monitoring").build());
+        logonClient();
+
+        assertThat(stores.get(0).sessionMeters).containsExactly(sessionMeters);
+    }
+
+    @Test
     void aSyncSessionReplicatesEachMessageAndWaitsBeforeWritingItThenStoresIt() {
         withHighAvailability();
 
@@ -400,6 +425,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         @Delegate(excludes = OutgoingWrites.class)
         private final FixSessionMessagesStore store;
         private final List<String> outgoingWrites = new CopyOnWriteArrayList<>();
+        private final List<FixSessionsMonitoringContext> sessionMeters = new CopyOnWriteArrayList<>();
 
         @Override
         public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
@@ -421,6 +447,11 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         @Override
         public void awaitReplicated() {
             outgoingWrites.add("await");
+        }
+
+        @Override
+        public void sessionMeters(FixSessionsMonitoringContext meters) {
+            sessionMeters.add(meters);
         }
 
         private interface OutgoingWrites {
