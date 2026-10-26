@@ -21,6 +21,7 @@ one command and is the shortest path to a working session. Then come back here.
 | [Session plugins](session-plugins.md) | How do I attach my own behaviour to every message (stamp a field, audit, measure) without touching the application? |
 | [Network monitoring](network-monitoring.md) | How long is the line to my counterparty, and do our clocks agree? |
 | [Alerting](alerting.md) | How do I get told when a session is down, a store falls behind, or my own condition goes wrong? |
+| [High availability](high-availability.md) | How do I run a standby engine that takes over my sessions when the leader fails, and what does my counterparty see? |
 | [Runtime administration](runtime-administration.md) | How do I log a session on, reset a sequence number, or reload settings on a running engine, over the protocol I actually use? |
 | [Spring Boot](spring-boot.md) | How do I declare the whole engine in `application.properties`? |
 | [Performance](performance.md) | What are the measured latency and allocation figures, and how is that latency achieved? |
