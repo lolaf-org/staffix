@@ -198,14 +198,22 @@ public class FrameEncoder {
      */
     public static int snapshotMessage(ByteBuffer out, int index, long epoch, int sessionKey, long sequenceNumber,
                                       ByteBuffer message) {
-        int messageLength = message.remaining();
-        int length = header(out, index, FrameType.SNAPSHOT_MESSAGE, 0, epoch, messageLength);
+        return snapshotMessage(out, index, epoch, sessionKey, sequenceNumber, message, message.position(), message.remaining(), (byte) 0);
+    }
+
+    /**
+     * {@code length} bytes of {@code message} from {@code messageIndex}, a fragment of it when {@code fragmentFlags}
+     * says so, in the header's flags; see {@link WireFormat#MORE_FRAGMENTS}.
+     */
+    public static int snapshotMessage(ByteBuffer out, int index, long epoch, int sessionKey, long sequenceNumber,
+                                      ByteBuffer message, int messageIndex, int length, byte fragmentFlags) {
+        int frameLength = header(out, index, FrameType.SNAPSHOT_MESSAGE, fragmentFlags, epoch, length);
         int p = index + HEADER_BYTES;
         out.putInt(p, sessionKey);
-        out.putInt(p + 4, messageLength);
+        out.putInt(p + 4, length);
         out.putLong(p + 8, sequenceNumber);
-        copy(message, message.position(), out, p + 16, messageLength);
-        return length;
+        copy(message, messageIndex, out, p + 16, length);
+        return frameLength;
     }
 
     public static int snapshotEnd(ByteBuffer out, int index, long epoch, int sessionKey, int messageCount) {

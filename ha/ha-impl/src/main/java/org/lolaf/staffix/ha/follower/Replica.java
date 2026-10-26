@@ -232,13 +232,22 @@ public final class Replica {
         return true;
     }
 
-    boolean snapshotMessage(int key, long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength) {
+    boolean snapshotMessage(int key, long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength,
+                            byte fragmentFlags) {
         ReplicaSession session = replicated(key);
         if (session == null) {
             return false;
         }
-        session.apply(StoreEventType.STORE_MESSAGE, sequenceNumber, buffer, messageIndex, messageLength);
-        session.snapshotMessages++;
+        if (fragmentFlags != 0 || session.assembling) {
+            if (!session.assemble(sequenceNumber, buffer, messageIndex, messageLength, fragmentFlags)) {
+                return false;
+            }
+        } else {
+            session.apply(StoreEventType.STORE_MESSAGE, sequenceNumber, buffer, messageIndex, messageLength);
+        }
+        if ((fragmentFlags & WireFormat.MORE_FRAGMENTS) == 0) {
+            session.snapshotMessages++;
+        }
         return true;
     }
 

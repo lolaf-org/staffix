@@ -61,8 +61,12 @@ public interface FrameHandler {
      */
     void onSnapshotBegin(long epoch, int sessionKey, long cutOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum);
 
+    /**
+     * @param fragmentFlags as for {@link #onStoreEvent}, from the frame's header: a snapshot carries a message longer
+     *                      than a frame as consecutive fragments
+     */
     void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                           int messageLength);
+                           int messageLength, byte fragmentFlags);
 
     void onSnapshotEnd(long epoch, int sessionKey, int messageCount);
 

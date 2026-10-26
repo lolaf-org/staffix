@@ -30,6 +30,7 @@ import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
+import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -363,6 +364,34 @@ class TestFollowerLink {
         assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_SENT);
         assertThat(stats.getSnapshots()).isEqualTo(1);
         assertThat(stats.getSnapshotMessages()).isEqualTo(2);
+    }
+
+    @Test
+    void aSnapshotCarriesAMessageLongerThanABatchInFragmentsAndCountsItOnce() {
+        int fragment = FollowerLink.batchBytesFor(ha.getReplicationLog()) - FrameEncoder.snapshotMessageBytes(0);
+        String x = "x".repeat(fragment);
+        String y = "y".repeat(fragment);
+        FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
+        when(local.getIncomingSeqNum()).thenReturn(21L);
+        when(local.getOutgoingSeqNum()).thenReturn(13L);
+        doAnswer(invocation -> {
+            StoreMessagesConsumer consumer = invocation.getArgument(2);
+            consumer.onMessage(12, ByteBuffer.wrap((x + y + "zzz").getBytes(StandardCharsets.US_ASCII)));
+            return null;
+        }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
+        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        fill();
+        sent.frames.clear();
+
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+        link.snapshotPending();
+
+        assertThat(sent.frames).filteredOn(frame -> !frame.startsWith("SNAPSHOT_BEGIN")).containsExactly(
+                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=" + x + " more",
+                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=" + y + " continued more",
+                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=zzz continued",
+                "SNAPSHOT_END epoch=7 key=0 count=1");
     }
 
     @Test

@@ -64,7 +64,7 @@ class CountingHandler implements FrameHandler {
 
     @Override
     public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                                  int messageLength) {
+                                  int messageLength, byte fragmentFlags) {
         frames++;
     }
 

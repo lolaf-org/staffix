@@ -112,6 +112,13 @@ class TestLeaderLink {
         };
     }
 
+    private static ToIntBiFunction<ByteBuffer, Integer> snapshotFragment(long seq, String text, int flags) {
+        return (out, index) -> {
+            ByteBuffer message = ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));
+            return FrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq, message, 0, message.remaining(), (byte) flags);
+        };
+    }
+
     private static ToIntBiFunction<ByteBuffer, Integer> snapshotMessage(long seq, String message) {
         return (out, index) -> FrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq,
                 ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
@@ -291,6 +298,19 @@ class TestLeaderLink {
 
         assertThat(engine.store(MAIN).writes).containsExactly("message 5 " + MESSAGE);
         assertThat(replica.getLastAppliedOffset()).isEqualTo(128);
+    }
+
+    @Test
+    void aSnapshotMessageInFragmentsIsStoredOnceAndCountedOnce() {
+        streaming();
+
+        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 6),
+                snapshotFragment(5, "8=FIX.4.4\u0001", FIRST), snapshotFragment(5, "9=5\u000135=D\u0001", MIDDLE),
+                snapshotFragment(5, "10=000\u0001", LAST),
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 1));
+
+        assertThat(engine.store(MAIN).writes).contains("message 5 " + MESSAGE);
+        assertThat(sent.frames).contains("SESSION_STATUS epoch=7 key=0 REPLICATING");
     }
 
     @Test

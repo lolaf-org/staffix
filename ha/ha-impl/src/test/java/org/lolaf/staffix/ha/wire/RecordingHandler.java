@@ -79,9 +79,11 @@ public class RecordingHandler implements FrameHandler {
 
     @Override
     public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                                  int messageLength) {
+                                  int messageLength, byte fragmentFlags) {
         frames.add("SNAPSHOT_MESSAGE epoch=" + epoch + " key=" + sessionKey + " seq=" + sequenceNumber + " message="
-                + text(buffer, messageIndex, messageLength));
+                + text(buffer, messageIndex, messageLength)
+                + ((fragmentFlags & WireFormat.CONTINUED_FRAGMENT) != 0 ? " continued" : "")
+                + ((fragmentFlags & WireFormat.MORE_FRAGMENTS) != 0 ? " more" : ""));
     }
 
     @Override

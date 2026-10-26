@@ -209,9 +209,11 @@ public final class LeaderLink implements FrameHandler {
 
     @Override
     public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                                  int messageLength) {
-        if (fromLeader(epoch) && !replica.snapshotMessage(sessionKey, sequenceNumber, buffer, messageIndex, messageLength)) {
-            close(CloseReason.PROTOCOL_ERROR, "a snapshot message of session key " + sessionKey + ", not replicated here");
+                                  int messageLength, byte fragmentFlags) {
+        if (fromLeader(epoch) && !replica.snapshotMessage(sessionKey, sequenceNumber, buffer, messageIndex, messageLength,
+                fragmentFlags)) {
+            close(CloseReason.PROTOCOL_ERROR, "a snapshot message of session key " + sessionKey
+                    + " not replicated here, or a fragment out of its message");
         }
     }
 

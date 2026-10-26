@@ -106,7 +106,7 @@ public class FrameDecoder {
             case SNAPSHOT_MESSAGE:
                 int messageLength = in.getInt(p + 4);
                 checkVariableBytes(type, messageLength, variableBytes);
-                handler.onSnapshotMessage(epoch, in.getInt(p), in.getLong(p + 8), in, p + 16, messageLength);
+                handler.onSnapshotMessage(epoch, in.getInt(p), in.getLong(p + 8), in, p + 16, messageLength, (byte) flags);
                 break;
             case SNAPSHOT_END:
                 handler.onSnapshotEnd(epoch, in.getInt(p), in.getInt(p + 4));

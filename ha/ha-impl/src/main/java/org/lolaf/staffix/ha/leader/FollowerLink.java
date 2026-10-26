@@ -334,7 +334,7 @@ public final class FollowerLink implements FrameHandler {
 
     @Override
     public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                                  int messageLength) {
+                                  int messageLength, byte fragmentFlags) {
         unexpected(FrameType.SNAPSHOT_MESSAGE);
     }
 
@@ -620,17 +620,21 @@ public final class FollowerLink implements FrameHandler {
         }
 
         /**
-         * A message too long for a batch is left out: a resend of it is answered with a gap fill.
+         * A message too long for a batch goes in fragments, each in a batch of its own.
          */
         @Override
         public boolean onMessage(long seqNum, ByteBuffer message) {
-            int bytes = FrameEncoder.snapshotMessageBytes(message.remaining());
-            if (bytes > batchBytes) {
-                log.warn("Message {} of {} bytes left out of a snapshot to follower {}", seqNum, message.remaining(), followerId);
-                return true;
-            }
-            room(bytes);
-            filled += FrameEncoder.snapshotMessage(batch, filled, leaderEpoch, sessionKey, seqNum, message);
+            int messageLength = message.remaining();
+            int maxFragmentLength = batchBytes - FrameEncoder.snapshotMessageBytes(0);
+            int from = 0;
+            do {
+                int length = Math.min(maxFragmentLength, messageLength - from);
+                int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
+                room(FrameEncoder.snapshotMessageBytes(length));
+                filled += FrameEncoder.snapshotMessage(batch, filled, leaderEpoch, sessionKey, seqNum, message,
+                        message.position() + from, length, (byte) flags);
+                from += length;
+            } while (from < messageLength && state == State.STREAMING);
             messageCount++;
             return state == State.STREAMING;
         }
