@@ -52,7 +52,7 @@ class CountingHandler implements FrameHandler {
 
     @Override
     public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                             ByteBuffer buffer, int messageIndex, int messageLength) {
+                             ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
         frames++;
         checksum += epoch + logOffset + sessionKey + eventType.getCode() + sequenceNumber + buffer.get(messageIndex) + messageLength;
     }

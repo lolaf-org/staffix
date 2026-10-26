@@ -46,6 +46,9 @@ class TestLeaderLink {
 
     private static final long EPOCH = 7;
     private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.INITIATOR);
+    private static final int FIRST = WireFormat.MORE_FRAGMENTS;
+    private static final int MIDDLE = WireFormat.MORE_FRAGMENTS | WireFormat.CONTINUED_FRAGMENT;
+    private static final int LAST = WireFormat.CONTINUED_FRAGMENT;
     private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
 
     private final IOSession connection = mock(IOSession.class);
@@ -98,6 +101,15 @@ class TestLeaderLink {
                                                               String message) {
         return (out, index) -> FrameEncoder.storeEvent(out, index, epoch, offset, key, type, seq,
                 message == null ? null : ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> fragment(long offset, int key, long seq, String text, int flags) {
+        return (out, index) -> {
+            ByteBuffer message = ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));
+            int body = FrameEncoder.storeEventBody(out, index + WireFormat.STORE_EVENT_BODY_OFFSET, key,
+                    StoreEventType.STORE_MESSAGE, seq, message, 0, message.remaining(), (byte) flags);
+            return FrameEncoder.storeEventHeader(out, index, EPOCH, offset, body);
+        };
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> snapshotMessage(long seq, String message) {
@@ -265,6 +277,50 @@ class TestLeaderLink {
 
         assertThat(replica.isComplete()).isFalse();
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    }
+
+    @Test
+    void theFragmentsOfAMessageAreAppliedAsOneMessageOnceTheLastArrives() {
+        FixSessionSettings other = RecordingEngine.session("other", FixSessionType.INITIATOR);
+        streaming();
+        read(session(3, other));
+
+        read(fragment(0, 0, 5, "8=FIX.4.4\u0001", FIRST), event(EPOCH, 64, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
+        assertThat(engine.store(MAIN).writes).as("nothing until the last fragment").isEmpty();
+        read(fragment(96, 0, 5, "9=5\u0001", MIDDLE), fragment(128, 0, 5, "35=D\u000110=000\u0001", LAST));
+
+        assertThat(engine.store(MAIN).writes).containsExactly("message 5 " + MESSAGE);
+        assertThat(replica.getLastAppliedOffset()).isEqualTo(128);
+    }
+
+    @Test
+    void aFragmentOfAnotherMessageClosesTheStream() {
+        streaming();
+
+        read(fragment(0, 0, 5, "8=FIX.4.4", FIRST), fragment(64, 0, 6, "9=5", LAST));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 PROTOCOL_ERROR"));
+        assertThat(engine.store(MAIN).writes).isEmpty();
+    }
+
+    /**
+     * Resuming starts after the last event applied, which may be past the message's first fragments: only a snapshot
+     * gives the session that message.
+     */
+    @Test
+    void aStreamResumedInTheMiddleOfAMessageCatchesItsSessionUpBySnapshot() {
+        streaming();
+        complete();
+        read(fragment(0, 0, 5, "8=FIX.4.4", FIRST));
+
+        LeaderLink resumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+        sent.frames.clear();
+        decode(writeFrames(welcome(EPOCH, 0), session(0, MAIN)), resumed);
+
+        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED");
+        decode(writeFrames(fragment(64, 0, 5, "9=5", LAST)), resumed);
+        assertThat(engine.store(MAIN).writes).as("the rest of a message alone is not applied").noneMatch(w -> w.startsWith("message"));
     }
 
     @Test

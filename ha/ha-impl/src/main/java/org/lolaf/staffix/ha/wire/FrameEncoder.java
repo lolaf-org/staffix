@@ -146,17 +146,27 @@ public class FrameEncoder {
      */
     public static int storeEventBody(ByteBuffer out, int index, int sessionKey, StoreEventType eventType,
                                      long sequenceNumber, @Nullable ByteBuffer message) {
-        int messageLength = message == null ? 0 : message.remaining();
+        return message == null
+                ? storeEventBody(out, index, sessionKey, eventType, sequenceNumber, null, 0, 0, (byte) 0)
+                : storeEventBody(out, index, sessionKey, eventType, sequenceNumber, message, message.position(), message.remaining(), (byte) 0);
+    }
+
+    /**
+     * {@code length} bytes of {@code message} from {@code messageIndex}, a fragment of it when {@code fragmentFlags}
+     * says so; see {@link WireFormat#MORE_FRAGMENTS}.
+     */
+    public static int storeEventBody(ByteBuffer out, int index, int sessionKey, StoreEventType eventType, long sequenceNumber,
+                                     @Nullable ByteBuffer message, int messageIndex, int length, byte fragmentFlags) {
         out.putInt(index, sessionKey);
         out.put(index + 4, eventType.getCode());
-        out.put(index + 5, (byte) 0);
+        out.put(index + 5, fragmentFlags);
         out.putShort(index + 6, (short) 0);
         out.putLong(index + 8, sequenceNumber);
-        out.putInt(index + 16, messageLength);
+        out.putInt(index + 16, length);
         if (message != null) {
-            copy(message, message.position(), out, index + 20, messageLength);
+            copy(message, messageIndex, out, index + 20, length);
         }
-        return storeEventBodyBytes(messageLength);
+        return storeEventBodyBytes(length);
     }
 
     /**

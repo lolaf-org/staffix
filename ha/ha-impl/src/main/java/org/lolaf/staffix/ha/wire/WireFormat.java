@@ -49,6 +49,18 @@ public class WireFormat {
     public static final int STORE_EVENT_BODY_OFFSET = HEADER_BYTES + Long.BYTES;
 
     /**
+     * Set in a {@link FrameType#STORE_EVENT}'s fragment byte when more fragments of its message follow. A message
+     * longer than a frame is sent as consecutive events of its session: the first with this bit, the middle ones with
+     * both, the last with {@link #CONTINUED_FRAGMENT} alone, so a last fragment never reads as a whole message.
+     */
+    public static final byte MORE_FRAGMENTS = 0x01;
+
+    /**
+     * Set in a {@link FrameType#STORE_EVENT}'s fragment byte on every fragment but a message's first.
+     */
+    public static final byte CONTINUED_FRAGMENT = 0x02;
+
+    /**
      * Opens {@link FrameType#HELLO} and {@link FrameType#WELCOME}, so a peer that is not a staffix replication
      * endpoint is refused before anything else is read: 'SFHA'.
      */

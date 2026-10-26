@@ -98,7 +98,7 @@ public class FrameDecoder {
                 int eventLength = in.getInt(p + 24);
                 checkVariableBytes(type, eventLength, variableBytes);
                 handler.onStoreEvent(epoch, in.getLong(p), in.getInt(p + 8), eventType(in.get(p + 12)), in.getLong(p + 16),
-                        in, p + 28, eventLength);
+                        in, p + 28, eventLength, in.get(p + 13));
                 break;
             case SNAPSHOT_BEGIN:
                 handler.onSnapshotBegin(epoch, in.getInt(p), in.getLong(p + 8), in.getLong(p + 16), in.getLong(p + 24));

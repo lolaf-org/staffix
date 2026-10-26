@@ -32,6 +32,9 @@ public final class StoreEventRecord {
     private StoreEventType eventType = StoreEventType.STORE_MESSAGE;
     private long sequenceNumber;
     private @Nullable ByteBuffer message;
+    private int fragmentIndex;
+    private int fragmentLength;
+    private byte fragmentFlags;
 
     /**
      * @param message the bytes from its position to its limit, read during the append and left untouched; null for
@@ -42,6 +45,16 @@ public final class StoreEventRecord {
         this.eventType = eventType;
         this.sequenceNumber = sequenceNumber;
         this.message = message;
+        return fragment(message == null ? 0 : message.position(), messageLength(), (byte) 0);
+    }
+
+    /**
+     * Narrows the event to one fragment of its message, as the log appends it.
+     */
+    StoreEventRecord fragment(int fragmentIndex, int fragmentLength, byte fragmentFlags) {
+        this.fragmentIndex = fragmentIndex;
+        this.fragmentLength = fragmentLength;
+        this.fragmentFlags = fragmentFlags;
         return this;
     }
 

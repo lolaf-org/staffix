@@ -134,7 +134,41 @@ class TestReplicationLog {
                 .hasMessageContaining("exceeds the " + log.getMaxMessageLength());
         assertThat(log.getTailOffset()).isZero();
         assertThat(log.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, ByteBuffer.allocate(log.getMaxMessageLength()))))
-                .isZero();
+                .as("the longest message is accepted, in fragments").isPositive();
+    }
+
+    @Test
+    void aMessageLongerThanAFrameIsAppendedAsConsecutiveFragmentsTheLastOneEnding() {
+        int fragment = log.getMaxFragmentLength();
+        String x = "x".repeat(fragment);
+        String y = "y".repeat(fragment);
+        ByteBuffer message = ByteBuffer.wrap(("ab" + x + y + "zzz").getBytes(StandardCharsets.US_ASCII)).position(2);
+        ReplicationLog.Reader reader = log.newReader();
+
+        long last = log.append(record.set(3, StoreEventType.STORE_MESSAGE, 42, message));
+
+        readAsFrame(reader);
+        long second = reader.getOffset();
+        readAsFrame(reader);
+        readAsFrame(reader);
+        assertThat(handler.frames).containsExactly(
+                "STORE_EVENT epoch=7 offset=0 key=3 STORE_MESSAGE seq=42 message=" + x + " more",
+                "STORE_EVENT epoch=7 offset=" + second + " key=3 STORE_MESSAGE seq=42 message=" + y + " continued more",
+                "STORE_EVENT epoch=7 offset=" + last + " key=3 STORE_MESSAGE seq=42 message=zzz continued");
+        assertThat(message.position()).as("left untouched").isEqualTo(2);
+        assertThat(reader.readInto(frame, 0)).isEqualTo(ReplicationLog.Reader.NO_EVENT);
+    }
+
+    @Test
+    void aMessageThatFitsAFrameIsOneEventNotMarkedAsAFragment() {
+        ReplicationLog.Reader reader = log.newReader();
+
+        log.append(record.set(3, StoreEventType.STORE_MESSAGE, 42, ByteBuffer.wrap("x".repeat(log.getMaxFragmentLength())
+                .getBytes(StandardCharsets.US_ASCII))));
+
+        readAsFrame(reader);
+        assertThat(handler.frames).singleElement().asString().doesNotContain(" more", " continued");
+        assertThat(reader.readInto(frame, 0)).isEqualTo(ReplicationLog.Reader.NO_EVENT);
     }
 
     /**

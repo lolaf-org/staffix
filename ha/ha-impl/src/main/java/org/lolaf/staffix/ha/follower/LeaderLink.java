@@ -128,12 +128,14 @@ public final class LeaderLink implements FrameHandler {
 
     @Override
     public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                             ByteBuffer buffer, int messageIndex, int messageLength) {
+                             ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
         if (!fromLeader(epoch)) {
             return;
         }
-        if (!replica.apply(epoch, logOffset, sessionKey, eventType, sequenceNumber, buffer, messageIndex, messageLength)) {
-            close(CloseReason.PROTOCOL_ERROR, "a STORE_EVENT for session key " + sessionKey + ", never announced");
+        if (!replica.apply(epoch, logOffset, sessionKey, eventType, sequenceNumber, buffer, messageIndex, messageLength,
+                fragmentFlags)) {
+            close(CloseReason.PROTOCOL_ERROR, "a STORE_EVENT for session key " + sessionKey
+                    + " never announced, or a fragment out of its message");
             return;
         }
         ackDue = true;

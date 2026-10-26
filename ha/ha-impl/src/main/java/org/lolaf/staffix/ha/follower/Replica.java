@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.wire.SessionStatus;
+import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -65,7 +66,9 @@ public final class Replica {
         for (ReplicaSession session : sessions) {
             if (session != null) {
                 session.handedOver = false;
-                session.complete &= resumed;
+                // a resume may start past the first fragments of a message this session was assembling
+                session.complete &= resumed && !session.assembling;
+                session.discardFragments();
             }
         }
         if (!resumed) {
@@ -194,12 +197,16 @@ public final class Replica {
      * @return false for a key the leader never bound
      */
     boolean apply(long epoch, long offset, int key, StoreEventType eventType, long sequenceNumber, ByteBuffer buffer,
-                  int messageIndex, int messageLength) {
+                  int messageIndex, int messageLength, byte fragmentFlags) {
         ReplicaSession session = key < sessions.length ? sessions[key] : null;
         if (session == null) {
             return false;
         }
-        if (session.store != null) {
+        if (fragmentFlags != 0 || session.assembling) {
+            if (!session.assemble(sequenceNumber, buffer, messageIndex, messageLength, fragmentFlags)) {
+                return false;
+            }
+        } else if (session.store != null) {
             session.apply(eventType, sequenceNumber, buffer, messageIndex, messageLength);
         }
         lastAppliedEpoch = epoch;
@@ -216,6 +223,7 @@ public final class Replica {
             return false;
         }
         session.complete = false;
+        session.discardFragments();
         session.snapshotNextOutgoingSeqNum = nextOutgoingSeqNum;
         session.snapshotMessages = 0;
         session.store.resetSequenceNumbers();
@@ -353,6 +361,12 @@ public final class Replica {
         private volatile boolean handedOver;
         private long snapshotNextOutgoingSeqNum;
         private int snapshotMessages;
+        private boolean assembling;
+        private long assembledSequenceNumber;
+        /**
+         * The fragments received so far of a message longer than a frame, grown as needed and kept for the next one.
+         */
+        private @Nullable ByteBuffer fragments;
 
         /**
          * @param refusal the status of a session not replicated here, without a store
@@ -402,6 +416,57 @@ public final class Replica {
                     break;
                 default:
                     throw new IllegalStateException("Unexpected store event " + eventType);
+            }
+        }
+
+        /**
+         * Adds a fragment of a message longer than a frame, applying the message with its last fragment. A session not
+         * replicated here keeps no bytes, only where the message ends. A continued fragment with no message begun is
+         * what a resume leaves of a message whose start it skipped: dropped, its session catching up by snapshot.
+         *
+         * @return false for a fragment out of place: another message's, or a new message before the last one ended
+         */
+        boolean assemble(long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
+            boolean continued = (fragmentFlags & WireFormat.CONTINUED_FRAGMENT) != 0;
+            boolean moreFragments = (fragmentFlags & WireFormat.MORE_FRAGMENTS) != 0;
+            if (continued != assembling) {
+                return continued;
+            }
+            if (!assembling) {
+                assembling = true;
+                assembledSequenceNumber = sequenceNumber;
+            } else if (sequenceNumber != assembledSequenceNumber) {
+                return false;
+            }
+            if (store != null) {
+                ByteBuffer fragment = buffer.duplicate();
+                fragment.limit(messageIndex + messageLength).position(messageIndex);
+                fragments = withRoomFor(messageLength).put(fragment);
+            }
+            if (!moreFragments) {
+                if (store != null) {
+                    apply(StoreEventType.STORE_MESSAGE, sequenceNumber, fragments, 0, fragments.position());
+                }
+                discardFragments();
+            }
+            return true;
+        }
+
+        private ByteBuffer withRoomFor(int length) {
+            if (fragments == null) {
+                return ByteBuffer.allocate(length);
+            }
+            if (fragments.remaining() >= length) {
+                return fragments;
+            }
+            ByteBuffer grown = ByteBuffer.allocate(Math.max(fragments.position() + length, fragments.capacity() * 2));
+            return grown.put(fragments.flip());
+        }
+
+        void discardFragments() {
+            assembling = false;
+            if (fragments != null) {
+                fragments.clear();
             }
         }
 

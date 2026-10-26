@@ -49,10 +49,12 @@ public interface FrameHandler {
     void onSessionStatus(long epoch, int sessionKey, SessionStatus status);
 
     /**
-     * @param logOffset the event's position in the leader's replication log
+     * @param logOffset     the event's position in the leader's replication log
+     * @param fragmentFlags {@link WireFormat#MORE_FRAGMENTS} and {@link WireFormat#CONTINUED_FRAGMENT}, zero for a
+     *                      whole event
      */
     void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                      ByteBuffer buffer, int messageIndex, int messageLength);
+                      ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags);
 
     /**
      * @param cutOffset the log offset the snapshot is consistent with; the stream continues from there

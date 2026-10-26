@@ -39,7 +39,8 @@ public class ReplicationLog {
 
     private static final ByteTranslator<StoreEventRecord> ENCODE = (buffer, index, length, storeEventRecord) ->
             FrameEncoder.storeEventBody(buffer, index, storeEventRecord.getSessionKey(), storeEventRecord.getEventType(),
-                    storeEventRecord.getSequenceNumber(), storeEventRecord.getMessage());
+                    storeEventRecord.getSequenceNumber(), storeEventRecord.getMessage(), storeEventRecord.getFragmentIndex(),
+                    storeEventRecord.getFragmentLength(), storeEventRecord.getFragmentFlags());
 
     private final BroadcastByteRingBuffer ring;
 
@@ -51,9 +52,17 @@ public class ReplicationLog {
     }
 
     /**
-     * The longest message an event can carry.
+     * The longest message an event can carry, in fragments past {@link #getMaxFragmentLength()}: half the log, so a
+     * follower reading it still has the other half before it is lapped.
      */
     public int getMaxMessageLength() {
+        return ring.getCapacity() / 2;
+    }
+
+    /**
+     * The longest message one event carries whole, the ring's largest frame.
+     */
+    public int getMaxFragmentLength() {
         return ring.getMaxPayloadLength() - FrameEncoder.storeEventBodyBytes(0);
     }
 
@@ -61,22 +70,40 @@ public class ReplicationLog {
      * The longest STORE_EVENT frame this log can produce, which a follower's receive buffer must hold.
      */
     public int getMaxEventFrameBytes() {
-        return WireFormat.STORE_EVENT_BODY_OFFSET + FrameEncoder.storeEventBodyBytes(getMaxMessageLength());
+        return WireFormat.STORE_EVENT_BODY_OFFSET + FrameEncoder.storeEventBodyBytes(getMaxFragmentLength());
     }
 
     /**
-     * Any thread; the events of one session must be appended by one thread at a time, in their order.
+     * Any thread; the events of one session must be appended by one thread at a time, in their order. A message
+     * longer than {@link #getMaxFragmentLength()} is appended as consecutive fragments, other sessions' events
+     * possibly between them. Allocates nothing.
      *
-     * @return the event's offset
+     * @return the offset of the event, or of the message's last fragment
      * @throws IllegalArgumentException for a message longer than {@link #getMaxMessageLength()}
      */
     public long append(StoreEventRecord storeEventRecord) {
         int messageLength = storeEventRecord.messageLength();
+        int maxFragmentLength = getMaxFragmentLength();
+        if (messageLength <= maxFragmentLength) {
+            return write(storeEventRecord);
+        }
         if (messageLength > getMaxMessageLength()) {
             throw new IllegalArgumentException("A message of " + messageLength + " bytes exceeds the "
                     + getMaxMessageLength() + " a replication log of " + ring.getCapacity() + " bytes can hold");
         }
-        return ring.write(STORE_EVENT, FrameEncoder.storeEventBodyBytes(messageLength), ENCODE, storeEventRecord);
+        int start = storeEventRecord.getMessage().position();
+        long offset = -1;
+        for (int from = 0; from < messageLength; from += maxFragmentLength) {
+            int length = Math.min(maxFragmentLength, messageLength - from);
+            int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
+            offset = write(storeEventRecord.fragment(start + from, length, (byte) flags));
+        }
+        return offset;
+    }
+
+    private long write(StoreEventRecord storeEventRecord) {
+        return ring.write(STORE_EVENT, FrameEncoder.storeEventBodyBytes(storeEventRecord.getFragmentLength()), ENCODE,
+                storeEventRecord);
     }
 
     /**

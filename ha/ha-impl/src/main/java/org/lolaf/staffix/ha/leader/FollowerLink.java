@@ -323,7 +323,7 @@ public final class FollowerLink implements FrameHandler {
 
     @Override
     public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                             ByteBuffer buffer, int messageIndex, int messageLength) {
+                             ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
         unexpected(FrameType.STORE_EVENT);
     }
 

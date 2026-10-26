@@ -64,9 +64,11 @@ public class RecordingHandler implements FrameHandler {
 
     @Override
     public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                             ByteBuffer buffer, int messageIndex, int messageLength) {
+                             ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
         frames.add("STORE_EVENT epoch=" + epoch + " offset=" + logOffset + " key=" + sessionKey + " " + eventType
-                + " seq=" + sequenceNumber + " message=" + text(buffer, messageIndex, messageLength));
+                + " seq=" + sequenceNumber + " message=" + text(buffer, messageIndex, messageLength)
+                + ((fragmentFlags & WireFormat.CONTINUED_FRAGMENT) != 0 ? " continued" : "")
+                + ((fragmentFlags & WireFormat.MORE_FRAGMENTS) != 0 ? " more" : ""));
     }
 
     @Override
