@@ -82,6 +82,21 @@ class TestRaisedAlertEvaluator {
     }
 
     @Test
+    void isRaisedFromARaiseUntilItIsClearedOrExpires() {
+        assertThat(evaluator.isRaised()).isFalse();
+        evaluator.raise(MAJOR);
+        assertThat(evaluator.isRaised()).isTrue();
+        evaluator.clear();
+        assertThat(evaluator.isRaised()).as("cleared, though its raise is not reported yet").isFalse();
+
+        evaluator.raise(WARNING, Duration.ofSeconds(10));
+        nanos.addAndGet(Duration.ofSeconds(9).toNanos());
+        assertThat(evaluator.isRaised()).isTrue();
+        nanos.addAndGet(Duration.ofSeconds(1).toNanos());
+        assertThat(evaluator.isRaised()).isFalse();
+    }
+
+    @Test
     void aRaiseClearedBeforeAnEvaluationIsStillReportedOnce() {
         evaluator.raise(MAJOR);
         evaluator.clear();

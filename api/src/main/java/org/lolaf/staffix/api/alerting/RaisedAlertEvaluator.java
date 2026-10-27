@@ -67,6 +67,13 @@ public final class RaisedAlertEvaluator implements ProbeEvaluator {
         unreported.set(alert);
     }
 
+    /**
+     * Whether an alert is raised and has not expired. One already cleared is not, even before its raise is reported.
+     */
+    public boolean isRaised() {
+        return raised != null && !hasExpired();
+    }
+
     @Override
     public boolean clear() {
         raised = null;

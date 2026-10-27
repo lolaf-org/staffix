@@ -106,11 +106,11 @@ final class SessionWiring {
                 settings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR),
                 settings.getDesiredSessionState(), scheduleManager);
         this.components = new FixSessionLayerComponents();
-        FailSafeFixSessionMessagesStore failSafeStore = new FailSafeFixSessionMessagesStore(
+        GuardedFixSessionMessagesStore guardedStore = new GuardedFixSessionMessagesStore(
                 runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes), fixSessionId,
                 runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
-        probes.add(failSafeStore.getProbe());
-        this.messagesStore = replicated(settings, failSafeStore, probes, runtimeDependencies);
+        probes.add(guardedStore.getProbe());
+        this.messagesStore = replicated(settings, guardedStore, probes, runtimeDependencies);
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
         this.messagesLogger = messagesLogger(fixInstanceId, probes, runtimeDependencies);
         this.messageExecutors = messageExecutorsRuntime.newSessionExecutors();
@@ -169,10 +169,10 @@ final class SessionWiring {
     }
 
     /**
-     * Outside the fail-safe store, so replication goes on while the session's own storage is down: the standby's copy
+     * Outside the guarded store, so replication goes on while the session's own storage is down: the standby's copy
      * is what a failover needs then.
      */
-    private static FixSessionMessagesStore replicated(FixSessionSettings settings, FailSafeFixSessionMessagesStore store,
+    private static FixSessionMessagesStore replicated(FixSessionSettings settings, GuardedFixSessionMessagesStore store,
                                                       ProbesImpl probes, FixSessionRuntimeDependencies runtimeDependencies) {
         if (settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE) {
             runtimeDependencies.getFixEngineHa().notReplicated(settings);

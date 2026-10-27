@@ -47,7 +47,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class TestFailSafeFixSessionMessagesStore {
+class TestGuardedFixSessionMessagesStore {
 
     private static final Duration CHECK_INTERVAL = Duration.ofMillis(50);
     private static final Duration BLOCKED_CALL = Duration.ofMillis(300);
@@ -68,11 +68,22 @@ class TestFailSafeFixSessionMessagesStore {
         checker.stop();
     }
 
-    private FailSafeFixSessionMessagesStore failSafe(Duration checkInterval) {
+    private GuardedFixSessionMessagesStore guarded(Duration checkInterval) {
         FixMessagesStoreSettings settings = mock(FixMessagesStoreSettings.class);
         when(settings.getResourceCheckInterval()).thenReturn(checkInterval);
         when(settings.getAlertClearDelay()).thenReturn(Duration.ZERO);
-        return new FailSafeFixSessionMessagesStore(store, FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"), settings, checker);
+        GuardedFixSessionMessagesStore guarded = new GuardedFixSessionMessagesStore(store,
+                FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"), settings, checker);
+        guarded.start();
+        return guarded;
+    }
+
+    private GuardedFixSessionMessagesStore notStarted() {
+        FixMessagesStoreSettings settings = mock(FixMessagesStoreSettings.class);
+        when(settings.getResourceCheckInterval()).thenReturn(CHECK_INTERVAL);
+        when(settings.getAlertClearDelay()).thenReturn(Duration.ZERO);
+        return new GuardedFixSessionMessagesStore(store, FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"),
+                settings, checker);
     }
 
     private void storeBlocksThenFails() {
@@ -82,37 +93,37 @@ class TestFailSafeFixSessionMessagesStore {
         }).when(store).storeMessageSent(anyLong(), any());
     }
 
-    private static Optional<AlertLevel> alertLevel(FailSafeFixSessionMessagesStore failSafe) {
-        return failSafe.getProbe().getEvaluator().evaluate().map(Alert::getLevel);
+    private static Optional<AlertLevel> alertLevel(GuardedFixSessionMessagesStore guarded) {
+        return guarded.getProbe().getEvaluator().evaluate().map(Alert::getLevel);
     }
 
     @Test
     void messageWritesAreSkippedAtOnceWhileTheResourceIsDown() {
-        FailSafeFixSessionMessagesStore failSafe = failSafe(CHECK_INTERVAL);
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
         storeBlocksThenFails();
         available.set(false);
 
-        failSafe.storeMessageSent(1, MESSAGE);
-        await().until(() -> alertLevel(failSafe).equals(Optional.of(AlertLevel.MAJOR)));
+        guarded.storeMessageSent(1, MESSAGE);
+        await().until(() -> alertLevel(guarded).equals(Optional.of(AlertLevel.MAJOR)));
 
         long start = System.nanoTime();
-        failSafe.storeMessageSent(2, MESSAGE);
-        failSafe.storeMessageSent(3, MESSAGE);
+        guarded.storeMessageSent(2, MESSAGE);
+        guarded.storeMessageSent(3, MESSAGE);
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(BLOCKED_CALL.dividedBy(10));
         verify(store, times(1)).storeMessageSent(anyLong(), any());
     }
 
     @Test
     void sequenceNumberWritesReachTheStoreWhileTheResourceIsDown() {
-        FailSafeFixSessionMessagesStore failSafe = failSafe(CHECK_INTERVAL);
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
         storeBlocksThenFails();
         available.set(false);
-        failSafe.storeMessageSent(1, MESSAGE);
-        await().until(() -> alertLevel(failSafe).equals(Optional.of(AlertLevel.MAJOR)));
+        guarded.storeMessageSent(1, MESSAGE);
+        await().until(() -> alertLevel(guarded).equals(Optional.of(AlertLevel.MAJOR)));
 
-        failSafe.storeNextIncomingSeqNum(3);
-        failSafe.storeNextOutgoingSeqNum(3);
-        failSafe.resetSequenceNumbers();
+        guarded.storeNextIncomingSeqNum(3);
+        guarded.storeNextOutgoingSeqNum(3);
+        guarded.resetSequenceNumbers();
 
         verify(store).storeNextIncomingSeqNum(3);
         verify(store).storeNextOutgoingSeqNum(3);
@@ -121,13 +132,13 @@ class TestFailSafeFixSessionMessagesStore {
 
     @Test
     void findFailsAtOnceWhileTheResourceIsDown() {
-        FailSafeFixSessionMessagesStore failSafe = failSafe(CHECK_INTERVAL);
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
         storeBlocksThenFails();
         available.set(false);
-        failSafe.storeMessageSent(1, MESSAGE);
-        await().until(() -> alertLevel(failSafe).isPresent() && alertLevel(failSafe).get() == AlertLevel.MAJOR);
+        guarded.storeMessageSent(1, MESSAGE);
+        await().until(() -> alertLevel(guarded).isPresent() && alertLevel(guarded).get() == AlertLevel.MAJOR);
 
-        assertThatThrownBy(() -> failSafe.find(1, 2, (seqNum, message) -> true))
+        assertThatThrownBy(() -> guarded.find(1, 2, (seqNum, message) -> true))
                 .isInstanceOf(FixSessionMessagesStore.StoreException.class)
                 .hasMessageContaining("is down");
         verify(store, never()).find(anyLong(), anyLong(), any());
@@ -135,35 +146,35 @@ class TestFailSafeFixSessionMessagesStore {
 
     @Test
     void theResourceComingBackLetsWritesThroughAndClearsTheAlert() {
-        FailSafeFixSessionMessagesStore failSafe = failSafe(CHECK_INTERVAL);
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
         storeBlocksThenFails();
         available.set(false);
-        failSafe.storeMessageSent(1, MESSAGE);
-        await().until(() -> alertLevel(failSafe).equals(Optional.of(AlertLevel.MAJOR)));
+        guarded.storeMessageSent(1, MESSAGE);
+        await().until(() -> alertLevel(guarded).equals(Optional.of(AlertLevel.MAJOR)));
 
         reset(store);
         doNothing().when(store).storeMessageSent(anyLong(), any());
         when(store.isUnderlyingStorageResourceAvailable()).thenReturn(true);
         await().untilAsserted(() -> {
-            failSafe.storeMessageSent(2, MESSAGE);
+            guarded.storeMessageSent(2, MESSAGE);
             verify(store).storeMessageSent(2, MESSAGE);
         });
 
-        assertThat(alertLevel(failSafe)).isEmpty();
+        assertThat(alertLevel(guarded)).isEmpty();
     }
 
     @Test
     void aFailureOnAnAvailableResourceRaisesAWarningAndSkipsNothing() {
-        FailSafeFixSessionMessagesStore failSafe = failSafe(CHECK_INTERVAL);
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
         doThrow(new FixSessionMessagesStore.StoreException("constraint violation")).when(store).storeNextIncomingSeqNum(2);
 
-        failSafe.storeNextIncomingSeqNum(2);
+        guarded.storeNextIncomingSeqNum(2);
 
-        assertThat(alertLevel(failSafe)).contains(AlertLevel.WARNING);
+        assertThat(alertLevel(guarded)).contains(AlertLevel.WARNING);
         await().pollDelay(CHECK_INTERVAL.multipliedBy(3)).until(() -> true);
-        failSafe.storeNextIncomingSeqNum(3);
+        guarded.storeNextIncomingSeqNum(3);
         verify(store).storeNextIncomingSeqNum(3);
-        assertThat(alertLevel(failSafe)).isEmpty();
+        assertThat(alertLevel(guarded)).isEmpty();
     }
 
     /**
@@ -172,7 +183,7 @@ class TestFailSafeFixSessionMessagesStore {
      */
     @Test
     void theAlertRaisedWhenTheResourceIsFoundDownClearsOnceItIsBack() throws Exception {
-        FailSafeFixSessionMessagesStore failSafe = failSafe(CHECK_INTERVAL);
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
         CountDownLatch checkStarted = new CountDownLatch(1);
         CountDownLatch checkAnswers = new CountDownLatch(1);
         available.set(false);
@@ -184,44 +195,44 @@ class TestFailSafeFixSessionMessagesStore {
         doThrow(new FixSessionMessagesStore.StoreException("connection timeout")).doNothing()
                 .when(store).storeMessageSent(anyLong(), any());
 
-        failSafe.storeMessageSent(1, MESSAGE);
+        guarded.storeMessageSent(1, MESSAGE);
         checkStarted.await();
-        failSafe.storeMessageSent(2, MESSAGE);
+        guarded.storeMessageSent(2, MESSAGE);
         checkAnswers.countDown();
-        await().until(() -> alertLevel(failSafe).equals(Optional.of(AlertLevel.MAJOR)));
+        await().until(() -> alertLevel(guarded).equals(Optional.of(AlertLevel.MAJOR)));
 
         available.set(true);
         await().untilAsserted(() -> {
-            failSafe.storeMessageSent(3, MESSAGE);
+            guarded.storeMessageSent(3, MESSAGE);
             verify(store).storeMessageSent(3, MESSAGE);
         });
-        assertThat(alertLevel(failSafe)).isEmpty();
+        assertThat(alertLevel(guarded)).isEmpty();
     }
 
     @Test
     void aZeroCheckIntervalSendsEveryCallToTheStore() {
-        FailSafeFixSessionMessagesStore failSafe = failSafe(Duration.ZERO);
+        GuardedFixSessionMessagesStore guarded = guarded(Duration.ZERO);
         doThrow(new FixSessionMessagesStore.StoreException("down")).when(store).storeMessageSent(anyLong(), any());
         available.set(false);
 
-        failSafe.storeMessageSent(1, MESSAGE);
+        guarded.storeMessageSent(1, MESSAGE);
         await().pollDelay(CHECK_INTERVAL.multipliedBy(3)).until(() -> true);
-        failSafe.storeMessageSent(2, MESSAGE);
+        guarded.storeMessageSent(2, MESSAGE);
 
         verify(store, times(2)).storeMessageSent(anyLong(), any());
         verify(store, never()).isUnderlyingStorageResourceAvailable();
-        assertThat(alertLevel(failSafe)).contains(AlertLevel.WARNING);
+        assertThat(alertLevel(guarded)).contains(AlertLevel.WARNING);
     }
 
     @Test
     void stoppingEndsTheChecks() {
-        FailSafeFixSessionMessagesStore failSafe = failSafe(CHECK_INTERVAL);
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
         storeBlocksThenFails();
         available.set(false);
-        failSafe.storeMessageSent(1, MESSAGE);
-        await().until(() -> alertLevel(failSafe).equals(Optional.of(AlertLevel.MAJOR)));
+        guarded.storeMessageSent(1, MESSAGE);
+        await().until(() -> alertLevel(guarded).equals(Optional.of(AlertLevel.MAJOR)));
 
-        failSafe.stop(Deadline.immediate());
+        guarded.stop(Deadline.immediate());
         reset(store);
         await().pollDelay(CHECK_INTERVAL.multipliedBy(3)).until(() -> true);
 
@@ -229,9 +240,54 @@ class TestFailSafeFixSessionMessagesStore {
     }
 
     @Test
+    void aFindIsRefusedBeforeTheStoreStartsAndAfterItStopsWithoutReachingIt() {
+        GuardedFixSessionMessagesStore guarded = notStarted();
+
+        assertThatThrownBy(() -> guarded.find(1, 2, (seqNum, message) -> true))
+                .isInstanceOf(FixSessionMessagesStore.StoreException.class)
+                .hasMessageContaining("is not started");
+        guarded.start();
+        guarded.find(1, 2, (seqNum, message) -> true);
+        guarded.stop(Deadline.unlimited());
+        assertThatThrownBy(() -> guarded.find(1, 2, (seqNum, message) -> true))
+                .isInstanceOf(FixSessionMessagesStore.StoreException.class)
+                .hasMessageContaining("is not started");
+
+        verify(store, times(1)).find(anyLong(), anyLong(), any());
+        assertThat(alertLevel(guarded)).as("not a store failure").isEmpty();
+    }
+
+    @Test
+    void aStopWaitsForTheFindInProgressBeforeStoppingTheStoreEvenPastItsDeadline() throws Exception {
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
+        CountDownLatch finding = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            finding.countDown();
+            release.await();
+            return null;
+        }).when(store).find(anyLong(), anyLong(), any());
+        Thread reader = new Thread(() -> guarded.find(1, 2, (seqNum, message) -> true));
+        reader.start();
+        finding.await();
+
+        Thread stopper = new Thread(() -> guarded.stop(Deadline.immediate()));
+        stopper.start();
+        Thread.sleep(BLOCKED_CALL.toMillis());
+        verify(store, never()).stop(any());
+        assertThatThrownBy(() -> guarded.find(1, 2, (seqNum, message) -> true))
+                .as("no new find once stopping").hasMessageContaining("is not started");
+
+        release.countDown();
+        stopper.join();
+        reader.join();
+        verify(store).stop(any());
+    }
+
+    @Test
     void theStorageIdentityIsTheWrappedStores() {
         when(store.getStorageIdentity()).thenReturn(Optional.of("shared-database"));
 
-        assertThat(failSafe(Duration.ofSeconds(1)).getStorageIdentity()).contains("shared-database");
+        assertThat(guarded(Duration.ofSeconds(1)).getStorageIdentity()).contains("shared-database");
     }
 }

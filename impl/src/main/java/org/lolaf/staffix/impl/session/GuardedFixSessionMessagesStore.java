@@ -28,6 +28,9 @@ import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
 import java.nio.ByteBuffer;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * Wraps a session's message store so a storage failure is reported rather than thrown into the session, and raises
@@ -37,34 +40,39 @@ import java.util.Optional;
  * guarantee the outage becomes an outage for the counterparty too. Its message writes are skipped while its resource
  * is down, so the session is not blocked on each one: they are not stored either way. Sequence number writes always
  * reach the store, which updates its in-memory counters before persisting them, and the session reads those back.
+ *
+ * <p>It also keeps {@link #find} and the store's lifecycle apart, whatever the store: resends and replication read on
+ * threads of their own, and a store stopped under a read may free what the read is using. A find is refused unless the
+ * store is started, and a stop waits for the finds in progress, past its deadline if it must.
  */
 @Slf4j
-public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSessionMessagesStore {
+public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessionMessagesStore {
 
     static final String PROBE_NAME = "messages-store";
+    private static final long FIND_POLL_NANOS = TimeUnit.MILLISECONDS.toNanos(1);
 
     private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
     private final FixSessionId fixSessionId;
     private final RaisedAlertEvaluator alertEvaluator;
-    private final UnderlyingResourceBreaker breaker;
+    private final UnderlyingResourceBreaker underlyingResourceBreaker;
     @Getter
     private final Probe probe;
-    private final Object alertLock;
-    private volatile boolean failing;
-    private volatile String lastFailure;
+    private final AtomicInteger findsInProgress;
+    private String lastFailure;
+    private volatile boolean readable;
 
-    public FailSafeFixSessionMessagesStore(FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore, FixSessionId fixSessionId,
-                                           FixMessagesStoreSettings settings, UnderlyingResourceChecker checker) {
+    public GuardedFixSessionMessagesStore(FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore, FixSessionId fixSessionId,
+                                          FixMessagesStoreSettings settings, UnderlyingResourceChecker checker) {
         this.fixSessionMessagesStore = fixSessionMessagesStore;
         this.fixSessionId = fixSessionId;
         this.alertEvaluator = new RaisedAlertEvaluator();
-        this.breaker = UnderlyingResourceBreaker.of("Messages store of FIX session " + fixSessionId,
+        this.underlyingResourceBreaker = UnderlyingResourceBreaker.of("Messages store of FIX session " + fixSessionId,
                 fixSessionMessagesStore::isUnderlyingStorageResourceAvailable,
                 fixSessionMessagesStore::getUnderlyingStorageResourceDescription, settings.getResourceCheckInterval(),
                 checker, this::raiseResourceDown);
         this.probe = Probe.builder().name(PROBE_NAME).description("Messages store")
                 .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).onlyWhileActive(false).build();
-        this.alertLock = new Object();
+        this.findsInProgress = new AtomicInteger();
     }
 
     @Override
@@ -147,6 +155,30 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
 
     @Override
     public void find(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
+        if (!enterFind()) {
+            throw new StoreException("Messages store of FIX session " + fixSessionId + " is not started");
+        }
+        try {
+            findUnderlying(startSequenceNumber, stopSequenceNumber, consumer);
+        } finally {
+            findsInProgress.decrementAndGet();
+        }
+    }
+
+    private boolean enterFind() {
+        if (!readable) {
+            return false;
+        }
+        findsInProgress.incrementAndGet();
+        // a stop clears readable before it counts the finds, so either it sees this one or this one sees it
+        if (!readable) {
+            findsInProgress.decrementAndGet();
+            return false;
+        }
+        return true;
+    }
+
+    private void findUnderlying(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
         if (skipped()) {
             throw new StoreException("Messages store '" + getUnderlyingStorageResourceDescription() + "' of FIX session "
                     + fixSessionId + " is down");
@@ -165,13 +197,29 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
 
     @Override
     public FixMessagesStore.FixSessionMessagesStore stop(Deadline stopDeadline) throws StartStopException {
-        breaker.stop();
+        readable = false;
+        awaitFindsInProgress(stopDeadline);
+        underlyingResourceBreaker.stop();
         return fixSessionMessagesStore.stop(stopDeadline);
+    }
+
+    private void awaitFindsInProgress(Deadline stopDeadline) {
+        boolean warned = false;
+        while (findsInProgress.get() > 0) {
+            if (!warned && stopDeadline.isExpired()) {
+                log.warn("Stopping the messages store of FIX session {} waits past its deadline for {} find() in progress",
+                        fixSessionId, findsInProgress.get());
+                warned = true;
+            }
+            LockSupport.parkNanos(FIND_POLL_NANOS);
+        }
     }
 
     @Override
     public FixMessagesStore.FixSessionMessagesStore start() throws StartStopException {
-        return fixSessionMessagesStore.start();
+        FixMessagesStore.FixSessionMessagesStore started = fixSessionMessagesStore.start();
+        readable = true;
+        return started;
     }
 
     @Override
@@ -180,18 +228,17 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
     }
 
     private boolean skipped() {
-        if (breaker.isOpen()) {
-            breaker.callSkipped();
+        if (underlyingResourceBreaker.isOpen()) {
+            underlyingResourceBreaker.callSkipped();
             return true;
         }
         return false;
     }
 
     private void succeeded() {
-        if (failing) {
-            synchronized (alertLock) {
-                if (failing) {
-                    failing = false;
+        if (alertEvaluator.isRaised()) {
+            synchronized (alertEvaluator) {
+                if (alertEvaluator.isRaised()) {
                     alertEvaluator.clear();
                 }
             }
@@ -203,7 +250,7 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
                 fixSessionMessagesStore.getClass().getSimpleName(), fixSessionId, ex);
         lastFailure = call + " failed: " + ex;
         raise(Alert.warning(lastFailure));
-        breaker.callFailed();
+        underlyingResourceBreaker.callFailed();
     }
 
     private void raiseResourceDown() {
@@ -212,12 +259,11 @@ public class FailSafeFixSessionMessagesStore implements FixMessagesStore.FixSess
     }
 
     /**
-     * The only place an alert is raised, so that {@code failing} always says whether one is: the breaker raises from
-     * its own thread while a successful call may be clearing.
+     * The only place an alert is raised, under the lock a successful call clears it with: the breaker raises from its
+     * own thread, and a clear checked before that raise must not drop it.
      */
     private void raise(Alert alert) {
-        synchronized (alertLock) {
-            failing = true;
+        synchronized (alertEvaluator) {
             alertEvaluator.raise(alert);
         }
     }
