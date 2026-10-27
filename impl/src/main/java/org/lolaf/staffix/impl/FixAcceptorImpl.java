@@ -109,6 +109,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private Server ioServer;
     private boolean shuttingDown;
     private boolean running;
+    /**
+     * Between a successful {@code startMe} and {@code stopMe}, under the lifecycle lock: {@link #isStarted()} turns
+     * true only after {@code startMe} returns, too late for an {@link #activate()} that ran in between.
+     */
+    private boolean startedUnderLock;
 
     /**
      * @param engineActive false while the engine is a standby: no session is built and nothing is bound until it is
@@ -197,6 +202,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 log.info("Started FIX server {} on a standby engine: it binds once the engine leads", fixAcceptorBuilder.getInstanceId());
                 listStandbySessions();
             }
+            startedUnderLock = true;
         }
     }
 
@@ -205,8 +211,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
      */
     void activate() {
         synchronized (lifecycleLock) {
-            // start() flips isStarted before taking the lock, so a start in progress is caught here or does it itself
-            if (isStarted() && !running) {
+            if (startedUnderLock && !running) {
                 log.info("Engine leads, starting FIX server {}", fixAcceptorBuilder.getInstanceId());
                 startAcceptor();
             }
@@ -356,6 +361,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     @Override
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         synchronized (lifecycleLock) {
+            startedUnderLock = false;
             if (running) {
                 stopAcceptor(stopDeadline, true);
             }

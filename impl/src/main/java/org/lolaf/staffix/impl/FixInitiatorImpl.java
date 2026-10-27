@@ -72,6 +72,11 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     private FixSessionImpl fixSession;
     private Client ioClient;
     private boolean targetRunning;
+    /**
+     * Between a successful {@code startMe} and {@code stopMe}, under the lifecycle lock: {@link #isStarted()} turns
+     * true only after {@code startMe} returns, too late for what runs under the lock in between.
+     */
+    private boolean startedUnderLock;
 
     /**
      * @param engineActive false while the engine is a standby: the session is not even built until it is true
@@ -191,8 +196,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                 throw new IllegalStateException("FIX session " + fixInitiatorBuilder.getMainTarget().getFixSessionId()
                         + " settings, which its backups run on, were removed from its store");
             }
-            // start() and stop() flip isStarted before taking the lock, so only targetRunning says a target runs
-            boolean running = isStarted() && targetRunning;
+            boolean running = startedUnderLock && targetRunning;
             log.info("Switching initiator '{}' from FIX session {} to {}", fixInitiatorBuilder.getInstanceId(),
                     activeFixInitiatorTarget.getFixSessionId(), fixSessionId);
             if (running) {
@@ -245,6 +249,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             if (!engineActive.getAsBoolean()) {
                 log.info("Started initiator for FIX session {} on a standby engine: it connects once the engine leads",
                         fixSessionSettings.getFixSessionId());
+                startedUnderLock = true;
                 return;
             }
             try {
@@ -255,6 +260,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                 stopInitiatorResources(Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
                 throw failure;
             }
+            startedUnderLock = true;
             log.info("Started initiator for FIX session {}", fixSessionSettings.getFixSessionId());
         }
     }
@@ -264,8 +270,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
      */
     void activate() {
         synchronized (lifecycleLock) {
-            // start() flips isStarted before taking the lock, so a start in progress is caught here or does it itself
-            if (isStarted() && !targetRunning) {
+            if (startedUnderLock && !targetRunning) {
                 log.info("Engine leads, starting initiator for FIX session {}", fixSessionSettings.getFixSessionId());
                 startTarget();
             }
@@ -413,6 +418,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     @Override
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         synchronized (lifecycleLock) {
+            startedUnderLock = false;
             log.info("Stopping initiator for FIX session {}", fixSessionSettings.getFixSessionId());
             fixSessionsSettingsStores.forEach(s -> s.unregister(this));
             stopTarget("Fix initiator stop", stopDeadline, true);
@@ -466,7 +472,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                 return;
             }
             mainSettings = null;
-            if (settings.isDisconnectOnRemove() && isStarted() && fixSession != null) {
+            if (settings.isDisconnectOnRemove() && startedUnderLock && fixSession != null) {
                 log.info("FIX session {} settings removed from the store, disconnecting {}", settings.getFixSessionId(),
                         activeFixInitiatorTarget.getFixSessionId());
                 stop(Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
@@ -486,7 +492,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             }
             mainSettings = newSettings;
             fixSessionSettings = settingsOf(activeFixInitiatorTarget);
-            boolean live = isStarted() && fixSession != null && fixSession.isConnected();
+            boolean live = startedUnderLock && fixSession != null && fixSession.isConnected();
             if (live && oldSettings.isRestartLiveSessionOnUpdate()) {
                 log.info("FIX session {} settings updated, restarting the live session {}", newSettings.getFixSessionId(),
                         activeFixInitiatorTarget.getFixSessionId());
