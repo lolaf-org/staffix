@@ -24,6 +24,7 @@
         <module>staffix-api-examples</module>
         <module>spring-boot-starter-example</module>
         <module>file-session-settings</module>
+        <module>high-availability</module>
     </modules>
 
     <properties>

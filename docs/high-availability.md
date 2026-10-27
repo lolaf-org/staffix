@@ -9,7 +9,8 @@ What it is not: **your application's state is not replicated.** Staffix replicat
 (sequence numbers and the messages it may have to resend). The orders, positions or anything else your application
 built from the messages it received are yours to make available on the other node.
 
-The pair is two nodes: a leader and one follower.
+The pair is two nodes: a leader and one follower. [`examples/high-availability`](../examples/high-availability) runs
+one on your machine, with a witness and a counterparty, to kill and restart by hand.
 
 ---
 
