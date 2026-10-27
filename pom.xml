@@ -102,7 +102,7 @@
         <micrometer.version>1.17.1</micrometer.version>
         <!-- at least the gencode version of opentelemetry-proto; declared in each module that pulls it, so it wins -->
         <protobuf-java.version>4.36.2</protobuf-java.version>
-        <okhttp.version>5.5.0</okhttp.version>
+        <okhttp.version>5.5.1</okhttp.version>
         <okio.version>3.18.2</okio.version>
         <jetty.version>12.1.14</jetty.version>
         <spring-boot.version>4.1.1</spring-boot.version>
