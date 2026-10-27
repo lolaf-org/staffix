@@ -49,6 +49,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -91,8 +92,14 @@ class TestFollowerLink {
                 .build();
     }
 
+    private static FixSessionMessagesStore startedStore() {
+        FixSessionMessagesStore store = mock(FixSessionMessagesStore.class);
+        when(store.isStarted()).thenReturn(true);
+        return store;
+    }
+
     private FixSessionMessagesStore replicated(String name) {
-        return ha.replicatingStore(settings(name), mock(FixSessionMessagesStore.class), new RecordingProbes());
+        return ha.replicatingStore(settings(name), startedStore(), new RecordingProbes());
     }
 
     private void decodeAll(ByteBuffer frames) {
@@ -337,7 +344,7 @@ class TestFollowerLink {
 
     @Test
     void aSnapshotCarriesTheSeqnumsAndTheLastMessagesCutAtTheStreamPosition() {
-        FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
+        FixSessionMessagesStore local = startedStore();
         when(local.getIncomingSeqNum()).thenReturn(21L);
         when(local.getOutgoingSeqNum()).thenReturn(13L);
         doAnswer(invocation -> {
@@ -371,7 +378,7 @@ class TestFollowerLink {
         int fragment = FollowerLink.batchBytesFor(ha.getReplicationLog()) - FrameEncoder.snapshotMessageBytes(0);
         String x = "x".repeat(fragment);
         String y = "y".repeat(fragment);
-        FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
+        FixSessionMessagesStore local = startedStore();
         when(local.getIncomingSeqNum()).thenReturn(21L);
         when(local.getOutgoingSeqNum()).thenReturn(13L);
         doAnswer(invocation -> {
@@ -396,7 +403,7 @@ class TestFollowerLink {
 
     @Test
     void aSnapshotKeepsTheMostRecentMessagesOnly() {
-        FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
+        FixSessionMessagesStore local = startedStore();
         when(local.getOutgoingSeqNum()).thenReturn(1_001L);
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
@@ -409,8 +416,32 @@ class TestFollowerLink {
     }
 
     @Test
-    void aStoreThatCannotBeReadEndsTheStreamSoTheFollowerRetries() {
+    void aSessionWhoseStoreIsNotStartedYetIsSnapshotOnceItIs() {
         FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
+        when(local.getOutgoingSeqNum()).thenReturn(5L);
+        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        fill();
+        sent.frames.clear();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+
+        link.snapshotPending();
+
+        assertThat(sent.frames).isEmpty();
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
+        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_PENDING);
+        verify(local, never()).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
+
+        when(local.isStarted()).thenReturn(true);
+        link.snapshotPending();
+
+        assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
+        assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_SENT);
+    }
+
+    @Test
+    void aStoreThatCannotBeReadEndsTheStreamSoTheFollowerRetries() {
+        FixSessionMessagesStore local = startedStore();
         when(local.getOutgoingSeqNum()).thenReturn(5L);
         doThrow(new StoreException("storage down")).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);

@@ -55,7 +55,7 @@ class TestReplicationReceiver {
             leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100, new ReplicationStats());
     private final RecordingEngine follower = new RecordingEngine().with(MAIN);
     private final Replica replica = new Replica(follower);
-    private final ReplicatingStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore(), new RecordingProbes());
+    private final ReplicatingStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
     private ReplicationReceiver receiver;
 
     private static int freePort() {

@@ -105,7 +105,7 @@ class TestReplicationFixEngineHa {
                     .alertsPublisherInstanceId("alerts")
                     .build());
             ha.bind(engine);
-            store = ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore(), sessionProbes);
+            store = ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), sessionProbes);
         }
 
         Node start() {
@@ -350,7 +350,7 @@ class TestReplicationFixEngineHa {
         assertThat(b.ha.getReplica().isComplete()).isTrue();
         assertThat(a.ha.getStatus().getFollowers()).singleElement().satisfies(follower -> assertThat(follower.isInSync()).isTrue());
 
-        a.ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore(), new RecordingProbes());
+        a.ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
 
         await().until(() -> b.engine.store(MAIN) != replicaStore && b.ha.getSessionsStatus().get(0).isInSync());
         assertThat(a.engine.meters.read("ha.snapshots")).as("b caught up twice").isEqualTo(2);
@@ -392,11 +392,11 @@ class TestReplicationFixEngineHa {
         RecordingMeters timedMeters = new RecordingMeters();
         RecordingMeters untimedMeters = new RecordingMeters();
 
-        ReplicatingStore timed = a.ha.replicatingStore(sync(MAIN, true), new RecordingEngine.RecordingStore(), new RecordingProbes());
+        ReplicatingStore timed = a.ha.replicatingStore(sync(MAIN, true), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
         timed.sessionMeters(timedMeters);
         timed.storeNextIncomingSeqNum(7);
         timed.awaitReplicated();
-        ReplicatingStore untimed = a.ha.replicatingStore(sync(MAIN, false), new RecordingEngine.RecordingStore(), new RecordingProbes());
+        ReplicatingStore untimed = a.ha.replicatingStore(sync(MAIN, false), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
         untimed.sessionMeters(untimedMeters);
         untimed.storeNextIncomingSeqNum(8);
         untimed.awaitReplicated();

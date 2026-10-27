@@ -58,6 +58,7 @@ import java.util.function.LongSupplier;
 public final class FollowerLink implements FrameHandler {
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
+    private static final long STORE_RETRY_NANOS = Duration.ofMillis(10).toNanos();
     private final IOSession connection;
     private final ReplicationLog replicationLog;
     private final ReplicationLog.Reader reader;
@@ -94,6 +95,7 @@ public final class FollowerLink implements FrameHandler {
     private volatile boolean reportedInSync;
     private volatile AtomicReferenceArray<SessionSync> sessionSyncs = new AtomicReferenceArray<>(16);
     private volatile boolean snapshotRequested;
+    private long storeRetryNanos = Long.MAX_VALUE;
     private volatile boolean paused;
     /**
      * Where the next batch starts reading the log: once it is the log's tail, every event has been handed to betty.
@@ -465,8 +467,9 @@ public final class FollowerLink implements FrameHandler {
                 idle.idle();
                 continue;
             }
-            if (snapshotRequested) {
+            if (snapshotRequested || storeRetryNanos != Long.MAX_VALUE && System.nanoTime() >= storeRetryNanos) {
                 snapshotRequested = false;
+                storeRetryNanos = Long.MAX_VALUE;
                 snapshotPending();
                 lastSendNanos = System.nanoTime();
                 continue;
@@ -508,6 +511,11 @@ public final class FollowerLink implements FrameHandler {
     private boolean snapshot(int sessionKey) {
         ReplicatedSession session = sessions.get(sessionKey);
         FixSessionMessagesStore store = session.getConfig().getStore();
+        if (!store.isStarted()) {
+            // a session registered but not yet running, as on taking leadership: retried without holding the stream
+            storeRetryNanos = System.nanoTime() + STORE_RETRY_NANOS;
+            return false;
+        }
         SnapshotWriter writer = new SnapshotWriter(sessionKey, epoch.getAsLong());
         try {
             long nextOutgoingSeqNum = store.getOutgoingSeqNum();
