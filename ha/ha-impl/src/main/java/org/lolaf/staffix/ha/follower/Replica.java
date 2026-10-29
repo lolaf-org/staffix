@@ -30,7 +30,9 @@ import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.ObjIntConsumer;
 
 /**
@@ -314,13 +316,17 @@ public final class Replica {
      * them as leader: in the replica's store, or in one opened for it when the replica holds none (its storage shared
      * with the old leader, unidentified, or never announced). A session the old leader {@link #handedOver() handed
      * over} cleanly keeps its seqnum.
+     *
+     * @return the sessions taken over, moved or handed over
      */
-    public void jumpOutgoingSeqNums(long jump) {
+    public List<FixSessionSettings> jumpOutgoingSeqNums(long jump) {
+        List<FixSessionSettings> takenOver = new ArrayList<>();
         for (FixSessionSettings settings : engine.getFixSessionsSettings()) {
             if (settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE) {
                 continue;
             }
             ReplicaSession session = find(settings.getFixSessionType(), settings.getFixSessionId().toString());
+            takenOver.add(settings);
             if (session != null && session.handedOver) {
                 log.info("FIX session {} {} taken over where the old leader cleanly left it", settings.getFixSessionType(),
                         settings.getFixSessionId());
@@ -342,6 +348,7 @@ public final class Replica {
                 }
             }
         }
+        return takenOver;
     }
 
     /**

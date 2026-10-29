@@ -48,8 +48,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -89,6 +91,17 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private volatile @Nullable Instant roleSince;
     private volatile @Nullable ReplicationPublisher publisher;
     private volatile @Nullable ReplicationReceiver receiver;
+    /**
+     * The promotion this node leads under, 0 while it does not lead. A new epoch led without a step down in between
+     * keeps it: no unknown range to jump over.
+     */
+    private volatile long currentPromotion;
+    private long promotionsCounter;
+    /**
+     * The promotion under which each session last ran or was moved ahead, so a session starting under a promotion it
+     * was not yet moved in, as one a connector adds after it, still is.
+     */
+    private final Map<String, Long> sessionPromotions = new ConcurrentHashMap<>();
 
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
         this.settings = settings;
@@ -106,7 +119,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             followers.reannounce(session.getKey());
         }
         probes.add(HaProbes.sessionProbe(session, followers));
-        return new ReplicatingFixSessionMessagesStore(store, replicationLog, session, followers, syncAckLatency);
+        return new ReplicatingFixSessionMessagesStore(store, replicationLog, session, followers, syncAckLatency,
+                started -> jumpIfNewToPromotion(sessionSettings, started));
     }
 
     /**
@@ -114,6 +128,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
      */
     @Override
     public void notReplicated(FixSessionSettings sessionSettings) {
+        markCurrentPromotion(sessionSettings);
         ReplicatedSession session = sessions.find(sessionSettings.getFixSessionId(), sessionSettings.getFixSessionType());
         if (session == null || !session.isReplicated()) {
             return;
@@ -440,12 +455,40 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             if (!replica.isComplete()) {
                 log.warn("Node {} leads at epoch {} with sessions its follower copy did not hold in full", settings.getNodeId(), epoch);
             }
-            replica.jumpOutgoingSeqNums(settings.getPromotionOutgoingSeqNumJump());
+            currentPromotion = ++promotionsCounter;
+            replica.jumpOutgoingSeqNums(settings.getPromotionOutgoingSeqNumJump()).forEach(this::markCurrentPromotion);
         }
         replica.close(deadline);
         startPublisher(epoch);
         engine.activate();
         changed(Role.LEADER, epoch, null);
+    }
+
+    private void jumpIfNewToPromotion(FixSessionSettings sessionSettings, FixSessionMessagesStore store) {
+        long current = currentPromotion;
+        if (current == 0) {
+            return;
+        }
+        Long previous = sessionPromotions.put(sessionKey(sessionSettings), current);
+        if (previous != null && previous == current) {
+            return;
+        }
+        long next = store.getOutgoingSeqNum();
+        store.storeNextOutgoingSeqNum(next + settings.getPromotionOutgoingSeqNumJump());
+        log.warn("FIX session {} {} started after this node took the lead: outgoing sequence number moved from {} to {}",
+                sessionSettings.getFixSessionType(), sessionSettings.getFixSessionId(), next,
+                next + settings.getPromotionOutgoingSeqNumJump());
+    }
+
+    private void markCurrentPromotion(FixSessionSettings sessionSettings) {
+        long current = currentPromotion;
+        if (current != 0) {
+            sessionPromotions.put(sessionKey(sessionSettings), current);
+        }
+    }
+
+    private static String sessionKey(FixSessionSettings sessionSettings) {
+        return sessionSettings.getFixSessionType() + " " + sessionSettings.getFixSessionId();
     }
 
     private void startPublisher(long epoch) {
@@ -460,6 +503,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         Deadline deadline = Deadline.of(ROLE_CHANGE_DEADLINE);
         if (followedRole == Role.LEADER) {
+            currentPromotion = 0;
             engine.deactivate();
             stopPublisher(deadline);
         }
@@ -480,6 +524,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         Deadline deadline = Deadline.of(ROLE_CHANGE_DEADLINE);
         if (followedRole == Role.LEADER) {
+            currentPromotion = 0;
             engine.deactivate();
             stopPublisher(deadline);
         }

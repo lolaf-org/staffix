@@ -191,9 +191,18 @@ class TestSwitchover {
         }
         await().until(() -> counterparty.logons.get() == 1);
         counterparty.roundTrips(10);
+        countGapsFromHere(counterparty);
         await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
         assertThat(b.getSessionsStatus()).singleElement().satisfies(session -> assertThat(session.isSharedStorage())
                 .as("the follower sees whether its storage is the leader's").isEqualTo(storage == Storage.SHARED));
+    }
+
+    /**
+     * A fresh pair's first leader moved its sessions ahead as it took the lead, so the first Logon showed a gap.
+     */
+    private static void countGapsFromHere(Counterparty counterparty) {
+        assertThat(counterparty.resendRequests.get()).as("the boot jump").isEqualTo(1);
+        counterparty.resendRequests.set(0);
     }
 
     private FixEngine haEngine(String nodeId, FixSessionSettings settings, InetSocketAddress replicationA, InetSocketAddress replicationB) {
@@ -408,6 +417,8 @@ class TestSwitchover {
             await().until(() -> counterparty.logons.get() == 1);
             counterparty.roundTrips(10);
         }
+        countGapsFromHere(counterparties[0]);
+        countGapsFromHere(counterparties[1]);
         await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
         assertThat(b.getSessionsStatus()).as("the session not replicated is not listed").hasSize(2);
         long[] expected = new long[modes.length];

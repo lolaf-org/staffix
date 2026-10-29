@@ -33,6 +33,7 @@ import org.lolaf.staffix.ha.log.StoreEventRecord;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * A replicated session's store: each write is applied to the session's own store, then appended to the replication
@@ -53,14 +54,16 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     private final IdleStrategy ackIdle;
     private final ReplicatedAhead replicatedAhead;
     private final Timer syncAckLatency;
+    private final Consumer<FixSessionMessagesStore> onStarted;
     private Timer sessionSyncAckLatency;
     private long lastAppendedOffset = -1;
 
     /**
      * @param syncAckLatency records how long a {@code SYNC} send waited for the follower's ack, when it came
+     * @param onStarted    given this store once started, before the session writes, so what it writes is replicated
      */
     ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog, ReplicatedSession session,
-                                       Followers followers, Timer syncAckLatency) {
+                                       Followers followers, Timer syncAckLatency, Consumer<FixSessionMessagesStore> onStarted) {
         this.store = store;
         this.replicationLog = replicationLog;
         this.session = session;
@@ -70,6 +73,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         this.replicatedAhead = new ReplicatedAhead();
         this.syncAckLatency = syncAckLatency;
         this.sessionSyncAckLatency = Timer.VoidTimer.getInstance();
+        this.onStarted = onStarted;
     }
 
     /**
@@ -111,6 +115,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public FixSessionMessagesStore start() {
         store.start();
+        onStarted.accept(this);
         return this;
     }
 

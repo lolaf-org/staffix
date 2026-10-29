@@ -254,6 +254,50 @@ class TestReplicationFixEngineHa {
         assertThat(jumps(a)).isEqualTo(jumps);
     }
 
+    /**
+     * A connector created after the promotion builds its session then: it used to start where it was, as if this node
+     * had always led it, and whether a boot jumped depended on which came first.
+     */
+    @Test
+    void aSessionStartedAfterThePromotionIsMovedAheadOncePerLeadership() {
+        a.election.elect(Role.LEADER, 3, "a");
+        a.start();
+        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
+        FixSessionSettings late = RecordingEngine.session("late", FixSessionType.ACCEPTOR);
+        RecordingEngine.RecordingStore lateStore = new RecordingEngine.RecordingStore();
+
+        a.ha.replicatingStore(late, lateStore, new RecordingProbes()).start();
+        lateStore.stop(Deadline.immediate());
+        a.ha.replicatingStore(late, lateStore, new RecordingProbes()).start();
+        assertThat(lateStore.writes).as("rebuilt under the same leadership").containsOnlyOnce("outgoing 10001");
+
+        a.election.elect(Role.LEADER, 4, "a");
+        await().until(() -> a.engine.activity.size() == 3);
+        a.ha.replicatingStore(late, lateStore, new RecordingProbes()).start();
+        assertThat(lateStore.writes).as("a new epoch, the same leadership").containsOnlyOnce("outgoing 10001");
+
+        a.election.elect(Role.FOLLOWER, 5, "b");
+        await().until(() -> a.engine.activity.contains("deactivate") && a.engine.activity.size() == 4);
+        a.election.elect(Role.LEADER, 6, "a");
+        await().until(() -> a.engine.activity.size() == 5);
+        a.ha.replicatingStore(late, lateStore, new RecordingProbes()).start();
+        assertThat(lateStore.writes).as("a new leadership").filteredOn("outgoing 10001"::equals).hasSize(2);
+    }
+
+    @Test
+    void aSessionRunUnreplicatedIsNotMovedAheadWhenReplicatedUnderTheSameLeadership() {
+        a.election.elect(Role.LEADER, 3, "a");
+        a.start();
+        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
+        FixSessionSettings late = RecordingEngine.session("late", FixSessionType.ACCEPTOR);
+        RecordingEngine.RecordingStore lateStore = new RecordingEngine.RecordingStore();
+
+        a.ha.notReplicated(late);
+        a.ha.replicatingStore(late, lateStore, new RecordingProbes()).start();
+
+        assertThat(lateStore.writes).noneMatch(write -> write.startsWith("outgoing"));
+    }
+
     private static int jumps(Node node) {
         RecordingEngine.RecordingStore store = node.engine.store(MAIN);
         return store == null ? 0 : (int) store.writes.stream().filter(write -> write.startsWith("outgoing 10001")).count();
