@@ -35,6 +35,7 @@ import org.lolaf.staffix.impl.threading.ResendThread;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 /**
  * Answers a ResendRequest from the message store, replaying what can be replayed and filling the rest with a
@@ -68,11 +69,12 @@ public class MessagesResender {
         // off the IO thread, which would otherwise be held for the whole replay - see FixSessionImpl.executeResend.
         // The range is captured here, on the IO thread, because the decoder fields it comes from are reused by the
         // next message to arrive.
-        retransmission.executeResend(connection -> resendMessagesRange(connection, beginSeqNo, endSeqNo));
+        retransmission.executeResend((connection, sessionStopping) ->
+                resendMessagesRange(connection, sessionStopping, beginSeqNo, endSeqNo));
     }
 
     @ResendThread
-    private void resendMessagesRange(IOSession connection, long beginSeqNo, long endSeqNo) {
+    private void resendMessagesRange(IOSession connection, BooleanSupplier sessionStopping, long beginSeqNo, long endSeqNo) {
         // whatever is chosen to be retransmitted inside it, the requested range must be covered up to its end and
         // no further: the peer has to end up expecting the message right after the range it asked for
         long firstSeqNumAfterRequestedRange = endSeqNo + 1;
@@ -89,12 +91,16 @@ public class MessagesResender {
         int maxMessagesResent = fixSessionImpl.getFixSessionSettings().getMaxMessagesResentPerRequest();
 
         fixSessionImpl.logEvent("Resending messages %s -> %s", beginSeqNo, endSeqNo);
-        ResendState resendState = new ResendState(beginSeqNo);
+        ResendState resendState = new ResendState(beginSeqNo, sessionStopping);
         try {
             fixSessionMessagesStore.find(beginSeqNo, endSeqNo, (seqNum, message) ->
                     resendStoredMessage(connection, resendState, message, maxMessagesResent));
         } catch (FixMessagesStore.FixSessionMessagesStore.StoreException ex) {
             fixSessionImpl.logout("Unable to fetch FIX messages to resend, try again later");
+            return;
+        }
+        if (sessionStopping.getAsBoolean()) {
+            fixSessionImpl.logEvent("Retransmission abandoned, the session is stopping");
             return;
         }
         if (!connection.isStarted()) {
@@ -113,7 +119,7 @@ public class MessagesResender {
      * @return whether the store should carry on reading the range
      */
     private boolean resendStoredMessage(IOSession connection, ResendState resendState, ByteBuffer messageContent, int maxMessagesResent) {
-        if (!connection.isStarted()) {
+        if (!connection.isStarted() || resendState.sessionStopping.getAsBoolean()) {
             return false;
         }
         // a store may hand over the very buffer it holds the message in, and both reads below drain what they are
@@ -177,12 +183,14 @@ public class MessagesResender {
      */
     private static class ResendState {
         private final Map<MessageType, GenericFixMessageEncoder> encoders = new HashMap<>();
+        private final BooleanSupplier sessionStopping;
         private ByteBuffer transformedMessageBuffer;
         private long expectedNextSeqNum;
         private int messagesRead;
 
-        ResendState(long beginSeqNo) {
+        ResendState(long beginSeqNo, BooleanSupplier sessionStopping) {
             this.expectedNextSeqNum = beginSeqNo;
+            this.sessionStopping = sessionStopping;
         }
     }
 }

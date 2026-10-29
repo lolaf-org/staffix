@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.fields.CoreFields;
@@ -44,6 +45,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -748,6 +750,52 @@ class TestFixMessagesResends extends AbstractFixTests {
         reconnect(connectorType);
         assertPossDupMessageReceived(getDecodedFixMessages(connectorType.inverse()), EmailThreadID.get(), "test thread id 19");
         assertMessagesSendReceiveStillWorkAfterResync();
+    }
+
+    /**
+     * A replay reads the store, which the stop releases. The stop used to give up on the replay after a fifth of its
+     * deadline and release the store under it.
+     */
+    @ParameterizedTest
+    @MethodSource("initiatorOrAcceptorParams")
+    void testStopWaitsForTheRetransmissionWhichEndsAtItsNextMessage(ConnectorType connectorType) throws Exception {
+        logonClient();
+
+        FixApplication resendRequestSender = getFixApplication(connectorType);
+        FixSession targetFixSession = getFixSession(connectorType);
+
+        sendMessagesAndCutConnection(connectorType, i -> targetFixSession.send(encodeTestMessage(i), null));
+        assertMessageReceived(getDecodedFixMessages(connectorType.inverse()), EmailThreadID.get(), "test thread id 10");
+        clearApplicationsInvocations();
+
+        CountDownLatch replayStarted = new CountDownLatch(1);
+        CountDownLatch releaseReplay = new CountDownLatch(1);
+        when(resendRequestSender.onResendRequest(any(), any(), any())).thenAnswer(invocation -> {
+            if (replayStarted.getCount() > 0) {
+                replayStarted.countDown();
+                awaitLatch(releaseReplay);
+            }
+            return true;
+        });
+
+        CompletableFuture<?> stop;
+        try {
+            reconnect(connectorType);
+            assertThat(awaitLatch(replayStarted)).as("the retransmission must have started").isTrue();
+            stop = CompletableFuture.runAsync(() -> getConnector(connectorType).stop(Deadline.of(Duration.ofSeconds(5))));
+            // past the fifth of the deadline the stop used to wait
+            Thread.sleep(1500);
+            assertThat(getLogger(connectorType).getEvents())
+                    .as("the session must not be torn down under a running retransmission")
+                    .noneMatch(event -> event.contains("FIX Session destroyed"));
+        } finally {
+            releaseReplay.countDown();
+        }
+
+        stop.get(10, TimeUnit.SECONDS);
+        assertThat(getLogger(connectorType).getEvents())
+                .anyMatch(event -> event.contains("Retransmission abandoned, the session is stopping"));
+        verify(resendRequestSender, times(1)).onResendRequest(any(FixSession.class), any(), any(DecodedFixMessage.class));
     }
 
     @ParameterizedTest
