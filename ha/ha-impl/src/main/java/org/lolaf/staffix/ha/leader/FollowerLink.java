@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -289,6 +290,7 @@ public final class FollowerLink implements FrameHandler {
                 .inSync(isInSyncForAll(sessionCount))
                 .snapshotInProgress(snapshotInProgress)
                 .unsentBytes(getUnsentBytes())
+                .lagMillis(TimeUnit.NANOSECONDS.toMillis(getLagNanos(System.nanoTime())))
                 .build();
     }
 

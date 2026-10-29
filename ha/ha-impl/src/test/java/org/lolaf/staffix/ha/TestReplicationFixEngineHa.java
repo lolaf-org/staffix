@@ -344,6 +344,7 @@ class TestReplicationFixEngineHa {
                 assertThat(follower.isInSync()).isTrue();
                 assertThat(follower.isSnapshotInProgress()).isFalse();
                 assertThat(follower.getUnsentBytes()).isZero();
+                assertThat(follower.getLagMillis()).isZero();
             });
         });
         HaStatus follower = b.ha.getStatus();

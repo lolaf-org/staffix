@@ -1224,7 +1224,7 @@ components:
           $ref: '#/components/schemas/HaLeader'
     HaFollower:
       type: object
-      required: [address, connected, inSync, snapshotInProgress, unsentBytes]
+      required: [address, connected, inSync, snapshotInProgress, unsentBytes, lagMillis]
       properties:
         nodeId:
           type: string
@@ -1245,6 +1245,12 @@ components:
           description: >-
             Bytes the leader wrote and has not sent this follower yet, -1 before it started sending. Reaching the
             replication log's capacity drops the follower, which a snapshot then catches up.
+        lagMillis:
+          type: integer
+          format: int64
+          description: >-
+            How long the follower has been behind a write it has not applied yet, 0 when caught up. It grows while the
+            follower is stalled, which inSync, as of its last ack, does not show.
     HaLeader:
       type: object
       description: A follower's link to its leader.

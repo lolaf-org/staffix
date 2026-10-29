@@ -94,6 +94,8 @@ public interface FixHaMXBean {
         boolean isSnapshotInProgress();
 
         long getUnsentBytes();
+
+        long getLagMillis();
     }
 
     interface Leader {

@@ -106,6 +106,11 @@ public class HaStatus {
          * the leader's replication log capacity drops the follower, which a snapshot then catches up.
          */
         long unsentBytes;
+        /**
+         * How long the follower has been behind a write it has not applied yet, 0 when caught up: it grows while the
+         * follower is stalled, which {@link #inSync}, as of its last ack, does not show.
+         */
+        long lagMillis;
     }
 
     /**

@@ -277,6 +277,26 @@ class JmxAdminApiTest {
     }
 
     @Test
+    void aLeadersFollowersAreReadable() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
+                .leaderId("1").leaderElection("PrimosLeaderElection").roleSince(SINCE)
+                .follower(HaStatus.Follower.builder().nodeId("2").address("/10.0.0.2:40000").connected(true).inSync(true)
+                        .unsentBytes(128).lagMillis(3).build())
+                .build());
+        adminApi.ha = ha;
+        exporter.export(adminApi);
+
+        FixHaMXBean.Status status = JMX.newMXBeanProxy(mBeanServer, haName(), FixHaMXBean.class).getStatus();
+
+        assertThat(status.getFollowers()).singleElement().satisfies(follower -> {
+            assertThat(follower.getNodeId()).isEqualTo("2");
+            assertThat(follower.getUnsentBytes()).isEqualTo(128);
+            assertThat(follower.getLagMillis()).isEqualTo(3);
+        });
+    }
+
+    @Test
     void theHighAvailabilityIsReadableAndUnregisteredOnShutdown() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.FOLLOWER).epoch(7)
