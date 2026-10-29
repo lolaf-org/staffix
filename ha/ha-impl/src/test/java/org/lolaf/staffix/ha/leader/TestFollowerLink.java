@@ -61,7 +61,6 @@ class TestFollowerLink {
     private final IOSession connection = mock(IOSession.class);
     private final RecordingHandler sent = new RecordingHandler();
     private final ReplicationStats stats = new ReplicationStats();
-    private final FrameDecoder decoder = new FrameDecoder(1 << 20);
     private ReplicationFixEngineHa ha = engine(1 << 16);
     private FollowerLink link = link();
 
@@ -102,7 +101,11 @@ class TestFollowerLink {
         return ha.replicatingStore(settings(name), startedStore(), new RecordingProbes());
     }
 
+    /**
+     * As a follower would, refusing a frame longer than the log's longest event.
+     */
     private void decodeAll(ByteBuffer frames) {
+        FrameDecoder decoder = new FrameDecoder(ha.getReplicationLog().getMaxEventFrameBytes());
         int index = frames.position();
         int consumed;
         while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, sent)) > 0) {
@@ -374,8 +377,8 @@ class TestFollowerLink {
     }
 
     @Test
-    void aSnapshotCarriesAMessageLongerThanABatchInFragmentsAndCountsItOnce() {
-        int fragment = FollowerLink.batchBytesFor(ha.getReplicationLog()) - FrameEncoder.snapshotMessageBytes(0);
+    void aSnapshotCarriesAMessageLongerThanAFrameInFragmentsAndCountsItOnce() {
+        int fragment = ha.getReplicationLog().getMaxEventFrameBytes() - FrameEncoder.snapshotMessageBytes(0);
         String x = "x".repeat(fragment);
         String y = "y".repeat(fragment);
         FixSessionMessagesStore local = startedStore();

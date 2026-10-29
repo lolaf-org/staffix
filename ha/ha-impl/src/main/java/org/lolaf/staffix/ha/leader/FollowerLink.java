@@ -628,12 +628,13 @@ public final class FollowerLink implements FrameHandler {
         }
 
         /**
-         * A message too long for a batch goes in fragments, each in a batch of its own.
+         * A message too long for a frame goes in fragments, each no longer than the follower accepts: the longest event
+         * frame, which a batch, rounded up for betty's pools, exceeds.
          */
         @Override
         public boolean onMessage(long seqNum, ByteBuffer message) {
             int messageLength = message.remaining();
-            int maxFragmentLength = batchBytes - FrameEncoder.snapshotMessageBytes(0);
+            int maxFragmentLength = maxEventFrameBytes - FrameEncoder.snapshotMessageBytes(0);
             int from = 0;
             do {
                 int length = Math.min(maxFragmentLength, messageLength - from);

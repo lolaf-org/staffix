@@ -333,6 +333,8 @@ class TestSwitchover {
         counterparty.roundTrips(1);
 
         await().atMost(Duration.ofSeconds(30)).until(() -> counterparty.longestPossibleDuplicate.get() == Counterparty.BIG_ANSWER_LENGTH);
+        await().alias("a, now following, is caught up by a snapshot carrying the big message in fragments")
+                .until(() -> a.getStatus().getLeader() != null && a.getStatus().getLeader().isInSync());
     }
 
     @ParameterizedTest(name = "{0} {1}")
