@@ -196,7 +196,16 @@ class TestPrimosFailover {
         Thread thread = new Thread(server::run, "witness");
         thread.setDaemon(true);
         thread.start();
-        stops.add(server::close);
+        stops.add(() -> {
+            // close() frees the selector the loop blocks on: only stop() may be called from another thread
+            server.stop();
+            try {
+                thread.join(Duration.ofSeconds(5).toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            server.close();
+        });
         await().until(() -> server.boundAddress() != null);
         return server.boundAddress();
     }
