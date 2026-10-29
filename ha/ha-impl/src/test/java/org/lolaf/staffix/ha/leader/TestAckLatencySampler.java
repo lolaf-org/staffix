@@ -44,19 +44,19 @@ class TestAckLatencySampler {
 
     @Test
     void anAckBeforeTheSampledEventRecordsNothing() {
-        sampler.sent(100, System.nanoTime());
+        sampler.onSent(100, System.nanoTime());
 
-        sampler.acked(99);
+        sampler.onAck(99);
 
         assertThat(recorded).isEmpty();
     }
 
     @Test
     void theAckCoveringTheSampledEventRecordsTheTimeSinceItWasSentOnce() {
-        sampler.sent(100, System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(5));
+        sampler.onSent(100, System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(5));
 
-        sampler.acked(150);
-        sampler.acked(200);
+        sampler.onAck(150);
+        sampler.onAck(200);
 
         assertThat(recorded).singleElement().satisfies(nanos -> assertThat(nanos).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(5)));
     }
@@ -64,22 +64,22 @@ class TestAckLatencySampler {
     @Test
     void eventsSentWhileASampleWaitsAreNotSampled() {
         long first = System.nanoTime() - TimeUnit.SECONDS.toNanos(1);
-        sampler.sent(100, first);
-        sampler.sent(200, System.nanoTime());
+        sampler.onSent(100, first);
+        sampler.onSent(200, System.nanoTime());
 
-        sampler.acked(200);
-        sampler.acked(300);
+        sampler.onAck(200);
+        sampler.onAck(300);
 
         assertThat(recorded).singleElement().satisfies(nanos -> assertThat(nanos).isGreaterThanOrEqualTo(TimeUnit.SECONDS.toNanos(1)));
     }
 
     @Test
     void theNextEventSentAfterAnAckIsSampled() {
-        sampler.sent(100, System.nanoTime());
-        sampler.acked(100);
-        sampler.sent(200, System.nanoTime());
+        sampler.onSent(100, System.nanoTime());
+        sampler.onAck(100);
+        sampler.onSent(200, System.nanoTime());
 
-        sampler.acked(200);
+        sampler.onAck(200);
 
         assertThat(recorded).hasSize(2);
     }

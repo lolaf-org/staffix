@@ -29,6 +29,7 @@ public final class ReplicationStats {
     private final AtomicLong snapshots = new AtomicLong();
     private final AtomicLong snapshotMessages = new AtomicLong();
     private Function<String, Timer> ackLatencyTimers = followerId -> Timer.VoidTimer.getInstance();
+    private Function<String, Timer> lagTimers = followerId -> Timer.VoidTimer.getInstance();
 
     /**
      * Where the links time their followers' round trips, by follower node id, once the engine's meters exist.
@@ -39,6 +40,17 @@ public final class ReplicationStats {
 
     Timer ackLatency(String followerId) {
         return ackLatencyTimers.apply(followerId);
+    }
+
+    /**
+     * Where the links time how far their followers are behind, by follower node id, once the engine's meters exist.
+     */
+    public void lagTimers(Function<String, Timer> timers) {
+        lagTimers = timers;
+    }
+
+    Timer lag(String followerId) {
+        return lagTimers.apply(followerId);
     }
 
     void lapped() {

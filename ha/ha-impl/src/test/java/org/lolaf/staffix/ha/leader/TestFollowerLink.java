@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha.leader;
 import org.junit.jupiter.api.Test;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -39,6 +40,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,6 +52,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -231,6 +234,32 @@ class TestFollowerLink {
 
         decodeAll(batch.limit(length));
         assertThat(sent.frames).containsExactly("HEARTBEAT epoch=7 tail=" + ha.getReplicationLog().getTailOffset());
+    }
+
+    @Test
+    void aFollowerIsBehindFromAWriteUntilAnAckCoversItThenSampledAgainOnTheNextWriteItLacks() {
+        Timer lagTimer = mock(Timer.class);
+        stats.lagTimers(followerId -> lagTimer);
+        FixSessionMessagesStore store = replicated("main");
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        long first = ha.getReplicationLog().getTailOffset();
+        store.storeNextIncomingSeqNum(5);
+        fill();
+        assertThat(link.getLagNanos(System.nanoTime())).as("written, not acked").isPositive();
+
+        long second = ha.getReplicationLog().getTailOffset();
+        store.storeNextIncomingSeqNum(6);
+        fill();
+        link.onAck(EPOCH, first, true);
+        verify(lagTimer).record(anyLong(), eq(TimeUnit.NANOSECONDS));
+        assertThat(link.getLagNanos(System.nanoTime())).as("the sample is covered").isZero();
+
+        fill();
+        assertThat(link.getLagNanos(System.nanoTime())).as("sent, not acked yet").isPositive();
+        link.onAck(EPOCH, second, true);
+        verify(lagTimer, times(2)).record(anyLong(), eq(TimeUnit.NANOSECONDS));
+        fill();
+        assertThat(link.getLagNanos(System.nanoTime())).as("caught up, nothing new written").isZero();
     }
 
     @Test

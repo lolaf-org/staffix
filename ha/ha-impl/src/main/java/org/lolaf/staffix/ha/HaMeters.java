@@ -26,6 +26,7 @@ import org.lolaf.staffix.ha.leader.FollowerLink;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
 
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.function.ToLongFunction;
 
@@ -40,6 +41,7 @@ class HaMeters {
     static final String SYNC_ACK_LATENCY = "ha.sync.ack.latency";
     static final String SESSION_SYNC_ACK_LATENCY = "ha.session.sync.ack.latency";
     static final String FOLLOWER_ACK_LATENCY = "ha.follower.ack.latency";
+    static final String FOLLOWER_LAG = "ha.follower.lag";
 
     /**
      * @return the timer of the {@code SYNC} sends' wait for the follower's ack
@@ -76,6 +78,17 @@ class HaMeters {
         stats.ackLatencyTimers(followerId -> meters.getTimer(FOLLOWER_ACK_LATENCY, "A follower's round trip, from a"
                 + " batch of writes sent to its ack, sampled once per round trip, whatever the sessions' replication modes.",
                 Map.of("follower", followerId)));
+        stats.lagTimers(followerId -> meters.getTimer(FOLLOWER_LAG, "How far a follower is behind: from a write to"
+                + " the replication log to the follower's ack of it, sampled once per round trip.", Map.of("follower", followerId)));
+        meters.getGauge("ha.follower.lag.pending", "Milliseconds the most behind follower has not applied a write for,"
+                + " 0 when every follower is caught up: it keeps growing while a follower is stalled.", Map.of(), () -> {
+            long now = System.nanoTime();
+            long most = 0;
+            for (FollowerLink link : ha.getFollowers().all()) {
+                most = Math.max(most, link.getLagNanos(now));
+            }
+            return TimeUnit.NANOSECONDS.toMillis(most);
+        });
         meters.getCounter("ha.follower.laps", "Followers dropped for falling the replication log's capacity behind.",
                 Map.of(), stats::getLaps);
         meters.getCounter("ha.snapshots", "Session snapshots sent to followers catching up.", Map.of(), stats::getSnapshots);

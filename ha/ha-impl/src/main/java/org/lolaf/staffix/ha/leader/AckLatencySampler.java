@@ -35,14 +35,14 @@ final class AckLatencySampler {
     /**
      * Samples the event unless one is still waiting for its ack.
      */
-    void sent(long eventOffset, long nowNanos) {
+    void onSent(long eventOffset, long nowNanos) {
         if (sampledOffset < 0) {
             sentNanos = nowNanos;
             sampledOffset = eventOffset;
         }
     }
 
-    void acked(long appliedOffset) {
+    void onAck(long appliedOffset) {
         long offset = sampledOffset;
         if (offset >= 0 && appliedOffset >= offset) {
             timer.record(System.nanoTime() - sentNanos, TimeUnit.NANOSECONDS);

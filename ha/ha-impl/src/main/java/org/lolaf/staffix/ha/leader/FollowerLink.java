@@ -110,6 +110,7 @@ public final class FollowerLink implements FrameHandler {
      */
     private long filledEventOffset = -1;
     private AckLatencySampler ackLatency = new AckLatencySampler(Timer.VoidTimer.getInstance());
+    private LagSampler lag = new LagSampler(Timer.VoidTimer.getInstance());
     /**
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
@@ -165,6 +166,7 @@ public final class FollowerLink implements FrameHandler {
         }
         appliedOffset = lastAppliedOffset;
         ackLatency = new AckLatencySampler(stats.ackLatency(nodeId));
+        lag = new LagSampler(stats.lag(nodeId));
         state = State.STREAMING;
         log.info("Follower {} connected at epoch {}, {}", nodeId, leaderEpoch,
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
@@ -189,7 +191,15 @@ public final class FollowerLink implements FrameHandler {
     public void onAck(long epoch, long appliedOffset, boolean inSync) {
         this.appliedOffset = appliedOffset;
         this.reportedInSync = inSync;
-        ackLatency.acked(appliedOffset);
+        ackLatency.onAck(appliedOffset);
+        lag.onAck(appliedOffset);
+    }
+
+    /**
+     * How long the follower has been behind a write it has not applied yet, 0 when it is not, or not streaming.
+     */
+    public long getLagNanos(long nowNanos) {
+        return state == State.STREAMING ? lag.getPendingNanos(nowNanos) : 0;
     }
 
     /**
@@ -362,6 +372,7 @@ public final class FollowerLink implements FrameHandler {
      * @return the bytes filled
      */
     int fill(ByteBuffer dst) {
+        lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getEventOffset(), appliedOffset);
         int filled = announce(dst);
         long leaderEpoch = epoch.getAsLong();
         filledEventOffset = -1;
@@ -381,6 +392,7 @@ public final class FollowerLink implements FrameHandler {
                 break;
             }
             filledEventOffset = reader.getEventOffset();
+            lag.onEventRead(filledEventOffset, reader.getOffset());
             filled += FrameEncoder.storeEventHeader(dst, filled, leaderEpoch, filledEventOffset, body);
         }
         sentOffset = reader.getOffset();
@@ -487,7 +499,7 @@ public final class FollowerLink implements FrameHandler {
             }
             if (filledEventOffset >= 0) {
                 // before the send: an ack processed in between would otherwise leave the sample to the next one
-                ackLatency.sent(filledEventOffset, System.nanoTime());
+                ackLatency.onSent(filledEventOffset, System.nanoTime());
             }
             connection.send(written(batch, filled), true);
             lastSendNanos = System.nanoTime();
