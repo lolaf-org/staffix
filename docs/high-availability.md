@@ -90,6 +90,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `promotionOutgoingSeqNumJump` | 10 000 | How far a new leader moves its outgoing sequence numbers ahead. |
 | `handOverTimeout` | 5s | How long a leader stopping cleanly waits to give its follower every write. |
 | `switchoverTimeout` | 30s | How long a planned switchover may take before this node leads again. |
+| `followerLagAlertThreshold` | 5s | How long a connected follower may go without applying a write before the leader raises a major alert. A follower stalled while connected still reads as in sync, as of its last acknowledgement. |
 | `monitoringInstanceId` | none | The monitoring manager publishing the replication's meters. |
 | `alertsPublisherInstanceId` | none | The alerts publisher publishing the replication's probes. |
 
@@ -202,9 +203,10 @@ message it never stored. A clean handover does not.
 
 ## Watching it
 
-- **Meters** (`ha.*`): role, epoch, followers connected and in sync, unsent bytes, `SYNC` sends that went out
-  unacknowledged, snapshots, laps, and the acknowledgement round trip per follower; see [Monitoring](monitoring.md).
+- **Meters** (`ha.*`): role, epoch, followers connected and in sync, unsent bytes, how far each follower is behind,
+  `SYNC` sends that went out unacknowledged, snapshots, laps, and the acknowledgement round trip per follower; see
+  [Monitoring](monitoring.md).
 - **Probes**: the node's (`ha-followers`, `ha-leader-link`, `ha-leadership`) and each replicated session's
   (`ha-replication`); see [Alerting](alerting.md).
-- **Status**: `GET v1/ha` and `GET v1/ha/sessions` say who leads, whether the follower holds each session, and, on the
-  follower, whether a session would be taken over cleanly now.
+- **Status**: `GET v1/ha` and `GET v1/ha/sessions` say who leads, whether the follower holds each session and how far
+  behind it is, and, on the follower, whether a session would be taken over cleanly now.

@@ -36,6 +36,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -134,6 +135,10 @@ public final class RecordingEngine implements EngineAccess {
     public static final class RecordingStore implements FixSessionMessagesStore {
 
         public final List<String> writes = new CopyOnWriteArrayList<>();
+        /**
+         * Holds an incoming seqnum write until counted down, as a stalled storage would.
+         */
+        public volatile CountDownLatch incomingWritesHeld = new CountDownLatch(0);
         volatile boolean started;
         volatile @Nullable String storageIdentity = "recording:" + UUID.randomUUID();
 
@@ -186,6 +191,11 @@ public final class RecordingEngine implements EngineAccess {
 
         @Override
         public void storeNextIncomingSeqNum(long nextIncomingSeqNum) {
+            try {
+                incomingWritesHeld.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             writes.add("incoming " + nextIncomingSeqNum);
         }
 

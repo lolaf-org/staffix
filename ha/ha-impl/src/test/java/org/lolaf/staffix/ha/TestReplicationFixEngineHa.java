@@ -39,6 +39,7 @@ import java.net.Socket;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -100,6 +101,7 @@ class TestReplicationFixEngineHa {
                     .heartbeatInterval(heartbeatInterval)
                     .reconnectInterval(Duration.ofMillis(50))
                     .switchoverTimeout(Duration.ofSeconds(2))
+                    .followerLagAlertThreshold(Duration.ofMillis(200))
                     .leaderElection(FakeLeaderElection.Settings.builder().election(election).build())
                     .monitoringInstanceId("monitoring")
                     .alertsPublisherInstanceId("alerts")
@@ -534,6 +536,30 @@ class TestReplicationFixEngineHa {
         assertThat(a.engine.probes.active.getAsBoolean()).isFalse();
         a.start();
         assertThat(a.engine.probes.list()).as("replaced on restart").hasSize(3);
+    }
+
+    @Test
+    void aLeaderAlertsOnAConnectedFollowerThatStoppedApplyingItsWrites() {
+        aLeadsBFollows();
+        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
+        CountDownLatch stalled = new CountDownLatch(1);
+        b.engine.store(MAIN).incomingWritesHeld = stalled;
+
+        try {
+            a.store.storeNextIncomingSeqNum(7);
+
+            await().untilAsserted(() -> assertThat(HaProbes.followers(a.ha).evaluate()).hasValueSatisfying(alert -> {
+                assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
+                assertThat(alert.getMessage()).startsWith("Follower b has not applied a write for");
+            }));
+            assertThat(a.ha.getStatus().getFollowers()).singleElement().satisfies(follower -> {
+                assertThat(follower.isConnected()).isTrue();
+                assertThat(follower.isInSync()).as("as of its last ack, which is why the lag is watched").isTrue();
+            });
+        } finally {
+            stalled.countDown();
+        }
+        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
     }
 
     @Test

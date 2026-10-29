@@ -94,6 +94,11 @@ public class ReplicationHaProps {
     private Duration switchoverTimeout;
 
     /**
+     * How long a connected follower may go without applying a write before the leader alerts; unset keeps 5s.
+     */
+    private Duration followerLagAlertThreshold;
+
+    /**
      * Whether an operator may, through staffix, hand the leadership over or take this node out of elections (the
      * switchover and maintenance mode) when the election is one the application shares, such as the primos starter's
      * node with staffix-ha-primos-spring-boot. Off by default, since that leadership is the application's too.

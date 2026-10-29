@@ -111,6 +111,8 @@ apply to, and all but the timers are read at export, so they cost the session th
 | `ha.sync.ack.latency` | how long `SYNC` sends waited for the follower, for those it acknowledged |
 | `ha.sync.unacknowledged` | `SYNC` sends that went out unacknowledged, tagged `reason` = `timed_out` or `no_follower` |
 | `ha.follower.ack.latency` | a follower's round trip, from a batch of writes sent to its acknowledgement, tagged `follower`; covers `ASYNC` too |
+| `ha.follower.lag` | how far a follower is behind: from a write to the replication log to the follower applying it, tagged `follower`, sampled once per round trip |
+| `ha.follower.lag.pending` | how long, in milliseconds, the most behind follower has not applied a write, 0 when all are caught up; unlike the timer, it keeps growing while a follower is stalled |
 | `ha.follower.laps`, `ha.snapshots`, `ha.snapshot.messages` | followers dropped for falling behind, snapshots sent, messages they copied |
 | `ha.replica.connected`, `ha.replica.in.sync` | on a follower: streaming its leader's writes, and holding every replicated session |
 

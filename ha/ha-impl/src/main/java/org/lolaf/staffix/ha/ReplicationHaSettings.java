@@ -115,4 +115,12 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final Duration switchoverTimeout = Duration.ofSeconds(30);
+
+    /**
+     * How long a connected follower may go without applying a write before the {@code ha-followers} probe raises a
+     * major alert: a failover then loses what it has not applied. Well above a healthy lag, so it means a stalled or
+     * overloaded follower rather than a busy one.
+     */
+    @Builder.Default
+    private final Duration followerLagAlertThreshold = Duration.ofSeconds(5);
 }

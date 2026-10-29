@@ -62,8 +62,8 @@ class HaProbes {
      * Adds the node's probes, replacing those of a previous start.
      */
     static void register(Probes probes, ReplicationFixEngineHa ha) {
-        replace(probes, FOLLOWERS, "While leading: the followers connected and in sync, without which a failover loses"
-                + " the sessions' latest writes.", followers(ha));
+        replace(probes, FOLLOWERS, "While leading: the followers connected, in sync and applying the writes, without"
+                + " which a failover loses the sessions' latest writes.", followers(ha));
         replace(probes, LEADER_LINK, "While following: the connection to the leader and whether this node holds every"
                 + " replicated session in full, as a failover to it needs.", leaderLink(ha));
         replace(probes, LEADERSHIP, "Whether this node knows its role: without one it neither runs the sessions nor"
@@ -91,11 +91,15 @@ class HaProbes {
                 return Optional.empty();
             }
             List<String> lagging = new ArrayList<>();
+            List<String> stalled = new ArrayList<>();
+            long thresholdMillis = ha.getSettings().getFollowerLagAlertThreshold().toMillis();
             boolean anyConnected = false;
             for (FollowerLink link : ha.getFollowers().all()) {
                 HaStatus.Follower follower = link.status(ha.getSessions().count());
                 anyConnected |= follower.isConnected();
-                if (follower.isConnected() && (!follower.isInSync() || follower.isSnapshotInProgress())) {
+                if (follower.isConnected() && follower.getLagMillis() > thresholdMillis) {
+                    stalled.add(follower.getNodeId() + " has not applied a write for " + follower.getLagMillis() + " ms");
+                } else if (follower.isConnected() && (!follower.isInSync() || follower.isSnapshotInProgress())) {
                     lagging.add(follower.getNodeId() + (follower.isSnapshotInProgress() ? " catching up by snapshot"
                             : " not in sync") + ", " + follower.getUnsentBytes() + " bytes unsent");
                 }
@@ -103,6 +107,10 @@ class HaProbes {
             if (!anyConnected) {
                 return Optional.of(Alert.major("No follower connected for " + RAISE_DELAY.toSeconds()
                         + " s: a failover now loses the sessions' latest writes"));
+            }
+            if (!stalled.isEmpty()) {
+                return Optional.of(Alert.major("Follower " + String.join("; ", stalled)
+                        + ": a failover now loses what it has not applied"));
             }
             return lagging.isEmpty() ? Optional.empty() : Optional.of(Alert.warning("Follower " + String.join("; ", lagging)));
         };

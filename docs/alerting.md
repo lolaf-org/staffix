@@ -260,7 +260,7 @@ a role it does not apply to:
 
 | probe | level | raised when |
 |-------|-------|-------------|
-| `ha-followers` | `MAJOR`, `WARNING` | leading with no follower connected; a follower connected but not in sync, or catching up by snapshot |
+| `ha-followers` | `MAJOR`, `WARNING` | leading with no follower connected, or a follower that has not applied a write for longer than `followerLagAlertThreshold` (5 s by default); a follower connected but not in sync, or catching up by snapshot |
 | `ha-leader-link` | `MAJOR`, `WARNING` | following without a connection to the leader; connected but not holding every session in full |
 | `ha-leadership` | `CRITICAL` | the node has no role, or is elected leader but cannot prove it, so it runs no session |
 
