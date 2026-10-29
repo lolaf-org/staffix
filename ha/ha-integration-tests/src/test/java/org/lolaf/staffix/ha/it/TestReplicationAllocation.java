@@ -52,11 +52,16 @@ import org.lolaf.staffix.tests.TestPorts;
 
 import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
+import java.lang.management.ThreadInfo;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
+
+import org.awaitility.core.ConditionTimeoutException;
+import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.ha.HaAdmin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -181,7 +186,8 @@ class TestReplicationAllocation {
             }
             acceptorEngine.highAvailability(leader.build());
         }
-        start(acceptorEngine.build().instance()).newAcceptor(FixAcceptorBuilder.builder()
+        FixEngine leaderEngine = start(acceptorEngine.build().instance());
+        leaderEngine.newAcceptor(FixAcceptorBuilder.builder()
                 .bindAddress(new InetSocketAddress("localhost", fixPort))
                 .build()).start();
         ReplicationFixEngineHa follower = mode == ReplicationMode.NONE ? null
@@ -208,12 +214,35 @@ class TestReplicationAllocation {
 
         if (follower != null) {
             FixSessionMessagesStore replica = follower.getReplica().getStore(FixSession.FixSessionType.ACCEPTOR, ACCEPTOR_ID.toString());
-            await().untilAsserted(() -> assertThat(replica.getOutgoingSeqNum()).as("replicated").isGreaterThan(WARM_UP + MEASURED));
+            try {
+                await().untilAsserted(() -> assertThat(replica.getOutgoingSeqNum()).as("replicated").isGreaterThan(WARM_UP + MEASURED));
+            } catch (ConditionTimeoutException e) {
+                logStall(mode, leaderEngine, follower, replica);
+                throw e;
+            }
         }
         if (meters) {
             assertThat(registry.find("ha.sync.ack.latency").timer().count()).as("SYNC acks timed").isGreaterThan(MEASURED);
         }
         return (double) allocated / MEASURED;
+    }
+
+    private static void logStall(ReplicationMode mode, FixEngine leaderEngine, ReplicationFixEngineHa follower,
+                                 FixSessionMessagesStore replica) {
+        log.error("STALL {}: replica outgoing seqnum {}, follower applied epoch {} offset {}, complete {}",
+                mode, replica.getOutgoingSeqNum(), follower.getReplica().getLastAppliedEpoch(),
+                follower.getReplica().getLastAppliedOffset(), follower.getReplica().isComplete());
+        log.error("STALL leader status: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getStatus).orElse(null));
+        log.error("STALL leader sessions: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getSessionsStatus).orElse(null));
+        log.error("STALL follower status: {}", follower.getStatus());
+        StringBuilder threads = new StringBuilder();
+        for (ThreadInfo thread : ManagementFactory.getThreadMXBean().dumpAllThreads(true, true)) {
+            threads.append('"').append(thread.getThreadName()).append("\" ").append(thread.getThreadState()).append('\n');
+            for (StackTraceElement frame : thread.getStackTrace()) {
+                threads.append("    at ").append(frame).append('\n');
+            }
+        }
+        log.error("STALL threads:\n{}", threads);
     }
 
     private FixEngine start(FixEngine engine) {
