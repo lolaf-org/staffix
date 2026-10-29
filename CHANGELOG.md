@@ -51,6 +51,9 @@ could mean.
 
 ### Changed
 
+- **An encoder that is not reusable now refuses a second message**: `begin()` throws `IllegalStateException` once its
+  first message was sent. Before, reusing it silently worked with the default heap buffers, and crashed the JVM with
+  direct buffers. To send several messages with one encoder, take it from a pool or call `asReusable()`.
 - **Probes an application adds are now evaluated only while their session is logged in.** At logout their
   ongoing alerts are cleared, and at logon they start afresh, so a probe on the order flow no longer alerts all
   night, or the moment the session is back. An application that removed its probes on logout and added them again
