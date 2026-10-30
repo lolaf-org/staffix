@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
-import org.lolaf.staffix.stores.messages.testkit.AbstractFixSessionMessagesStoreTest;
+import org.lolaf.staffix.stores.messages.testkit.AbstractAllocationFreeFixSessionMessagesStoreTest;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,7 +29,7 @@ import java.util.function.BiPredicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class TestFileFixSessionMessagesStore extends AbstractFixSessionMessagesStoreTest<FileFixSessionMessagesStore> {
+class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMessagesStoreTest<FileFixSessionMessagesStore> {
 
     File storeFile;
 

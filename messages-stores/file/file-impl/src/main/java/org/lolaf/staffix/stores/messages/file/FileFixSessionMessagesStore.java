@@ -223,7 +223,6 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         int messageSize = message.remaining();
         int neededBlocksCount = blocksCount(messageSize);
         int requiredSpace = neededBlocksCount * blockSize;
-
         if (alignedByteBuffer.remaining() < requiredSpace) {
             log.debug("Rolling over for FIX message store {}", settings.getInstanceId());
             alignedByteBuffer.position(STORE_HEADER_LEN);

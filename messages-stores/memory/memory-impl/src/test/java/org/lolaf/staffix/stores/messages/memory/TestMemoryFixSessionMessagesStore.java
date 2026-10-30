@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
-import org.lolaf.staffix.stores.messages.testkit.AbstractFixSessionMessagesStoreTest;
+import org.lolaf.staffix.stores.messages.testkit.AbstractAllocationFreeFixSessionMessagesStoreTest;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Test class for {@link MemoryFixSessionMessagesStore} using the generic test kit.
  */
-class TestMemoryFixSessionMessagesStore extends AbstractFixSessionMessagesStoreTest<MemoryFixSessionMessagesStore> {
+class TestMemoryFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMessagesStoreTest<MemoryFixSessionMessagesStore> {
 
     private MemoryMessageStoreSettings settings;
 
