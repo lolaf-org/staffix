@@ -97,13 +97,6 @@ public class ReplicationHaSettings extends HaSettings {
     private final int sendBuffers = 4;
 
     /**
-     * The most recent messages of a session a snapshot copies to a follower catching up. A resend asking for older
-     * ones, after a failover to that follower, is answered with a gap fill.
-     */
-    @Builder.Default
-    private final int snapshotMaxMessages = 10_000;
-
-    /**
      * How far a node that becomes leader moves the outgoing MsgSeqNum(34) of every replicated session: past what the
      * old leader may have sent without this node receiving it, which the counterparty would refuse as too low. It
      * then asks for the gap and gets a gap fill. Must exceed the messages a session can send while unreplicated.

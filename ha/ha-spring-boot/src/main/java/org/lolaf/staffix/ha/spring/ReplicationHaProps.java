@@ -78,11 +78,6 @@ public class ReplicationHaProps {
     private Integer sendBuffers;
 
     /**
-     * The most recent messages of a session a snapshot copies to a follower catching up; unset keeps 10000.
-     */
-    private Integer snapshotMaxMessages;
-
-    /**
      * How far a node that becomes leader moves the outgoing MsgSeqNum(34) of every replicated session; unset keeps
      * 10000.
      */

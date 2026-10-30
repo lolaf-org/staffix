@@ -68,7 +68,7 @@ class TestFollowers {
         IOSession connection = mock(IOSession.class);
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerLink link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofSeconds(1), 100, 4, new ReplicationStats(), loop -> {
+                Duration.ofSeconds(1), 4, new ReplicationStats(), loop -> {
         });
         link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0);
         link.fill(ByteBuffer.allocate(1 << 16));

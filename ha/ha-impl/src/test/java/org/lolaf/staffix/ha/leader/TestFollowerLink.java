@@ -110,12 +110,8 @@ class TestFollowerLink {
     }
 
     private FollowerLink link() {
-        return link(100);
-    }
-
-    private FollowerLink link(int snapshotMaxMessages) {
         return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
-                snapshotMaxMessages, 4, stats,
+                4, stats,
                 loop -> {
                 });
     }
@@ -171,7 +167,7 @@ class TestFollowerLink {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                100, 4, stats, loop -> {
+                4, stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
         });
@@ -506,7 +502,6 @@ class TestFollowerLink {
 
     @Test
     void aSnapshotGoesInChunksBetweenTheBatchesOfTheOtherSessionsAndSkipsItsOwnEvents() {
-        link = link(10_000);
         FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
         FixSessionMessagesStore other = replicated("other");
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
@@ -535,7 +530,6 @@ class TestFollowerLink {
 
     @Test
     void aSnapshotEndsWithTheRoundThatCaughtUpWithTheSessionWrites() {
-        link = link(10_000);
         ha.replicatingStore(settings("main"), storeHolding(1_001L, 1_011L), new RecordingProbes());
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
         fill();
@@ -550,7 +544,6 @@ class TestFollowerLink {
 
     @Test
     void aSnapshotNotCatchingUpSendsItsLastRoundWhole() {
-        link = link(10_000);
         ha.replicatingStore(settings("main"), storeHolding(1_001L, 3_001L), new RecordingProbes());
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
         fill();
@@ -571,7 +564,6 @@ class TestFollowerLink {
 
     @Test
     void aResetOfTheSessionEndsItsSnapshotAndIsSentAfterItsEnd() {
-        link = link(10_000);
         FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
         fill();
@@ -620,7 +612,7 @@ class TestFollowerLink {
     }
 
     @Test
-    void aSnapshotKeepsTheMostRecentMessagesOnly() {
+    void aSnapshotCopiesEveryMessageTheStoreKeeps() {
         FixSessionMessagesStore local = startedStore();
         when(local.getOutgoingSeqNum()).thenReturn(1_001L);
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
@@ -630,7 +622,7 @@ class TestFollowerLink {
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
         snapshot();
 
-        verify(local).find(eq(901L), eq(1_000L), any(StoreMessagesConsumer.class));
+        verify(local).find(eq(1L), eq(1_000L), any(StoreMessagesConsumer.class));
     }
 
     @Test

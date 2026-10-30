@@ -56,7 +56,6 @@ public final class ReplicationPublisher {
     private final LongSupplier epoch;
     private final String leaderId;
     private final Duration heartbeatInterval;
-    private final int snapshotMaxMessages;
     private final int sendBuffers;
     private final Followers followers;
     private final ReplicationStats stats;
@@ -64,11 +63,10 @@ public final class ReplicationPublisher {
     private Server server;
 
     public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLog log, ReplicatedSessions sessions, Followers followers,
-                                LongSupplier epoch, String leaderId, Duration heartbeatInterval, int snapshotMaxMessages,
-                                int sendBuffers, ReplicationStats stats) {
+                                LongSupplier epoch, String leaderId, Duration heartbeatInterval, int sendBuffers,
+                                ReplicationStats stats) {
         this.sendBuffers = sendBuffers;
         this.stats = stats;
-        this.snapshotMaxMessages = snapshotMaxMessages;
         this.followers = followers;
         this.bindAddress = bindAddress;
         this.replicationLog = log;
@@ -151,8 +149,8 @@ public final class ReplicationPublisher {
 
         @Override
         public void onConnected(IOSession session) {
-            FollowerLink link = new FollowerLink(session, replicationLog, sessions, epoch, leaderId, heartbeatInterval, snapshotMaxMessages,
-                    sendBuffers, stats, ReplicationPublisher::launchSender);
+            FollowerLink link = new FollowerLink(session, replicationLog, sessions, epoch, leaderId, heartbeatInterval, sendBuffers,
+                    stats, ReplicationPublisher::launchSender);
             session.setAttachment(link);
             followers.add(link);
         }

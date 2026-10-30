@@ -51,7 +51,6 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         if (props.getReconnectInterval() != null) b.reconnectInterval(props.getReconnectInterval());
         if (props.getHeartbeatInterval() != null) b.heartbeatInterval(props.getHeartbeatInterval());
         if (props.getSendBuffers() != null) b.sendBuffers(props.getSendBuffers());
-        if (props.getSnapshotMaxMessages() != null) b.snapshotMaxMessages(props.getSnapshotMaxMessages());
         if (props.getPromotionOutgoingSeqNumJump() != null) b.promotionOutgoingSeqNumJump(props.getPromotionOutgoingSeqNumJump());
         if (props.getHandOverTimeout() != null) b.handOverTimeout(props.getHandOverTimeout());
         if (props.getSwitchoverTimeout() != null) b.switchoverTimeout(props.getSwitchoverTimeout());

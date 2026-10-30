@@ -62,7 +62,7 @@ class TestReplicationHaAutoConfiguration {
                     assertThat(settings.getFollowerLagAlertThreshold()).isEqualTo(Duration.ofSeconds(2));
                     assertThat(settings.getMonitoringInstanceId()).isEqualTo("metrics");
                     assertThat(settings.getAlertsPublisherInstanceId()).isEqualTo("alerts");
-                    assertThat(settings.getSnapshotMaxMessages()).isEqualTo(ReplicationHaSettings.builder().build().getSnapshotMaxMessages());
+                    assertThat(settings.getSendBuffers()).isEqualTo(ReplicationHaSettings.builder().build().getSendBuffers());
                 });
     }
 

@@ -75,7 +75,6 @@ public final class FollowerLink implements FrameHandler {
     private final long heartbeatIntervalNanos;
     private final int maxEventFrameBytes;
     private final int batchBytes;
-    private final int snapshotMaxMessages;
     private final int sendBuffers;
     /**
      * Batches handed to betty and not yet written to the socket, each holding one of its pooled buffers.
@@ -137,9 +136,8 @@ public final class FollowerLink implements FrameHandler {
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
     FollowerLink(IOSession connection, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
-                 Duration heartbeatInterval, int snapshotMaxMessages, int sendBuffers, ReplicationStats stats,
+                 Duration heartbeatInterval, int sendBuffers, ReplicationStats stats,
                  Consumer<Runnable> senderLauncher) {
-        this.snapshotMaxMessages = snapshotMaxMessages;
         this.sendBuffers = sendBuffers;
         this.stats = stats;
         this.senderLauncher = senderLauncher;
@@ -622,7 +620,7 @@ public final class FollowerLink implements FrameHandler {
             }
             if (cursor.next == 0) {
                 writer.begin();
-                cursor.next = Math.max(1, cursor.nextOutgoingSeqNum - snapshotMaxMessages);
+                cursor.next = 1;
             }
             if (cursor.resetAhead) {
                 end(writer, session);

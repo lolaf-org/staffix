@@ -25,7 +25,7 @@ one on your machine, with a witness and a counterparty, to kill and restart by h
 - **The leader replicates each write as it makes it**, per session, in the mode the session asks for (see below). The
   follower acknowledges what it applied.
 - **A follower that connects late, or lost the stream, catches up**: from where it left off when the leader still holds
-  those writes, else by a snapshot of each session (its sequence numbers and its most recent messages). A snapshot
+  those writes, else by a snapshot of each session (its sequence numbers and every message its store keeps). A snapshot
   goes in chunks between the other sessions' writes, so they keep replicating, and their `SYNC` sends keep flowing,
   while it lasts.
 - **On taking over**, the new leader runs the sessions at the sequence numbers the old one left them, when the old
@@ -90,7 +90,6 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
 | `sendBuffers` | 4 | Pooled write buffers per follower, a power of two; one is kept spare. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower. |
-| `snapshotMaxMessages` | 10 000 | The most recent messages of a session a snapshot copies. |
 | `promotionOutgoingSeqNumJump` | 10 000 | How far a new leader moves its outgoing sequence numbers ahead. |
 | `handOverTimeout` | 5s | How long a leader stopping cleanly waits to give its follower every write. |
 | `switchoverTimeout` | 30s | How long a planned switchover may take before this node leads again. |
@@ -200,9 +199,11 @@ message it never stored. A clean handover does not.
   error and alerts; a resend of that message after a failover is gap filled. Messages up to that size are replicated
   in pieces, but a large message takes a large share of the log, and a follower that falls a whole log behind is
   caught up by snapshot: size `logCapacity` to at least four times your largest message.
-- **A snapshot copies the last `snapshotMaxMessages` messages of a session.** A follower caught up by snapshot answers
-  an older resend request with a gap fill once it leads, even when the old leader's store kept everything. Size it to
-  how far back your counterparties ask.
+- **A snapshot copies every message the leader's store keeps, and the follower's store then keeps what its own
+  settings allow.** Give the follower's store at least the leader's retention (`maxEntriesInMemory`, the file store's
+  `blocksCount` and `blockSize`, `maxMessagesPerSession`): a resend asking for a message it dropped is answered with a
+  gap fill once it leads. A store keeping everything makes a long snapshot; it does not hold the other sessions back,
+  but the session is not in sync until it ends.
 - **A restarted follower is caught up by snapshot**: it does not remember where it left the stream.
 
 ## Watching it
