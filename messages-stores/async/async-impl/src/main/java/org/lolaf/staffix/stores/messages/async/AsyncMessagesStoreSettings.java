@@ -58,8 +58,8 @@ public class AsyncMessagesStoreSettings implements FixMessagesStoreSettings {
     @Nullable
     private Duration flushPendingMessagesOnStartupDelay = Duration.ofSeconds(120);
     /**
-     * Max duration a {@code find} call waits for every pending write to reach the wrapped store before reading, so a
-     * resend sees messages stored just before; past it, {@code find} throws rather than read an incomplete store.
+     * Max duration a {@code find} call waits for the writes made before it to reach the wrapped store, so a resend sees
+     * messages stored just before; past it, {@code find} throws rather than read an incomplete store.
      * {@code null} reads immediately, but a {@code find} while the wrapped store is down always throws.
      */
     @Builder.Default

@@ -397,17 +397,23 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         wrappedStore.find(startSequenceNumber, stopSequenceNumber, consumer);
     }
 
+    /**
+     * Waits for the writes offered before the find only: a session that keeps sending never empties the queue.
+     */
     private void awaitPendingWritesBeforeFind() {
         failFindIfUnderlyingStoreIsDown();
         Duration timeout = asyncMessagesStoreSettings.getFindWaitForEmptyQueueTimeout();
-        if (timeout == null || pendingWrites() == 0) {
+        long offeredBeforeFind = messagesQueue.offersCount();
+        if (timeout == null || processedEvents.get() >= offeredBeforeFind) {
             return;
         }
-        boolean written = Deadline.of(timeout).waitAsLongAs(() -> pendingWrites() > 0 && hasInactiveUnderlyingResourceWatchDog());
+        boolean written = Deadline.of(timeout).waitAsLongAs(() -> processedEvents.get() < offeredBeforeFind
+                && hasInactiveUnderlyingResourceWatchDog());
         failFindIfUnderlyingStoreIsDown();
         if (!written) {
-            throw new StoreException("Async messages store for FIX session " + fixSessionId + " still has " + pendingWrites()
-                    + " writes pending after waiting " + timeout + ", refusing to read an incomplete store");
+            throw new StoreException("Async messages store for FIX session " + fixSessionId + " still has "
+                    + (offeredBeforeFind - processedEvents.get()) + " writes pending after waiting " + timeout
+                    + ", refusing to read an incomplete store");
         }
     }
 

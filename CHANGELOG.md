@@ -121,6 +121,9 @@ could mean.
 - The file messages store could resend a torn message when a resend ran while the session kept sending, or log the
   session out with "Unable to fetch FIX messages to resend". A message overwritten during a resend is now gap filled
   instead.
+- The async messages store failed a resend, logging the session out with "Unable to fetch FIX messages to resend",
+  when the session kept sending: it waited for its queue to empty. It now waits only for the messages sent before the
+  resend.
 
 ## [0.9.1] - 2026-10-14
 
