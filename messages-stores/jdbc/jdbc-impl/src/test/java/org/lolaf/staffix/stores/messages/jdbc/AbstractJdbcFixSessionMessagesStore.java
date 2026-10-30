@@ -271,6 +271,21 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
     }
 
     @Test
+    void shouldPruneOldMessagesInSeveralBatches() throws Exception {
+        getMessageStoreForPruning(100);
+        messageStore.pruneBatchRows = 7;
+        for (long i = 1; i <= 150; i++) {
+            insertMessageDirectly(sessionId.getQualifiedName(), i);
+        }
+
+        messageStore.start();
+
+        Awaitility.await().untilAsserted(() -> assertThat(countMessagesInDatabase(sessionId.getQualifiedName()))
+                .isEqualTo(100));
+        assertThat(getMinMaxSequenceNumbers(sessionId.getQualifiedName())).containsExactly(51, 150);
+    }
+
+    @Test
     void shouldPruneOldMessagesWithGappedSequenceNumbers() throws Exception {
         getMessageStoreForPruning(3);
 
@@ -283,7 +298,7 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
 
         messageStore.start();
 
-        // excessCount=3 OFFSET 2 -> cutoff=6, delete <=6 → keeps (7, 10, 15)
+        // the 4th newest, 6, and every older one go: keeps (7, 10, 15)
         Awaitility.await().untilAsserted(() ->
                 assertThat(countMessagesInDatabase(sessionId.getQualifiedName()))
                         .as("Message count after pruning should be exactly maxMessagesPerSession (3)")

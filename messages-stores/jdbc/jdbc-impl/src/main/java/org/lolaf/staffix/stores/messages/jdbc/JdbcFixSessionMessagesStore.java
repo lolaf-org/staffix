@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.messages.jdbc;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.threading.FastThreadLocal;
 import org.lolaf.staffix.api.Startable;
@@ -61,7 +62,6 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final String updateIncomingSeqNumSql;
     private final String updateOutgoingSeqNumSql;
     private final String selectMessagesSql;
-    private final String countMessagesSql;
     // Pruning configuration
     private final int maxMessagesPerSession;
     private final int findFetchSize;
@@ -71,6 +71,11 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final String deleteAllMessagesSql;
     private final JdbcStorageIdentity storageIdentity;
     private String findCutoffSeqNumSql;
+    private String findBatchEndSeqNumSql;
+    /**
+     * The most rows one pruning delete removes, so the first prune of a large table is not one huge transaction.
+     */
+    int pruneBatchRows = 10_000;
     private ScheduledFuture<?> pruningTask;
     /**
      * Read by finds on the resend and replication threads too, which must not miss a reset pending.
@@ -101,7 +106,6 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                 "SET outgoing_seq_num = ? WHERE session_id = ?";
         this.selectMessagesSql = "SELECT sequence_number, message_data FROM " + tableName +
                 " WHERE session_id = ? AND sequence_number BETWEEN ? AND ? ORDER BY sequence_number";
-        this.countMessagesSql = "SELECT COUNT(*) FROM " + tableName + " WHERE session_id = ?";
 
         // Pruning configuration
         this.maxMessagesPerSession = settings.getMaxMessagesPerSession();
@@ -159,13 +163,15 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         try (Connection conn = dataSource.getConnection()) {
             boolean isOracle = conn.getMetaData().getDatabaseProductName()
                     .toLowerCase().contains("oracle");
-            this.findCutoffSeqNumSql = isOracle
-                    ? "SELECT sequence_number FROM " + tableName +
-                    " WHERE session_id = ? ORDER BY sequence_number ASC" +
-                    " OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY"
-                    : "SELECT sequence_number FROM " + tableName +
-                    " WHERE session_id = ? ORDER BY sequence_number ASC LIMIT 1 OFFSET ?";
+            this.findCutoffSeqNumSql = "SELECT sequence_number FROM " + tableName
+                    + " WHERE session_id = ? ORDER BY sequence_number DESC" + offsetOneRow(isOracle);
+            this.findBatchEndSeqNumSql = "SELECT sequence_number FROM " + tableName
+                    + " WHERE session_id = ? AND sequence_number <= ? ORDER BY sequence_number ASC" + offsetOneRow(isOracle);
         }
+    }
+
+    private static String offsetOneRow(boolean isOracle) {
+        return isOracle ? " OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY" : " LIMIT 1 OFFSET ?";
     }
 
     @Override
@@ -409,37 +415,40 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     private void pruneOldMessages() {
         try {
-            long messageCount = countMessages();
-            if (messageCount > maxMessagesPerSession) {
-                long excessCount = messageCount - maxMessagesPerSession;
-                Long cutoffSeqNum = findCutoffSequenceNumber(excessCount);
-                if (cutoffSeqNum != null) {
-                    int deletedCount = deleteMessagesUpTo(cutoffSeqNum);
-                    log.info("Pruned {} old messages for session {} (before: {}, after: ~{}, cutoffSeq: {})",
-                            deletedCount, fixSessionId, messageCount, maxMessagesPerSession, cutoffSeqNum);
-                }
+            // the newest row past those kept, read down the index from the newest: no count, only the kept rows scanned
+            Long cutoffSeqNum = seqNumAt(findCutoffSeqNumSql, null, maxMessagesPerSession);
+            if (cutoffSeqNum == null) {
+                return;
             }
+            long deleted = 0;
+            Long batchEnd;
+            do {
+                batchEnd = seqNumAt(findBatchEndSeqNumSql, cutoffSeqNum, pruneBatchRows - 1);
+                deleted += deleteMessagesUpTo(batchEnd == null ? cutoffSeqNum : batchEnd);
+            } while (batchEnd != null && batchEnd < cutoffSeqNum && isStarted());
+            log.info("Pruned {} old messages for session {}, up to sequence number {}", deleted, fixSessionId, cutoffSeqNum);
         } catch (Exception e) {
             log.warn("Error occurred when pruning old messages for session {}", fixSessionId, e);
         }
     }
 
-    private StoreException failed(String what, SQLException e) {
-        return new StoreException(what + " for session " + fixSessionId, e);
-    }
-
-    private Long findCutoffSequenceNumber(long excessCount) throws SQLException {
+    private @Nullable Long seqNumAt(String sql, @Nullable Long upTo, long offset) throws SQLException {
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(findCutoffSeqNumSql)) {
-            stmt.setString(1, fixSessionId.getQualifiedName());
-            stmt.setLong(2, excessCount - 1); // OFFSET is 0-indexed
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            int index = 1;
+            stmt.setString(index++, fixSessionId.getQualifiedName());
+            if (upTo != null) {
+                stmt.setLong(index++, upTo);
+            }
+            stmt.setLong(index, offset);
             try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong(1);
-                }
+                return rs.next() ? rs.getLong(1) : null;
             }
         }
-        return null;
+    }
+
+    private StoreException failed(String what, SQLException e) {
+        return new StoreException(what + " for session " + fixSessionId, e);
     }
 
     private int deleteMessagesUpTo(long cutoffSeqNum) throws SQLException {
@@ -450,19 +459,6 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             stmt.setLong(2, cutoffSeqNum);
             return stmt.executeUpdate();
         }
-    }
-
-    private long countMessages() throws SQLException {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(countMessagesSql)) {
-            stmt.setString(1, fixSessionId.getQualifiedName());
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong(1);
-                }
-            }
-        }
-        return 0;
     }
 
     private static final class CachedInputStream extends InputStream {

@@ -89,6 +89,10 @@ could mean.
   `component` instead.
 - **The HTTP admin API's `GET meters` is now `GET sessions/meters`**, beside the new `GET engine/meters`.
 
+- **The JDBC messages store prunes large tables more cheaply**: it no longer counts a session's rows on every check,
+  and deletes the old ones 10 000 at a time, so the first prune of a big table is no longer one long transaction
+  holding locks on every row it removes. What `maxMessagesPerSession` keeps is unchanged.
+
 ### Removed
 
 - **`FixSessionId.invert()`**.

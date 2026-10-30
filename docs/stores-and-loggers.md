@@ -81,7 +81,8 @@ JdbcMessageStoreSettings.builder()
 | `scheduledExecutorService` | supplied if absent |
 
 Schemas are generated rather than shipped as a fixed `.sql`: the DDL generator plugin produces them for several
-dialects via Hibernate. `maxMessagesPerSession` with `pruningCheckInterval` keeps the table bounded.
+dialects via Hibernate. `maxMessagesPerSession` with `pruningCheckInterval` keeps the table bounded: each check deletes a session's rows
+past its newest `maxMessagesPerSession`, 10 000 rows per transaction.
 
 `findFetchSize` is how many rows a resend, or a high availability snapshot, reads per round trip. It is what lets a
 wide read stream: without it PostgreSQL reads the whole range into memory first. MySQL streams only with
