@@ -49,6 +49,10 @@ public class JdbcStoreEntryProps {
      */
     private Duration pruningCheckInterval;
     /**
+     * Rows a find reads per round trip.
+     */
+    private Integer findFetchSize;
+    /**
      * How long store calls must keep succeeding before the session's messages-store alert clears.
      */
     private Duration alertClearDelay;

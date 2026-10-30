@@ -95,6 +95,14 @@ public class JdbcMessageStoreSettings implements FixMessagesStoreSettings {
     private final Duration pruningCheckInterval = Duration.ofMinutes(5);
 
     /**
+     * Rows a {@code find} reads per round trip, as resends and replication snapshots stream a range. Without one,
+     * PostgreSQL reads the whole range into memory first, and Oracle makes a round trip per 10 rows; MySQL also needs
+     * {@code useCursorFetch=true} in its URL.
+     */
+    @Builder.Default
+    private final int findFetchSize = 500;
+
+    /**
      * See {@link FixMessagesStoreSettings#getResourceCheckInterval()}.
      */
     @Builder.Default

@@ -124,6 +124,8 @@ could mean.
 - The async messages store failed a resend, logging the session out with "Unable to fetch FIX messages to resend",
   when the session kept sending: it waited for its queue to empty. It now waits only for the messages sent before the
   resend.
+- The JDBC messages store read a whole resend range into memory before sending its first message on PostgreSQL, and
+  read it 10 rows per round trip on Oracle. It now streams the range, `findFetchSize` rows at a time (500 by default).
 
 ## [0.9.1] - 2026-10-14
 

@@ -77,10 +77,15 @@ JdbcMessageStoreSettings.builder()
 | `tablePrefix`              | `""`               |
 | `maxMessagesPerSession`    | `0` (unlimited)    |
 | `pruningCheckInterval`     | 5 minutes          |
+| `findFetchSize`            | 500                |
 | `scheduledExecutorService` | supplied if absent |
 
 Schemas are generated rather than shipped as a fixed `.sql`: the DDL generator plugin produces them for several
 dialects via Hibernate. `maxMessagesPerSession` with `pruningCheckInterval` keeps the table bounded.
+
+`findFetchSize` is how many rows a resend, or a high availability snapshot, reads per round trip. It is what lets a
+wide read stream: without it PostgreSQL reads the whole range into memory first. MySQL streams only with
+`useCursorFetch=true` in its JDBC URL.
 
 **Keep the pool's connection timeout short.** While the database is down, the first failed call and every sequence
 number update wait for it on the session thread; see [When a store or logger fails](#when-a-store-or-logger-fails).

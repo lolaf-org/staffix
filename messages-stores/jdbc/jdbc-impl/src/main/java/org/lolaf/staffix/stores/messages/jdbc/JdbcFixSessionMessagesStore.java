@@ -64,6 +64,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final String countMessagesSql;
     // Pruning configuration
     private final int maxMessagesPerSession;
+    private final int findFetchSize;
     private final Duration pruningCheckInterval;
     private final ScheduledExecutorService scheduledExecutorService;
     private final String resetSql;
@@ -71,7 +72,10 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final JdbcStorageIdentity storageIdentity;
     private String findCutoffSeqNumSql;
     private ScheduledFuture<?> pruningTask;
-    private boolean resetPending;
+    /**
+     * Read by finds on the resend and replication threads too, which must not miss a reset pending.
+     */
+    private volatile boolean resetPending;
 
     JdbcFixSessionMessagesStore(JdbcMessageStoreSettings settings, FixSessionId fixSessionId, ScheduledExecutorService scheduledExecutorService) {
         this(settings, fixSessionId, scheduledExecutorService, new JdbcStorageIdentity(settings));
@@ -101,6 +105,10 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
         // Pruning configuration
         this.maxMessagesPerSession = settings.getMaxMessagesPerSession();
+        if (settings.getFindFetchSize() <= 0) {
+            throw new IllegalArgumentException("findFetchSize must be positive, was " + settings.getFindFetchSize());
+        }
+        this.findFetchSize = settings.getFindFetchSize();
         this.pruningCheckInterval = settings.getPruningCheckInterval();
         this.scheduledExecutorService = scheduledExecutorService;
     }
@@ -228,7 +236,11 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     }
 
     /**
-     * Stores the current numbers rather than 1, so a reset completed late keeps those taken since.
+     * Completes a reset the database could not take when it was asked, the session having carried on from 1 on its
+     * in-memory counters. Every call that reaches the database runs it first, or it would act on the rows from before
+     * the reset, stored under the numbers the session now reuses: a find resending them as current, writes mixing two
+     * histories, seqnum updates leaving the old rows in place. Stores the current numbers rather than 1, so a reset
+     * completed late keeps those taken since.
      */
     private void completePendingResetIfNeeded(Connection conn) throws SQLException {
         if (!resetPending) {
@@ -264,7 +276,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         try {
             conn.rollback();
         } catch (SQLException e) {
-            log.debug("Failed to roll back the reset of session {}", fixSessionId, e);
+            log.debug("Failed to roll back a transaction of session {}", fixSessionId, e);
         }
     }
 
@@ -368,18 +380,27 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     @Override
     public void find(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(selectMessagesSql)) {
+        try (Connection conn = dataSource.getConnection()) {
             completePendingResetIfNeeded(conn);
-            stmt.setString(1, fixSessionId.getQualifiedName());
-            stmt.setLong(2, startSequenceNumber);
-            stmt.setLong(3, stopSequenceNumber);
-            try (ResultSet rs = stmt.executeQuery()) {
-                // handed over row by row rather than collected first: a peer is free to ask for a range of any width,
-                // and this is the store most likely to be asked for one that does not fit in memory
-                while (rs.next() && consumer.onMessage(rs.getLong(1), ByteBuffer.wrap(rs.getBytes(2)))) {
-                    // nothing more to do, the consumer has taken the message
+            boolean autoCommit = conn.getAutoCommit();
+            // PostgreSQL fetches by cursor only inside a transaction and with a fetch size: otherwise its driver reads
+            // the whole result before the first row
+            conn.setAutoCommit(false);
+            try (PreparedStatement stmt = conn.prepareStatement(selectMessagesSql)) {
+                stmt.setFetchSize(findFetchSize);
+                stmt.setString(1, fixSessionId.getQualifiedName());
+                stmt.setLong(2, startSequenceNumber);
+                stmt.setLong(3, stopSequenceNumber);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    // handed over row by row rather than collected first: a peer is free to ask for a range of any
+                    // width, and this is the store most likely to be asked for one that does not fit in memory
+                    while (rs.next() && consumer.onMessage(rs.getLong(1), ByteBuffer.wrap(rs.getBytes(2)))) {
+                        // nothing more to do, the consumer has taken the message
+                    }
                 }
+            } finally {
+                rollbackQuietly(conn);
+                conn.setAutoCommit(autoCommit);
             }
         } catch (SQLException e) {
             throw failed("Failed to load FIX messages", e);
