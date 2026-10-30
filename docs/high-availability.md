@@ -77,7 +77,8 @@ haSessionSettings:
 ```
 
 **Configure the same sessions, with the same settings, on both nodes.** Each node reads its own settings, and a node
-that becomes leader runs the sessions it has.
+that becomes leader runs the sessions it has. A follower whose `replicationMode` for a session differs from the
+leader's refuses to replicate it, logs an error and makes the leader raise the `ha-replication` alert, until both agree.
 
 The other settings of `ReplicationHaSettings`, with their defaults:
 

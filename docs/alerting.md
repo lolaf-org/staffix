@@ -251,8 +251,9 @@ report failures of the async queue itself, such as a full disk.
 
 `ha-replication` is on every replicated session. A late ack or a message too long for the replication log keeps the
 alert raised for 5 minutes after the last one, since nothing tells that they stopped; a follower refusing the session
-(it has no settings for it, or cannot identify its storage) keeps it raised for as long as it refuses. A send with no
-follower in sync is left to the node's `ha-followers`, so one outage raises one alert rather than one per session.
+(it has no settings for it, gives it another replication mode, or cannot identify its storage) keeps it raised for as
+long as it refuses. A send with no follower in sync is left to the node's `ha-followers`, so one outage raises one
+alert rather than one per session.
 
 Component `ha` has the node's own probes when `ReplicationHaSettings.alertsPublisherInstanceId` names a publisher
 (unknown, the engine refuses to start). Each is raised once its condition has lasted 10 seconds, and reports nothing in

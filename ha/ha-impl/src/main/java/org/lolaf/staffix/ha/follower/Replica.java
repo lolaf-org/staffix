@@ -97,7 +97,7 @@ public final class Replica {
      */
     public boolean isComplete() {
         for (ReplicaSession session : sessions) {
-            if (session != null && (session.store != null ? !session.complete : session.isMissing())) {
+            if (session != null && (session.store != null ? !session.complete : session.refusal.isRefusal())) {
                 return false;
             }
         }
@@ -107,14 +107,14 @@ public final class Replica {
     /**
      * Binds the leader's key to the session configured here with that id and type, opening and starting its store
      * the first time, when it is not the leader's own storage. A session refused is looked at again on the next
-     * connection, its storage being readable by then perhaps. One the leader no longer replicates has its store
-     * closed, and is caught up again by snapshot once the leader replicates it again.
+     * connection, its storage being readable by then perhaps. One the leader no longer replicates, or with another
+     * replication mode here, has its store closed, and is caught up again by snapshot once both agree it is replicated.
      */
     SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId, ReplicationMode replicationMode,
                        @Nullable String leaderStorageIdentity) {
         ReplicaSession bound = key < sessions.length ? sessions[key] : null;
         if (bound != null && bound.matches(fixSessionType, fixSessionId) && bound.store != null
-                && replicationMode != ReplicationMode.NONE) {
+                && replicationMode != ReplicationMode.NONE && replicationMode == localMode(fixSessionType, fixSessionId)) {
             return bound.status();
         }
         if (bound != null) {
@@ -123,26 +123,34 @@ public final class Replica {
         if (key >= sessions.length) {
             sessions = Arrays.copyOf(sessions, Math.max(key + 1, sessions.length * 2));
         }
-        sessions[key] = replicationMode == ReplicationMode.NONE
-                ? new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.NOT_REPLICATED)
-                : open(fixSessionType, fixSessionId, leaderStorageIdentity);
+        sessions[key] = open(fixSessionType, fixSessionId, replicationMode, leaderStorageIdentity);
         SessionStatus status = sessions[key].status();
         if (status == SessionStatus.NOT_REPLICATED) {
             log.info("FIX session {} {} is not replicated: the leader's settings do not ask for it", fixSessionType, fixSessionId);
         } else if (status == SessionStatus.SHARED_STORAGE) {
             log.info("FIX session {} {} is not replicated: its storage is the leader's own", fixSessionType, fixSessionId);
+        } else if (status == SessionStatus.MODE_MISMATCH) {
+            log.error("FIX session {} {} is not replicated here: the leader's settings give it replication mode {}, this "
+                    + "node's {}", fixSessionType, fixSessionId, replicationMode, localMode(fixSessionType, fixSessionId));
         } else if (status != SessionStatus.SNAPSHOT_NEEDED) {
             log.warn("FIX session {} {} is not replicated here: {}", fixSessionType, fixSessionId, status);
         }
         return status;
     }
 
-    private ReplicaSession open(FixSessionType fixSessionType, String fixSessionId, @Nullable String leaderStorageIdentity) {
+    private ReplicaSession open(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
+                                @Nullable String leaderStorageIdentity) {
         FixSessionSettings settings = findSettings(fixSessionType, fixSessionId);
         if (settings == null) {
-            ReplicaSession unknown = new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.UNKNOWN_SESSION);
-            unknown.leaderStorageIdentity = leaderStorageIdentity;
-            return unknown;
+            return leaderMode == ReplicationMode.NONE
+                    ? new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.NOT_REPLICATED)
+                    : refused(fixSessionType, fixSessionId, SessionStatus.UNKNOWN_SESSION, leaderMode, leaderStorageIdentity);
+        }
+        if (settings.getHaSessionSettings().getReplicationMode() != leaderMode) {
+            return refused(fixSessionType, fixSessionId, SessionStatus.MODE_MISMATCH, leaderMode, leaderStorageIdentity);
+        }
+        if (leaderMode == ReplicationMode.NONE) {
+            return new ReplicaSession(fixSessionType, fixSessionId, null, SessionStatus.NOT_REPLICATED);
         }
         FixSessionMessagesStore store = engine.openStore(settings);
         String storageIdentity = store.getStorageIdentity().orElse(null);
@@ -156,34 +164,54 @@ public final class Replica {
         return new ReplicaSession(fixSessionType, fixSessionId, store, SessionStatus.SNAPSHOT_NEEDED);
     }
 
+    private static ReplicaSession refused(FixSessionType fixSessionType, String fixSessionId, SessionStatus refusal,
+                                          ReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
+        ReplicaSession session = new ReplicaSession(fixSessionType, fixSessionId, null, refusal);
+        session.leaderMode = leaderMode;
+        session.leaderStorageIdentity = leaderStorageIdentity;
+        return session;
+    }
+
     /**
-     * Binds again each session refused as unknown whose settings the engine has by now: a standby's connectors may
-     * register their sessions after the leader announced them, which would otherwise stay refused until the next
-     * connection.
+     * Binds again each session refused as unknown whose settings the engine has by now, or for a mode mismatch its
+     * settings here now agree with: a standby's connectors may register their sessions after the leader announced
+     * them, and a settings change may reach this node after the leader. Either would otherwise stay refused until
+     * the next connection.
      *
      * @param bound told each key bound now, with its status for the leader
      */
-    void bindNewlyKnown(ObjIntConsumer<SessionStatus> bound) {
+    void bindAgain(ObjIntConsumer<SessionStatus> bound) {
         for (int key = 0; key < sessions.length; key++) {
             ReplicaSession session = sessions[key];
-            if (session == null || session.store != null || session.refusal != SessionStatus.UNKNOWN_SESSION
-                    || findSettings(session.fixSessionType, session.fixSessionId) == null) {
+            if (session == null || !session.isRefusedUntilSettingsChange() || !settingsNowAccept(session)) {
                 continue;
             }
-            sessions[key] = open(session.fixSessionType, session.fixSessionId, session.leaderStorageIdentity);
+            sessions[key] = open(session.fixSessionType, session.fixSessionId, session.leaderMode, session.leaderStorageIdentity);
             SessionStatus status = sessions[key].status();
-            log.info("FIX session {} {} is now configured here: {}", session.fixSessionType, session.fixSessionId, status);
+            log.info("FIX session {} {} is now configured here as on the leader: {}", session.fixSessionType,
+                    session.fixSessionId, status);
             bound.accept(status, key);
         }
     }
 
-    boolean hasUnknownSessions() {
+    boolean hasSessionsToBindAgain() {
         for (ReplicaSession session : sessions) {
-            if (session != null && session.store == null && session.refusal == SessionStatus.UNKNOWN_SESSION) {
+            if (session != null && session.isRefusedUntilSettingsChange()) {
                 return true;
             }
         }
         return false;
+    }
+
+    private boolean settingsNowAccept(ReplicaSession session) {
+        FixSessionSettings settings = findSettings(session.fixSessionType, session.fixSessionId);
+        return settings != null && (session.refusal == SessionStatus.UNKNOWN_SESSION
+                || settings.getHaSessionSettings().getReplicationMode() == session.leaderMode);
+    }
+
+    private @Nullable ReplicationMode localMode(FixSessionType fixSessionType, String fixSessionId) {
+        FixSessionSettings settings = findSettings(fixSessionType, fixSessionId);
+        return settings == null ? null : settings.getHaSessionSettings().getReplicationMode();
     }
 
     private @Nullable FixSessionSettings findSettings(FixSessionType fixSessionType, String fixSessionId) {
@@ -370,9 +398,10 @@ public final class Replica {
         private final @Nullable FixSessionMessagesStore store;
         private final SessionStatus refusal;
         /**
-         * Kept by a session refused as unknown, to bind it once it is configured.
+         * Kept by a session refused until its settings here change, to bind it again once they do.
          */
         private @Nullable String leaderStorageIdentity;
+        private @Nullable ReplicationMode leaderMode;
         private volatile boolean complete;
         private volatile boolean handedOver;
         private long snapshotNextOutgoingSeqNum;
@@ -402,8 +431,8 @@ public final class Replica {
             return complete ? SessionStatus.REPLICATING : SessionStatus.SNAPSHOT_NEEDED;
         }
 
-        boolean isMissing() {
-            return refusal == SessionStatus.UNKNOWN_SESSION || refusal == SessionStatus.UNKNOWN_STORAGE;
+        boolean isRefusedUntilSettingsChange() {
+            return store == null && (refusal == SessionStatus.UNKNOWN_SESSION || refusal == SessionStatus.MODE_MISMATCH);
         }
 
         boolean matches(FixSessionType fixSessionType, String fixSessionId) {

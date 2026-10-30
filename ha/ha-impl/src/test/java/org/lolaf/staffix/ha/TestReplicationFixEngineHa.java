@@ -391,16 +391,34 @@ class TestReplicationFixEngineHa {
         aLeadsBFollows();
         RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);
 
+        b.engine.replace(MAIN.toBuilder()
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.NONE).build())
+                .build());
         a.ha.notReplicated(MAIN);
 
-        await().until(() -> "NOT_REPLICATED".equals(b.ha.getSessionsStatus().get(0).getNotReplicatedReason()));
+        await().until(() -> !replicaStore.isStarted());
         assertThat(b.ha.getReplica().isComplete()).isTrue();
         assertThat(a.ha.getStatus().getFollowers()).singleElement().satisfies(follower -> assertThat(follower.isInSync()).isTrue());
 
+        b.engine.replace(MAIN);
         a.ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
 
         await().until(() -> b.engine.store(MAIN) != replicaStore && b.ha.getSessionsStatus().get(0).isInSync());
         assertThat(a.engine.meters.read("ha.snapshots")).as("b caught up twice").isEqualTo(2);
+    }
+
+    @Test
+    void aReplicationModeChangedOnTheLeaderAloneIsRefusedByTheFollower() {
+        aLeadsBFollows();
+        await().until(() -> b.ha.getSessionsStatus().get(0).isInSync());
+        FixSessionSettings sync = MAIN.toBuilder()
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .build();
+
+        a.ha.replicatingStore(sync, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+
+        await().until(() -> "MODE_MISMATCH".equals(a.ha.getSessionsStatus().get(0).getNotReplicatedReason()));
+        assertThat(b.ha.getSessionsStatus().get(0).getNotReplicatedReason()).isEqualTo("MODE_MISMATCH");
     }
 
     @Test
@@ -437,11 +455,12 @@ class TestReplicationFixEngineHa {
 
     @Test
     void aSyncSessionTimesItsAcksInItsOwnMetersOnlyWhenAsked() {
-        aLeadsBFollows();
         RecordingMeters timedMeters = new RecordingMeters();
         RecordingMeters untimedMeters = new RecordingMeters();
-
+        b.engine.replace(sync(MAIN, true));
         ReplicatingStore timed = a.ha.replicatingStore(sync(MAIN, true), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        aLeadsBFollows();
+
         timed.sessionMeters(timedMeters);
         timed.storeNextIncomingSeqNum(7);
         timed.awaitReplicated();

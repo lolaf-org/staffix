@@ -64,6 +64,15 @@ public final class RecordingEngine implements EngineAccess {
         return this;
     }
 
+    /**
+     * Swaps the settings of the session with the same id and type, as a settings change would.
+     */
+    public RecordingEngine replace(FixSessionSettings session) {
+        settings.replaceAll(known -> known.getFixSessionType() == session.getFixSessionType()
+                && known.getFixSessionId().equals(session.getFixSessionId()) ? session : known);
+        return this;
+    }
+
     public RecordingStore store(FixSessionSettings session) {
         return stores.get(session.getFixSessionType() + " " + session.getFixSessionId());
     }

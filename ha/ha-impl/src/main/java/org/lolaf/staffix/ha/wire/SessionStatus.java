@@ -43,12 +43,23 @@ public enum SessionStatus {
     /**
      * The leader announced the session with replication mode {@code NONE}: its settings stopped its replication.
      */
-    NOT_REPLICATED(5);
+    NOT_REPLICATED(5),
+    /**
+     * The follower's settings give the session another replication mode than the leader's: a configuration error.
+     */
+    MODE_MISMATCH(6);
 
     private final int code;
 
     SessionStatus(int code) {
         this.code = code;
+    }
+
+    /**
+     * The follower would replicate the session but cannot: a problem to fix, unlike a status the leader expects.
+     */
+    public boolean isRefusal() {
+        return this == UNKNOWN_STORAGE || this == UNKNOWN_SESSION || this == MODE_MISMATCH;
     }
 
     /**
@@ -68,6 +79,8 @@ public enum SessionStatus {
                 return SNAPSHOT_NEEDED;
             case 5:
                 return NOT_REPLICATED;
+            case 6:
+                return MODE_MISMATCH;
             default:
                 return null;
         }

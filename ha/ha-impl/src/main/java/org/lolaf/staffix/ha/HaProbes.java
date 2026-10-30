@@ -168,7 +168,7 @@ class HaProbes {
             List<String> problems = new ArrayList<>();
             for (FollowerLink link : followers.all()) {
                 SessionStatus reported = link.getReportedStatus(session.getKey());
-                if (reported == SessionStatus.UNKNOWN_SESSION || reported == SessionStatus.UNKNOWN_STORAGE) {
+                if (reported != null && reported.isRefusal()) {
                     problems.add("follower " + link.getFollowerId() + " refuses to replicate it: " + reported);
                 }
             }

@@ -111,11 +111,15 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     @Override
     public ReplicatingStore replicatingStore(FixSessionSettings sessionSettings, FixSessionMessagesStore store, Probes probes) {
         ReplicatedSession known = sessions.find(sessionSettings.getFixSessionId(), sessionSettings.getFixSessionType());
-        boolean resumed = known != null && !known.isReplicated();
+        ReplicationMode previousMode = known == null ? null : known.getConfig().getReplicationMode();
         ReplicatedSession session = sessions.register(sessionSettings, store);
-        if (resumed) {
+        ReplicationMode mode = session.getConfig().getReplicationMode();
+        if (previousMode == ReplicationMode.NONE) {
             log.info("FIX session {} {} is replicated again, {}: its followers catch up by snapshot",
-                    session.getFixSessionType(), session.getFixSessionId(), session.getConfig().getReplicationMode());
+                    session.getFixSessionType(), session.getFixSessionId(), mode);
+        }
+        // ASYNC to SYNC too: a follower refuses a mode its own settings do not give
+        if (previousMode != null && previousMode != mode) {
             followers.reannounce(session.getKey());
         }
         probes.add(HaProbes.sessionProbe(session, followers));
@@ -328,7 +332,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             SessionStatus reported = link.getReportedStatus(session.getKey());
             inSync |= link.isInSync(session.getKey());
             sharedStorage |= reported == SessionStatus.SHARED_STORAGE;
-            if (reported == SessionStatus.UNKNOWN_SESSION || reported == SessionStatus.UNKNOWN_STORAGE) {
+            if (reported != null && reported.isRefusal()) {
                 refusal = reported.name();
             }
         }

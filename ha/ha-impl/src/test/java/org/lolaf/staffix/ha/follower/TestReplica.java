@@ -57,15 +57,49 @@ class TestReplica {
         RecordingEngine.RecordingStore first = engine.store(REPLICATED);
         assertThat(replica.snapshotBegin(0, 1, 1) && replica.snapshotEnd(0, 0)).isTrue();
 
+        engine.replace(NOT_REPLICATED.toBuilder().fixSessionId(REPLICATED.getFixSessionId()).build());
         assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.NONE, "leader-storage"))
                 .isEqualTo(SessionStatus.NOT_REPLICATED);
         assertThat(first.started).isFalse();
         assertThat(replica.isComplete()).as("a session not replicated is not waited for").isTrue();
 
-        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.SYNC, "leader-storage"))
+        engine.replace(REPLICATED);
+        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage"))
                 .isEqualTo(SessionStatus.SNAPSHOT_NEEDED);
         assertThat(engine.store(REPLICATED)).isNotSameAs(first);
         assertThat(replica.isComplete()).isFalse();
+    }
+
+    @Test
+    void aSessionReplicatedByTheLeaderButNotHereIsRefusedAndNotMovedAhead() {
+        String id = NOT_REPLICATED.getFixSessionId().toString();
+
+        assertThat(replica.bind(0, NOT_REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage"))
+                .isEqualTo(SessionStatus.MODE_MISMATCH);
+        assertThat(engine.store(NOT_REPLICATED)).isNull();
+        assertThat(replica.isComplete()).as("a refused session is missing").isFalse();
+
+        replica.jumpOutgoingSeqNums(1_000);
+
+        assertThat(engine.store(NOT_REPLICATED)).as("this node's settings do not replicate it").isNull();
+    }
+
+    @Test
+    void aSessionReplicatedHereButNotByTheLeaderIsRefused() {
+        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.NONE,
+                "leader-storage")).isEqualTo(SessionStatus.MODE_MISMATCH);
+        assertThat(engine.store(REPLICATED)).isNull();
+    }
+
+    @Test
+    void aReplicationModeChangedOnTheLeaderAloneStopsTheReplica() {
+        String id = REPLICATED.getFixSessionId().toString();
+        replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage");
+        RecordingEngine.RecordingStore replicaStore = engine.store(REPLICATED);
+
+        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.SYNC, "leader-storage"))
+                .isEqualTo(SessionStatus.MODE_MISMATCH);
+        assertThat(replicaStore.started).isFalse();
     }
 
     @Test

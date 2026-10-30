@@ -76,7 +76,7 @@ public final class FollowerLink implements FrameHandler {
      */
     private final Map<Integer, SessionStatus> reportedStatuses = new ConcurrentHashMap<>();
     /**
-     * Keys of sessions already announced whose replication mode changed to or from {@code NONE} since.
+     * Keys of sessions already announced whose replication mode changed since.
      */
     private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
     private final Consumer<Runnable> senderLauncher;
@@ -442,7 +442,8 @@ public final class FollowerLink implements FrameHandler {
     }
 
     /**
-     * The session's replication mode changed to or from {@code NONE}: the follower stops holding it, or catches up.
+     * The session's replication mode changed: the follower stops holding it, catches up, or checks its own settings
+     * agree.
      */
     void reannounce(int sessionKey) {
         reannouncements.add(sessionKey);

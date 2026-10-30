@@ -93,8 +93,8 @@ class TestLeaderLink {
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings, String leaderStorageIdentity) {
-        return (out, index) -> FrameEncoder.session(out, index, EPOCH, key, settings.getFixSessionType(), ReplicationMode.SYNC,
-                settings.getFixSessionId().toString(), leaderStorageIdentity);
+        return (out, index) -> FrameEncoder.session(out, index, EPOCH, key, settings.getFixSessionType(),
+                settings.getHaSessionSettings().getReplicationMode(), settings.getFixSessionId().toString(), leaderStorageIdentity);
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
@@ -187,6 +187,24 @@ class TestLeaderLink {
     }
 
     @Test
+    void aSessionWithAnotherReplicationModeHereIsRefusedUntilTheSettingsHereAgree() {
+        FixSessionSettings sync = MAIN.toBuilder()
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .build();
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, sync));
+
+        assertThat(engine.store(MAIN)).as("no store opened").isNull();
+        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 MODE_MISMATCH", "ACK epoch=7 applied=-1 inSync=false");
+        sent.frames.clear();
+
+        engine.replace(sync);
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
+
+        assertThat(engine.store(sync).started).isTrue();
+        assertThat(sent.frames).contains("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED");
+    }
+
+    @Test
     void aSessionWhoseStorageIsTheLeadersOwnIsNeitherStartedNorWrittenTo() {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN, "follower-storage"),
                 event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
@@ -209,7 +227,7 @@ class TestLeaderLink {
     @Test
     void aSessionTheLeaderCannotIdentifyIsRefused() {
         read(welcome(EPOCH, WireFormat.NO_RESUME), (out, index) -> FrameEncoder.session(out, index, EPOCH, 0,
-                MAIN.getFixSessionType(), ReplicationMode.SYNC, MAIN.getFixSessionId().toString(), null));
+                MAIN.getFixSessionType(), ReplicationMode.ASYNC, MAIN.getFixSessionId().toString(), null));
 
         assertThat(sent.frames).first().isEqualTo("SESSION_STATUS epoch=7 key=0 UNKNOWN_STORAGE");
     }
