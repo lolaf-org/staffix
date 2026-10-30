@@ -28,8 +28,11 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * The round trip of {@link FixEngineRTTBenchmark}, the answering engine highly available: what each replication mode
- * adds, with a slow follower store, and beside a session trading continuously. Each trial logs the replication's ack
- * timers, which split the follower's part from the leader's wake-ups.
+ * adds, with a slower follower store, and beside a session trading continuously. Each trial logs the replication's
+ * ack timers over its measurement iterations, which split the follower's part from the leader's. The leader and the
+ * follower share one JVM and talk over loopback, so a network between them adds its round trip to every {@code SYNC}
+ * figure. Run with {@code -p mode=SYNC -p followerStore=MEMORY -p replicationWaiting=SENDER_SPIN,SENDER_WAITER_SPIN,ALL_SPIN}
+ * for what each spinning thread buys.
  */
 @Warmup(iterations = 2, time = 5)
 @Measurement(iterations = 3, time = 5)

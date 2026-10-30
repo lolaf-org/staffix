@@ -90,6 +90,9 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
 | `sendBuffers` | 4 | Pooled write buffers per follower, a power of two; one is kept spare. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower. |
+| `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower, waits for writes. It parks up to 1 ms when idle, which a `SYNC` send then waits on; `BusySpinIdleStrategy` sends at once, for a core per follower. |
+| `syncAckIdleStrategy` | backs off | How a `SYNC` send waits for its acknowledgement, on the session's thread. `BusySpinIdleStrategy` sees it at once, for that thread's core while it waits. |
+| `selectStrategy` | betty's, blocking | How the replication's network threads wait, on both nodes. An `IdleStrategySelectStrategy` busy spinning saves a system call per wake-up, for a core on each node. |
 | `promotionOutgoingSeqNumJump` | 10 000 | How far a new leader moves its outgoing sequence numbers ahead. |
 | `handOverTimeout` | 5s | How long a leader stopping cleanly waits to give its follower every write. |
 | `switchoverTimeout` | 30s | How long a planned switchover may take before this node leads again. |
@@ -107,8 +110,9 @@ Each session picks one.
   session almost nothing; a leader that fails may have sent messages the follower never received, which the new leader
   covers by moving its sequence numbers ahead.
 - **`SYNC`**: a message is replicated before it is sent, and the send waits for the follower's acknowledgement. The
-  counterparty never receives a message the follower does not have. Each send pays a round trip to the follower: about
-  330 µs more than `ASYNC` on one machine.
+  counterparty never receives a message the follower does not have. Each send pays a round trip to the follower: on one
+  machine, about 170 µs more than `ASYNC` with the defaults, 15 µs with the replication busy spinning; see
+  [Latency](#latency).
 
 **`SYNC` never stops trading for a missing follower.** With `replicationAckTimeout`, a send waits at most that long, then
 goes out anyway. With no follower in sync (not connected, catching up), a send does not wait at all. Either way the
@@ -117,6 +121,44 @@ sync. `syncAckLatencyEnabled: true` adds a timer of the wait to the session's ow
 
 Neither mode replicates what the session receives as it arrives: only the expected incoming sequence number, after the
 message was processed. A new leader that is a few messages behind asks the counterparty to resend them, which it does.
+
+## Latency
+
+A `SYNC` send waits for the leader's sender to pick the write up, for the follower to apply it and acknowledge it, and
+for the session to see the acknowledgement. By default each of those threads backs off when idle, parking for up to
+1 ms, so the wait is mostly wake-ups, not work. Three settings trade cores for it:
+
+- **`senderIdleStrategy`**: the leader's sender, one thread per follower, busy spinning. One core per follower.
+- **`syncAckIdleStrategy`**: the session thread waiting for its acknowledgement, busy spinning. That thread's core,
+  for as long as it waits.
+- **`selectStrategy`**: the replication's network threads on both nodes, busy spinning instead of blocking in the
+  selector. One core on each node.
+
+`BusySpinIdleStrategy` (from ringos) for the first two, and an `IdleStrategySelectStrategy` around it for the third;
+in Spring Boot, `busy-spin` for each. Measured with `HaRttBenchmark` (in `benchmarks`): a counterparty's request and the
+leader's answer, the answer's store write replicated `SYNC`, leader, follower and counterparty in one JVM on 14 cores,
+the FIX side busy spinning. Round trip in µs, mean / p99:
+
+| busy spinning | one session | beside a second session trading continuously |
+|---|---|---|
+| nothing (the defaults) | 183 / 297 | 380 / 715 |
+| sender | 137 / 275 | 237 / 278 |
+| sender and waiter | 43 / 72 | 363 / 3842 |
+| sender, waiter and network threads | 29 / 37 | 54 / 69 |
+
+For comparison, the same round trip is 11 µs without replication and 15 µs with `ASYNC`.
+
+- **Spin all three, or count the cores first.** Each spinning thread needs a core of its own. In the row "sender and
+  waiter" beside a second session, the spinning threads outnumbered the free cores, and the follower's network
+  thread, still blocking, woke late: worse than not spinning at all. Pin the spinning threads, or keep their count
+  below the free cores.
+- **These are lower bounds.** Both nodes ran in one JVM over loopback: a network between them adds its round trip to
+  every `SYNC` send, typically tens of microseconds in one data center.
+- **One message at a time.** The benchmark waits for each answer before sending the next, which measures latency, not
+  the latency at a high message rate.
+
+In production, `ha.follower.ack.latency` times the follower's part (a batch sent to its acknowledgement) and
+`ha.sync.ack.latency` the whole wait; a large gap between them is the leader's wake-ups. See [Monitoring](monitoring.md).
 
 ## Failover and sequence numbers
 

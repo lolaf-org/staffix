@@ -16,6 +16,10 @@
 package org.lolaf.staffix.ha.spring;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.betty.api.ss.IdleStrategySelectStrategy;
+import org.lolaf.betty.api.ss.WakeupSelectStrategy;
+import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.ringos.idling.BusySpinIdleStrategy;
 import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
@@ -63,6 +67,25 @@ class TestReplicationHaAutoConfiguration {
                     assertThat(settings.getMonitoringInstanceId()).isEqualTo("metrics");
                     assertThat(settings.getAlertsPublisherInstanceId()).isEqualTo("alerts");
                     assertThat(settings.getSendBuffers()).isEqualTo(ReplicationHaSettings.builder().build().getSendBuffers());
+                    assertThat(settings.getSenderIdleStrategy().get()).isInstanceOf(BackoffIdleStrategy.class);
+                    assertThat(settings.getSyncAckIdleStrategy().get()).isInstanceOf(BackoffIdleStrategy.class);
+                    assertThat(settings.getSelectStrategy().get()).isInstanceOf(WakeupSelectStrategy.class);
+                });
+    }
+
+    @Test
+    void bindsTheReplicationThreadsBusySpinning() {
+        runner.withBean(LeaderElectionSettings.class, () -> election)
+                .withPropertyValues("staffix.ha-replication.node-id=1",
+                        "staffix.ha-replication.sender-idle-strategy=busy-spin",
+                        "staffix.ha-replication.sync-ack-idle-strategy=busy-spin",
+                        "staffix.ha-replication.select-strategy=busy-spin")
+                .run(context -> {
+                    ReplicationHaSettings settings = contribute(context.getBean(ReplicationHaContributor.class));
+
+                    assertThat(settings.getSenderIdleStrategy().get()).isInstanceOf(BusySpinIdleStrategy.class);
+                    assertThat(settings.getSyncAckIdleStrategy().get()).isInstanceOf(BusySpinIdleStrategy.class);
+                    assertThat(settings.getSelectStrategy().get()).isInstanceOf(IdleStrategySelectStrategy.class);
                 });
     }
 

@@ -195,6 +195,8 @@ staffix.ha-replication.fencing-margin=50ms
 looks that name up in `peers`. The other `ReplicationHaSettings` settings bind the same way (`log-capacity`,
 `heartbeat-interval`, `reconnect-interval`, `send-buffers`, `promotion-outgoing-seq-num-jump`,
 `hand-over-timeout`, `switchover-timeout`, `follower-lag-alert-threshold`); their defaults are in the guide.
+`sender-idle-strategy`, `sync-ack-idle-strategy` and `select-strategy` take `default` or `busy-spin`; see
+[Latency](high-availability.md#latency).
 
 The engine stops one lifecycle phase before the primos node, so a leader shutting down hands its sessions over
 before primos hands its leadership over, and its follower takes them over without moving its sequence numbers.

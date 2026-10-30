@@ -76,12 +76,18 @@ public final class FollowerLink implements FrameHandler {
     private final int maxEventFrameBytes;
     private final int batchBytes;
     private final int sendBuffers;
+    private final IdleStrategy senderIdle;
     /**
      * Batches handed to betty and not yet written to the socket, each holding one of its pooled buffers.
      */
     private final AtomicInteger batchesInFlight = new AtomicInteger();
     private final MessageSentCallback<Void> batchWritten = (message, error, context) -> batchesInFlight.decrementAndGet();
     private final IdleStrategy sendBufferWait = new BackoffIdleStrategy();
+    /**
+     * A batch buffer borrowed for a pass with nothing to send, kept for the next one: betty's IO thread is the only
+     * one that may give a buffer back to the session's pool, whose ring takes a single producer.
+     */
+    private @Nullable ByteBuffer unusedBatch;
     private final ReplicationStats stats;
     /**
      * What the follower last said of each session, by key, which tells a shared storage and a refusal's reason apart.
@@ -136,9 +142,10 @@ public final class FollowerLink implements FrameHandler {
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
     FollowerLink(IOSession connection, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
-                 Duration heartbeatInterval, int sendBuffers, ReplicationStats stats,
+                 Duration heartbeatInterval, int sendBuffers, IdleStrategy senderIdle, ReplicationStats stats,
                  Consumer<Runnable> senderLauncher) {
         this.sendBuffers = sendBuffers;
+        this.senderIdle = senderIdle;
         this.stats = stats;
         this.senderLauncher = senderLauncher;
         this.connection = connection;
@@ -507,16 +514,17 @@ public final class FollowerLink implements FrameHandler {
         try {
             sendUntilClosedOrHandingOver();
         } finally {
+            releaseUnusedBatch();
             senderRunning = false;
         }
     }
 
     private void sendUntilClosedOrHandingOver() {
-        IdleStrategy idle = new BackoffIdleStrategy();
+        senderIdle.reset();
         lastSendNanos = System.nanoTime();
         while (state != State.CLOSED && !handingOver) {
             if (hasNoRoomToSend()) {
-                idle.idle();
+                senderIdle.idle();
                 continue;
             }
             startPendingSnapshot();
@@ -527,22 +535,23 @@ public final class FollowerLink implements FrameHandler {
             }
             if (sent) {
                 lastSendNanos = System.nanoTime();
-                idle.reset();
+                senderIdle.reset();
             } else {
-                idle.idle();
+                senderIdle.idle();
             }
         }
     }
 
     private boolean sendBatch() {
-        ByteBuffer batch = connection.borrow(batchBytes);
+        ByteBuffer batch = unusedBatch != null ? unusedBatch : connection.borrow(batchBytes);
+        unusedBatch = null;
         batch.clear().limit(batchBytes);
         int filled = fill(batch);
         if (filled == 0) {
             filled = heartbeatIfDue(batch, System.nanoTime());
         }
         if (filled == 0) {
-            connection.unborrow(batch);
+            unusedBatch = batch;
             return false;
         }
         if (filledEventOffset >= 0) {
@@ -551,6 +560,14 @@ public final class FollowerLink implements FrameHandler {
         }
         sendBatch(batch, filled);
         return true;
+    }
+
+    private void releaseUnusedBatch() {
+        ByteBuffer batch = unusedBatch;
+        if (batch != null) {
+            unusedBatch = null;
+            connection.processTask(() -> connection.unborrow(batch));
+        }
     }
 
     private void sendBatch(ByteBuffer batch, int length) {

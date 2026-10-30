@@ -19,14 +19,15 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.io.IOWriter.MessageSentCallback;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
-import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
+import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreException;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
@@ -111,7 +112,7 @@ class TestFollowerLink {
 
     private FollowerLink link() {
         return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
-                4, stats,
+                4, new BackoffIdleStrategy(), stats,
                 loop -> {
                 });
     }
@@ -163,11 +164,34 @@ class TestFollowerLink {
     }
 
     @Test
+    void anIdleSenderKeepsItsBatchBufferAndGivesItBackThroughTheIoThreadOnceStopped() {
+        Thread[] sender = new Thread[1];
+        link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
+                4, new BackoffIdleStrategy(), stats, loop -> {
+            sender[0] = new Thread(loop);
+            sender[0].start();
+        });
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(0).run();
+            return null;
+        }).when(connection).processTask(any(Runnable.class));
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+
+        await().during(Duration.ofMillis(200)).until(() -> sender[0].isAlive());
+        verify(connection, never()).unborrow(any());
+
+        link.disconnected();
+        await().until(() -> !sender[0].isAlive());
+        verify(connection).processTask(any(Runnable.class));
+        verify(connection).unborrow(any());
+    }
+
+    @Test
     void theSenderWaitsWhileEverySendBufferIsInFlightAndResumesOnceOneIsWritten() {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                4, stats, loop -> {
+                4, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
         });

@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.benchmarks.impl;
 
+import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +53,8 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.infra.IterationParams;
+import org.openjdk.jmh.runner.IterationType;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -62,7 +65,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
@@ -97,9 +102,38 @@ public class HaPair {
      */
     @Param({"false", "true"})
     boolean busySession;
+    /**
+     * How the replication's threads wait: {@link ReplicationWaiting#BACKOFF}, the default, unless asked for; the
+     * levels spinning cost a core each, so they are run on their own, for {@code SYNC} alone.
+     */
+    @Param({"BACKOFF"})
+    ReplicationWaiting replicationWaiting;
+
+    /**
+     * Which of the replication's threads busy spin, each one more core.
+     */
+    public enum ReplicationWaiting {
+        /**
+         * Every thread backs off, the default.
+         */
+        BACKOFF,
+        /**
+         * The leader's sender, a core per follower.
+         */
+        SENDER_SPIN,
+        /**
+         * The sender, and the session thread waiting for a {@code SYNC} send's ack.
+         */
+        SENDER_WAITER_SPIN,
+        /**
+         * Those, and the replication's network threads on both nodes.
+         */
+        ALL_SPIN
+    }
 
     private final List<Runnable> stops = new ArrayList<>();
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+    private final Map<Meter.Id, long[]> timersAtMeasuring = new HashMap<>();
     private StaffixEngine.InitiatorApplication counterparty;
     private Thread busyTrader;
     private volatile boolean trading;
@@ -153,7 +187,8 @@ public class HaPair {
             }, "busy-session-trader");
             busyTrader.start();
         }
-        log.info("HA pair ready: {} replication, {} follower store, busy session {}", mode, followerStore, busySession);
+        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}", mode,
+                followerStore, busySession, replicationWaiting);
     }
 
     public void roundTrip() {
@@ -173,6 +208,7 @@ public class HaPair {
         if (busyTrader != null) {
             busyTrader.join();
         }
+        logTimer("ha.follower.lag", "fill to ack");
         logTimer("ha.follower.ack.latency", "follower round trip, batch sent to ack");
         logTimer("ha.sync.ack.latency", "SYNC send waiting for the ack");
         for (int i = stops.size() - 1; i >= 0; i--) {
@@ -183,10 +219,28 @@ public class HaPair {
         }
     }
 
+    /**
+     * Snapshots the replication's timers as measuring starts, so the trial's logs leave the warm-up out.
+     */
+    @Setup(Level.Iteration)
+    public void iteration(IterationParams iteration) {
+        if (iteration.getType() == IterationType.MEASUREMENT && timersAtMeasuring.isEmpty()) {
+            for (Meter meter : meters.getMeters()) {
+                if (meter instanceof Timer) {
+                    Timer timer = (Timer) meter;
+                    timersAtMeasuring.put(timer.getId(), new long[]{timer.count(), (long) timer.totalTime(TimeUnit.NANOSECONDS)});
+                }
+            }
+        }
+    }
+
     private void logTimer(String name, String description) {
         for (Timer timer : meters.find(name).timers()) {
-            log.info("{} ({}) {}: count {}, mean {} µs, max {} µs", name, description, timer.getId().getTags(), timer.count(),
-                    Math.round(timer.mean(TimeUnit.MICROSECONDS)), Math.round(timer.max(TimeUnit.MICROSECONDS)));
+            long[] atMeasuring = timersAtMeasuring.getOrDefault(timer.getId(), new long[2]);
+            long count = timer.count() - atMeasuring[0];
+            long totalNanos = (long) timer.totalTime(TimeUnit.NANOSECONDS) - atMeasuring[1];
+            log.info("{} ({}) {}, measurement iterations: count {}, mean {} µs", name, description, timer.getId().getTags(),
+                    count, count == 0 ? 0 : TimeUnit.NANOSECONDS.toMicros(totalNanos / count));
         }
     }
 
@@ -208,7 +262,7 @@ public class HaPair {
                         .decodingLatencyEnabled(false)
                         .encodingLatencyEnabled(false)
                         .build())
-                .highAvailability(ReplicationHaSettings.builder()
+                .highAvailability(replicationWaiting(ReplicationHaSettings.builder())
                         .nodeId(nodeId)
                         .peer("a", replicationA)
                         .peer("b", replicationB)
@@ -216,6 +270,20 @@ public class HaPair {
                         .leaderElection(StaticLeaderElection.Settings.builder().role(role).leaderId("a").build())
                         .build())
                 .build().instance());
+    }
+
+    private ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> replicationWaiting(
+            ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> settings) {
+        if (replicationWaiting != ReplicationWaiting.BACKOFF) {
+            settings.senderIdleStrategy(BusySpinIdleStrategy::getInstance);
+        }
+        if (replicationWaiting == ReplicationWaiting.SENDER_WAITER_SPIN || replicationWaiting == ReplicationWaiting.ALL_SPIN) {
+            settings.syncAckIdleStrategy(BusySpinIdleStrategy::getInstance);
+        }
+        if (replicationWaiting == ReplicationWaiting.ALL_SPIN) {
+            settings.selectStrategy(() -> new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()));
+        }
+        return settings;
     }
 
     private static FixEngineBuilder.FixEngineBuilderBuilder<?, ?> engine(String name, FixMessagesStoreSettings store) {

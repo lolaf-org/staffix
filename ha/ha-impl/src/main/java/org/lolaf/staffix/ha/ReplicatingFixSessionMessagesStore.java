@@ -17,7 +17,6 @@ package org.lolaf.staffix.ha;
 
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
@@ -63,13 +62,14 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      * @param onStarted    given this store once started, before the session writes, so what it writes is replicated
      */
     ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog, ReplicatedSession session,
-                                       Followers followers, Timer syncAckLatency, Consumer<FixSessionMessagesStore> onStarted) {
+                                       Followers followers, Timer syncAckLatency, IdleStrategy ackIdle,
+                                       Consumer<FixSessionMessagesStore> onStarted) {
         this.store = store;
         this.replicationLog = replicationLog;
         this.session = session;
         this.followers = followers;
         this.storeEventRecord = new StoreEventRecord();
-        this.ackIdle = new BackoffIdleStrategy();
+        this.ackIdle = ackIdle;
         this.replicatedAhead = new ReplicatedAhead();
         this.syncAckLatency = syncAckLatency;
         this.sessionSyncAckLatency = Timer.VoidTimer.getInstance();

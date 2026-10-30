@@ -24,6 +24,7 @@ import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.io.IOWorkersGroup;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
+import org.lolaf.betty.api.ss.SelectStrategy;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.ha.wire.CloseReason;
@@ -52,6 +53,7 @@ public final class ReplicationReceiver {
     private final int maxFrameBytes;
     private final Duration connectionRetry;
     private volatile @Nullable LeaderLink link;
+    private final SelectStrategy selectStrategy;
     private IOWorkersGroup ioWorkers;
     private Client client;
 
@@ -60,7 +62,8 @@ public final class ReplicationReceiver {
      *                      {@link org.lolaf.staffix.ha.log.ReplicationLog#getMaxEventFrameBytes()}
      */
     public ReplicationReceiver(InetSocketAddress leaderAddress, Replica replica, LongSupplier epoch, String nodeId,
-                               int maxFrameBytes, Duration connectionRetry) {
+                               int maxFrameBytes, Duration connectionRetry, SelectStrategy selectStrategy) {
+        this.selectStrategy = selectStrategy;
         this.leaderAddress = leaderAddress;
         this.replica = replica;
         this.epoch = epoch;
@@ -70,7 +73,9 @@ public final class ReplicationReceiver {
     }
 
     public void start() {
-        ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-follower").build().newInstance();
+        ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-follower")
+                .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
+                .build().newInstance();
         client = ClientBuilder.builder()
                 .id("staffix-ha-follower")
                 .connectAddress(leaderAddress)

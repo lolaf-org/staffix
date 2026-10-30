@@ -23,11 +23,13 @@ import org.lolaf.betty.api.io.IOEventsListener;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
+import org.lolaf.betty.api.ss.WakeupSelectStrategy;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
@@ -62,7 +64,8 @@ class TestReplicationPublisher {
     private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
     private final ReplicationPublisher publisher = new ReplicationPublisher(address, ha.getReplicationLog(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
-            "leader-a", Duration.ofMillis(100), 4, new ReplicationStats());
+            "leader-a", Duration.ofMillis(100), 4,
+            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats());
     private final RecordingHandler received = new RecordingHandler();
     private Client follower;
 

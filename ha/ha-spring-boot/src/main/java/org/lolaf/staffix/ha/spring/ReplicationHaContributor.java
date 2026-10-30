@@ -15,6 +15,8 @@
  */
 package org.lolaf.staffix.ha.spring;
 
+import org.lolaf.betty.api.ss.IdleStrategySelectStrategy;
+import org.lolaf.ringos.idling.BusySpinIdleStrategy;
 import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
@@ -51,6 +53,11 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         if (props.getReconnectInterval() != null) b.reconnectInterval(props.getReconnectInterval());
         if (props.getHeartbeatInterval() != null) b.heartbeatInterval(props.getHeartbeatInterval());
         if (props.getSendBuffers() != null) b.sendBuffers(props.getSendBuffers());
+        if (props.getSenderIdleStrategy() == ReplicationHaProps.Waiting.BUSY_SPIN) b.senderIdleStrategy(BusySpinIdleStrategy::getInstance);
+        if (props.getSyncAckIdleStrategy() == ReplicationHaProps.Waiting.BUSY_SPIN) b.syncAckIdleStrategy(BusySpinIdleStrategy::getInstance);
+        if (props.getSelectStrategy() == ReplicationHaProps.Waiting.BUSY_SPIN) {
+            b.selectStrategy(() -> new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()));
+        }
         if (props.getPromotionOutgoingSeqNumJump() != null) b.promotionOutgoingSeqNumJump(props.getPromotionOutgoingSeqNumJump());
         if (props.getHandOverTimeout() != null) b.handOverTimeout(props.getHandOverTimeout());
         if (props.getSwitchoverTimeout() != null) b.switchoverTimeout(props.getSwitchoverTimeout());

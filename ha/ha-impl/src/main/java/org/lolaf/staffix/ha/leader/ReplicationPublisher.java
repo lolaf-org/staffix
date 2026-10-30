@@ -24,8 +24,10 @@ import org.lolaf.betty.api.io.IOWorkersGroup;
 import org.lolaf.betty.api.settings.IOBufferPoolSettings;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
+import org.lolaf.betty.api.ss.SelectStrategy;
 import org.lolaf.betty.api.stats.IOBufferPoolStats;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.wire.CloseReason;
@@ -38,6 +40,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Map;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 /**
  * The leader's replication server: accepts its follower, and streams the log to it through a {@link FollowerLink}.
@@ -57,6 +60,8 @@ public final class ReplicationPublisher {
     private final String leaderId;
     private final Duration heartbeatInterval;
     private final int sendBuffers;
+    private final Supplier<IdleStrategy> senderIdleStrategy;
+    private final SelectStrategy selectStrategy;
     private final Followers followers;
     private final ReplicationStats stats;
     private IOWorkersGroup ioWorkers;
@@ -64,8 +69,10 @@ public final class ReplicationPublisher {
 
     public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLog log, ReplicatedSessions sessions, Followers followers,
                                 LongSupplier epoch, String leaderId, Duration heartbeatInterval, int sendBuffers,
-                                ReplicationStats stats) {
+                                Supplier<IdleStrategy> senderIdleStrategy, SelectStrategy selectStrategy, ReplicationStats stats) {
         this.sendBuffers = sendBuffers;
+        this.senderIdleStrategy = senderIdleStrategy;
+        this.selectStrategy = selectStrategy;
         this.stats = stats;
         this.followers = followers;
         this.bindAddress = bindAddress;
@@ -84,7 +91,9 @@ public final class ReplicationPublisher {
 
     public void start() {
         int batchBytes = FollowerLink.batchBytesFor(replicationLog);
-        ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-leader").build().newInstance();
+        ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-leader")
+                .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
+                .build().newInstance();
         server = ServerBuilder.builder()
                 .id("staffix-ha-leader")
                 .bindAddress(bindAddress)
@@ -150,7 +159,7 @@ public final class ReplicationPublisher {
         @Override
         public void onConnected(IOSession session) {
             FollowerLink link = new FollowerLink(session, replicationLog, sessions, epoch, leaderId, heartbeatInterval, sendBuffers,
-                    stats, ReplicationPublisher::launchSender);
+                    senderIdleStrategy.get(), stats, ReplicationPublisher::launchSender);
             session.setAttachment(link);
             followers.add(link);
         }

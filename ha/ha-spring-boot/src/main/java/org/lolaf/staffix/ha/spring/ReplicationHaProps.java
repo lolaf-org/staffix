@@ -78,6 +78,24 @@ public class ReplicationHaProps {
     private Integer sendBuffers;
 
     /**
+     * How the leader's sender, a thread per follower, waits for writes; unset keeps backing off. {@code busy-spin} sends
+     * at once, for a core per follower.
+     */
+    private Waiting senderIdleStrategy;
+
+    /**
+     * How a {@code SYNC} send waits for its acknowledgement; unset keeps backing off. {@code busy-spin} sees it at once,
+     * for the session thread's core while it waits.
+     */
+    private Waiting syncAckIdleStrategy;
+
+    /**
+     * How the replication's network threads wait, on both nodes; unset keeps betty's blocking select. {@code busy-spin}
+     * saves a system call per wake-up, for a core on each node.
+     */
+    private Waiting selectStrategy;
+
+    /**
      * How far a node that becomes leader moves the outgoing MsgSeqNum(34) of every replicated session; unset keeps
      * 10000.
      */
@@ -110,4 +128,12 @@ public class ReplicationHaProps {
      * drop the sessions, plus clock drift. Unset keeps 50ms; less than primos's minimum election timeout.
      */
     private Duration fencingMargin;
+
+    /**
+     * How a replication thread waits for work: as by default, or busy spinning for the lowest {@code SYNC} latency.
+     */
+    public enum Waiting {
+        DEFAULT,
+        BUSY_SPIN
+    }
 }

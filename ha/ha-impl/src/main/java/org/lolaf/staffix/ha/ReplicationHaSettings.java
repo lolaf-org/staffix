@@ -21,12 +21,17 @@ import lombok.Singular;
 import lombok.experimental.SuperBuilder;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
+import org.lolaf.betty.api.ss.SelectStrategy;
+import org.lolaf.betty.api.ss.WakeupSelectStrategy;
+import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Replicates the stores of the sessions asking for it to a standby engine over TCP.
@@ -86,6 +91,29 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final Duration heartbeatInterval = Duration.ofSeconds(1);
+
+    /**
+     * How the leader's sender, a thread per follower, waits for writes to send. The default backs off from spinning to
+     * parking, up to 1 ms, which a {@code SYNC} send then waits on; a busy spin, at the cost of a core per follower,
+     * sends at once.
+     */
+    @Builder.Default
+    private final Supplier<IdleStrategy> senderIdleStrategy = BackoffIdleStrategy::new;
+
+    /**
+     * How a {@code SYNC} send waits for its follower's ack, on the session's thread. The default backs off as the
+     * sender's does; a busy spin sees the ack at once, at the cost of the session thread's core while it waits.
+     */
+    @Builder.Default
+    private final Supplier<IdleStrategy> syncAckIdleStrategy = BackoffIdleStrategy::new;
+
+    /**
+     * How the replication's network threads wait, the leader's and the follower's: betty's default blocks in the
+     * selector, woken by a system call; busy spinning on an {@code IdleStrategySelectStrategy} saves it, at the cost of
+     * a core on each node.
+     */
+    @Builder.Default
+    private final Supplier<SelectStrategy> selectStrategy = () -> new WakeupSelectStrategy(10);
 
     /**
      * The leader's pooled write buffers per follower, a power of two of at least 2. One is kept spare, the others carry

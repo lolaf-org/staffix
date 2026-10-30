@@ -17,11 +17,13 @@ package org.lolaf.staffix.ha.follower;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.lolaf.betty.api.ss.WakeupSelectStrategy;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
-import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.leader.FollowerLink;
@@ -52,7 +54,8 @@ class TestReplicationReceiver {
     private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
     private final ReplicationPublisher publisher = new ReplicationPublisher(address, leader.getReplicationLog(), leader.getSessions(),
-            leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 4, new ReplicationStats());
+            leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 4,
+            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats());
     private final RecordingEngine follower = new RecordingEngine().with(MAIN);
     private final Replica replica = new Replica(follower);
     private final ReplicatingStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
@@ -73,7 +76,7 @@ class TestReplicationReceiver {
 
     private void connect() {
         receiver = new ReplicationReceiver(address, replica, () -> EPOCH, "follower-b", leader.getReplicationLog().getMaxEventFrameBytes(),
-                Duration.ofMillis(50));
+                Duration.ofMillis(50), new WakeupSelectStrategy(10));
         receiver.start();
         await().until(() -> receiver.getLink() != null && receiver.getLink().getState() == LeaderLink.State.STREAMING);
     }
