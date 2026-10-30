@@ -118,6 +118,9 @@ could mean.
 - The memory messages store could resend a message with another message's content when a resend ran while the session
   kept sending, and with direct memory, the default, could read memory it had already freed. A message overwritten
   during a resend is now gap filled instead.
+- The file messages store could resend a torn message when a resend ran while the session kept sending, or log the
+  session out with "Unable to fetch FIX messages to resend". A message overwritten during a resend is now gap filled
+  instead.
 
 ## [0.9.1] - 2026-10-14
 
