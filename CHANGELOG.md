@@ -115,6 +115,9 @@ could mean.
   `advertiseMsgTypeGrpOnLogon`, `advertiseEngineOnLogon`, `advertiseApplicationOnLogon` and those two set in a
   `default.yaml` were ignored for a session file that left them out. A setting left out of a session file now takes
   the `default.yaml` value, then the default.
+- The memory messages store could resend a message with another message's content when a resend ran while the session
+  kept sending, and with direct memory, the default, could read memory it had already freed. A message overwritten
+  during a resend is now gap filled instead.
 
 ## [0.9.1] - 2026-10-14
 
