@@ -160,9 +160,10 @@ public final class LeaderLink implements FrameHandler {
     }
 
     /**
-     * Acknowledges what the read applied, once for all of its frames.
+     * Writes the snapshot messages the read batched, then acknowledges what it applied, once for all of its frames.
      */
     void afterRead() {
+        replica.flushSnapshotBatches();
         if (state == State.STREAMING) {
             bindSessionsAgain();
         }

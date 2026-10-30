@@ -24,6 +24,8 @@ import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesStore;
+import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.wire.SessionStatus;
@@ -71,6 +73,7 @@ public final class Replica {
                 // a resume may start past the first fragments of a message this session was assembling
                 session.complete &= resumed && !session.assembling;
                 session.discardFragments();
+                session.discardSnapshotBatch();
             }
         }
         if (!resumed) {
@@ -232,8 +235,9 @@ public final class Replica {
         if (session == null) {
             return false;
         }
+        session.flushSnapshotBatch();
         if (fragmentFlags != 0 || session.assembling) {
-            if (!session.assemble(sequenceNumber, buffer, messageIndex, messageLength, fragmentFlags)) {
+            if (!session.assemble(sequenceNumber, buffer, messageIndex, messageLength, fragmentFlags, false)) {
                 return false;
             }
         } else if (session.store != null) {
@@ -254,6 +258,7 @@ public final class Replica {
         }
         session.complete = false;
         session.discardFragments();
+        session.discardSnapshotBatch();
         session.snapshotMessages = 0;
         session.store.resetSequenceNumbers();
         session.store.storeNextIncomingSeqNum(nextIncomingSeqNum);
@@ -268,11 +273,11 @@ public final class Replica {
             return false;
         }
         if (fragmentFlags != 0 || session.assembling) {
-            if (!session.assemble(sequenceNumber, buffer, messageIndex, messageLength, fragmentFlags)) {
+            if (!session.assemble(sequenceNumber, buffer, messageIndex, messageLength, fragmentFlags, true)) {
                 return false;
             }
         } else {
-            session.apply(StoreEventType.STORE_MESSAGE, sequenceNumber, buffer, messageIndex, messageLength);
+            session.storeSnapshotMessage(sequenceNumber, buffer, messageIndex, messageLength);
         }
         if ((fragmentFlags & WireFormat.MORE_FRAGMENTS) == 0) {
             session.snapshotMessages++;
@@ -291,10 +296,22 @@ public final class Replica {
         if (session == null || session.snapshotMessages != messageCount) {
             return false;
         }
+        session.flushSnapshotBatch();
         session.store.storeNextIncomingSeqNum(nextIncomingSeqNum);
         session.store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
         session.complete = true;
         return true;
+    }
+
+    /**
+     * Writes the snapshot messages batched by the frames of a read, before it is acknowledged.
+     */
+    void flushSnapshotBatches() {
+        for (ReplicaSession session : sessions) {
+            if (session != null) {
+                session.flushSnapshotBatch();
+            }
+        }
     }
 
     private @Nullable ReplicaSession replicated(int key) {
@@ -397,6 +414,10 @@ public final class Replica {
         private final FixSessionType fixSessionType;
         private final String fixSessionId;
         private final @Nullable FixSessionMessagesStore store;
+        /**
+         * Gathers the snapshot messages for a store that writes them in batches, null for one that does not.
+         */
+        private final @Nullable SnapshotBatch snapshotBatch;
         private final SessionStatus refusal;
         /**
          * Kept by a session refused until its settings here change, to bind it again once they do.
@@ -422,6 +443,8 @@ public final class Replica {
             this.fixSessionId = fixSessionId;
             this.store = store;
             this.refusal = refusal;
+            this.snapshotBatch = store instanceof BatchingFixSessionMessagesStore
+                    ? new SnapshotBatch((BatchingFixSessionMessagesStore) store) : null;
         }
 
         SessionStatus status() {
@@ -465,13 +488,38 @@ public final class Replica {
         }
 
         /**
+         * Writes a snapshot message, batched when the store batches: unlike one by one, which moves the outgoing
+         * seqnum to the message's, a batch leaves it alone, as {@link #snapshotBegin} set it.
+         */
+        void storeSnapshotMessage(long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength) {
+            if (snapshotBatch == null) {
+                apply(StoreEventType.STORE_MESSAGE, sequenceNumber, buffer, messageIndex, messageLength);
+            } else {
+                snapshotBatch.add(sequenceNumber, buffer, messageIndex, messageLength);
+            }
+        }
+
+        void flushSnapshotBatch() {
+            if (snapshotBatch != null) {
+                snapshotBatch.flush();
+            }
+        }
+
+        void discardSnapshotBatch() {
+            if (snapshotBatch != null) {
+                snapshotBatch.discard();
+            }
+        }
+
+        /**
          * Adds a fragment of a message longer than a frame, applying the message with its last fragment. A session not
          * replicated here keeps no bytes, only where the message ends. A continued fragment with no message begun is
          * what a resume leaves of a message whose start it skipped: dropped, its session catching up by snapshot.
          *
          * @return false for a fragment out of place: another message's, or a new message before the last one ended
          */
-        boolean assemble(long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
+        boolean assemble(long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags,
+                         boolean snapshot) {
             boolean continued = (fragmentFlags & WireFormat.CONTINUED_FRAGMENT) != 0;
             boolean moreFragments = (fragmentFlags & WireFormat.MORE_FRAGMENTS) != 0;
             if (continued != assembling) {
@@ -489,7 +537,9 @@ public final class Replica {
                 fragments = withRoomFor(messageLength).put(fragment);
             }
             if (!moreFragments) {
-                if (store != null) {
+                if (snapshot) {
+                    storeSnapshotMessage(sequenceNumber, fragments, 0, fragments.position());
+                } else if (store != null) {
                     apply(StoreEventType.STORE_MESSAGE, sequenceNumber, fragments, 0, fragments.position());
                 }
                 discardFragments();
@@ -516,9 +566,83 @@ public final class Replica {
         }
 
         void stop(Deadline deadline) {
+            discardSnapshotBatch();
             if (store != null) {
                 store.stop(deadline);
             }
+        }
+    }
+
+    /**
+     * Snapshot messages copied out of the receive buffer, written to the store together.
+     */
+    private static final class SnapshotBatch {
+
+        private static final int MAX_MESSAGES = 256;
+        private final BatchingFixSessionMessagesStore store;
+        private final SentFixMessage[] messages = new SentFixMessage[MAX_MESSAGES];
+        private int count;
+
+        SnapshotBatch(BatchingFixSessionMessagesStore store) {
+            this.store = store;
+        }
+
+        void add(long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength) {
+            if (messages[count] == null) {
+                messages[count] = new CopiedMessage();
+            }
+            ((CopiedMessage) messages[count]).copy(sequenceNumber, buffer, messageIndex, messageLength);
+            if (++count == MAX_MESSAGES) {
+                flush();
+            }
+        }
+
+        void flush() {
+            if (count == 0) {
+                return;
+            }
+            try {
+                store.storeSentFixMessages(messages, count);
+            } finally {
+                count = 0;
+            }
+        }
+
+        void discard() {
+            count = 0;
+        }
+    }
+
+    /**
+     * A message of a batch, its buffer kept and grown for the next one.
+     */
+    private static final class CopiedMessage implements SentFixMessage {
+
+        private long sequenceNumber;
+        private ByteBuffer message = ByteBuffer.allocate(256);
+
+        /**
+         * The message is lent as a range of {@code buffer}, which is put back as it was.
+         */
+        void copy(long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength) {
+            this.sequenceNumber = sequenceNumber;
+            if (message.capacity() < messageLength) {
+                message = ByteBuffer.allocate(Math.max(messageLength, message.capacity() * 2));
+            }
+            int position = buffer.position();
+            int limit = buffer.limit();
+            message.clear().put(buffer.limit(messageIndex + messageLength).position(messageIndex)).flip();
+            buffer.limit(limit).position(position);
+        }
+
+        @Override
+        public long getSequenceNumber() {
+            return sequenceNumber;
+        }
+
+        @Override
+        public ByteBuffer getMessage() {
+            return message;
         }
     }
 }

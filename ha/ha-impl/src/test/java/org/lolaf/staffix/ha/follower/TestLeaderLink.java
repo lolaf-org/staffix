@@ -293,6 +293,38 @@ class TestLeaderLink {
     }
 
     @Test
+    void aSnapshotIntoABatchingStoreWritesTheMessagesOfAReadInOneBatchAndLeavesTheOutgoingSeqnum() {
+        engine.batchingStores = true;
+        streaming();
+
+        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+                snapshotMessage(11, "eleven"),
+                snapshotMessage(12, "twelve"));
+        read(snapshotFragment(13, "thir", FIRST), snapshotFragment(13, "teen", LAST),
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 3, 22, 14));
+
+        assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13",
+                "batch 11 eleven, 12 twelve", "batch 13 thirteen", "incoming 22", "outgoing 14");
+        assertThat(sent.frames).contains("SESSION_STATUS epoch=7 key=0 REPLICATING");
+    }
+
+    @Test
+    void aSnapshotBatchIsWrittenBeforeALiveEventOfItsSessionAndDroppedByANewSnapshot() {
+        engine.batchingStores = true;
+        streaming();
+
+        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+                snapshotMessage(11, "eleven"),
+                event(EPOCH, 600, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 22, null),
+                snapshotMessage(12, "twelve"),
+                (out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 700, 21, 13),
+                snapshotMessage(13, "thirteen"));
+
+        assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13", "batch 11 eleven",
+                "incoming 22", "reset", "incoming 21", "outgoing 13", "batch 13 thirteen");
+    }
+
+    @Test
     void aSnapshotEndingWithAnotherCountThanReceivedIsAProtocolError() {
         streaming();
 

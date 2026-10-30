@@ -25,6 +25,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
@@ -33,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.StringJoiner;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -86,10 +88,14 @@ public final class RecordingEngine implements EngineAccess {
      * The storage identity the next stores opened report.
      */
     volatile @Nullable String nextStorageIdentity = "follower-storage";
+    /**
+     * Whether the next stores opened write sent messages in batches.
+     */
+    volatile boolean batchingStores;
 
     @Override
     public FixSessionMessagesStore openStore(FixSessionSettings session) {
-        RecordingStore store = new RecordingStore();
+        RecordingStore store = batchingStores ? new BatchingRecordingStore() : new RecordingStore();
         store.storageIdentity = nextStorageIdentity;
         stores.put(session.getFixSessionType() + " " + session.getFixSessionId(), store);
         return store;
@@ -141,7 +147,7 @@ public final class RecordingEngine implements EngineAccess {
         return stores.values().stream().filter(store -> store.started).count();
     }
 
-    public static final class RecordingStore implements FixSessionMessagesStore {
+    public static class RecordingStore implements FixSessionMessagesStore {
 
         public final List<String> writes = new CopyOnWriteArrayList<>();
         /**
@@ -226,6 +232,24 @@ public final class RecordingEngine implements EngineAccess {
         @Override
         public void find(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
             // reads are not replicated
+        }
+    }
+
+    /**
+     * Records each batch as one write, its messages separated by commas.
+     */
+    static final class BatchingRecordingStore extends RecordingStore implements BatchingFixSessionMessagesStore {
+
+        @Override
+        public void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) {
+            StringJoiner batch = new StringJoiner(", ", "batch ", "");
+            for (int i = 0; i < sentFixMessageCount; i++) {
+                ByteBuffer message = sentFixMessages[i].getMessage();
+                byte[] text = new byte[message.remaining()];
+                message.get(text);
+                batch.add(sentFixMessages[i].getSequenceNumber() + " " + new String(text, StandardCharsets.US_ASCII));
+            }
+            writes.add(batch.toString());
         }
     }
 }

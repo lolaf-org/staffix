@@ -15,22 +15,30 @@
  */
 package org.lolaf.staffix.impl;
 
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.Delegate;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
 /**
  * A store the high availability opens for a replica: its probes are evaluated while it runs, under the session's scope,
- * which no running session holds on a follower.
+ * which no running session holds on a follower. A store that batches writes keeps batching through it.
  */
-@RequiredArgsConstructor
-final class ReplicaStore implements FixSessionMessagesStore {
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
+class ReplicaStore implements FixSessionMessagesStore {
 
     @Delegate(excludes = Lifecycle.class)
     private final FixSessionMessagesStore store;
     private final Runnable registerProbes;
     private final Runnable unregisterProbes;
+
+    static ReplicaStore of(FixSessionMessagesStore store, Runnable registerProbes, Runnable unregisterProbes) {
+        return store instanceof BatchingFixSessionMessagesStore
+                ? new Batching((BatchingFixSessionMessagesStore) store, registerProbes, unregisterProbes)
+                : new ReplicaStore(store, registerProbes, unregisterProbes);
+    }
 
     @Override
     public FixSessionMessagesStore start() {
@@ -44,6 +52,21 @@ final class ReplicaStore implements FixSessionMessagesStore {
         unregisterProbes.run();
         store.stop(stopDeadline);
         return this;
+    }
+
+    private static final class Batching extends ReplicaStore implements BatchingFixSessionMessagesStore {
+
+        private final BatchingFixSessionMessagesStore store;
+
+        private Batching(BatchingFixSessionMessagesStore store, Runnable registerProbes, Runnable unregisterProbes) {
+            super(store, registerProbes, unregisterProbes);
+            this.store = store;
+        }
+
+        @Override
+        public void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) {
+            store.storeSentFixMessages(sentFixMessages, sentFixMessageCount);
+        }
     }
 
     private interface Lifecycle {

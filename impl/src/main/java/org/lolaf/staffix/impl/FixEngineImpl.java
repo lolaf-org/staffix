@@ -852,7 +852,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         public FixMessagesStore.FixSessionMessagesStore openStore(FixSessionSettings settings) {
             ProbesImpl probes = new ProbesImpl(FixSessionProbeScope.of(settings.getFixSessionId()));
             FixAlertsPublisher alertsPublisher = findMatchAmongstAlertsPublishers(settings.getFixAlertsPublisherInstanceId());
-            return new ReplicaStore(findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), probes),
+            return ReplicaStore.of(findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), probes),
                     () -> probesManager.register(probes, alertsPublisher, () -> true), () -> probesManager.unregister(probes));
         }
 
