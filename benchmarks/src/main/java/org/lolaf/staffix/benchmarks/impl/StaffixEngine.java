@@ -189,7 +189,7 @@ public class StaffixEngine extends AbstractBenchmark {
         }
     }
 
-    private static class InitiatorApplication implements FixApplication {
+    static class InitiatorApplication implements FixApplication {
 
         AtomicBoolean connected = new AtomicBoolean();
         AtomicBoolean receivedResponse = new AtomicBoolean();
@@ -269,7 +269,7 @@ public class StaffixEngine extends AbstractBenchmark {
         }
     }
 
-    private static class AcceptorApplication implements FixApplication {
+    static class AcceptorApplication implements FixApplication {
 
         @Override
         public FixApiVersion getFixApiVersion() {
