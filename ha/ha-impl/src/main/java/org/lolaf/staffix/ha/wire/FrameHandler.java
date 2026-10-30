@@ -30,6 +30,12 @@ import java.nio.ByteBuffer;
  */
 public interface FrameHandler {
 
+    /**
+     * A follower's first frame.
+     *
+     * @param lastAppliedOffset the offset of the last event it applied in {@code lastAppliedEpoch}, -1 for none: the
+     *                          leader resumes after it when its log still holds it in the same epoch
+     */
     void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset);
 
     /**
@@ -46,6 +52,10 @@ public interface FrameHandler {
     void onSession(long epoch, int sessionKey, FixSessionType fixSessionType, ReplicationMode replicationMode,
                    String fixSessionId, @Nullable String storageIdentity);
 
+    /**
+     * The follower's answer to a {@code SESSION}, and again whenever the session's state on the follower changes, as
+     * when a snapshot completes it.
+     */
     void onSessionStatus(long epoch, int sessionKey, SessionStatus status);
 
     /**
@@ -57,7 +67,8 @@ public interface FrameHandler {
                       ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags);
 
     /**
-     * @param cutOffset the log offset the snapshot is consistent with; the stream continues from there
+     * @param cutOffset the log offset the snapshot starts at; the session's events after it come through the snapshot
+     *                  until its end, and through the stream again after that
      */
     void onSnapshotBegin(long epoch, int sessionKey, long cutOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum);
 
@@ -68,11 +79,32 @@ public interface FrameHandler {
     void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
                            int messageLength, byte fragmentFlags);
 
-    void onSnapshotEnd(long epoch, int sessionKey, int messageCount);
+    /**
+     * @param messageCount       the messages the snapshot carried, a fragmented one counted once: the follower checks
+     *                           it received them all
+     * @param nextIncomingSeqNum the session's seqnums when the snapshot caught up with its store, which supersede the
+     *                           ones of {@link #onSnapshotBegin}
+     */
+    void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum);
 
+    /**
+     * @param appliedOffset the offset of the last event the follower applied, which releases the {@code SYNC} sends
+     *                      waiting for it
+     * @param inSync        whether the follower holds every session the leader replicates
+     */
     void onAck(long epoch, long appliedOffset, boolean inSync);
 
+    /**
+     * Sent when the leader sent nothing for a heartbeat interval. The follower answers with an ACK, so a quiet stream
+     * still carries traffic both ways.
+     *
+     * @param logTailOffset where the leader's log ends
+     */
     void onHeartbeat(long epoch, long logTailOffset);
 
+    /**
+     * The sender's last frame before it disconnects. A {@link CloseReason#SHUTDOWN} from the leader tells the follower
+     * it was sent every event, so it takes over without moving its seqnums ahead.
+     */
     void onClose(long epoch, CloseReason reason, String text);
 }

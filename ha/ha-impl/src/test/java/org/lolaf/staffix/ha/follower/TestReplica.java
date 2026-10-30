@@ -55,7 +55,7 @@ class TestReplica {
         String id = REPLICATED.getFixSessionId().toString();
         replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage");
         RecordingEngine.RecordingStore first = engine.store(REPLICATED);
-        assertThat(replica.snapshotBegin(0, 1, 1) && replica.snapshotEnd(0, 0)).isTrue();
+        assertThat(replica.snapshotBegin(0, 1, 1) && replica.snapshotEnd(0, 0, 1, 1)).isTrue();
 
         engine.replace(NOT_REPLICATED.toBuilder().fixSessionId(REPLICATED.getFixSessionId()).build());
         assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.NONE, "leader-storage"))

@@ -216,11 +216,14 @@ public class FrameEncoder {
         return frameLength;
     }
 
-    public static int snapshotEnd(ByteBuffer out, int index, long epoch, int sessionKey, int messageCount) {
+    public static int snapshotEnd(ByteBuffer out, int index, long epoch, int sessionKey, int messageCount,
+                                  long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         int length = header(out, index, FrameType.SNAPSHOT_END, 0, epoch, 0);
         int p = index + HEADER_BYTES;
         out.putInt(p, sessionKey);
         out.putInt(p + 4, messageCount);
+        out.putLong(p + 8, nextIncomingSeqNum);
+        out.putLong(p + 16, nextOutgoingSeqNum);
         return length;
     }
 

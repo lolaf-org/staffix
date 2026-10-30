@@ -222,11 +222,11 @@ public final class LeaderLink implements FrameHandler {
      * follower.
      */
     @Override
-    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount) {
+    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         if (!fromLeader(epoch)) {
             return;
         }
-        if (!replica.snapshotEnd(sessionKey, messageCount)) {
+        if (!replica.snapshotEnd(sessionKey, messageCount, nextIncomingSeqNum, nextOutgoingSeqNum)) {
             close(CloseReason.PROTOCOL_ERROR, "a snapshot of session key " + sessionKey + " that does not end with "
                     + messageCount + " messages received");
             return;

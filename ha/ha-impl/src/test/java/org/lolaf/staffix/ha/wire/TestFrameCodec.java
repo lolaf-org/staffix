@@ -157,7 +157,7 @@ class TestFrameCodec {
         ByteBuffer buffer = buffer(false);
         int begin = FrameEncoder.snapshotBegin(buffer, 0, 7, 3, 8192, 19, 43);
         int message = FrameEncoder.snapshotMessage(buffer, begin, 7, 3, 42, message());
-        int end = FrameEncoder.snapshotEnd(buffer, begin + message, 7, 3, 1);
+        int end = FrameEncoder.snapshotEnd(buffer, begin + message, 7, 3, 1, 20, 44);
 
         decodeWhole(buffer, 0, begin);
         decodeWhole(buffer, begin, message);
@@ -166,7 +166,7 @@ class TestFrameCodec {
         assertThat(handler.frames).containsExactly(
                 "SNAPSHOT_BEGIN epoch=7 key=3 cut=8192 nextIn=19 nextOut=43",
                 "SNAPSHOT_MESSAGE epoch=7 key=3 seq=42 message=" + new String(MESSAGE, StandardCharsets.US_ASCII),
-                "SNAPSHOT_END epoch=7 key=3 count=1");
+                "SNAPSHOT_END epoch=7 key=3 count=1 nextIn=20 nextOut=44");
     }
 
     @Test

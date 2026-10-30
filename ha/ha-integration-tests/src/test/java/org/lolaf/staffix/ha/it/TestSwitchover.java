@@ -52,6 +52,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -305,6 +306,39 @@ class TestSwitchover {
         follower = startFollower.get();
         await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
         counterparty.roundTrips(10);
+        long expected = counterpartyIncomingSeqNum();
+
+        assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+
+        await().until(() -> counterparty.logons.get() == 2);
+        counterparty.roundTrips(10);
+        assertThat(counterparty.resendRequests.get()).as("no gap: the snapshot gave b all of a's state").isZero();
+        assertThat(counterpartyIncomingSeqNum()).as("a's Logout, b's Logon and ten answers").isEqualTo(expected + 12);
+    }
+
+    /**
+     * The session's writes during the snapshot reach the follower through it, and its end carries the seqnums they
+     * moved.
+     */
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("pairsAndModes")
+    void aFollowerRestartedWhileTheCounterpartyKeepsTradingIsCaughtUpAndTakesOverCleanly(Pair pair, ReplicationMode mode)
+            throws InterruptedException {
+        start(Storage.SEPARATE, pair, mode);
+        counterparty.roundTrips(100);
+        follower.stop(Deadline.of(Duration.ofSeconds(5)));
+        AtomicBoolean trading = new AtomicBoolean(true);
+        Thread trader = new Thread(() -> {
+            while (trading.get()) {
+                counterparty.roundTrips(1);
+            }
+        });
+        trader.start();
+
+        follower = startFollower.get();
+        await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
+        trading.set(false);
+        trader.join();
         long expected = counterpartyIncomingSeqNum();
 
         assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);

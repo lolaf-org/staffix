@@ -33,7 +33,7 @@ import lombok.Getter;
  *                                       message length 4; then the message
  * SNAPSHOT_BEGIN    leader to follower  session key 4, reserved 4, cut offset 8, next incoming 8, next outgoing 8
  * SNAPSHOT_MESSAGE  leader to follower  session key 4, message length 4, sequence number 8; then the message
- * SNAPSHOT_END      leader to follower  session key 4, message count 4
+ * SNAPSHOT_END      leader to follower  session key 4, message count 4, next incoming 8, next outgoing 8
  * ACK               follower to leader  applied offset 8
  * HEARTBEAT         leader to follower  log tail offset 8
  * CLOSE             either way          reason 2, text length 2; then the text
@@ -49,7 +49,7 @@ public enum FrameType {
     STORE_EVENT(5, 28),
     SNAPSHOT_BEGIN(6, 32),
     SNAPSHOT_MESSAGE(7, 16),
-    SNAPSHOT_END(8, 8),
+    SNAPSHOT_END(8, 24),
     ACK(9, 8),
     HEARTBEAT(10, 8),
     CLOSE(11, 4);

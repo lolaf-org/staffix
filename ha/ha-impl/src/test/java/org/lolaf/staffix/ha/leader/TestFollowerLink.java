@@ -41,8 +41,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -60,6 +63,7 @@ class TestFollowerLink {
 
     private static final long EPOCH = 7;
     private static final String SESSION = "default.main:VERSION_44:SENDER->TARGET";
+    private static final int MESSAGE_BYTES = 1_000;
 
     private final IOSession connection = mock(IOSession.class);
     private final RecordingHandler sent = new RecordingHandler();
@@ -81,7 +85,12 @@ class TestFollowerLink {
     }
 
     private FollowerLink link() {
-        return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100), 100, stats,
+        return link(100);
+    }
+
+    private FollowerLink link(int snapshotMaxMessages) {
+        return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
+                snapshotMaxMessages, stats,
                 loop -> {
                 });
     }
@@ -120,6 +129,16 @@ class TestFollowerLink {
         ByteBuffer batch = ByteBuffer.allocate(1 << 20);
         int filled = link.fill(batch);
         decodeAll(batch.limit(filled));
+    }
+
+    /**
+     * Starts the pending snapshot and sends its chunks until it ends, as the sender loop would with no live writes.
+     */
+    private void snapshot() {
+        link.startPendingSnapshot();
+        while (link.isSnapshotInProgress() && link.getState() == FollowerLink.State.STREAMING) {
+            link.sendSnapshotChunk();
+        }
     }
 
     @Test
@@ -362,7 +381,7 @@ class TestFollowerLink {
         assertThat(link.getSessionSync(1)).isEqualTo(FollowerLink.SessionSync.IN_SYNC);
         assertThat(link.getSessionSync(2)).isEqualTo(FollowerLink.SessionSync.NOT_REPLICATED);
         sent.frames.clear();
-        link.snapshotPending();
+        snapshot();
         assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
         assertThat(sent.frames).noneMatch(frame -> frame.contains("key=1") || frame.contains("key=2"));
     }
@@ -391,18 +410,131 @@ class TestFollowerLink {
         sent.frames.clear();
 
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
-        link.snapshotPending();
+        snapshot();
 
         long cut = ha.getReplicationLog().getTailOffset();
         assertThat(sent.frames).containsExactly(
                 "SNAPSHOT_BEGIN epoch=7 key=0 cut=" + cut + " nextIn=21 nextOut=13",
                 "SNAPSHOT_MESSAGE epoch=7 key=0 seq=11 message=eleven",
                 "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=twelve",
-                "SNAPSHOT_END epoch=7 key=0 count=2");
+                "SNAPSHOT_END epoch=7 key=0 count=2 nextIn=21 nextOut=13");
         verify(local).find(eq(1L), eq(12L), any(StoreMessagesConsumer.class));
         assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_SENT);
         assertThat(stats.getSnapshots()).isEqualTo(1);
         assertThat(stats.getSnapshotMessages()).isEqualTo(2);
+    }
+
+    /**
+     * A started store holding the messages up to {@code outgoing - 1}, each {@code MESSAGE_BYTES} long, its next
+     * outgoing seqnum answered from {@code outgoing} one call after the other, the last answer repeated.
+     */
+    private static FixSessionMessagesStore storeHolding(Long first, Long... next) {
+        FixSessionMessagesStore store = startedStore();
+        when(store.getIncomingSeqNum()).thenReturn(21L);
+        when(store.getOutgoingSeqNum()).thenReturn(first, next);
+        doAnswer(invocation -> {
+            long stop = invocation.getArgument(1);
+            StoreMessagesConsumer consumer = invocation.getArgument(2);
+            for (long seqNum = invocation.getArgument(0); seqNum <= stop; seqNum++) {
+                if (!consumer.onMessage(seqNum, ByteBuffer.wrap(new byte[MESSAGE_BYTES]))) {
+                    return null;
+                }
+            }
+            return null;
+        }).when(store).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
+        return store;
+    }
+
+    private List<Long> snapshotSeqNums() {
+        return sent.frames.stream().filter(frame -> frame.startsWith("SNAPSHOT_MESSAGE"))
+                .map(frame -> Long.parseLong(frame.replaceAll(".* seq=(\\d+) .*", "$1"))).collect(Collectors.toList());
+    }
+
+    @Test
+    void aSnapshotGoesInChunksBetweenTheBatchesOfTheOtherSessionsAndSkipsItsOwnEvents() {
+        link = link(10_000);
+        FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
+        FixSessionMessagesStore other = replicated("other");
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        fill();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+        sent.frames.clear();
+
+        link.startPendingSnapshot();
+        link.sendSnapshotChunk();
+
+        assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
+        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("SNAPSHOT_END"));
+        int chunked = sent.frames.size();
+        main.storeNextIncomingSeqNum(22);
+        other.storeNextIncomingSeqNum(6);
+        fill();
+        assertThat(sent.frames.subList(chunked, sent.frames.size())).singleElement().asString()
+                .contains("key=1 STORE_INCOMING_SEQ_NUM seq=6");
+
+        while (link.isSnapshotInProgress()) {
+            link.sendSnapshotChunk();
+        }
+        assertThat(snapshotSeqNums()).isEqualTo(LongStream.rangeClosed(1, 1_000).boxed().collect(Collectors.toList()));
+        assertThat(sent.frames).last().isEqualTo("SNAPSHOT_END epoch=7 key=0 count=1000 nextIn=21 nextOut=1001");
+    }
+
+    @Test
+    void aSnapshotEndsWithTheRoundThatCaughtUpWithTheSessionWrites() {
+        link = link(10_000);
+        ha.replicatingStore(settings("main"), storeHolding(1_001L, 1_011L), new RecordingProbes());
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        fill();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+        sent.frames.clear();
+
+        snapshot();
+
+        assertThat(snapshotSeqNums()).isEqualTo(LongStream.rangeClosed(1, 1_010).boxed().collect(Collectors.toList()));
+        assertThat(sent.frames).last().isEqualTo("SNAPSHOT_END epoch=7 key=0 count=1010 nextIn=21 nextOut=1011");
+    }
+
+    @Test
+    void aSnapshotNotCatchingUpSendsItsLastRoundWhole() {
+        link = link(10_000);
+        ha.replicatingStore(settings("main"), storeHolding(1_001L, 3_001L), new RecordingProbes());
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        fill();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+        link.startPendingSnapshot();
+        while (snapshotSeqNums().size() < 1_000) {
+            link.sendSnapshotChunk();
+        }
+        sent.frames.clear();
+
+        link.sendSnapshotChunk();
+
+        assertThat(snapshotSeqNums()).as("the second round, longer than the first, in one chunk")
+                .isEqualTo(LongStream.rangeClosed(1_001, 3_000).boxed().collect(Collectors.toList()));
+        assertThat(sent.frames).last().isEqualTo("SNAPSHOT_END epoch=7 key=0 count=3000 nextIn=21 nextOut=3001");
+        assertThat(link.isSnapshotInProgress()).isFalse();
+    }
+
+    @Test
+    void aResetOfTheSessionEndsItsSnapshotAndIsSentAfterItsEnd() {
+        link = link(10_000);
+        FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        fill();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+        link.startPendingSnapshot();
+        link.sendSnapshotChunk();
+        sent.frames.clear();
+
+        main.resetSequenceNumbers();
+        fill();
+        link.sendSnapshotChunk();
+        fill();
+
+        assertThat(link.isSnapshotInProgress()).isFalse();
+        assertThat(sent.frames).hasSize(2);
+        assertThat(sent.frames.get(0)).startsWith("SNAPSHOT_END epoch=7 key=0 count=");
+        assertThat(sent.frames.get(1)).contains("key=0 RESET_SEQ_NUM");
     }
 
     @Test
@@ -424,13 +556,13 @@ class TestFollowerLink {
         sent.frames.clear();
 
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
-        link.snapshotPending();
+        snapshot();
 
         assertThat(sent.frames).filteredOn(frame -> !frame.startsWith("SNAPSHOT_BEGIN")).containsExactly(
                 "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=" + x + " more",
                 "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=" + y + " continued more",
                 "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=zzz continued",
-                "SNAPSHOT_END epoch=7 key=0 count=1");
+                "SNAPSHOT_END epoch=7 key=0 count=1 nextIn=21 nextOut=13");
     }
 
     @Test
@@ -442,7 +574,7 @@ class TestFollowerLink {
         fill();
 
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
-        link.snapshotPending();
+        snapshot();
 
         verify(local).find(eq(901L), eq(1_000L), any(StoreMessagesConsumer.class));
     }
@@ -457,7 +589,7 @@ class TestFollowerLink {
         sent.frames.clear();
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
 
-        link.snapshotPending();
+        snapshot();
 
         assertThat(sent.frames).isEmpty();
         assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
@@ -465,9 +597,10 @@ class TestFollowerLink {
         verify(local, never()).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
 
         when(local.isStarted()).thenReturn(true);
-        link.snapshotPending();
-
-        assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
+        await().untilAsserted(() -> {
+            snapshot();
+            assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
+        });
         assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_SENT);
     }
 
@@ -482,7 +615,7 @@ class TestFollowerLink {
         sent.frames.clear();
 
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
-        link.snapshotPending();
+        snapshot();
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
         assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 SNAPSHOT_FAILED"));

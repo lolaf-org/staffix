@@ -87,8 +87,9 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount) {
-        frames.add("SNAPSHOT_END epoch=" + epoch + " key=" + sessionKey + " count=" + messageCount);
+    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        frames.add("SNAPSHOT_END epoch=" + epoch + " key=" + sessionKey + " count=" + messageCount + " nextIn="
+                + nextIncomingSeqNum + " nextOut=" + nextOutgoingSeqNum);
     }
 
     @Override

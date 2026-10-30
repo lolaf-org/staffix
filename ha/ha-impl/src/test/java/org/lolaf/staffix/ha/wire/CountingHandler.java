@@ -69,7 +69,7 @@ class CountingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount) {
+    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         frames++;
     }
 

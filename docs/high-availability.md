@@ -25,7 +25,9 @@ one on your machine, with a witness and a counterparty, to kill and restart by h
 - **The leader replicates each write as it makes it**, per session, in the mode the session asks for (see below). The
   follower acknowledges what it applied.
 - **A follower that connects late, or lost the stream, catches up**: from where it left off when the leader still holds
-  those writes, else by a snapshot of each session (its sequence numbers and its most recent messages).
+  those writes, else by a snapshot of each session (its sequence numbers and its most recent messages). A snapshot
+  goes in chunks between the other sessions' writes, so they keep replicating, and their `SYNC` sends keep flowing,
+  while it lasts.
 - **On taking over**, the new leader runs the sessions at the sequence numbers the old one left them, when the old
   leader handed over cleanly. After a failure it moves them ahead first, since the old leader may have sent messages it
   never received (see [Failover and sequence numbers](#failover-and-sequence-numbers)).

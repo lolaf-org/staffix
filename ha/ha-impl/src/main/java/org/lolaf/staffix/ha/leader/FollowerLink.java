@@ -50,10 +50,14 @@ import java.util.function.LongSupplier;
  *
  * <p>Frames from the follower arrive on the connection's IO thread; the log is streamed from a thread of the link's
  * own, which borrows a write buffer, reads as many events as fit straight into it behind room for their headers, and
- * sends it. A session the follower answers {@link SessionStatus#SNAPSHOT_NEEDED} for is snapshot by that thread
- * between two batches, so the snapshot is consistent with the stream: every event before the reader's position is in
- * the store it reads, and the events after it are sent next, applied twice at worst. A follower the log laps is
- * disconnected, so it knows it missed events and reconnects to be caught up.
+ * sends it. A follower the log laps is disconnected, so it knows it missed events and reconnects to be caught up.
+ *
+ * <p>A session the follower answers {@link SessionStatus#SNAPSHOT_NEEDED} for is snapshot by that thread one chunk per
+ * batch, so the other sessions keep streaming. Its own events are skipped meanwhile, except a reset, which ends the
+ * snapshot: a session's message is in its store before its event is in the log, so the snapshot copies what was
+ * skipped, and the follower's store is written in seqnum order as by the stream. The snapshot copies in rounds, each up
+ * to the store's last message when it starts, and ends with a round that fits in one chunk; a round no shorter than the
+ * one before, the session writing faster than it is copied, is sent whole, holding the other sessions for its time.
  */
 @Slf4j
 public final class FollowerLink implements FrameHandler {
@@ -96,6 +100,10 @@ public final class FollowerLink implements FrameHandler {
     private volatile boolean reportedInSync;
     private volatile AtomicReferenceArray<SessionSync> sessionSyncs = new AtomicReferenceArray<>(16);
     private volatile boolean snapshotRequested;
+    /**
+     * The session being snapshot, only one at a time; read and written by the sender thread only.
+     */
+    private @Nullable SnapshotCursor snapshot;
     private long storeRetryNanos = Long.MAX_VALUE;
     private volatile boolean paused;
     /**
@@ -353,7 +361,7 @@ public final class FollowerLink implements FrameHandler {
     }
 
     @Override
-    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount) {
+    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         unexpected(FrameType.SNAPSHOT_END);
     }
 
@@ -387,9 +395,21 @@ public final class FollowerLink implements FrameHandler {
                 close(CloseReason.LAPPED, "the log overwrote events not sent yet");
                 break;
             }
-            if (dst.getInt(filled + WireFormat.STORE_EVENT_BODY_OFFSET) >= announced) {
+            int sessionKey = dst.getInt(filled + WireFormat.STORE_EVENT_BODY_OFFSET);
+            if (sessionKey >= announced) {
                 if (!reader.seek(reader.getEventOffset())) {
                     close(CloseReason.LAPPED, "the log overwrote an event while its session was announced");
+                }
+                break;
+            }
+            if (snapshot != null && snapshot.sessionKey == sessionKey) {
+                if (dst.get(filled + WireFormat.STORE_EVENT_BODY_OFFSET + Integer.BYTES) != StoreEventType.RESET_SEQ_NUM.getCode()) {
+                    continue;
+                }
+                // left for the stream, after the snapshot's end
+                snapshot.resetAhead = true;
+                if (!reader.seek(reader.getEventOffset())) {
+                    close(CloseReason.LAPPED, "the log overwrote a reset while its session was snapshot");
                 }
                 break;
             }
@@ -421,6 +441,10 @@ public final class FollowerLink implements FrameHandler {
                     return filled;
                 }
                 filled += bytes;
+                if (snapshot != null && snapshot.sessionKey == key) {
+                    // the follower binds the session again and says whether it still needs one
+                    snapshot = null;
+                }
             }
             reannouncements.poll();
         }
@@ -482,70 +506,127 @@ public final class FollowerLink implements FrameHandler {
                 idle.idle();
                 continue;
             }
-            if (snapshotRequested || storeRetryNanos != Long.MAX_VALUE && System.nanoTime() >= storeRetryNanos) {
-                snapshotRequested = false;
-                storeRetryNanos = Long.MAX_VALUE;
-                snapshotPending();
+            startPendingSnapshot();
+            boolean sent = sendBatch();
+            if (snapshot != null && state == State.STREAMING) {
+                sendSnapshotChunk();
+                sent = true;
+            }
+            if (sent) {
                 lastSendNanos = System.nanoTime();
-                continue;
-            }
-            ByteBuffer batch = connection.borrow(batchBytes);
-            batch.clear().limit(batchBytes);
-            int filled = fill(batch);
-            if (filled == 0) {
-                filled = heartbeatIfDue(batch, System.nanoTime());
-            }
-            if (filled == 0) {
-                connection.unborrow(batch);
+                idle.reset();
+            } else {
                 idle.idle();
-                continue;
             }
-            if (filledEventOffset >= 0) {
-                // before the send: an ack processed in between would otherwise leave the sample to the next one
-                ackLatency.onSent(filledEventOffset, System.nanoTime());
-            }
-            connection.send(written(batch, filled), true);
-            lastSendNanos = System.nanoTime();
-            idle.reset();
         }
+    }
+
+    private boolean sendBatch() {
+        ByteBuffer batch = connection.borrow(batchBytes);
+        batch.clear().limit(batchBytes);
+        int filled = fill(batch);
+        if (filled == 0) {
+            filled = heartbeatIfDue(batch, System.nanoTime());
+        }
+        if (filled == 0) {
+            connection.unborrow(batch);
+            return false;
+        }
+        if (filledEventOffset >= 0) {
+            // before the send: an ack processed in between would otherwise leave the sample to the next one
+            ackLatency.onSent(filledEventOffset, System.nanoTime());
+        }
+        connection.send(written(batch, filled), true);
+        return true;
     }
 
     /**
-     * Snapshots every session the follower asked for, at the reader's position, which the stream then resumes from.
+     * Starts the snapshot of the first session the follower asked one for, when none is in progress. Its cut is the
+     * reader's position: the session's events after it are skipped until the snapshot ends.
      */
-    void snapshotPending() {
+    void startPendingSnapshot() {
+        if (snapshot != null || !snapshotRequested && (storeRetryNanos == Long.MAX_VALUE || System.nanoTime() < storeRetryNanos)) {
+            return;
+        }
+        snapshotRequested = false;
+        storeRetryNanos = Long.MAX_VALUE;
         for (int key = 0; key < announced && state == State.STREAMING; key++) {
             // marked sent before it goes: the follower's REPLICATING may come back before the snapshot's last frame
             // is handed over
-            if (sessionSync(key, SessionSync.SNAPSHOT_PENDING, SessionSync.SNAPSHOT_SENT) && !snapshot(key)) {
-                sessionSync(key, SessionSync.SNAPSHOT_SENT, SessionSync.SNAPSHOT_PENDING);
+            if (!sessionSync(key, SessionSync.SNAPSHOT_PENDING, SessionSync.SNAPSHOT_SENT)) {
+                continue;
             }
+            FixSessionMessagesStore store = sessions.get(key).getConfig().getStore();
+            if (store.isStarted()) {
+                snapshot = new SnapshotCursor(key, store, reader.getOffset());
+                // others may be pending, started once this one ends
+                snapshotRequested = true;
+                return;
+            }
+            // a session registered but not yet running, as on taking leadership: retried without holding the stream
+            storeRetryNanos = System.nanoTime() + STORE_RETRY_NANOS;
+            sessionSync(key, SessionSync.SNAPSHOT_SENT, SessionSync.SNAPSHOT_PENDING);
         }
     }
 
-    private boolean snapshot(int sessionKey) {
-        ReplicatedSession session = sessions.get(sessionKey);
-        FixSessionMessagesStore store = session.getConfig().getStore();
-        if (!store.isStarted()) {
-            // a session registered but not yet running, as on taking leadership: retried without holding the stream
-            storeRetryNanos = System.nanoTime() + STORE_RETRY_NANOS;
-            return false;
-        }
-        SnapshotWriter writer = new SnapshotWriter(sessionKey, epoch.getAsLong());
+    boolean isSnapshotInProgress() {
+        return snapshot != null;
+    }
+
+    /**
+     * Sends the next chunk of the snapshot in progress: its next messages while a batch holds them, the whole round when
+     * the snapshot is not catching up, and its end once a round fitted in one chunk.
+     */
+    void sendSnapshotChunk() {
+        SnapshotCursor cursor = snapshot;
+        ReplicatedSession session = sessions.get(cursor.sessionKey);
+        SnapshotWriter writer = new SnapshotWriter(cursor, epoch.getAsLong());
         try {
-            long nextOutgoingSeqNum = store.getOutgoingSeqNum();
-            writer.begin(reader.getOffset(), store.getIncomingSeqNum(), nextOutgoingSeqNum);
-            store.find(Math.max(1, nextOutgoingSeqNum - snapshotMaxMessages), nextOutgoingSeqNum - 1, writer);
-            writer.end();
-            stats.snapshotSent(writer.messageCount);
-            log.info("Snapshot of FIX session {} {} sent to follower {}: {} messages", session.getFixSessionType(),
-                    session.getFixSessionId(), followerId, writer.messageCount);
-            return true;
+            boolean roundStarted = cursor.next > cursor.roundEnd;
+            if (roundStarted || cursor.resetAhead) {
+                cursor.nextIncomingSeqNum = cursor.store.getIncomingSeqNum();
+                cursor.nextOutgoingSeqNum = cursor.store.getOutgoingSeqNum();
+            }
+            if (cursor.next == 0) {
+                writer.begin();
+                cursor.next = Math.max(1, cursor.nextOutgoingSeqNum - snapshotMaxMessages);
+            }
+            if (cursor.resetAhead) {
+                end(writer, session);
+                return;
+            }
+            if (roundStarted) {
+                cursor.startRound();
+            }
+            if (cursor.next <= cursor.roundEnd) {
+                cursor.store.find(cursor.next, cursor.roundEnd, writer);
+            }
+            if (state != State.STREAMING) {
+                return;
+            }
+            if (!writer.stopped) {
+                cursor.next = cursor.roundEnd + 1;
+                if (roundStarted) {
+                    end(writer, session);
+                    return;
+                }
+            }
+            writer.flush();
         } catch (RuntimeException e) {
             log.warn("Snapshot of FIX session {} {} failed", session.getFixSessionType(), session.getFixSessionId(), e);
+            snapshot = null;
+            sessionSync(cursor.sessionKey, SessionSync.SNAPSHOT_SENT, SessionSync.SNAPSHOT_PENDING);
             close(CloseReason.SNAPSHOT_FAILED, "FIX session " + session.getFixSessionId() + ": " + e.getMessage());
-            return false;
         }
+    }
+
+    private void end(SnapshotWriter writer, ReplicatedSession session) {
+        SnapshotCursor cursor = writer.cursor;
+        writer.end();
+        snapshot = null;
+        stats.snapshotSent(cursor.messageCount);
+        log.info("Snapshot of FIX session {} {} sent to follower {}: {} messages", session.getFixSessionType(),
+                session.getFixSessionId(), followerId, cursor.messageCount);
     }
 
     /**
@@ -620,26 +701,67 @@ public final class FollowerLink implements FrameHandler {
     }
 
     /**
-     * Writes a snapshot's frames into batch buffers, sending each when the next frame does not fit.
+     * Where the snapshot of a session stands, across the chunks it is sent in.
+     */
+    private static final class SnapshotCursor {
+
+        private final int sessionKey;
+        private final FixSessionMessagesStore store;
+        private final long cutOffset;
+        /**
+         * The next seqnum to copy, 0 before the first chunk.
+         */
+        private long next;
+        private long roundEnd = -1;
+        private long previousRoundLength = Long.MAX_VALUE;
+        /**
+         * The round is sent in one chunk, whatever its size.
+         */
+        private boolean whole;
+        private long nextIncomingSeqNum;
+        private long nextOutgoingSeqNum;
+        private int messageCount;
+        /**
+         * The stream holds a reset of the session, sent after the snapshot's end.
+         */
+        private boolean resetAhead;
+
+        SnapshotCursor(int sessionKey, FixSessionMessagesStore store, long cutOffset) {
+            this.sessionKey = sessionKey;
+            this.store = store;
+            this.cutOffset = cutOffset;
+        }
+
+        void startRound() {
+            roundEnd = nextOutgoingSeqNum - 1;
+            long length = roundEnd - next + 1;
+            whole = length >= previousRoundLength;
+            previousRoundLength = length;
+        }
+    }
+
+    /**
+     * Writes a chunk's frames into batch buffers, stopping before a message the batch cannot hold unless the round
+     * goes whole. A message longer than a batch goes anyway, over as many sends as it needs.
      */
     private final class SnapshotWriter implements StoreMessagesConsumer {
 
-        private final int sessionKey;
+        private final SnapshotCursor cursor;
         private final long leaderEpoch;
         private ByteBuffer batch;
         private int filled;
-        private int messageCount;
+        private boolean stopped;
 
-        SnapshotWriter(int sessionKey, long leaderEpoch) {
-            this.sessionKey = sessionKey;
+        SnapshotWriter(SnapshotCursor cursor, long leaderEpoch) {
+            this.cursor = cursor;
             this.leaderEpoch = leaderEpoch;
             this.batch = connection.borrow(batchBytes);
         }
 
-        void begin(long cutOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        void begin() {
             room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_BEGIN));
-            filled += FrameEncoder.snapshotBegin(batch, filled, leaderEpoch, sessionKey, cutOffset, nextIncomingSeqNum,
-                    nextOutgoingSeqNum);
+            filled += FrameEncoder.snapshotBegin(batch, filled, leaderEpoch, cursor.sessionKey, cursor.cutOffset,
+                    cursor.nextIncomingSeqNum, cursor.nextOutgoingSeqNum);
         }
 
         /**
@@ -650,23 +772,39 @@ public final class FollowerLink implements FrameHandler {
         public boolean onMessage(long seqNum, ByteBuffer message) {
             int messageLength = message.remaining();
             int maxFragmentLength = maxEventFrameBytes - FrameEncoder.snapshotMessageBytes(0);
+            int fragments = Math.max(1, (messageLength + maxFragmentLength - 1) / maxFragmentLength);
+            if (!cursor.whole && filled > 0 && batchBytes - filled < fragments * FrameEncoder.snapshotMessageBytes(0) + messageLength) {
+                cursor.next = seqNum;
+                stopped = true;
+                return false;
+            }
             int from = 0;
             do {
                 int length = Math.min(maxFragmentLength, messageLength - from);
                 int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
                 room(FrameEncoder.snapshotMessageBytes(length));
-                filled += FrameEncoder.snapshotMessage(batch, filled, leaderEpoch, sessionKey, seqNum, message,
+                filled += FrameEncoder.snapshotMessage(batch, filled, leaderEpoch, cursor.sessionKey, seqNum, message,
                         message.position() + from, length, (byte) flags);
                 from += length;
             } while (from < messageLength && state == State.STREAMING);
-            messageCount++;
+            cursor.messageCount++;
+            cursor.next = seqNum + 1;
             return state == State.STREAMING;
         }
 
         void end() {
             room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_END));
-            filled += FrameEncoder.snapshotEnd(batch, filled, leaderEpoch, sessionKey, messageCount);
-            connection.send(written(batch, filled), true);
+            filled += FrameEncoder.snapshotEnd(batch, filled, leaderEpoch, cursor.sessionKey, cursor.messageCount,
+                    cursor.nextIncomingSeqNum, cursor.nextOutgoingSeqNum);
+            flush();
+        }
+
+        void flush() {
+            if (filled > 0) {
+                connection.send(written(batch, filled), true);
+            } else {
+                connection.unborrow(batch);
+            }
         }
 
         private void room(int bytes) {

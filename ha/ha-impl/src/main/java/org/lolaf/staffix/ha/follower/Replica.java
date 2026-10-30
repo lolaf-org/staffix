@@ -254,7 +254,6 @@ public final class Replica {
         }
         session.complete = false;
         session.discardFragments();
-        session.snapshotNextOutgoingSeqNum = nextOutgoingSeqNum;
         session.snapshotMessages = 0;
         session.store.resetSequenceNumbers();
         session.store.storeNextIncomingSeqNum(nextIncomingSeqNum);
@@ -282,16 +281,18 @@ public final class Replica {
     }
 
     /**
-     * Completes the session. Storing a message moves the outgoing seqnum past it, so the snapshot's is written again.
+     * Completes the session with the leader's seqnums at the snapshot's end: its events in between went through the
+     * snapshot, and storing a message moved the outgoing seqnum.
      *
      * @return false when the session is unknown or the count is not what was received
      */
-    boolean snapshotEnd(int key, int messageCount) {
+    boolean snapshotEnd(int key, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         ReplicaSession session = replicated(key);
         if (session == null || session.snapshotMessages != messageCount) {
             return false;
         }
-        session.store.storeNextOutgoingSeqNum(session.snapshotNextOutgoingSeqNum);
+        session.store.storeNextIncomingSeqNum(nextIncomingSeqNum);
+        session.store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
         session.complete = true;
         return true;
     }
@@ -404,7 +405,6 @@ public final class Replica {
         private @Nullable ReplicationMode leaderMode;
         private volatile boolean complete;
         private volatile boolean handedOver;
-        private long snapshotNextOutgoingSeqNum;
         private int snapshotMessages;
         private boolean assembling;
         private long assembledSequenceNumber;

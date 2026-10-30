@@ -284,10 +284,10 @@ class TestLeaderLink {
         read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
                 snapshotMessage(11, "eleven"),
                 snapshotMessage(12, "twelve"),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2));
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2, 22, 14));
 
         assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13", "message 11 eleven",
-                "message 12 twelve", "outgoing 13");
+                "message 12 twelve", "incoming 22", "outgoing 14");
         assertThat(replica.isComplete()).isTrue();
         assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 REPLICATING", "ACK epoch=7 applied=-1 inSync=true");
     }
@@ -298,7 +298,7 @@ class TestLeaderLink {
 
         read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
                 snapshotMessage(11, "eleven"),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2));
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2, 21, 13));
 
         assertThat(replica.isComplete()).isFalse();
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
@@ -325,7 +325,7 @@ class TestLeaderLink {
         read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 6),
                 snapshotFragment(5, "8=FIX.4.4\u0001", FIRST), snapshotFragment(5, "9=5\u000135=D\u0001", MIDDLE),
                 snapshotFragment(5, "10=000\u0001", LAST),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 1));
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 1, 1, 6));
 
         assertThat(engine.store(MAIN).writes).contains("message 5 " + MESSAGE);
         assertThat(sent.frames).contains("SESSION_STATUS epoch=7 key=0 REPLICATING");
@@ -365,7 +365,7 @@ class TestLeaderLink {
     void aResumedStreamKeepsTheSessionsCompleteAndOneThatDidNotResumeLosesThem() {
         streaming();
         read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0));
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
         LeaderLink resumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
@@ -382,7 +382,7 @@ class TestLeaderLink {
 
     private void complete() {
         read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0));
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
         engine.store(MAIN).writes.clear();
     }
 

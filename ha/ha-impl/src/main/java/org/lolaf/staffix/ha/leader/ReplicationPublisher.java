@@ -76,6 +76,12 @@ public final class ReplicationPublisher {
         this.heartbeatInterval = heartbeatInterval;
     }
 
+    private static void launchSender(Runnable loop) {
+        Thread thread = new Thread(loop, "staffix-ha-sender");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
     public void start() {
         int batchBytes = FollowerLink.batchBytesFor(replicationLog);
         ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-leader").build().newInstance();
@@ -118,12 +124,6 @@ public final class ReplicationPublisher {
         if (ioWorkers != null) {
             ioWorkers.stop(deadline);
         }
-    }
-
-    private static void launchSender(Runnable loop) {
-        Thread thread = new Thread(loop, "staffix-ha-sender");
-        thread.setDaemon(true);
-        thread.start();
     }
 
     private final class Listener implements IOEventsListener {
