@@ -193,7 +193,7 @@ staffix.ha-replication.fencing-margin=50ms
 
 **`node-id` and the `peers` keys are the primos node ids**: primos names the leader by its id, and the replication
 looks that name up in `peers`. The other `ReplicationHaSettings` settings bind the same way (`log-capacity`,
-`heartbeat-interval`, `reconnect-interval`, `snapshot-max-messages`, `promotion-outgoing-seq-num-jump`,
+`heartbeat-interval`, `reconnect-interval`, `send-buffers`, `snapshot-max-messages`, `promotion-outgoing-seq-num-jump`,
 `hand-over-timeout`, `switchover-timeout`, `follower-lag-alert-threshold`); their defaults are in the guide.
 
 The engine stops one lifecycle phase before the primos node, so a leader shutting down hands its sessions over

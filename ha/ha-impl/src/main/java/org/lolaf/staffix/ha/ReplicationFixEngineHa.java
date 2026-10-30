@@ -104,6 +104,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final Map<String, Long> sessionPromotions = new ConcurrentHashMap<>();
 
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
+        int sendBuffers = settings.getSendBuffers();
+        if (sendBuffers < 2 || Integer.bitCount(sendBuffers) != 1) {
+            throw new IllegalArgumentException("sendBuffers must be a power of two of at least 2, got " + sendBuffers);
+        }
         this.settings = settings;
         this.replicationLog = new ReplicationLog(settings.getLogCapacity());
     }
@@ -497,7 +501,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     private void startPublisher(long epoch) {
         publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLog, sessions, followers,
-                () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getSnapshotMaxMessages(), stats);
+                () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getSnapshotMaxMessages(), settings.getSendBuffers(), stats);
         publisher.start();
     }
 

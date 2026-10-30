@@ -17,6 +17,8 @@ package org.lolaf.staffix.ha;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probe;
@@ -132,6 +134,15 @@ class TestReplicationFixEngineHa {
         b.start();
         await().until(() -> a.engine.activity.contains("activate, stores open 0"));
         await().until(() -> b.engine.store(MAIN) != null && b.ha.getReplica().isComplete());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 3, 6})
+    void sendBuffersMustBeAPowerOfTwoOfAtLeastTwo(int sendBuffers) {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().sendBuffers(sendBuffers).build();
+
+        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sendBuffers");
     }
 
     @Test

@@ -73,6 +73,11 @@ public class ReplicationHaProps {
     private Duration heartbeatInterval;
 
     /**
+     * The leader's pooled write buffers per follower, a power of two, one kept spare; unset keeps 4.
+     */
+    private Integer sendBuffers;
+
+    /**
      * The most recent messages of a session a snapshot copies to a follower catching up; unset keeps 10000.
      */
     private Integer snapshotMaxMessages;

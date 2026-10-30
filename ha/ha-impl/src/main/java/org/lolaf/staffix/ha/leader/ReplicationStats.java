@@ -28,6 +28,8 @@ public final class ReplicationStats {
     private final AtomicLong laps = new AtomicLong();
     private final AtomicLong snapshots = new AtomicLong();
     private final AtomicLong snapshotMessages = new AtomicLong();
+    private final AtomicLong sendBuffersExhausted = new AtomicLong();
+    private final AtomicLong sendBuffersAllocated = new AtomicLong();
     private Function<String, Timer> ackLatencyTimers = followerId -> Timer.VoidTimer.getInstance();
     private Function<String, Timer> lagTimers = followerId -> Timer.VoidTimer.getInstance();
 
@@ -60,6 +62,28 @@ public final class ReplicationStats {
     void snapshotSent(int messages) {
         snapshots.incrementAndGet();
         snapshotMessages.addAndGet(messages);
+    }
+
+    void sendBuffersExhausted() {
+        sendBuffersExhausted.incrementAndGet();
+    }
+
+    void sendBuffersAllocated(int count) {
+        sendBuffersAllocated.addAndGet(count);
+    }
+
+    /**
+     * Times a sender waited for a send buffer, every one holding a batch its follower's socket had not taken yet.
+     */
+    public long getSendBuffersExhausted() {
+        return sendBuffersExhausted.get();
+    }
+
+    /**
+     * Write buffers allocated for want of a pooled one, 0 unless the senders' wait is defeated.
+     */
+    public long getSendBuffersAllocated() {
+        return sendBuffersAllocated.get();
     }
 
     /**

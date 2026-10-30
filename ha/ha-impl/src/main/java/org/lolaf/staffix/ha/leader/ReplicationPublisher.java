@@ -24,6 +24,7 @@ import org.lolaf.betty.api.io.IOWorkersGroup;
 import org.lolaf.betty.api.settings.IOBufferPoolSettings;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
+import org.lolaf.betty.api.stats.IOBufferPoolStats;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.log.ReplicationLog;
@@ -48,7 +49,6 @@ public final class ReplicationPublisher {
      * Frames from a follower are small: a HELLO is the largest, its node id at most 64 KiB.
      */
     private static final int MAX_INBOUND_FRAME_BYTES = 128 * 1024;
-    private static final int BATCH_BUFFERS = 4;
 
     private final InetSocketAddress bindAddress;
     private final ReplicationLog replicationLog;
@@ -57,6 +57,7 @@ public final class ReplicationPublisher {
     private final String leaderId;
     private final Duration heartbeatInterval;
     private final int snapshotMaxMessages;
+    private final int sendBuffers;
     private final Followers followers;
     private final ReplicationStats stats;
     private IOWorkersGroup ioWorkers;
@@ -64,7 +65,8 @@ public final class ReplicationPublisher {
 
     public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLog log, ReplicatedSessions sessions, Followers followers,
                                 LongSupplier epoch, String leaderId, Duration heartbeatInterval, int snapshotMaxMessages,
-                                ReplicationStats stats) {
+                                int sendBuffers, ReplicationStats stats) {
+        this.sendBuffers = sendBuffers;
         this.stats = stats;
         this.snapshotMaxMessages = snapshotMaxMessages;
         this.followers = followers;
@@ -94,7 +96,8 @@ public final class ReplicationPublisher {
                         .socketOptions(Map.of(StandardSocketOptions.TCP_NODELAY, true))
                         .writeIoBufferPoolSettings(IOBufferPoolSettings.builder()
                                 .zone(IOBufferPoolSettings.IOBufferPoolZone.builder().bufferSize(256).poolSize(64).build())
-                                .zone(IOBufferPoolSettings.IOBufferPoolZone.builder().bufferSize(batchBytes).poolSize(BATCH_BUFFERS).build())
+                                .zone(IOBufferPoolSettings.IOBufferPoolZone.builder().bufferSize(batchBytes).poolSize(sendBuffers).build())
+                                .ioBufferPoolStatsProvider((session, pool) -> new PoolMisses())
                                 .build())
                         .build())
                 .ioEventsListener(new Listener())
@@ -126,6 +129,22 @@ public final class ReplicationPublisher {
         }
     }
 
+    /**
+     * Counts the buffers betty allocated for want of a pooled one, which the senders' wait for a free one prevents.
+     */
+    private final class PoolMisses implements IOBufferPoolStats {
+
+        @Override
+        public void onOversizeBufferMiss(IOSession ioSession, int missCount) {
+            stats.sendBuffersAllocated(missCount);
+        }
+
+        @Override
+        public void onStarvedPoolBufferMiss(IOSession ioSession, int bufferSizeZone, int missCount) {
+            stats.sendBuffersAllocated(missCount);
+        }
+    }
+
     private final class Listener implements IOEventsListener {
 
         private final FrameDecoder decoder = new FrameDecoder(MAX_INBOUND_FRAME_BYTES);
@@ -133,7 +152,7 @@ public final class ReplicationPublisher {
         @Override
         public void onConnected(IOSession session) {
             FollowerLink link = new FollowerLink(session, replicationLog, sessions, epoch, leaderId, heartbeatInterval, snapshotMaxMessages,
-                    stats, ReplicationPublisher::launchSender);
+                    sendBuffers, stats, ReplicationPublisher::launchSender);
             session.setAttachment(link);
             followers.add(link);
         }

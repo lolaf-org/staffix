@@ -94,6 +94,11 @@ class HaMeters {
         meters.getCounter("ha.snapshots", "Session snapshots sent to followers catching up.", Map.of(), stats::getSnapshots);
         meters.getCounter("ha.snapshot.messages", "Messages copied by the snapshots sent to followers.", Map.of(),
                 stats::getSnapshotMessages);
+        meters.getCounter("ha.follower.send.buffers.exhausted", "Times the leader paused sending to a follower because"
+                + " all its send buffers were still waiting for the network: growing steadily while the network is"
+                + " healthy, sendBuffers is too small.", Map.of(), stats::getSendBuffersExhausted);
+        meters.getCounter("ha.follower.send.buffers.allocated", "Send buffers allocated because the pool had none free."
+                + " Should always be 0: any other value is a bug.", Map.of(), stats::getSendBuffersAllocated);
         meters.getGauge("ha.replica.connected", "1 while this follower streams its leader's writes.", Map.of(),
                 () -> following(ha, ReplicationReceiver::isConnected));
         meters.getGauge("ha.replica.in.sync", "1 while this follower holds every replicated session in full.", Map.of(),

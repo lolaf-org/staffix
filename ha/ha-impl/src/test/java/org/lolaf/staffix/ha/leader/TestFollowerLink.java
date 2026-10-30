@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.leader;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.betty.api.io.IOSession;
+import org.lolaf.betty.api.io.IOWriter.MessageSentCallback;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
@@ -40,7 +41,10 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
@@ -68,6 +72,12 @@ class TestFollowerLink {
     private final IOSession connection = mock(IOSession.class);
     private final RecordingHandler sent = new RecordingHandler();
     private final ReplicationStats stats = new ReplicationStats();
+    /**
+     * The batches sent, whose write betty has not reported yet while {@link #holdingWrites}.
+     */
+    private final Queue<Runnable> unwrittenBatches = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger batchesSent = new AtomicInteger();
+    private volatile boolean holdingWrites;
     private ReplicationFixEngineHa ha = engine(1 << 16);
     private FollowerLink link = link();
 
@@ -78,6 +88,21 @@ class TestFollowerLink {
             decodeAll(frames.duplicate().flip());
             return null;
         }).when(connection).send(any(ByteBuffer.class), anyBoolean());
+        doAnswer(invocation -> {
+            ByteBuffer frames = invocation.getArgument(0);
+            MessageSentCallback<Object> callback = invocation.getArgument(2);
+            if (!holdingWrites) {
+                decodeAll(frames.duplicate().flip());
+            }
+            batchesSent.incrementAndGet();
+            Runnable written = () -> callback.onMessageWriteCallback(frames, null, null);
+            if (holdingWrites) {
+                unwrittenBatches.add(written);
+            } else {
+                written.run();
+            }
+            return null;
+        }).when(connection).send(any(ByteBuffer.class), any(), any(), anyBoolean());
     }
 
     private static ReplicationFixEngineHa engine(int logCapacity) {
@@ -90,7 +115,7 @@ class TestFollowerLink {
 
     private FollowerLink link(int snapshotMaxMessages) {
         return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
-                snapshotMaxMessages, stats,
+                snapshotMaxMessages, 4, stats,
                 loop -> {
                 });
     }
@@ -138,6 +163,35 @@ class TestFollowerLink {
         link.startPendingSnapshot();
         while (link.isSnapshotInProgress() && link.getState() == FollowerLink.State.STREAMING) {
             link.sendSnapshotChunk();
+        }
+    }
+
+    @Test
+    void theSenderWaitsWhileEverySendBufferIsInFlightAndResumesOnceOneIsWritten() {
+        FixSessionMessagesStore main = replicated("main");
+        Thread[] sender = new Thread[1];
+        link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
+                100, 4, stats, loop -> {
+            sender[0] = new Thread(loop);
+            sender[0].start();
+        });
+        holdingWrites = true;
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        try {
+            await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
+            main.storeNextIncomingSeqNum(1);
+            await().until(() -> batchesSent.get() == 2);
+            main.storeNextIncomingSeqNum(2);
+            await().until(() -> batchesSent.get() == 3);
+
+            main.storeNextIncomingSeqNum(3);
+
+            await().during(Duration.ofMillis(200)).until(() -> batchesSent.get() == 3);
+            assertThat(stats.getSendBuffersExhausted()).as("one buffer of four kept spare").isEqualTo(1);
+            unwrittenBatches.poll().run();
+            await().until(() -> batchesSent.get() == 4);
+        } finally {
+            link.disconnected();
         }
     }
 

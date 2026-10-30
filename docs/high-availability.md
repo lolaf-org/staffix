@@ -89,6 +89,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `logCapacity` | 16 MiB | Off-heap memory holding the writes the follower has not received yet. A follower falling further behind is caught up by snapshot. The largest message replicated is half of it. |
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
+| `sendBuffers` | 4 | Pooled write buffers per follower, a power of two; one is kept spare. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower. |
 | `snapshotMaxMessages` | 10 000 | The most recent messages of a session a snapshot copies. |
 | `promotionOutgoingSeqNumJump` | 10 000 | How far a new leader moves its outgoing sequence numbers ahead. |
 | `handOverTimeout` | 5s | How long a leader stopping cleanly waits to give its follower every write. |

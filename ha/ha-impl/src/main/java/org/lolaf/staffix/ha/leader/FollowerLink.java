@@ -19,6 +19,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.betty.api.io.IOSession;
+import org.lolaf.betty.api.io.IOWriter.MessageSentCallback;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
@@ -41,6 +42,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -74,6 +76,13 @@ public final class FollowerLink implements FrameHandler {
     private final int maxEventFrameBytes;
     private final int batchBytes;
     private final int snapshotMaxMessages;
+    private final int sendBuffers;
+    /**
+     * Batches handed to betty and not yet written to the socket, each holding one of its pooled buffers.
+     */
+    private final AtomicInteger batchesInFlight = new AtomicInteger();
+    private final MessageSentCallback<Void> batchWritten = (message, error, context) -> batchesInFlight.decrementAndGet();
+    private final IdleStrategy sendBufferWait = new BackoffIdleStrategy();
     private final ReplicationStats stats;
     /**
      * What the follower last said of each session, by key, which tells a shared storage and a refusal's reason apart.
@@ -84,6 +93,7 @@ public final class FollowerLink implements FrameHandler {
      */
     private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
     private final Consumer<Runnable> senderLauncher;
+    private boolean sendBuffersExhausted;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
     @Getter
@@ -120,12 +130,17 @@ public final class FollowerLink implements FrameHandler {
     private long filledEventOffset = -1;
     private AckLatencySampler ackLatency = new AckLatencySampler(Timer.VoidTimer.getInstance());
     private LagSampler lag = new LagSampler(Timer.VoidTimer.getInstance());
+
     /**
+     * @param sendBuffers    the batch buffers betty pools: one fewer are in flight at most, the spare covering a
+     *                       written batch's buffer not yet back in the pool when the sender is told
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
     FollowerLink(IOSession connection, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
-                 Duration heartbeatInterval, int snapshotMaxMessages, ReplicationStats stats, Consumer<Runnable> senderLauncher) {
+                 Duration heartbeatInterval, int snapshotMaxMessages, int sendBuffers, ReplicationStats stats,
+                 Consumer<Runnable> senderLauncher) {
         this.snapshotMaxMessages = snapshotMaxMessages;
+        this.sendBuffers = sendBuffers;
         this.stats = stats;
         this.senderLauncher = senderLauncher;
         this.connection = connection;
@@ -502,7 +517,7 @@ public final class FollowerLink implements FrameHandler {
         IdleStrategy idle = new BackoffIdleStrategy();
         lastSendNanos = System.nanoTime();
         while (state != State.CLOSED && !handingOver) {
-            if (paused) {
+            if (hasNoRoomToSend()) {
                 idle.idle();
                 continue;
             }
@@ -536,8 +551,26 @@ public final class FollowerLink implements FrameHandler {
             // before the send: an ack processed in between would otherwise leave the sample to the next one
             ackLatency.onSent(filledEventOffset, System.nanoTime());
         }
-        connection.send(written(batch, filled), true);
+        sendBatch(batch, filled);
         return true;
+    }
+
+    private void sendBatch(ByteBuffer batch, int length) {
+        batchesInFlight.incrementAndGet();
+        connection.send(written(batch, length), null, batchWritten, true);
+    }
+
+    /**
+     * Neither betty's write watermark is reached nor every send buffer in flight, the next borrow of which would
+     * allocate a buffer rather than take a pooled one.
+     */
+    private boolean hasNoRoomToSend() {
+        boolean exhausted = batchesInFlight.get() >= sendBuffers - 1;
+        if (exhausted && !sendBuffersExhausted) {
+            stats.sendBuffersExhausted();
+        }
+        sendBuffersExhausted = exhausted;
+        return paused || exhausted;
     }
 
     /**
@@ -748,14 +781,13 @@ public final class FollowerLink implements FrameHandler {
 
         private final SnapshotCursor cursor;
         private final long leaderEpoch;
-        private ByteBuffer batch;
+        private @Nullable ByteBuffer batch;
         private int filled;
         private boolean stopped;
 
         SnapshotWriter(SnapshotCursor cursor, long leaderEpoch) {
             this.cursor = cursor;
             this.leaderEpoch = leaderEpoch;
-            this.batch = connection.borrow(batchBytes);
         }
 
         void begin() {
@@ -800,24 +832,27 @@ public final class FollowerLink implements FrameHandler {
         }
 
         void flush() {
-            if (filled > 0) {
-                connection.send(written(batch, filled), true);
-            } else {
-                connection.unborrow(batch);
+            if (batch != null) {
+                sendBatch(batch, filled);
+                batch = null;
             }
         }
 
         private void room(int bytes) {
-            if (batchBytes - filled >= bytes) {
+            if (batch != null && batchBytes - filled >= bytes) {
                 return;
             }
-            connection.send(written(batch, filled), true);
-            IdleStrategy idle = new BackoffIdleStrategy();
-            while (paused && state == State.STREAMING) {
-                idle.idle();
-            }
+            flush();
+            awaitRoomToSend();
             batch = connection.borrow(batchBytes);
             filled = 0;
+        }
+
+        private void awaitRoomToSend() {
+            while (hasNoRoomToSend() && state == State.STREAMING) {
+                sendBufferWait.idle();
+            }
+            sendBufferWait.reset();
         }
     }
 }

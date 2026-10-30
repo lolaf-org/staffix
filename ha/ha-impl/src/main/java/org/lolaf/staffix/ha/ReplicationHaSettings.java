@@ -88,6 +88,15 @@ public class ReplicationHaSettings extends HaSettings {
     private final Duration heartbeatInterval = Duration.ofSeconds(1);
 
     /**
+     * The leader's pooled write buffers per follower, a power of two of at least 2. One is kept spare, the others carry
+     * batches of writes not yet taken by the socket, and the sender waits for one to go before filling another. More
+     * help a follower far away; each costs off-heap memory per follower, allocated up front: the largest event frame,
+     * 64 KiB at least, about 2 MiB with the default {@link #getLogCapacity() logCapacity}.
+     */
+    @Builder.Default
+    private final int sendBuffers = 4;
+
+    /**
      * The most recent messages of a session a snapshot copies to a follower catching up. A resend asking for older
      * ones, after a failover to that follower, is answered with a gap fill.
      */
