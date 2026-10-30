@@ -850,7 +850,10 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
         @Override
         public FixMessagesStore.FixSessionMessagesStore openStore(FixSessionSettings settings) {
-            return findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), new ProbesImpl(FixSessionProbeScope.of(settings.getFixSessionId())));
+            ProbesImpl probes = new ProbesImpl(FixSessionProbeScope.of(settings.getFixSessionId()));
+            FixAlertsPublisher alertsPublisher = findMatchAmongstAlertsPublishers(settings.getFixAlertsPublisherInstanceId());
+            return new ReplicaStore(findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), probes),
+                    () -> probesManager.register(probes, alertsPublisher, () -> true), () -> probesManager.unregister(probes));
         }
 
         @Override

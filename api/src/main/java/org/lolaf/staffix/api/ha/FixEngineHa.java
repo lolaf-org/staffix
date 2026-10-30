@@ -72,8 +72,9 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
         List<FixSessionSettings> getFixSessionsSettings();
 
         /**
-         * The store the session would use, opened outside any session and not started. The caller starts it, and
-         * stops it before the session starts, so the session never shares its store with a replica.
+         * The store the session would use, opened outside any session and not started, its probes evaluated while it
+         * runs. The caller starts it, and stops it before the session starts, so the session never shares its store
+         * with a replica.
          */
         FixSessionMessagesStore openStore(FixSessionSettings settings);
 

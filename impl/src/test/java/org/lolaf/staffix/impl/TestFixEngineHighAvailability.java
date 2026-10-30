@@ -30,6 +30,7 @@ import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.alerting.ScopedProbeState;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
@@ -44,6 +45,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.tests.TestingFixAlertsPublisherSettings;
+import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMonitoringManagerSettings;
 import org.lolaf.staffix.tests.TestingHaSettings;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
@@ -414,6 +416,33 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         store.storeNextIncomingSeqNum(42);
         assertThat(store.getIncomingSeqNum()).isEqualTo(42);
         store.stop(Deadline.unlimited());
+    }
+
+    @Test
+    void theProbesOfAStoreOpenedForAReplicaAreEvaluatedWhileItRuns() {
+        initiatorFixEngineBuilder = initiatorFixEngineBuilder.toBuilder()
+                .clearFixMessagesStores()
+                .fixMessagesStore(TestingFixMessagesStoreSettings.builder()
+                        .testingFixSessionMessagesStore(initiatorMessagesStore)
+                        .probe(Probe.builder().name("store-queue").description("Store queue full")
+                                .evaluator(() -> Optional.of(Alert.major("full"))).build())
+                        .build())
+                .build();
+        withStandbyHighAvailability();
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        AdminApi admin = (AdminApi) initiatorFixEngine;
+        FixSessionSettings settings = engine.getFixSessionsSettings().get(0);
+        ProbeScope sessionScope = FixSessionProbeScope.of(settings.getFixSessionId());
+        FixSessionMessagesStore store = engine.openStore(settings);
+
+        store.start();
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(admin.getActiveAlerts())
+                .extracting(ScopedProbeState::getScope).containsExactly(sessionScope));
+
+        store.stop(Deadline.unlimited());
+
+        assertThat(admin.getActiveAlerts()).isEmpty();
     }
 
     @Test

@@ -239,6 +239,8 @@ session using them. The queue probe raises the highest level whose depth is reac
 `QueueSizeThresholdsSettings.thresholds` (by default `WARNING` from 250, `MAJOR` from 1000, `CRITICAL` from 5000),
 measured every `evaluationInterval` (10 seconds by default). The resource probe holds until what failed to be written
 has been replayed. See the [async store README](../messages-stores/async/async-impl/README.md#queue-monitoring).
+On a [high availability](high-availability.md) follower, the store probes of each session it holds a copy of are
+evaluated too, under the session's scope, although the session does not run there.
 
 `messages-store` and `messages-logger` are on every session that has a store or a logger, whatever its
 implementation. A failed call raises `WARNING`, carrying the call and the error, and has the engine check whether the
