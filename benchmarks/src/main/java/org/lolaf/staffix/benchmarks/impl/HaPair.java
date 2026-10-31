@@ -288,7 +288,7 @@ public class HaPair {
                         .decodingLatencyEnabled(false)
                         .encodingLatencyEnabled(false)
                         .build())
-                .highAvailability(replicationWaiting(ReplicationHaSettings.builder())
+                .highAvailability(replicationWaiting(ReplicationHaSettings.builder(), replicationWaiting)
                         .nodeId(nodeId)
                         .peer("a", replicationA)
                         .peer("b", replicationB)
@@ -298,8 +298,8 @@ public class HaPair {
                 .build().instance());
     }
 
-    private ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> replicationWaiting(
-            ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> settings) {
+    static ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> replicationWaiting(
+            ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> settings, ReplicationWaiting replicationWaiting) {
         if (replicationWaiting != ReplicationWaiting.BACKOFF) {
             settings.senderIdleStrategy(BusySpinIdleStrategy::getInstance);
         }
@@ -312,14 +312,14 @@ public class HaPair {
         return settings;
     }
 
-    private static FixEngineBuilder.FixEngineBuilderBuilder<?, ?> engine(String name, FixMessagesStoreSettings store) {
+    static FixEngineBuilder.FixEngineBuilderBuilder<?, ?> engine(String name, FixMessagesStoreSettings store) {
         return FixEngineBuilder.builder()
                 .instanceId(name)
                 .fixMessagesStore(store)
                 .fixMessagesLogger(Slf4jMessagesLoggerSettings.builder().logIncoming(false).logOutgoing(false).build());
     }
 
-    private static FixSessionSettings session(FixSessionId id, FixSession.FixSessionType type, String application,
+    static FixSessionSettings session(FixSessionId id, FixSession.FixSessionType type, String application,
                                               ReplicationMode mode) {
         return FixSessionSettings.builder()
                 .fixSessionId(id)
@@ -333,15 +333,15 @@ public class HaPair {
                 .build();
     }
 
-    private static FixSessionId acceptorId(String name) {
+    static FixSessionId acceptorId(String name) {
         return FixSessionId.of("ha", FixRegularVersion.VERSION_44, "TARGET_" + name, "SENDER_" + name);
     }
 
-    private static FixSessionId initiatorId(String name) {
+    static FixSessionId initiatorId(String name) {
         return FixSessionId.of("ha", FixRegularVersion.VERSION_44, "SENDER_" + name, "TARGET_" + name);
     }
 
-    private static org.lolaf.betty.api.io.IOWorkersGroup busySpinning(int ioThreads) {
+    static org.lolaf.betty.api.io.IOWorkersGroup busySpinning(int ioThreads) {
         return IOWorkersGroupSettings.builder()
                 .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder()
                         .selectStrategy(new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()))
@@ -356,7 +356,7 @@ public class HaPair {
         return engine;
     }
 
-    private static void await(String what, BooleanSupplier condition) {
+    static void await(String what, BooleanSupplier condition) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (!condition.getAsBoolean()) {
             if (System.nanoTime() > deadline) {
@@ -366,7 +366,7 @@ public class HaPair {
         }
     }
 
-    private static int freePort() {
+    static int freePort() {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
         } catch (IOException e) {
