@@ -24,11 +24,13 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.wire.CloseReason;
+import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameHandler;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.wire.WireFormatException;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -160,9 +162,30 @@ public final class LeaderLink implements FrameHandler {
     }
 
     /**
-     * Writes the snapshot messages the read batched, then acknowledges what it applied, once for all of its frames.
+     * Applies every whole frame of a read, then acknowledges it. A frame that cannot be decoded or applied closes the
+     * stream: the frames after it in the read are dropped, and the follower reconnects to resume after the last event
+     * it applied rather than carrying on past a gap.
      */
-    void afterRead() {
+    void read(ByteBuffer message, FrameDecoder decoder) {
+        int index = message.position();
+        try {
+            int consumed;
+            while ((consumed = decoder.decode(message, index, message.limit() - index, this)) > 0) {
+                index += consumed;
+            }
+            afterRead();
+        } catch (WireFormatException e) {
+            close(CloseReason.PROTOCOL_ERROR, e.getMessage());
+            index = message.limit();
+        } catch (RuntimeException e) {
+            log.warn("Failed to apply what leader {} sent", leaderId, e);
+            close(CloseReason.APPLY_FAILED, e.toString());
+            index = message.limit();
+        }
+        message.position(index);
+    }
+
+    private void afterRead() {
         replica.flushSnapshotBatches();
         if (state == State.STREAMING) {
             bindSessionsAgain();

@@ -27,10 +27,8 @@ import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.ss.SelectStrategy;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.HaStatus;
-import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.WireFormat;
-import org.lolaf.staffix.ha.wire.WireFormatException;
 
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
@@ -140,19 +138,7 @@ public final class ReplicationReceiver {
 
         @Override
         public void onRead(IOSession session, ByteBuffer message, long localReceiveTimeInNanos) {
-            LeaderLink leader = session.getAttachment();
-            int index = message.position();
-            try {
-                int consumed;
-                while ((consumed = decoder.decode(message, index, message.limit() - index, leader)) > 0) {
-                    index += consumed;
-                }
-            } catch (WireFormatException e) {
-                leader.close(CloseReason.PROTOCOL_ERROR, e.getMessage());
-                index = message.limit();
-            }
-            message.position(index);
-            leader.afterRead();
+            session.<LeaderLink>getAttachment().read(message, decoder);
         }
 
         @Override

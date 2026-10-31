@@ -154,6 +154,10 @@ public final class RecordingEngine implements EngineAccess {
          * Holds an incoming seqnum write until counted down, as a stalled storage would.
          */
         public volatile CountDownLatch incomingWritesHeld = new CountDownLatch(0);
+        /**
+         * Fails every message write, as a storage gone would.
+         */
+        public volatile boolean messageWritesFail;
         volatile boolean started;
         volatile @Nullable String storageIdentity = "recording:" + UUID.randomUUID();
 
@@ -224,6 +228,9 @@ public final class RecordingEngine implements EngineAccess {
          */
         @Override
         public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
+            if (messageWritesFail) {
+                throw new StoreException("storage down");
+            }
             byte[] text = new byte[message.remaining()];
             message.get(text);
             writes.add("message " + outgoingSeqNum + " " + new String(text, StandardCharsets.US_ASCII));

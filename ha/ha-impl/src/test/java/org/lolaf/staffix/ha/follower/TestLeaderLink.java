@@ -80,8 +80,7 @@ class TestLeaderLink {
      */
     @SafeVarargs
     private void read(ToIntBiFunction<ByteBuffer, Integer>... frames) {
-        decode(writeFrames(frames), link);
-        link.afterRead();
+        link.read(writeFrames(frames), new FrameDecoder(1 << 20));
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset) {
@@ -259,6 +258,21 @@ class TestLeaderLink {
         assertThat(replica.getLastAppliedEpoch()).isEqualTo(EPOCH);
         assertThat(replica.getLastAppliedOffset()).isEqualTo(128);
         assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
+    }
+
+    @Test
+    void aStoreWriteThatFailsClosesTheStreamWithoutApplyingOrAcknowledgingWhatFollowsIt() {
+        streaming();
+        engine.store(MAIN).messageWritesFail = true;
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 4, null),
+                event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, MESSAGE),
+                event(EPOCH, 96, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(engine.store(MAIN).writes).containsExactly("outgoing 4");
+        assertThat(replica.getLastAppliedOffset()).as("resumed from there").isZero();
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
     }
 
     @Test

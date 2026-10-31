@@ -43,6 +43,11 @@ public enum CloseReason {
      */
     SNAPSHOT_FAILED(6),
     /**
+     * The follower could not apply what it received, a store write failing: it reconnects to resume after the last
+     * event it applied.
+     */
+    APPLY_FAILED(7),
+    /**
      * Any other code, from a newer peer; kept rather than refused so the close is still reported.
      */
     UNKNOWN(0xFFFF);
@@ -69,6 +74,8 @@ public enum CloseReason {
                 return LAPPED;
             case 6:
                 return SNAPSHOT_FAILED;
+            case 7:
+                return APPLY_FAILED;
             default:
                 return UNKNOWN;
         }
