@@ -108,6 +108,11 @@ public class HaPair {
      */
     @Param({"BACKOFF"})
     ReplicationWaiting replicationWaiting;
+    /**
+     * The leader's acceptor IO threads: with one, a {@code SYNC} wait on one session's thread holds the other's reads.
+     */
+    @Param({"1"})
+    int leaderIoThreads;
 
     /**
      * Which of the replication's threads busy spin, each one more core.
@@ -147,7 +152,7 @@ public class HaPair {
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
         haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB)
                 .newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
-                        .ioWorkersGroup(busySpinning()).build()).start();
+                        .ioWorkersGroup(busySpinning(leaderIoThreads)).build()).start();
         FixMessagesStoreSettings followerStoreSettings = followerStore == FollowerStore.MEMORY
                 ? MemoryMessageStoreSettings.builder().build()
                 : FileMessageStoreSettings.builder().storageDirectoryPath(followerDirectory.toString()).build();
@@ -167,7 +172,7 @@ public class HaPair {
                         .build());
         FixEngine counterpartyFixEngine = start(counterpartyEngine.build().instance());
         for (String name : busySession ? List.of("MEASURED", "BUSY") : List.of("MEASURED")) {
-            counterpartyFixEngine.newInitiator(FixInitiatorBuilder.builder().instanceId(name).ioWorkersGroup(busySpinning())
+            counterpartyFixEngine.newInitiator(FixInitiatorBuilder.builder().instanceId(name).ioWorkersGroup(busySpinning(1))
                     .mainTarget(FixInitiatorTarget.builder().fixSessionId(initiatorId(name))
                             .connectAddress(new InetSocketAddress("localhost", fixPort)).build())
                     .build()).start();
@@ -187,8 +192,8 @@ public class HaPair {
             }, "busy-session-trader");
             busyTrader.start();
         }
-        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}", mode,
-                followerStore, busySession, replicationWaiting);
+        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}, leader IO threads {}",
+                mode, followerStore, busySession, replicationWaiting, leaderIoThreads);
     }
 
     public void roundTrip() {
@@ -315,10 +320,11 @@ public class HaPair {
         return FixSessionId.of("ha", FixRegularVersion.VERSION_44, "SENDER_" + name, "TARGET_" + name);
     }
 
-    private static org.lolaf.betty.api.io.IOWorkersGroup busySpinning() {
+    private static org.lolaf.betty.api.io.IOWorkersGroup busySpinning(int ioThreads) {
         return IOWorkersGroupSettings.builder()
                 .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder()
                         .selectStrategy(new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()))
+                        .ioThreadCount(ioThreads)
                         .build())
                 .build().newInstance();
     }
