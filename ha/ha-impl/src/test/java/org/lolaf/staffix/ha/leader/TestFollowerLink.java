@@ -148,7 +148,11 @@ class TestFollowerLink {
     }
 
     private void fill() {
-        ByteBuffer batch = ByteBuffer.allocate(1 << 20);
+        fill(1 << 20);
+    }
+
+    private void fill(int batchBytes) {
+        ByteBuffer batch = ByteBuffer.allocate(batchBytes);
         int filled = link.fill(batch);
         decodeAll(batch.limit(filled));
     }
@@ -299,6 +303,29 @@ class TestFollowerLink {
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("STORE_EVENT"));
         assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 LAPPED"));
         assertThat(stats.getLaps()).isEqualTo(1);
+    }
+
+    @Test
+    void aBatchTakesEventsUntilTheNextDoesNotFitWhichStartsTheNextBatch() {
+        FixSessionMessagesStore store = replicated("main");
+        store.storeNextIncomingSeqNum(1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        fill();
+        sent.frames.clear();
+        for (int seq = 2; seq <= 4; seq++) {
+            store.storeNextIncomingSeqNum(seq);
+        }
+
+        fill(3 * FrameEncoder.storeEventBytes(0) - 1);
+
+        assertThat(sent.frames).hasSize(2);
+        assertThat(sent.frames.get(0)).contains("seq=2");
+        assertThat(sent.frames.get(1)).contains("seq=3");
+
+        sent.frames.clear();
+        fill();
+
+        assertThat(sent.frames).singleElement().asString().contains("seq=4");
     }
 
     @Test

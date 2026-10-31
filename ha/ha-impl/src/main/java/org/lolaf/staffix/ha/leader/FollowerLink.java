@@ -396,7 +396,7 @@ public final class FollowerLink implements FrameHandler {
 
     /**
      * Fills {@code dst} from index 0, up to its limit, with what the follower has not received: the sessions it does
-     * not know yet, then events while a whole event still fits. An event of a session registered after this fill
+     * not know yet, then events until the next one does not fit. An event of a session registered after this fill
      * began is left for the next one, behind that session's announcement.
      *
      * @return the bytes filled
@@ -406,9 +406,9 @@ public final class FollowerLink implements FrameHandler {
         int filled = announce(dst);
         long leaderEpoch = epoch.getAsLong();
         filledEventOffset = -1;
-        while (state == State.STREAMING && dst.limit() - filled >= maxEventFrameBytes) {
+        while (state == State.STREAMING && dst.limit() - filled >= WireFormat.STORE_EVENT_BODY_OFFSET) {
             int body = reader.readInto(dst, filled + WireFormat.STORE_EVENT_BODY_OFFSET);
-            if (body == ReplicationLog.Reader.NO_EVENT) {
+            if (body == ReplicationLog.Reader.NO_EVENT || body == ReplicationLog.Reader.NO_ROOM) {
                 break;
             }
             if (body == ReplicationLog.Reader.LAPPED) {

@@ -136,6 +136,12 @@ public class ReplicationLog {
          */
         public static final int NO_EVENT = ByteRingReader.NO_FRAME;
 
+        /**
+         * Returned by {@link #readInto} when the next event is larger than the room left in {@code dst}: the reader
+         * stays on it.
+         */
+        public static final int NO_ROOM = ByteRingReader.NO_ROOM;
+
         private final ByteRingReader byteRingReader;
 
         private Reader(ByteRingReader byteRingReader) {
@@ -145,7 +151,7 @@ public class ReplicationLog {
         /**
          * Copies the next event's body into {@code dst}, checked whole.
          *
-         * @return the body's length, {@link #NO_EVENT} or {@link #LAPPED}, after which the reader stays put until
+         * @return the body's length, {@link #NO_EVENT}, {@link #NO_ROOM} or {@link #LAPPED}, after which the reader stays put until
          * {@link #seek} or {@link #seekToTail}
          */
         public int readInto(ByteBuffer dst, int dstIndex) {
