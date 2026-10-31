@@ -113,6 +113,12 @@ public class HaPair {
      */
     @Param({"1"})
     int leaderIoThreads;
+    /**
+     * The busy session resynced again as soon as its last snapshot ended, so the measured session trades beside a
+     * snapshot in progress almost all the time.
+     */
+    @Param({"false"})
+    boolean busyResync;
 
     /**
      * Which of the replication's threads busy spin, each one more core.
@@ -141,6 +147,7 @@ public class HaPair {
     private final Map<Meter.Id, long[]> timersAtMeasuring = new HashMap<>();
     private StaffixEngine.InitiatorApplication counterparty;
     private Thread busyTrader;
+    private Thread resyncer;
     private volatile boolean trading;
     private Path followerDirectory;
 
@@ -150,8 +157,8 @@ public class HaPair {
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
-        haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB)
-                .newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
+        FixEngine leaderEngine = haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB);
+        leaderEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
                         .ioWorkersGroup(busySpinning(leaderIoThreads)).build()).start();
         FixMessagesStoreSettings followerStoreSettings = followerStore == FollowerStore.MEMORY
                 ? MemoryMessageStoreSettings.builder().build()
@@ -191,9 +198,20 @@ public class HaPair {
                 }
             }, "busy-session-trader");
             busyTrader.start();
+            if (busyResync) {
+                HaAdmin leader = ((AdminApi) leaderEngine).getHa().orElseThrow();
+                resyncer = new Thread(() -> {
+                    while (trading) {
+                        // a no-op while the last snapshot is pending
+                        leader.resync(acceptorId("BUSY"), FixSession.FixSessionType.ACCEPTOR);
+                        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+                    }
+                }, "busy-session-resyncer");
+                resyncer.start();
+            }
         }
-        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}, leader IO threads {}",
-                mode, followerStore, busySession, replicationWaiting, leaderIoThreads);
+        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}, leader IO threads {}, busy resync {}",
+                mode, followerStore, busySession, replicationWaiting, leaderIoThreads, busyResync);
     }
 
     public void roundTrip() {
@@ -212,6 +230,9 @@ public class HaPair {
         trading = false;
         if (busyTrader != null) {
             busyTrader.join();
+        }
+        if (resyncer != null) {
+            resyncer.join();
         }
         logTimer("ha.follower.lag", "fill to ack");
         logTimer("ha.follower.ack.latency", "follower round trip, batch sent to ack");
