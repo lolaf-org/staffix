@@ -249,6 +249,9 @@ public final class RecordingEngine implements EngineAccess {
 
         @Override
         public void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) {
+            if (messageWritesFail) {
+                throw new StoreException("storage down");
+            }
             StringJoiner batch = new StringJoiner(", ", "batch ", "");
             for (int i = 0; i < sentFixMessageCount; i++) {
                 ByteBuffer message = sentFixMessages[i].getMessage();

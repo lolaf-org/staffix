@@ -124,8 +124,11 @@ class TestReplica {
         storeMessage(6, "six");
         replica.apply(1, 3, 0, StoreEventType.RESET_SEQ_NUM, 1, text(""), 0, 0, (byte) 0);
         storeMessage(1, "one");
+        replica.writeApplied();
 
-        assertThat(store.writes).containsExactly("message 6 six", "reset", "message 1 one");
+        assertThat(store.writes).containsExactly(batchingStore
+                ? new String[]{"batch 6 six", "outgoing 7", "reset", "batch 1 one", "outgoing 2"}
+                : new String[]{"message 6 six", "reset", "message 1 one"});
     }
 
     private void storeMessage(long seq, String message) {

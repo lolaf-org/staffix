@@ -44,7 +44,8 @@ import java.util.function.ObjIntConsumer;
  * <p>A session is complete once a snapshot filled it, and until a stream fails to resume. A snapshot resets the store
  * before filling it, so nothing older than the leader's copy survives. It may hold messages the stream then brings
  * again, which are skipped, a store being free to refuse a seqnum it holds; seqnum events are absolute, so one
- * applied twice changes nothing. Written from the connection's IO thread only.
+ * applied twice changes nothing. A read's writes are gathered per session and written once, before it is
+ * acknowledged. Written from the connection's IO thread only.
  */
 @Slf4j
 public final class Replica {
@@ -58,6 +59,11 @@ public final class Replica {
      */
     @Getter
     private volatile long lastAppliedOffset = -1;
+    private long appliedEpoch;
+    /**
+     * The offset of the last event applied but not yet written, promoted by {@link #writeApplied()}.
+     */
+    private long appliedOffset = -1;
 
     public Replica(EngineAccess engine) {
         this.engine = engine;
@@ -74,12 +80,14 @@ public final class Replica {
                 // a resume may start past the first fragments of a message this session was assembling
                 session.complete &= resumed && !session.assembling;
                 session.discardFragments();
-                session.discardSnapshotBatch();
+                session.discardPendingWrites();
             }
         }
         if (!resumed) {
             lastAppliedOffset = -1;
         }
+        appliedEpoch = lastAppliedEpoch;
+        appliedOffset = lastAppliedOffset;
     }
 
     /**
@@ -236,7 +244,6 @@ public final class Replica {
         if (session == null) {
             return false;
         }
-        session.flushSnapshotBatch();
         if (fragmentFlags != 0 || session.assembling) {
             if (!session.assemble(sequenceNumber, buffer, messageIndex, messageLength, fragmentFlags, false)) {
                 return false;
@@ -244,8 +251,8 @@ public final class Replica {
         } else if (session.store != null) {
             session.apply(eventType, sequenceNumber, buffer, messageIndex, messageLength);
         }
-        lastAppliedEpoch = epoch;
-        lastAppliedOffset = offset;
+        appliedEpoch = epoch;
+        appliedOffset = offset;
         return true;
     }
 
@@ -259,7 +266,7 @@ public final class Replica {
         }
         session.complete = false;
         session.discardFragments();
-        session.discardSnapshotBatch();
+        session.discardPendingWrites();
         session.snapshotMessages = 0;
         session.store.resetSequenceNumbers();
         session.storedSeqNum = 0;
@@ -298,7 +305,7 @@ public final class Replica {
         if (session == null || session.snapshotMessages != messageCount) {
             return false;
         }
-        session.flushSnapshotBatch();
+        session.writePending();
         session.store.storeNextIncomingSeqNum(nextIncomingSeqNum);
         session.store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
         session.complete = true;
@@ -306,14 +313,17 @@ public final class Replica {
     }
 
     /**
-     * Writes the snapshot messages batched by the frames of a read, before it is acknowledged.
+     * Writes what the frames of a read left pending, before it is acknowledged, then counts their events applied: a
+     * write failing leaves them unapplied, so a reconnection resumes before them.
      */
-    void flushSnapshotBatches() {
+    void writeApplied() {
         for (ReplicaSession session : sessions) {
             if (session != null) {
-                session.flushSnapshotBatch();
+                session.writePending();
             }
         }
+        lastAppliedEpoch = appliedEpoch;
+        lastAppliedOffset = appliedOffset;
     }
 
     private @Nullable ReplicaSession replicated(int key) {
@@ -417,9 +427,10 @@ public final class Replica {
         private final String fixSessionId;
         private final @Nullable FixSessionMessagesStore store;
         /**
-         * Gathers the snapshot messages for a store that writes them in batches, null for one that does not.
+         * Gathers the messages of a read, snapshot or live, for a store that writes them in batches, null for one that
+         * does not.
          */
-        private final @Nullable SnapshotBatch snapshotBatch;
+        private final @Nullable MessageBatch batch;
         private final SessionStatus refusal;
         /**
          * Kept by a session refused until its settings here change, to bind it again once they do.
@@ -433,6 +444,12 @@ public final class Replica {
          * The highest message seqnum stored since the store was last reset.
          */
         private long storedSeqNum;
+        /**
+         * The seqnums a read set, written once after its messages, -1 when none: each event sets the whole value, so
+         * only the last counts.
+         */
+        private long pendingIncomingSeqNum = -1;
+        private long pendingOutgoingSeqNum = -1;
         private boolean assembling;
         private long assembledSequenceNumber;
         /**
@@ -449,8 +466,8 @@ public final class Replica {
             this.fixSessionId = fixSessionId;
             this.store = store;
             this.refusal = refusal;
-            this.snapshotBatch = store instanceof BatchingFixSessionMessagesStore
-                    ? new SnapshotBatch((BatchingFixSessionMessagesStore) store) : null;
+            this.batch = store instanceof BatchingFixSessionMessagesStore
+                    ? new MessageBatch((BatchingFixSessionMessagesStore) store) : null;
         }
 
         SessionStatus status() {
@@ -477,19 +494,27 @@ public final class Replica {
                     if (sequenceNumber <= storedSeqNum) {
                         break;
                     }
-                    int position = buffer.position();
-                    int limit = buffer.limit();
-                    store.storeMessageSent(sequenceNumber, buffer.limit(messageIndex + messageLength).position(messageIndex));
-                    buffer.limit(limit).position(position);
+                    if (batch != null) {
+                        batch.add(sequenceNumber, buffer, messageIndex, messageLength);
+                        // a batch leaves the outgoing seqnum alone, which storing the message one by one moves
+                        pendingOutgoingSeqNum = sequenceNumber + 1;
+                    } else {
+                        int position = buffer.position();
+                        int limit = buffer.limit();
+                        store.storeMessageSent(sequenceNumber, buffer.limit(messageIndex + messageLength).position(messageIndex));
+                        buffer.limit(limit).position(position);
+                        pendingOutgoingSeqNum = -1;
+                    }
                     storedSeqNum = sequenceNumber;
                     break;
                 case STORE_OUTGOING_SEQ_NUM:
-                    store.storeNextOutgoingSeqNum(sequenceNumber);
+                    pendingOutgoingSeqNum = sequenceNumber;
                     break;
                 case STORE_INCOMING_SEQ_NUM:
-                    store.storeNextIncomingSeqNum(sequenceNumber);
+                    pendingIncomingSeqNum = sequenceNumber;
                     break;
                 case RESET_SEQ_NUM:
+                    writePending();
                     store.resetSequenceNumbers();
                     storedSeqNum = 0;
                     break;
@@ -503,24 +528,42 @@ public final class Replica {
          * seqnum to the message's, a batch leaves it alone, as {@link #snapshotBegin} set it.
          */
         void storeSnapshotMessage(long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength) {
-            if (snapshotBatch == null) {
+            if (batch == null) {
                 apply(StoreEventType.STORE_MESSAGE, sequenceNumber, buffer, messageIndex, messageLength);
             } else {
-                snapshotBatch.add(sequenceNumber, buffer, messageIndex, messageLength);
+                batch.add(sequenceNumber, buffer, messageIndex, messageLength);
                 storedSeqNum = Math.max(storedSeqNum, sequenceNumber);
             }
         }
 
-        void flushSnapshotBatch() {
-            if (snapshotBatch != null) {
-                snapshotBatch.flush();
+        /**
+         * The messages first, then the seqnums, which the messages' batch does not move.
+         */
+        void writePending() {
+            if (batch != null) {
+                batch.flush();
+            }
+            if (store == null) {
+                return;
+            }
+            long incoming = pendingIncomingSeqNum;
+            long outgoing = pendingOutgoingSeqNum;
+            pendingIncomingSeqNum = -1;
+            pendingOutgoingSeqNum = -1;
+            if (incoming >= 0) {
+                store.storeNextIncomingSeqNum(incoming);
+            }
+            if (outgoing >= 0) {
+                store.storeNextOutgoingSeqNum(outgoing);
             }
         }
 
-        void discardSnapshotBatch() {
-            if (snapshotBatch != null) {
-                snapshotBatch.discard();
+        void discardPendingWrites() {
+            if (batch != null) {
+                batch.discard();
             }
+            pendingIncomingSeqNum = -1;
+            pendingOutgoingSeqNum = -1;
         }
 
         /**
@@ -578,7 +621,7 @@ public final class Replica {
         }
 
         void stop(Deadline deadline) {
-            discardSnapshotBatch();
+            discardPendingWrites();
             if (store != null) {
                 store.stop(deadline);
             }
@@ -586,16 +629,16 @@ public final class Replica {
     }
 
     /**
-     * Snapshot messages copied out of the receive buffer, written to the store together.
+     * Messages copied out of the receive buffer, written to the store together.
      */
-    private static final class SnapshotBatch {
+    private static final class MessageBatch {
 
         private static final int MAX_MESSAGES = 256;
         private final BatchingFixSessionMessagesStore store;
         private final SentFixMessage[] messages = new SentFixMessage[MAX_MESSAGES];
         private int count;
 
-        SnapshotBatch(BatchingFixSessionMessagesStore store) {
+        MessageBatch(BatchingFixSessionMessagesStore store) {
             this.store = store;
         }
 

@@ -31,7 +31,9 @@ import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.function.ToIntBiFunction;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -254,7 +256,8 @@ class TestLeaderLink {
                 event(EPOCH, 96, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null),
                 event(EPOCH, 128, 0, StoreEventType.RESET_SEQ_NUM, 0, null));
 
-        assertThat(engine.store(MAIN).writes).containsExactly("message 5 " + MESSAGE, "outgoing 7", "incoming 3", "reset");
+        assertThat(engine.store(MAIN).writes).as("seqnums coalesced, written before the reset")
+                .containsExactly("message 5 " + MESSAGE, "incoming 3", "outgoing 7", "reset");
         assertThat(replica.getLastAppliedEpoch()).isEqualTo(EPOCH);
         assertThat(replica.getLastAppliedOffset()).isEqualTo(128);
         assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
@@ -270,8 +273,66 @@ class TestLeaderLink {
                 event(EPOCH, 96, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
         assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
-        assertThat(engine.store(MAIN).writes).containsExactly("outgoing 4");
-        assertThat(replica.getLastAppliedOffset()).as("resumed from there").isZero();
+        assertThat(engine.store(MAIN).writes).as("the seqnum before it still pending").isEmpty();
+        assertThat(replica.getLastAppliedOffset()).as("resumed before the read").isEqualTo(-1);
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
+    }
+
+    @Test
+    void aReadsMessagesGoToABatchingStoreAsOneBatchThenItsLastSeqnums() {
+        engine.batchingStores = true;
+        streaming();
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
+                event(EPOCH, 64, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null),
+                event(EPOCH, 96, 0, StoreEventType.STORE_MESSAGE, 6, "six"),
+                event(EPOCH, 160, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
+
+        assertThat(engine.store(MAIN).writes).containsExactly("batch 5 five, 6 six", "incoming 3", "outgoing 7");
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=160 inSync=false");
+    }
+
+    @Test
+    void anOutgoingSeqnumKeepsItsPlaceAmongTheMessagesOfARead() {
+        engine.batchingStores = true;
+        streaming();
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
+                event(EPOCH, 64, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 10, null));
+        read(event(EPOCH, 96, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 20, null),
+                event(EPOCH, 128, 0, StoreEventType.STORE_MESSAGE, 20, "twenty"));
+
+        assertThat(engine.store(MAIN).writes).containsExactly("batch 5 five", "outgoing 10", "batch 20 twenty", "outgoing 21");
+    }
+
+    @Test
+    void aFullBatchIsWrittenWithinTheRead() {
+        engine.batchingStores = true;
+        streaming();
+
+        read(IntStream.rangeClosed(1, 300)
+                .mapToObj(seq -> event(EPOCH, seq * 64L, 0, StoreEventType.STORE_MESSAGE, seq, "m"))
+                .toArray(ToIntBiFunction[]::new));
+
+        List<String> writes = engine.store(MAIN).writes;
+        assertThat(writes).hasSize(3);
+        assertThat(writes.get(0)).startsWith("batch 1 m, ").endsWith(", 256 m");
+        assertThat(writes.get(1)).startsWith("batch 257 m, ").endsWith(", 300 m");
+        assertThat(writes.get(2)).isEqualTo("outgoing 301");
+    }
+
+    @Test
+    void aBatchThatFailsLeavesTheReadUnappliedAndUnacknowledged() {
+        engine.batchingStores = true;
+        streaming();
+        engine.store(MAIN).messageWritesFail = true;
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null),
+                event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, "five"));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(engine.store(MAIN).writes).isEmpty();
+        assertThat(replica.getLastAppliedOffset()).isEqualTo(-1);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
     }
 
@@ -323,7 +384,7 @@ class TestLeaderLink {
     }
 
     @Test
-    void aSnapshotBatchIsWrittenBeforeALiveEventOfItsSessionAndDroppedByANewSnapshot() {
+    void aNewSnapshotDropsWhatTheReadLeftPendingForItsSession() {
         engine.batchingStores = true;
         streaming();
 
@@ -334,8 +395,8 @@ class TestLeaderLink {
                 (out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 700, 21, 13),
                 snapshotMessage(13, "thirteen"));
 
-        assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13", "batch 11 eleven",
-                "incoming 22", "reset", "incoming 21", "outgoing 13", "batch 13 thirteen");
+        assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13",
+                "reset", "incoming 21", "outgoing 13", "batch 13 thirteen");
     }
 
     @Test

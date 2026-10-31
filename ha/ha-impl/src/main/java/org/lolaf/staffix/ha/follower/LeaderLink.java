@@ -186,7 +186,7 @@ public final class LeaderLink implements FrameHandler {
     }
 
     private void afterRead() {
-        replica.flushSnapshotBatches();
+        replica.writeApplied();
         if (state == State.STREAMING) {
             bindSessionsAgain();
         }
