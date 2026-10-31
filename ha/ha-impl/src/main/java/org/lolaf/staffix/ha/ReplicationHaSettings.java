@@ -116,10 +116,10 @@ public class ReplicationHaSettings extends HaSettings {
     private final Supplier<SelectStrategy> selectStrategy = () -> new WakeupSelectStrategy(10);
 
     /**
-     * The leader's pooled write buffers per follower, a power of two of at least 2. One is kept spare, the others carry
-     * batches of writes not yet taken by the socket, and the sender waits for one to go before filling another. More
-     * help a follower far away; each costs off-heap memory per follower, allocated up front: the largest event frame,
-     * 64 KiB at least, about 2 MiB with the default {@link #getLogCapacity() logCapacity}.
+     * The leader's write buffers per follower, a power of two of at least 2, carrying batches of writes not yet taken by
+     * the socket; with all of them in flight the sender waits for one. More help a follower far away; each costs
+     * off-heap memory per follower, allocated as first needed: the largest event frame, 64 KiB at least, about 2 MiB
+     * with the default {@link #getLogCapacity() logCapacity}.
      */
     @Builder.Default
     private final int sendBuffers = 4;

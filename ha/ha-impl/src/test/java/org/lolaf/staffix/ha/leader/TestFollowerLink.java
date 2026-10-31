@@ -96,7 +96,7 @@ class TestFollowerLink {
                 decodeAll(frames.duplicate().flip());
             }
             batchesSent.incrementAndGet();
-            Runnable written = () -> callback.onMessageWriteCallback(frames, null, null);
+            Runnable written = () -> callback.onMessageWriteCallback(frames.flip(), null, invocation.getArgument(1));
             if (holdingWrites) {
                 unwrittenBatches.add(written);
             } else {
@@ -168,26 +168,45 @@ class TestFollowerLink {
     }
 
     @Test
-    void anIdleSenderKeepsItsBatchBufferAndGivesItBackThroughTheIoThreadOnceStopped() {
+    void theSenderWritesOnlyItsOwnBuffersWhichAConnectionStoppingCannotFree() throws InterruptedException {
+        FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
-        link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                4, new BackoffIdleStrategy(), stats, loop -> {
+        link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
+                Duration.ofHours(1), 4, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
         });
-        doAnswer(invocation -> {
-            invocation.<Runnable>getArgument(0).run();
-            return null;
-        }).when(connection).processTask(any(Runnable.class));
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
-
-        await().during(Duration.ofMillis(200)).until(() -> sender[0].isAlive());
-        verify(connection, never()).unborrow(any());
+        await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
+        main.storeNextIncomingSeqNum(1);
+        await().until(() -> batchesSent.get() == 2);
 
         link.disconnected();
-        await().until(() -> !sender[0].isAlive());
-        verify(connection).processTask(any(Runnable.class));
-        verify(connection).unborrow(any());
+        sender[0].join();
+
+        verify(connection, times(1)).borrow(anyInt());
+        verify(connection, never()).send(any(ByteBuffer.class), any(), any(), eq(true));
+        verify(connection, never()).unborrow(any());
+    }
+
+    @Test
+    void aSenderLappedWhileAHeartbeatIsDueWritesNothingAfterItsClose() {
+        ha = engine(1024);
+        Runnable[] sender = new Runnable[1];
+        link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
+                Duration.ofNanos(1), 4, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop);
+        FixSessionMessagesStore store = replicated("main");
+        store.storeNextIncomingSeqNum(1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        for (int seq = 2; seq < 200; seq++) {
+            store.storeNextIncomingSeqNum(seq);
+        }
+
+        sender[0].run();
+
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 LAPPED");
+        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("HEARTBEAT"));
     }
 
     @Test
@@ -203,17 +222,18 @@ class TestFollowerLink {
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
         try {
             await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
-            main.storeNextIncomingSeqNum(1);
-            await().until(() -> batchesSent.get() == 2);
-            main.storeNextIncomingSeqNum(2);
-            await().until(() -> batchesSent.get() == 3);
+            for (int seq = 1; seq <= 3; seq++) {
+                main.storeNextIncomingSeqNum(seq);
+                int sent = seq + 1;
+                await().until(() -> batchesSent.get() == sent);
+            }
 
-            main.storeNextIncomingSeqNum(3);
+            main.storeNextIncomingSeqNum(4);
 
-            await().during(Duration.ofMillis(200)).until(() -> batchesSent.get() == 3);
-            assertThat(stats.getSendBuffersExhausted()).as("one buffer of four kept spare").isEqualTo(1);
+            await().during(Duration.ofMillis(200)).until(() -> batchesSent.get() == 4);
+            assertThat(stats.getSendBuffersExhausted()).as("all four in flight").isEqualTo(1);
             unwrittenBatches.poll().run();
-            await().until(() -> batchesSent.get() == 4);
+            await().until(() -> batchesSent.get() == 5);
         } finally {
             link.disconnected();
         }

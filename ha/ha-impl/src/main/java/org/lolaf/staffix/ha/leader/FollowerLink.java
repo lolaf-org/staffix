@@ -23,6 +23,8 @@ import org.lolaf.betty.api.io.IOWriter.MessageSentCallback;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
+import org.lolaf.ringos.rb.RingBuffer;
+import org.lolaf.ringos.rb.RingBufferFactory;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
@@ -42,7 +44,6 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -51,8 +52,9 @@ import java.util.function.LongSupplier;
  * One connected follower: the handshake, the frames it sends back, and the thread streaming the log to it.
  *
  * <p>Frames from the follower arrive on the connection's IO thread; the log is streamed from a thread of the link's
- * own, which borrows a write buffer, reads as many events as fit straight into it behind room for their headers, and
- * sends it. A follower the log laps is disconnected, so it knows it missed events and reconnects to be caught up.
+ * own, which takes one of its own write buffers, reads as many events as fit straight into it behind room for their
+ * headers, and sends it. A follower the log laps is disconnected, so it knows it missed events and reconnects to be
+ * caught up.
  *
  * <p>A session the follower answers {@link SessionStatus#SNAPSHOT_NEEDED} for is snapshot by that thread one chunk per
  * batch, so the other sessions keep streaming. Its own events are skipped meanwhile, except a reset, which ends the
@@ -78,16 +80,17 @@ public final class FollowerLink implements FrameHandler {
     private final int sendBuffers;
     private final IdleStrategy senderIdle;
     /**
-     * Batches handed to betty and not yet written to the socket, each holding one of its pooled buffers.
+     * Batch buffers betty wrote, handed back by its IO thread. The link owns its batch buffers rather than borrowing
+     * the connection's: betty frees a pool's memory when the connection stops, whichever thread still writes into one.
      */
-    private final AtomicInteger batchesInFlight = new AtomicInteger();
-    private final MessageSentCallback<Void> batchWritten = (message, error, context) -> batchesInFlight.decrementAndGet();
+    private final RingBuffer<ByteBuffer> writtenBatches;
+    private final MessageSentCallback<ByteBuffer> batchWritten;
     private final IdleStrategy sendBufferWait = new BackoffIdleStrategy();
+    private int batchesAllocated;
     /**
-     * A batch buffer borrowed for a pass with nothing to send, kept for the next one: betty's IO thread is the only
-     * one that may give a buffer back to the session's pool, whose ring takes a single producer.
+     * A batch buffer taken for a pass with nothing to send, kept for the next one.
      */
-    private @Nullable ByteBuffer unusedBatch;
+    private @Nullable ByteBuffer spareBatch;
     private final ReplicationStats stats;
     /**
      * What the follower last said of each session, by key, which tells a shared storage and a refusal's reason apart.
@@ -137,14 +140,16 @@ public final class FollowerLink implements FrameHandler {
     private LagSampler lag = new LagSampler(Timer.VoidTimer.getInstance());
 
     /**
-     * @param sendBuffers    the batch buffers betty pools: one fewer are in flight at most, the spare covering a
-     *                       written batch's buffer not yet back in the pool when the sender is told
+     * @param sendBuffers    the batch buffers the link allocates at most, a power of two, all in flight before the
+     *                       sender waits
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
     FollowerLink(IOSession connection, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
                  Duration heartbeatInterval, int sendBuffers, IdleStrategy senderIdle, ReplicationStats stats,
                  Consumer<Runnable> senderLauncher) {
         this.sendBuffers = sendBuffers;
+        this.writtenBatches = RingBufferFactory.build(RingBufferFactory.AccessType.SINGLE_CONSUMER_SINGLE_PRODUCER, sendBuffers);
+        this.batchWritten = (message, error, batch) -> writtenBatches.offer(batch);
         this.senderIdle = senderIdle;
         this.stats = stats;
         this.senderLauncher = senderLauncher;
@@ -156,14 +161,7 @@ public final class FollowerLink implements FrameHandler {
         this.leaderId = leaderId;
         this.heartbeatIntervalNanos = heartbeatInterval.toNanos();
         this.maxEventFrameBytes = log.getMaxEventFrameBytes();
-        this.batchBytes = batchBytesFor(log);
-    }
-
-    /**
-     * The size of the write buffers a sender fills; see {@link WireFormat#bufferBytes(int)}.
-     */
-    static int batchBytesFor(ReplicationLog log) {
-        return WireFormat.bufferBytes(log.getMaxEventFrameBytes());
+        this.batchBytes = WireFormat.bufferBytes(log.getMaxEventFrameBytes());
     }
 
     /**
@@ -514,7 +512,6 @@ public final class FollowerLink implements FrameHandler {
         try {
             sendUntilClosedOrHandingOver();
         } finally {
-            releaseUnusedBatch();
             senderRunning = false;
         }
     }
@@ -543,15 +540,13 @@ public final class FollowerLink implements FrameHandler {
     }
 
     private boolean sendBatch() {
-        ByteBuffer batch = unusedBatch != null ? unusedBatch : connection.borrow(batchBytes);
-        unusedBatch = null;
-        batch.clear().limit(batchBytes);
+        ByteBuffer batch = takeBatch();
         int filled = fill(batch);
-        if (filled == 0) {
+        if (filled == 0 && state == State.STREAMING) {
             filled = heartbeatIfDue(batch, System.nanoTime());
         }
-        if (filled == 0) {
-            unusedBatch = batch;
+        if (filled == 0 || state != State.STREAMING) {
+            spareBatch = batch;
             return false;
         }
         if (filledEventOffset >= 0) {
@@ -562,25 +557,30 @@ public final class FollowerLink implements FrameHandler {
         return true;
     }
 
-    private void releaseUnusedBatch() {
-        ByteBuffer batch = unusedBatch;
+    private ByteBuffer takeBatch() {
+        ByteBuffer batch = spareBatch;
         if (batch != null) {
-            unusedBatch = null;
-            connection.processTask(() -> connection.unborrow(batch));
+            spareBatch = null;
+            return batch;
         }
+        batch = writtenBatches.poll();
+        if (batch == null) {
+            batchesAllocated++;
+            batch = ByteBuffer.allocateDirect(batchBytes);
+        }
+        // betty flips a buffer it writes
+        return batch.clear();
     }
 
     private void sendBatch(ByteBuffer batch, int length) {
-        batchesInFlight.incrementAndGet();
-        connection.send(written(batch, length), null, batchWritten, true);
+        connection.send(written(batch, length), batch, batchWritten, false);
     }
 
     /**
-     * Neither betty's write watermark is reached nor every send buffer in flight, the next borrow of which would
-     * allocate a buffer rather than take a pooled one.
+     * Neither betty's write watermark is reached nor every send buffer in flight.
      */
     private boolean hasNoRoomToSend() {
-        boolean exhausted = batchesInFlight.get() >= sendBuffers - 1;
+        boolean exhausted = spareBatch == null && batchesAllocated >= sendBuffers && writtenBatches.isEmpty();
         if (exhausted && !sendBuffersExhausted) {
             stats.sendBuffersExhausted();
         }
@@ -717,9 +717,10 @@ public final class FollowerLink implements FrameHandler {
         if (reason == CloseReason.LAPPED) {
             stats.lapped();
         }
-        ByteBuffer frame = connection.borrow(FrameEncoder.bytesWith(FrameType.CLOSE, text));
-        int length = FrameEncoder.close(frame.clear(), 0, epoch.getAsLong(), reason, text);
-        connection.send(written(frame, length), true);
+        // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
+        ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, text));
+        int length = FrameEncoder.close(frame, 0, epoch.getAsLong(), reason, text);
+        connection.send(written(frame, length), false);
         connection.stop(Deadline.of(CLOSE_FLUSH));
     }
 
@@ -859,7 +860,7 @@ public final class FollowerLink implements FrameHandler {
             }
             flush();
             awaitRoomToSend();
-            batch = connection.borrow(batchBytes);
+            batch = takeBatch();
             filled = 0;
         }
 

@@ -90,7 +90,6 @@ public final class ReplicationPublisher {
     }
 
     public void start() {
-        int batchBytes = FollowerLink.batchBytesFor(replicationLog);
         ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-leader")
                 .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
                 .build().newInstance();
@@ -103,7 +102,6 @@ public final class ReplicationPublisher {
                         .socketOptions(Map.of(StandardSocketOptions.TCP_NODELAY, true))
                         .writeIoBufferPoolSettings(IOBufferPoolSettings.builder()
                                 .zone(IOBufferPoolSettings.IOBufferPoolZone.builder().bufferSize(256).poolSize(64).build())
-                                .zone(IOBufferPoolSettings.IOBufferPoolZone.builder().bufferSize(batchBytes).poolSize(sendBuffers).build())
                                 .ioBufferPoolStatsProvider((session, pool) -> new PoolMisses())
                                 .build())
                         .build())
@@ -137,7 +135,7 @@ public final class ReplicationPublisher {
     }
 
     /**
-     * Counts the buffers betty allocated for want of a pooled one, which the senders' wait for a free one prevents.
+     * Counts the buffers betty allocated for want of a pooled one: for a WELCOME only, the links owning their batches.
      */
     private final class PoolMisses implements IOBufferPoolStats {
 
