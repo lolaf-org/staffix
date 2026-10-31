@@ -569,11 +569,12 @@ public class FixSessionImpl implements FixSession {
     }
 
     private void disconnect(Deadline deadline) {
-        if (ioSession != null) {
-            if (ioSession.isWithinIOThread()) {
+        IOSession connection = ioSession;
+        if (connection != null) {
+            if (connection.isWithinIOThread()) {
                 stopProcessingTheReadInProgress();
             }
-            ioSession.stop(deadline);
+            connection.stop(deadline);
         }
     }
 
