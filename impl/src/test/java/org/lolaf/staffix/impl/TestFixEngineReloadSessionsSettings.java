@@ -46,7 +46,7 @@ class TestFixEngineReloadSessionsSettings {
 
     private static FixSessionSettings session(String sender, String target) {
         return FixSessionSettings.builder()
-                .fixSessionId(FixSessionId.of("test", FixRegularVersion.VERSION_44, sender, target))
+                .fixSessionId(FixSessionId.of(sender, FixRegularVersion.VERSION_44, sender, target))
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                 .desiredSessionState(FixSessionDesiredState.LOGGED_OUT)
                 .build();
@@ -84,6 +84,28 @@ class TestFixEngineReloadSessionsSettings {
         String engineId = adminApi().getInstanceId();
 
         assertThat(store.boundEngineId()).isEqualTo(engineId);
+    }
+
+    @Test
+    void anEngineWhoseStoreHoldsTwoSessionsOfOneNameDoesNotStart() {
+        store.add(session("SENDER_A", "TARGET_A"));
+        store.add(session("SENDER_A", "TARGET_B"));
+
+        assertThatThrownBy(this::adminApi)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("two sessions named default.SENDER_A");
+    }
+
+    @Test
+    void aReloadBringingTwoSessionsOfOneNameIsRefusedBeforeAnythingChanges() {
+        FixSessionSettings a = session("SENDER_A", "TARGET_A");
+        store.add(a);
+        store.setSource(a, session("SENDER_B", "TARGET_B"), session("SENDER_B", "TARGET_C"));
+
+        assertThatThrownBy(() -> adminApi().reloadFixSessionsSettingsStore(STORE_ID))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("two sessions named default.SENDER_B");
+        assertThat(store.getSettings()).containsExactly(a);
     }
 
     @Test

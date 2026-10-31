@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ActuatorAutoConfigurationTest {
 
     private static final FixSessionId ACCEPTOR_SESSION_ID =
-            FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_1");
+            FixSessionId.of("acceptor", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_1");
     private static final FixSessionId INITIATOR_SESSION_ID =
             FixSessionId.of("test", FixRegularVersion.VERSION_44, "INITIATOR_1", "ACCEPTOR");
 

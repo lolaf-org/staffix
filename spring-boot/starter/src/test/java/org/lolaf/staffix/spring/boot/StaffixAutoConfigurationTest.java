@@ -58,7 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StaffixAutoConfigurationTest {
 
     private static final FixSessionId ACCEPTOR_SESSION_ID =
-            FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_1");
+            FixSessionId.of("acceptor-1", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_1");
     private static final FixSessionId INITIATOR_SESSION_ID =
             FixSessionId.of("test", FixRegularVersion.VERSION_44, "INITIATOR_1", "ACCEPTOR");
     private static final FixSessionId BACKUP_SESSION_ID =
@@ -68,12 +68,12 @@ class StaffixAutoConfigurationTest {
      * the whole run.
      */
     private static final FixSessionId NEVER_CONNECTED_SESSION_ID =
-            FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_2");
+            FixSessionId.of("acceptor-2", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_2");
     /**
      * Never connected either, with a short session down delay so it raises an alert during the run.
      */
     private static final FixSessionId ALERTING_SESSION_ID =
-            FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_3");
+            FixSessionId.of("acceptor-3", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_3");
 
     @Autowired
     private FixEngine fixEngine;

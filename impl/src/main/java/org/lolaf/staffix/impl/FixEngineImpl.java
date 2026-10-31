@@ -52,6 +52,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The engine: owns the stores, loggers, plugins and application factories a session may name, and the
@@ -230,6 +231,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             s.start();
             s.getSettings().forEach(this::validate);
         });
+        requireUniqueNames(fixSessionsSettingsStores.stream().flatMap(store -> store.getSettings().stream()));
         fixApplicationFactories.forEach(Startable::start);
         fixMessagesStores.forEach(Startable::start);
         fixSessionsPlugins.forEach(s -> {
@@ -393,6 +395,10 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             // FixSessionId, so that the store's add/remove/update fire the listener callbacks the sessions react to.
             Set<FixSessionSettings> loaded = store.load();
             loaded.forEach(this::validate);
+            requireUniqueNames(Stream.concat(fixSessionsSettingsStores.stream()
+                    .filter(other -> other != store)
+                    .flatMap(other -> other.getSettings().stream()), loaded.stream()));
+            loaded.forEach(settings -> requireNotABackupTarget(settings.getFixSessionId().getQualifiedName()));
             Map<FixSessionId, FixSessionSettings> currentBySessionId = store.getSettings().stream()
                     .collect(Collectors.toMap(FixSessionSettings::getFixSessionId, s -> s));
             Set<FixSessionId> loadedSessionIds = new HashSet<>();
@@ -502,6 +508,21 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 .ifPresent(id -> {
                     throw new IllegalStateException("The engine already has a session " + name + ": " + id);
                 });
+        requireNotABackupTarget(name);
+    }
+
+    private static void requireUniqueNames(Stream<FixSessionSettings> settings) {
+        Map<String, FixSessionId> byName = new HashMap<>();
+        settings.map(FixSessionSettings::getFixSessionId).forEach(id -> {
+            FixSessionId other = byName.putIfAbsent(id.getQualifiedName(), id);
+            if (other != null) {
+                throw new IllegalStateException("The engine has two sessions named " + id.getQualifiedName() + ": "
+                        + other + " and " + id);
+            }
+        });
+    }
+
+    private void requireNotABackupTarget(String name) {
         initiatorsTargets.stream()
                 .flatMap(initiator -> initiator.getBackupTargets().stream())
                 .filter(backup -> backup.getFixSessionId().getQualifiedName().equals(name))
