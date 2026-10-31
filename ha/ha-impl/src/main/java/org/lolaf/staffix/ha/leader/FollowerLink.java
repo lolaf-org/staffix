@@ -84,7 +84,12 @@ public final class FollowerLink implements FrameHandler {
      * the connection's: betty frees a pool's memory when the connection stops, whichever thread still writes into one.
      */
     private final RingBuffer<ByteBuffer> writtenBatches;
-    private final MessageSentCallback<ByteBuffer> batchWritten;
+    private final MessageSentCallback<ByteBuffer> batchWritten = this::batchWritten;
+    /**
+     * The batch last written, handed back with the next: betty restores its position and limit once the callback
+     * returns, which would land on a sender already filling it. IO thread only.
+     */
+    private @Nullable ByteBuffer lastWrittenBatch;
     private final IdleStrategy sendBufferWait = new BackoffIdleStrategy();
     private int batchesAllocated;
     /**
@@ -140,8 +145,8 @@ public final class FollowerLink implements FrameHandler {
     private LagSampler lag = new LagSampler(Timer.VoidTimer.getInstance());
 
     /**
-     * @param sendBuffers    the batch buffers the link allocates at most, a power of two, all in flight before the
-     *                       sender waits
+     * @param sendBuffers    the batch buffers the link allocates at most, a power of two; the one written last is
+     *                       reused only once the next is written
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
     FollowerLink(IOSession connection, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
@@ -149,7 +154,6 @@ public final class FollowerLink implements FrameHandler {
                  Consumer<Runnable> senderLauncher) {
         this.sendBuffers = sendBuffers;
         this.writtenBatches = RingBufferFactory.build(RingBufferFactory.AccessType.SINGLE_CONSUMER_SINGLE_PRODUCER, sendBuffers);
-        this.batchWritten = (message, error, batch) -> writtenBatches.offer(batch);
         this.senderIdle = senderIdle;
         this.stats = stats;
         this.senderLauncher = senderLauncher;
@@ -555,6 +559,14 @@ public final class FollowerLink implements FrameHandler {
         }
         sendBatch(batch, filled);
         return true;
+    }
+
+    private void batchWritten(ByteBuffer message, Exception error, ByteBuffer batch) {
+        ByteBuffer previous = lastWrittenBatch;
+        lastWrittenBatch = batch;
+        if (previous != null) {
+            writtenBatches.offer(previous);
+        }
     }
 
     private ByteBuffer takeBatch() {

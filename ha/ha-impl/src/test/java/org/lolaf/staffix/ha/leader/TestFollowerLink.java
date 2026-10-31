@@ -96,7 +96,14 @@ class TestFollowerLink {
                 decodeAll(frames.duplicate().flip());
             }
             batchesSent.incrementAndGet();
-            Runnable written = () -> callback.onMessageWriteCallback(frames.flip(), null, invocation.getArgument(1));
+            Runnable written = () -> {
+                // as betty: flipped for the callback, its position and limit restored once it returns
+                frames.flip();
+                int position = frames.position();
+                int limit = frames.limit();
+                callback.onMessageWriteCallback(frames, null, invocation.getArgument(1));
+                frames.limit(limit).position(position);
+            };
             if (holdingWrites) {
                 unwrittenBatches.add(written);
             } else {
@@ -232,6 +239,8 @@ class TestFollowerLink {
 
             await().during(Duration.ofMillis(200)).until(() -> batchesSent.get() == 4);
             assertThat(stats.getSendBuffersExhausted()).as("all four in flight").isEqualTo(1);
+            unwrittenBatches.poll().run();
+            await().during(Duration.ofMillis(200)).alias("the batch written last is kept").until(() -> batchesSent.get() == 4);
             unwrittenBatches.poll().run();
             await().until(() -> batchesSent.get() == 5);
         } finally {
