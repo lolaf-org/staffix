@@ -16,10 +16,16 @@
 package org.lolaf.staffix.ha.follower;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.wire.SessionStatus;
+
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -100,6 +106,34 @@ class TestReplica {
         assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.SYNC, "leader-storage"))
                 .isEqualTo(SessionStatus.MODE_MISMATCH);
         assertThat(replicaStore.started).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void aMessageTheStreamBringsAgainAfterTheSnapshotIsSkippedUntilAReset(boolean batchingStore) {
+        engine.batchingStores = batchingStore;
+        replica.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage");
+        replica.snapshotBegin(0, 1, 1);
+        replica.snapshotMessage(0, 4, text("four"), 0, 4, (byte) 0);
+        replica.snapshotMessage(0, 5, text("five"), 0, 4, (byte) 0);
+        replica.snapshotEnd(0, 2, 1, 6);
+        RecordingEngine.RecordingStore store = engine.store(REPLICATED);
+        store.writes.clear();
+
+        storeMessage(5, "five");
+        storeMessage(6, "six");
+        replica.apply(1, 3, 0, StoreEventType.RESET_SEQ_NUM, 1, text(""), 0, 0, (byte) 0);
+        storeMessage(1, "one");
+
+        assertThat(store.writes).containsExactly("message 6 six", "reset", "message 1 one");
+    }
+
+    private void storeMessage(long seq, String message) {
+        replica.apply(1, seq, 0, StoreEventType.STORE_MESSAGE, seq, text(message), 0, message.length(), (byte) 0);
+    }
+
+    private static ByteBuffer text(String message) {
+        return ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII));
     }
 
     @Test

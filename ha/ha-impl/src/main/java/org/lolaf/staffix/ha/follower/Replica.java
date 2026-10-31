@@ -42,8 +42,9 @@ import java.util.function.ObjIntConsumer;
  * session's store, opened outside the session, whether it is complete, and the last event applied.
  *
  * <p>A session is complete once a snapshot filled it, and until a stream fails to resume. A snapshot resets the store
- * before filling it, so nothing older than the leader's copy survives; store events are written over, so one applied
- * twice changes nothing. Written from the connection's IO thread only.
+ * before filling it, so nothing older than the leader's copy survives. It may hold messages the stream then brings
+ * again, which are skipped, a store being free to refuse a seqnum it holds; seqnum events are absolute, so one
+ * applied twice changes nothing. Written from the connection's IO thread only.
  */
 @Slf4j
 public final class Replica {
@@ -261,6 +262,7 @@ public final class Replica {
         session.discardSnapshotBatch();
         session.snapshotMessages = 0;
         session.store.resetSequenceNumbers();
+        session.storedSeqNum = 0;
         session.store.storeNextIncomingSeqNum(nextIncomingSeqNum);
         session.store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
         return true;
@@ -427,6 +429,10 @@ public final class Replica {
         private volatile boolean complete;
         private volatile boolean handedOver;
         private int snapshotMessages;
+        /**
+         * The highest message seqnum stored since the store was last reset.
+         */
+        private long storedSeqNum;
         private boolean assembling;
         private long assembledSequenceNumber;
         /**
@@ -468,10 +474,14 @@ public final class Replica {
         void apply(StoreEventType eventType, long sequenceNumber, ByteBuffer buffer, int messageIndex, int messageLength) {
             switch (eventType) {
                 case STORE_MESSAGE:
+                    if (sequenceNumber <= storedSeqNum) {
+                        break;
+                    }
                     int position = buffer.position();
                     int limit = buffer.limit();
                     store.storeMessageSent(sequenceNumber, buffer.limit(messageIndex + messageLength).position(messageIndex));
                     buffer.limit(limit).position(position);
+                    storedSeqNum = sequenceNumber;
                     break;
                 case STORE_OUTGOING_SEQ_NUM:
                     store.storeNextOutgoingSeqNum(sequenceNumber);
@@ -481,6 +491,7 @@ public final class Replica {
                     break;
                 case RESET_SEQ_NUM:
                     store.resetSequenceNumbers();
+                    storedSeqNum = 0;
                     break;
                 default:
                     throw new IllegalStateException("Unexpected store event " + eventType);
@@ -496,6 +507,7 @@ public final class Replica {
                 apply(StoreEventType.STORE_MESSAGE, sequenceNumber, buffer, messageIndex, messageLength);
             } else {
                 snapshotBatch.add(sequenceNumber, buffer, messageIndex, messageLength);
+                storedSeqNum = Math.max(storedSeqNum, sequenceNumber);
             }
         }
 
