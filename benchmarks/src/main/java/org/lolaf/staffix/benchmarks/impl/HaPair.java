@@ -85,18 +85,10 @@ public class HaPair {
     private static final String APPLICATION = "app";
     private static final String MONITORING = "metrics";
 
-    /**
-     * Where the follower stores what it replicates: memory, or a file written through on every message.
-     */
-    public enum FollowerStore {
-        MEMORY,
-        FILE
-    }
-
     @Param({"NONE", "ASYNC", "SYNC"})
     ReplicationMode mode;
     @Param({"MEMORY", "FILE"})
-    FollowerStore followerStore;
+    FollowerStorage.Kind followerStore;
     /**
      * A second session of the pair trading continuously beside the measured one, sharing its replication stream.
      */
@@ -149,21 +141,18 @@ public class HaPair {
     private Thread busyTrader;
     private Thread resyncer;
     private volatile boolean trading;
-    private Path followerDirectory;
+    private FollowerStorage followerStorage;
 
     @Setup(Level.Trial)
     public void setup() throws IOException {
-        followerDirectory = Files.createTempDirectory("ha-rtt-follower");
+        followerStorage = new FollowerStorage(followerStore);
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
         FixEngine leaderEngine = haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB);
         leaderEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
                         .ioWorkersGroup(busySpinning(leaderIoThreads)).build()).start();
-        FixMessagesStoreSettings followerStoreSettings = followerStore == FollowerStore.MEMORY
-                ? MemoryMessageStoreSettings.builder().build()
-                : FileMessageStoreSettings.builder().storageDirectoryPath(followerDirectory.toString()).build();
-        FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStoreSettings, replicationA, replicationB);
+        FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB);
         // a standby knows the sessions its connectors register, and binds nothing until it leads
         followerEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", freePort())).build()).start();
         HaAdmin follower = ((AdminApi) followerEngine).getHa().orElseThrow();
@@ -240,9 +229,7 @@ public class HaPair {
         for (int i = stops.size() - 1; i >= 0; i--) {
             stops.get(i).run();
         }
-        try (Stream<Path> files = Files.walk(followerDirectory)) {
-            files.sorted(Comparator.reverseOrder()).forEach(path -> path.toFile().delete());
-        }
+        followerStorage.close();
     }
 
     /**
@@ -334,11 +321,11 @@ public class HaPair {
     }
 
     static FixSessionId acceptorId(String name) {
-        return FixSessionId.of("ha", FixRegularVersion.VERSION_44, "TARGET_" + name, "SENDER_" + name);
+        return FixSessionId.of(name, FixRegularVersion.VERSION_44, "TARGET_" + name, "SENDER_" + name);
     }
 
     static FixSessionId initiatorId(String name) {
-        return FixSessionId.of("ha", FixRegularVersion.VERSION_44, "SENDER_" + name, "TARGET_" + name);
+        return FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER_" + name, "TARGET_" + name);
     }
 
     static org.lolaf.betty.api.io.IOWorkersGroup busySpinning(int ioThreads) {

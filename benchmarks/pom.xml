@@ -154,6 +154,27 @@
         </dependency>
 
         <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-messages-store-jdbc-impl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>${hikaricp.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.hdrhistogram</groupId>
             <artifactId>HdrHistogram</artifactId>
             <version>2.2.2</version>
@@ -229,6 +250,27 @@
                     </arguments>
 
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.lolaf.staffix</groupId>
+                <artifactId>staffix-jdbc-ddl-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-postgresql-ddl</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>generate-ddl</goal>
+                        </goals>
+                        <configuration>
+                            <schema>MESSAGES</schema>
+                            <dialect>org.hibernate.dialect.PostgreSQLDialect</dialect>
+                            <outputDirectory>${project.build.outputDirectory}/db</outputDirectory>
+                            <outputFileName>schema-postgres.sql</outputFileName>
+                            <createDropStatements>true</createDropStatements>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>

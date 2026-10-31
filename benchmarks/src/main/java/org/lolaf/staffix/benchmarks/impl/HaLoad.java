@@ -60,6 +60,7 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -101,6 +102,8 @@ public class HaLoad {
     int rate;
     @Param({"ASYNC", "SYNC"})
     ReplicationMode mode;
+    @Param({"MEMORY"})
+    FollowerStorage.Kind followerStore;
     @Param({"1"})
     int leaderIoThreads;
     /**
@@ -117,6 +120,7 @@ public class HaLoad {
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
     private final Map<Meter.Id, double[]> metersAtStart = new HashMap<>();
     private final Histogram latency = new Histogram(HIGHEST_LATENCY_NANOS, 3);
+    private FollowerStorage followerStorage;
     private LoadSession[] loadSessions;
     private long sentThisIteration;
     private long iterationNanos;
@@ -126,10 +130,11 @@ public class HaLoad {
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
-        haEngine("a", Role.LEADER, replicationA, replicationB)
+        followerStorage = new FollowerStorage(followerStore);
+        haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB)
                 .newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
                         .ioWorkersGroup(busySpinning(leaderIoThreads)).build()).start();
-        FixEngine followerEngine = haEngine("b", Role.FOLLOWER, replicationA, replicationB);
+        FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB);
         // a standby knows the sessions its connectors register, and binds nothing until it leads
         followerEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", freePort())).build()).start();
         HaAdmin follower = ((AdminApi) followerEngine).getHa().orElseThrow();
@@ -167,8 +172,8 @@ public class HaLoad {
             HaStatus.Leader leader = follower.getStatus().getLeader();
             return leader != null && leader.isInSync();
         });
-        log.info("HA load ready: {} sessions at {} msg/s, {} replication, replication waiting {}, leader IO threads {}",
-                sessions, rate, mode, replicationWaiting, leaderIoThreads);
+        log.info("HA load ready: {} sessions at {} msg/s, {} replication, {} follower store, replication waiting {}, leader IO threads {}",
+                sessions, rate, mode, followerStore, replicationWaiting, leaderIoThreads);
     }
 
     @Setup(Level.Iteration)
@@ -226,10 +231,11 @@ public class HaLoad {
     }
 
     @TearDown(Level.Trial)
-    public void tearDown() {
+    public void tearDown() throws IOException {
         for (int i = stops.size() - 1; i >= 0; i--) {
             stops.get(i).run();
         }
+        followerStorage.close();
     }
 
     private long unanswered() {
@@ -287,12 +293,12 @@ public class HaLoad {
         return "S" + session;
     }
 
-    private FixEngine haEngine(String nodeId, Role role, InetSocketAddress replicationA, InetSocketAddress replicationB) {
+    private FixEngine haEngine(String nodeId, Role role, FixMessagesStoreSettings store, InetSocketAddress replicationA,
+                               InetSocketAddress replicationB) {
         MemorySessionsSettingsStoreSettings.MemorySessionsSettingsStoreSettingsBuilder acceptors = MemorySessionsSettingsStoreSettings.builder();
         for (int i = 0; i < sessions; i++) {
             acceptors.fixSessionSetting(session(acceptorId(name(i)), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode));
         }
-        FixMessagesStoreSettings store = MemoryMessageStoreSettings.builder().build();
         return start(engine(nodeId, store)
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder().instanceId(APPLICATION)
                         .application(APPLICATION, new StaffixEngine.AcceptorApplication()).build())
