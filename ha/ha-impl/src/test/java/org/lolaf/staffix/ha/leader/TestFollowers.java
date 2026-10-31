@@ -68,7 +68,7 @@ class TestFollowers {
         IOSession connection = mock(IOSession.class);
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerLink link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofSeconds(1), 4, new BackoffIdleStrategy(), new ReplicationStats(), loop -> {
+                Duration.ofSeconds(1), Duration.ZERO, 4, new BackoffIdleStrategy(), new ReplicationStats(), loop -> {
         });
         link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0);
         link.fill(ByteBuffer.allocate(1 << 16));
@@ -101,6 +101,19 @@ class TestFollowers {
         long start = System.nanoTime();
         assertThat(followers.awaitApplied(KEY, offset, TimeUnit.MILLISECONDS.toNanos(20), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
         assertThat(System.nanoTime() - start).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(20));
+    }
+
+    @Test
+    void aFollowerAWaitTimedOutOnIsNotWaitedForAgainUntilItAppliesWhatItMissed() {
+        FollowerLink follower = inSyncFollower(0);
+        assertThat(followers.awaitApplied(KEY, offset, TimeUnit.MILLISECONDS.toNanos(20), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
+
+        assertThat(CompletableFuture.supplyAsync(() -> followers.awaitApplied(KEY, offset, NO_TIMEOUT, new BackoffIdleStrategy())))
+                .as("no second wait, even without a timeout").succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.TIMED_OUT);
+
+        follower.onAck(EPOCH, offset, true);
+
+        assertThat(followers.awaitApplied(KEY, offset, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.APPLIED);
     }
 
     @Test

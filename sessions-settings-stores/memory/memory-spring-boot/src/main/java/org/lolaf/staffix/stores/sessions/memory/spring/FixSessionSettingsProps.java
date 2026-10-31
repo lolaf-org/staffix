@@ -441,7 +441,7 @@ public class FixSessionSettingsProps {
          */
         private FixSessionSettings.HaSessionSettings.ReplicationMode replicationMode;
         /**
-         * How long a SYNC send waits for the standby before going out anyway; zero waits forever.
+         * How long a SYNC send waits for the standby before going out anyway; unset keeps 1s, zero waits forever.
          */
         private Duration replicationAckTimeout;
         /**

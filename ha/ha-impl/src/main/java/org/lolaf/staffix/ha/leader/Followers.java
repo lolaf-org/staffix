@@ -70,7 +70,9 @@ public final class Followers {
 
     /**
      * Waits until every follower in sync for the session applied the event at {@code offset}. A follower falling out
-     * of sync stops being waited for, and with none left the wait ends at once. Allocates nothing.
+     * of sync stops being waited for, and with none left the wait ends at once. A follower a wait timed out on is not
+     * waited for again until it applies what it missed, so a hung follower costs one timeout, not one per send.
+     * Allocates nothing.
      *
      * @param timeoutNanos 0 to wait as long as a follower is in sync
      */
@@ -79,20 +81,32 @@ public final class Followers {
         idle.reset();
         while (true) {
             boolean anyInSync = false;
+            boolean anyWaitedFor = false;
             boolean applied = true;
             for (FollowerLink link : links) {
                 if (link.isInSync(sessionKey)) {
                     anyInSync = true;
-                    applied &= link.getAppliedOffset() >= offset;
+                    if (!link.isAckOverdue()) {
+                        anyWaitedFor = true;
+                        applied &= link.getAppliedOffset() >= offset;
+                    }
                 }
             }
             if (!anyInSync) {
                 return Ack.NO_FOLLOWER_IN_SYNC;
             }
+            if (!anyWaitedFor) {
+                return Ack.TIMED_OUT;
+            }
             if (applied) {
                 return Ack.APPLIED;
             }
             if (timeoutNanos != 0 && System.nanoTime() - startNanos >= timeoutNanos) {
+                for (FollowerLink link : links) {
+                    if (link.isInSync(sessionKey) && link.getAppliedOffset() < offset) {
+                        link.ackOverdue(offset);
+                    }
+                }
                 return Ack.TIMED_OUT;
             }
             idle.idle();

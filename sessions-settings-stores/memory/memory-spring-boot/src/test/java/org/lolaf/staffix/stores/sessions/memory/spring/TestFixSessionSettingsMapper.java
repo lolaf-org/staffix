@@ -116,7 +116,7 @@ class TestFixSessionSettingsMapper {
         FixSessionSettings.HaSessionSettings mapped = FixSessionSettingsMapper.toSettings(props).getHaSessionSettings();
 
         assertThat(mapped.getReplicationMode()).isEqualTo(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC);
-        assertThat(mapped.getReplicationAckTimeout()).isZero();
+        assertThat(mapped.getReplicationAckTimeout()).isEqualTo(FixSessionSettings.HaSessionSettings.builder().build().getReplicationAckTimeout());
         assertThat(mapped.isSyncAckLatencyEnabled()).isFalse();
     }
 

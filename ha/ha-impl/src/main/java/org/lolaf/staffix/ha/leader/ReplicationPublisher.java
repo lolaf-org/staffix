@@ -59,6 +59,7 @@ public final class ReplicationPublisher {
     private final LongSupplier epoch;
     private final String leaderId;
     private final Duration heartbeatInterval;
+    private final Duration stallTimeout;
     private final int sendBuffers;
     private final Supplier<IdleStrategy> senderIdleStrategy;
     private final SelectStrategy selectStrategy;
@@ -68,7 +69,7 @@ public final class ReplicationPublisher {
     private Server server;
 
     public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLog log, ReplicatedSessions sessions, Followers followers,
-                                LongSupplier epoch, String leaderId, Duration heartbeatInterval, int sendBuffers,
+                                LongSupplier epoch, String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
                                 Supplier<IdleStrategy> senderIdleStrategy, SelectStrategy selectStrategy, ReplicationStats stats) {
         this.sendBuffers = sendBuffers;
         this.senderIdleStrategy = senderIdleStrategy;
@@ -81,6 +82,7 @@ public final class ReplicationPublisher {
         this.epoch = epoch;
         this.leaderId = leaderId;
         this.heartbeatInterval = heartbeatInterval;
+        this.stallTimeout = stallTimeout;
     }
 
     private static void launchSender(Runnable loop) {
@@ -156,8 +158,8 @@ public final class ReplicationPublisher {
 
         @Override
         public void onConnected(IOSession session) {
-            FollowerLink link = new FollowerLink(session, replicationLog, sessions, epoch, leaderId, heartbeatInterval, sendBuffers,
-                    senderIdleStrategy.get(), stats, ReplicationPublisher::launchSender);
+            FollowerLink link = new FollowerLink(session, replicationLog, sessions, epoch, leaderId, heartbeatInterval, stallTimeout,
+                    sendBuffers, senderIdleStrategy.get(), stats, ReplicationPublisher::launchSender);
             session.setAttachment(link);
             followers.add(link);
         }

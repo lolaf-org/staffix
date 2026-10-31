@@ -121,6 +121,12 @@ public final class FollowerLink implements FrameHandler {
      */
     @Getter
     private volatile boolean reportedInSync;
+    private volatile long lastAckNanos;
+    /**
+     * The offset a {@code SYNC} send gave up waiting for, -1 when none: the follower is not waited for again until it
+     * applies it, so a hung follower costs one timeout rather than one per send.
+     */
+    private volatile long overdueOffset = -1;
     private volatile AtomicReferenceArray<SessionSync> sessionSyncs = new AtomicReferenceArray<>(16);
     private volatile boolean snapshotRequested;
     /**
@@ -137,6 +143,12 @@ public final class FollowerLink implements FrameHandler {
     private volatile boolean senderRunning;
     private int announced;
     private long lastSendNanos;
+    private final long stallTimeoutNanos;
+    private long lastSentEventOffset = -1;
+    /**
+     * When the follower last went from owing nothing to owing an ack, sender thread only.
+     */
+    private long owedSinceNanos;
     /**
      * The offset of the last event the last {@link #fill} took, -1 when it took none.
      */
@@ -150,8 +162,8 @@ public final class FollowerLink implements FrameHandler {
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
     FollowerLink(IOSession connection, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
-                 Duration heartbeatInterval, int sendBuffers, IdleStrategy senderIdle, ReplicationStats stats,
-                 Consumer<Runnable> senderLauncher) {
+                 Duration heartbeatInterval, Duration stallTimeout, int sendBuffers, IdleStrategy senderIdle,
+                 ReplicationStats stats, Consumer<Runnable> senderLauncher) {
         this.sendBuffers = sendBuffers;
         this.writtenBatches = RingBufferFactory.build(RingBufferFactory.AccessType.SINGLE_CONSUMER_SINGLE_PRODUCER, sendBuffers);
         this.senderIdle = senderIdle;
@@ -164,6 +176,7 @@ public final class FollowerLink implements FrameHandler {
         this.epoch = epoch;
         this.leaderId = leaderId;
         this.heartbeatIntervalNanos = heartbeatInterval.toNanos();
+        this.stallTimeoutNanos = stallTimeout.toNanos();
         this.maxEventFrameBytes = log.getMaxEventFrameBytes();
         this.batchBytes = WireFormat.bufferBytes(log.getMaxEventFrameBytes());
     }
@@ -222,6 +235,11 @@ public final class FollowerLink implements FrameHandler {
     public void onAck(long epoch, long appliedOffset, boolean inSync) {
         this.appliedOffset = appliedOffset;
         this.reportedInSync = inSync;
+        lastAckNanos = System.nanoTime();
+        long overdue = overdueOffset;
+        if (overdue >= 0 && appliedOffset >= overdue) {
+            overdueOffset = -1;
+        }
         ackLatency.onAck(appliedOffset);
         lag.onAck(appliedOffset);
     }
@@ -239,6 +257,20 @@ public final class FollowerLink implements FrameHandler {
      */
     public boolean isInSync(int sessionKey) {
         return state == State.STREAMING && getSessionSync(sessionKey) == SessionSync.IN_SYNC;
+    }
+
+    boolean isAckOverdue() {
+        return overdueOffset >= 0;
+    }
+
+    /**
+     * A {@code SYNC} send stopped waiting for this follower to apply the event at {@code offset}.
+     */
+    void ackOverdue(long offset) {
+        overdueOffset = offset;
+        if (appliedOffset >= offset) {
+            overdueOffset = -1;
+        }
     }
 
     public @Nullable SessionSync getSessionSync(int sessionKey) {
@@ -523,7 +555,13 @@ public final class FollowerLink implements FrameHandler {
     private void sendUntilClosedOrHandingOver() {
         senderIdle.reset();
         lastSendNanos = System.nanoTime();
+        lastAckNanos = lastSendNanos;
         while (state != State.CLOSED && !handingOver) {
+            if (isStalled(System.nanoTime())) {
+                close(CloseReason.STALLED, "no ack for " + TimeUnit.NANOSECONDS.toMillis(stallTimeoutNanos)
+                        + " ms with writes unapplied");
+                break;
+            }
             if (hasNoRoomToSend()) {
                 senderIdle.idle();
                 continue;
@@ -554,8 +592,13 @@ public final class FollowerLink implements FrameHandler {
             return false;
         }
         if (filledEventOffset >= 0) {
+            long nowNanos = System.nanoTime();
+            if (lastSentEventOffset <= appliedOffset) {
+                owedSinceNanos = nowNanos;
+            }
+            lastSentEventOffset = filledEventOffset;
             // before the send: an ack processed in between would otherwise leave the sample to the next one
-            ackLatency.onSent(filledEventOffset, System.nanoTime());
+            ackLatency.onSent(filledEventOffset, nowNanos);
         }
         sendBatch(batch, filled);
         return true;
@@ -567,6 +610,14 @@ public final class FollowerLink implements FrameHandler {
         if (previous != null) {
             writtenBatches.offer(previous);
         }
+    }
+
+    /**
+     * Owing an ack and silent for the stall timeout: a slow follower still acks each read, a hung one does not.
+     */
+    private boolean isStalled(long nowNanos) {
+        return stallTimeoutNanos > 0 && lastSentEventOffset > appliedOffset
+                && nowNanos - Math.max(owedSinceNanos, lastAckNanos) > stallTimeoutNanos;
     }
 
     private ByteBuffer takeBatch() {

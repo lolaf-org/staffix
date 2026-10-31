@@ -73,7 +73,7 @@ public class ReplicationHaProps {
     private Duration heartbeatInterval;
 
     /**
-     * The leader's pooled write buffers per follower, a power of two, one kept spare; unset keeps 4.
+     * The leader's write buffers per follower, a power of two, allocated as first needed; unset keeps 4.
      */
     private Integer sendBuffers;
 
@@ -115,6 +115,12 @@ public class ReplicationHaProps {
      * How long a connected follower may go without applying a write before the leader alerts; unset keeps 5s.
      */
     private Duration followerLagAlertThreshold;
+
+    /**
+     * How long a follower owing an acknowledgement may stay silent before the leader drops it as hung; unset keeps
+     * 10s, zero never drops.
+     */
+    private Duration followerStallTimeout;
 
     /**
      * Whether an operator may, through staffix, hand the leadership over or take this node out of elections (the

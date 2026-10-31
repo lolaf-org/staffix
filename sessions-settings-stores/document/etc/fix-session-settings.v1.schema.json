@@ -394,8 +394,8 @@
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
           } ],
-          "description" : "How long a SYNC send waits for the standby's acknowledgement before going out anyway; Duration.ZERO waits forever.",
-          "default" : "PT0S"
+          "description" : "How long a SYNC send waits for the standby's acknowledgement before going out anyway; Duration.ZERO waits forever, which a hung standby turns into a frozen session. A standby that missed it is not waited for again until it catches up.",
+          "default" : "PT1S"
         },
         "replicationMode" : {
           "type" : "string",

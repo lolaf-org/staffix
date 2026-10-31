@@ -119,7 +119,7 @@ class TestFollowerLink {
 
     private FollowerLink link() {
         return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
-                4, new BackoffIdleStrategy(), stats,
+                Duration.ZERO, 4, new BackoffIdleStrategy(), stats,
                 loop -> {
                 });
     }
@@ -179,7 +179,7 @@ class TestFollowerLink {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofHours(1), 4, new BackoffIdleStrategy(), stats, loop -> {
+                Duration.ofHours(1), Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
         });
@@ -196,12 +196,74 @@ class TestFollowerLink {
         verify(connection, never()).unborrow(any());
     }
 
+    private FollowerLink linkStallingAfter(Duration stallTimeout, Thread[] sender) {
+        return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
+                Duration.ofHours(1), stallTimeout, 4, new BackoffIdleStrategy(), stats, loop -> {
+            sender[0] = new Thread(loop);
+            sender[0].start();
+        });
+    }
+
+    @Test
+    void aFollowerOwingAnAckAndSilentForTheStallTimeoutIsDropped() throws InterruptedException {
+        FixSessionMessagesStore main = replicated("main");
+        Thread[] sender = new Thread[1];
+        link = linkStallingAfter(Duration.ofMillis(100), sender);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+
+        main.storeNextIncomingSeqNum(1);
+
+        sender[0].join(5_000);
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 STALLED");
+    }
+
+    @Test
+    void aSlowFollowerStillAckingEachReadIsKept() {
+        FixSessionMessagesStore main = replicated("main");
+        Thread[] sender = new Thread[1];
+        link = linkStallingAfter(Duration.ofMillis(100), sender);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        try {
+            for (int seq = 1; seq <= 10; seq++) {
+                main.storeNextIncomingSeqNum(seq);
+                await().pollDelay(Duration.ofMillis(40)).until(() -> true);
+                link.onAck(EPOCH, 0, true);
+            }
+
+            assertThat(link.getState()).as("behind all along, never silent").isEqualTo(FollowerLink.State.STREAMING);
+        } finally {
+            link.disconnected();
+        }
+    }
+
+    @Test
+    void aWriteAfterALongIdleIsNotTakenForAStall() {
+        FixSessionMessagesStore main = replicated("main");
+        Thread[] sender = new Thread[1];
+        link = linkStallingAfter(Duration.ofMillis(100), sender);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        try {
+            await().pollDelay(Duration.ofMillis(300)).until(() -> true);
+
+            long offset = ha.getReplicationLog().getTailOffset();
+            main.storeNextIncomingSeqNum(1);
+            await().pollDelay(Duration.ofMillis(30)).until(() -> true);
+            link.onAck(EPOCH, offset, true);
+            await().pollDelay(Duration.ofMillis(150)).until(() -> true);
+
+            assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
+        } finally {
+            link.disconnected();
+        }
+    }
+
     @Test
     void aSenderLappedWhileAHeartbeatIsDueWritesNothingAfterItsClose() {
         ha = engine(1024);
         Runnable[] sender = new Runnable[1];
         link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofNanos(1), 4, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop);
+                Duration.ofNanos(1), Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop);
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
@@ -221,7 +283,7 @@ class TestFollowerLink {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                4, new BackoffIdleStrategy(), stats, loop -> {
+                Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
         });

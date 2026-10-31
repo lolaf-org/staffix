@@ -48,6 +48,10 @@ public enum CloseReason {
      */
     APPLY_FAILED(7),
     /**
+     * The follower owed an acknowledgement and stayed silent for the stall timeout: it reconnects and is caught up.
+     */
+    STALLED(8),
+    /**
      * Any other code, from a newer peer; kept rather than refused so the close is still reported.
      */
     UNKNOWN(0xFFFF);
@@ -76,6 +80,8 @@ public enum CloseReason {
                 return SNAPSHOT_FAILED;
             case 7:
                 return APPLY_FAILED;
+            case 8:
+                return STALLED;
             default:
                 return UNKNOWN;
         }

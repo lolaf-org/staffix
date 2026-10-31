@@ -75,7 +75,7 @@ Then ask for replication per session, in its settings:
 ```yaml
 haSessionSettings:
   replicationMode: ASYNC        # NONE (default), ASYNC or SYNC
-  replicationAckTimeout: PT0S   # SYNC only: how long a send waits for the follower, zero for ever
+  replicationAckTimeout: PT1S   # SYNC only: how long a send waits for the follower, zero for ever
 ```
 
 **Configure the same sessions, with the same settings, on both nodes.** Each node reads its own settings, and a node
@@ -89,7 +89,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `logCapacity` | 16 MiB | Off-heap memory holding the writes the follower has not received yet. A follower falling further behind is caught up by snapshot. The largest message replicated is half of it. |
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
-| `sendBuffers` | 4 | Pooled write buffers per follower, a power of two; one is kept spare. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower. |
+| `sendBuffers` | 4 | Write buffers per follower, a power of two, allocated as first needed. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower. |
 | `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower, waits for writes. It parks up to 1 ms when idle, which a `SYNC` send then waits on; `BusySpinIdleStrategy` sends at once, for a core per follower. |
 | `syncAckIdleStrategy` | backs off | How a `SYNC` send waits for its acknowledgement, on the session's thread. `BusySpinIdleStrategy` sees it at once, for that thread's core while it waits. |
 | `selectStrategy` | betty's, blocking | How the replication's network threads wait, on both nodes. An `IdleStrategySelectStrategy` busy spinning saves a system call per wake-up, for a core on each node. |
@@ -97,6 +97,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `handOverTimeout` | 5s | How long a leader stopping cleanly waits to give its follower every write. |
 | `switchoverTimeout` | 30s | How long a planned switchover may take before this node leads again. |
 | `followerLagAlertThreshold` | 5s | How long a connected follower may go without applying a write before the leader raises a major alert. A follower stalled while connected still reads as in sync, as of its last acknowledgement. |
+| `followerStallTimeout` | 10s | How long a follower owing an acknowledgement may stay silent before the leader drops it as hung; it reconnects and is caught up. A slow follower still acknowledges each read and is kept. Zero never drops. |
 | `monitoringInstanceId` | none | The monitoring manager publishing the replication's meters. |
 | `alertsPublisherInstanceId` | none | The alerts publisher publishing the replication's probes. |
 
@@ -114,8 +115,10 @@ Each session picks one.
   machine, about 170 µs more than `ASYNC` with the defaults, 15 µs with the replication busy spinning; see
   [Latency](#latency).
 
-**`SYNC` never stops trading for a missing follower.** With `replicationAckTimeout`, a send waits at most that long, then
-goes out anyway. With no follower in sync (not connected, catching up), a send does not wait at all. Either way the
+**`SYNC` never stops trading for a missing follower.** A send waits at most `replicationAckTimeout` (1 s by default),
+then goes out anyway, and the sends after it do not wait for that follower until it has caught up, so a hung follower
+costs one timeout, not one per message; the leader drops it after `followerStallTimeout`. With no follower in sync
+(not connected, catching up), a send does not wait at all. Either way the
 session is flagged unprotected and its `ha-replication` probe alerts, and waiting resumes once a follower is back in
 sync. `syncAckLatencyEnabled: true` adds a timer of the wait to the session's own meters.
 

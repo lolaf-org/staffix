@@ -153,4 +153,12 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final Duration followerLagAlertThreshold = Duration.ofSeconds(5);
+
+    /**
+     * How long a follower owing an acknowledgement may stay silent before the leader drops it as hung; it reconnects
+     * and is caught up. A slow follower still acknowledges each read, so this does not drop one that keeps up badly.
+     * Zero never drops.
+     */
+    @Builder.Default
+    private final Duration followerStallTimeout = Duration.ofSeconds(10);
 }

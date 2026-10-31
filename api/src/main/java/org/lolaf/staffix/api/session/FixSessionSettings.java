@@ -395,10 +395,11 @@ public class FixSessionSettings {
 
         /**
          * How long a {@link ReplicationMode#SYNC SYNC} send waits for the standby's acknowledgement before going out
-         * anyway; {@link Duration#ZERO} waits forever.
+         * anyway; {@link Duration#ZERO} waits forever, which a hung standby turns into a frozen session. A standby
+         * that missed it is not waited for again until it catches up.
          */
         @Builder.Default
-        Duration replicationAckTimeout = Duration.ZERO;
+        Duration replicationAckTimeout = Duration.ofSeconds(1);
 
         /**
          * Whether the session's monitoring times each {@link ReplicationMode#SYNC SYNC} send's wait for the standby's

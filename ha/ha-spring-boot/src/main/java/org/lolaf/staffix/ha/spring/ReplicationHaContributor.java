@@ -62,6 +62,7 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         if (props.getHandOverTimeout() != null) b.handOverTimeout(props.getHandOverTimeout());
         if (props.getSwitchoverTimeout() != null) b.switchoverTimeout(props.getSwitchoverTimeout());
         if (props.getFollowerLagAlertThreshold() != null) b.followerLagAlertThreshold(props.getFollowerLagAlertThreshold());
+        if (props.getFollowerStallTimeout() != null) b.followerStallTimeout(props.getFollowerStallTimeout());
         sink.accept(b.build());
     }
 

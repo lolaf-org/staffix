@@ -68,7 +68,7 @@ rttMeasurementSettings:
   sendingTimeToWireDelay: "PT0.0000015S"
 haSessionSettings:
   replicationMode: "NONE"
-  replicationAckTimeout: "PT0S"
+  replicationAckTimeout: "PT1S"
   syncAckLatencyEnabled: false
 sessionScheduleSettings:
   outsideSessionTimePreTriggerDelay: "PT2S"

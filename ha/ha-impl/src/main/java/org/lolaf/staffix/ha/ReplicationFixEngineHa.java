@@ -501,7 +501,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     private void startPublisher(long epoch) {
         publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLog, sessions, followers,
-                () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getSendBuffers(),
+                () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getFollowerStallTimeout(),
+                settings.getSendBuffers(),
                 settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats);
         publisher.start();
     }
