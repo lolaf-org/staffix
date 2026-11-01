@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.benchmarks.impl;
 
+import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -226,6 +227,8 @@ public class HaPair {
         logTimer("ha.follower.lag", "fill to ack");
         logTimer("ha.follower.ack.latency", "follower round trip, batch sent to ack");
         logTimer("ha.sync.ack.latency", "SYNC send waiting for the ack");
+        logCount("ha.follower.too.slow", "followers dropped as too slow");
+        logCount("ha.snapshots", "snapshots sent");
         for (int i = stops.size() - 1; i >= 0; i--) {
             stops.get(i).run();
         }
@@ -244,6 +247,12 @@ public class HaPair {
                     timersAtMeasuring.put(timer.getId(), new long[]{timer.count(), (long) timer.totalTime(TimeUnit.NANOSECONDS)});
                 }
             }
+        }
+    }
+
+    private void logCount(String name, String description) {
+        for (FunctionCounter counter : meters.find(name).functionCounters()) {
+            log.info("{} ({}), whole trial: {}", name, description, (long) counter.count());
         }
     }
 

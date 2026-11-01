@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Where a highly available pair saturates: many sessions at a fixed message rate, an open loop. The figures are in
  * the logs, not in JMH's score, which is only how long each iteration took: latency percentiles from each request's
- * due time, and the replication's meters (follower lag, laps, snapshots) per iteration.
+ * due time, and the replication's meters (follower lag, followers dropped as too slow, snapshots) per iteration.
  */
 @Warmup(iterations = 1, batchSize = 1)
 @Measurement(iterations = 3, batchSize = 1)
