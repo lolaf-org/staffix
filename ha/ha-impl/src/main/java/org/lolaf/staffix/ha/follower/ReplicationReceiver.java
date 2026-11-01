@@ -50,8 +50,8 @@ public final class ReplicationReceiver {
     private final String nodeId;
     private final int maxFrameBytes;
     private final Duration connectionRetry;
-    private volatile @Nullable LeaderLink link;
     private final SelectStrategy selectStrategy;
+    private volatile @Nullable LeaderLink link;
     private IOWorkersGroup ioWorkers;
     private Client client;
 
