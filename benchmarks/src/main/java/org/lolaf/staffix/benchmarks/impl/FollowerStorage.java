@@ -37,8 +37,8 @@ import java.util.Comparator;
 import java.util.stream.Stream;
 
 /**
- * Where a benchmark's follower stores what it replicates, and what that storage needs around it: a directory to
- * delete, or a PostgreSQL container to run.
+ * Where a benchmark node stores its sessions, the follower what it replicates, and what that storage needs around it:
+ * a directory to delete, or a PostgreSQL container to run.
  */
 public final class FollowerStorage implements AutoCloseable {
 

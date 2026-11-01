@@ -91,6 +91,11 @@ public class HaPair {
     @Param({"MEMORY", "FILE"})
     FollowerStorage.Kind followerStore;
     /**
+     * The leader's own store: memory keeps the last 1 024 messages, a file every one, so its snapshots fill whole chunks.
+     */
+    @Param({"MEMORY"})
+    FollowerStorage.Kind leaderStore;
+    /**
      * A second session of the pair trading continuously beside the measured one, sharing its replication stream.
      */
     @Param({"false", "true"})
@@ -143,14 +148,16 @@ public class HaPair {
     private Thread resyncer;
     private volatile boolean trading;
     private FollowerStorage followerStorage;
+    private FollowerStorage leaderStorage;
 
     @Setup(Level.Trial)
     public void setup() throws IOException {
         followerStorage = new FollowerStorage(followerStore);
+        leaderStorage = new FollowerStorage(leaderStore);
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
-        FixEngine leaderEngine = haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB);
+        FixEngine leaderEngine = haEngine("a", Role.LEADER, leaderStorage.settings(), replicationA, replicationB);
         leaderEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
                         .ioWorkersGroup(busySpinning(leaderIoThreads)).build()).start();
         FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB);
@@ -233,6 +240,7 @@ public class HaPair {
             stops.get(i).run();
         }
         followerStorage.close();
+        leaderStorage.close();
     }
 
     /**
