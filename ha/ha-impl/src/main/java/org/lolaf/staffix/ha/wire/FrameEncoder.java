@@ -70,7 +70,7 @@ public class FrameEncoder {
     }
 
     public static int hello(ByteBuffer out, int index, long epoch, String nodeId, long lastAppliedEpoch,
-                            long lastAppliedOffset) {
+                            long lastAppliedOffset, int link) {
         byte[] id = utf8(nodeId);
         int length = header(out, index, FrameType.HELLO, 0, epoch, id.length);
         int p = index + HEADER_BYTES;
@@ -79,11 +79,12 @@ public class FrameEncoder {
         out.putShort(p + 6, (short) id.length);
         out.putLong(p + 8, lastAppliedEpoch);
         out.putLong(p + 16, lastAppliedOffset);
-        putBytes(out, p + 24, id);
+        out.putShort(p + 24, (short) link);
+        putBytes(out, p + 32, id);
         return length;
     }
 
-    public static int welcome(ByteBuffer out, int index, long epoch, String leaderId, long resumeOffset) {
+    public static int welcome(ByteBuffer out, int index, long epoch, String leaderId, long resumeOffset, int links) {
         byte[] id = utf8(leaderId);
         int length = header(out, index, FrameType.WELCOME, 0, epoch, id.length);
         int p = index + HEADER_BYTES;
@@ -91,7 +92,8 @@ public class FrameEncoder {
         out.putShort(p + 4, WireFormat.VERSION);
         out.putShort(p + 6, (short) id.length);
         out.putLong(p + 8, resumeOffset);
-        putBytes(out, p + 16, id);
+        out.putShort(p + 16, (short) links);
+        putBytes(out, p + 24, id);
         return length;
     }
 

@@ -52,21 +52,21 @@ class TestFrameCodec {
     @Test
     void hello() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234);
+        int length = FrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 3);
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("HELLO epoch=7 version=1 node=node-b lastEpoch=6 lastOffset=1234");
+        assertThat(handler.frames).containsExactly("HELLO epoch=7 version=2 node=node-b lastEpoch=6 lastOffset=1234 link=3");
     }
 
     @Test
     void welcome() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.welcome(buffer, 0, 7, "node-a", WireFormat.NO_RESUME);
+        int length = FrameEncoder.welcome(buffer, 0, 7, "node-a", WireFormat.NO_RESUME, 4);
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("WELCOME epoch=7 version=1 leader=node-a resume=-1");
+        assertThat(handler.frames).containsExactly("WELCOME epoch=7 version=2 leader=node-a resume=-1 links=4");
     }
 
     @Test
@@ -252,7 +252,7 @@ class TestFrameCodec {
     @Test
     void aPeerThatIsNotAReplicationEndpointIsRefused() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234);
+        int length = FrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 0);
         buffer.putInt(WireFormat.HEADER_BYTES, 0x47455420);
 
         assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))

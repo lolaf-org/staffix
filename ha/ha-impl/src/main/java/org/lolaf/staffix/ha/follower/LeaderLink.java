@@ -84,12 +84,12 @@ public final class LeaderLink implements FrameHandler {
     void hello() {
         ByteBuffer hello = connection.borrow(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
         int length = FrameEncoder.hello(hello.clear(), 0, epoch.getAsLong(), nodeId, replica.getLastAppliedEpoch(),
-                replica.getLastAppliedOffset());
+                replica.getLastAppliedOffset(), 0);
         connection.send(written(hello, length), true);
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset) {
+    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int links) {
         if (state != State.AWAITING_WELCOME) {
             close(CloseReason.PROTOCOL_ERROR, "a second WELCOME");
             return;
@@ -262,7 +262,7 @@ public final class LeaderLink implements FrameHandler {
     }
 
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset) {
+    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int link) {
         unexpected(FrameType.HELLO);
     }
 

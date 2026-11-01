@@ -40,14 +40,15 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset) {
+    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int link) {
         frames.add("HELLO epoch=" + epoch + " version=" + version + " node=" + nodeId + " lastEpoch=" + lastAppliedEpoch
-                + " lastOffset=" + lastAppliedOffset);
+                + " lastOffset=" + lastAppliedOffset + " link=" + link);
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset) {
-        frames.add("WELCOME epoch=" + epoch + " version=" + version + " leader=" + leaderId + " resume=" + resumeOffset);
+    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int links) {
+        frames.add("WELCOME epoch=" + epoch + " version=" + version + " leader=" + leaderId + " resume=" + resumeOffset
+                + " links=" + links);
     }
 
     @Override

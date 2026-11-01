@@ -24,8 +24,9 @@ import lombok.Getter;
  * <pre>
  * frame             direction           fixed payload
  * HELLO             follower to leader  magic 4, version 2, node id length 2, last applied epoch 8,
- *                                       last applied offset 8; then the node id
- * WELCOME           leader to follower  magic 4, version 2, leader id length 2, resume offset 8; then the leader id
+ *                                       last applied offset 8, link 2, reserved 6; then the node id
+ * WELCOME           leader to follower  magic 4, version 2, leader id length 2, resume offset 8, link count 2,
+ *                                       reserved 6; then the leader id
  * SESSION           leader to follower  session key 4, session type 1, replication mode 1, session id length 2,
  *                                       storage identity length 2; then the session id, then the identity
  * SESSION_STATUS    follower to leader  session key 4, status 1
@@ -42,8 +43,8 @@ import lombok.Getter;
 @Getter
 public enum FrameType {
 
-    HELLO(1, 24),
-    WELCOME(2, 16),
+    HELLO(1, 32),
+    WELCOME(2, 24),
     SESSION(3, 10),
     SESSION_STATUS(4, 5),
     STORE_EVENT(5, 28),

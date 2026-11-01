@@ -86,7 +86,7 @@ class TestLeaderLink {
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset) {
-        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset);
+        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, 1);
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings) {
@@ -134,7 +134,7 @@ class TestLeaderLink {
     void theHelloCarriesTheLastEventApplied() {
         link.hello();
 
-        assertThat(sent.frames).containsExactly("HELLO epoch=7 version=1 node=follower-b lastEpoch=0 lastOffset=-1");
+        assertThat(sent.frames).containsExactly("HELLO epoch=7 version=2 node=follower-b lastEpoch=0 lastOffset=-1 link=0");
     }
 
     @Test
@@ -347,7 +347,7 @@ class TestLeaderLink {
         next.hello();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), next);
 
-        assertThat(sent.frames).startsWith("HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=0");
+        assertThat(sent.frames).startsWith("HELLO epoch=7 version=2 node=follower-b lastEpoch=7 lastOffset=0 link=0");
         assertThat(engine.store(MAIN)).isSameAs(store);
         assertThat(store.started).isTrue();
     }

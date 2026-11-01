@@ -71,7 +71,7 @@ class TestFollowers {
         FollowerLink link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofSeconds(1), Duration.ZERO, 4, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         });
-        link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0, 0);
         link.fill(ByteBuffer.allocate(1 << 16));
         link.onSessionStatus(EPOCH, KEY, SessionStatus.REPLICATING);
         link.onAck(EPOCH, appliedOffset, true);

@@ -76,13 +76,13 @@ public class FrameDecoder {
         switch (type) {
             case HELLO:
                 checkMagic(in, p);
-                handler.onHello(epoch, in.getShort(p + 4), string(in, p + 24, unsignedShort(in, p + 6), variableBytes, type),
-                        in.getLong(p + 8), in.getLong(p + 16));
+                handler.onHello(epoch, in.getShort(p + 4), string(in, p + 32, unsignedShort(in, p + 6), variableBytes, type),
+                        in.getLong(p + 8), in.getLong(p + 16), unsignedShort(in, p + 24));
                 break;
             case WELCOME:
                 checkMagic(in, p);
-                handler.onWelcome(epoch, in.getShort(p + 4), string(in, p + 16, unsignedShort(in, p + 6), variableBytes, type),
-                        in.getLong(p + 8));
+                handler.onWelcome(epoch, in.getShort(p + 4), string(in, p + 24, unsignedShort(in, p + 6), variableBytes, type),
+                        in.getLong(p + 8), unsignedShort(in, p + 16));
                 break;
             case SESSION:
                 onSession(in, p, flags, epoch, variableBytes, handler);

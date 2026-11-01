@@ -187,7 +187,7 @@ class TestFollowerLink {
             sender[0] = new Thread(loop);
             sender[0].start();
         });
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
         main.storeNextIncomingSeqNum(1);
         await().until(() -> batchesSent.get() == 2);
@@ -213,7 +213,7 @@ class TestFollowerLink {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         link = linkStallingAfter(Duration.ofMillis(100), sender);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
 
         main.storeNextIncomingSeqNum(1);
 
@@ -227,7 +227,7 @@ class TestFollowerLink {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         link = linkStallingAfter(Duration.ofMillis(100), sender);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         try {
             for (int seq = 1; seq <= 10; seq++) {
                 main.storeNextIncomingSeqNum(seq);
@@ -246,7 +246,7 @@ class TestFollowerLink {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         link = linkStallingAfter(Duration.ofMillis(100), sender);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         try {
             await().pollDelay(Duration.ofMillis(300)).until(() -> true);
 
@@ -270,7 +270,7 @@ class TestFollowerLink {
                 Duration.ofNanos(1), Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop);
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         for (int seq = 2; seq < 200; seq++) {
             store.storeNextIncomingSeqNum(seq);
         }
@@ -292,7 +292,7 @@ class TestFollowerLink {
             sender[0].start();
         });
         holdingWrites = true;
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         try {
             await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
             for (int seq = 1; seq <= 3; seq++) {
@@ -318,13 +318,13 @@ class TestFollowerLink {
     void aFreshFollowerIsStreamedFromTheLogTail() {
         replicated("main").storeNextIncomingSeqNum(5);
 
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
         assertThat(link.getFollowerId()).isEqualTo("follower-b");
         assertThat(sent.frames).containsExactly(
-                "WELCOME epoch=7 version=1 leader=leader-a resume=-1",
+                "WELCOME epoch=7 version=2 leader=leader-a resume=-1 links=1",
                 "SESSION epoch=7 key=0 INITIATOR SYNC id=" + SESSION + " identity=null");
     }
 
@@ -338,12 +338,12 @@ class TestFollowerLink {
         long second = third / 2;
         store.storeNextIncomingSeqNum(7);
 
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         fill();
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
         assertThat(sent.frames).containsExactly(
-                "WELCOME epoch=7 version=1 leader=leader-a resume=" + second,
+                "WELCOME epoch=7 version=2 leader=leader-a resume=" + second + " links=1",
                 "SESSION epoch=7 key=0 INITIATOR SYNC id=" + SESSION + " identity=null",
                 "STORE_EVENT epoch=7 offset=" + second + " key=0 STORE_INCOMING_SEQ_NUM seq=6 message=",
                 "STORE_EVENT epoch=7 offset=" + third + " key=0 STORE_INCOMING_SEQ_NUM seq=7 message=");
@@ -358,10 +358,10 @@ class TestFollowerLink {
             store.storeNextIncomingSeqNum(seq);
         }
 
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
-        assertThat(sent.frames).first().asString().endsWith("resume=-1");
+        assertThat(sent.frames).first().asString().contains("resume=-1 ");
         assertThat(stats.getTooSlow()).as("nobody gated the writes while it was away").isZero();
     }
 
@@ -372,12 +372,12 @@ class TestFollowerLink {
         stats = new ReplicationStats(new SlowFollowers(Duration.ofSeconds(1), clock));
         stats.droppedTooSlow("follower-b");
         link = link();
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
         assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
 
         clock.advance(Duration.ofSeconds(1));
         link = link();
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
         assertThat(sent.frames).last().asString().startsWith("WELCOME");
@@ -387,14 +387,22 @@ class TestFollowerLink {
     void aFollowerOfAnEarlierEpochIsNotResumed() {
         replicated("main").storeNextIncomingSeqNum(5);
 
-        link.onHello(EPOCH - 1, WireFormat.VERSION, "follower-b", EPOCH - 1, 0);
+        link.onHello(EPOCH - 1, WireFormat.VERSION, "follower-b", EPOCH - 1, 0, 0);
 
-        assertThat(sent.frames).first().asString().endsWith("resume=-1");
+        assertThat(sent.frames).first().asString().contains("resume=-1 ");
+    }
+
+    @Test
+    void aFollowerOpeningALinkPastTheCountIsClosed() {
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 1);
+
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 NO_SUCH_LINK");
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
     }
 
     @Test
     void aFollowerOfAnotherVersionIsClosed() {
-        link.onHello(EPOCH, WireFormat.VERSION + 1, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION + 1, "follower-b", 0, -1, 0);
 
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 VERSION_MISMATCH");
         assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
@@ -403,7 +411,7 @@ class TestFollowerLink {
 
     @Test
     void aLeaderBehindItsFollowersEpochClosesTheStreamAsStale() {
-        link.onHello(EPOCH + 1, WireFormat.VERSION, "follower-b", EPOCH + 1, 0);
+        link.onHello(EPOCH + 1, WireFormat.VERSION, "follower-b", EPOCH + 1, 0, 0);
 
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 STALE_EPOCH");
     }
@@ -421,7 +429,7 @@ class TestFollowerLink {
         link = link();
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         for (int seq = 2; seq < 200; seq++) {
             store.storeNextIncomingSeqNum(seq);
         }
@@ -441,7 +449,7 @@ class TestFollowerLink {
                 .logFullTimeout(Duration.ofMinutes(1)).build());
         link = link();
         FixSessionMessagesStore store = replicated("main");
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
         CountDownLatch written = new CountDownLatch(1);
         Thread writer = new Thread(() -> {
             for (int seq = 1; seq < 200; seq++) {
@@ -468,7 +476,7 @@ class TestFollowerLink {
         stats.droppedTooSlow("follower-b");
         link = link();
 
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 RETRY_LATER");
@@ -480,7 +488,7 @@ class TestFollowerLink {
         stats.droppedTooSlow("follower-b");
         link = link();
 
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
         link.onAck(EPOCH, -1, true);
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
@@ -492,7 +500,7 @@ class TestFollowerLink {
         ha = engine(1024);
         link = link();
         FixSessionMessagesStore store = replicated("main");
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
         link.disconnected();
 
         for (int seq = 1; seq < 200; seq++) {
@@ -507,7 +515,7 @@ class TestFollowerLink {
     void aBatchTakesEventsUntilTheNextDoesNotFitWhichStartsTheNextBatch() {
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         fill();
         sent.frames.clear();
         for (int seq = 2; seq <= 4; seq++) {
@@ -530,7 +538,7 @@ class TestFollowerLink {
     void aSessionAppearingMidStreamIsAnnouncedBeforeItsFirstEvent() {
         FixSessionMessagesStore main = replicated("main");
         main.storeNextIncomingSeqNum(1);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         fill();
         sent.frames.clear();
 
@@ -559,7 +567,7 @@ class TestFollowerLink {
         Timer lagTimer = mock(Timer.class);
         stats.lagTimers(followerId -> lagTimer);
         FixSessionMessagesStore store = replicated("main");
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         long first = ha.getReplicationLog().getTailOffset();
         store.storeNextIncomingSeqNum(5);
         fill();
@@ -592,7 +600,7 @@ class TestFollowerLink {
     void aCleanHandOverClosesWithShutdownOnceEveryEventIsSent() {
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(5);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         store.storeNextIncomingSeqNum(6);
         fill();
 
@@ -606,7 +614,7 @@ class TestFollowerLink {
     void aFollowerNotSentEveryEventBeforeTheDeadlineIsDroppedWithoutShutdown() {
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(5);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         store.storeNextIncomingSeqNum(6);
 
         assertThat(link.handOver(Deadline.of(Duration.ofMillis(50)))).isFalse();
@@ -620,7 +628,7 @@ class TestFollowerLink {
     void aSessionIsInSyncOnceTheFollowerSaysItReplicatesIt() {
         replicated("main").storeNextIncomingSeqNum(5);
         assertThat(link.isInSync(0)).as("before its hello").isFalse();
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         fill();
         assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.ANNOUNCED);
         assertThat(link.isInSync(0)).as("announced").isFalse();
@@ -634,7 +642,7 @@ class TestFollowerLink {
     @Test
     void aSessionTheFollowerDoesNotReplicateIsNeverInSync() {
         replicated("main").storeNextIncomingSeqNum(5);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         fill();
 
         link.onSessionStatus(EPOCH, 0, SessionStatus.UNKNOWN_SESSION);
@@ -646,7 +654,7 @@ class TestFollowerLink {
     @Test
     void aSessionNoLongerReplicatedIsAnnouncedAgainAndLeftOutOfTheFollowersSync() {
         replicated("main").storeNextIncomingSeqNum(5);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         fill();
         link.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
 
@@ -665,7 +673,7 @@ class TestFollowerLink {
         replicated("main").storeNextIncomingSeqNum(5);
         replicated("shared").storeNextIncomingSeqNum(6);
         replicated("refused").storeNextIncomingSeqNum(7);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         fill();
         link.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
         link.onSessionStatus(EPOCH, 1, SessionStatus.SHARED_STORAGE);
@@ -704,7 +712,7 @@ class TestFollowerLink {
             return null;
         }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
         sent.frames.clear();
 
@@ -753,7 +761,7 @@ class TestFollowerLink {
     void aSnapshotGoesInChunksBetweenTheBatchesOfTheOtherSessionsAndSkipsItsOwnEvents() {
         FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
         FixSessionMessagesStore other = replicated("other");
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
         sent.frames.clear();
@@ -780,7 +788,7 @@ class TestFollowerLink {
     @Test
     void aSnapshotEndsWithTheRoundThatCaughtUpWithTheSessionWrites() {
         ha.replicatingStore(settings("main"), storeHolding(1_001L, 1_011L), new RecordingProbes());
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
         sent.frames.clear();
@@ -794,7 +802,7 @@ class TestFollowerLink {
     @Test
     void aSnapshotNotCatchingUpSendsItsLastRoundWhole() {
         ha.replicatingStore(settings("main"), storeHolding(1_001L, 3_001L), new RecordingProbes());
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
         link.startPendingSnapshot();
@@ -814,7 +822,7 @@ class TestFollowerLink {
     @Test
     void aResetOfTheSessionEndsItsSnapshotAndIsSentAfterItsEnd() {
         FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
         link.startPendingSnapshot();
@@ -846,7 +854,7 @@ class TestFollowerLink {
             return null;
         }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
         sent.frames.clear();
 
@@ -865,7 +873,7 @@ class TestFollowerLink {
         FixSessionMessagesStore local = startedStore();
         when(local.getOutgoingSeqNum()).thenReturn(1_001L);
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
 
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
@@ -879,7 +887,7 @@ class TestFollowerLink {
         FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
         when(local.getOutgoingSeqNum()).thenReturn(5L);
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
         sent.frames.clear();
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
@@ -905,7 +913,7 @@ class TestFollowerLink {
         when(local.getOutgoingSeqNum()).thenReturn(5L);
         doThrow(new StoreException("storage down")).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1);
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
         sent.frames.clear();
 

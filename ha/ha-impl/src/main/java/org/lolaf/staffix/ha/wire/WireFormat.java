@@ -69,7 +69,7 @@ public class WireFormat {
     /**
      * Bumped only for an incompatible layout change; a peer of another version is closed, never guessed at.
      */
-    public static final short VERSION = 1;
+    public static final short VERSION = 2;
 
     /**
      * {@link FrameType#WELCOME}'s resume offset when the follower's position is no longer in the leader's log, so

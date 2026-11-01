@@ -35,14 +35,17 @@ public interface FrameHandler {
      *
      * @param lastAppliedOffset the offset of the last event it applied in {@code lastAppliedEpoch}, -1 for none: the
      *                          leader resumes after it when its log still holds it in the same epoch
+     * @param link              which of the leader's links this connection carries, 0 for the first, the one that
+     *                          learns how many there are
      */
-    void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset);
+    void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int link);
 
     /**
      * @param resumeOffset where the stream resumes, or {@link WireFormat#NO_RESUME} when every session is caught up
      *                     by snapshot
+     * @param links        how many links the leader splits its sessions over; the follower opens the others
      */
-    void onWelcome(long epoch, int version, String leaderId, long resumeOffset);
+    void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int links);
 
     /**
      * Binds a session key, used by every later frame about the session, to the session's id.

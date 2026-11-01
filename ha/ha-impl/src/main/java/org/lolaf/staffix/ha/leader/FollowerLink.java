@@ -82,6 +82,10 @@ public final class FollowerLink implements FrameHandler {
     private final long heartbeatIntervalNanos;
     private final int maxEventFrameBytes;
     private final int batchBytes;
+    /**
+     * How many links the leader splits its sessions over, announced in WELCOME.
+     */
+    private final int links = 1;
     private final int sendBuffers;
     private final IdleStrategy senderIdle;
     /**
@@ -198,7 +202,7 @@ public final class FollowerLink implements FrameHandler {
     }
 
     @Override
-    public void onHello(long followerEpoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset) {
+    public void onHello(long followerEpoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int link) {
         followerId = nodeId;
         long leaderEpoch = epoch.getAsLong();
         if (state != State.AWAITING_HELLO) {
@@ -211,6 +215,10 @@ public final class FollowerLink implements FrameHandler {
         }
         if (followerEpoch > leaderEpoch) {
             close(CloseReason.STALE_EPOCH, "follower is at epoch " + followerEpoch + ", this leader at " + leaderEpoch);
+            return;
+        }
+        if (link >= links) {
+            close(CloseReason.NO_SUCH_LINK, "link " + link + " of " + links);
             return;
         }
         Optional<Instant> heldOffUntil = stats.getSlowFollowers().heldOffUntil(nodeId);
@@ -231,7 +239,7 @@ public final class FollowerLink implements FrameHandler {
         log.info("Follower {} connected at epoch {}, {}", nodeId, leaderEpoch,
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
         ByteBuffer welcome = connection.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
-        int length = FrameEncoder.welcome(welcome.clear(), 0, leaderEpoch, leaderId, resumed ? reader.getOffset() : WireFormat.NO_RESUME);
+        int length = FrameEncoder.welcome(welcome.clear(), 0, leaderEpoch, leaderId, resumed ? reader.getOffset() : WireFormat.NO_RESUME, links);
         connection.send(written(welcome, length), true);
         senderLauncher.accept(this::send);
     }
@@ -407,7 +415,7 @@ public final class FollowerLink implements FrameHandler {
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset) {
+    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int links) {
         unexpected(FrameType.WELCOME);
     }
 
