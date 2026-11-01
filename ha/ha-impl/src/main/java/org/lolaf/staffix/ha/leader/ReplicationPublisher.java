@@ -61,6 +61,7 @@ public final class ReplicationPublisher {
     private final Duration heartbeatInterval;
     private final Duration stallTimeout;
     private final int sendBuffers;
+    private final int snapshotChunkBytes;
     private final Supplier<IdleStrategy> senderIdleStrategy;
     private final SelectStrategy selectStrategy;
     private final Followers followers;
@@ -70,8 +71,9 @@ public final class ReplicationPublisher {
 
     public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLogs logs, ReplicatedSessions sessions, Followers followers,
                                 LongSupplier epoch, String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
-                                Supplier<IdleStrategy> senderIdleStrategy, SelectStrategy selectStrategy, ReplicationStats stats) {
+                                int snapshotChunkBytes, Supplier<IdleStrategy> senderIdleStrategy, SelectStrategy selectStrategy, ReplicationStats stats) {
         this.sendBuffers = sendBuffers;
+        this.snapshotChunkBytes = snapshotChunkBytes;
         this.senderIdleStrategy = senderIdleStrategy;
         this.selectStrategy = selectStrategy;
         this.stats = stats;
@@ -160,7 +162,7 @@ public final class ReplicationPublisher {
         @Override
         public void onConnected(IOSession session) {
             FollowerLink link = new FollowerLink(session, replicationLogs, sessions, epoch, leaderId, heartbeatInterval, stallTimeout,
-                    sendBuffers, senderIdleStrategy.get(), stats, ReplicationPublisher::launchSender);
+                    sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationPublisher::launchSender);
             session.setAttachment(link);
             followers.add(link);
         }

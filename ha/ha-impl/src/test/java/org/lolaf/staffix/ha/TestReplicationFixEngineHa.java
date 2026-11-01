@@ -173,6 +173,14 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void theSnapshotChunkBytesMustBePositive() {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().snapshotChunkBytes(0).build();
+
+        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("snapshotChunkBytes");
+    }
+
+    @Test
     void thereIsAtLeastOneReplicationLink() {
         ReplicationHaSettings settings = ReplicationHaSettings.builder().replicationLinks(0).build();
 

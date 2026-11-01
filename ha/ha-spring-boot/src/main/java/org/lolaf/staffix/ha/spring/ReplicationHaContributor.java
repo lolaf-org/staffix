@@ -54,6 +54,7 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         if (props.getReconnectInterval() != null) b.reconnectInterval(props.getReconnectInterval());
         if (props.getHeartbeatInterval() != null) b.heartbeatInterval(props.getHeartbeatInterval());
         if (props.getSendBuffers() != null) b.sendBuffers(props.getSendBuffers());
+        if (props.getSnapshotChunkBytes() != null) b.snapshotChunkBytes(props.getSnapshotChunkBytes());
         if (props.getSenderIdleStrategy() == ReplicationHaProps.Waiting.BUSY_SPIN) b.senderIdleStrategy(BusySpinIdleStrategy::getInstance);
         if (props.getSyncAckIdleStrategy() == ReplicationHaProps.Waiting.BUSY_SPIN) b.syncAckIdleStrategy(BusySpinIdleStrategy::getInstance);
         if (props.getSelectStrategy() == ReplicationHaProps.Waiting.BUSY_SPIN) {

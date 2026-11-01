@@ -135,6 +135,15 @@ public class ReplicationHaSettings extends HaSettings {
     private final int sendBuffers = 4;
 
     /**
+     * The most bytes of a snapshot the leader sends between two batches of the other sessions' writes, a session's
+     * longer message going whole anyway. The sender reads each chunk from the session's store, the cost of a snapshot,
+     * while the link's live writes wait: 64 KiB takes about 0.2 ms from a file store. Larger finishes a snapshot sooner
+     * under load, smaller delays the other sessions less. Capped at the largest event frame's batch.
+     */
+    @Builder.Default
+    private final int snapshotChunkBytes = 64 << 10;
+
+    /**
      * How far a node that becomes leader moves the outgoing MsgSeqNum(34) of every replicated session: past what the
      * old leader may have sent without this node receiving it, which the counterparty would refuse as too low. It
      * then asks for the gap and gets a gap fill. Must exceed the messages a session can send while unreplicated.

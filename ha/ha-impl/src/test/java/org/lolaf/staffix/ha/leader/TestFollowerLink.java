@@ -123,7 +123,7 @@ class TestFollowerLink {
 
     private FollowerLink link() {
         return new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
-                Duration.ZERO, 4, new BackoffIdleStrategy(), stats,
+                Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats,
                 loop -> {
                 });
     }
@@ -183,7 +183,7 @@ class TestFollowerLink {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofHours(1), Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> {
+                Duration.ofHours(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
         });
@@ -202,7 +202,7 @@ class TestFollowerLink {
 
     private FollowerLink linkStallingAfter(Duration stallTimeout, Thread[] sender) {
         return new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofHours(1), stallTimeout, 4, new BackoffIdleStrategy(), stats, loop -> {
+                Duration.ofHours(1), stallTimeout, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
         });
@@ -267,7 +267,7 @@ class TestFollowerLink {
         ha = engine(1024);
         Runnable[] sender = new Runnable[1];
         link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofNanos(1), Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop);
+                Duration.ofNanos(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop);
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
@@ -287,7 +287,7 @@ class TestFollowerLink {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> {
+                Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
         });
@@ -817,6 +817,28 @@ class TestFollowerLink {
             link.sendSnapshotChunk();
         }
         assertThat(snapshotSeqNums()).isEqualTo(LongStream.rangeClosed(1, 1_000).boxed().collect(Collectors.toList()));
+        assertThat(sent.frames).last().isEqualTo("SNAPSHOT_END epoch=7 key=0 count=1000 nextIn=21 nextOut=1001");
+    }
+
+    @Test
+    void aSnapshotChunkHoldsNoMoreThanItsBudget() {
+        int chunkBytes = 4 << 10;
+        link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
+                Duration.ofMillis(100), Duration.ZERO, 4, chunkBytes, new BackoffIdleStrategy(), stats, loop -> {
+        });
+        ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        fill();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+        link.startPendingSnapshot();
+        link.sendSnapshotChunk();
+        sent.frames.clear();
+
+        link.sendSnapshotChunk();
+
+        int messageFrameBytes = FrameEncoder.snapshotMessageBytes(MESSAGE_BYTES);
+        assertThat(snapshotSeqNums()).hasSize(chunkBytes / messageFrameBytes);
+        snapshot();
         assertThat(sent.frames).last().isEqualTo("SNAPSHOT_END epoch=7 key=0 count=1000 nextIn=21 nextOut=1001");
     }
 

@@ -69,7 +69,7 @@ class TestFollowers {
         IOSession connection = mock(IOSession.class);
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerLink link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofSeconds(1), Duration.ZERO, 4, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
+                Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         });
         link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0, 0);
         link.fill(ByteBuffer.allocate(1 << 16));
@@ -150,7 +150,7 @@ class TestFollowers {
         IOSession connection = mock(IOSession.class);
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerLink linkOfMain = new FollowerLink(connection, twoLinks.getReplicationLogs(), twoLinks.getSessions(),
-                () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, new BackoffIdleStrategy(),
+                () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         });
         linkOfMain.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, 0);

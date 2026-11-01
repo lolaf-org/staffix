@@ -90,6 +90,7 @@ public final class FollowerLink implements FrameHandler {
     @Getter
     private volatile int link;
     private final int sendBuffers;
+    private final int snapshotChunkBytes;
     private final IdleStrategy senderIdle;
     /**
      * Batch buffers betty wrote, handed back by its IO thread. The link owns its batch buffers rather than borrowing
@@ -175,10 +176,11 @@ public final class FollowerLink implements FrameHandler {
     /**
      * @param sendBuffers    the batch buffers the link allocates at most, a power of two; the one written last is
      *                       reused only once the next is written
+     * @param snapshotChunkBytes the most bytes of a snapshot sent between two live batches, at most a batch
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
     FollowerLink(IOSession connection, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
-                 Duration heartbeatInterval, Duration stallTimeout, int sendBuffers, IdleStrategy senderIdle,
+                 Duration heartbeatInterval, Duration stallTimeout, int sendBuffers, int snapshotChunkBytes, IdleStrategy senderIdle,
                  ReplicationStats stats, Consumer<Runnable> senderLauncher) {
         this.sendBuffers = sendBuffers;
         this.writtenBatches = RingBufferFactory.build(RingBufferFactory.AccessType.SINGLE_CONSUMER_SINGLE_PRODUCER, sendBuffers);
@@ -196,6 +198,7 @@ public final class FollowerLink implements FrameHandler {
         this.stallTimeoutNanos = stallTimeout.toNanos();
         this.maxEventFrameBytes = logs.getMaxEventFrameBytes();
         this.batchBytes = WireFormat.bufferBytes(logs.getMaxEventFrameBytes());
+        this.snapshotChunkBytes = Math.min(snapshotChunkBytes, batchBytes);
     }
 
     /**
@@ -931,7 +934,7 @@ public final class FollowerLink implements FrameHandler {
             int messageLength = message.remaining();
             int maxFragmentLength = maxEventFrameBytes - FrameEncoder.snapshotMessageBytes(0);
             int fragments = Math.max(1, (messageLength + maxFragmentLength - 1) / maxFragmentLength);
-            if (!cursor.whole && filled > 0 && batchBytes - filled < fragments * FrameEncoder.snapshotMessageBytes(0) + messageLength) {
+            if (!cursor.whole && filled > 0 && snapshotChunkBytes - filled < fragments * FrameEncoder.snapshotMessageBytes(0) + messageLength) {
                 cursor.next = seqNum;
                 stopped = true;
                 return false;

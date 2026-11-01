@@ -84,6 +84,9 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (sendBuffers < 2 || Integer.bitCount(sendBuffers) != 1) {
             throw new IllegalArgumentException("sendBuffers must be a power of two of at least 2, got " + sendBuffers);
         }
+        if (settings.getSnapshotChunkBytes() < 1) {
+            throw new IllegalArgumentException("snapshotChunkBytes must be positive, got " + settings.getSnapshotChunkBytes());
+        }
         Duration logFullTimeout = settings.getLogFullTimeout();
         if (logFullTimeout.isNegative() || logFullTimeout.isZero()) {
             throw new IllegalArgumentException("logFullTimeout must be positive, got " + logFullTimeout);
@@ -494,7 +497,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private void startPublisher(long epoch) {
         publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLogs, sessions, followers,
                 () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getFollowerStallTimeout(),
-                settings.getSendBuffers(),
+                settings.getSendBuffers(), settings.getSnapshotChunkBytes(),
                 settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats);
         publisher.start();
     }

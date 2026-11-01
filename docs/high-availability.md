@@ -91,6 +91,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
 | `sendBuffers` | 4 | Write buffers per follower link, a power of two, allocated as first needed. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower link. |
+| `snapshotChunkBytes` | 64 KiB | The most bytes of a snapshot sent between two batches of the other sessions' writes. The leader reads each chunk from the session's store while the link's live writes wait, about 0.2 ms from a file store at 64 KiB. Larger finishes a snapshot sooner under load, smaller delays the other sessions less. |
 | `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower link, waits for writes. It parks up to 1 ms when idle, which a `SYNC` send then waits on; `BusySpinIdleStrategy` sends at once, for a core per follower. |
 | `syncAckIdleStrategy` | backs off | How a `SYNC` send waits for its acknowledgement, on the session's thread. `BusySpinIdleStrategy` sees it at once, for that thread's core while it waits. |
 | `selectStrategy` | betty's, blocking | How the replication's network threads wait, on both nodes. An `IdleStrategySelectStrategy` busy spinning saves a system call per wake-up, for a core on each node. |

@@ -84,6 +84,11 @@ public class ReplicationHaProps {
     private Integer sendBuffers;
 
     /**
+     * The most bytes of a snapshot sent between two batches of the other sessions' writes; unset keeps 64 KiB.
+     */
+    private Integer snapshotChunkBytes;
+
+    /**
      * How the leader's sender, a thread per follower, waits for writes; unset keeps backing off. {@code busy-spin} sends
      * at once, for a core per follower.
      */

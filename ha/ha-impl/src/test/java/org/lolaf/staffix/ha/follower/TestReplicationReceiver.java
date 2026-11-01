@@ -83,7 +83,7 @@ class TestReplicationReceiver {
     private static ReplicationPublisher publisher(InetSocketAddress address, ReplicationFixEngineHa leader,
                                                   ReplicationStats stats) {
         return new ReplicationPublisher(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
-                () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, BackoffIdleStrategy::new,
+                () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE, BackoffIdleStrategy::new,
                 new WakeupSelectStrategy(10), stats);
     }
 
