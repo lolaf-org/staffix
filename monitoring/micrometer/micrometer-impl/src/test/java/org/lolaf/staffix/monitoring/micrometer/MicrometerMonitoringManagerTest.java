@@ -395,6 +395,20 @@ class MicrometerMonitoringManagerTest {
     }
 
     @Test
+    void aPulledCounterStillReadsItsTotalOnceNothingElseHoldsItsSupplier() {
+        monitoringManager.start();
+        AtomicLong total = new AtomicLong(1);
+        monitoringManager.engineContext("engine-1").getCounter("pulled", "A total read on demand", Map.of(), total::get);
+
+        for (int i = 0; i < 5; i++) {
+            System.gc();
+        }
+        total.set(7);
+
+        assertThat(meterRegistry.find("pulled").functionCounter().count()).isEqualTo(7);
+    }
+
+    @Test
     void engineMetersAreTaggedWithTheEngineAloneAndRemovedOnStop() {
         monitoringManager.start();
         FixEngineMonitoringContext engine = monitoringManager.engineContext("engine-1");

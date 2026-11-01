@@ -129,7 +129,7 @@ class MicrometerMeters implements FixEngineMonitoringContext {
                     .tags(tags(tags))
                     .register(meterRegistry);
             describe(id, description, tags, FixMeterDescriptor.Type.COUNTER);
-            return new PulledCounter(counter);
+            return new PulledCounter(counter, total);
         });
     }
 
@@ -226,6 +226,11 @@ class MicrometerMeters implements FixEngineMonitoringContext {
     private static final class PulledCounter implements CounterWrapper {
 
         private final FunctionCounter counter;
+        /**
+         * Held here because a FunctionCounter holds its state weakly, and offers no strong reference as a gauge does:
+         * a supplier nothing else held would be collected, and the counter read 0.
+         */
+        private final LongSupplier total;
 
         @Override
         public void increment() {
