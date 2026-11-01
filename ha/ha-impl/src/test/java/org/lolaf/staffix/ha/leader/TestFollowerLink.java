@@ -38,11 +38,13 @@ import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.tests.TestingClock;
+import org.mockito.ArgumentCaptor;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -59,6 +61,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -843,6 +846,30 @@ class TestFollowerLink {
     }
 
     @Test
+    void aSnapshotReadsTheStoreOnlyAboutAsFarAsEachChunkSends() {
+        link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
+                Duration.ofMillis(100), Duration.ZERO, 4, 4 << 10, new BackoffIdleStrategy(), stats, loop -> {
+        });
+        FixSessionMessagesStore store = storeHolding(1_001L);
+        ha.replicatingStore(settings("main"), store, new RecordingProbes());
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        fill();
+        link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+
+        snapshot();
+
+        ArgumentCaptor<Long> starts = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> stops = ArgumentCaptor.forClass(Long.class);
+        verify(store, atLeastOnce()).find(starts.capture(), stops.capture(), any(StoreMessagesConsumer.class));
+        long read = 0;
+        for (int i = 0; i < starts.getAllValues().size(); i++) {
+            read += stops.getAllValues().get(i) - starts.getAllValues().get(i) + 1;
+        }
+        assertThat(read).as("seqnums asked of the store for 1 000 sent").isLessThan(1_500);
+        assertThat(sent.frames).last().isEqualTo("SNAPSHOT_END epoch=7 key=0 count=1000 nextIn=21 nextOut=1001");
+    }
+
+    @Test
     void aSnapshotEndsWithTheRoundThatCaughtUpWithTheSessionWrites() {
         ha.replicatingStore(settings("main"), storeHolding(1_001L, 1_011L), new RecordingProbes());
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
@@ -936,7 +963,13 @@ class TestFollowerLink {
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
         snapshot();
 
-        verify(local).find(eq(1L), eq(1_000L), any(StoreMessagesConsumer.class));
+        ArgumentCaptor<Long> starts = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> stops = ArgumentCaptor.forClass(Long.class);
+        verify(local, atLeastOnce()).find(starts.capture(), stops.capture(), any(StoreMessagesConsumer.class));
+        List<Long> next = new ArrayList<>(List.of(1L));
+        stops.getAllValues().forEach(stop -> next.add(stop + 1));
+        assertThat(starts.getAllValues()).as("each read starts where the last ended").isEqualTo(next.subList(0, next.size() - 1));
+        assertThat(stops.getAllValues()).last().isEqualTo(1_000L);
     }
 
     @Test

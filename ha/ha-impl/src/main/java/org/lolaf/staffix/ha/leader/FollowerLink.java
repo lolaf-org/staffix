@@ -748,9 +748,7 @@ public final class FollowerLink implements FrameHandler {
             if (roundStarted) {
                 cursor.startRound();
             }
-            if (cursor.next <= cursor.roundEnd) {
-                cursor.store.find(cursor.next, cursor.roundEnd, writer);
-            }
+            findChunk(cursor, writer);
             if (state != State.STREAMING) {
                 return;
             }
@@ -767,6 +765,25 @@ public final class FollowerLink implements FrameHandler {
             snapshot = null;
             sessionSync(cursor.sessionKey, SessionSync.SNAPSHOT_SENT, SessionSync.SNAPSHOT_PENDING);
             close(CloseReason.SNAPSHOT_FAILED, "FIX session " + session.getFixSessionId() + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Reads the chunk's messages a span at a time, a store's {@code find} copying its whole range before the writer can
+     * stop it: the span is what the last chunk held, doubled while it leaves room.
+     */
+    private void findChunk(SnapshotCursor cursor, SnapshotWriter writer) {
+        int messagesBefore = cursor.messageCount;
+        while (cursor.next <= cursor.roundEnd && !writer.stopped && state == State.STREAMING) {
+            long stop = Math.min(cursor.roundEnd, cursor.next + cursor.findSpan - 1);
+            cursor.store.find(cursor.next, stop, writer);
+            if (!writer.stopped) {
+                cursor.next = Math.max(cursor.next, stop + 1);
+                cursor.findSpan = Math.min(cursor.findSpan * 2, SnapshotCursor.MAX_FIND_SPAN);
+            }
+        }
+        if (writer.stopped) {
+            cursor.findSpan = cursor.messageCount - messagesBefore + 1;
         }
     }
 
@@ -867,6 +884,8 @@ public final class FollowerLink implements FrameHandler {
      */
     private static final class SnapshotCursor {
 
+        private static final int MAX_FIND_SPAN = 1 << 20;
+
         private final int sessionKey;
         private final FixSessionMessagesStore store;
         private final long cutOffset;
@@ -883,6 +902,10 @@ public final class FollowerLink implements FrameHandler {
         private long nextIncomingSeqNum;
         private long nextOutgoingSeqNum;
         private int messageCount;
+        /**
+         * The seqnums a store read covers.
+         */
+        private int findSpan = 64;
         /**
          * The stream holds a reset of the session, sent after the snapshot's end.
          */
