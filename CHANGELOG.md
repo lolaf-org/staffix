@@ -23,8 +23,10 @@ could mean.
   `ASYNC` (nothing waits, unless the standby falls a whole replication log behind) or `SYNC` (a message reaches the
   counterparty only once the standby has it), with `haSessionSettings.replicationMode`. A standby that cannot keep up
   makes the writes wait at most `logFullTimeout` (1 s), is then dropped, and is let back to catch up after
-  `slowFollowerHoldOff` (1 s, doubling up to a minute). The leader is elected by primos with a witness, or by an
-  election of your own.
+  `slowFollowerHoldOff` (1 s, doubling up to a minute). `replicationLinks` splits the sessions over several
+  connections to the standby, so a slow one or a session being caught up holds back only the sessions of its link,
+  and the standby applies them in parallel. The leader is elected by primos with a witness, or by an election of your
+  own.
   A planned switchover logs the sessions out and the other engine carries on at the same sequence numbers; after a
   failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. A leader cut off from
   the others drops its sessions a fencing margin (50 ms by default) before the other engine can be elected. Two

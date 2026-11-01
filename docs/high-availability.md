@@ -27,7 +27,7 @@ one on your machine, with a witness and a counterparty, to kill and restart by h
 - **A follower that connects late, or lost the stream, catches up**: from where it left off when the leader still holds
   those writes, else by a snapshot of each session (its sequence numbers and every message its store keeps). A snapshot
   goes in chunks between the other sessions' writes, so they keep replicating, and their `SYNC` sends keep flowing,
-  while it lasts.
+  while it lasts, if more slowly: `replicationLinks` keeps that to the sessions sharing its link.
 - **On taking over**, the new leader runs the sessions at the sequence numbers the old one left them, when the old
   leader handed over cleanly. After a failure it moves them ahead first, since the old leader may have sent messages it
   never received (see [Failover and sequence numbers](#failover-and-sequence-numbers)).
@@ -87,10 +87,11 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | setting | default | what it decides |
 |---|---|---|
 | `logCapacity` | 16 MiB | Off-heap memory holding the writes the follower has not received yet. A follower this far behind makes the sessions' writes wait for it, at most `logFullTimeout`. The largest message replicated is half of it. |
+| `replicationLinks` | 1 | How many links the leader splits the sessions over, each its own connection, `logCapacity` log and sender thread, with a network thread on each node. A snapshot, or a follower slow to apply, then holds back only the sessions of its link, and the follower applies the links in parallel. Costs `logCapacity` of off-heap memory and the threads again per link. The follower opens as many as the leader has. |
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
-| `sendBuffers` | 4 | Write buffers per follower, a power of two, allocated as first needed. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower. |
-| `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower, waits for writes. It parks up to 1 ms when idle, which a `SYNC` send then waits on; `BusySpinIdleStrategy` sends at once, for a core per follower. |
+| `sendBuffers` | 4 | Write buffers per follower link, a power of two, allocated as first needed. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower link. |
+| `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower link, waits for writes. It parks up to 1 ms when idle, which a `SYNC` send then waits on; `BusySpinIdleStrategy` sends at once, for a core per follower. |
 | `syncAckIdleStrategy` | backs off | How a `SYNC` send waits for its acknowledgement, on the session's thread. `BusySpinIdleStrategy` sees it at once, for that thread's core while it waits. |
 | `selectStrategy` | betty's, blocking | How the replication's network threads wait, on both nodes. An `IdleStrategySelectStrategy` busy spinning saves a system call per wake-up, for a core on each node. |
 | `promotionOutgoingSeqNumJump` | 10 000 | How far a new leader moves its outgoing sequence numbers ahead. |
@@ -133,6 +134,13 @@ snapshot, so its catching up does not add to the load. Until it is back in sync,
 major alert and the status lists it under `droppedFollowers`. Size `logCapacity` so a healthy follower never falls a
 whole log behind.
 
+**More replication links keep a slow stream to its own sessions.** With `replicationLinks` above 1, session `n` (in
+the order the sessions were created) goes over link `n` modulo the link count. Each link has its own log, so a follower
+behind on one link makes only that link's sessions wait, and is dropped from that link alone; a snapshot of a session
+with many messages delays only its link's sessions. The status has an entry per follower and link, and the
+per-follower meters a `link` tag. Raise it when snapshots of a busy session slow the others, or when the follower's
+store applies one stream too slowly, a database for instance.
+
 Neither mode replicates what the session receives as it arrives: only the expected incoming sequence number, after the
 message was processed. A new leader that is a few messages behind asks the counterparty to resend them, which it does.
 
@@ -142,7 +150,7 @@ A `SYNC` send waits for the leader's sender to pick the write up, for the follow
 for the session to see the acknowledgement. By default each of those threads backs off when idle, parking for up to
 1 ms, so the wait is mostly wake-ups, not work. Three settings trade cores for it:
 
-- **`senderIdleStrategy`**: the leader's sender, one thread per follower, busy spinning. One core per follower.
+- **`senderIdleStrategy`**: the leader's sender, one thread per follower link, busy spinning. One core per link.
 - **`syncAckIdleStrategy`**: the session thread waiting for its acknowledgement, busy spinning. That thread's core,
   for as long as it waits.
 - **`selectStrategy`**: the replication's network threads on both nodes, busy spinning instead of blocking in the
@@ -266,7 +274,7 @@ message it never stored. A clean handover does not.
 
 - **Meters** (`ha.*`): role, epoch, followers connected and in sync, unsent bytes, how far each follower is behind,
   `SYNC` sends that went out unacknowledged, snapshots, followers dropped as too slow, and the acknowledgement round
-  trip per follower; see
+  trip per follower and link; see
   [Monitoring](monitoring.md).
 - **Probes**: the node's (`ha-followers`, `ha-leader-link`, `ha-leadership`) and each replicated session's
   (`ha-replication`); see [Alerting](alerting.md).

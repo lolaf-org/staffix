@@ -7,6 +7,10 @@ production:
     the sessions' writes wait for it, on their FIX IO threads, at most logFullTimeout, then is dropped, held off
     slowFollowerHoldOff and caught up by snapshot. A message longer than half of it is not replicated.
   - >-
+    Raise replicationLinks when snapshots of busy sessions slow the others, or the follower's store cannot apply one
+    stream fast enough: each link carries its share of the sessions with its own logCapacity log and sender thread,
+    and a network thread on each node. Set it on the leader; the follower opens as many as the leader has.
+  - >-
     Size snapshotMaxMessages to the oldest message a counterparty may ask to be resent after a failover to a follower
     that was caught up by snapshot; older ones are gap filled.
   - >-
