@@ -48,6 +48,7 @@ class TestReplicationHaAutoConfiguration {
                         "staffix.ha-replication.peers.1=localhost:17101",
                         "staffix.ha-replication.peers.2=127.0.0.1:17102",
                         "staffix.ha-replication.log-capacity=1048576",
+                        "staffix.ha-replication.replication-links=3",
                         "staffix.ha-replication.hand-over-timeout=2s",
                         "staffix.ha-replication.switchover-timeout=20s",
                         "staffix.ha-replication.follower-lag-alert-threshold=2s",
@@ -64,6 +65,7 @@ class TestReplicationHaAutoConfiguration {
                     assertThat(settings.getPeers()).containsOnlyKeys("1", "2");
                     assertThat(settings.getPeers().get("2")).isEqualTo(new InetSocketAddress("127.0.0.1", 17102));
                     assertThat(settings.getLogCapacity()).isEqualTo(1 << 20);
+                    assertThat(settings.getReplicationLinks()).isEqualTo(3);
                     assertThat(settings.getHandOverTimeout()).isEqualTo(Duration.ofSeconds(2));
                     assertThat(settings.getSwitchoverTimeout()).isEqualTo(Duration.ofSeconds(20));
                     assertThat(settings.getFollowerLagAlertThreshold()).isEqualTo(Duration.ofSeconds(2));

@@ -50,6 +50,7 @@ public class ReplicationHaContributor implements HaSettingsContributor {
                 .alertsPublisherInstanceId(props.getAlertsPublisherInstanceId());
         props.getPeers().forEach((nodeId, address) -> b.peer(nodeId, address(nodeId, address)));
         if (props.getLogCapacity() != null) b.logCapacity(props.getLogCapacity());
+        if (props.getReplicationLinks() != null) b.replicationLinks(props.getReplicationLinks());
         if (props.getReconnectInterval() != null) b.reconnectInterval(props.getReconnectInterval());
         if (props.getHeartbeatInterval() != null) b.heartbeatInterval(props.getHeartbeatInterval());
         if (props.getSendBuffers() != null) b.sendBuffers(props.getSendBuffers());

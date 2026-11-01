@@ -67,6 +67,15 @@ public class ReplicationHaSettings extends HaSettings {
     private final int logCapacity = 16 << 20;
 
     /**
+     * How many links the sessions are split over, each with its own {@link #getLogCapacity() logCapacity} log, sender
+     * thread and connection per follower: a snapshot, or a follower too slow for one link, then holds back only that
+     * link's sessions, and the follower applies the links in parallel. Costs a log, a thread and a connection each.
+     * Read on the leader, which tells its followers.
+     */
+    @Builder.Default
+    private final int replicationLinks = 1;
+
+    /**
      * Names this engine to its peer in the replication handshake, and in their logs.
      */
     @Builder.Default

@@ -61,14 +61,14 @@ class TestFollowers {
                 .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
                 .build(), mock(FixSessionMessagesStore.class), new RecordingProbes());
         store.storeNextIncomingSeqNum(1);
-        offset = ha.getReplicationLog().getTailOffset();
+        offset = ha.getReplicationLogs().get(0).getTailOffset();
         store.storeNextIncomingSeqNum(2);
     }
 
     private FollowerLink inSyncFollower(long appliedOffset) {
         IOSession connection = mock(IOSession.class);
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
-        FollowerLink link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
+        FollowerLink link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofSeconds(1), Duration.ZERO, 4, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         });
         link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0, 0);
@@ -135,6 +135,41 @@ class TestFollowers {
         follower.disconnected();
 
         assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
+    }
+
+    @Test
+    void aSyncSendWaitsOnlyForTheLinkCarryingItsSession() {
+        ReplicationFixEngineHa twoLinks = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
+                .replicationLinks(2).build());
+        FixSessionMessagesStore main = twoLinks.replicatingStore(syncSession("main"), mock(FixSessionMessagesStore.class),
+                new RecordingProbes());
+        FixSessionMessagesStore other = twoLinks.replicatingStore(syncSession("other"), mock(FixSessionMessagesStore.class),
+                new RecordingProbes());
+        main.storeNextIncomingSeqNum(1);
+        other.storeNextIncomingSeqNum(1);
+        IOSession connection = mock(IOSession.class);
+        when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
+        FollowerLink linkOfMain = new FollowerLink(connection, twoLinks.getReplicationLogs(), twoLinks.getSessions(),
+                () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, new BackoffIdleStrategy(),
+                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
+        });
+        linkOfMain.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, 0);
+        linkOfMain.fill(ByteBuffer.allocate(1 << 16));
+        linkOfMain.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
+        linkOfMain.onAck(EPOCH, twoLinks.getReplicationLogs().get(0).getTailOffset(), true);
+        followers.add(linkOfMain);
+
+        assertThat(followers.awaitApplied(0, 0, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.APPLIED);
+        assertThat(followers.awaitApplied(1, 0, NO_TIMEOUT, idle)).as("other's link is not connected")
+                .isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
+    }
+
+    private static FixSessionSettings syncSession(String name) {
+        return FixSessionSettings.builder()
+                .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
+                .fixSessionType(FixSessionType.INITIATOR)
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .build();
     }
 
     @Test

@@ -122,7 +122,7 @@ class TestFollowerLink {
     }
 
     private FollowerLink link() {
-        return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
+        return new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
                 Duration.ZERO, 4, new BackoffIdleStrategy(), stats,
                 loop -> {
                 });
@@ -150,7 +150,7 @@ class TestFollowerLink {
      * As a follower would, refusing a frame longer than the log's longest event.
      */
     private void decodeAll(ByteBuffer frames) {
-        FrameDecoder decoder = new FrameDecoder(ha.getReplicationLog().getMaxEventFrameBytes());
+        FrameDecoder decoder = new FrameDecoder(ha.getReplicationLogs().get(0).getMaxEventFrameBytes());
         int index = frames.position();
         int consumed;
         while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, sent)) > 0) {
@@ -182,7 +182,7 @@ class TestFollowerLink {
     void theSenderWritesOnlyItsOwnBuffersWhichAConnectionStoppingCannotFree() throws InterruptedException {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
-        link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
+        link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofHours(1), Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
@@ -201,7 +201,7 @@ class TestFollowerLink {
     }
 
     private FollowerLink linkStallingAfter(Duration stallTimeout, Thread[] sender) {
-        return new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
+        return new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofHours(1), stallTimeout, 4, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
@@ -250,7 +250,7 @@ class TestFollowerLink {
         try {
             await().pollDelay(Duration.ofMillis(300)).until(() -> true);
 
-            long offset = ha.getReplicationLog().getTailOffset();
+            long offset = ha.getReplicationLogs().get(0).getTailOffset();
             main.storeNextIncomingSeqNum(1);
             await().pollDelay(Duration.ofMillis(30)).until(() -> true);
             link.onAck(EPOCH, offset, true);
@@ -266,7 +266,7 @@ class TestFollowerLink {
     void aSenderDroppedWhileAHeartbeatIsDueWritesNothingAfterItsClose() {
         ha = engine(1024);
         Runnable[] sender = new Runnable[1];
-        link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
+        link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofNanos(1), Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop);
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
@@ -286,7 +286,7 @@ class TestFollowerLink {
     void theSenderWaitsWhileEverySendBufferIsInFlightAndResumesOnceOneIsWritten() {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
-        link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
+        link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
                 Duration.ZERO, 4, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
@@ -329,12 +329,47 @@ class TestFollowerLink {
     }
 
     @Test
+    void aLinkAnnouncesAndStreamsOnlyTheSessionsItCarries() {
+        ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).replicationLinks(2).build());
+        link = link();
+        FixSessionMessagesStore main = replicated("main");
+        FixSessionMessagesStore other = replicated("other");
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 1);
+        main.storeNextIncomingSeqNum(5);
+        other.storeNextIncomingSeqNum(6);
+
+        fill();
+
+        assertThat(ha.getReplicationLogs().get(0).getTailOffset()).as("main, key 0").isPositive();
+        assertThat(sent.frames).hasSize(3);
+        assertThat(sent.frames.get(0)).endsWith("links=2");
+        assertThat(sent.frames.get(1)).startsWith("SESSION epoch=7 key=1 ");
+        assertThat(sent.frames.get(2)).contains("key=1 STORE_INCOMING_SEQ_NUM seq=6");
+        assertThat(link.carries(0)).isFalse();
+        assertThat(link.carries(1)).isTrue();
+    }
+
+    @Test
+    void aLinkIsInSyncOnceTheSessionsItCarriesAre() {
+        ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).replicationLinks(2).build());
+        link = link();
+        replicated("main");
+        replicated("other");
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 1);
+        fill();
+
+        link.onSessionStatus(EPOCH, 1, SessionStatus.REPLICATING);
+
+        assertThat(link.isInSyncForAll(2)).as("main is another link's").isTrue();
+    }
+
+    @Test
     void aFollowerResumesAfterItsLastAppliedEventStillInTheLog() {
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(5);
         // events without a message are all one length, so the second starts halfway to the third
         store.storeNextIncomingSeqNum(6);
-        long third = ha.getReplicationLog().getTailOffset();
+        long third = ha.getReplicationLogs().get(0).getTailOffset();
         long second = third / 2;
         store.storeNextIncomingSeqNum(7);
 
@@ -559,7 +594,7 @@ class TestFollowerLink {
         int length = link.heartbeatIfDue(batch, Duration.ofMillis(100).toNanos());
 
         decodeAll(batch.limit(length));
-        assertThat(sent.frames).containsExactly("HEARTBEAT epoch=7 tail=" + ha.getReplicationLog().getTailOffset());
+        assertThat(sent.frames).containsExactly("HEARTBEAT epoch=7 tail=" + ha.getReplicationLogs().get(0).getTailOffset());
     }
 
     @Test
@@ -568,12 +603,12 @@ class TestFollowerLink {
         stats.lagTimers(followerId -> lagTimer);
         FixSessionMessagesStore store = replicated("main");
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
-        long first = ha.getReplicationLog().getTailOffset();
+        long first = ha.getReplicationLogs().get(0).getTailOffset();
         store.storeNextIncomingSeqNum(5);
         fill();
         assertThat(link.getLagNanos(System.nanoTime())).as("written, not acked").isPositive();
 
-        long second = ha.getReplicationLog().getTailOffset();
+        long second = ha.getReplicationLogs().get(0).getTailOffset();
         store.storeNextIncomingSeqNum(6);
         fill();
         link.onAck(EPOCH, first, true);
@@ -719,7 +754,7 @@ class TestFollowerLink {
         link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
         snapshot();
 
-        long cut = ha.getReplicationLog().getTailOffset();
+        long cut = ha.getReplicationLogs().get(0).getTailOffset();
         assertThat(sent.frames).containsExactly(
                 "SNAPSHOT_BEGIN epoch=7 key=0 cut=" + cut + " nextIn=21 nextOut=13",
                 "SNAPSHOT_MESSAGE epoch=7 key=0 seq=11 message=eleven",
@@ -842,7 +877,7 @@ class TestFollowerLink {
 
     @Test
     void aSnapshotCarriesAMessageLongerThanAFrameInFragmentsAndCountsItOnce() {
-        int fragment = ha.getReplicationLog().getMaxEventFrameBytes() - FrameEncoder.snapshotMessageBytes(0);
+        int fragment = ha.getReplicationLogs().get(0).getMaxEventFrameBytes() - FrameEncoder.snapshotMessageBytes(0);
         String x = "x".repeat(fragment);
         String y = "y".repeat(fragment);
         FixSessionMessagesStore local = startedStore();

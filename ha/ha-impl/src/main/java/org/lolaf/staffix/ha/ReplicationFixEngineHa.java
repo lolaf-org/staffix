@@ -21,12 +21,8 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Probes;
-import org.lolaf.staffix.api.ha.FixEngineHa;
-import org.lolaf.staffix.api.ha.HaSessionStatus;
-import org.lolaf.staffix.api.ha.HaStatus;
-import org.lolaf.staffix.api.ha.LeaderElection;
+import org.lolaf.staffix.api.ha.*;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
-import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -36,30 +32,16 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.follower.Replica;
 import org.lolaf.staffix.ha.follower.ReplicationReceiver;
-import org.lolaf.staffix.ha.leader.FollowerLink;
-import org.lolaf.staffix.ha.leader.Followers;
-import org.lolaf.staffix.ha.leader.ReplicationPublisher;
-import org.lolaf.staffix.ha.leader.ReplicationStats;
-import org.lolaf.staffix.ha.leader.SlowFollowers;
+import org.lolaf.staffix.ha.leader.*;
 import org.lolaf.staffix.ha.log.LogFullWait;
-import org.lolaf.staffix.ha.log.ReplicationLog;
+import org.lolaf.staffix.ha.log.ReplicationLogs;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalLong;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * Replicates the sessions' stores from the leader to its follower, and runs the engine's sessions only while this
@@ -77,11 +59,12 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private static final Duration ROLE_CHANGE_DEADLINE = Duration.ofSeconds(10);
 
     private final ReplicationHaSettings settings;
-    private final ReplicationLog replicationLog;
-    private final ReplicatedSessions sessions = new ReplicatedSessions();
-    private final Followers followers = new Followers();
+    private final ReplicationLogs replicationLogs;
+    private final ReplicatedSessions sessions;
+    private final Followers followers;
+    private final LateTimer syncAckLatency;
+    private final Map<String, Long> sessionPromotions;
     private volatile ReplicationStats stats;
-    private final LateTimer syncAckLatency = new LateTimer();
     private volatile EngineAccess engine;
     private volatile Replica replica;
     private volatile LeaderElection election;
@@ -93,17 +76,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private volatile @Nullable Instant roleSince;
     private volatile @Nullable ReplicationPublisher publisher;
     private volatile @Nullable ReplicationReceiver receiver;
-    /**
-     * The promotion this node leads under, 0 while it does not lead. A new epoch led without a step down in between
-     * keeps it: no unknown range to jump over.
-     */
     private volatile long currentPromotion;
     private long promotionsCounter;
-    /**
-     * The promotion under which each session last ran or was moved ahead, so a session starting under a promotion it
-     * was not yet moved in, as one a connector adds after it, still is.
-     */
-    private final Map<String, Long> sessionPromotions = new ConcurrentHashMap<>();
 
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
         int sendBuffers = settings.getSendBuffers();
@@ -119,7 +93,15 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                     + settings.getSlowFollowerHoldOff());
         }
         this.settings = settings;
-        this.replicationLog = new ReplicationLog(settings.getLogCapacity());
+        this.replicationLogs = new ReplicationLogs(settings.getReplicationLinks(), settings.getLogCapacity());
+        this.sessions = new ReplicatedSessions();
+        this.followers = new Followers();
+        this.sessionPromotions = new ConcurrentHashMap<>();
+        this.syncAckLatency = new LateTimer();
+    }
+
+    private static String sessionKey(FixSessionSettings sessionSettings) {
+        return sessionSettings.getFixSessionType() + " " + sessionSettings.getFixSessionId();
     }
 
     @Override
@@ -137,7 +119,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             followers.reannounce(session.getKey());
         }
         probes.add(HaProbes.sessionProbe(session, followers));
-        return new ReplicatingFixSessionMessagesStore(store, replicationLog, new LogFullWait(settings.getLogFullTimeout()),
+        return new ReplicatingFixSessionMessagesStore(store, replicationLogs.forSession(session.getKey()),
+                new LogFullWait(settings.getLogFullTimeout()),
                 session, followers, syncAckLatency, settings.getSyncAckIdleStrategy().get(),
                 started -> jumpIfNewToPromotion(sessionSettings, started));
     }
@@ -508,12 +491,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
     }
 
-    private static String sessionKey(FixSessionSettings sessionSettings) {
-        return sessionSettings.getFixSessionType() + " " + sessionSettings.getFixSessionId();
-    }
-
     private void startPublisher(long epoch) {
-        publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLog, sessions, followers,
+        publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLogs, sessions, followers,
                 () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getFollowerStallTimeout(),
                 settings.getSendBuffers(),
                 settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats);
@@ -535,7 +514,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             log.warn("Node {} follows at epoch {} but has no address for its leader", settings.getNodeId(), epoch);
         } else {
             receiver = new ReplicationReceiver(leader, replica, election::getEpoch, settings.getNodeId(),
-                    replicationLog.getMaxEventFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get());
+                    replicationLogs.getMaxEventFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get());
             receiver.start();
         }
         changed(Role.FOLLOWER, epoch, leader);

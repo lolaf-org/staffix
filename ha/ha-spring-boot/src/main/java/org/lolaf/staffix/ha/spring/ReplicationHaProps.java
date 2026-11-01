@@ -63,6 +63,12 @@ public class ReplicationHaProps {
     private Integer logCapacity;
 
     /**
+     * How many links the sessions are split over, each with its own log, sender thread and connection per follower;
+     * unset keeps 1.
+     */
+    private Integer replicationLinks;
+
+    /**
      * How long a follower waits between two attempts to connect to its leader; unset keeps 1s.
      */
     private Duration reconnectInterval;

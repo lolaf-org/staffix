@@ -157,6 +157,14 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void thereIsAtLeastOneReplicationLink() {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().replicationLinks(0).build();
+
+        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("replicationLinks");
+    }
+
+    @Test
     void theSlowFollowerHoldOffMustNotBeNegative() {
         ReplicationHaSettings settings = ReplicationHaSettings.builder().slowFollowerHoldOff(Duration.ofSeconds(-1)).build();
 

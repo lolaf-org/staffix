@@ -55,7 +55,7 @@ class TestReplicationReceiver {
 
     private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
-    private final ReplicationPublisher publisher = new ReplicationPublisher(address, leader.getReplicationLog(), leader.getSessions(),
+    private final ReplicationPublisher publisher = new ReplicationPublisher(address, leader.getReplicationLogs(), leader.getSessions(),
             leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4,
             BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
     private final RecordingEngine follower = new RecordingEngine().with(MAIN);
@@ -77,7 +77,7 @@ class TestReplicationReceiver {
     }
 
     private void connect() {
-        receiver = new ReplicationReceiver(address, replica, () -> EPOCH, "follower-b", leader.getReplicationLog().getMaxEventFrameBytes(),
+        receiver = new ReplicationReceiver(address, replica, () -> EPOCH, "follower-b", leader.getReplicationLogs().get(0).getMaxEventFrameBytes(),
                 Duration.ofMillis(50), new WakeupSelectStrategy(10));
         receiver.start();
         await().until(() -> receiver.getLink() != null && receiver.getLink().getState() == LeaderLink.State.STREAMING);
@@ -107,7 +107,7 @@ class TestReplicationReceiver {
 
         leaderStore.storeMessageSent(5, ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII)));
         leaderStore.storeNextIncomingSeqNum(2);
-        long lastOffset = leader.getReplicationLog().getTailOffset();
+        long lastOffset = leader.getReplicationLogs().get(0).getTailOffset();
         leaderStore.storeNextOutgoingSeqNum(9);
 
         await().untilAsserted(() -> assertThat(follower.store(MAIN).writes)

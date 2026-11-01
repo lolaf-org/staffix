@@ -35,6 +35,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.log.ReplicationLog;
+import org.lolaf.staffix.ha.log.ReplicationLogs;
 import org.lolaf.staffix.ha.wire.*;
 
 import java.nio.ByteBuffer;
@@ -71,7 +72,11 @@ public final class FollowerLink implements FrameHandler {
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     private static final long STORE_RETRY_NANOS = Duration.ofMillis(10).toNanos();
     private final IOSession connection;
-    private final ReplicationLog replicationLog;
+    private final ReplicationLogs logs;
+    /**
+     * Link 0's until the HELLO says which link this connection carries.
+     */
+    private volatile ReplicationLog replicationLog;
     /**
      * Gating from the follower's HELLO until the link closes, from any thread.
      */
@@ -82,10 +87,7 @@ public final class FollowerLink implements FrameHandler {
     private final long heartbeatIntervalNanos;
     private final int maxEventFrameBytes;
     private final int batchBytes;
-    /**
-     * How many links the leader splits its sessions over, announced in WELCOME.
-     */
-    private final int links = 1;
+    private volatile int link;
     private final int sendBuffers;
     private final IdleStrategy senderIdle;
     /**
@@ -174,7 +176,7 @@ public final class FollowerLink implements FrameHandler {
      *                       reused only once the next is written
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
-    FollowerLink(IOSession connection, ReplicationLog log, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
+    FollowerLink(IOSession connection, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
                  Duration heartbeatInterval, Duration stallTimeout, int sendBuffers, IdleStrategy senderIdle,
                  ReplicationStats stats, Consumer<Runnable> senderLauncher) {
         this.sendBuffers = sendBuffers;
@@ -183,15 +185,16 @@ public final class FollowerLink implements FrameHandler {
         this.stats = stats;
         this.senderLauncher = senderLauncher;
         this.connection = connection;
-        this.replicationLog = log;
-        this.reader = log.newReader();
+        this.logs = logs;
+        this.replicationLog = logs.get(0);
+        this.reader = replicationLog.newReader();
         this.sessions = sessions;
         this.epoch = epoch;
         this.leaderId = leaderId;
         this.heartbeatIntervalNanos = heartbeatInterval.toNanos();
         this.stallTimeoutNanos = stallTimeout.toNanos();
-        this.maxEventFrameBytes = log.getMaxEventFrameBytes();
-        this.batchBytes = WireFormat.bufferBytes(log.getMaxEventFrameBytes());
+        this.maxEventFrameBytes = logs.getMaxEventFrameBytes();
+        this.batchBytes = WireFormat.bufferBytes(logs.getMaxEventFrameBytes());
     }
 
     /**
@@ -217,10 +220,12 @@ public final class FollowerLink implements FrameHandler {
             close(CloseReason.STALE_EPOCH, "follower is at epoch " + followerEpoch + ", this leader at " + leaderEpoch);
             return;
         }
-        if (link >= links) {
-            close(CloseReason.NO_SUCH_LINK, "link " + link + " of " + links);
+        if (link >= logs.count()) {
+            close(CloseReason.NO_SUCH_LINK, "link " + link + " of " + logs.count());
             return;
         }
+        this.link = link;
+        replicationLog = logs.get(link);
         Optional<Instant> heldOffUntil = stats.getSlowFollowers().heldOffUntil(nodeId);
         if (heldOffUntil.isPresent()) {
             close(CloseReason.RETRY_LATER, "dropped as too slow, held off until " + heldOffUntil.get());
@@ -239,7 +244,7 @@ public final class FollowerLink implements FrameHandler {
         log.info("Follower {} connected at epoch {}, {}", nodeId, leaderEpoch,
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
         ByteBuffer welcome = connection.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
-        int length = FrameEncoder.welcome(welcome.clear(), 0, leaderEpoch, leaderId, resumed ? reader.getOffset() : WireFormat.NO_RESUME, links);
+        int length = FrameEncoder.welcome(welcome.clear(), 0, leaderEpoch, leaderId, resumed ? reader.getOffset() : WireFormat.NO_RESUME, logs.count());
         connection.send(written(welcome, length), true);
         senderLauncher.accept(this::send);
     }
@@ -354,7 +359,7 @@ public final class FollowerLink implements FrameHandler {
      * replaced: a session it shares the storage of, refuses or is still catching up on is left as it is.
      */
     void resync(int sessionKey) {
-        if (reportedStatuses.get(sessionKey) == SessionStatus.REPLICATING
+        if (carries(sessionKey) && reportedStatuses.get(sessionKey) == SessionStatus.REPLICATING
                 && sessionSync(sessionKey, SessionSync.IN_SYNC, SessionSync.SNAPSHOT_PENDING)) {
             snapshotRequested = true;
         }
@@ -393,11 +398,18 @@ public final class FollowerLink implements FrameHandler {
      */
     public boolean isInSyncForAll(int sessionCount) {
         for (int key = 0; key < sessionCount; key++) {
-            if (!isInSync(key) && sessions.get(key).isReplicated()) {
+            if (carries(key) && !isInSync(key) && sessions.get(key).isReplicated()) {
                 return false;
             }
         }
         return isConnected();
+    }
+
+    /**
+     * Whether the session is replicated over this link, rather than another of the follower's.
+     */
+    public boolean carries(int sessionKey) {
+        return logs.linkOf(sessionKey) == link;
     }
 
     /**
@@ -499,17 +511,19 @@ public final class FollowerLink implements FrameHandler {
         int filled = 0;
         long leaderEpoch = epoch.getAsLong();
         while (announced < sessions.count()) {
-            int bytes = announce(dst, filled, leaderEpoch, sessions.get(announced));
-            if (bytes == 0) {
-                return filled;
+            if (carries(announced)) {
+                int bytes = announce(dst, filled, leaderEpoch, sessions.get(announced));
+                if (bytes == 0) {
+                    return filled;
+                }
+                filled += bytes;
             }
-            filled += bytes;
             announced++;
         }
         Integer key;
         while ((key = reannouncements.peek()) != null) {
             // a key not announced yet goes out with its current mode once it is
-            if (key < announced) {
+            if (key < announced && carries(key)) {
                 int bytes = announce(dst, filled, leaderEpoch, sessions.get(key));
                 if (bytes == 0) {
                     return filled;

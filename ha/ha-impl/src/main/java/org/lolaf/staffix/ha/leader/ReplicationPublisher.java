@@ -29,7 +29,7 @@ import org.lolaf.betty.api.stats.IOBufferPoolStats;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.ha.ReplicatedSessions;
-import org.lolaf.staffix.ha.log.ReplicationLog;
+import org.lolaf.staffix.ha.log.ReplicationLogs;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.WireFormatException;
@@ -54,7 +54,7 @@ public final class ReplicationPublisher {
     private static final int MAX_INBOUND_FRAME_BYTES = 128 * 1024;
 
     private final InetSocketAddress bindAddress;
-    private final ReplicationLog replicationLog;
+    private final ReplicationLogs replicationLogs;
     private final ReplicatedSessions sessions;
     private final LongSupplier epoch;
     private final String leaderId;
@@ -68,7 +68,7 @@ public final class ReplicationPublisher {
     private IOWorkersGroup ioWorkers;
     private Server server;
 
-    public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLog log, ReplicatedSessions sessions, Followers followers,
+    public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLogs logs, ReplicatedSessions sessions, Followers followers,
                                 LongSupplier epoch, String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
                                 Supplier<IdleStrategy> senderIdleStrategy, SelectStrategy selectStrategy, ReplicationStats stats) {
         this.sendBuffers = sendBuffers;
@@ -77,7 +77,7 @@ public final class ReplicationPublisher {
         this.stats = stats;
         this.followers = followers;
         this.bindAddress = bindAddress;
-        this.replicationLog = log;
+        this.replicationLogs = logs;
         this.sessions = sessions;
         this.epoch = epoch;
         this.leaderId = leaderId;
@@ -93,7 +93,8 @@ public final class ReplicationPublisher {
 
     public void start() {
         ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-leader")
-                .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
+                .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy)
+                        .ioThreadCount(replicationLogs.count()).build())
                 .build().newInstance();
         server = ServerBuilder.builder()
                 .id("staffix-ha-leader")
@@ -158,7 +159,7 @@ public final class ReplicationPublisher {
 
         @Override
         public void onConnected(IOSession session) {
-            FollowerLink link = new FollowerLink(session, replicationLog, sessions, epoch, leaderId, heartbeatInterval, stallTimeout,
+            FollowerLink link = new FollowerLink(session, replicationLogs, sessions, epoch, leaderId, heartbeatInterval, stallTimeout,
                     sendBuffers, senderIdleStrategy.get(), stats, ReplicationPublisher::launchSender);
             session.setAttachment(link);
             followers.add(link);

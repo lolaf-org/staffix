@@ -58,7 +58,7 @@ class HaMeters {
             return election != null && election.getRole() == Role.LEADER && election.isLeadershipValid() ? 1 : 0;
         });
         meters.getCounter("ha.log.written", "Bytes of store events this node wrote to its replication log while leading:"
-                + " its rate is the replication's throughput.", Map.of(), () -> ha.getReplicationLog().getTailOffset());
+                + " its rate is the replication's throughput.", Map.of(), () -> ha.getReplicationLogs().getTailOffsets());
         meters.getGauge("ha.followers.connected", "Followers streaming this leader's writes.", Map.of(),
                 () -> count(ha, FollowerLink::isConnected));
         meters.getGauge("ha.followers.in.sync", "Followers holding every replicated session in sync.", Map.of(),
