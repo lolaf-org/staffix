@@ -74,6 +74,10 @@ could mean.
 - **The file messages logger's line prefixes belong to the plain line format**: `logInPrefix`, `logOutPrefix` and
   `logEventPrefix` moved from `FileMessagesLoggerSettings` to `PlainFileLogLineFormat`, and their Spring Boot
   properties under `plain.`, for example `staffix.messages-loggers-file.instances.<id>.plain.log-in-prefix`.
+- **The file messages store finds messages without reading its whole file**: a resend, or a standby catching up,
+  reads only the messages it asks for, and stops as soon as it has what it needs. Finds over a large file were
+  proportional to the file's size, whatever they returned. The store keeps a small index in memory, rebuilt from the
+  file when it starts.
 - **The OTLP messages logger gives a message whose type the dictionary does not declare**, such as a user defined
   one, its `fix.mt` attribute, which it used to leave out.
 

@@ -16,6 +16,7 @@
 package org.lolaf.staffix.stores.messages.file;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.unsafe.UnsafeOperations;
 import org.lolaf.ringos.unsafe.UnsafeOperationsApi;
@@ -64,6 +65,7 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private static final int LAST_MESSAGE_POSITION = L1_CACHE_LINE_SIZE * 2;
     private static final int STORE_HEADER_LEN = L1_CACHE_LINE_SIZE * 3;
     private static final int BLOCK_MARKER = 0xffffffff;
+    private static final ByteBuffer CORRUPTED = ByteBuffer.allocate(0);
 
     private final AtomicLong outgoingSequenceNumber;
     private final AtomicLong incomingSequenceNumber;
@@ -76,6 +78,7 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private MappedByteBuffer mappedByteBuffer;
     private ByteBuffer alignedByteBuffer;
     private int previousLapFrom;
+    private final SeqNumIndex index = new SeqNumIndex(this::holds);
 
     public FileFixSessionMessagesStore(FileMessageStoreSettings settings, FixSessionId fixSessionId) {
         this(settings, fixSessionId, null);
@@ -132,6 +135,7 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             alignedByteBuffer.putLong(OUTGOING_SEQUENCE_POSITION, outgoingSequenceNumber.get());
         }
         previousLapFrom = alignedByteBuffer.position();
+        indexFile(alignedByteBuffer.position());
         log.info("File messages store for FIX session {} started with incomingSeqNum {} and outgoingSeqNum {}",
                 fixSessionId, incomingSequenceNumber.get(), outgoingSequenceNumber.get());
     }
@@ -174,6 +178,7 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         }
         alignedByteBuffer.position(STORE_HEADER_LEN);
         previousLapFrom = STORE_HEADER_LEN;
+        index.clear();
     }
 
     @Override
@@ -246,7 +251,35 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         VarHandle.storeStoreFence();
         alignedByteBuffer.putInt(position, BLOCK_MARKER)
                 .position(nextPosition);
+        index.add(outgoingSequenceNumber, position);
         return nextPosition;
+    }
+
+    /**
+     * Indexes the messages in the order they were written: from the next write to the file's end, the lap before, then
+     * from its start.
+     */
+    private void indexFile(int nextWrite) {
+        index.clear();
+        indexFrom(nextWrite, alignedByteBuffer.limit());
+        indexFrom(STORE_HEADER_LEN, nextWrite);
+    }
+
+    private void indexFrom(int from, int to) {
+        int position = from;
+        while (position + BLOCK_HEADER_SIZE <= to) {
+            int span = spanAt(alignedByteBuffer, position);
+            if (span == 0) {
+                position += blockSize;
+            } else {
+                index.add(alignedByteBuffer.getLong(position + 5), position);
+                position += span;
+            }
+        }
+    }
+
+    private boolean holds(long seqNum, int position) {
+        return alignedByteBuffer.getInt(position) == BLOCK_MARKER && alignedByteBuffer.getLong(position + 5) == seqNum;
     }
 
     /**
@@ -284,7 +317,8 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     /**
      * Safe while the session keeps writing, as resends and replication snapshots read on threads of their own: a
-     * block written meanwhile is skipped, and gap filled, rather than handed over torn.
+     * block written meanwhile is skipped, and gap filled, rather than handed over torn. Reads through the index, each
+     * message as the consumer takes it.
      */
     @Override
     public void find(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
@@ -294,37 +328,24 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             return;
         }
         ByteBuffer file = alignedByteBuffer.duplicate();
-        List<StoreMessage> messages = new ArrayList<>();
-        int position = STORE_HEADER_LEN;
-        while (position + BLOCK_HEADER_SIZE <= file.limit()) {
-            position = readBlock(file, position, startSequenceNumber, stopSequenceNumber, messages);
-        }
-        // the file is scanned block by block rather than in sequence order, so the matching messages are ordered
-        // before being handed over: the contract is ascending MsgSeqNum(34)
-        messages.sort(Comparator.comparingLong(StoreMessage::getSeqNum));
-        for (StoreMessage message : messages) {
-            if (!consumer.onMessage(message.getSeqNum(), message.getMessage())) {
-                return;
-            }
-        }
+        index.find(startSequenceNumber, stopSequenceNumber, (seqNum, position) -> {
+            ByteBuffer message = readMessage(file, position, seqNum);
+            return message == null || message == CORRUPTED || consumer.onMessage(seqNum, message);
+        });
     }
 
     /**
-     * @return where the next block starts
+     * @return the message of that seqnum starting there, null when there is none or it was overwritten while read,
+     * {@link #CORRUPTED} when it lacks its end marker
      */
-    private int readBlock(ByteBuffer file, int position, long startSequenceNumber, long stopSequenceNumber,
-                          List<StoreMessage> messages) {
+    private @Nullable ByteBuffer readMessage(ByteBuffer file, int position, long seqNum) {
         int span = spanAt(file, position);
-        if (span == 0) {
-            return position + blockSize;
+        if (span == 0 || file.getLong(position + 5) != seqNum) {
+            return null;
         }
-        long seqNum = file.getLong(position + 5);
         int messageSize = file.getInt(position + 13);
         if (messageSize < 0 || blocksCount(messageSize) * blockSize != span) {
-            return position + blockSize;
-        }
-        if (seqNum < startSequenceNumber || seqNum > stopSequenceNumber) {
-            return position + span;
+            return null;
         }
         byte[] msgBytes = new byte[messageSize];
         file.position(position + 17);
@@ -333,14 +354,13 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         VarHandle.loadLoadFence();
         if (file.getInt(position) != BLOCK_MARKER || file.getLong(position + 5) != seqNum
                 || file.getInt(position + 13) != messageSize) {
-            return position + blockSize;
+            return null;
         }
-        if (blockEndMarker == BLOCK_MARKER) {
-            messages.add(new StoreMessage(seqNum, ByteBuffer.wrap(msgBytes)));
-        } else {
+        if (blockEndMarker != BLOCK_MARKER) {
             log.error("Read a corrupted block for seqnum {} skipping message {}", seqNum, new String(msgBytes, SerDe.CHARSET));
+            return CORRUPTED;
         }
-        return position + span;
+        return ByteBuffer.wrap(msgBytes);
     }
 
     private int blocksCount(int messageSize) {

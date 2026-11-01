@@ -16,6 +16,7 @@
 package org.lolaf.staffix.stores.messages.file;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
@@ -24,8 +25,11 @@ import org.lolaf.staffix.stores.messages.testkit.AbstractAllocationFreeFixSessio
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiPredicate;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -135,5 +139,122 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
         assertMessage(messages, 0, "a".repeat(19));
         assertMessage(messages, 1, "a".repeat(20));
         assertMessage(messages, 2, "a".repeat(21));
+    }
+
+    private FileFixSessionMessagesStore started(int blocksCount) {
+        messageStore = new FileFixSessionMessagesStore(FileMessageStoreSettings.builder()
+                .storageDirectoryPath(storeFile.getPath())
+                .messageFilter(messagesFilter)
+                .blockSize(32)
+                .blocksCount(blocksCount)
+                .build(), sessionId);
+        messageStore.start();
+        return messageStore;
+    }
+
+    private static ByteBuffer message(long seqNum) {
+        return ByteBuffer.wrap(("m" + seqNum).getBytes());
+    }
+
+    private static List<Long> seqNums(List<FixMessagesStore.FixSessionMessagesStore.StoreMessage> messages) {
+        return messages.stream().map(FixMessagesStore.FixSessionMessagesStore.StoreMessage::getSeqNum).collect(Collectors.toList());
+    }
+
+    private static List<Long> range(long from, long to) {
+        return LongStream.rangeClosed(from, to).boxed().collect(Collectors.toList());
+    }
+
+    @Test
+    void aFindReturnsTheRangeAmongMoreMessagesThanTheIndexFirstHolds() {
+        FileFixSessionMessagesStore store = started(4 * 1024);
+        for (long seqNum = 1; seqNum <= 3_000; seqNum++) {
+            store.storeMessageSent(seqNum, message(seqNum));
+        }
+
+        assertThat(seqNums(store.find(1_500, 1_510))).isEqualTo(range(1_500, 1_510));
+        assertThat(seqNums(store.find(1, 3_000))).isEqualTo(range(1, 3_000));
+        assertMessage(store.find(2_999, 2_999), 0, "m2999");
+    }
+
+    @Test
+    void aFindAfterTheFileLappedReturnsOnlyTheMessagesStillInIt() {
+        FileFixSessionMessagesStore store = started(100);
+        for (long seqNum = 1; seqNum <= 250; seqNum++) {
+            store.storeMessageSent(seqNum, message(seqNum));
+        }
+
+        assertThat(seqNums(store.find(1, 250))).isEqualTo(range(151, 250));
+    }
+
+    @Test
+    void aFileLappedManyTimesReusesTheIndexEntriesOfTheMessagesItOverwrote() {
+        FileFixSessionMessagesStore store = started(100);
+        for (long seqNum = 1; seqNum <= 10_000; seqNum++) {
+            store.storeMessageSent(seqNum, message(seqNum));
+        }
+
+        assertThat(seqNums(store.find(1, 10_000))).isEqualTo(range(9_901, 10_000));
+        assertThat(seqNums(store.find(9_950, 9_955))).isEqualTo(range(9_950, 9_955));
+    }
+
+    @Test
+    void aStoreStartedAgainIndexesItsFileInTheOrderItWasWritten() {
+        FileFixSessionMessagesStore store = started(100);
+        for (long seqNum = 1; seqNum <= 250; seqNum++) {
+            store.storeMessageSent(seqNum, message(seqNum));
+        }
+        store.stop(Deadline.unlimited());
+
+        store = started(100);
+
+        assertThat(seqNums(store.find(1, 250))).isEqualTo(range(151, 250));
+        store.storeMessageSent(251, message(251));
+        assertThat(seqNums(store.find(240, 260))).isEqualTo(range(240, 251));
+    }
+
+    @Test
+    void aFindStopsWhereTheConsumerSays() {
+        FileFixSessionMessagesStore store = started(100);
+        for (long seqNum = 1; seqNum <= 20; seqNum++) {
+            store.storeMessageSent(seqNum, message(seqNum));
+        }
+        List<Long> handed = new ArrayList<>();
+
+        store.find(5, 20, (seqNum, message) -> handed.add(seqNum) && handed.size() < 3);
+
+        assertThat(handed).containsExactly(5L, 6L, 7L);
+    }
+
+    @Test
+    void aSeqNumLoweredWithoutAResetReplacesTheMessagesItStoresAgain() {
+        FileFixSessionMessagesStore store = started(100);
+        for (long seqNum = 1; seqNum <= 10; seqNum += 2) {
+            store.storeMessageSent(seqNum, message(seqNum));
+        }
+
+        store.storeMessageSent(4, ByteBuffer.wrap("lowered 4".getBytes()));
+        store.storeMessageSent(5, ByteBuffer.wrap("lowered 5".getBytes()));
+        store.storeMessageSent(6, ByteBuffer.wrap("lowered 6".getBytes()));
+
+        List<FixMessagesStore.FixSessionMessagesStore.StoreMessage> found = store.find(1, 10);
+        assertThat(seqNums(found)).containsExactly(1L, 3L, 4L, 5L, 6L, 7L, 9L);
+        assertMessage(found, 3, "lowered 5");
+        store.stop(Deadline.unlimited());
+        assertThat(seqNums(started(100).find(1, 10))).as("the same once indexed again")
+                .containsExactly(1L, 3L, 4L, 5L, 6L, 7L, 9L);
+    }
+
+    @Test
+    void aResetStartsTheIndexOver() {
+        FileFixSessionMessagesStore store = started(100);
+        for (long seqNum = 1; seqNum <= 10; seqNum++) {
+            store.storeMessageSent(seqNum, message(seqNum));
+        }
+
+        store.resetSequenceNumbers();
+        store.storeMessageSent(1, ByteBuffer.wrap("again".getBytes()));
+
+        assertThat(store.find(1, 10)).singleElement().satisfies(found ->
+                assertThat(new String(found.getMessage().array())).isEqualTo("again"));
     }
 }
