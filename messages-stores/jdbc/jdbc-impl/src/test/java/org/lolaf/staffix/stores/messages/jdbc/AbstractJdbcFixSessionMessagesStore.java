@@ -106,6 +106,27 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
         assertThat(identity.get()).isEqualTo(identity(dataSource, "").get());
     }
 
+    @Test
+    void aBatchWhoseSequenceNumbersFailToStoreLeavesItsMessagesOutToo() {
+        FailingDataSource database = startStoreOn(new FailingDataSource(dataSource));
+        messageStore.storeMessageSent(1L, ByteBuffer.wrap("message1".getBytes()));
+
+        database.setFailingUpdates(true);
+        assertThatThrownBy(() -> messageStore.storeSentFixMessagesAndSeqNums(
+                new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[]{
+                        new TestingSentFixMessage(2L, ByteBuffer.wrap("message2".getBytes()))
+                }, 1, 7L, 3L))
+                .isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class);
+        database.setFailingUpdates(false);
+        messageStore.stop(Deadline.immediate()).start();
+
+        assertThat(messageStore.getIncomingSeqNum()).isEqualTo(1L);
+        assertThat(messageStore.getOutgoingSeqNum()).isEqualTo(2L);
+        List<FixMessagesStore.FixSessionMessagesStore.StoreMessage> messages = messageStore.find(1L, 10L);
+        assertThat(messages).hasSize(1);
+        assertMessage(messages, 0, "message1");
+    }
+
     @Override
     protected void beforeTearDown() {
         dataSource.close();

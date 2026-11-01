@@ -35,8 +35,10 @@ class TestReplicaStore {
         }, () -> {
         });
         ((BatchingFixSessionMessagesStore) replica).storeSentFixMessages(messages, 1);
+        ((BatchingFixSessionMessagesStore) replica).storeSentFixMessagesAndSeqNums(messages, 1, 5, 6);
 
         verify(store).storeSentFixMessages(messages, 1);
+        verify(store).storeSentFixMessagesAndSeqNums(messages, 1, 5, 6);
     }
 
     @Test

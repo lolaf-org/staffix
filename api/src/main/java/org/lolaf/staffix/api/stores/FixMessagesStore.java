@@ -96,6 +96,25 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
         void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) throws StoreException;
 
         /**
+         * Stores a batch of messages, as {@link #storeSentFixMessages}, and then the sequence numbers, in one write a
+         * store with transactions should make atomic: one commit instead of three. The default makes the three calls,
+         * so a caller must still survive a partial write. A negative sequence number is left unchanged.
+         */
+        default void storeSentFixMessagesAndSeqNums(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                                    long nextIncomingSeqNum, long nextOutgoingSeqNum)
+                throws StoreException {
+            if (sentFixMessageCount > 0) {
+                storeSentFixMessages(sentFixMessages, sentFixMessageCount);
+            }
+            if (nextIncomingSeqNum >= 0) {
+                storeNextIncomingSeqNum(nextIncomingSeqNum);
+            }
+            if (nextOutgoingSeqNum >= 0) {
+                storeNextOutgoingSeqNum(nextOutgoingSeqNum);
+            }
+        }
+
+        /**
          * One message of a batch, valid only for the duration of the call.
          */
         interface SentFixMessage {

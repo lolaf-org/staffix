@@ -28,7 +28,8 @@ import java.sql.SQLException;
 import java.sql.SQLTransientConnectionException;
 
 /**
- * A database the test takes down, or whose {@code DELETE} statements it makes fail, for the store's outage paths.
+ * A database the test takes down, or whose {@code DELETE} or {@code UPDATE} statements it makes fail, for the store's
+ * outage paths.
  */
 @RequiredArgsConstructor
 class FailingDataSource implements DataSource {
@@ -39,6 +40,8 @@ class FailingDataSource implements DataSource {
     private volatile boolean down;
     @Setter
     private volatile boolean failingDeletes;
+    @Setter
+    private volatile boolean failingUpdates;
 
     @Override
     public Connection getConnection() throws SQLException {
@@ -49,8 +52,11 @@ class FailingDataSource implements DataSource {
         return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{Connection.class},
                 (proxy, method, args) -> {
                     Object result = invoke(connection, method, args);
-                    if (result instanceof PreparedStatement && ((String) args[0]).startsWith("DELETE")) {
-                        return failingWhenAsked((PreparedStatement) result);
+                    if (result instanceof PreparedStatement) {
+                        String sql = (String) args[0];
+                        if (sql.startsWith("DELETE") || sql.startsWith("UPDATE")) {
+                            return failingWhenAsked((PreparedStatement) result, sql);
+                        }
                     }
                     return result;
                 });
@@ -61,11 +67,12 @@ class FailingDataSource implements DataSource {
         return getConnection();
     }
 
-    private PreparedStatement failingWhenAsked(PreparedStatement statement) {
+    private PreparedStatement failingWhenAsked(PreparedStatement statement, String sql) {
+        boolean delete = sql.startsWith("DELETE");
         return (PreparedStatement) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{PreparedStatement.class},
                 (proxy, method, args) -> {
-                    if (failingDeletes && method.getName().startsWith("execute")) {
-                        throw new SQLException("the DELETE fails");
+                    if ((delete ? failingDeletes : failingUpdates) && method.getName().startsWith("execute")) {
+                        throw new SQLException(delete ? "the DELETE fails" : "the UPDATE fails");
                     }
                     return invoke(statement, method, args);
                 });

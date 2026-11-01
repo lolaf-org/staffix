@@ -67,6 +67,13 @@ class ReplicaStore implements FixSessionMessagesStore {
         public void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) {
             store.storeSentFixMessages(sentFixMessages, sentFixMessageCount);
         }
+
+        @Override
+        public void storeSentFixMessagesAndSeqNums(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                                   long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+            store.storeSentFixMessagesAndSeqNums(sentFixMessages, sentFixMessageCount, nextIncomingSeqNum,
+                    nextOutgoingSeqNum);
+        }
     }
 
     private interface Lifecycle {

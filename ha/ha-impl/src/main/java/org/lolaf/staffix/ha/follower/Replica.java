@@ -540,9 +540,6 @@ public final class Replica {
          * The messages first, then the seqnums, which the messages' batch does not move.
          */
         void writePending() {
-            if (batch != null) {
-                batch.flush();
-            }
             if (store == null) {
                 return;
             }
@@ -550,6 +547,10 @@ public final class Replica {
             long outgoing = pendingOutgoingSeqNum;
             pendingIncomingSeqNum = -1;
             pendingOutgoingSeqNum = -1;
+            if (batch != null) {
+                batch.flush(incoming, outgoing);
+                return;
+            }
             if (incoming >= 0) {
                 store.storeNextIncomingSeqNum(incoming);
             }
@@ -648,16 +649,16 @@ public final class Replica {
             }
             ((CopiedMessage) messages[count]).copy(sequenceNumber, buffer, messageIndex, messageLength);
             if (++count == MAX_MESSAGES) {
-                flush();
+                flush(-1, -1);
             }
         }
 
-        void flush() {
-            if (count == 0) {
+        void flush(long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+            if (count == 0 && nextIncomingSeqNum < 0 && nextOutgoingSeqNum < 0) {
                 return;
             }
             try {
-                store.storeSentFixMessages(messages, count);
+                store.storeSentFixMessagesAndSeqNums(messages, count, nextIncomingSeqNum, nextOutgoingSeqNum);
             } finally {
                 count = 0;
             }

@@ -67,7 +67,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final int findFetchSize;
     private final Duration pruningCheckInterval;
     private final ScheduledExecutorService scheduledExecutorService;
-    private final String resetSql;
+    private final String updateSeqNumsSql;
     private final String deleteAllMessagesSql;
     private final JdbcStorageIdentity storageIdentity;
     private String findCutoffSeqNumSql;
@@ -96,7 +96,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         this.incomingSequenceNumber = new AtomicLong(1);
         this.outgoingSequenceNumber = new AtomicLong(1);
         this.tableName = settings.getTablePrefix().isEmpty() ? "fix_messages" : settings.getTablePrefix() + "_fix_messages";
-        this.resetSql = "UPDATE " + tableName + "_session_state SET incoming_seq_num = ?, outgoing_seq_num = ? WHERE session_id = ?";
+        this.updateSeqNumsSql = "UPDATE " + tableName + "_session_state SET incoming_seq_num = ?, outgoing_seq_num = ? WHERE session_id = ?";
         this.deleteAllMessagesSql = "DELETE FROM " + tableName + " WHERE session_id = ?";
         this.insertMessageSql = "INSERT INTO " + tableName +
                 " (session_id, sequence_number, message_data) VALUES (?, ?, ?)";
@@ -258,7 +258,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             }
             boolean autoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
-            try (PreparedStatement reset = conn.prepareStatement(resetSql);
+            try (PreparedStatement reset = conn.prepareStatement(updateSeqNumsSql);
                  PreparedStatement deleteAll = conn.prepareStatement(deleteAllMessagesSql)) {
                 reset.setLong(1, incomingSequenceNumber.get());
                 reset.setLong(2, outgoingSequenceNumber.get());
@@ -356,24 +356,113 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     @Override
     public void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) throws StoreException {
+        List<CachedInputStream> cachedInputStreams = cachedInputStreams(sentFixMessageCount);
+        try (Connection conn = dataSource.getConnection()) {
+            completePendingResetIfNeeded(conn);
+            insertMessages(conn, sentFixMessages, sentFixMessageCount, cachedInputStreams);
+        } catch (SQLException e) {
+            throw failed("Failed to store batched messages", e);
+        } finally {
+            clean(cachedInputStreams, sentFixMessageCount);
+        }
+    }
+
+    @Override
+    public void storeSentFixMessagesAndSeqNums(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                               long nextIncomingSeqNum, long nextOutgoingSeqNum) throws StoreException {
+        if (nextIncomingSeqNum >= 0) {
+            incomingSequenceNumber.set(nextIncomingSeqNum);
+        }
+        if (nextOutgoingSeqNum >= 0) {
+            outgoingSequenceNumber.set(nextOutgoingSeqNum);
+        }
+        boolean seqNumsChange = nextIncomingSeqNum >= 0 || nextOutgoingSeqNum >= 0;
+        if (sentFixMessageCount == 0 || !seqNumsChange) {
+            // autocommitted: an explicit transaction would cost a round trip for its COMMIT
+            storeInOneStatement(sentFixMessages, sentFixMessageCount, nextIncomingSeqNum, nextOutgoingSeqNum);
+            return;
+        }
+        List<CachedInputStream> cachedInputStreams = cachedInputStreams(sentFixMessageCount);
+        try (Connection conn = dataSource.getConnection()) {
+            completePendingResetIfNeeded(conn);
+            boolean autoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                insertMessages(conn, sentFixMessages, sentFixMessageCount, cachedInputStreams);
+                updateSequenceNumbers(conn, nextIncomingSeqNum, nextOutgoingSeqNum);
+                conn.commit();
+            } catch (SQLException e) {
+                rollbackQuietly(conn);
+                throw e;
+            } finally {
+                conn.setAutoCommit(autoCommit);
+            }
+        } catch (SQLException e) {
+            throw failed("Failed to store batched messages and sequence numbers", e);
+        } finally {
+            clean(cachedInputStreams, sentFixMessageCount);
+        }
+    }
+
+    private void storeInOneStatement(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                     long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        if (sentFixMessageCount > 0) {
+            storeSentFixMessages(sentFixMessages, sentFixMessageCount);
+            return;
+        }
+        try (Connection conn = dataSource.getConnection()) {
+            completePendingResetIfNeeded(conn);
+            updateSequenceNumbers(conn, nextIncomingSeqNum, nextOutgoingSeqNum);
+        } catch (SQLException e) {
+            throw failed("Failed to store sequence numbers", e);
+        }
+    }
+
+    private List<CachedInputStream> cachedInputStreams(int count) {
         List<CachedInputStream> cachedInputStreams = cachedInputStreamTL.get();
-        while (cachedInputStreams.size() < sentFixMessageCount) {
+        while (cachedInputStreams.size() < count) {
             cachedInputStreams.add(new CachedInputStream());
         }
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(insertMessageSql)) {
-            completePendingResetIfNeeded(conn);
+        return cachedInputStreams;
+    }
+
+    private static void clean(List<CachedInputStream> cachedInputStreams, int count) {
+        for (int i = 0; i < count; i++) {
+            cachedInputStreams.get(i).clean();
+        }
+    }
+
+    private void insertMessages(Connection conn, SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                List<CachedInputStream> cachedInputStreams) throws SQLException {
+        if (sentFixMessageCount == 0) {
+            return;
+        }
+        try (PreparedStatement stmt = conn.prepareStatement(insertMessageSql)) {
             for (int i = 0; i < sentFixMessageCount; i++) {
                 SentFixMessage sfm = sentFixMessages[i];
                 storeMessage(sfm.getSequenceNumber(), sfm.getMessage(), stmt, cachedInputStreams.get(i));
                 stmt.addBatch();
             }
             stmt.executeBatch();
-        } catch (SQLException e) {
-            throw failed("Failed to store batched messages", e);
-        } finally {
-            for (int i = 0; i < sentFixMessageCount; i++) {
-                cachedInputStreams.get(i).clean();
+        }
+    }
+
+    private void updateSequenceNumbers(Connection conn, long nextIncomingSeqNum, long nextOutgoingSeqNum)
+            throws SQLException {
+        if (nextIncomingSeqNum >= 0 && nextOutgoingSeqNum >= 0) {
+            try (PreparedStatement stmt = conn.prepareStatement(updateSeqNumsSql)) {
+                stmt.setLong(1, nextIncomingSeqNum);
+                stmt.setLong(2, nextOutgoingSeqNum);
+                stmt.setString(3, fixSessionId.getQualifiedName());
+                stmt.executeUpdate();
+            }
+        } else if (nextIncomingSeqNum >= 0) {
+            try (PreparedStatement stmt = conn.prepareStatement(updateIncomingSeqNumSql)) {
+                updateSequenceNumber(nextIncomingSeqNum, stmt);
+            }
+        } else if (nextOutgoingSeqNum >= 0) {
+            try (PreparedStatement stmt = conn.prepareStatement(updateOutgoingSeqNumSql)) {
+                updateSequenceNumber(nextOutgoingSeqNum, stmt);
             }
         }
     }

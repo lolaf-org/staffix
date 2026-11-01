@@ -488,6 +488,33 @@ public abstract class AbstractFixSessionMessagesStoreTest<T extends FixMessagesS
     }
 
     @Test
+    protected void aBatchWithSequenceNumbersStoresBothAndKeepsAnUnchangedOneAsItWas() {
+        if (!(messageStore instanceof FixMessagesStore.BatchingFixSessionMessagesStore)) {
+            return;
+        }
+        FixMessagesStore.BatchingFixSessionMessagesStore batchingStore =
+                (FixMessagesStore.BatchingFixSessionMessagesStore) messageStore;
+        messageStore.start();
+
+        batchingStore.storeSentFixMessagesAndSeqNums(
+                new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[]{
+                        new TestingSentFixMessage(1L, ByteBuffer.wrap("message1".getBytes())),
+                        new TestingSentFixMessage(2L, ByteBuffer.wrap("message2".getBytes()))
+                }, 2, 5L, 3L);
+        batchingStore.storeSentFixMessagesAndSeqNums(
+                new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[0], 0, -1L, 4L);
+
+        messageStore.stop(Deadline.immediate()).start();
+
+        assertThat(messageStore.getIncomingSeqNum()).isEqualTo(5L);
+        assertThat(messageStore.getOutgoingSeqNum()).isEqualTo(4L);
+        List<FixMessagesStore.FixSessionMessagesStore.StoreMessage> messages = messageStore.find(1L, 10L);
+        assertThat(messages).hasSize(2);
+        assertMessage(messages, 0, "message1");
+        assertMessage(messages, 1, "message2");
+    }
+
+    @Test
     protected void shouldHandleMessageFiltering() {
         // Given - store with custom filter
         messageStore.start();
