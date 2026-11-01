@@ -43,7 +43,7 @@ import java.util.stream.Stream;
 public final class FollowerStorage implements AutoCloseable {
 
     /**
-     * Memory; a file written through on every message; PostgreSQL in a container, which needs Docker.
+     * Memory; a file written through on every message; PostgreSQL in a container with fsync on, which needs Docker.
      */
     public enum Kind {
         MEMORY,
@@ -86,7 +86,9 @@ public final class FollowerStorage implements AutoCloseable {
         postgres = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"))
                 .withDatabaseName("staffix-benchmark")
                 .withUsername("benchmark")
-                .withPassword("benchmark");
+                .withPassword("benchmark")
+                // Testcontainers starts PostgreSQL with fsync=off: a follower would then commit for free
+                .withCommand("postgres");
         postgres.start();
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(postgres.getJdbcUrl());

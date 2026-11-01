@@ -48,6 +48,10 @@ could mean.
   `ProbeEvaluator.reset()`. The evaluators and alerting meters staffix provides already do.
 - **The admin API, HTTP and JMX, shows whether a probe runs only while logged in** (`onlyWhileLoggedIn`), and
   whether it is currently waiting for a logon (`suspended`).
+- **A message store that writes in batches can store a batch and the sequence numbers in one call**, with
+  `BatchingFixSessionMessagesStore.storeSentFixMessagesAndSeqNums`. The JDBC store does it in one transaction, so a
+  standby on a database commits once per read from the leader instead of up to three times, and acknowledges `SYNC`
+  messages sooner. A store of your own needs no change: by default the method makes the separate calls.
 
 ### Changed
 
