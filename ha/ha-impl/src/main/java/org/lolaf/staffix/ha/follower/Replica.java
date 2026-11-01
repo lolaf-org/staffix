@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.ha.follower;
 
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
@@ -32,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.ObjIntConsumer;
 import java.util.stream.Collectors;
 
@@ -43,25 +43,19 @@ import java.util.stream.Collectors;
  * before filling it, so nothing older than the leader's copy survives. It may hold messages the stream then brings
  * again, which are skipped, a store being free to refuse a seqnum it holds; seqnum events are absolute, so one
  * applied twice changes nothing. A read's writes are gathered per session and written once, before it is
- * acknowledged. Written from the connection's IO thread only.
+ * acknowledged.
+ *
+ * <p>The leader's sessions come over its links, session {@code key} over link {@code key % links} only, each link on
+ * its own IO thread: a session is touched by its link's thread only, and the last event applied is kept per link,
+ * each link's offsets being those of its own log.
  */
 @Slf4j
 public final class Replica {
 
     private final EngineAccess engine;
+    private static final LinkPosition NOTHING_APPLIED = new LinkPosition();
     private volatile ReplicaSession[] sessionsByKey = new ReplicaSession[16];
-    @Getter
-    private volatile long lastAppliedEpoch;
-    /**
-     * The offset of the last event written, -1 for none.
-     */
-    @Getter
-    private volatile long lastAppliedOffset = -1;
-    private long pendingEpoch;
-    /**
-     * The offset of the last event applied but not yet written, promoted by {@link #writeApplied()}.
-     */
-    private long pendingOffset = -1;
+    private volatile LinkPosition[] positions = {new LinkPosition()};
 
     public Replica(EngineAccess engine) {
         this.engine = engine;
@@ -74,34 +68,66 @@ public final class Replica {
                 + "unreplicated", settings.getFixSessionType(), settings.getFixSessionId(), outgoingSeqNum, outgoingSeqNum + jump);
     }
 
-    /**
-     * Starts a stream, ending any handover: one that did not resume leaves every session a gap only a snapshot fills,
-     * and nothing to resume from.
-     */
-    void streamStarted(boolean resumed) {
-        for (ReplicaSession session : sessionsByKey) {
-            if (session != null) {
-                session.streamStarted(resumed);
-            }
-        }
-        if (!resumed) {
-            lastAppliedOffset = -1;
-        }
-        pendingEpoch = lastAppliedEpoch;
-        pendingOffset = lastAppliedOffset;
+    public int getLinks() {
+        return positions.length;
     }
 
     /**
-     * The leader stopped cleanly after sending every event, so each session complete here, or whose storage is the
-     * leader's own, holds exactly what the leader last wrote: taking it over needs no seqnum jump. Holds until the
-     * next stream.
+     * The leader's link count, from its WELCOME. A link's position is kept while the count does not change.
      */
-    void handedOver() {
-        for (ReplicaSession session : sessionsByKey) {
-            if (session != null) {
-                session.handOver();
-            }
+    synchronized void setLinks(int links) {
+        LinkPosition[] current = positions;
+        if (links == current.length) {
+            return;
         }
+        LinkPosition[] resized = Arrays.copyOf(current, links);
+        for (int link = current.length; link < links; link++) {
+            resized[link] = new LinkPosition();
+        }
+        positions = resized;
+    }
+
+    public boolean carries(int link, int key) {
+        return key % positions.length == link;
+    }
+
+    public long getLastAppliedEpoch(int link) {
+        return position(link).lastAppliedEpoch;
+    }
+
+    /**
+     * The offset in the link's log of the last event written, -1 for none.
+     */
+    public long getLastAppliedOffset(int link) {
+        return position(link).lastAppliedOffset;
+    }
+
+    private LinkPosition position(int link) {
+        LinkPosition[] current = positions;
+        return link < current.length ? current[link] : NOTHING_APPLIED;
+    }
+
+    /**
+     * Starts a link's stream, ending any handover of its sessions: one that did not resume leaves each a gap only a
+     * snapshot fills, and nothing to resume from.
+     */
+    void streamStarted(int link, boolean resumed) {
+        forEachOf(link, session -> session.streamStarted(resumed));
+        LinkPosition position = positions[link];
+        if (!resumed) {
+            position.lastAppliedOffset = -1;
+        }
+        position.pendingEpoch = position.lastAppliedEpoch;
+        position.pendingOffset = position.lastAppliedOffset;
+    }
+
+    /**
+     * The leader stopped cleanly after sending every event of the link, so each of its sessions complete here, or
+     * whose storage is the leader's own, holds exactly what the leader last wrote: taking it over needs no seqnum
+     * jump. Holds until the link's next stream.
+     */
+    void handedOver(int link) {
+        forEachOf(link, ReplicaSession::handOver);
     }
 
     /**
@@ -118,12 +144,36 @@ public final class Replica {
     }
 
     /**
+     * {@link #isComplete()} for the sessions of one link.
+     */
+    boolean isComplete(int link) {
+        ReplicaSession[] sessions = sessionsByKey;
+        int links = positions.length;
+        for (int key = link; key < sessions.length; key += links) {
+            if (sessions[key] != null && !sessions[key].isCaughtUp()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void forEachOf(int link, Consumer<ReplicaSession> action) {
+        ReplicaSession[] sessions = sessionsByKey;
+        int links = positions.length;
+        for (int key = link; key < sessions.length; key += links) {
+            if (sessions[key] != null) {
+                action.accept(sessions[key]);
+            }
+        }
+    }
+
+    /**
      * Binds the leader's key to the session configured here with that id and type, opening and starting its store
      * the first time, when it is not the leader's own storage. A session refused is looked at again on the next
      * connection, its storage being readable by then perhaps. One the leader no longer replicates, or with another
      * replication mode here, has its store closed, and is caught up again by snapshot once both agree it is replicated.
      */
-    SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
+    synchronized SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
                        @Nullable String leaderStorageIdentity) {
         ReplicaSession current = key < sessionsByKey.length ? sessionsByKey[key] : null;
         if (current != null && current.matches(fixSessionType, fixSessionId) && current.isReplicated()
@@ -133,11 +183,7 @@ public final class Replica {
         if (current != null) {
             current.stop(Deadline.unlimited());
         }
-        if (key >= sessionsByKey.length) {
-            sessionsByKey = Arrays.copyOf(sessionsByKey, Math.max(key + 1, sessionsByKey.length * 2));
-        }
-        sessionsByKey[key] = openSession(fixSessionType, fixSessionId, leaderMode, leaderStorageIdentity);
-        SessionStatus status = sessionsByKey[key].status();
+        SessionStatus status = put(key, openSession(fixSessionType, fixSessionId, leaderMode, leaderStorageIdentity));
         if (status == SessionStatus.NOT_REPLICATED) {
             log.info("FIX session {} {} is not replicated: the leader's settings do not ask for it", fixSessionType, fixSessionId);
         } else if (status == SessionStatus.SHARED_STORAGE) {
@@ -149,6 +195,19 @@ public final class Replica {
             log.warn("FIX session {} {} is not replicated here: {}", fixSessionType, fixSessionId, status);
         }
         return status;
+    }
+
+    /**
+     * Republishes the array, so a thread reading the sessions of another link sees the one put.
+     */
+    private SessionStatus put(int key, ReplicaSession session) {
+        ReplicaSession[] sessions = sessionsByKey;
+        if (key >= sessions.length) {
+            sessions = Arrays.copyOf(sessions, Math.max(key + 1, sessions.length * 2));
+        }
+        sessions[key] = session;
+        sessionsByKey = sessions;
+        return session.status();
     }
 
     private ReplicaSession openSession(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
@@ -183,26 +242,28 @@ public final class Replica {
      * them, and a settings change may reach this node after the leader. Either would otherwise stay refused until
      * the next connection.
      *
-     * @param onBound told each key bound now, with its status for the leader
+     * @param onBound told each key of the link bound now, with its status for the leader
      */
-    void bindAgain(ObjIntConsumer<SessionStatus> onBound) {
-        for (int key = 0; key < sessionsByKey.length; key++) {
+    synchronized void bindAgain(int link, ObjIntConsumer<SessionStatus> onBound) {
+        int links = positions.length;
+        for (int key = link; key < sessionsByKey.length; key += links) {
             ReplicaSession refused = sessionsByKey[key];
             if (refused == null || !refused.isRefusedUntilSettingsChange() || !settingsHereNowAgree(refused)) {
                 continue;
             }
-            sessionsByKey[key] = openSession(refused.getFixSessionType(), refused.getFixSessionId(), refused.getLeaderMode(),
-                    refused.getLeaderStorageIdentity());
-            SessionStatus status = sessionsByKey[key].status();
+            SessionStatus status = put(key, openSession(refused.getFixSessionType(), refused.getFixSessionId(),
+                    refused.getLeaderMode(), refused.getLeaderStorageIdentity()));
             log.info("FIX session {} {} is now configured here as on the leader: {}", refused.getFixSessionType(),
                     refused.getFixSessionId(), status);
             onBound.accept(status, key);
         }
     }
 
-    boolean hasSessionsToBindAgain() {
-        for (ReplicaSession session : sessionsByKey) {
-            if (session != null && session.isRefusedUntilSettingsChange()) {
+    boolean hasSessionsToBindAgain(int link) {
+        ReplicaSession[] sessions = sessionsByKey;
+        int links = positions.length;
+        for (int key = link; key < sessions.length; key += links) {
+            if (sessions[key] != null && sessions[key].isRefusedUntilSettingsChange()) {
                 return true;
             }
         }
@@ -230,27 +291,25 @@ public final class Replica {
     }
 
     /**
-     * @return false for a key the leader never bound
+     * @return false for a key the leader never bound, or of another link
      */
-    boolean apply(long epoch, long offset, int key, StoreEventType eventType, long seqNum, ByteBuffer receiveBuffer,
-                  int messageStart, int messageLength, byte fragmentFlags) {
-        ReplicaSession session = key < sessionsByKey.length ? sessionsByKey[key] : null;
-        if (session == null) {
+    boolean apply(int link, long epoch, long offset, int key, StoreEventType eventType, long seqNum,
+                  ByteBuffer receiveBuffer, int messageStart, int messageLength, byte fragmentFlags) {
+        ReplicaSession session = session(link, key);
+        if (session == null || !session.apply(eventType, seqNum, receiveBuffer, messageStart, messageLength, fragmentFlags)) {
             return false;
         }
-        if (!session.apply(eventType, seqNum, receiveBuffer, messageStart, messageLength, fragmentFlags)) {
-            return false;
-        }
-        pendingEpoch = epoch;
-        pendingOffset = offset;
+        LinkPosition position = positions[link];
+        position.pendingEpoch = epoch;
+        position.pendingOffset = offset;
         return true;
     }
 
     /**
-     * @return false for a key the leader never bound, or one not replicated here
+     * @return false for a key the leader never bound, of another link, or not replicated here
      */
-    boolean snapshotBegin(int key, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        ReplicaSession session = replicatedSession(key);
+    boolean snapshotBegin(int link, int key, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        ReplicaSession session = replicatedSession(link, key);
         if (session == null) {
             return false;
         }
@@ -258,36 +317,38 @@ public final class Replica {
         return true;
     }
 
-    boolean snapshotMessage(int key, long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength,
-                            byte fragmentFlags) {
-        ReplicaSession session = replicatedSession(key);
+    boolean snapshotMessage(int link, int key, long seqNum, ByteBuffer receiveBuffer, int messageStart,
+                            int messageLength, byte fragmentFlags) {
+        ReplicaSession session = replicatedSession(link, key);
         return session != null && session.snapshotMessage(seqNum, receiveBuffer, messageStart, messageLength, fragmentFlags);
     }
 
     /**
      * @return false when the session is unknown or the count is not what was received
      */
-    boolean snapshotEnd(int key, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        ReplicaSession session = replicatedSession(key);
+    boolean snapshotEnd(int link, int key, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        ReplicaSession session = replicatedSession(link, key);
         return session != null && session.snapshotEnd(messageCount, nextIncomingSeqNum, nextOutgoingSeqNum);
     }
 
     /**
-     * Writes what the frames of a read left pending, before it is acknowledged, then counts their events applied: a
-     * write failing leaves them unapplied, so a reconnection resumes before them.
+     * Writes what the frames of a link's read left pending, before it is acknowledged, then counts their events
+     * applied: a write failing leaves them unapplied, so a reconnection resumes before them.
      */
-    void writeApplied() {
-        for (ReplicaSession session : sessionsByKey) {
-            if (session != null) {
-                session.writePending();
-            }
-        }
-        lastAppliedEpoch = pendingEpoch;
-        lastAppliedOffset = pendingOffset;
+    void writeApplied(int link) {
+        forEachOf(link, ReplicaSession::writePending);
+        LinkPosition position = positions[link];
+        position.lastAppliedEpoch = position.pendingEpoch;
+        position.lastAppliedOffset = position.pendingOffset;
     }
 
-    private @Nullable ReplicaSession replicatedSession(int key) {
-        ReplicaSession session = key < sessionsByKey.length ? sessionsByKey[key] : null;
+    private @Nullable ReplicaSession session(int link, int key) {
+        ReplicaSession[] sessions = sessionsByKey;
+        return key < sessions.length && carries(link, key) ? sessions[key] : null;
+    }
+
+    private @Nullable ReplicaSession replicatedSession(int link, int key) {
+        ReplicaSession session = session(link, key);
         return session == null || !session.isReplicated() ? null : session;
     }
 
@@ -355,12 +416,22 @@ public final class Replica {
     /**
      * Stops every store, before the sessions start on their own.
      */
-    public void close(Deadline deadline) {
+    public synchronized void close(Deadline deadline) {
         for (ReplicaSession session : sessionsByKey) {
             if (session != null) {
                 session.stop(deadline);
             }
         }
         Arrays.fill(sessionsByKey, null);
+    }
+
+    private static final class LinkPosition {
+        private volatile long lastAppliedEpoch;
+        private volatile long lastAppliedOffset = -1;
+        /**
+         * The last event applied but not yet written, promoted by {@link #writeApplied(int)}.
+         */
+        private long pendingEpoch;
+        private long pendingOffset = -1;
     }
 }

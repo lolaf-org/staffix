@@ -57,7 +57,7 @@ class TestLeaderLink {
     private final RecordingHandler sent = new RecordingHandler();
     private final RecordingEngine engine = new RecordingEngine().with(MAIN);
     private final Replica replica = new Replica(engine);
-    private final LeaderLink link = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0);
+    private final LeaderLink link = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks, 0);
 
     TestLeaderLink() {
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
@@ -86,7 +86,11 @@ class TestLeaderLink {
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset) {
-        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, 1);
+        return welcome(epoch, resumeOffset, 1);
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset, int links) {
+        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, links);
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings) {
@@ -128,6 +132,48 @@ class TestLeaderLink {
     private void streaming() {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
         sent.frames.clear();
+    }
+
+    @Test
+    void theWelcomeGivesTheReplicaTheLeadersLinkCount() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME, 3));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.STREAMING);
+        assertThat(replica.getLinks()).isEqualTo(3);
+    }
+
+    @Test
+    void aWelcomeOnALinkTheLeaderDoesNotHaveClosesTheStream() {
+        LeaderLink second = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 1, replica::setLinks);
+
+        decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME, 1)), second);
+
+        assertThat(second.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    }
+
+    @Test
+    void aSessionOfAnotherLinkClosesTheStream() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME, 2), session(1, MAIN));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR session key 1 on link 0 of 2");
+    }
+
+    @Test
+    void eachLinkResumesFromTheLastEventItApplied() {
+        LeaderLink second = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 1, replica::setLinks);
+        read(welcome(EPOCH, WireFormat.NO_RESUME, 2));
+        second.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME, 2), session(1, MAIN),
+                event(EPOCH, 96, 1, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null)), new FrameDecoder(1 << 20));
+        sent.frames.clear();
+
+        link.hello();
+        second.hello();
+
+        assertThat(sent.frames).containsExactly(
+                "HELLO epoch=7 version=2 node=follower-b lastEpoch=0 lastOffset=-1 link=0",
+                "HELLO epoch=7 version=2 node=follower-b lastEpoch=7 lastOffset=96 link=1");
     }
 
     @Test
@@ -239,7 +285,7 @@ class TestLeaderLink {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
         engine.nextStorageIdentity = "follower-storage-back";
 
-        LeaderLink next = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+        LeaderLink next = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), next);
 
@@ -258,8 +304,8 @@ class TestLeaderLink {
 
         assertThat(engine.store(MAIN).writes).as("seqnums coalesced, written before the reset")
                 .containsExactly("message 5 " + MESSAGE, "incoming 3", "outgoing 7", "reset");
-        assertThat(replica.getLastAppliedEpoch()).isEqualTo(EPOCH);
-        assertThat(replica.getLastAppliedOffset()).isEqualTo(128);
+        assertThat(replica.getLastAppliedEpoch(0)).isEqualTo(EPOCH);
+        assertThat(replica.getLastAppliedOffset(0)).isEqualTo(128);
         assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
     }
 
@@ -274,7 +320,7 @@ class TestLeaderLink {
 
         assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
         assertThat(engine.store(MAIN).writes).as("the seqnum before it still pending").isEmpty();
-        assertThat(replica.getLastAppliedOffset()).as("resumed before the read").isEqualTo(-1);
+        assertThat(replica.getLastAppliedOffset(0)).as("resumed before the read").isEqualTo(-1);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
     }
 
@@ -332,7 +378,7 @@ class TestLeaderLink {
 
         assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
         assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(replica.getLastAppliedOffset()).isEqualTo(-1);
+        assertThat(replica.getLastAppliedOffset(0)).isEqualTo(-1);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
     }
 
@@ -342,7 +388,7 @@ class TestLeaderLink {
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
         RecordingEngine.RecordingStore store = engine.store(MAIN);
 
-        LeaderLink next = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+        LeaderLink next = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
         sent.frames.clear();
         next.hello();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), next);
@@ -422,7 +468,7 @@ class TestLeaderLink {
         read(fragment(96, 0, 5, "9=5\u0001", MIDDLE), fragment(128, 0, 5, "35=D\u000110=000\u0001", LAST));
 
         assertThat(engine.store(MAIN).writes).containsExactly("message 5 " + MESSAGE);
-        assertThat(replica.getLastAppliedOffset()).isEqualTo(128);
+        assertThat(replica.getLastAppliedOffset(0)).isEqualTo(128);
     }
 
     @Test
@@ -459,7 +505,7 @@ class TestLeaderLink {
         complete();
         read(fragment(0, 0, 5, "8=FIX.4.4", FIRST));
 
-        LeaderLink resumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+        LeaderLink resumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, 0), session(0, MAIN)), resumed);
 
@@ -475,16 +521,16 @@ class TestLeaderLink {
                 (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
-        LeaderLink resumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+        LeaderLink resumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), resumed);
         assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 REPLICATING");
 
-        LeaderLink notResumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b");
+        LeaderLink notResumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), notResumed);
         assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED");
-        assertThat(replica.getLastAppliedOffset()).as("nothing left to resume from").isEqualTo(-1);
+        assertThat(replica.getLastAppliedOffset(0)).as("nothing left to resume from").isEqualTo(-1);
     }
 
     private void complete() {
@@ -535,7 +581,7 @@ class TestLeaderLink {
         complete();
         read(close(CloseReason.SHUTDOWN));
 
-        decode(writeFrames(welcome(EPOCH, 48)), new LeaderLink(connection, replica, () -> EPOCH, "follower-b"));
+        decode(writeFrames(welcome(EPOCH, 48)), new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks));
         replica.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");

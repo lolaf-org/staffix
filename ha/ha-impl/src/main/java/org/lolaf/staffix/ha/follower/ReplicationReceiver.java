@@ -34,15 +34,20 @@ import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.function.LongSupplier;
 
 /**
- * The follower's connection to the leader, made again whenever it drops, each through a new {@link LeaderLink} on
- * the same {@link Replica}.
+ * The follower's connections to the leader, one per replication link the leader announces, each made again whenever
+ * it drops through a new {@link LeaderLink} on the same {@link Replica}. Link 0 connects first; its WELCOME, or any
+ * link's, says how many the leader has, and the others are opened or closed to match. Each link has its own IO
+ * thread, so the links are applied in parallel.
  */
 @Slf4j
 public final class ReplicationReceiver {
+
+    private static final Duration LINK_STOP = Duration.ofSeconds(1);
 
     private final InetSocketAddress leaderAddress;
     private final Replica replica;
@@ -51,9 +56,8 @@ public final class ReplicationReceiver {
     private final int maxFrameBytes;
     private final Duration connectionRetry;
     private final SelectStrategy selectStrategy;
-    private volatile @Nullable LeaderLink link;
-    private IOWorkersGroup ioWorkers;
-    private Client client;
+    private volatile LinkConnection[] connections = new LinkConnection[0];
+    private boolean stopped;
 
     /**
      * @param maxFrameBytes the largest frame the leader sends, see
@@ -70,69 +74,112 @@ public final class ReplicationReceiver {
         this.connectionRetry = connectionRetry;
     }
 
-    public void start() {
-        ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-follower")
-                .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
-                .build().newInstance();
-        client = ClientBuilder.builder()
-                .id("staffix-ha-follower")
-                .connectAddress(leaderAddress)
-                .connectionRetry(connectionRetry)
-                .ioWorkersGroup(ioWorkers)
-                .ioSettings(IOSettings.builder()
-                        .readBufferSize(WireFormat.bufferBytes(maxFrameBytes))
-                        .socketOptions(Map.of(StandardSocketOptions.TCP_NODELAY, true))
-                        .build())
-                .ioEventsListener(new Listener())
-                .build().newInstance();
-        client.start();
+    public synchronized void start() {
+        connections = new LinkConnection[]{new LinkConnection(0)};
         log.info("Replication follower {} connecting to its leader at {}", nodeId, leaderAddress);
     }
 
-    public void stop(Deadline deadline) {
-        if (client != null) {
-            client.stop(deadline);
-        }
-        if (ioWorkers != null) {
-            ioWorkers.stop(deadline);
+    public synchronized void stop(Deadline deadline) {
+        stopped = true;
+        for (LinkConnection connection : connections) {
+            connection.stop(deadline);
         }
     }
 
     /**
-     * The connection to the leader now, null between connections.
+     * Called on the IO thread of a link below the count, so it never stops its caller.
      */
-    public @Nullable LeaderLink getLink() {
-        return link;
+    private synchronized void linksAnnounced(int links) {
+        replica.setLinks(links);
+        LinkConnection[] current = connections;
+        if (stopped || links == current.length) {
+            return;
+        }
+        LinkConnection[] resized = Arrays.copyOf(current, links);
+        for (int link = current.length; link < links; link++) {
+            resized[link] = new LinkConnection(link);
+        }
+        for (int link = links; link < current.length; link++) {
+            current[link].stop(Deadline.of(LINK_STOP));
+        }
+        connections = resized;
+        log.info("Replication follower {} replicates over {} links from its leader at {}", nodeId, links, leaderAddress);
+    }
+
+    /**
+     * The link's connection to the leader now, null between connections or for a link not opened.
+     */
+    public @Nullable LeaderLink getLink(int link) {
+        LinkConnection[] current = connections;
+        return link < current.length ? current[link].leader : null;
     }
 
     public HaStatus.Leader status() {
-        LeaderLink current = link;
+        LeaderLink first = getLink(0);
         return HaStatus.Leader.builder()
-                .leaderId(current == null ? null : current.getLeaderId())
+                .leaderId(first == null ? null : first.getLeaderId())
                 .address(String.valueOf(leaderAddress))
                 .connected(isConnected())
                 .inSync(isInSync())
                 .build();
     }
 
+    /**
+     * Every link the leader announced is streaming.
+     */
     public boolean isConnected() {
-        LeaderLink current = link;
-        return current != null && current.getState() == LeaderLink.State.STREAMING;
+        LinkConnection[] current = connections;
+        for (LinkConnection connection : current) {
+            LeaderLink leader = connection.leader;
+            if (leader == null || leader.getState() != LeaderLink.State.STREAMING) {
+                return false;
+            }
+        }
+        return current.length > 0;
     }
 
     public boolean isInSync() {
         return isConnected() && replica.isComplete();
     }
 
-    private final class Listener implements IOEventsListener {
+    private final class LinkConnection implements IOEventsListener {
 
+        private final int link;
         private final FrameDecoder decoder = new FrameDecoder(maxFrameBytes);
+        private final IOWorkersGroup ioWorkers;
+        private final Client client;
+        private volatile @Nullable LeaderLink leader;
+
+        LinkConnection(int link) {
+            this.link = link;
+            String id = "staffix-ha-follower-" + link;
+            ioWorkers = IOWorkersGroupSettings.builder().id(id)
+                    .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
+                    .build().newInstance();
+            client = ClientBuilder.builder()
+                    .id(id)
+                    .connectAddress(leaderAddress)
+                    .connectionRetry(connectionRetry)
+                    .ioWorkersGroup(ioWorkers)
+                    .ioSettings(IOSettings.builder()
+                            .readBufferSize(WireFormat.bufferBytes(maxFrameBytes))
+                            .socketOptions(Map.of(StandardSocketOptions.TCP_NODELAY, true))
+                            .build())
+                    .ioEventsListener(this)
+                    .build().newInstance();
+            client.start();
+        }
+
+        void stop(Deadline deadline) {
+            client.stop(deadline);
+            ioWorkers.stop(deadline);
+        }
 
         @Override
         public void onConnected(IOSession session) {
-            LeaderLink connected = new LeaderLink(session, replica, epoch, nodeId);
+            LeaderLink connected = new LeaderLink(session, replica, epoch, nodeId, link, ReplicationReceiver.this::linksAnnounced);
             session.setAttachment(connected);
-            link = connected;
+            leader = connected;
             connected.hello();
         }
 
@@ -146,11 +193,11 @@ public final class ReplicationReceiver {
             if (session == null) {
                 return;
             }
-            LeaderLink leader = session.getAttachment();
-            if (leader != null) {
-                leader.disconnected();
-                if (link == leader) {
-                    link = null;
+            LeaderLink disconnected = session.getAttachment();
+            if (disconnected != null) {
+                disconnected.disconnected();
+                if (leader == disconnected) {
+                    leader = null;
                 }
             }
         }

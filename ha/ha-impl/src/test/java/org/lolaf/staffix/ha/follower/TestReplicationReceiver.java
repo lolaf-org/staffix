@@ -53,11 +53,11 @@ class TestReplicationReceiver {
             .build();
     private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
 
+    private static final FixSessionSettings OTHER = RecordingEngine.session("other", FixSessionType.ACCEPTOR);
+
     private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
-    private final ReplicationPublisher publisher = new ReplicationPublisher(address, leader.getReplicationLogs(), leader.getSessions(),
-            leader.getFollowers(), () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4,
-            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
+    private final ReplicationPublisher publisher = publisher(address, leader);
     private final RecordingEngine follower = new RecordingEngine().with(MAIN);
     private final Replica replica = new Replica(follower);
     private final ReplicatingStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
@@ -71,16 +71,26 @@ class TestReplicationReceiver {
         }
     }
 
+    private static ReplicationPublisher publisher(InetSocketAddress address, ReplicationFixEngineHa leader) {
+        return new ReplicationPublisher(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
+                () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, BackoffIdleStrategy::new,
+                new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
+    }
+
     TestReplicationReceiver() {
         leaderStore.storeNextIncomingSeqNum(1);
         publisher.start();
     }
 
     private void connect() {
+        connect(address);
+        await().until(() -> receiver.getLink(0) != null && receiver.getLink(0).getState() == LeaderLink.State.STREAMING);
+    }
+
+    private void connect(InetSocketAddress address) {
         receiver = new ReplicationReceiver(address, replica, () -> EPOCH, "follower-b", leader.getReplicationLogs().get(0).getMaxEventFrameBytes(),
                 Duration.ofMillis(50), new WakeupSelectStrategy(10));
         receiver.start();
-        await().until(() -> receiver.getLink() != null && receiver.getLink().getState() == LeaderLink.State.STREAMING);
     }
 
     private FollowerLink inSync() {
@@ -157,5 +167,37 @@ class TestReplicationReceiver {
         leaderStore.storeNextIncomingSeqNum(4);
 
         await().untilAsserted(() -> assertThat(follower.store(MAIN).writes).containsExactly("incoming 3", "incoming 4"));
+    }
+
+    @Test
+    void aFollowerOpensEveryLinkTheLeaderAnnouncesAndReplicatesTheSessionsOfEach() {
+        follower.with(OTHER);
+        ReplicationFixEngineHa twoLinks = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
+                .replicationLinks(2).build());
+        InetSocketAddress twoLinksAddress = new InetSocketAddress("localhost", freePort());
+        ReplicationPublisher twoLinksPublisher = publisher(twoLinksAddress, twoLinks);
+        ReplicatingStore main = twoLinks.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        ReplicatingStore other = twoLinks.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        twoLinksPublisher.start();
+        try {
+            connect(twoLinksAddress);
+            await().until(receiver::isInSync);
+            assertThat(replica.getLinks()).isEqualTo(2);
+            assertThat(receiver.getLink(1).getLink()).isEqualTo(1);
+
+            main.storeNextIncomingSeqNum(5);
+            other.storeNextIncomingSeqNum(6);
+
+            await().untilAsserted(() -> {
+                assertThat(follower.store(MAIN).writes).endsWith("incoming 5");
+                assertThat(follower.store(OTHER).writes).endsWith("incoming 6");
+            });
+            assertThat(twoLinks.getReplicationLogs().get(0).getTailOffset()).isPositive();
+            assertThat(twoLinks.getReplicationLogs().get(1).getTailOffset()).isPositive();
+        } finally {
+            receiver.stop(Deadline.of(Duration.ofSeconds(2)));
+            receiver = null;
+            twoLinksPublisher.stop(Deadline.of(Duration.ofSeconds(2)));
+        }
     }
 }

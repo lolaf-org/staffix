@@ -61,7 +61,7 @@ class TestReplica {
         String id = REPLICATED.getFixSessionId().toString();
         replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage");
         RecordingEngine.RecordingStore first = engine.store(REPLICATED);
-        assertThat(replica.snapshotBegin(0, 1, 1) && replica.snapshotEnd(0, 0, 1, 1)).isTrue();
+        assertThat(replica.snapshotBegin(0, 0, 1, 1) && replica.snapshotEnd(0, 0, 0, 1, 1)).isTrue();
 
         engine.replace(NOT_REPLICATED.toBuilder().fixSessionId(REPLICATED.getFixSessionId()).build());
         assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.NONE, "leader-storage"))
@@ -113,18 +113,18 @@ class TestReplica {
     void aMessageTheStreamBringsAgainAfterTheSnapshotIsSkippedUntilAReset(boolean batchingStore) {
         engine.batchingStores = batchingStore;
         replica.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage");
-        replica.snapshotBegin(0, 1, 1);
-        replica.snapshotMessage(0, 4, text("four"), 0, 4, (byte) 0);
-        replica.snapshotMessage(0, 5, text("five"), 0, 4, (byte) 0);
-        replica.snapshotEnd(0, 2, 1, 6);
+        replica.snapshotBegin(0, 0, 1, 1);
+        replica.snapshotMessage(0, 0, 4, text("four"), 0, 4, (byte) 0);
+        replica.snapshotMessage(0, 0, 5, text("five"), 0, 4, (byte) 0);
+        replica.snapshotEnd(0, 0, 2, 1, 6);
         RecordingEngine.RecordingStore store = engine.store(REPLICATED);
         store.writes.clear();
 
         storeMessage(5, "five");
         storeMessage(6, "six");
-        replica.apply(1, 3, 0, StoreEventType.RESET_SEQ_NUM, 1, text(""), 0, 0, (byte) 0);
+        replica.apply(0, 1, 3, 0, StoreEventType.RESET_SEQ_NUM, 1, text(""), 0, 0, (byte) 0);
         storeMessage(1, "one");
-        replica.writeApplied();
+        replica.writeApplied(0);
 
         assertThat(store.writes).containsExactly(batchingStore
                 ? new String[]{"batch 6 six", "outgoing 7", "reset", "batch 1 one", "outgoing 2"}
@@ -132,7 +132,7 @@ class TestReplica {
     }
 
     private void storeMessage(long seq, String message) {
-        replica.apply(1, seq, 0, StoreEventType.STORE_MESSAGE, seq, text(message), 0, message.length(), (byte) 0);
+        replica.apply(0, 1, seq, 0, StoreEventType.STORE_MESSAGE, seq, text(message), 0, message.length(), (byte) 0);
     }
 
     private static ByteBuffer text(String message) {
