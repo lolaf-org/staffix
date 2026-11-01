@@ -46,6 +46,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
@@ -55,6 +56,7 @@ import static org.awaitility.Awaitility.await;
 class TestReplicationFixEngineHa {
 
     private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.ACCEPTOR);
+    private static final FixSessionSettings OTHER = RecordingEngine.session("other", FixSessionType.ACCEPTOR);
 
     private final InetSocketAddress addressA = new InetSocketAddress("localhost", freePort());
     private final InetSocketAddress addressB = new InetSocketAddress("localhost", freePort());
@@ -95,12 +97,17 @@ class TestReplicationFixEngineHa {
         }
 
         Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval) {
+            this(nodeId, engine, heartbeatInterval, 1);
+        }
+
+        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLinks) {
             this.engine = engine;
             ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
                     .nodeId(nodeId)
                     .peer("a", addressA)
                     .peer("b", addressB)
                     .logCapacity(1 << 16)
+                    .replicationLinks(replicationLinks)
                     .heartbeatInterval(heartbeatInterval)
                     .reconnectInterval(Duration.ofMillis(50))
                     .switchoverTimeout(Duration.ofSeconds(2))
@@ -486,9 +493,31 @@ class TestReplicationFixEngineHa {
         assertThat(leader.recordings(HaMeters.SYNC_ACK_LATENCY)).isEqualTo(1);
         await().until(() -> leader.read("ha.follower.unsent") == 0);
         assertThat(leader.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isZero();
-        await().until(() -> leader.recordings(HaMeters.FOLLOWER_ACK_LATENCY, Map.of("follower", "b")) > 0);
-        await().until(() -> leader.recordings(HaMeters.FOLLOWER_LAG, Map.of("follower", "b")) > 0);
+        await().until(() -> leader.recordings(HaMeters.FOLLOWER_ACK_LATENCY, Map.of("follower", "b", "link", "0")) > 0);
+        await().until(() -> leader.recordings(HaMeters.FOLLOWER_LAG, Map.of("follower", "b", "link", "0")) > 0);
         await().until(() -> leader.read("ha.follower.lag.pending") == 0);
+    }
+
+    @Test
+    void aFollowerOverTwoLinksCountsOnceWithAStatusPerLink() {
+        Node leader = new Node("a", new RecordingEngine().with(MAIN).with(OTHER), Duration.ofMillis(50), 2);
+        Node follower = new Node("b", new RecordingEngine().with(MAIN).with(OTHER), Duration.ofMillis(50), 2);
+        leader.ha.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        follower.ha.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        leader.election.elect(Role.LEADER, 3, "a");
+        follower.election.elect(Role.FOLLOWER, 3, "a");
+        leader.start();
+        follower.start();
+
+        await().until(() -> leader.engine.meters.read("ha.followers.in.sync") == 1);
+        assertThat(leader.engine.meters.read("ha.followers.connected")).isEqualTo(1);
+        assertThat(leader.ha.getStatus().getFollowers()).extracting(HaStatus.Follower::getNodeId, HaStatus.Follower::getLink)
+                .containsExactlyInAnyOrder(tuple("b", 0), tuple("b", 1));
+        await().until(() -> follower.ha.getReplica().isComplete() && follower.engine.store(OTHER) != null);
+
+        leader.store.storeNextIncomingSeqNum(7);
+
+        await().untilAsserted(() -> assertThat(follower.engine.store(MAIN).writes).endsWith("incoming 7"));
     }
 
     @Test

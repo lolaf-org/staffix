@@ -383,7 +383,7 @@ public final class Replica {
     /**
      * Moves the outgoing seqnum of every session configured with replication by {@code jump}, before this node runs
      * them as leader: in the replica's store, or in one opened for it when the replica holds none (its storage shared
-     * with the old leader, unidentified, or never announced). A session the old leader {@link #handedOver() handed
+     * with the old leader, unidentified, or never announced). A session the old leader {@link #handedOver(int) handed
      * over} cleanly keeps its seqnum.
      *
      * @return the sessions taken over, moved or handed over
@@ -429,7 +429,7 @@ public final class Replica {
         private volatile long lastAppliedEpoch;
         private volatile long lastAppliedOffset = -1;
         /**
-         * The last event applied but not yet written, promoted by {@link #writeApplied(int)}.
+         * The last event applied but not yet written, promoted by {@link Replica#writeApplied(int)}.
          */
         private long pendingEpoch;
         private long pendingOffset = -1;

@@ -41,12 +41,12 @@ class TestSlowFollowers {
 
     @Test
     void aDroppedFollowerIsHeldOffForTheInitialHoldOff() {
-        slowFollowers.dropped("b");
+        slowFollowers.dropped("b", 0);
 
-        assertThat(slowFollowers.heldOffUntil("b")).contains(START.plusSeconds(1));
+        assertThat(slowFollowers.heldOffUntil("b", 0)).contains(START.plusSeconds(1));
         clock.advance(Duration.ofSeconds(1));
-        assertThat(slowFollowers.heldOffUntil("b")).isEmpty();
-        assertThat(slowFollowers.heldOffUntil("c")).as("never dropped").isEmpty();
+        assertThat(slowFollowers.heldOffUntil("b", 0)).isEmpty();
+        assertThat(slowFollowers.heldOffUntil("c", 0)).as("never dropped").isEmpty();
     }
 
     @Test
@@ -54,43 +54,43 @@ class TestSlowFollowers {
         long[] expectedSeconds = {1, 2, 4, 8, 16, 32, 60, 60};
         for (long seconds : expectedSeconds) {
             Instant droppedAt = now();
-            slowFollowers.dropped("b");
-            assertThat(slowFollowers.heldOffUntil("b")).contains(droppedAt.plusSeconds(seconds));
+            slowFollowers.dropped("b", 0);
+            assertThat(slowFollowers.heldOffUntil("b", 0)).contains(droppedAt.plusSeconds(seconds));
             clock.advance(Duration.ofSeconds(seconds));
         }
     }
 
     @Test
     void theHoldOffStartsOverOnceTheFollowerStayedInSyncAMinute() {
-        slowFollowers.dropped("b");
+        slowFollowers.dropped("b", 0);
         clock.advance(Duration.ofSeconds(1));
-        slowFollowers.dropped("b");
+        slowFollowers.dropped("b", 0);
         clock.advance(Duration.ofSeconds(2));
-        slowFollowers.backInSync("b");
+        slowFollowers.backInSync("b", 0);
         clock.advance(Duration.ofMinutes(1));
 
-        slowFollowers.dropped("b");
+        slowFollowers.dropped("b", 0);
 
-        assertThat(slowFollowers.heldOffUntil("b")).contains(now().plusSeconds(1));
+        assertThat(slowFollowers.heldOffUntil("b", 0)).contains(now().plusSeconds(1));
     }
 
     @Test
     void aFollowerDroppedAgainWithinAMinuteInSyncKeepsDoubling() {
-        slowFollowers.dropped("b");
+        slowFollowers.dropped("b", 0);
         clock.advance(Duration.ofSeconds(1));
-        slowFollowers.backInSync("b");
+        slowFollowers.backInSync("b", 0);
         clock.advance(Duration.ofSeconds(59));
 
-        slowFollowers.dropped("b");
+        slowFollowers.dropped("b", 0);
 
-        assertThat(slowFollowers.heldOffUntil("b")).contains(now().plusSeconds(2));
+        assertThat(slowFollowers.heldOffUntil("b", 0)).contains(now().plusSeconds(2));
     }
 
     @Test
     void onlyTheFollowersNotBackInSyncAreListed() {
-        slowFollowers.dropped("c");
-        slowFollowers.dropped("b");
-        slowFollowers.backInSync("c");
+        slowFollowers.dropped("c", 0);
+        slowFollowers.dropped("b", 0);
+        slowFollowers.backInSync("c", 0);
         clock.advance(Duration.ofSeconds(1));
 
         assertThat(slowFollowers.notBackInSync()).singleElement().satisfies(dropped -> {
@@ -98,18 +98,30 @@ class TestSlowFollowers {
             assertThat(dropped.getDroppedAt()).isEqualTo(START);
             assertThat(dropped.getHeldOffUntil()).as("may connect now").isNull();
         });
-        assertThat(slowFollowers.isNotBackInSync("b")).isTrue();
-        assertThat(slowFollowers.isNotBackInSync("c")).isFalse();
+        assertThat(slowFollowers.isNotBackInSync("b", 0)).isTrue();
+        assertThat(slowFollowers.isNotBackInSync("c", 0)).isFalse();
+    }
+
+    @Test
+    void eachLinkOfAFollowerIsHeldOffOnItsOwn() {
+        slowFollowers.dropped("b", 1);
+
+        assertThat(slowFollowers.heldOffUntil("b", 1)).contains(START.plusSeconds(1));
+        assertThat(slowFollowers.heldOffUntil("b", 0)).as("another link").isEmpty();
+        assertThat(slowFollowers.notBackInSync()).singleElement().satisfies(dropped -> {
+            assertThat(dropped.getNodeId()).isEqualTo("b");
+            assertThat(dropped.getLink()).isEqualTo(1);
+        });
     }
 
     @Test
     void aZeroHoldOffNeverHoldsAFollowerOff() {
         SlowFollowers neverHolding = new SlowFollowers(Duration.ZERO, clock);
 
-        neverHolding.dropped("b");
-        neverHolding.dropped("b");
+        neverHolding.dropped("b", 0);
+        neverHolding.dropped("b", 0);
 
-        assertThat(neverHolding.heldOffUntil("b")).isEmpty();
+        assertThat(neverHolding.heldOffUntil("b", 0)).isEmpty();
         assertThat(neverHolding.notBackInSync()).extracting(HaStatus.DroppedFollower::getNodeId).containsExactly("b");
     }
 }

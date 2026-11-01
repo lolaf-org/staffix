@@ -87,6 +87,7 @@ public final class FollowerLink implements FrameHandler {
     private final long heartbeatIntervalNanos;
     private final int maxEventFrameBytes;
     private final int batchBytes;
+    @Getter
     private volatile int link;
     private final int sendBuffers;
     private final IdleStrategy senderIdle;
@@ -226,22 +227,22 @@ public final class FollowerLink implements FrameHandler {
         }
         this.link = link;
         replicationLog = logs.get(link);
-        Optional<Instant> heldOffUntil = stats.getSlowFollowers().heldOffUntil(nodeId);
+        Optional<Instant> heldOffUntil = stats.getSlowFollowers().heldOffUntil(nodeId, link);
         if (heldOffUntil.isPresent()) {
             close(CloseReason.RETRY_LATER, "dropped as too slow, held off until " + heldOffUntil.get());
             return;
         }
         reader = replicationLog.newGatingReader(this::droppedAsTooSlow);
-        recoveringFromTooSlow = stats.getSlowFollowers().isNotBackInSync(nodeId);
+        recoveringFromTooSlow = stats.getSlowFollowers().isNotBackInSync(nodeId, link);
         boolean resumed = lastAppliedEpoch == leaderEpoch && resume(lastAppliedOffset);
         if (!resumed) {
             reader.seekToTail();
         }
         appliedOffset = lastAppliedOffset;
-        ackLatency = new AckLatencySampler(stats.ackLatency(nodeId));
-        lag = new LagSampler(stats.lag(nodeId));
+        ackLatency = new AckLatencySampler(stats.ackLatency(nodeId, link));
+        lag = new LagSampler(stats.lag(nodeId, link));
         state = State.STREAMING;
-        log.info("Follower {} connected at epoch {}, {}", nodeId, leaderEpoch,
+        log.info("Follower {} connected link {} of {} at epoch {}, {}", nodeId, link, logs.count(), leaderEpoch,
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
         ByteBuffer welcome = connection.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
         int length = FrameEncoder.welcome(welcome.clear(), 0, leaderEpoch, leaderId, resumed ? reader.getOffset() : WireFormat.NO_RESUME, logs.count());
@@ -266,7 +267,7 @@ public final class FollowerLink implements FrameHandler {
         this.reportedInSync = inSync;
         if (inSync && recoveringFromTooSlow) {
             recoveringFromTooSlow = false;
-            stats.getSlowFollowers().backInSync(followerId);
+            stats.getSlowFollowers().backInSync(followerId, link);
         }
         lastAckNanos = System.nanoTime();
         long overdue = overdueOffset;
@@ -380,6 +381,7 @@ public final class FollowerLink implements FrameHandler {
         }
         return HaStatus.Follower.builder()
                 .nodeId(followerId)
+                .link(link)
                 .address(String.valueOf(connection.getSocketAddress()))
                 .connected(isConnected())
                 .inSync(isInSyncForAll(sessionCount))
@@ -806,13 +808,13 @@ public final class FollowerLink implements FrameHandler {
      */
     void close(CloseReason reason, String text) {
         if (reason == CloseReason.SHUTDOWN || reason == CloseReason.RETRY_LATER) {
-            log.info("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
+            log.info("Closing the replication stream to follower {} link {}: {} {}", followerId, link, reason, text);
         } else {
-            log.warn("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
+            log.warn("Closing the replication stream to follower {} link {}: {} {}", followerId, link, reason, text);
         }
         closed();
         if (reason == CloseReason.TOO_SLOW) {
-            stats.droppedTooSlow(followerId);
+            stats.droppedTooSlow(followerId, link);
         }
         // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
         ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, text));

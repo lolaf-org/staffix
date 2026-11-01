@@ -405,7 +405,7 @@ class TestFollowerLink {
         TestingClock clock = new TestingClock();
         clock.toAdvanceableTime(Instant.parse("2026-11-01T10:00:00Z"));
         stats = new ReplicationStats(new SlowFollowers(Duration.ofSeconds(1), clock));
-        stats.droppedTooSlow("follower-b");
+        stats.droppedTooSlow("follower-b", 0);
         link = link();
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
         assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
@@ -508,7 +508,7 @@ class TestFollowerLink {
     @Test
     void aFollowerDroppedAsTooSlowIsRefusedWhileHeldOff() {
         stats = new ReplicationStats(new SlowFollowers(Duration.ofMinutes(1), new TestingClock()));
-        stats.droppedTooSlow("follower-b");
+        stats.droppedTooSlow("follower-b", 0);
         link = link();
 
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
@@ -520,7 +520,7 @@ class TestFollowerLink {
     @Test
     void aFollowerDroppedAsTooSlowIsAcceptedAtOnceWithoutAHoldOffAndClearedOnceInSync() {
         stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
-        stats.droppedTooSlow("follower-b");
+        stats.droppedTooSlow("follower-b", 0);
         link = link();
 
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
@@ -600,7 +600,7 @@ class TestFollowerLink {
     @Test
     void aFollowerIsBehindFromAWriteUntilAnAckCoversItThenSampledAgainOnTheNextWriteItLacks() {
         Timer lagTimer = mock(Timer.class);
-        stats.lagTimers(followerId -> lagTimer);
+        stats.lagTimers((followerId, link) -> lagTimer);
         FixSessionMessagesStore store = replicated("main");
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         long first = ha.getReplicationLogs().get(0).getTailOffset();

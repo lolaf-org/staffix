@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.time.Clock;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * The followers dropped as too slow, by node id, each held off before it may resync, since its catching up adds to the
+ * The follower links dropped as too slow, by node id and link, each held off before it may resync, since its catching up adds to the
  * load that made it too slow. The hold-off doubles at each drop up to {@link #MAX_HOLD_OFF}, and starts over once the
  * follower stayed in sync that long. Any thread.
  */
@@ -40,7 +41,7 @@ public final class SlowFollowers {
 
     private final Duration initialHoldOff;
     private final Clock clock;
-    private final Map<String, Drop> drops;
+    private final Map<Key, Drop> drops;
 
     /**
      * @param initialHoldOff zero never holds a follower off
@@ -51,9 +52,9 @@ public final class SlowFollowers {
         this.drops = new ConcurrentHashMap<>();
     }
 
-    void dropped(String followerId) {
+    void dropped(String followerId, int link) {
         Instant now = now();
-        drops.compute(followerId, (id, previous) -> new Drop(now, nextHoldOff(previous, now), null));
+        drops.compute(new Key(followerId, link), (key, previous) -> new Drop(now, nextHoldOff(previous, now), null));
     }
 
     private Duration nextHoldOff(@Nullable Drop previous, Instant now) {
@@ -64,34 +65,35 @@ public final class SlowFollowers {
         return doubled.compareTo(MAX_HOLD_OFF) > 0 ? MAX_HOLD_OFF : doubled;
     }
 
-    boolean isNotBackInSync(String followerId) {
-        Drop drop = drops.get(followerId);
+    boolean isNotBackInSync(String followerId, int link) {
+        Drop drop = drops.get(new Key(followerId, link));
         return drop != null && drop.backInSyncAt == null;
     }
 
-    void backInSync(String followerId) {
+    void backInSync(String followerId, int link) {
         Instant now = now();
-        drops.computeIfPresent(followerId, (id, drop) -> drop.backInSyncAt == null
+        drops.computeIfPresent(new Key(followerId, link), (key, drop) -> drop.backInSyncAt == null
                 ? new Drop(drop.droppedAt, drop.holdOff, now) : drop);
     }
 
     /**
      * When the follower may connect again, empty when it may now.
      */
-    Optional<Instant> heldOffUntil(String followerId) {
-        Drop drop = drops.get(followerId);
+    Optional<Instant> heldOffUntil(String followerId, int link) {
+        Drop drop = drops.get(new Key(followerId, link));
         return drop == null ? Optional.empty() : drop.heldOffUntil(now());
     }
 
     /**
-     * Those not back in sync since their last drop, by node id.
+     * Those not back in sync since their last drop, by node id and link.
      */
     public List<HaStatus.DroppedFollower> notBackInSync() {
         Instant now = now();
         return drops.entrySet().stream()
                 .filter(entry -> entry.getValue().backInSyncAt == null)
-                .sorted(Map.Entry.comparingByKey())
-                .map(entry -> HaStatus.DroppedFollower.builder().nodeId(entry.getKey())
+                .sorted(Map.Entry.comparingByKey(Comparator.comparing(Key::getFollowerId).thenComparingInt(Key::getLink)))
+                .map(entry -> HaStatus.DroppedFollower.builder().nodeId(entry.getKey().getFollowerId())
+                        .link(entry.getKey().getLink())
                         .droppedAt(entry.getValue().droppedAt)
                         .heldOffUntil(entry.getValue().heldOffUntil(now).orElse(null)).build())
                 .collect(Collectors.toList());
@@ -99,6 +101,12 @@ public final class SlowFollowers {
 
     private Instant now() {
         return clock.now().asInstant();
+    }
+
+    @Value
+    private static class Key {
+        String followerId;
+        int link;
     }
 
     @Value

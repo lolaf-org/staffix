@@ -87,6 +87,8 @@ public interface FixHaMXBean {
 
         String getNodeId();
 
+        int getLink();
+
         String getAddress();
 
         boolean isConnected();
@@ -107,6 +109,8 @@ public interface FixHaMXBean {
     interface DroppedFollower {
 
         String getNodeId();
+
+        int getLink();
 
         String getDroppedAt();
 

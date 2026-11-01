@@ -281,9 +281,9 @@ class JmxAdminApiTest {
         HaAdmin ha = mock(HaAdmin.class);
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
                 .leaderId("1").leaderElection("PrimosLeaderElection").roleSince(SINCE)
-                .follower(HaStatus.Follower.builder().nodeId("2").address("/10.0.0.2:40000").connected(true).inSync(true)
+                .follower(HaStatus.Follower.builder().nodeId("2").link(1).address("/10.0.0.2:40000").connected(true).inSync(true)
                         .unsentBytes(128).lagMillis(3).build())
-                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").droppedAt(SINCE).build())
+                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").link(1).droppedAt(SINCE).build())
                 .build());
         adminApi.ha = ha;
         exporter.export(adminApi);
@@ -292,11 +292,13 @@ class JmxAdminApiTest {
 
         assertThat(status.getFollowers()).singleElement().satisfies(follower -> {
             assertThat(follower.getNodeId()).isEqualTo("2");
+            assertThat(follower.getLink()).isEqualTo(1);
             assertThat(follower.getUnsentBytes()).isEqualTo(128);
             assertThat(follower.getLagMillis()).isEqualTo(3);
         });
         assertThat(status.getDroppedFollowers()).singleElement().satisfies(dropped -> {
             assertThat(dropped.getNodeId()).isEqualTo("3");
+            assertThat(dropped.getLink()).isEqualTo(1);
             assertThat(dropped.getDroppedAt()).isEqualTo(SINCE.toString());
             assertThat(dropped.getHeldOffUntil()).as("may connect now").isNull();
         });

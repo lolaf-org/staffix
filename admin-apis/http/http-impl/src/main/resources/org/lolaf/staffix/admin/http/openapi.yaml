@@ -1217,7 +1217,7 @@ components:
           description: This node stands for election.
         followers:
           type: array
-          description: The followers connected to this node, while it leads.
+          description: The links of the followers connected to this node, one entry per follower and link, while it leads.
           items:
             $ref: '#/components/schemas/HaFollower'
         droppedFollowers:
@@ -1229,11 +1229,14 @@ components:
           $ref: '#/components/schemas/HaLeader'
     HaFollower:
       type: object
-      required: [address, connected, inSync, snapshotInProgress, unsentBytes, lagMillis]
+      required: [link, address, connected, inSync, snapshotInProgress, unsentBytes, lagMillis]
       properties:
         nodeId:
           type: string
           description: Absent until the follower said.
+        link:
+          type: integer
+          description: The replication link, below the leader's replicationLinks; a follower has an entry per link.
         address:
           type: string
         connected:
@@ -1241,7 +1244,7 @@ components:
           description: Streaming the leader's writes.
         inSync:
           type: boolean
-          description: Holds every replicated session in sync.
+          description: Holds every session replicated over the link in sync.
         snapshotInProgress:
           type: boolean
         unsentBytes:
@@ -1260,11 +1263,13 @@ components:
     HaDroppedFollower:
       type: object
       description: >-
-        A follower dropped for reading the replication log so slowly that a write waited logFullTimeout for it.
-      required: [nodeId, droppedAt]
+        A follower link dropped for reading its replication log so slowly that a write waited logFullTimeout for it.
+      required: [nodeId, link, droppedAt]
       properties:
         nodeId:
           type: string
+        link:
+          type: integer
         droppedAt:
           type: string
           format: date-time

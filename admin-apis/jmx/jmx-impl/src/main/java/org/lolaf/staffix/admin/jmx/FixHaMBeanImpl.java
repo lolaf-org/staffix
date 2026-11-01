@@ -43,12 +43,13 @@ public class FixHaMBeanImpl implements FixHaMXBean {
                 status.getRoleSince() == null ? null : status.getRoleSince().toString(),
                 status.isTransferLeadershipSupported(), status.isCandidacySupported(), status.isCandidate(),
                 status.getFollowers().stream()
-                        .map(follower -> new FollowerImpl(follower.getNodeId(), follower.getAddress(), follower.isConnected(),
+                        .map(follower -> new FollowerImpl(follower.getNodeId(), follower.getLink(), follower.getAddress(), follower.isConnected(),
                                 follower.isInSync(), follower.isSnapshotInProgress(), follower.getUnsentBytes(),
                                 follower.getLagMillis()))
                         .collect(Collectors.toList()),
                 status.getDroppedFollowers().stream()
-                        .map(dropped -> new DroppedFollowerImpl(dropped.getNodeId(), dropped.getDroppedAt().toString(),
+                        .map(dropped -> new DroppedFollowerImpl(dropped.getNodeId(), dropped.getLink(),
+                                dropped.getDroppedAt().toString(),
                                 dropped.getHeldOffUntil() == null ? null : dropped.getHeldOffUntil().toString()))
                         .collect(Collectors.toList()),
                 leader == null ? null : new LeaderImpl(leader.getLeaderId(), leader.getAddress(), leader.isConnected(), leader.isInSync()));
@@ -115,6 +116,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     @Value
     private static class DroppedFollowerImpl implements DroppedFollower {
         String nodeId;
+        int link;
         String droppedAt;
         String heldOffUntil;
     }
@@ -122,6 +124,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     @Value
     private static class FollowerImpl implements Follower {
         String nodeId;
+        int link;
         String address;
         boolean connected;
         boolean inSync;
