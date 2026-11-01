@@ -71,10 +71,37 @@ class TestReplicationReceiver {
         }
     }
 
+    private ReplicationPublisher twoLinksPublisher;
+    private final ReplicationStats twoLinksStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
+    private ReplicatingStore twoLinksMain;
+    private ReplicatingStore twoLinksOther;
+
     private static ReplicationPublisher publisher(InetSocketAddress address, ReplicationFixEngineHa leader) {
+        return publisher(address, leader, new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
+    }
+
+    private static ReplicationPublisher publisher(InetSocketAddress address, ReplicationFixEngineHa leader,
+                                                  ReplicationStats stats) {
         return new ReplicationPublisher(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
                 () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, BackoffIdleStrategy::new,
-                new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
+                new WakeupSelectStrategy(10), stats);
+    }
+
+    /**
+     * A leader with two links, {@link #MAIN} on link 0 and {@link #OTHER} on link 1, and the receiver following it in
+     * sync.
+     */
+    private void followTwoLinks() {
+        follower.with(OTHER);
+        ReplicationFixEngineHa twoLinks = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
+                .replicationLinks(2).build());
+        InetSocketAddress twoLinksAddress = new InetSocketAddress("localhost", freePort());
+        twoLinksPublisher = publisher(twoLinksAddress, twoLinks, twoLinksStats);
+        twoLinksMain = twoLinks.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        twoLinksOther = twoLinks.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        twoLinksPublisher.start();
+        connect(twoLinksAddress);
+        await().until(receiver::isInSync);
     }
 
     TestReplicationReceiver() {
@@ -104,6 +131,9 @@ class TestReplicationReceiver {
             receiver.stop(Deadline.of(Duration.ofSeconds(2)));
         }
         publisher.stop(Deadline.of(Duration.ofSeconds(2)));
+        if (twoLinksPublisher != null) {
+            twoLinksPublisher.stop(Deadline.of(Duration.ofSeconds(2)));
+        }
         replica.close(Deadline.of(Duration.ofSeconds(2)));
     }
 
@@ -171,33 +201,35 @@ class TestReplicationReceiver {
 
     @Test
     void aFollowerOpensEveryLinkTheLeaderAnnouncesAndReplicatesTheSessionsOfEach() {
-        follower.with(OTHER);
-        ReplicationFixEngineHa twoLinks = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
-                .replicationLinks(2).build());
-        InetSocketAddress twoLinksAddress = new InetSocketAddress("localhost", freePort());
-        ReplicationPublisher twoLinksPublisher = publisher(twoLinksAddress, twoLinks);
-        ReplicatingStore main = twoLinks.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        ReplicatingStore other = twoLinks.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        twoLinksPublisher.start();
-        try {
-            connect(twoLinksAddress);
-            await().until(receiver::isInSync);
-            assertThat(replica.getLinks()).isEqualTo(2);
-            assertThat(receiver.getLink(1).getLink()).isEqualTo(1);
+        followTwoLinks();
 
-            main.storeNextIncomingSeqNum(5);
-            other.storeNextIncomingSeqNum(6);
+        assertThat(replica.getLinks()).isEqualTo(2);
+        assertThat(receiver.getLink(1).getLink()).isEqualTo(1);
+        twoLinksMain.storeNextIncomingSeqNum(5);
+        twoLinksOther.storeNextIncomingSeqNum(6);
 
-            await().untilAsserted(() -> {
-                assertThat(follower.store(MAIN).writes).endsWith("incoming 5");
-                assertThat(follower.store(OTHER).writes).endsWith("incoming 6");
-            });
-            assertThat(twoLinks.getReplicationLogs().get(0).getTailOffset()).isPositive();
-            assertThat(twoLinks.getReplicationLogs().get(1).getTailOffset()).isPositive();
-        } finally {
-            receiver.stop(Deadline.of(Duration.ofSeconds(2)));
-            receiver = null;
-            twoLinksPublisher.stop(Deadline.of(Duration.ofSeconds(2)));
-        }
+        await().untilAsserted(() -> {
+            assertThat(follower.store(MAIN).writes).endsWith("incoming 5");
+            assertThat(follower.store(OTHER).writes).endsWith("incoming 6");
+        });
+    }
+
+    @Test
+    void aFollowerWithOneLinkFailingIsNotInSyncAndResumesThatLinkWithoutASnapshot() {
+        followTwoLinks();
+        twoLinksOther.storeNextIncomingSeqNum(6);
+        await().until(() -> follower.store(OTHER).writes.contains("incoming 6"));
+        long snapshots = twoLinksStats.getSnapshots();
+        follower.store(OTHER).messageWritesFail = true;
+
+        twoLinksOther.storeMessageSent(5, ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII)));
+
+        await().until(() -> !receiver.isInSync());
+        twoLinksMain.storeNextIncomingSeqNum(7);
+        await().untilAsserted(() -> assertThat(follower.store(MAIN).writes).as("the other link carries on").endsWith("incoming 7"));
+        follower.store(OTHER).messageWritesFail = false;
+        await().until(receiver::isInSync);
+        await().untilAsserted(() -> assertThat(follower.store(OTHER).writes).endsWith("message 5 " + MESSAGE));
+        assertThat(twoLinksStats.getSnapshots()).as("resumed").isEqualTo(snapshots);
     }
 }

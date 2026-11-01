@@ -87,6 +87,7 @@ class TestReplicationFixEngineHa {
         final ReplicationFixEngineHa ha;
         final RecordingProbes sessionProbes = new RecordingProbes();
         final ReplicatingStore store;
+        ReplicatingStore other;
 
         Node(String nodeId) {
             this(nodeId, new RecordingEngine().with(MAIN));
@@ -118,6 +119,14 @@ class TestReplicationFixEngineHa {
                     .build());
             ha.bind(engine);
             store = ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), sessionProbes);
+        }
+
+        /**
+         * Registers {@link #OTHER} after {@link #MAIN}, so with two links each has a link of its own.
+         */
+        Node withOther() {
+            other = ha.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+            return this;
         }
 
         Node start() {
@@ -498,26 +507,81 @@ class TestReplicationFixEngineHa {
         await().until(() -> leader.read("ha.follower.lag.pending") == 0);
     }
 
-    @Test
-    void aFollowerOverTwoLinksCountsOnceWithAStatusPerLink() {
-        Node leader = new Node("a", new RecordingEngine().with(MAIN).with(OTHER), Duration.ofMillis(50), 2);
-        Node follower = new Node("b", new RecordingEngine().with(MAIN).with(OTHER), Duration.ofMillis(50), 2);
-        leader.ha.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        follower.ha.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        leader.election.elect(Role.LEADER, 3, "a");
-        follower.election.elect(Role.FOLLOWER, 3, "a");
+    private Node linked(String nodeId, int replicationLinks) {
+        return new Node(nodeId, new RecordingEngine().with(MAIN).with(OTHER), Duration.ofMillis(50), replicationLinks).withOther();
+    }
+
+    private static void leads(Node leader, Node follower) {
+        leader.election.elect(Role.LEADER, 3, leader.ha.getSettings().getNodeId());
+        follower.election.elect(Role.FOLLOWER, 3, leader.ha.getSettings().getNodeId());
         leader.start();
         follower.start();
+        await().until(() -> leader.engine.meters.read("ha.followers.in.sync") == 1
+                && follower.engine.store(OTHER) != null && follower.ha.getReplica().isComplete());
+    }
 
-        await().until(() -> leader.engine.meters.read("ha.followers.in.sync") == 1);
+    @Test
+    void aFollowerOverTwoLinksCountsOnceWithAStatusPerLink() {
+        Node leader = linked("a", 2);
+        Node follower = linked("b", 2);
+
+        leads(leader, follower);
+
         assertThat(leader.engine.meters.read("ha.followers.connected")).isEqualTo(1);
         assertThat(leader.ha.getStatus().getFollowers()).extracting(HaStatus.Follower::getNodeId, HaStatus.Follower::getLink)
                 .containsExactlyInAnyOrder(tuple("b", 0), tuple("b", 1));
-        await().until(() -> follower.ha.getReplica().isComplete() && follower.engine.store(OTHER) != null);
-
         leader.store.storeNextIncomingSeqNum(7);
-
         await().untilAsserted(() -> assertThat(follower.engine.store(MAIN).writes).endsWith("incoming 7"));
+    }
+
+    @Test
+    void theFollowerOpensAsManyLinksAsTheLeaderHasWhateverItsOwnSetting() {
+        Node leader = linked("a", 2);
+        Node follower = linked("b", 1);
+
+        leads(leader, follower);
+
+        assertThat(follower.ha.getReplica().getLinks()).isEqualTo(2);
+        assertThat(leader.ha.getStatus().getFollowers()).extracting(HaStatus.Follower::getLink).containsExactlyInAnyOrder(0, 1);
+    }
+
+    @Test
+    void aSnapshotStalledOnOneLinkDoesNotHoldBackTheSessionsOfAnother() {
+        Node leader = linked("a", 2);
+        Node follower = linked("b", 2);
+        leads(leader, follower);
+        CountDownLatch stalled = new CountDownLatch(1);
+        follower.engine.store(OTHER).incomingWritesHeld = stalled;
+        try {
+            leader.ha.resync(OTHER.getFixSessionId(), OTHER.getFixSessionType());
+            await().until(() -> !leader.ha.getStatus().getFollowers().stream().allMatch(HaStatus.Follower::isInSync));
+
+            leader.store.storeNextIncomingSeqNum(7);
+
+            await().untilAsserted(() -> assertThat(follower.engine.store(MAIN).writes).endsWith("incoming 7"));
+            assertThat(leader.ha.getStatus().getFollowers()).filteredOn(HaStatus.Follower::isInSync)
+                    .extracting(HaStatus.Follower::getLink).containsExactly(0);
+        } finally {
+            stalled.countDown();
+        }
+        await().until(() -> leader.engine.meters.read("ha.followers.in.sync") == 1);
+    }
+
+    @Test
+    void aLeaderStoppingCleanlyHandsOverTheSessionsOfEveryLink() {
+        Node leader = linked("a", 2);
+        Node follower = linked("b", 2);
+        leads(leader, follower);
+        leader.store.storeNextIncomingSeqNum(7);
+        leader.other.storeNextIncomingSeqNum(8);
+
+        leader.ha.stop(Deadline.of(Duration.ofSeconds(2)));
+        started.remove(leader.ha);
+        follower.election.elect(Role.LEADER, 4, "b");
+
+        await().until(() -> follower.engine.activity.contains("activate, stores open 0"));
+        assertThat(follower.engine.store(MAIN).writes).contains("incoming 7").doesNotContain("outgoing 10001");
+        assertThat(follower.engine.store(OTHER).writes).contains("incoming 8").doesNotContain("outgoing 10001");
     }
 
     @Test
