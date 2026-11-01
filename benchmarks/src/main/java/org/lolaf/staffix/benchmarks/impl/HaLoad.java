@@ -115,6 +115,11 @@ public class HaLoad {
     HaPair.ReplicationWaiting replicationWaiting;
     @Param({"5"})
     int seconds;
+    /**
+     * The sessions split over this many replication links, session {@code n} on link {@code n} modulo the count.
+     */
+    @Param({"1"})
+    int replicationLinks;
 
     private final List<Runnable> stops = new ArrayList<>();
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
@@ -172,8 +177,8 @@ public class HaLoad {
             HaStatus.Leader leader = follower.getStatus().getLeader();
             return leader != null && leader.isInSync();
         });
-        log.info("HA load ready: {} sessions at {} msg/s, {} replication, {} follower store, replication waiting {}, leader IO threads {}",
-                sessions, rate, mode, followerStore, replicationWaiting, leaderIoThreads);
+        log.info("HA load ready: {} sessions at {} msg/s, {} replication, {} follower store, replication waiting {}, leader IO threads {}, replication links {}",
+                sessions, rate, mode, followerStore, replicationWaiting, leaderIoThreads, replicationLinks);
     }
 
     @Setup(Level.Iteration)
@@ -313,6 +318,7 @@ public class HaLoad {
                         .build())
                 .highAvailability(replicationWaiting(ReplicationHaSettings.builder(), replicationWaiting)
                         .nodeId(nodeId)
+                        .replicationLinks(replicationLinks)
                         .peer("a", replicationA)
                         .peer("b", replicationB)
                         .monitoringInstanceId(nodeId.equals("a") ? MONITORING : null)

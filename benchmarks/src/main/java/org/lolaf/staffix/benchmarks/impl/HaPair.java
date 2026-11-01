@@ -117,6 +117,11 @@ public class HaPair {
      */
     @Param({"false"})
     boolean busyResync;
+    /**
+     * The sessions split over this many replication links, session {@code n} on link {@code n} modulo the count.
+     */
+    @Param({"1"})
+    int replicationLinks;
 
     /**
      * Which of the replication's threads busy spin, each one more core.
@@ -207,8 +212,8 @@ public class HaPair {
                 resyncer.start();
             }
         }
-        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}, leader IO threads {}, busy resync {}",
-                mode, followerStore, busySession, replicationWaiting, leaderIoThreads, busyResync);
+        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}, leader IO threads {}, busy resync {}, replication links {}",
+                mode, followerStore, busySession, replicationWaiting, leaderIoThreads, busyResync, replicationLinks);
     }
 
     public void roundTrip() {
@@ -294,6 +299,7 @@ public class HaPair {
                         .build())
                 .highAvailability(replicationWaiting(ReplicationHaSettings.builder(), replicationWaiting)
                         .nodeId(nodeId)
+                        .replicationLinks(replicationLinks)
                         .peer("a", replicationA)
                         .peer("b", replicationB)
                         .monitoringInstanceId(nodeId.equals("a") ? MONITORING : null)
