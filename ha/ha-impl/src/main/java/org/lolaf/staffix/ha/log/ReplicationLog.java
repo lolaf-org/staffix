@@ -54,8 +54,8 @@ public class ReplicationLog {
     private volatile long drops;
 
     /**
-     * The longest message an event can carry, in fragments past {@link #getMaxFragmentLength()}: half the log, so a
-     * follower reading it still has the other half before it is lapped.
+     * The longest message an event can carry, in fragments past {@link #getMaxFragmentLength()}: half the log, so the
+     * other half still holds the events a follower had not read when it was written.
      */
     @Getter
     private final int maxMessageLength;

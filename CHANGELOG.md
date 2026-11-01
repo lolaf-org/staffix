@@ -20,8 +20,11 @@ could mean.
 
 - **High availability.** Two engines run the same sessions: one leads and runs them, the other is a standby that
   receives every write to their stores and takes them over when the leader fails. Each session chooses `NONE`,
-  `ASYNC` (nothing waits) or `SYNC` (a message reaches the counterparty only once the standby has it), with
-  `haSessionSettings.replicationMode`. The leader is elected by primos with a witness, or by an election of your own.
+  `ASYNC` (nothing waits, unless the standby falls a whole replication log behind) or `SYNC` (a message reaches the
+  counterparty only once the standby has it), with `haSessionSettings.replicationMode`. A standby that cannot keep up
+  makes the writes wait at most `logFullTimeout` (1 s), is then dropped, and is let back to catch up after
+  `slowFollowerHoldOff` (1 s, doubling up to a minute). The leader is elected by primos with a witness, or by an
+  election of your own.
   A planned switchover logs the sessions out and the other engine carries on at the same sequence numbers; after a
   failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. A leader cut off from
   the others drops its sessions a fencing margin (50 ms by default) before the other engine can be elected. Two
@@ -30,7 +33,7 @@ could mean.
   including what it does not do.
 - **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
   switchover, maintenance mode and a re-sync of the standby; it publishes `ha.*` meters and alerts when the standby
-  is missing, out of sync or behind.
+  is missing, out of sync, behind, or dropped for being too slow.
 - **The engine's own components have meters and probes**, beside the sessions': a monitoring manager that supports
   it (Micrometer's does) publishes engine meters, listed by the HTTP admin API's `GET engine/meters`, and their probes
   are listed and cleared under `engine/{component}/probes`, or through JMX.

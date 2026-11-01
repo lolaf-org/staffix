@@ -3,8 +3,9 @@ summary: >-
   the leader election makes it the leader. Needs a leaderElection, such as primos from staffix-ha-primos.
 production:
   - >-
-    Size logCapacity to the bytes the sessions write while a follower may lag or reconnect; a follower left further
-    behind is caught up by snapshot, and no single message may exceed an eighth of it.
+    Size logCapacity to the bytes the sessions write while a healthy follower may lag; one a whole log behind makes
+    the sessions' writes wait for it, on their FIX IO threads, at most logFullTimeout, then is dropped, held off
+    slowFollowerHoldOff and caught up by snapshot. A message longer than half of it is not replicated.
   - >-
     Size snapshotMaxMessages to the oldest message a counterparty may ask to be resent after a failover to a follower
     that was caught up by snapshot; older ones are gap filled.
@@ -18,12 +19,12 @@ production:
     while unreplicated.
   - >-
     Name a monitoring manager in monitoringInstanceId to publish the replication's meters (role, throughput, followers
-    in sync and how far behind, SYNC ack latency and unacknowledged sends, laps, snapshots); none are published
-    without it.
+    in sync and how far behind, SYNC ack latency and unacknowledged sends, followers dropped as too slow, snapshots);
+    none are published without it.
   - >-
     Name an alerts publisher in alertsPublisherInstanceId to probe the node's replication, as component ha: no
-    follower connected or in sync while leading, the leader unreachable while following, no role. Each replicated
-    session also gets an ha-replication probe on its own alerts publisher.
+    follower connected or in sync, or one dropped as too slow, while leading, the leader unreachable while following,
+    no role. Each replicated session also gets an ha-replication probe on its own alerts publisher.
   - >-
     With primos, a node is named by its primos node id as decimal text: use those ids as nodeId and as the peers keys.
   - >-

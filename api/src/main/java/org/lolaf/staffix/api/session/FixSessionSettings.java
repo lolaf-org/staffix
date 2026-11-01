@@ -415,8 +415,9 @@ public class FixSessionSettings {
              */
             NONE((byte) 0),
             /**
-             * Replicated once a message is sent, so nothing waits; a failover may lose the last messages, which the
-             * new leader covers by jumping its outgoing sequence number.
+             * Replicated once a message is sent, so nothing waits unless the follower is a whole replication log
+             * behind; a failover may lose the last messages, which the new leader covers by jumping its outgoing
+             * sequence number.
              */
             ASYNC((byte) 1),
             /**

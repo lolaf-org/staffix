@@ -86,7 +86,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 
 | setting | default | what it decides |
 |---|---|---|
-| `logCapacity` | 16 MiB | Off-heap memory holding the writes the follower has not received yet. A follower falling further behind is caught up by snapshot. The largest message replicated is half of it. |
+| `logCapacity` | 16 MiB | Off-heap memory holding the writes the follower has not received yet. A follower this far behind makes the sessions' writes wait for it, at most `logFullTimeout`. The largest message replicated is half of it. |
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
 | `sendBuffers` | 4 | Write buffers per follower, a power of two, allocated as first needed. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower. |
@@ -109,9 +109,9 @@ Each session picks one.
 
 - **`NONE`**: not replicated. After a failover the session starts from the new leader's own store; see
   [Caveats](#caveats).
-- **`ASYNC`**: each write is replicated as it is made, after the message went out. Nothing waits, so it costs the
-  session almost nothing; a leader that fails may have sent messages the follower never received, which the new leader
-  covers by moving its sequence numbers ahead.
+- **`ASYNC`**: each write is replicated as it is made, after the message went out. Nothing waits unless a follower is
+  a whole `logCapacity` behind, so it costs the session almost nothing; a leader that fails may have sent messages the
+  follower never received, which the new leader covers by moving its sequence numbers ahead.
 - **`SYNC`**: a message is replicated before it is sent, and the send waits for the follower's acknowledgement. The
   counterparty never receives a message the follower does not have. Each send pays a round trip to the follower: on one
   machine, about 170 µs more than `ASYNC` with the defaults, 15 µs with the replication busy spinning; see
@@ -123,6 +123,15 @@ costs one timeout, not one per message; the leader drops it after `followerStall
 (not connected, catching up), a send does not wait at all. Either way the
 session is flagged unprotected and its `ha-replication` probe alerts, and waiting resumes once a follower is back in
 sync. `syncAckLatencyEnabled: true` adds a timer of the wait to the session's own meters.
+
+**A follower that cannot keep up slows the writes, briefly, and is then dropped.** The leader keeps what a connected
+follower has not been sent in its replication log, `logCapacity` bytes. When the follower falls that far behind, a
+session's next write waits for it, holding the FIX IO thread it runs on, and every session on that thread, for at most
+`logFullTimeout` (1 s by default). Past that, the leader drops the follower, carries on, and refuses it for
+`slowFollowerHoldOff` (1 s, doubling at each drop up to a minute; `0s` never refuses it) before it catches up by
+snapshot, so its catching up does not add to the load. Until it is back in sync, the `ha-followers` probe raises a
+major alert and the status lists it under `droppedFollowers`. Size `logCapacity` so a healthy follower never falls a
+whole log behind.
 
 Neither mode replicates what the session receives as it arrives: only the expected incoming sequence number, after the
 message was processed. A new leader that is a few messages behind asks the counterparty to resend them, which it does.
@@ -244,8 +253,8 @@ message it never stored. A clean handover does not.
   shared store.
 - **A message longer than half of `logCapacity` is not replicated** (8 MiB with the default). The session logs an
   error and alerts; a resend of that message after a failover is gap filled. Messages up to that size are replicated
-  in pieces, but a large message takes a large share of the log, and a follower that falls a whole log behind is
-  caught up by snapshot: size `logCapacity` to at least four times your largest message.
+  in pieces, but a large message takes a large share of the log, and a follower a whole log behind makes writes wait:
+  size `logCapacity` to at least four times your largest message.
 - **A snapshot copies every message the leader's store keeps, and the follower's store then keeps what its own
   settings allow.** Give the follower's store at least the leader's retention (`maxEntriesInMemory`, the file store's
   `blocksCount` and `blockSize`, `maxMessagesPerSession`): a resend asking for a message it dropped is answered with a

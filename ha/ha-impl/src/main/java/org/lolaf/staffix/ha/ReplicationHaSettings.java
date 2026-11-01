@@ -58,9 +58,10 @@ public class ReplicationHaSettings extends HaSettings {
     private final @Nullable String alertsPublisherInstanceId;
 
     /**
-     * Bytes of off-heap memory holding the store events not yet sent to the follower, a power of two. A follower
-     * falling this far behind is caught up by snapshot instead; the largest message replicated is half of it, past an
-     * eighth in fragments. Size it to several times the largest message, which otherwise takes most of the log.
+     * Bytes of off-heap memory holding the store events not yet sent to the follower, a power of two. A follower this
+     * far behind makes writes wait for it, at most {@link #getLogFullTimeout() logFullTimeout}; the largest message
+     * replicated is half of it, past an eighth in fragments. Size it to several times the largest message, which
+     * otherwise takes most of the log.
      */
     @Builder.Default
     private final int logCapacity = 16 << 20;
