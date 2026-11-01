@@ -89,8 +89,8 @@ class HaMeters {
             }
             return TimeUnit.NANOSECONDS.toMillis(most);
         });
-        meters.getCounter("ha.follower.laps", "Followers dropped for falling the replication log's capacity behind.",
-                Map.of(), stats::getLaps);
+        meters.getCounter("ha.follower.too.slow", "Followers dropped for reading the replication log so slowly that a "
+                + "write waited the log full timeout for them.", Map.of(), stats::getTooSlow);
         meters.getCounter("ha.snapshots", "Session snapshots sent to followers catching up.", Map.of(), stats::getSnapshots);
         meters.getCounter("ha.snapshot.messages", "Messages copied by the snapshots sent to followers.", Map.of(),
                 stats::getSnapshotMessages);

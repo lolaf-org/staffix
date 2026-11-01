@@ -26,6 +26,7 @@ import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -42,6 +43,7 @@ class TestReplicationLog {
 
     private final ReplicationLog log = new ReplicationLog(CAPACITY);
     private final StoreEventRecord record = new StoreEventRecord();
+    private final LogFullWait wait = new LogFullWait(Duration.ofSeconds(1));
     private final ByteBuffer frame = ByteBuffer.allocateDirect(CAPACITY);
     private final RecordingHandler handler = new RecordingHandler();
 
@@ -66,8 +68,8 @@ class TestReplicationLog {
     @Test
     void eventsAreReadInTheOrderAppendedAsWholeWireFrames() {
         ReplicationLog.Reader reader = log.newReader();
-        long first = log.append(record.set(3, StoreEventType.STORE_MESSAGE, 42, message(MESSAGE)));
-        long second = log.append(record.set(3, StoreEventType.STORE_INCOMING_SEQ_NUM, 19, null));
+        long first = log.append(record.set(3, StoreEventType.STORE_MESSAGE, 42, message(MESSAGE)), wait);
+        long second = log.append(record.set(3, StoreEventType.STORE_INCOMING_SEQ_NUM, 19, null), wait);
 
         readAsFrame(reader);
         readAsFrame(reader);
@@ -81,8 +83,8 @@ class TestReplicationLog {
 
     @Test
     void offsetsGrowWithEveryEventFromZero() {
-        long first = log.append(record.set(1, StoreEventType.RESET_SEQ_NUM, 0, null));
-        long second = log.append(record.set(1, StoreEventType.STORE_OUTGOING_SEQ_NUM, 2, null));
+        long first = log.append(record.set(1, StoreEventType.RESET_SEQ_NUM, 0, null), wait);
+        long second = log.append(record.set(1, StoreEventType.STORE_OUTGOING_SEQ_NUM, 2, null), wait);
 
         assertThat(first).isZero();
         assertThat(second).isPositive();
@@ -94,7 +96,7 @@ class TestReplicationLog {
         ByteBuffer message = message(MESSAGE);
         message.position(2);
 
-        log.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, message));
+        log.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, message), wait);
 
         assertThat(message.position()).isEqualTo(2);
         assertThat(message.limit()).isEqualTo(MESSAGE.length());
@@ -102,8 +104,8 @@ class TestReplicationLog {
 
     @Test
     void aReaderResumesFromAnEventStillInTheLog() {
-        log.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, message("first")));
-        long second = log.append(record.set(1, StoreEventType.STORE_MESSAGE, 2, message("second")));
+        log.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, message("first")), wait);
+        long second = log.append(record.set(1, StoreEventType.STORE_MESSAGE, 2, message("second")), wait);
         ReplicationLog.Reader reader = log.newReader();
 
         assertThat(reader.seek(second)).isTrue();
@@ -116,9 +118,9 @@ class TestReplicationLog {
     void aFollowerLeftBehindAWholeLogIsLappedAndNeedsASnapshot() {
         ReplicationLog small = new ReplicationLog(1024);
         ReplicationLog.Reader reader = small.newReader();
-        long first = small.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, message(MESSAGE)));
+        long first = small.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, message(MESSAGE)), wait);
         for (int i = 2; i < 100; i++) {
-            small.append(record.set(1, StoreEventType.STORE_MESSAGE, i, message(MESSAGE)));
+            small.append(record.set(1, StoreEventType.STORE_MESSAGE, i, message(MESSAGE)), wait);
         }
 
         assertThat(reader.readInto(frame, 0)).isEqualTo(ReplicationLog.Reader.LAPPED);
@@ -129,11 +131,11 @@ class TestReplicationLog {
     void aMessageTooLongForTheLogIsRefusedAndNothingIsAppended() {
         ByteBuffer tooLong = ByteBuffer.allocate(log.getMaxMessageLength() + 1);
 
-        assertThatThrownBy(() -> log.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, tooLong)))
+        assertThatThrownBy(() -> log.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, tooLong), wait))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exceeds the " + log.getMaxMessageLength());
         assertThat(log.getTailOffset()).isZero();
-        assertThat(log.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, ByteBuffer.allocate(log.getMaxMessageLength()))))
+        assertThat(log.append(record.set(1, StoreEventType.STORE_MESSAGE, 1, ByteBuffer.allocate(log.getMaxMessageLength())), wait))
                 .as("the longest message is accepted, in fragments").isPositive();
     }
 
@@ -145,7 +147,7 @@ class TestReplicationLog {
         ByteBuffer message = ByteBuffer.wrap(("ab" + x + y + "zzz").getBytes(StandardCharsets.US_ASCII)).position(2);
         ReplicationLog.Reader reader = log.newReader();
 
-        long last = log.append(record.set(3, StoreEventType.STORE_MESSAGE, 42, message));
+        long last = log.append(record.set(3, StoreEventType.STORE_MESSAGE, 42, message), wait);
 
         readAsFrame(reader);
         long second = reader.getOffset();
@@ -164,7 +166,7 @@ class TestReplicationLog {
         ReplicationLog.Reader reader = log.newReader();
 
         log.append(record.set(3, StoreEventType.STORE_MESSAGE, 42, ByteBuffer.wrap("x".repeat(log.getMaxFragmentLength())
-                .getBytes(StandardCharsets.US_ASCII))));
+                .getBytes(StandardCharsets.US_ASCII))), wait);
 
         readAsFrame(reader);
         assertThat(handler.frames).singleElement().asString().doesNotContain(" more", " continued");
@@ -179,12 +181,12 @@ class TestReplicationLog {
     void appendingAllocatesNothingPerEvent() {
         ByteBuffer message = message(MESSAGE);
         for (int i = 0; i < 20_000; i++) {
-            log.append(record.set(1, StoreEventType.STORE_MESSAGE, i, message));
+            log.append(record.set(1, StoreEventType.STORE_MESSAGE, i, message), wait);
         }
 
         long before = AllocatedBytes.ofCurrentThread();
         for (int i = 0; i < 200_000; i++) {
-            log.append(record.set(1, StoreEventType.STORE_MESSAGE, i, message));
+            log.append(record.set(1, StoreEventType.STORE_MESSAGE, i, message), wait);
         }
 
         assertThat(AllocatedBytes.ofCurrentThread() - before).isLessThan(200_000);
@@ -207,9 +209,11 @@ class TestReplicationLog {
             int sessionKey = s;
             writers.add(new Thread(() -> {
                 StoreEventRecord own = new StoreEventRecord();
+                LogFullWait ownWait = new LogFullWait(Duration.ofSeconds(1));
                 awaitQuietly(start);
                 for (int seq = 0; seq < eventsPerSession; seq++) {
-                    big.append(own.set(sessionKey, StoreEventType.STORE_MESSAGE, seq, message(sessionKey + ":" + seq)));
+                    big.append(own.set(sessionKey, StoreEventType.STORE_MESSAGE, seq, message(sessionKey + ":" + seq)),
+                            ownWait);
                 }
             }));
         }
@@ -252,6 +256,51 @@ class TestReplicationLog {
             latch.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    @Test
+    void anAppendThatWaitedTooLongDropsOnlyTheSlowestGatingReaderAndTellsItsOwner() {
+        ReplicationLog small = new ReplicationLog(1024);
+        LogFullWait briefWait = new LogFullWait(Duration.ofMillis(10));
+        List<String> dropped = new ArrayList<>();
+        ReplicationLog.Reader keepingUp = small.newGatingReader(() -> dropped.add("keeping up"));
+        ReplicationLog.Reader stuck = small.newGatingReader(() -> dropped.add("stuck"));
+
+        for (int i = 0; i < 100; i++) {
+            small.append(record.set(1, StoreEventType.STORE_MESSAGE, i, message(MESSAGE)), briefWait);
+            assertThat(keepingUp.readInto(frame, 0)).isPositive();
+        }
+
+        assertThat(dropped).containsExactly("stuck");
+        assertThat(stuck.readInto(frame, 0)).isEqualTo(ReplicationLog.Reader.LAPPED);
+    }
+
+    @Test
+    void aGatingReaderReadsAgainTheEventItUnread() {
+        ReplicationLog.Reader reader = log.newGatingReader(() -> {
+        });
+        long first = log.append(record.set(1, StoreEventType.STORE_INCOMING_SEQ_NUM, 7, null), wait);
+        assertThat(reader.readInto(frame, 0)).isPositive();
+
+        reader.unread();
+
+        assertThat(reader.getOffset()).isEqualTo(first);
+        assertThat(reader.readInto(frame, 0)).isPositive();
+        assertThat(reader.getEventOffset()).isEqualTo(first);
+    }
+
+    @Test
+    void aClosedGatingReaderIsNeverDropped() {
+        ReplicationLog small = new ReplicationLog(1024);
+        ReplicationLog.Reader reader = small.newGatingReader(() -> {
+            throw new AssertionError("dropped once closed");
+        });
+
+        reader.close();
+
+        for (int i = 0; i < 100; i++) {
+            small.append(record.set(1, StoreEventType.STORE_MESSAGE, i, message(MESSAGE)), wait);
         }
     }
 }

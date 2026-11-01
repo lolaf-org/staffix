@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.log;
 
 import lombok.Getter;
+import org.lolaf.ringos.idling.RetryStrategy;
 import org.lolaf.ringos.rb.BroadcastByteRingBuffer;
 import org.lolaf.ringos.rb.ByteRingBufferFactory;
 import org.lolaf.ringos.rb.ByteRingReader;
@@ -25,14 +26,16 @@ import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * The store events of every replicated session of an engine, in the order they happened, in one off-heap ring.
  *
  * <p>Each event is held as a {@link FrameEncoder#storeEventBody store event body}; a sender adds the header and the
- * event's offset, its position in the log, when it sends it. Appending never waits and allocates nothing: when the
- * ring is full the oldest events are overwritten, and a reader that falls that far behind is told it was lapped, so
- * a slow follower is caught up by snapshot rather than stalling a session.
+ * event's offset, its position in the log, when it sends it. Appending allocates nothing, and waits only while a
+ * gating reader is a whole log behind: past the appender's retry strategy, the log drops the slowest gating reader,
+ * telling its owner, and writes over what it had not read.
  */
 public class ReplicationLog {
 
@@ -44,6 +47,11 @@ public class ReplicationLog {
                     storeEventRecord.getFragmentLength(), storeEventRecord.getFragmentFlags());
 
     private final BroadcastByteRingBuffer ring;
+    private final List<Reader> gatingReaders = new CopyOnWriteArrayList<>();
+    /**
+     * Counts the readers dropped, so writers that gave up together drop one reader, not one each.
+     */
+    private volatile long drops;
 
     /**
      * The longest message an event can carry, in fragments past {@link #getMaxFragmentLength()}: half the log, so a
@@ -79,13 +87,15 @@ public class ReplicationLog {
      * longer than {@link #getMaxFragmentLength()} is appended as consecutive fragments, other sessions' events
      * possibly between them. Allocates nothing.
      *
+     * @param storeEventRecord the event
+     * @param logFullWait      how long to wait for a gating reader a whole log behind, the appending thread's own
      * @return the offset of the event, or of the message's last fragment
      * @throws IllegalArgumentException for a message longer than {@link #getMaxMessageLength()}
      */
-    public long append(StoreEventRecord storeEventRecord) {
+    public long append(StoreEventRecord storeEventRecord, RetryStrategy logFullWait) {
         int messageLength = storeEventRecord.messageLength();
         if (messageLength <= maxFragmentLength) {
-            return write(storeEventRecord);
+            return write(storeEventRecord, logFullWait);
         }
         if (messageLength > maxMessageLength) {
             throw new IllegalArgumentException("A message of " + messageLength + " bytes exceeds the "
@@ -96,14 +106,38 @@ public class ReplicationLog {
         for (int from = 0; from < messageLength; from += maxFragmentLength) {
             int length = Math.min(maxFragmentLength, messageLength - from);
             int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
-            offset = write(storeEventRecord.fragment(start + from, length, (byte) flags));
+            offset = write(storeEventRecord.fragment(start + from, length, (byte) flags), logFullWait);
         }
         return offset;
     }
 
-    private long write(StoreEventRecord storeEventRecord) {
-        return ring.write(STORE_EVENT, FrameEncoder.storeEventBodyBytes(storeEventRecord.getFragmentLength()), ENCODE,
-                storeEventRecord);
+    private long write(StoreEventRecord storeEventRecord, RetryStrategy logFullWait) {
+        int length = FrameEncoder.storeEventBodyBytes(storeEventRecord.getFragmentLength());
+        while (true) {
+            long dropsBefore = drops;
+            long offset = ring.writeRetrying(STORE_EVENT, length, ENCODE, storeEventRecord, logFullWait);
+            if (offset != BroadcastByteRingBuffer.GATED) {
+                return offset;
+            }
+            dropSlowestReader(dropsBefore);
+        }
+    }
+
+    private synchronized void dropSlowestReader(long dropsBefore) {
+        if (drops != dropsBefore) {
+            return;
+        }
+        Reader slowest = null;
+        for (Reader reader : gatingReaders) {
+            if (slowest == null || reader.offset < slowest.offset) {
+                slowest = reader;
+            }
+        }
+        if (slowest != null) {
+            drops++;
+            slowest.close();
+            slowest.onDropped.run();
+        }
     }
 
     /**
@@ -114,20 +148,33 @@ public class ReplicationLog {
     }
 
     /**
-     * A reader for one follower, at the tail.
+     * A reader at the tail that holds no append back, so it can be lapped.
      */
     public Reader newReader() {
-        return new Reader(ring.newReader());
+        return new Reader(ring.newReader(), null);
     }
 
     /**
-     * Reads the log from its own offset, independently of the other readers. One thread at a time.
+     * A reader for one streaming follower, at the tail: appends wait for it rather than overwrite what it has not
+     * read, until it is {@link Reader#close() closed}, or dropped as the slowest by an append that waited too long.
+     *
+     * @param onDropped run on the appending thread once the log dropped this reader, already closed
      */
-    public static final class Reader {
+    public Reader newGatingReader(Runnable onDropped) {
+        Reader reader = new Reader(ring.newGatingReader(), onDropped);
+        gatingReaders.add(reader);
+        return reader;
+    }
+
+    /**
+     * Reads the log from its own offset, independently of the other readers. One thread at a time, but for
+     * {@link #close()}.
+     */
+    public final class Reader {
 
         /**
-         * Returned by {@link #readInto} when writers overwrote events this reader had not read: the follower needs a
-         * snapshot.
+         * Returned by {@link #readInto} when writers overwrote events this reader had not read, which a gating reader
+         * sees only once closed: the follower needs a snapshot.
          */
         public static final int LAPPED = ByteRingReader.LAPPED;
 
@@ -143,9 +190,16 @@ public class ReplicationLog {
         public static final int NO_ROOM = ByteRingReader.NO_ROOM;
 
         private final ByteRingReader byteRingReader;
+        private final Runnable onDropped;
+        /**
+         * {@link #getOffset()} for the appending threads that look for the slowest reader.
+         */
+        private volatile long offset;
 
-        private Reader(ByteRingReader byteRingReader) {
+        private Reader(ByteRingReader byteRingReader, Runnable onDropped) {
             this.byteRingReader = byteRingReader;
+            this.onDropped = onDropped;
+            this.offset = byteRingReader.getPosition();
         }
 
         /**
@@ -155,7 +209,9 @@ public class ReplicationLog {
          * {@link #seek} or {@link #seekToTail}
          */
         public int readInto(ByteBuffer dst, int dstIndex) {
-            return byteRingReader.readInto(dst, dstIndex);
+            int body = byteRingReader.readInto(dst, dstIndex);
+            offset = byteRingReader.getPosition();
+            return body;
         }
 
         /**
@@ -178,11 +234,31 @@ public class ReplicationLog {
          * @return false, and the reader left where it was, when that event is no longer in the log
          */
         public boolean seek(long offset) {
-            return byteRingReader.seek(offset);
+            boolean moved = byteRingReader.seek(offset);
+            this.offset = byteRingReader.getPosition();
+            return moved;
         }
 
         public void seekToTail() {
             byteRingReader.seekToTail();
+            offset = byteRingReader.getPosition();
+        }
+
+        /**
+         * Steps back to the event last read, so the next read returns it again: one a sender cannot send yet. A gating
+         * reader keeps that event; once closed, the next read may find it lapped instead.
+         */
+        public void unread() {
+            byteRingReader.unread();
+            offset = byteRingReader.getPosition();
+        }
+
+        /**
+         * Stops holding appends back. Any thread, since the log closes the reader it drops from the appending one.
+         */
+        public void close() {
+            gatingReaders.remove(this);
+            byteRingReader.close();
         }
     }
 }

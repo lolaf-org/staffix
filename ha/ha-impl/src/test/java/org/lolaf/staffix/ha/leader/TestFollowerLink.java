@@ -44,6 +44,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -114,7 +115,8 @@ class TestFollowerLink {
     }
 
     private static ReplicationFixEngineHa engine(int logCapacity) {
-        return new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(logCapacity).build());
+        return new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(logCapacity)
+                .logFullTimeout(Duration.ofMillis(50)).build());
     }
 
     private FollowerLink link() {
@@ -259,7 +261,7 @@ class TestFollowerLink {
     }
 
     @Test
-    void aSenderLappedWhileAHeartbeatIsDueWritesNothingAfterItsClose() {
+    void aSenderDroppedWhileAHeartbeatIsDueWritesNothingAfterItsClose() {
         ha = engine(1024);
         Runnable[] sender = new Runnable[1];
         link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
@@ -274,7 +276,7 @@ class TestFollowerLink {
         sender[0].run();
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
-        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 LAPPED");
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 TOO_SLOW");
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("HEARTBEAT"));
     }
 
@@ -378,7 +380,7 @@ class TestFollowerLink {
     }
 
     @Test
-    void aFollowerTheLogLapsIsDisconnected() {
+    void aFollowerAWriteWaitedTheLogFullTimeoutForIsDroppedAsTooSlow() {
         ha = engine(1024);
         link = link();
         FixSessionMessagesStore store = replicated("main");
@@ -392,8 +394,52 @@ class TestFollowerLink {
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("STORE_EVENT"));
-        assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 LAPPED"));
-        assertThat(stats.getLaps()).isEqualTo(1);
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("CLOSE")).singleElement().asString()
+                .startsWith("CLOSE epoch=7 TOO_SLOW");
+        assertThat(stats.getTooSlow()).isEqualTo(1);
+    }
+
+    @Test
+    void aStreamingFollowerHoldsWritesBackUntilItReadsWhatTheyWouldOverwrite() throws InterruptedException {
+        ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1024)
+                .logFullTimeout(Duration.ofMinutes(1)).build());
+        link = link();
+        FixSessionMessagesStore store = replicated("main");
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        CountDownLatch written = new CountDownLatch(1);
+        Thread writer = new Thread(() -> {
+            for (int seq = 1; seq < 200; seq++) {
+                store.storeNextIncomingSeqNum(seq);
+            }
+            written.countDown();
+        });
+        writer.start();
+
+        assertThat(written.await(100, TimeUnit.MILLISECONDS)).as("held back by the follower").isFalse();
+        while (written.getCount() > 0) {
+            fill();
+        }
+        writer.join();
+        fill();
+
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("STORE_EVENT")).hasSize(199);
+    }
+
+    @Test
+    void aFollowerNotStreamingHoldsNoWriteBack() {
+        ha = engine(1024);
+        link = link();
+        FixSessionMessagesStore store = replicated("main");
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        link.disconnected();
+
+        for (int seq = 1; seq < 200; seq++) {
+            store.storeNextIncomingSeqNum(seq);
+        }
+
+        assertThat(stats.getTooSlow()).isZero();
+        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("CLOSE"));
     }
 
     @Test

@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.leader.Followers;
+import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.log.StoreEventRecord;
 
@@ -47,6 +48,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
 
     private final FixSessionMessagesStore store;
     private final ReplicationLog replicationLog;
+    private final LogFullWait logFullWait;
     private final ReplicatedSession session;
     private final Followers followers;
     private final StoreEventRecord storeEventRecord;
@@ -61,11 +63,13 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      * @param syncAckLatency records how long a {@code SYNC} send waited for the follower's ack, when it came
      * @param onStarted    given this store once started, before the session writes, so what it writes is replicated
      */
-    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog, ReplicatedSession session,
-                                       Followers followers, Timer syncAckLatency, IdleStrategy ackIdle,
+    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog,
+                                       LogFullWait logFullWait, ReplicatedSession session, Followers followers,
+                                       Timer syncAckLatency, IdleStrategy ackIdle,
                                        Consumer<FixSessionMessagesStore> onStarted) {
         this.store = store;
         this.replicationLog = replicationLog;
+        this.logFullWait = logFullWait;
         this.session = session;
         this.followers = followers;
         this.storeEventRecord = new StoreEventRecord();
@@ -214,7 +218,8 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      */
     private void append(StoreEventType eventType, long sequenceNumber, ByteBuffer message) {
         try {
-            lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber, message));
+            lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber,
+                    message), logFullWait);
         } catch (IllegalArgumentException e) {
             session.unreplicated();
             log.error("FIX session {} {} {} {} not replicated, its follower will not have it: {}. Raise logCapacity to "

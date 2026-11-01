@@ -161,4 +161,12 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final Duration followerStallTimeout = Duration.ofSeconds(10);
+
+    /**
+     * How long a write waits for a follower a whole {@link #getLogCapacity() log} behind before that follower is
+     * dropped as too slow and caught up by snapshot. The wait holds the FIX IO thread writing, and every session on
+     * it, so it stays short; positive, since a log that never waits would lap its followers.
+     */
+    @Builder.Default
+    private final Duration logFullTimeout = Duration.ofSeconds(1);
 }

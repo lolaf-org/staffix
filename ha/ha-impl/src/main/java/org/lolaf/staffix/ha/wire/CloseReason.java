@@ -35,10 +35,6 @@ public enum CloseReason {
     NOT_LEADER(3),
     PROTOCOL_ERROR(4),
     /**
-     * The log overwrote events the follower had not been sent: it reconnects, and is caught up by snapshot.
-     */
-    LAPPED(5),
-    /**
      * The leader could not read a session's store for a snapshot; the follower reconnects to try again.
      */
     SNAPSHOT_FAILED(6),
@@ -51,6 +47,11 @@ public enum CloseReason {
      * The follower owed an acknowledgement and stayed silent for the stall timeout: it reconnects and is caught up.
      */
     STALLED(8),
+    /**
+     * The follower read the log so slowly that a write waited the log full timeout for it: it reconnects and is
+     * caught up by snapshot.
+     */
+    TOO_SLOW(9),
     /**
      * Any other code, from a newer peer; kept rather than refused so the close is still reported.
      */
@@ -74,14 +75,14 @@ public enum CloseReason {
                 return NOT_LEADER;
             case 4:
                 return PROTOCOL_ERROR;
-            case 5:
-                return LAPPED;
             case 6:
                 return SNAPSHOT_FAILED;
             case 7:
                 return APPLY_FAILED;
             case 8:
                 return STALLED;
+            case 9:
+                return TOO_SLOW;
             default:
                 return UNKNOWN;
         }

@@ -53,8 +53,8 @@ import java.util.function.LongSupplier;
  *
  * <p>Frames from the follower arrive on the connection's IO thread; the log is streamed from a thread of the link's
  * own, which takes one of its own write buffers, reads as many events as fit straight into it behind room for their
- * headers, and sends it. A follower the log laps is disconnected, so it knows it missed events and reconnects to be
- * caught up.
+ * headers, and sends it. While streaming, its reader holds appends back rather than be lapped; a writer that waited
+ * the log full timeout for it drops it, and it reconnects to be caught up.
  *
  * <p>A session the follower answers {@link SessionStatus#SNAPSHOT_NEEDED} for is snapshot by that thread one chunk per
  * batch, so the other sessions keep streaming. Its own events are skipped meanwhile, except a reset, which ends the
@@ -70,7 +70,10 @@ public final class FollowerLink implements FrameHandler {
     private static final long STORE_RETRY_NANOS = Duration.ofMillis(10).toNanos();
     private final IOSession connection;
     private final ReplicationLog replicationLog;
-    private final ReplicationLog.Reader reader;
+    /**
+     * Gating from the follower's HELLO until the link closes, from any thread.
+     */
+    private volatile ReplicationLog.Reader reader;
     private final ReplicatedSessions sessions;
     private final LongSupplier epoch;
     private final String leaderId;
@@ -204,6 +207,7 @@ public final class FollowerLink implements FrameHandler {
             close(CloseReason.STALE_EPOCH, "follower is at epoch " + followerEpoch + ", this leader at " + leaderEpoch);
             return;
         }
+        reader = replicationLog.newGatingReader(this::droppedAsTooSlow);
         boolean resumed = lastAppliedEpoch == leaderEpoch && resume(lastAppliedOffset);
         if (!resumed) {
             reader.seekToTail();
@@ -442,18 +446,12 @@ public final class FollowerLink implements FrameHandler {
         filledEventOffset = -1;
         while (state == State.STREAMING && dst.limit() - filled >= WireFormat.STORE_EVENT_BODY_OFFSET) {
             int body = reader.readInto(dst, filled + WireFormat.STORE_EVENT_BODY_OFFSET);
-            if (body == ReplicationLog.Reader.NO_EVENT || body == ReplicationLog.Reader.NO_ROOM) {
-                break;
-            }
-            if (body == ReplicationLog.Reader.LAPPED) {
-                close(CloseReason.LAPPED, "the log overwrote events not sent yet");
+            if (body < 0) {
                 break;
             }
             int sessionKey = dst.getInt(filled + WireFormat.STORE_EVENT_BODY_OFFSET);
             if (sessionKey >= announced) {
-                if (!reader.seek(reader.getEventOffset())) {
-                    close(CloseReason.LAPPED, "the log overwrote an event while its session was announced");
-                }
+                reader.unread();
                 break;
             }
             if (snapshot != null && snapshot.sessionKey == sessionKey) {
@@ -462,9 +460,7 @@ public final class FollowerLink implements FrameHandler {
                 }
                 // left for the stream, after the snapshot's end
                 snapshot.resetAhead = true;
-                if (!reader.seek(reader.getEventOffset())) {
-                    close(CloseReason.LAPPED, "the log overwrote a reset while its session was snapshot");
-                }
+                reader.unread();
                 break;
             }
             filledEventOffset = reader.getEventOffset();
@@ -759,7 +755,7 @@ public final class FollowerLink implements FrameHandler {
         if (!sentAll || !senderStopped) {
             log.warn("Follower {} was not sent every event before the deadline: it will take over with its seqnums moved ahead",
                     followerId);
-            state = State.CLOSED;
+            closed();
             connection.stop(Deadline.immediate());
             return false;
         }
@@ -776,9 +772,9 @@ public final class FollowerLink implements FrameHandler {
         } else {
             log.warn("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
         }
-        state = State.CLOSED;
-        if (reason == CloseReason.LAPPED) {
-            stats.lapped();
+        closed();
+        if (reason == CloseReason.TOO_SLOW) {
+            stats.droppedTooSlow();
         }
         // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
         ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, text));
@@ -791,7 +787,18 @@ public final class FollowerLink implements FrameHandler {
      * The connection is gone: the send loop ends at its next turn.
      */
     void disconnected() {
+        closed();
+    }
+
+    private void droppedAsTooSlow() {
+        if (state == State.STREAMING) {
+            close(CloseReason.TOO_SLOW, "a write waited the log full timeout for it");
+        }
+    }
+
+    private void closed() {
         state = State.CLOSED;
+        reader.close();
     }
 
     public enum State {

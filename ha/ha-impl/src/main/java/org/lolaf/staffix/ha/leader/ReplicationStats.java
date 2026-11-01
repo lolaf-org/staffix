@@ -25,7 +25,7 @@ import java.util.function.Function;
  */
 public final class ReplicationStats {
 
-    private final AtomicLong laps = new AtomicLong();
+    private final AtomicLong tooSlow = new AtomicLong();
     private final AtomicLong snapshots = new AtomicLong();
     private final AtomicLong snapshotMessages = new AtomicLong();
     private final AtomicLong sendBuffersExhausted = new AtomicLong();
@@ -55,8 +55,8 @@ public final class ReplicationStats {
         return lagTimers.apply(followerId);
     }
 
-    void lapped() {
-        laps.incrementAndGet();
+    void droppedTooSlow() {
+        tooSlow.incrementAndGet();
     }
 
     void snapshotSent(int messages) {
@@ -87,10 +87,10 @@ public final class ReplicationStats {
     }
 
     /**
-     * Followers dropped for falling a whole replication log behind.
+     * Followers dropped for reading the replication log so slowly that a write waited the log full timeout for them.
      */
-    public long getLaps() {
-        return laps.get();
+    public long getTooSlow() {
+        return tooSlow.get();
     }
 
     public long getSnapshots() {

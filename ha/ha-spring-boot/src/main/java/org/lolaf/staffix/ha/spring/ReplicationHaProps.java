@@ -123,6 +123,12 @@ public class ReplicationHaProps {
     private Duration followerStallTimeout;
 
     /**
+     * How long a write waits for a follower a whole log behind before the leader drops it as too slow; unset keeps
+     * 1s, positive.
+     */
+    private Duration logFullTimeout;
+
+    /**
      * Whether an operator may, through staffix, hand the leadership over or take this node out of elections (the
      * switchover and maintenance mode) when the election is one the application shares, such as the primos starter's
      * node with staffix-ha-primos-spring-boot. Off by default, since that leadership is the application's too.

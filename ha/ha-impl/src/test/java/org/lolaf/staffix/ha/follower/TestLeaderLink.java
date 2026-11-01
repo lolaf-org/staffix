@@ -523,7 +523,7 @@ class TestLeaderLink {
         streaming();
         complete();
 
-        read(close(CloseReason.LAPPED));
+        read(close(CloseReason.TOO_SLOW));
         replica.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");

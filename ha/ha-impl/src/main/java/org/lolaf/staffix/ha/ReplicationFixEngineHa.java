@@ -40,6 +40,7 @@ import org.lolaf.staffix.ha.leader.FollowerLink;
 import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.leader.ReplicationPublisher;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
+import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 
@@ -108,6 +109,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (sendBuffers < 2 || Integer.bitCount(sendBuffers) != 1) {
             throw new IllegalArgumentException("sendBuffers must be a power of two of at least 2, got " + sendBuffers);
         }
+        Duration logFullTimeout = settings.getLogFullTimeout();
+        if (logFullTimeout.isNegative() || logFullTimeout.isZero()) {
+            throw new IllegalArgumentException("logFullTimeout must be positive, got " + logFullTimeout);
+        }
         this.settings = settings;
         this.replicationLog = new ReplicationLog(settings.getLogCapacity());
     }
@@ -127,8 +132,9 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             followers.reannounce(session.getKey());
         }
         probes.add(HaProbes.sessionProbe(session, followers));
-        return new ReplicatingFixSessionMessagesStore(store, replicationLog, session, followers, syncAckLatency,
-                settings.getSyncAckIdleStrategy().get(), started -> jumpIfNewToPromotion(sessionSettings, started));
+        return new ReplicatingFixSessionMessagesStore(store, replicationLog, new LogFullWait(settings.getLogFullTimeout()),
+                session, followers, syncAckLatency, settings.getSyncAckIdleStrategy().get(),
+                started -> jumpIfNewToPromotion(sessionSettings, started));
     }
 
     /**

@@ -52,6 +52,7 @@ class TestReplicationHaAutoConfiguration {
                         "staffix.ha-replication.switchover-timeout=20s",
                         "staffix.ha-replication.follower-lag-alert-threshold=2s",
                         "staffix.ha-replication.follower-stall-timeout=3s",
+                        "staffix.ha-replication.log-full-timeout=500ms",
                         "staffix.ha-replication.monitoring-instance-id=metrics",
                         "staffix.ha-replication.alerts-publisher-instance-id=alerts")
                 .run(context -> {
@@ -66,6 +67,7 @@ class TestReplicationHaAutoConfiguration {
                     assertThat(settings.getSwitchoverTimeout()).isEqualTo(Duration.ofSeconds(20));
                     assertThat(settings.getFollowerLagAlertThreshold()).isEqualTo(Duration.ofSeconds(2));
                     assertThat(settings.getFollowerStallTimeout()).isEqualTo(Duration.ofSeconds(3));
+                    assertThat(settings.getLogFullTimeout()).isEqualTo(Duration.ofMillis(500));
                     assertThat(settings.getMonitoringInstanceId()).isEqualTo("metrics");
                     assertThat(settings.getAlertsPublisherInstanceId()).isEqualTo("alerts");
                     assertThat(settings.getSendBuffers()).isEqualTo(ReplicationHaSettings.builder().build().getSendBuffers());

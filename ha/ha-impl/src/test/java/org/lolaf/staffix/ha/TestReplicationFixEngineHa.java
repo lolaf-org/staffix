@@ -145,6 +145,16 @@ class TestReplicationFixEngineHa {
                 .hasMessageContaining("sendBuffers");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"PT0S", "PT-1S"})
+    void theLogFullTimeoutMustBePositive(String logFullTimeout) {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().logFullTimeout(Duration.parse(logFullTimeout))
+                .build();
+
+        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("logFullTimeout");
+    }
+
     @Test
     void aNodeWhoseRoleIsUnknownRunsNoSessionAndListensToNoFollower() {
         a.start();
