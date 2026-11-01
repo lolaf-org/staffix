@@ -42,6 +42,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.impl.alerting.ProbesListeners;
 import org.lolaf.staffix.impl.alerting.ProbesManager;
+import org.lolaf.staffix.impl.session.ClockImpl;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
 import org.lolaf.staffix.impl.session.FixSessionRegistryImpl;
 import org.lolaf.staffix.impl.session.FixSessionSettingsValidator;
@@ -867,6 +868,11 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         @Override
         public List<FixSessionSettings> getFixSessionsSettings() {
             return getManagedFixSessionsSettings();
+        }
+
+        @Override
+        public org.lolaf.staffix.api.time.Clock getClock() {
+            return ClockImpl.get();
         }
 
         @Override

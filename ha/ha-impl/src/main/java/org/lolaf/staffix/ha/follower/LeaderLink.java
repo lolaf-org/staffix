@@ -155,6 +155,8 @@ public final class LeaderLink implements FrameHandler {
         if (reason == CloseReason.SHUTDOWN && state == State.STREAMING && epoch == leaderEpoch) {
             log.info("Leader {} stopped cleanly and handed over: {}", leaderId, text);
             replica.handedOver();
+        } else if (reason == CloseReason.RETRY_LATER) {
+            log.info("Leader {} holds this follower off: {}", leaderId, text);
         } else {
             log.warn("Leader {} closed the replication stream: {} {}", leaderId, reason, text);
         }

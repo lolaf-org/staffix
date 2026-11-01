@@ -40,6 +40,7 @@ import org.lolaf.staffix.ha.leader.FollowerLink;
 import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.leader.ReplicationPublisher;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
+import org.lolaf.staffix.ha.leader.SlowFollowers;
 import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.wire.SessionStatus;
@@ -79,7 +80,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final ReplicationLog replicationLog;
     private final ReplicatedSessions sessions = new ReplicatedSessions();
     private final Followers followers = new Followers();
-    private final ReplicationStats stats = new ReplicationStats();
+    private volatile ReplicationStats stats;
     private final LateTimer syncAckLatency = new LateTimer();
     private volatile EngineAccess engine;
     private volatile Replica replica;
@@ -112,6 +113,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         Duration logFullTimeout = settings.getLogFullTimeout();
         if (logFullTimeout.isNegative() || logFullTimeout.isZero()) {
             throw new IllegalArgumentException("logFullTimeout must be positive, got " + logFullTimeout);
+        }
+        if (settings.getSlowFollowerHoldOff().isNegative()) {
+            throw new IllegalArgumentException("slowFollowerHoldOff must not be negative, got "
+                    + settings.getSlowFollowerHoldOff());
         }
         this.settings = settings;
         this.replicationLog = new ReplicationLog(settings.getLogCapacity());
@@ -156,6 +161,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     public void bind(EngineAccess engine) {
         this.engine = engine;
         this.replica = new Replica(engine);
+        this.stats = new ReplicationStats(new SlowFollowers(settings.getSlowFollowerHoldOff(), engine.getClock()));
     }
 
     @Override
@@ -178,9 +184,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             for (FollowerLink link : followers.all()) {
                 status.follower(link.status(sessions.count()));
             }
-            stats.getDroppedTooSlow().entrySet().stream().sorted(Map.Entry.comparingByKey())
-                    .forEach(dropped -> status.droppedFollower(HaStatus.DroppedFollower.builder()
-                            .nodeId(dropped.getKey()).droppedAt(dropped.getValue()).build()));
+            status.droppedFollowers(stats.getSlowFollowers().notBackInSync());
         }
         ReplicationReceiver currentReceiver = receiver;
         if (role == Role.FOLLOWER && currentReceiver != null) {

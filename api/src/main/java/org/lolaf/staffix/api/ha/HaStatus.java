@@ -128,6 +128,11 @@ public class HaStatus {
 
         String nodeId;
         Instant droppedAt;
+        /**
+         * Until when it is refused, so its resync does not add to the load that made it too slow; null once it may
+         * connect.
+         */
+        @Nullable Instant heldOffUntil;
     }
 
     /**

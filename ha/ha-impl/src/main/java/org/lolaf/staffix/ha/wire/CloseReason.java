@@ -53,6 +53,10 @@ public enum CloseReason {
      */
     TOO_SLOW(9),
     /**
+     * The follower was dropped as too slow and is held off before it may resync: it tries again at its next reconnect.
+     */
+    RETRY_LATER(10),
+    /**
      * Any other code, from a newer peer; kept rather than refused so the close is still reported.
      */
     UNKNOWN(0xFFFF);
@@ -83,6 +87,8 @@ public enum CloseReason {
                 return STALLED;
             case 9:
                 return TOO_SLOW;
+            case 10:
+                return RETRY_LATER;
             default:
                 return UNKNOWN;
         }

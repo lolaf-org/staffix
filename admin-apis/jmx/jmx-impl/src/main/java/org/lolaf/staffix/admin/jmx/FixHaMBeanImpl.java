@@ -48,7 +48,8 @@ public class FixHaMBeanImpl implements FixHaMXBean {
                                 follower.getLagMillis()))
                         .collect(Collectors.toList()),
                 status.getDroppedFollowers().stream()
-                        .map(dropped -> new DroppedFollowerImpl(dropped.getNodeId(), dropped.getDroppedAt().toString()))
+                        .map(dropped -> new DroppedFollowerImpl(dropped.getNodeId(), dropped.getDroppedAt().toString(),
+                                dropped.getHeldOffUntil() == null ? null : dropped.getHeldOffUntil().toString()))
                         .collect(Collectors.toList()),
                 leader == null ? null : new LeaderImpl(leader.getLeaderId(), leader.getAddress(), leader.isConnected(), leader.isInSync()));
     }
@@ -115,6 +116,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     private static class DroppedFollowerImpl implements DroppedFollower {
         String nodeId;
         String droppedAt;
+        String heldOffUntil;
     }
 
     @Value

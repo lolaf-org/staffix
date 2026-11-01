@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.api.time.Clock;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -70,6 +71,11 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
          * The settings of every session the engine manages now.
          */
         List<FixSessionSettings> getFixSessionsSettings();
+
+        /**
+         * The engine's time, which the high availability reads too, so a test that controls one controls both.
+         */
+        Clock getClock();
 
         /**
          * The store the session would use, opened outside any session and not started, its probes evaluated while it

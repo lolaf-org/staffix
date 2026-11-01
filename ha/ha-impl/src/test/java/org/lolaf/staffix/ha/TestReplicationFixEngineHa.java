@@ -157,6 +157,14 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void theSlowFollowerHoldOffMustNotBeNegative() {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().slowFollowerHoldOff(Duration.ofSeconds(-1)).build();
+
+        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("slowFollowerHoldOff");
+    }
+
+    @Test
     void aNodeWhoseRoleIsUnknownRunsNoSessionAndListensToNoFollower() {
         a.start();
 

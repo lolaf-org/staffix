@@ -1268,6 +1268,10 @@ components:
         droppedAt:
           type: string
           format: date-time
+        heldOffUntil:
+          type: string
+          format: date-time
+          description: Until when it is refused, so its resync does not add to the load; absent once it may connect.
     HaLeader:
       type: object
       description: A follower's link to its leader.

@@ -31,6 +31,7 @@ import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.tests.TestingClock;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -68,7 +69,7 @@ class TestFollowers {
         IOSession connection = mock(IOSession.class);
         when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerLink link = new FollowerLink(connection, ha.getReplicationLog(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofSeconds(1), Duration.ZERO, 4, new BackoffIdleStrategy(), new ReplicationStats(), loop -> {
+                Duration.ofSeconds(1), Duration.ZERO, 4, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         });
         link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0);
         link.fill(ByteBuffer.allocate(1 << 16));

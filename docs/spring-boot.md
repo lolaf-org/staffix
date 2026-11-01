@@ -195,7 +195,7 @@ staffix.ha-replication.fencing-margin=50ms
 looks that name up in `peers`. The other `ReplicationHaSettings` settings bind the same way (`log-capacity`,
 `heartbeat-interval`, `reconnect-interval`, `send-buffers`, `promotion-outgoing-seq-num-jump`,
 `hand-over-timeout`, `switchover-timeout`, `follower-lag-alert-threshold`, `follower-stall-timeout`,
-`log-full-timeout`); their defaults are in the guide.
+`log-full-timeout`, `slow-follower-hold-off`); their defaults are in the guide.
 `sender-idle-strategy`, `sync-ack-idle-strategy` and `select-strategy` take `default` or `busy-spin`; see
 [Latency](high-availability.md#latency).
 

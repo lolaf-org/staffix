@@ -28,8 +28,8 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
@@ -40,6 +40,7 @@ import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.tests.TestingClock;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -65,7 +66,7 @@ class TestReplicationPublisher {
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
     private final ReplicationPublisher publisher = new ReplicationPublisher(address, ha.getReplicationLog(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
             "leader-a", Duration.ofMillis(100), Duration.ZERO, 4,
-            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats());
+            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
     private final RecordingHandler received = new RecordingHandler();
     private Client follower;
 

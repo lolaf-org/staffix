@@ -15,12 +15,10 @@
  */
 package org.lolaf.staffix.ha.leader;
 
+import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.monitoring.Timer;
 
-import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
@@ -30,13 +28,18 @@ import java.util.function.Function;
 public final class ReplicationStats {
 
     private final AtomicLong tooSlow = new AtomicLong();
-    private final Map<String, Instant> droppedTooSlow = new ConcurrentHashMap<>();
+    @Getter
+    private final SlowFollowers slowFollowers;
     private final AtomicLong snapshots = new AtomicLong();
     private final AtomicLong snapshotMessages = new AtomicLong();
     private final AtomicLong sendBuffersExhausted = new AtomicLong();
     private final AtomicLong sendBuffersAllocated = new AtomicLong();
     private Function<String, Timer> ackLatencyTimers = followerId -> Timer.VoidTimer.getInstance();
     private Function<String, Timer> lagTimers = followerId -> Timer.VoidTimer.getInstance();
+
+    public ReplicationStats(SlowFollowers slowFollowers) {
+        this.slowFollowers = slowFollowers;
+    }
 
     /**
      * Where the links time their followers' round trips, by follower node id, once the engine's meters exist.
@@ -63,23 +66,8 @@ public final class ReplicationStats {
     void droppedTooSlow(@Nullable String followerId) {
         tooSlow.incrementAndGet();
         if (followerId != null) {
-            droppedTooSlow.put(followerId, Instant.now());
+            slowFollowers.dropped(followerId);
         }
-    }
-
-    boolean isDroppedTooSlow(String followerId) {
-        return droppedTooSlow.containsKey(followerId);
-    }
-
-    void backInSync(String followerId) {
-        droppedTooSlow.remove(followerId);
-    }
-
-    /**
-     * When each follower was last dropped as too slow, by node id, for those not back in sync since.
-     */
-    public Map<String, Instant> getDroppedTooSlow() {
-        return Map.copyOf(droppedTooSlow);
     }
 
     void snapshotSent(int messages) {

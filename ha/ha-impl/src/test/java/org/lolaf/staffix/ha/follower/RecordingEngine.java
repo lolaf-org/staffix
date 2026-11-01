@@ -27,7 +27,9 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.tests.TestingClock;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -79,9 +81,16 @@ public final class RecordingEngine implements EngineAccess {
         return stores.get(session.getFixSessionType() + " " + session.getFixSessionId());
     }
 
+    public final TestingClock clock = new TestingClock();
+
     @Override
     public List<FixSessionSettings> getFixSessionsSettings() {
         return settings;
+    }
+
+    @Override
+    public Clock getClock() {
+        return clock;
     }
 
     /**

@@ -23,11 +23,11 @@ import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreException;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
-import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
@@ -37,6 +37,7 @@ import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.tests.TestingClock;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -73,7 +74,7 @@ class TestFollowerLink {
 
     private final IOSession connection = mock(IOSession.class);
     private final RecordingHandler sent = new RecordingHandler();
-    private final ReplicationStats stats = new ReplicationStats();
+    private ReplicationStats stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
     /**
      * The batches sent, whose write betty has not reported yet while {@link #holdingWrites}.
      */
@@ -424,6 +425,31 @@ class TestFollowerLink {
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
         assertThat(sent.frames).filteredOn(frame -> frame.startsWith("STORE_EVENT")).hasSize(199);
+    }
+
+    @Test
+    void aFollowerDroppedAsTooSlowIsRefusedWhileHeldOff() {
+        stats = new ReplicationStats(new SlowFollowers(Duration.ofMinutes(1), new TestingClock()));
+        stats.droppedTooSlow("follower-b");
+        link = link();
+
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 RETRY_LATER");
+    }
+
+    @Test
+    void aFollowerDroppedAsTooSlowIsAcceptedAtOnceWithoutAHoldOffAndClearedOnceInSync() {
+        stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
+        stats.droppedTooSlow("follower-b");
+        link = link();
+
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        link.onAck(EPOCH, -1, true);
+
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
+        assertThat(stats.getSlowFollowers().notBackInSync()).isEmpty();
     }
 
     @Test

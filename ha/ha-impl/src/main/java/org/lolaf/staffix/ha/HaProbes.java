@@ -30,10 +30,8 @@ import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
@@ -107,11 +105,11 @@ class HaProbes {
                             : " not in sync") + ", " + follower.getUnsentBytes() + " bytes unsent");
                 }
             }
-            Map<String, Instant> droppedTooSlow = ha.getStats().getDroppedTooSlow();
+            List<HaStatus.DroppedFollower> droppedTooSlow = ha.getStats().getSlowFollowers().notBackInSync();
             if (!droppedTooSlow.isEmpty()) {
-                return Optional.of(Alert.major("Follower " + droppedTooSlow.entrySet().stream()
-                        .sorted(Map.Entry.comparingByKey())
-                        .map(dropped -> dropped.getKey() + " dropped as too slow at " + dropped.getValue())
+                return Optional.of(Alert.major("Follower " + droppedTooSlow.stream()
+                        .map(dropped -> dropped.getNodeId() + " dropped as too slow at " + dropped.getDroppedAt()
+                                + (dropped.getHeldOffUntil() == null ? "" : ", held off until " + dropped.getHeldOffUntil()))
                         .collect(Collectors.joining("; ")) + ", a write having waited "
                         + ha.getSettings().getLogFullTimeout().toMillis() + " ms for it, and not back in sync: a"
                         + " failover now loses what it has not applied"));

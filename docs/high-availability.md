@@ -99,6 +99,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `followerLagAlertThreshold` | 5s | How long a connected follower may go without applying a write before the leader raises a major alert. A follower stalled while connected still reads as in sync, as of its last acknowledgement. |
 | `followerStallTimeout` | 10s | How long a follower owing an acknowledgement may stay silent before the leader drops it as hung; it reconnects and is caught up. A slow follower still acknowledges each read and is kept. Zero never drops. |
 | `logFullTimeout` | 1s | How long a write waits for a follower a whole `logCapacity` behind before the leader drops it as too slow; it reconnects and is caught up by snapshot. The wait holds the FIX IO thread writing, and every session on it. Must be positive. |
+| `slowFollowerHoldOff` | 1s | How long a follower dropped as too slow is refused before it may resync, since catching it up adds to the load that made it too slow. Doubled at each drop up to a minute, and started over once it stayed in sync that long. Zero never holds a follower off. |
 | `monitoringInstanceId` | none | The monitoring manager publishing the replication's meters. |
 | `alertsPublisherInstanceId` | none | The alerts publisher publishing the replication's probes. |
 

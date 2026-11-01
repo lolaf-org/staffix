@@ -129,6 +129,12 @@ public class ReplicationHaProps {
     private Duration logFullTimeout;
 
     /**
+     * How long a follower dropped as too slow is refused before it may resync, doubled at each drop up to a minute;
+     * unset keeps 1s, zero never holds one off.
+     */
+    private Duration slowFollowerHoldOff;
+
+    /**
      * Whether an operator may, through staffix, hand the leadership over or take this node out of elections (the
      * switchover and maintenance mode) when the election is one the application shares, such as the primos starter's
      * node with staffix-ha-primos-spring-boot. Off by default, since that leadership is the application's too.

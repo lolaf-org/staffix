@@ -101,13 +101,16 @@ public interface FixHaMXBean {
     }
 
     /**
-     * See {@link org.lolaf.staffix.api.ha.HaStatus.DroppedFollower}; the time as ISO-8601.
+     * See {@link org.lolaf.staffix.api.ha.HaStatus.DroppedFollower}; times as ISO-8601, held off until null once it
+     * may connect.
      */
     interface DroppedFollower {
 
         String getNodeId();
 
         String getDroppedAt();
+
+        String getHeldOffUntil();
     }
 
     interface Leader {

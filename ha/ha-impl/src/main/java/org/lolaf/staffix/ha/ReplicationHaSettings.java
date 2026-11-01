@@ -169,4 +169,12 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final Duration logFullTimeout = Duration.ofSeconds(1);
+
+    /**
+     * How long a follower dropped as too slow is refused before it may resync, since catching it up adds to the load
+     * that made it too slow; doubled at each drop up to a minute, and started over once it stayed in sync that long.
+     * Zero never holds a follower off.
+     */
+    @Builder.Default
+    private final Duration slowFollowerHoldOff = Duration.ofSeconds(1);
 }

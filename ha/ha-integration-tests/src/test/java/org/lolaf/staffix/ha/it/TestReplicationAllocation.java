@@ -26,9 +26,8 @@ import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageDecoder;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
-import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
-import org.lolaf.staffix.monitoring.micrometer.MicrometerMonitoringManagerSettings;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.msg.DecodedFixMessage;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession;
@@ -39,6 +38,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
@@ -46,9 +46,11 @@ import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.monitoring.micrometer.MicrometerMonitoringManagerSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.TestPorts;
+import org.lolaf.staffix.tests.TestingClock;
 
 import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
@@ -262,6 +264,11 @@ class TestReplicationAllocation {
             @Override
             public List<FixSessionSettings> getFixSessionsSettings() {
                 return List.of(settings);
+            }
+
+            @Override
+            public Clock getClock() {
+                return new TestingClock();
             }
 
             @Override

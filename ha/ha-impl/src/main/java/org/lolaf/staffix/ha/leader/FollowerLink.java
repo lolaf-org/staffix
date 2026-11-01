@@ -39,7 +39,9 @@ import org.lolaf.staffix.ha.wire.*;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -211,8 +213,13 @@ public final class FollowerLink implements FrameHandler {
             close(CloseReason.STALE_EPOCH, "follower is at epoch " + followerEpoch + ", this leader at " + leaderEpoch);
             return;
         }
+        Optional<Instant> heldOffUntil = stats.getSlowFollowers().heldOffUntil(nodeId);
+        if (heldOffUntil.isPresent()) {
+            close(CloseReason.RETRY_LATER, "dropped as too slow, held off until " + heldOffUntil.get());
+            return;
+        }
         reader = replicationLog.newGatingReader(this::droppedAsTooSlow);
-        recoveringFromTooSlow = stats.isDroppedTooSlow(nodeId);
+        recoveringFromTooSlow = stats.getSlowFollowers().isNotBackInSync(nodeId);
         boolean resumed = lastAppliedEpoch == leaderEpoch && resume(lastAppliedOffset);
         if (!resumed) {
             reader.seekToTail();
@@ -246,7 +253,7 @@ public final class FollowerLink implements FrameHandler {
         this.reportedInSync = inSync;
         if (inSync && recoveringFromTooSlow) {
             recoveringFromTooSlow = false;
-            stats.backInSync(followerId);
+            stats.getSlowFollowers().backInSync(followerId);
         }
         lastAckNanos = System.nanoTime();
         long overdue = overdueOffset;
@@ -776,7 +783,7 @@ public final class FollowerLink implements FrameHandler {
      * Sends a CLOSE and disconnects, the connection flushing it first.
      */
     void close(CloseReason reason, String text) {
-        if (reason == CloseReason.SHUTDOWN) {
+        if (reason == CloseReason.SHUTDOWN || reason == CloseReason.RETRY_LATER) {
             log.info("Closing the replication stream to follower {}: {} {}", followerId, reason, text);
         } else {
             log.warn("Closing the replication stream to follower {}: {} {}", followerId, reason, text);

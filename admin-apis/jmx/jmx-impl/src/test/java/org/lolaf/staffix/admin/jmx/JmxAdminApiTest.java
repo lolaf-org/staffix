@@ -298,6 +298,7 @@ class JmxAdminApiTest {
         assertThat(status.getDroppedFollowers()).singleElement().satisfies(dropped -> {
             assertThat(dropped.getNodeId()).isEqualTo("3");
             assertThat(dropped.getDroppedAt()).isEqualTo(SINCE.toString());
+            assertThat(dropped.getHeldOffUntil()).as("may connect now").isNull();
         });
     }
 
