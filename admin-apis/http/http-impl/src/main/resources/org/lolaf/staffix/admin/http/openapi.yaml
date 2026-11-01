@@ -1182,7 +1182,7 @@ components:
     HaNodeStatus:
       type: object
       required: [nodeId, role, epoch, leadershipValid, leaderElection, transferLeadershipSupported, candidacySupported,
-        candidate, followers]
+        candidate, followers, droppedFollowers]
       properties:
         nodeId:
           type: string
@@ -1220,6 +1220,11 @@ components:
           description: The followers connected to this node, while it leads.
           items:
             $ref: '#/components/schemas/HaFollower'
+        droppedFollowers:
+          type: array
+          description: While this node leads, the followers it dropped as too slow and not back in sync since.
+          items:
+            $ref: '#/components/schemas/HaDroppedFollower'
         leader:
           $ref: '#/components/schemas/HaLeader'
     HaFollower:
@@ -1244,13 +1249,25 @@ components:
           format: int64
           description: >-
             Bytes the leader wrote and has not sent this follower yet, -1 before it started sending. Reaching the
-            replication log's capacity drops the follower, which a snapshot then catches up.
+            replication log's capacity makes the leader's writes wait, then drops the follower, which a snapshot then
+            catches up.
         lagMillis:
           type: integer
           format: int64
           description: >-
             How long the follower has been behind a write it has not applied yet, 0 when caught up. It grows while the
             follower is stalled, which inSync, as of its last ack, does not show.
+    HaDroppedFollower:
+      type: object
+      description: >-
+        A follower dropped for reading the replication log so slowly that a write waited logFullTimeout for it.
+      required: [nodeId, droppedAt]
+      properties:
+        nodeId:
+          type: string
+        droppedAt:
+          type: string
+          format: date-time
     HaLeader:
       type: object
       description: A follower's link to its leader.

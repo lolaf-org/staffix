@@ -78,6 +78,8 @@ public interface FixHaMXBean {
 
         List<Follower> getFollowers();
 
+        List<DroppedFollower> getDroppedFollowers();
+
         Leader getLeader();
     }
 
@@ -96,6 +98,16 @@ public interface FixHaMXBean {
         long getUnsentBytes();
 
         long getLagMillis();
+    }
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaStatus.DroppedFollower}; the time as ISO-8601.
+     */
+    interface DroppedFollower {
+
+        String getNodeId();
+
+        String getDroppedAt();
     }
 
     interface Leader {

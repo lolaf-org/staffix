@@ -30,10 +30,13 @@ import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.wire.SessionStatus;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.LongSupplier;
+import java.util.stream.Collectors;
 
 /**
  * The replication's probes: the node's own, of component {@link #COMPONENT}, and each replicated session's. A probe
@@ -103,6 +106,15 @@ class HaProbes {
                     lagging.add(follower.getNodeId() + (follower.isSnapshotInProgress() ? " catching up by snapshot"
                             : " not in sync") + ", " + follower.getUnsentBytes() + " bytes unsent");
                 }
+            }
+            Map<String, Instant> droppedTooSlow = ha.getStats().getDroppedTooSlow();
+            if (!droppedTooSlow.isEmpty()) {
+                return Optional.of(Alert.major("Follower " + droppedTooSlow.entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey())
+                        .map(dropped -> dropped.getKey() + " dropped as too slow at " + dropped.getValue())
+                        .collect(Collectors.joining("; ")) + ", a write having waited "
+                        + ha.getSettings().getLogFullTimeout().toMillis() + " ms for it, and not back in sync: a"
+                        + " failover now loses what it has not applied"));
             }
             if (!anyConnected) {
                 return Optional.of(Alert.major("No follower connected for " + RAISE_DELAY.toSeconds()

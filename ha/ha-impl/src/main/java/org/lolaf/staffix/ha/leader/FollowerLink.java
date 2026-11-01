@@ -142,6 +142,10 @@ public final class FollowerLink implements FrameHandler {
      * Where the next batch starts reading the log: once it is the log's tail, every event has been handed to betty.
      */
     private volatile long sentOffset = -1;
+    /**
+     * Dropped as too slow last time, until its first in-sync ack; IO thread only.
+     */
+    private boolean recoveringFromTooSlow;
     private volatile boolean handingOver;
     private volatile boolean senderRunning;
     private int announced;
@@ -208,6 +212,7 @@ public final class FollowerLink implements FrameHandler {
             return;
         }
         reader = replicationLog.newGatingReader(this::droppedAsTooSlow);
+        recoveringFromTooSlow = stats.isDroppedTooSlow(nodeId);
         boolean resumed = lastAppliedEpoch == leaderEpoch && resume(lastAppliedOffset);
         if (!resumed) {
             reader.seekToTail();
@@ -239,6 +244,10 @@ public final class FollowerLink implements FrameHandler {
     public void onAck(long epoch, long appliedOffset, boolean inSync) {
         this.appliedOffset = appliedOffset;
         this.reportedInSync = inSync;
+        if (inSync && recoveringFromTooSlow) {
+            recoveringFromTooSlow = false;
+            stats.backInSync(followerId);
+        }
         lastAckNanos = System.nanoTime();
         long overdue = overdueOffset;
         if (overdue >= 0 && appliedOffset >= overdue) {
@@ -774,7 +783,7 @@ public final class FollowerLink implements FrameHandler {
         }
         closed();
         if (reason == CloseReason.TOO_SLOW) {
-            stats.droppedTooSlow();
+            stats.droppedTooSlow(followerId);
         }
         // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
         ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, text));

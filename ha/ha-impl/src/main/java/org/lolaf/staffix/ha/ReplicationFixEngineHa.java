@@ -178,6 +178,9 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             for (FollowerLink link : followers.all()) {
                 status.follower(link.status(sessions.count()));
             }
+            stats.getDroppedTooSlow().entrySet().stream().sorted(Map.Entry.comparingByKey())
+                    .forEach(dropped -> status.droppedFollower(HaStatus.DroppedFollower.builder()
+                            .nodeId(dropped.getKey()).droppedAt(dropped.getValue()).build()));
         }
         ReplicationReceiver currentReceiver = receiver;
         if (role == Role.FOLLOWER && currentReceiver != null) {

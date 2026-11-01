@@ -283,6 +283,7 @@ class JmxAdminApiTest {
                 .leaderId("1").leaderElection("PrimosLeaderElection").roleSince(SINCE)
                 .follower(HaStatus.Follower.builder().nodeId("2").address("/10.0.0.2:40000").connected(true).inSync(true)
                         .unsentBytes(128).lagMillis(3).build())
+                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").droppedAt(SINCE).build())
                 .build());
         adminApi.ha = ha;
         exporter.export(adminApi);
@@ -293,6 +294,10 @@ class JmxAdminApiTest {
             assertThat(follower.getNodeId()).isEqualTo("2");
             assertThat(follower.getUnsentBytes()).isEqualTo(128);
             assertThat(follower.getLagMillis()).isEqualTo(3);
+        });
+        assertThat(status.getDroppedFollowers()).singleElement().satisfies(dropped -> {
+            assertThat(dropped.getNodeId()).isEqualTo("3");
+            assertThat(dropped.getDroppedAt()).isEqualTo(SINCE.toString());
         });
     }
 

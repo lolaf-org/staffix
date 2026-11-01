@@ -15,8 +15,12 @@
  */
 package org.lolaf.staffix.ha.leader;
 
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.monitoring.Timer;
 
+import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
@@ -26,6 +30,7 @@ import java.util.function.Function;
 public final class ReplicationStats {
 
     private final AtomicLong tooSlow = new AtomicLong();
+    private final Map<String, Instant> droppedTooSlow = new ConcurrentHashMap<>();
     private final AtomicLong snapshots = new AtomicLong();
     private final AtomicLong snapshotMessages = new AtomicLong();
     private final AtomicLong sendBuffersExhausted = new AtomicLong();
@@ -55,8 +60,26 @@ public final class ReplicationStats {
         return lagTimers.apply(followerId);
     }
 
-    void droppedTooSlow() {
+    void droppedTooSlow(@Nullable String followerId) {
         tooSlow.incrementAndGet();
+        if (followerId != null) {
+            droppedTooSlow.put(followerId, Instant.now());
+        }
+    }
+
+    boolean isDroppedTooSlow(String followerId) {
+        return droppedTooSlow.containsKey(followerId);
+    }
+
+    void backInSync(String followerId) {
+        droppedTooSlow.remove(followerId);
+    }
+
+    /**
+     * When each follower was last dropped as too slow, by node id, for those not back in sync since.
+     */
+    public Map<String, Instant> getDroppedTooSlow() {
+        return Map.copyOf(droppedTooSlow);
     }
 
     void snapshotSent(int messages) {

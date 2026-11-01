@@ -582,6 +582,8 @@ class AdminApiEndpointsTest {
                 .roleSince(Instant.parse("2026-10-10T10:00:00Z"))
                 .follower(HaStatus.Follower.builder().nodeId("2").address("/10.0.0.2:40000").connected(true).inSync(true)
                         .unsentBytes(0).lagMillis(3).build())
+                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3")
+                        .droppedAt(Instant.parse("2026-10-10T10:05:00Z")).build())
                 .build());
         when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
                 .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
@@ -593,7 +595,8 @@ class AdminApiEndpointsTest {
                         + "\"leaderElection\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
                         + "\"transferLeadershipSupported\":false,\"candidacySupported\":false,\"candidate\":false,"
                         + "\"followers\":[{\"nodeId\":\"2\",\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
-                        + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3}]}");
+                        + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3}],"
+                        + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"droppedAt\":\"2026-10-10T10:05:00Z\"}]}");
         assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
                         + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"sharedStorage\":false,\"unprotected\":false,"

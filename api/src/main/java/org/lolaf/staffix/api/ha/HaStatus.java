@@ -73,6 +73,11 @@ public class HaStatus {
     @Singular
     List<Follower> followers;
     /**
+     * While this node leads: the followers it dropped as too slow and not back in sync since.
+     */
+    @Singular
+    List<DroppedFollower> droppedFollowers;
+    /**
      * This node's link to its leader, while it follows one.
      */
     @Nullable Leader leader;
@@ -103,7 +108,8 @@ public class HaStatus {
         boolean snapshotInProgress;
         /**
          * The bytes the leader wrote that it has not sent this follower yet, -1 before it started sending. Reaching
-         * the leader's replication log capacity drops the follower, which a snapshot then catches up.
+         * the leader's replication log capacity makes its writes wait, then drops the follower, which a snapshot then
+         * catches up.
          */
         long unsentBytes;
         /**
@@ -111,6 +117,17 @@ public class HaStatus {
          * follower is stalled, which {@link #inSync}, as of its last ack, does not show.
          */
         long lagMillis;
+    }
+
+    /**
+     * A follower dropped for reading the replication log so slowly that a write waited the log full timeout for it.
+     */
+    @Value
+    @Builder
+    public static class DroppedFollower {
+
+        String nodeId;
+        Instant droppedAt;
     }
 
     /**

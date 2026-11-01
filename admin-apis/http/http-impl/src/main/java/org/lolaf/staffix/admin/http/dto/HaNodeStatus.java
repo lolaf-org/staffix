@@ -41,12 +41,13 @@ public class HaNodeStatus {
     boolean candidacySupported;
     boolean candidate;
     List<HaStatus.Follower> followers;
+    List<HaStatus.DroppedFollower> droppedFollowers;
     HaStatus.Leader leader;
 
     public static HaNodeStatus of(HaStatus status) {
         return new HaNodeStatus(status.getNodeId(), status.getRole(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElection(),
                 status.getRoleSince(), status.isTransferLeadershipSupported(), status.isCandidacySupported(),
-                status.isCandidate(), status.getFollowers(), status.getLeader());
+                status.isCandidate(), status.getFollowers(), status.getDroppedFollowers(), status.getLeader());
     }
 }

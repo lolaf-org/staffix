@@ -255,9 +255,11 @@ message it never stored. A clean handover does not.
 ## Watching it
 
 - **Meters** (`ha.*`): role, epoch, followers connected and in sync, unsent bytes, how far each follower is behind,
-  `SYNC` sends that went out unacknowledged, snapshots, laps, and the acknowledgement round trip per follower; see
+  `SYNC` sends that went out unacknowledged, snapshots, followers dropped as too slow, and the acknowledgement round
+  trip per follower; see
   [Monitoring](monitoring.md).
 - **Probes**: the node's (`ha-followers`, `ha-leader-link`, `ha-leadership`) and each replicated session's
   (`ha-replication`); see [Alerting](alerting.md).
 - **Status**: `GET v1/ha` and `GET v1/ha/sessions` say who leads, whether the follower holds each session and how far
-  behind it is, and, on the follower, whether a session would be taken over cleanly now.
+  behind it is, which followers were dropped as too slow and are not back in sync, and, on the follower, whether a
+  session would be taken over cleanly now.

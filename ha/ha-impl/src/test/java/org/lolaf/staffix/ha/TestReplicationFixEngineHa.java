@@ -37,6 +37,7 @@ import org.lolaf.staffix.ha.follower.RecordingProbes;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.nio.ByteBuffer;
 import java.net.Socket;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -599,6 +600,34 @@ class TestReplicationFixEngineHa {
         } finally {
             stalled.countDown();
         }
+        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
+    }
+
+    @Test
+    void aLeaderDropsAFollowerItsWritesWaitedTooLongForAndReportsItUntilItIsBackInSync() {
+        aLeadsBFollows();
+        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
+        CountDownLatch stalled = new CountDownLatch(1);
+        b.engine.store(MAIN).incomingWritesHeld = stalled;
+
+        try {
+            a.store.storeNextIncomingSeqNum(7);
+            ByteBuffer message = ByteBuffer.allocate(4096);
+            for (int seq = 1; a.ha.getStats().getTooSlow() == 0; seq++) {
+                assertThat(seq).as("messages written before the follower was dropped").isLessThan(100_000);
+                a.store.storeMessageSent(seq, message.clear());
+            }
+
+            assertThat(a.ha.getStatus().getDroppedFollowers()).singleElement()
+                    .extracting(HaStatus.DroppedFollower::getNodeId).isEqualTo("b");
+            assertThat(HaProbes.followers(a.ha).evaluate()).hasValueSatisfying(alert -> {
+                assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
+                assertThat(alert.getMessage()).startsWith("Follower b dropped as too slow at");
+            });
+        } finally {
+            stalled.countDown();
+        }
+        await().atMost(Duration.ofSeconds(30)).until(() -> a.ha.getStatus().getDroppedFollowers().isEmpty());
         await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
     }
 

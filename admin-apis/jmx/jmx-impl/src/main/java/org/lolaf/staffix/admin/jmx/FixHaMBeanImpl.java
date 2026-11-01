@@ -47,6 +47,9 @@ public class FixHaMBeanImpl implements FixHaMXBean {
                                 follower.isInSync(), follower.isSnapshotInProgress(), follower.getUnsentBytes(),
                                 follower.getLagMillis()))
                         .collect(Collectors.toList()),
+                status.getDroppedFollowers().stream()
+                        .map(dropped -> new DroppedFollowerImpl(dropped.getNodeId(), dropped.getDroppedAt().toString()))
+                        .collect(Collectors.toList()),
                 leader == null ? null : new LeaderImpl(leader.getLeaderId(), leader.getAddress(), leader.isConnected(), leader.isInSync()));
     }
 
@@ -104,7 +107,14 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         boolean candidacySupported;
         boolean candidate;
         List<Follower> followers;
+        List<DroppedFollower> droppedFollowers;
         Leader leader;
+    }
+
+    @Value
+    private static class DroppedFollowerImpl implements DroppedFollower {
+        String nodeId;
+        String droppedAt;
     }
 
     @Value
