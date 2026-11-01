@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.log;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.lolaf.ringos.idling.RetryStrategy;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
@@ -29,7 +30,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -302,5 +305,54 @@ class TestReplicationLog {
         for (int i = 0; i < 100; i++) {
             small.append(record.set(1, StoreEventType.STORE_MESSAGE, i, message(MESSAGE)), wait);
         }
+    }
+
+    @Test
+    void writersThatGiveUpTogetherDropTheSlowestReaderOnlyNotOneEach() throws Exception {
+        ReplicationLog small = new ReplicationLog(1024);
+        List<String> dropped = new CopyOnWriteArrayList<>();
+        small.newGatingReader(() -> dropped.add("stuck"));
+        ReplicationLog.Reader keepingUp = small.newGatingReader(() -> dropped.add("keeping up"));
+        StoreEventRecord filler = new StoreEventRecord();
+        long first = small.append(filler.set(1, StoreEventType.STORE_INCOMING_SEQ_NUM, 0, null), wait);
+        long frameBytes = small.getTailOffset() - first;
+        while (small.getTailOffset() + frameBytes <= 1024) {
+            small.append(filler.set(1, StoreEventType.STORE_INCOMING_SEQ_NUM, 1, null), wait);
+        }
+        while (keepingUp.readInto(frame, 0) >= 0) {
+            assertThat(keepingUp.getOffset()).isLessThanOrEqualTo(small.getTailOffset());
+        }
+        CyclicBarrier bothGated = new CyclicBarrier(2);
+        List<Long> written = new CopyOnWriteArrayList<>();
+        List<Thread> writers = new ArrayList<>();
+        for (int w = 0; w < 2; w++) {
+            int writer = w;
+            writers.add(new Thread(() -> {
+                RetryStrategy giveUpTogether = new RetryStrategy() {
+                    @Override
+                    public void reset() {
+                    }
+
+                    @Override
+                    public boolean awaitRetry() {
+                        try {
+                            bothGated.await(5, TimeUnit.SECONDS);
+                        } catch (Exception e) {
+                            throw new AssertionError(e);
+                        }
+                        return false;
+                    }
+                };
+                written.add(small.append(new StoreEventRecord().set(2 + writer, StoreEventType.STORE_INCOMING_SEQ_NUM,
+                        1, null), giveUpTogether));
+            }));
+        }
+        writers.forEach(Thread::start);
+        for (Thread writer : writers) {
+            writer.join(10_000);
+        }
+
+        assertThat(written).hasSize(2);
+        assertThat(dropped).containsExactly("stuck");
     }
 }

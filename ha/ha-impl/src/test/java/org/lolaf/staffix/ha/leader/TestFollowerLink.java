@@ -42,6 +42,7 @@ import org.lolaf.staffix.tests.TestingClock;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -346,6 +347,40 @@ class TestFollowerLink {
                 "SESSION epoch=7 key=0 INITIATOR SYNC id=" + SESSION + " identity=null",
                 "STORE_EVENT epoch=7 offset=" + second + " key=0 STORE_INCOMING_SEQ_NUM seq=6 message=",
                 "STORE_EVENT epoch=7 offset=" + third + " key=0 STORE_INCOMING_SEQ_NUM seq=7 message=");
+    }
+
+    @Test
+    void aFollowerWhoseLastAppliedEventWasOverwrittenWhileAwayStreamsFromTheTailForASnapshot() {
+        ha = engine(1024);
+        link = link();
+        FixSessionMessagesStore store = replicated("main");
+        for (int seq = 1; seq < 200; seq++) {
+            store.storeNextIncomingSeqNum(seq);
+        }
+
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0);
+
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
+        assertThat(sent.frames).first().asString().endsWith("resume=-1");
+        assertThat(stats.getTooSlow()).as("nobody gated the writes while it was away").isZero();
+    }
+
+    @Test
+    void aFollowerDroppedAsTooSlowIsAcceptedOnceItsHoldOffHasPassed() {
+        TestingClock clock = new TestingClock();
+        clock.toAdvanceableTime(Instant.parse("2026-11-01T10:00:00Z"));
+        stats = new ReplicationStats(new SlowFollowers(Duration.ofSeconds(1), clock));
+        stats.droppedTooSlow("follower-b");
+        link = link();
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
+
+        clock.advance(Duration.ofSeconds(1));
+        link = link();
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1);
+
+        assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
+        assertThat(sent.frames).last().asString().startsWith("WELCOME");
     }
 
     @Test
