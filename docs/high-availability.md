@@ -92,7 +92,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
 | `sendBuffers` | 4 | Write buffers per follower link, a power of two, allocated as first needed. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower link. |
 | `snapshotChunkBytes` | 64 KiB | The most bytes of a snapshot sent between two batches of the other sessions' writes. The leader reads each chunk from the session's store while the link's live writes wait, about 0.2 ms from a file store at 64 KiB. Larger finishes a snapshot sooner under load, smaller delays the other sessions less. |
-| `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower link, waits for writes. It parks up to 1 ms when idle, which a `SYNC` send then waits on; `BusySpinIdleStrategy` sends at once, for a core per follower. |
+| `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower link, waits for writes. It parks when idle, woken by a write; `BusySpinIdleStrategy` saves the wake-up, for a core per follower. |
 | `syncAckIdleStrategy` | backs off | How a `SYNC` send waits for its acknowledgement, on the session's thread. `BusySpinIdleStrategy` sees it at once, for that thread's core while it waits. |
 | `selectStrategy` | betty's, blocking | How the replication's network threads wait, on both nodes. An `IdleStrategySelectStrategy` busy spinning saves a system call per wake-up, for a core on each node. |
 | `promotionOutgoingSeqNumJump` | 10 000 | How far a new leader moves its outgoing sequence numbers ahead. |
@@ -148,8 +148,8 @@ message was processed. A new leader that is a few messages behind asks the count
 ## Latency
 
 A `SYNC` send waits for the leader's sender to pick the write up, for the follower to apply it and acknowledge it, and
-for the session to see the acknowledgement. By default each of those threads backs off when idle, parking for up to
-1 ms, so the wait is mostly wake-ups, not work. Three settings trade cores for it:
+for the session to see the acknowledgement. By default each of those threads backs off when idle and parks, and the
+write or the acknowledgement wakes it, so most of the wait is wake-ups, not work. Three settings trade cores for it:
 
 - **`senderIdleStrategy`**: the leader's sender, one thread per follower link, busy spinning. One core per link.
 - **`syncAckIdleStrategy`**: the session thread waiting for its acknowledgement, busy spinning. That thread's core,
@@ -164,17 +164,16 @@ the FIX side busy spinning. Round trip in µs, mean / p99:
 
 | busy spinning | one session | beside a second session trading continuously |
 |---|---|---|
-| nothing (the defaults) | 183 / 297 | 380 / 715 |
-| sender | 137 / 275 | 237 / 278 |
-| sender and waiter | 43 / 72 | 363 / 3842 |
-| sender, waiter and network threads | 29 / 37 | 54 / 69 |
+| nothing (the defaults) | 43 / 60 | 82 / 98 |
+| sender | 42 / 57 | 79 / 85 |
+| sender and waiter | 35 / 41 | 73 / 86 |
+| sender, waiter and network threads | 28 / 31 | 51 / 56 |
 
 For comparison, the same round trip is 11 µs without replication and 15 µs with `ASYNC`.
 
-- **Spin all three, or count the cores first.** Each spinning thread needs a core of its own. In the row "sender and
-  waiter" beside a second session, the spinning threads outnumbered the free cores, and the follower's network
-  thread, still blocking, woke late: worse than not spinning at all. Pin the spinning threads, or keep their count
-  below the free cores.
+- **Spin all three, or none.** Spinning the sender or the waiter alone saves a few µs; spinning the network threads
+  too is what pays. Each spinning thread needs a core of its own: pin them, or keep their count below the free cores,
+  else a thread still blocking wakes late.
 - **These are lower bounds.** Both nodes ran in one JVM over loopback: a network between them adds its round trip to
   every `SYNC` send, typically tens of microseconds in one data center.
 - **One message at a time.** The benchmark waits for each answer before sending the next, which measures latency, not

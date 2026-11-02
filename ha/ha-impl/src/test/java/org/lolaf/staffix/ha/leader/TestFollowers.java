@@ -39,6 +39,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -123,6 +124,23 @@ class TestFollowers {
 
         CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitApplied(KEY, offset, NO_TIMEOUT, new BackoffIdleStrategy()));
         follower.onAck(EPOCH, offset, true);
+
+        assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.APPLIED);
+    }
+
+    @Test
+    void anAckWakesAWaitParkedLongerThanTheTest() {
+        FollowerLink follower = inSyncFollower(0);
+        long parkNanos = TimeUnit.SECONDS.toNanos(30);
+        IdleStrategy parking = new BackoffIdleStrategy(0, 0, parkNanos, parkNanos);
+        followers.addWaiter(parking);
+        CompletableFuture<Followers.Ack> ack = new CompletableFuture<>();
+        Thread waiter = new Thread(() -> ack.complete(followers.awaitApplied(KEY, offset, NO_TIMEOUT, parking)));
+        waiter.start();
+        await().until(() -> waiter.getState() == Thread.State.TIMED_WAITING);
+
+        follower.onAck(EPOCH, offset, true);
+        followers.wakeWaiters();
 
         assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.APPLIED);
     }

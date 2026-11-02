@@ -104,15 +104,16 @@ public class ReplicationHaSettings extends HaSettings {
 
     /**
      * How the leader's sender, a thread per follower, waits for writes to send. The default backs off from spinning to
-     * parking, up to 1 ms, which a {@code SYNC} send then waits on; a busy spin, at the cost of a core per follower,
-     * sends at once.
+     * parking, and a write wakes it; a busy spin, at the cost of a core per follower, saves the wake-up. A strategy
+     * that ignores {@code wakeup()} parks its whole period, which a {@code SYNC} send then waits on.
      */
     @Builder.Default
     private final Supplier<IdleStrategy> senderIdleStrategy = BackoffIdleStrategy::new;
 
     /**
      * How a {@code SYNC} send waits for its follower's ack, on the session's thread. The default backs off as the
-     * sender's does; a busy spin sees the ack at once, at the cost of the session thread's core while it waits.
+     * sender's does, and the ack wakes it; a busy spin sees the ack at once, at the cost of the session thread's core
+     * while it waits.
      */
     @Builder.Default
     private final Supplier<IdleStrategy> syncAckIdleStrategy = BackoffIdleStrategy::new;

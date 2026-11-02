@@ -119,12 +119,14 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public FixSessionMessagesStore start() {
         store.start();
+        followers.addWaiter(ackIdle);
         onStarted.accept(this);
         return this;
     }
 
     @Override
     public FixSessionMessagesStore stop(Deadline stopDeadline) {
+        followers.removeWaiter(ackIdle);
         store.stop(stopDeadline);
         return this;
     }
@@ -220,6 +222,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         try {
             lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber,
                     message), logFullWait);
+            followers.wakeSenders();
         } catch (IllegalArgumentException e) {
             session.unreplicated();
             log.error("FIX session {} {} {} {} not replicated, its follower will not have it: {}. Raise logCapacity to "

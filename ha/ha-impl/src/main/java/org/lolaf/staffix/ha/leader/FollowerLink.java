@@ -264,6 +264,10 @@ public final class FollowerLink implements FrameHandler {
         return reader.readInto(skipped, 0) >= 0;
     }
 
+    void wakeSender() {
+        senderIdle.wakeup();
+    }
+
     @Override
     public void onAck(long epoch, long appliedOffset, boolean inSync) {
         this.appliedOffset = appliedOffset;

@@ -181,6 +181,7 @@ public final class ReplicationPublisher {
                 index = message.limit();
             }
             message.position(index);
+            followers.wakeWaiters();
         }
 
         @Override

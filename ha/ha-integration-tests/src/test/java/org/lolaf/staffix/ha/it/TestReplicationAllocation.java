@@ -159,7 +159,8 @@ class TestReplicationAllocation {
         double syncWithMeters = measure(ReplicationMode.SYNC, true);
         log.info("SYNC with the replication's meters: {} bytes per round trip on the session thread, {} ms", syncWithMeters,
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
-        assertThat(syncWithMeters).as("SYNC with the replication's meters against NONE").isLessThan(baseline + 1);
+        // Micrometer's percentile histogram allocates each time a wait falls outside the range it covers so far
+        assertThat(syncWithMeters).as("SYNC with the replication's meters against NONE").isLessThan(baseline + 4);
     }
 
     private double measure(ReplicationMode mode) {
