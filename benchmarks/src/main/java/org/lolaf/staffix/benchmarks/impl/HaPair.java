@@ -122,6 +122,11 @@ public class HaPair {
      */
     @Param({"1"})
     int replicationLinks;
+    /**
+     * Off, a FILE store writes to the page cache only, as every file store did before {@code syncWrites} forced.
+     */
+    @Param({"true"})
+    boolean fileSyncWrites;
 
     /**
      * Which of the replication's threads busy spin, each one more core.
@@ -157,8 +162,8 @@ public class HaPair {
 
     @Setup(Level.Trial)
     public void setup() throws IOException {
-        followerStorage = new FollowerStorage(followerStore);
-        leaderStorage = new FollowerStorage(leaderStore);
+        followerStorage = new FollowerStorage(followerStore, fileSyncWrites);
+        leaderStorage = new FollowerStorage(leaderStore, fileSyncWrites);
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());

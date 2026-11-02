@@ -56,11 +56,11 @@ public final class FollowerStorage implements AutoCloseable {
     private PostgreSQLContainer postgres;
     private HikariDataSource dataSource;
 
-    public FollowerStorage(Kind kind) {
+    public FollowerStorage(Kind kind, boolean fileSyncWrites) {
         switch (kind) {
             case FILE:
                 directory = createDirectory();
-                settings = FileMessageStoreSettings.builder().storageDirectoryPath(directory.toString()).build();
+                settings = FileMessageStoreSettings.builder().storageDirectoryPath(directory.toString()).syncWrites(fileSyncWrites).build();
                 break;
             case JDBC:
                 settings = JdbcMessageStoreSettings.builder().dataSource(startPostgres()).build();

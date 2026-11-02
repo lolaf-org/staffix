@@ -120,6 +120,11 @@ public class HaLoad {
      */
     @Param({"1"})
     int replicationLinks;
+    /**
+     * Off, a FILE store writes to the page cache only, as every file store did before {@code syncWrites} forced.
+     */
+    @Param({"true"})
+    boolean fileSyncWrites;
 
     private final List<Runnable> stops = new ArrayList<>();
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
@@ -135,7 +140,7 @@ public class HaLoad {
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
-        followerStorage = new FollowerStorage(followerStore);
+        followerStorage = new FollowerStorage(followerStore, fileSyncWrites);
         haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB)
                 .newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
                         .ioWorkersGroup(busySpinning(leaderIoThreads)).build()).start();
