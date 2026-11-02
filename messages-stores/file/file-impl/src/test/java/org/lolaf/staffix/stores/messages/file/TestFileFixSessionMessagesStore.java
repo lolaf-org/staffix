@@ -42,6 +42,7 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
         storeFile = new File("./target/store");
         FileMessageStoreSettings settings = FileMessageStoreSettings.builder()
                 .storageDirectoryPath(storeFile.getPath())
+                .syncWrites(false)
                 .messageFilter(messagesFilter)
                 .blockSize(32)
                 .blocksCount(10 * 1024)
@@ -69,6 +70,7 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
     void testMessagesMaxSizeRollOver() {
         FileMessageStoreSettings settings = FileMessageStoreSettings.builder()
                 .storageDirectoryPath(storeFile.getPath())
+                .syncWrites(false)
                 .messageFilter(messagesFilter)
                 .blockSize(32)
                 .blocksCount(16)
@@ -121,6 +123,7 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
     void testMessageStorageOverMultipleBlocks() {
         FileMessageStoreSettings settings = FileMessageStoreSettings.builder()
                 .storageDirectoryPath(storeFile.getPath())
+                .syncWrites(false)
                 .messageFilter(messagesFilter)
                 .blockSize(32)
                 .blocksCount(16)
@@ -142,8 +145,13 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
     }
 
     private FileFixSessionMessagesStore started(int blocksCount) {
+        return started(blocksCount, false);
+    }
+
+    private FileFixSessionMessagesStore started(int blocksCount, boolean syncWrites) {
         messageStore = new FileFixSessionMessagesStore(FileMessageStoreSettings.builder()
                 .storageDirectoryPath(storeFile.getPath())
+                .syncWrites(syncWrites)
                 .messageFilter(messagesFilter)
                 .blockSize(32)
                 .blocksCount(blocksCount)
@@ -256,5 +264,32 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
 
         assertThat(store.find(1, 10)).singleElement().satisfies(found ->
                 assertThat(new String(found.getMessage().array())).isEqualTo("again"));
+    }
+
+    @Test
+    void aSyncedStoreKeepsABatchThatRolledOverAcrossARestart() {
+        FileFixSessionMessagesStore store = started(16, true);
+        for (long seqNum = 1; seqNum <= 12; seqNum++) {
+            store.storeMessageSent(seqNum, message(seqNum));
+        }
+        FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] batch = LongStream.rangeClosed(13, 20)
+                .mapToObj(seqNum -> new TestingSentFixMessage(seqNum, message(seqNum)))
+                .toArray(FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[]::new);
+
+        store.storeSentFixMessagesAndSeqNums(batch, batch.length, 7, 21);
+        store.stop(Deadline.unlimited());
+        store = started(16, true);
+
+        assertThat(seqNums(store.find(1, 20))).isEqualTo(range(5, 20));
+        assertThat(store.getIncomingSeqNum()).isEqualTo(7);
+        assertThat(store.getOutgoingSeqNum()).isEqualTo(21);
+    }
+
+    @Test
+    void aSyncedStoreCallAllocatesNothing() {
+        FileFixSessionMessagesStore store = started(1024, true);
+        ByteBuffer message = ByteBuffer.wrap("8=FIX.4.4\u00019=5\u000135=0\u000110=000\u0001".getBytes());
+
+        assertThat(allocatedBytes(seqNum -> store.storeMessageSent(seqNum, message.position(0)), 2_000, 200)).isZero();
     }
 }

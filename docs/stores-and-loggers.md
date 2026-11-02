@@ -58,7 +58,8 @@ FileMessageStoreSettings.builder()
 | `syncWrites`                | `true`                  |
 
 `syncWrites(true)` is the durable setting and the reason a file store costs more than a memory one: it forces the
-write out before the session continues. Turn it off and you trade recovery guarantees for latency; better still, keep
+write to disk before the session continues, so it survives an OS crash or a power loss. Off, a write survives the
+process crashing but not the machine. Turn it off and you trade recovery guarantees for latency; better still, keep
 it on and put the store behind the [async wrapper](#taking-io-off-the-session-thread).
 
 ### Over JDBC

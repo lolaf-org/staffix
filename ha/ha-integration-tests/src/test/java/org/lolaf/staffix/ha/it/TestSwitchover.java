@@ -217,7 +217,7 @@ class TestSwitchover {
             followerApplication = echo;
         }
         FixEngine engine = start(engine(nodeId, echo, settings[0], storage == Storage.SHARED
-                ? FileMessageStoreSettings.builder().storageDirectoryPath(sharedDirectory.toString()).build()
+                ? FileMessageStoreSettings.builder().storageDirectoryPath(sharedDirectory.toString()).syncWrites(false).build()
                 : MemoryMessageStoreSettings.builder().build())
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSettings(List.of(settings)).build())

@@ -63,7 +63,8 @@ public class FileMessageStoreSettings implements FixMessagesStoreSettings {
     @Builder.Default
     private int blockSize = DEFAULT_BLOCKS_SIZE;
     /**
-     * All writes to the store underlying FS are synchronous, slightly slower but safer in case of hard crash
+     * Forces each write to disk before the store call returns, so it survives an OS crash or a power loss. Off, a write
+     * reaches the page cache only: it survives the process crashing, not the machine.
      */
     @Builder.Default
     private boolean syncWrites = true;

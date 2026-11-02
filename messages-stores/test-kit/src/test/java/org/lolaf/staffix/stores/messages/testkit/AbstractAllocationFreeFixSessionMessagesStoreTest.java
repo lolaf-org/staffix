@@ -63,17 +63,23 @@ public abstract class AbstractAllocationFreeFixSessionMessagesStoreTest<T extend
         assertThat(allocatedBytes(messageStore::storeNextOutgoingSeqNum)).isZero();
     }
 
-    /**
-     * @return the fewest bytes {@code write} allocated over {@link #MEASURED} calls, each with the next seqnum
-     */
     private long allocatedBytes(LongConsumer write) {
-        repeat(write, WARM_UP);
+        return allocatedBytes(write, WARM_UP, MEASURED);
+    }
+
+    /**
+     * For a write too slow for the default counts, such as one forced to disk.
+     *
+     * @return the fewest bytes {@code write} allocated over {@code measured} calls, each with the next seqnum
+     */
+    protected long allocatedBytes(LongConsumer write, int warmUp, int measured) {
+        repeat(write, warmUp);
         long fewest = Long.MAX_VALUE;
         for (int attempt = 0; attempt < ATTEMPTS && fewest > 0; attempt++) {
             long start = allocatedByThisThread();
             long measuringCost = allocatedByThisThread() - start;
             long before = allocatedByThisThread();
-            repeat(write, MEASURED);
+            repeat(write, measured);
             fewest = Math.min(fewest, allocatedByThisThread() - before - measuringCost);
         }
         return fewest;

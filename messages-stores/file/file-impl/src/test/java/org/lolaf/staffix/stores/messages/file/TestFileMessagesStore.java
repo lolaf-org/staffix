@@ -37,6 +37,7 @@ class TestFileMessagesStore extends AbstractMessagesStoreTest {
         storeFile = new File("./target/store/" + System.currentTimeMillis());
         FileMessageStoreSettings settings = FileMessageStoreSettings.builder()
                 .storageDirectoryPath(storeFile.getPath())
+                .syncWrites(false)
                 .blockSize(32)
                 .blocksCount(16)
                 .build();
@@ -46,7 +47,7 @@ class TestFileMessagesStore extends AbstractMessagesStoreTest {
     private final Probes probes = mock(Probes.class);
 
     private static FileMessagesStore storeIn(File directory) {
-        return new FileMessagesStore(FileMessageStoreSettings.builder().storageDirectoryPath(directory.getPath()).build());
+        return new FileMessagesStore(FileMessageStoreSettings.builder().storageDirectoryPath(directory.getPath()).syncWrites(false).build());
     }
 
     @Test

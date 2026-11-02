@@ -32,9 +32,8 @@ import java.lang.invoke.VarHandle;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
-import java.util.*;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 
@@ -75,10 +74,12 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final int blockSize;
     private final FixSessionId fixSessionId;
     private final String storageIdentity;
+    private final SeqNumIndex index = new SeqNumIndex(this::holds);
+    private final UnsyncedRange unsynced = new UnsyncedRange();
     private MappedByteBuffer mappedByteBuffer;
     private ByteBuffer alignedByteBuffer;
     private int previousLapFrom;
-    private final SeqNumIndex index = new SeqNumIndex(this::holds);
+    private WritesSync writesSync = WritesSync.DISABLED;
 
     public FileFixSessionMessagesStore(FileMessageStoreSettings settings, FixSessionId fixSessionId) {
         this(settings, fixSessionId, null);
@@ -123,6 +124,8 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             mappedByteBuffer = mapSessionFile(sessionFile, fileLen + alignment);
         }
         alignedByteBuffer = mappedByteBuffer.alignedSlice(alignment);
+        int alignedSliceOffset = (alignment - mappedByteBuffer.alignmentOffset(0, alignment)) % alignment;
+        writesSync = WritesSync.of(settings.isSyncWrites(), mappedByteBuffer, alignedSliceOffset, STORE_HEADER_LEN);
         // important set the limit to the wanted file size and not the size + alignment
         alignedByteBuffer.position(STORE_HEADER_LEN).limit(fileLen);
         if (fileExists) {
@@ -133,6 +136,7 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             // important save the initial sequence number
             alignedByteBuffer.putLong(INCOMING_SEQUENCE_POSITION, incomingSequenceNumber.get());
             alignedByteBuffer.putLong(OUTGOING_SEQUENCE_POSITION, outgoingSequenceNumber.get());
+            syncWrites();
         }
         previousLapFrom = alignedByteBuffer.position();
         indexFile(alignedByteBuffer.position());
@@ -146,6 +150,7 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         // dropped before the mapping goes, so that a write racing this stop finds no buffer instead of freed memory
         alignedByteBuffer = null;
         mappedByteBuffer = null;
+        writesSync = WritesSync.DISABLED;
         if (mapping != null) {
             // without Unsafe there is no unmapping to be had: the mapping then lives until the garbage collector takes
             // this object, which is what every version of this class did before
@@ -179,6 +184,8 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         alignedByteBuffer.position(STORE_HEADER_LEN);
         previousLapFrom = STORE_HEADER_LEN;
         index.clear();
+        unsynced.add(STORE_HEADER_LEN, alignedByteBuffer.limit());
+        syncWrites();
     }
 
     @Override
@@ -198,24 +205,55 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     @Override
     public void storeNextIncomingSeqNum(long nextIncomingSeqNum) {
-        incomingSequenceNumber.set(nextIncomingSeqNum);
-        alignedByteBuffer.putLong(INCOMING_SEQUENCE_POSITION, nextIncomingSeqNum);
+        writeNextIncomingSeqNum(nextIncomingSeqNum);
+        syncWrites();
     }
 
     @Override
     public void storeNextOutgoingSeqNum(long nextOutgoingSeqNum) {
-        outgoingSequenceNumber.set(nextOutgoingSeqNum);
-        alignedByteBuffer.putLong(OUTGOING_SEQUENCE_POSITION, nextOutgoingSeqNum);
+        writeNextOutgoingSeqNum(nextOutgoingSeqNum);
+        syncWrites();
     }
 
     @Override
     public void storeMessageSent(long outgoingSequenceNumber, ByteBuffer message) {
         alignedByteBuffer.putInt(LAST_MESSAGE_POSITION, storeMessage(outgoingSequenceNumber, message));
-        storeNextOutgoingSeqNum(outgoingSequenceNumber + 1);
+        writeNextOutgoingSeqNum(outgoingSequenceNumber + 1);
+        syncWrites();
     }
 
     @Override
     public void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) {
+        writeSentFixMessages(sentFixMessages, sentFixMessageCount);
+        syncWrites();
+    }
+
+    @Override
+    public void storeSentFixMessagesAndSeqNums(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                               long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        if (sentFixMessageCount > 0) {
+            writeSentFixMessages(sentFixMessages, sentFixMessageCount);
+        }
+        if (nextIncomingSeqNum >= 0) {
+            writeNextIncomingSeqNum(nextIncomingSeqNum);
+        }
+        if (nextOutgoingSeqNum >= 0) {
+            writeNextOutgoingSeqNum(nextOutgoingSeqNum);
+        }
+        syncWrites();
+    }
+
+    private void writeNextIncomingSeqNum(long nextIncomingSeqNum) {
+        incomingSequenceNumber.set(nextIncomingSeqNum);
+        alignedByteBuffer.putLong(INCOMING_SEQUENCE_POSITION, nextIncomingSeqNum);
+    }
+
+    private void writeNextOutgoingSeqNum(long nextOutgoingSeqNum) {
+        outgoingSequenceNumber.set(nextOutgoingSeqNum);
+        alignedByteBuffer.putLong(OUTGOING_SEQUENCE_POSITION, nextOutgoingSeqNum);
+    }
+
+    private void writeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) {
         int nextPosition = 0;
         for (int i = 0; i < sentFixMessageCount; i++) {
             SentFixMessage sfm = sentFixMessages[i];
@@ -230,6 +268,9 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         int requiredSpace = neededBlocksCount * blockSize;
         if (alignedByteBuffer.remaining() < requiredSpace) {
             log.debug("Rolling over for FIX message store {}", settings.getInstanceId());
+            if (unsynced.isNotEmpty()) {
+                syncWrites();
+            }
             alignedByteBuffer.position(STORE_HEADER_LEN);
             previousLapFrom = STORE_HEADER_LEN;
         }
@@ -252,7 +293,13 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         alignedByteBuffer.putInt(position, BLOCK_MARKER)
                 .position(nextPosition);
         index.add(outgoingSequenceNumber, position);
+        unsynced.add(position, nextPosition);
         return nextPosition;
+    }
+
+    private void syncWrites() {
+        writesSync.sync(unsynced);
+        unsynced.clear();
     }
 
     /**
@@ -368,14 +415,8 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     }
 
     private MappedByteBuffer mapSessionFile(File sessionFile, int size) {
-        Set<StandardOpenOption> options = new HashSet<>(EnumSet.of(
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.READ));
-        if (settings.isSyncWrites()) {
-            options.add(StandardOpenOption.DSYNC);
-        }
-        try (FileChannel fc = (FileChannel) Files.newByteChannel(sessionFile.toPath(), options)) {
+        try (FileChannel fc = FileChannel.open(sessionFile.toPath(),
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ)) {
             return fc.map(FileChannel.MapMode.READ_WRITE, 0, size);
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe);
