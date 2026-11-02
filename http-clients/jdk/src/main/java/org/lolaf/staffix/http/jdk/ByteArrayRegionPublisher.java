@@ -23,9 +23,8 @@ import java.util.concurrent.Flow;
  * Publishes a slice of a caller's array as the request body without copying it.
  *
  * <p>{@link HttpRequest.BodyPublishers#ofByteArray(byte[], int, int)} duplicates the payload into a
- * fresh buffer on every subscribe - measured at 16.4 KB per publish on a 16 KB payload, on plaintext
- * and over TLS alike, which was 44% of what this client allocated on a plaintext publish before it was
- * written. Handing out a {@link ByteBuffer#wrap(byte[], int, int)} over the caller's own array instead
+ * fresh buffer on every subscribe, on plaintext and over TLS alike, a large share of what this client
+ * allocated on a plaintext publish before it was written. Handing out a {@link ByteBuffer#wrap(byte[], int, int)} over the caller's own array instead
  * costs one small wrapper and no copy at all.
  *
  * <p>The buffer is built per subscribe rather than once per publisher, so a request the client

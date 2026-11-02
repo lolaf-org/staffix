@@ -36,25 +36,22 @@ import java.util.concurrent.Executor;
  * a sender is configured. It is not the fastest, and on an HTTPS endpoint it is the slowest and the
  * most wasteful of the implementations here.
  *
- * <p><strong>Good over plaintext.</strong> Measured on a 16 KB payload over loopback it allocates about
- * 17 KB per publish, against 59 KB for micrometer's {@code HttpUrlConnectionSender}: the JDK client's
- * request and response machinery is leaner than the legacy {@code sun.net.www} stack behind
- * {@link java.net.HttpURLConnection}, and this sender discards the response body unread on a successful
- * status, buffering it into a {@code String} only on the failure branch that actually reports it.
- * {@link ByteArrayRegionPublisher} takes off a further 16.4 KB that
- * {@link HttpRequest.BodyPublishers#ofByteArray(byte[], int, int)} would spend duplicating the payload
- * on every subscribe - on both transports, since that copy happens before any encryption.
+ * <p><strong>Good over plaintext.</strong> It allocates far less per publish than micrometer's
+ * {@code HttpUrlConnectionSender}: the JDK client's request and response machinery is leaner than the
+ * legacy {@code sun.net.www} stack behind {@link java.net.HttpURLConnection}, and this sender discards the
+ * response body unread on a successful status, buffering it into a {@code String} only on the failure
+ * branch that actually reports it. {@link ByteArrayRegionPublisher} saves the copy of the payload that
+ * {@link HttpRequest.BodyPublishers#ofByteArray(byte[], int, int)} would make on every subscribe, on both
+ * transports, since that copy happens before any encryption.
  *
- * <p><strong>Bad over TLS.</strong> About 56 KB per publish, the worst of the three senders in this
- * library and worse than its own plaintext figure by more than the encryption itself costs. Roughly
- * three fifths of it is {@code SSLFlowDelegate}, which allocates fresh wrap and unwrap buffers per
- * operation where a blocking {@code SSLSocket} reuses its own. That is inside the JDK client and no
- * caller can tune it, so for an HTTPS collector - which is what a production one is - prefer the OkHttp
- * sender, which allocates about 13 KB there and is nearly twice as fast.
+ * <p><strong>Bad over TLS.</strong> It allocates the most of the three senders in this library, and more
+ * over its own plaintext than the encryption itself accounts for. Most of it is {@code SSLFlowDelegate},
+ * which allocates fresh wrap and unwrap buffers per operation where a blocking {@code SSLSocket} reuses
+ * its own. That is inside the JDK client and no caller can tune it, so for an HTTPS collector, which is
+ * what a production one is, prefer the OkHttp sender, which allocates far less there and is faster.
  *
- * <p>It is also the slowest of the three on both transports - 86 µs plaintext and 83 µs over TLS,
- * against about 33 µs and 46 µs for OkHttp - and the only one whose timings vary by tens of
- * microseconds between runs.
+ * <p>It is also the slowest of the three on both transports, and the one whose timings vary the most
+ * between runs.
  *
  * <p>It is <em>not</em> a fix for connection churn: it keeps the connection alive between publishes,
  * but so does every alternative. Note that its pool drops an idle connection after
@@ -109,10 +106,9 @@ public class JdkHttpSender implements HttpSender {
      *
      * @param settings    where to publish, and how
      * @param httpVersion HTTP version to negotiate, or {@code null} for {@link HttpVersion#HTTP_1_1}
-     *                    rather than the JDK's own {@code HTTP_2}. A declined {@code h2c} offer costs
-     *                    2.6 KB per publish on cleartext and 0.5 KB over TLS; against a receiver that
-     *                    does speak HTTP/2 the version costs 1.17x-1.51x the allocation. Pinning also
-     *                    withdraws the ALPN offer
+     *                    rather than the JDK's own {@code HTTP_2}: a declined {@code h2c} offer costs
+     *                    allocation on every publish, and against a receiver that does speak HTTP/2 the
+     *                    version allocates more than HTTP/1.1. Pinning also withdraws the ALPN offer
      * @param executor    executor for the client's asynchronous tasks. Defaults to the one the JDK
      *                    builds for itself, a cached pool of daemon threads
      */

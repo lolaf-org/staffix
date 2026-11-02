@@ -230,8 +230,8 @@ public final class UUIDsGenerator {
      * allocates a {@code byte[]} on every call.
      *
      * <p>None of that makes a version 4 UUID allocation-free, and nothing here can: the JDK's own
-     * {@link SecureRandom} implementations allocate internally per call - measured at 64 B/op for {@code NativePRNG}
-     * filling 16 bytes, against 112 B/op for a single {@code nextLong()}. A version 4 id costs whatever the entropy
+     * {@link SecureRandom} implementations allocate internally per call, filling 16 bytes at once allocating less than
+     * a single {@code nextLong()}. A version 4 id costs whatever the entropy
      * source costs; only {@link #threadLocalV7()} and {@link SnowflakeId} reach zero.
      */
     private static final class V4Context {

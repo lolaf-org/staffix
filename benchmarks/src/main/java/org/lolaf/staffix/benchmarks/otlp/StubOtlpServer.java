@@ -80,7 +80,7 @@ public final class StubOtlpServer {
 
     // Enough HTTP/2 to be a receiver: request headers are skipped by length rather than HPACK-decoded,
     // since every sender under test posts one body to one endpoint. That keeps this cheap enough to
-    // measure latency against, which MockWebServer at ~170 us an exchange is not.
+    // measure latency against, which MockWebServer, far slower per exchange, is not.
     /**
      * The connection window starts at 65535 and only WINDOW_UPDATE can enlarge it - no SETTINGS can - so
      * a receiver that ignores it stalls for good after the fourth 16 KB publish.

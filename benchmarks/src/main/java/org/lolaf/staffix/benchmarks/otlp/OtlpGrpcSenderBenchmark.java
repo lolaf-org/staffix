@@ -63,11 +63,11 @@ import java.util.concurrent.TimeUnit;
  *
  * <p><strong>Read the allocation column, not the time column.</strong> Allocation is measured as
  * {@code gc.alloc.rate.norm}, which counts only this JVM, so the receiver cannot contribute to it and
- * the figures reproduce across runs to within about 2%. The timings cannot be read the same way: they
- * include everything MockWebServer does, and MockWebServer is a test double rather than a collector. The
- * same client publishing the same payload over the same protocol measures about 30 us against
- * {@code OtlpHttpSenderBenchmark}'s raw-socket stub and about 200 us here, with error bars that reach
- * half the mean - so roughly 170 us per exchange, and most of the variance, belong to the receiver. Use
+ * the figures reproduce closely across runs. The timings cannot be read the same way: they include
+ * everything MockWebServer does, and MockWebServer is a test double rather than a collector. The same
+ * client publishing the same payload over the same protocol is several times slower here than against
+ * {@code OtlpHttpSenderBenchmark}'s raw-socket stub, with wide error bars: most of the time, and most of
+ * the variance, belong to the receiver. Use
  * `OtlpHttpSenderBenchmark` for any latency question about the HTTP clients; there is no equivalent
  * gRPC figure, and getting one honestly would need a receiver built for throughput rather than for
  * tests.
