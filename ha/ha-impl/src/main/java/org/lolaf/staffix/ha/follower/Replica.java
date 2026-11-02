@@ -376,6 +376,15 @@ public final class Replica {
         position.lastAppliedOffset = position.pendingOffset;
     }
 
+    /**
+     * Whether the leader waits for this follower to receive the session's events, not to apply them. Any thread: the
+     * network thread reads it for a link applied on another.
+     */
+    boolean acksOnReceipt(int link, int key) {
+        ReplicaSession session = session(link, key);
+        return session != null && session.getLeaderMode() == ReplicationMode.SYNC_RECEIVED;
+    }
+
     private @Nullable ReplicaSession session(int link, int key) {
         ReplicaSession[] sessions = sessionsByKey;
         return key < sessions.length && carries(link, key) ? sessions[key] : null;

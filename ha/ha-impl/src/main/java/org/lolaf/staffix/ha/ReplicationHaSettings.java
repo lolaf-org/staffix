@@ -119,19 +119,19 @@ public class ReplicationHaSettings extends HaSettings {
     private final Supplier<IdleStrategy> syncAckIdleStrategy = BackoffIdleStrategy::new;
 
     /**
-     * Threads applying a follower's writes to its stores, its links spread over them; 0 applies on each link's network
-     * thread. With apply threads the network thread keeps reading while a store writes, so a {@code SYNC_RECEIVED} send
-     * is acknowledged without waiting for the write before it: worth it with a durable follower store, while a memory
-     * one pays the hand-off for nothing.
+     * Threads writing what a follower receives into its stores, its links spread over them; 0 writes on each link's
+     * network thread. With store writer threads the network thread keeps reading while a store writes, so a
+     * {@code SYNC_RECEIVED} send is acknowledged without waiting for the write before it: worth it with a durable
+     * follower store, while a memory one pays the hand-off for nothing.
      */
     @Builder.Default
-    private final int followerApplyThreads = 0;
+    private final int followerStoreWriterThreads = 0;
 
     /**
-     * How a follower's apply thread waits for writes, woken by the network thread that read them.
+     * How a follower's store writer thread waits for what to write, woken by the network thread that read it.
      */
     @Builder.Default
-    private final Supplier<IdleStrategy> followerApplyIdleStrategy = BackoffIdleStrategy::new;
+    private final Supplier<IdleStrategy> followerStoreWriterIdleStrategy = BackoffIdleStrategy::new;
 
     /**
      * How the replication's network threads wait, the leader's and the follower's: betty's default blocks in the

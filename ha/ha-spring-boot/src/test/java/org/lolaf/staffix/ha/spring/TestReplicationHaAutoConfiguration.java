@@ -80,8 +80,8 @@ class TestReplicationHaAutoConfiguration {
                     assertThat(settings.getSenderIdleStrategy().get()).isInstanceOf(BackoffIdleStrategy.class);
                     assertThat(settings.getSyncAckIdleStrategy().get()).isInstanceOf(BackoffIdleStrategy.class);
                     assertThat(settings.getSelectStrategy().get()).isInstanceOf(WakeupSelectStrategy.class);
-                    assertThat(settings.getFollowerApplyThreads()).as("applies on the network threads").isZero();
-                    assertThat(settings.getFollowerApplyIdleStrategy().get()).isInstanceOf(BackoffIdleStrategy.class);
+                    assertThat(settings.getFollowerStoreWriterThreads()).as("writes on the network threads").isZero();
+                    assertThat(settings.getFollowerStoreWriterIdleStrategy().get()).isInstanceOf(BackoffIdleStrategy.class);
                 });
     }
 
@@ -92,13 +92,13 @@ class TestReplicationHaAutoConfiguration {
                         "staffix.ha-replication.sender-idle-strategy=busy-spin",
                         "staffix.ha-replication.sync-ack-idle-strategy=busy-spin",
                         "staffix.ha-replication.select-strategy=busy-spin",
-                        "staffix.ha-replication.follower-apply-idle-strategy=busy-spin",
-                        "staffix.ha-replication.follower-apply-threads=2")
+                        "staffix.ha-replication.follower-store-writer-idle-strategy=busy-spin",
+                        "staffix.ha-replication.follower-store-writer-threads=2")
                 .run(context -> {
                     ReplicationHaSettings settings = contribute(context.getBean(ReplicationHaContributor.class));
 
-                    assertThat(settings.getFollowerApplyIdleStrategy().get()).isInstanceOf(BusySpinIdleStrategy.class);
-                    assertThat(settings.getFollowerApplyThreads()).isEqualTo(2);
+                    assertThat(settings.getFollowerStoreWriterIdleStrategy().get()).isInstanceOf(BusySpinIdleStrategy.class);
+                    assertThat(settings.getFollowerStoreWriterThreads()).isEqualTo(2);
                     assertThat(settings.getSenderIdleStrategy().get()).isInstanceOf(BusySpinIdleStrategy.class);
                     assertThat(settings.getSyncAckIdleStrategy().get()).isInstanceOf(BusySpinIdleStrategy.class);
                     assertThat(settings.getSelectStrategy().get()).isInstanceOf(IdleStrategySelectStrategy.class);

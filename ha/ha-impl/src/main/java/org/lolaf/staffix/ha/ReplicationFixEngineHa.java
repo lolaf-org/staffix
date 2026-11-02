@@ -86,8 +86,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (sendBuffers < 2 || Integer.bitCount(sendBuffers) != 1) {
             throw new IllegalArgumentException("sendBuffers must be a power of two of at least 2, got " + sendBuffers);
         }
-        if (settings.getFollowerApplyThreads() < 0) {
-            throw new IllegalArgumentException("followerApplyThreads must not be negative, got " + settings.getFollowerApplyThreads());
+        if (settings.getFollowerStoreWriterThreads() < 0) {
+            throw new IllegalArgumentException("followerStoreWriterThreads must not be negative, got " + settings.getFollowerStoreWriterThreads());
         }
         if (settings.getSnapshotChunkBytes() < 1) {
             throw new IllegalArgumentException("snapshotChunkBytes must be positive, got " + settings.getSnapshotChunkBytes());
@@ -525,7 +525,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             log.warn("Node {} follows at epoch {} but has no address for its leader", settings.getNodeId(), epoch);
         } else {
             receiver = new ReplicationReceiver(leader, replica, election::getEpoch, settings.getNodeId(),
-                    replicationLogs.getMaxEventFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get());
+                    replicationLogs.getMaxEventFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get(),
+                    settings.getFollowerStoreWriterThreads(), settings.getFollowerStoreWriterIdleStrategy());
             receiver.start();
         }
         changed(Role.FOLLOWER, epoch, leader);

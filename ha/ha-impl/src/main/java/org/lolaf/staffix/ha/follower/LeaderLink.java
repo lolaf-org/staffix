@@ -56,7 +56,11 @@ public final class LeaderLink implements FrameHandler {
     }
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
-    private static final long REBIND_CHECK_NANOS = Duration.ofSeconds(1).toNanos();
+    static final long REBIND_CHECK_NANOS = Duration.ofSeconds(1).toNanos();
+    /**
+     * Fits an {@link AnswerSender.ThroughNetworkThread} frame, at three bytes a character.
+     */
+    private static final int MAX_CLOSE_TEXT = 1024;
 
     private final IOSession connection;
     private final Replica replica;
@@ -69,8 +73,11 @@ public final class LeaderLink implements FrameHandler {
     private volatile State state = State.AWAITING_WELCOME;
     @Getter
     private volatile @Nullable String leaderId;
-    private long leaderEpoch;
+    private volatile long leaderEpoch;
     private boolean ackDue;
+    private boolean applyFailed;
+    private final AnswerSender answers;
+    private final boolean receivedAckedByNetworkThread;
     private final long rebindCheckNanos;
     private long rebindCheckedNanos;
 
@@ -83,6 +90,19 @@ public final class LeaderLink implements FrameHandler {
 
     LeaderLink(IOSession connection, Replica replica, LongSupplier epoch, String nodeId, int link, IntConsumer onLinks,
                long rebindCheckNanos) {
+        this(connection, replica, epoch, nodeId, link, onLinks, rebindCheckNanos, new AnswerSender.OnNetworkThread(connection),
+                false);
+    }
+
+    /**
+     * @param answers                      how this link's answers to the leader reach the connection
+     * @param receivedAckedByNetworkThread the network thread acknowledges events as received as it reads them, a store
+     *                                     writer thread writing them
+     */
+    LeaderLink(IOSession connection, Replica replica, LongSupplier epoch, String nodeId, int link, IntConsumer onLinks,
+               long rebindCheckNanos, AnswerSender answers, boolean receivedAckedByNetworkThread) {
+        this.answers = answers;
+        this.receivedAckedByNetworkThread = receivedAckedByNetworkThread;
         this.rebindCheckNanos = rebindCheckNanos;
         this.connection = connection;
         this.replica = replica;
@@ -93,10 +113,17 @@ public final class LeaderLink implements FrameHandler {
     }
 
     void hello() {
-        ByteBuffer hello = connection.borrow(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
-        int length = FrameEncoder.hello(hello.clear(), 0, epoch.getAsLong(), nodeId, replica.getLastAppliedEpoch(link),
-                replica.getLastAppliedOffset(link), link);
-        connection.send(written(hello, length), true);
+        ByteBuffer hello = answers.claim(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
+        answers.send(hello, FrameEncoder.hello(hello, 0, epoch.getAsLong(), nodeId, replica.getLastAppliedEpoch(link),
+                replica.getLastAppliedOffset(link), link));
+    }
+
+    /**
+     * Whether an event of this epoch read now can be acknowledged as received: the stream it belongs to is the one
+     * this link follows.
+     */
+    boolean followsEpoch(long epoch) {
+        return state == State.STREAMING && epoch == leaderEpoch;
     }
 
     @Override
@@ -144,9 +171,8 @@ public final class LeaderLink implements FrameHandler {
     }
 
     private void sessionStatus(int sessionKey, SessionStatus status) {
-        ByteBuffer frame = connection.borrow(FrameEncoder.fixedBytes(FrameType.SESSION_STATUS));
-        int length = FrameEncoder.sessionStatus(frame.clear(), 0, leaderEpoch, sessionKey, status);
-        connection.send(written(frame, length), true);
+        ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.SESSION_STATUS));
+        answers.send(frame, FrameEncoder.sessionStatus(frame, 0, leaderEpoch, sessionKey, status));
     }
 
     @Override
@@ -190,29 +216,68 @@ public final class LeaderLink implements FrameHandler {
      * it applied rather than carrying on past a gap.
      */
     void read(ByteBuffer message, FrameDecoder decoder) {
-        int index = message.position();
+        int end = apply(message, message.position(), message.limit(), decoder);
+        if (applyFailed) {
+            message.position(message.limit());
+            return;
+        }
+        endRead();
+        message.position(end);
+    }
+
+    /**
+     * Applies the whole frames from {@code index} to {@code limit}, a part of a read; {@link #endRead()} then writes
+     * and acknowledges them.
+     *
+     * @return where the last whole frame ends, {@code limit} once a frame failed
+     */
+    int apply(ByteBuffer frames, int index, int limit, FrameDecoder decoder) {
+        if (applyFailed) {
+            return limit;
+        }
         try {
             int consumed;
-            while ((consumed = decoder.decode(message, index, message.limit() - index, this)) > 0) {
+            while ((consumed = decoder.decode(frames, index, limit - index, this)) > 0) {
                 index += consumed;
             }
-            afterRead();
+            return index;
         } catch (WireFormatException e) {
-            close(CloseReason.PROTOCOL_ERROR, e.getMessage());
-            index = message.limit();
+            failed(CloseReason.PROTOCOL_ERROR, e.getMessage());
         } catch (RuntimeException e) {
             log.warn("Failed to apply what leader {} sent", leaderId, e);
-            close(CloseReason.APPLY_FAILED, e.toString());
-            index = message.limit();
+            failed(CloseReason.APPLY_FAILED, e.toString());
         }
-        message.position(index);
+        return limit;
+    }
+
+    /**
+     * Writes and acknowledges what the frames applied since the last call left pending, unless one failed: those
+     * after it are dropped, and the follower reconnects to resume after the last event it applied.
+     */
+    void endRead() {
+        if (applyFailed) {
+            return;
+        }
+        try {
+            afterRead();
+        } catch (RuntimeException e) {
+            log.warn("Failed to apply what leader {} sent", leaderId, e);
+            failed(CloseReason.APPLY_FAILED, e.toString());
+        }
+    }
+
+    private void failed(CloseReason reason, String text) {
+        applyFailed = true;
+        close(reason, text);
     }
 
     private void afterRead() {
         long received = replica.takeReceivedToAck(link);
         if (state == State.STREAMING && received > replica.getLastAppliedOffset(link)) {
-            ByteBuffer frame = connection.borrow(FrameEncoder.fixedBytes(FrameType.RECEIVED));
-            connection.send(written(frame, FrameEncoder.received(frame.clear(), 0, leaderEpoch, received)), true);
+            if (!receivedAckedByNetworkThread) {
+                ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.RECEIVED));
+                answers.send(frame, FrameEncoder.received(frame, 0, leaderEpoch, received));
+            }
             long receivedSentNanos = System.nanoTime();
             replica.writeApplied(link);
             replica.getReceivedWriteLatency().record(System.nanoTime() - receivedSentNanos, TimeUnit.NANOSECONDS);
@@ -226,10 +291,9 @@ public final class LeaderLink implements FrameHandler {
             return;
         }
         ackDue = false;
-        ByteBuffer frame = connection.borrow(FrameEncoder.fixedBytes(FrameType.ACK));
-        int length = FrameEncoder.ack(frame.clear(), 0, leaderEpoch, replica.getLastAppliedOffset(link),
-                replica.isComplete(link));
-        connection.send(written(frame, length), true);
+        ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.ACK));
+        answers.send(frame, FrameEncoder.ack(frame, 0, leaderEpoch, replica.getLastAppliedOffset(link),
+                replica.isComplete(link)));
     }
 
     /**
@@ -325,9 +389,9 @@ public final class LeaderLink implements FrameHandler {
         }
         log.warn("Closing the replication stream from leader {}: {} {}", leaderId, reason, text);
         state = State.CLOSED;
-        ByteBuffer frame = connection.borrow(FrameEncoder.bytesWith(FrameType.CLOSE, text));
-        int length = FrameEncoder.close(frame.clear(), 0, epoch.getAsLong(), reason, text);
-        connection.send(written(frame, length), true);
+        String shortText = text.length() > MAX_CLOSE_TEXT ? text.substring(0, MAX_CLOSE_TEXT) : text;
+        ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.CLOSE, shortText));
+        answers.send(frame, FrameEncoder.close(frame, 0, epoch.getAsLong(), reason, shortText));
         connection.stop(Deadline.of(CLOSE_FLUSH));
     }
 
@@ -335,7 +399,4 @@ public final class LeaderLink implements FrameHandler {
         state = State.CLOSED;
     }
 
-    private static ByteBuffer written(ByteBuffer buffer, int length) {
-        return buffer.clear().position(length);
-    }
 }

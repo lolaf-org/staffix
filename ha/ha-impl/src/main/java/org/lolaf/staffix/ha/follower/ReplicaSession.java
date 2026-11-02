@@ -65,7 +65,7 @@ final class ReplicaSession {
      */
     @Getter
     @Setter(AccessLevel.PACKAGE)
-    private @Nullable ReplicationMode leaderMode;
+    private volatile @Nullable ReplicationMode leaderMode;
     private volatile boolean complete;
     @Getter
     private volatile boolean handedOver;

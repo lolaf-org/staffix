@@ -101,16 +101,16 @@ public class ReplicationHaProps {
     private Waiting syncAckIdleStrategy;
 
     /**
-     * Threads applying the follower's writes to its stores; unset keeps 0, applying on each link's network thread. Set
-     * it, to the link count typically, with a durable follower store or {@code SYNC_RECEIVED} sessions.
+     * Threads writing what the follower receives into its stores; unset keeps 0, writing on each link's network thread.
+     * Set it, to the link count typically, with a durable follower store or {@code SYNC_RECEIVED} sessions.
      */
-    private Integer followerApplyThreads;
+    private Integer followerStoreWriterThreads;
 
     /**
-     * How a follower's apply thread waits for writes; unset keeps backing off. {@code busy-spin} applies at once, for a
-     * core per apply thread.
+     * How a follower's store writer thread waits for what to write; unset keeps backing off. {@code busy-spin} writes at
+     * once, for a core per writer thread.
      */
-    private Waiting followerApplyIdleStrategy;
+    private Waiting followerStoreWriterIdleStrategy;
 
     /**
      * How the replication's network threads wait, on both nodes; unset keeps betty's blocking select. {@code busy-spin}
