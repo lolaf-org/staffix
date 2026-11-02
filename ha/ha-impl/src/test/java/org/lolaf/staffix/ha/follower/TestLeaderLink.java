@@ -134,6 +134,15 @@ class TestLeaderLink {
         sent.frames.clear();
     }
 
+    private void streamingSyncReceived() {
+        FixSessionSettings syncReceived = MAIN.toBuilder()
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
+                .build();
+        engine.replace(syncReceived);
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, syncReceived));
+        sent.frames.clear();
+    }
+
     @Test
     void theWelcomeGivesTheReplicaTheLeadersLinkCount() {
         read(welcome(EPOCH, WireFormat.NO_RESUME, 3));
@@ -230,8 +239,7 @@ class TestLeaderLink {
 
         assertThat(engine.stores).isEmpty();
         assertThat(sent.frames).as("a session it should hold is missing, so it is not in sync")
-                .containsExactly("SESSION_STATUS epoch=7 key=3 UNKNOWN_SESSION", "RECEIVED epoch=7 received=0",
-                        "ACK epoch=7 applied=0 inSync=false");
+                .containsExactly("SESSION_STATUS epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=false");
     }
 
     @Test
@@ -259,8 +267,7 @@ class TestLeaderLink {
 
         assertThat(engine.store(MAIN).started).isFalse();
         assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SHARED_STORAGE", "RECEIVED epoch=7 received=0",
-                "ACK epoch=7 applied=0 inSync=true");
+        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=true");
     }
 
     @Test
@@ -308,7 +315,7 @@ class TestLeaderLink {
                 .containsExactly("message 5 " + MESSAGE, "incoming 3", "outgoing 7", "reset");
         assertThat(replica.getLastAppliedEpoch(0)).isEqualTo(EPOCH);
         assertThat(replica.getLastAppliedOffset(0)).isEqualTo(128);
-        assertThat(sent.frames).containsExactly("RECEIVED epoch=7 received=128", "ACK epoch=7 applied=128 inSync=false");
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
     }
 
     @Test
@@ -337,7 +344,7 @@ class TestLeaderLink {
                 event(EPOCH, 160, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
         assertThat(engine.store(MAIN).writes).containsExactly("batch 5 five, 6 six", "incoming 3", "outgoing 7");
-        assertThat(sent.frames).containsExactly("RECEIVED epoch=7 received=160", "ACK epoch=7 applied=160 inSync=false");
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=160 inSync=false");
     }
 
     @Test
@@ -372,7 +379,7 @@ class TestLeaderLink {
     @Test
     void aBatchThatFailsLeavesTheReadReceivedButUnapplied() {
         engine.batchingStores = true;
-        streaming();
+        streamingSyncReceived();
         engine.store(MAIN).messageWritesFail = true;
 
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null),
@@ -610,8 +617,26 @@ class TestLeaderLink {
     }
 
     @Test
-    void aReadWithoutNewEventsIsAcknowledgedAsAppliedOnly() {
+    void aSyncReceivedSessionsEventIsAcknowledgedAsReceivedBeforeItIsWritten() {
+        streamingSyncReceived();
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
+
+        assertThat(sent.frames).containsExactly("RECEIVED epoch=7 received=0", "ACK epoch=7 applied=0 inSync=false");
+    }
+
+    @Test
+    void anotherModesEventIsAcknowledgedAsAppliedOnly() {
         streaming();
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
+
+        assertThat(sent.frames).singleElement().asString().startsWith("ACK epoch=7 applied=0");
+    }
+
+    @Test
+    void aReadWithoutNewEventsIsAcknowledgedAsAppliedOnly() {
+        streamingSyncReceived();
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
         sent.frames.clear();
 

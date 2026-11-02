@@ -100,7 +100,7 @@ public class HaLoad {
      */
     @Param({"10000", "50000", "100000", "200000"})
     int rate;
-    @Param({"ASYNC", "SYNC_APPLIED"})
+    @Param({"ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED"})
     ReplicationMode mode;
     @Param({"MEMORY"})
     FollowerStorage.Kind followerStore;

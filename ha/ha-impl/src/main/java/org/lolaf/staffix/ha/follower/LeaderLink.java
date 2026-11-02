@@ -208,7 +208,7 @@ public final class LeaderLink implements FrameHandler {
     }
 
     private void afterRead() {
-        long received = replica.getReceivedOffset(link);
+        long received = replica.takeReceivedToAck(link);
         if (state == State.STREAMING && received > replica.getLastAppliedOffset(link)) {
             ByteBuffer frame = connection.borrow(FrameEncoder.fixedBytes(FrameType.RECEIVED));
             connection.send(written(frame, FrameEncoder.received(frame.clear(), 0, leaderEpoch, received)), true);

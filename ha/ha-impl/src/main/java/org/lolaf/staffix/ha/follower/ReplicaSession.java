@@ -15,7 +15,9 @@
  */
 package org.lolaf.staffix.ha.follower;
 
+import lombok.AccessLevel;
 import lombok.Getter;
+import lombok.Setter;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
@@ -57,7 +59,12 @@ final class ReplicaSession {
      */
     @Getter
     private @Nullable String leaderStorageIdentity;
+    /**
+     * The mode the leader gives the session: whether its events are acknowledged on receipt, and kept by a refused
+     * session to bind it again.
+     */
     @Getter
+    @Setter(AccessLevel.PACKAGE)
     private @Nullable ReplicationMode leaderMode;
     private volatile boolean complete;
     @Getter

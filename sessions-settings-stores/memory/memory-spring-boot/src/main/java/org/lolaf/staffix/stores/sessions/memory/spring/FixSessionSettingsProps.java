@@ -437,8 +437,8 @@ public class FixSessionSettingsProps {
     @Data
     public static class HaProps {
         /**
-         * NONE, ASYNC (replicated once sent) or SYNC_APPLIED (replicated before it is sent, each send waiting for the standby
-         * to have applied it).
+         * NONE, ASYNC (replicated once sent), SYNC_RECEIVED or SYNC_APPLIED (replicated before it is sent, each send waiting
+         * for the standby to hold it in memory, or to have applied it to its store).
          */
         private FixSessionSettings.HaSessionSettings.ReplicationMode replicationMode;
         /**

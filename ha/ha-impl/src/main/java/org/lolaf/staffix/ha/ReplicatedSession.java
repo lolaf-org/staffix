@@ -79,7 +79,7 @@ public final class ReplicatedSession {
      */
     void acknowledged(Followers.Ack ack) {
         boolean wasUnprotected = unprotected;
-        if (ack == Followers.Ack.APPLIED) {
+        if (ack == Followers.Ack.ACKED) {
             if (wasUnprotected) {
                 unprotected = false;
                 log.info("FIX session {} {} sends are acknowledged by the standby again", fixSessionType, fixSessionId);

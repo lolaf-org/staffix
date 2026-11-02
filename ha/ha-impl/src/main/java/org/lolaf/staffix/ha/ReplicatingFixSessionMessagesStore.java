@@ -22,7 +22,6 @@ import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.msg.MessageType;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.leader.Followers;
@@ -98,8 +97,10 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     public void awaitReplicated() {
         if (lastAppendedOffset >= 0) {
             long startNanos = System.nanoTime();
-            Followers.Ack ack = followers.awaitApplied(session.getKey(), lastAppendedOffset, session.getConfig().getReplicationAckTimeoutNanos(), ackIdle);
-            if (ack == Followers.Ack.APPLIED) {
+            ReplicatedSession.Config config = session.getConfig();
+            Followers.Ack ack = followers.awaitAck(session.getKey(), lastAppendedOffset, config.getReplicationMode(),
+                    config.getReplicationAckTimeoutNanos(), ackIdle);
+            if (ack == Followers.Ack.ACKED) {
                 long waitedNanos = System.nanoTime() - startNanos;
                 syncAckLatency.record(waitedNanos, TimeUnit.NANOSECONDS);
                 sessionSyncAckLatency.record(waitedNanos, TimeUnit.NANOSECONDS);
@@ -111,7 +112,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void sessionMeters(FixSessionsMonitoringContext meters) {
         ReplicatedSession.Config config = session.getConfig();
-        if (config.getReplicationMode() == ReplicationMode.SYNC_APPLIED && config.isSyncAckLatencyEnabled()) {
+        if (config.getReplicationMode().isSync() && config.isSyncAckLatencyEnabled()) {
             sessionSyncAckLatency = HaMeters.sessionSyncAckLatency(meters);
         }
     }

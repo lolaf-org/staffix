@@ -394,7 +394,7 @@ public class FixSessionSettings {
         ReplicationMode replicationMode = ReplicationMode.NONE;
 
         /**
-         * How long a {@link ReplicationMode#SYNC_APPLIED SYNC_APPLIED} send waits for the standby's acknowledgement before going out
+         * How long a {@link ReplicationMode#isSync() SYNC} send waits for the standby's acknowledgement before going out
          * anyway; {@link Duration#ZERO} waits forever, which a hung standby turns into a frozen session. A standby
          * that missed it is not waited for again until it catches up.
          */
@@ -402,7 +402,7 @@ public class FixSessionSettings {
         Duration replicationAckTimeout = Duration.ofSeconds(1);
 
         /**
-         * Whether the session's monitoring times each {@link ReplicationMode#SYNC_APPLIED SYNC_APPLIED} send's wait for the standby's
+         * Whether the session's monitoring times each {@link ReplicationMode#isSync() SYNC} send's wait for the standby's
          * acknowledgement. Off by default: recording costs the session's thread on every send.
          */
         @Builder.Default
@@ -421,6 +421,12 @@ public class FixSessionSettings {
              */
             ASYNC((byte) 1),
             /**
+             * A message is replicated before it is sent, each send waiting for the standby to hold it in memory, not
+             * for its store write: faster with a durable standby store. Lost only if the standby fails before writing
+             * it and the leader is lost too.
+             */
+            SYNC_RECEIVED((byte) 3),
+            /**
              * A message is replicated before it is sent, so the counterparty never receives one the standby lacks;
              * each send waits for the standby to have applied it to its store.
              */
@@ -436,6 +442,13 @@ public class FixSessionSettings {
             }
 
             /**
+             * Whether a send waits for the standby.
+             */
+            public boolean isSync() {
+                return this == SYNC_RECEIVED || this == SYNC_APPLIED;
+            }
+
+            /**
              * @throws IllegalStateException for a code no mode has
              */
             public static ReplicationMode from(byte code) {
@@ -445,6 +458,8 @@ public class FixSessionSettings {
                     return ASYNC;
                 } else if (code == SYNC_APPLIED.code) {
                     return SYNC_APPLIED;
+                } else if (code == SYNC_RECEIVED.code) {
+                    return SYNC_RECEIVED;
                 }
                 throw new IllegalStateException("Unknown replication mode code " + code);
             }

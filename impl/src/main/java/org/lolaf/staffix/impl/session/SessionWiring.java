@@ -182,7 +182,7 @@ final class SessionWiring {
     }
 
     private static ReplicatingStore syncReplicatingStore(FixSessionSettings settings, FixSessionMessagesStore store) {
-        return settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.SYNC_APPLIED ? (ReplicatingStore) store : null;
+        return settings.getHaSessionSettings().getReplicationMode().isSync() ? (ReplicatingStore) store : null;
     }
 
     private static FieldsRegistry fieldsRegistry(FixSessionSettings settings, FixDictionaryId fixDictionaryId, FixSessionId fixSessionId) {

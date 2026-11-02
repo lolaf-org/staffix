@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.leader;
 
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.idling.IdleStrategy;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 
 import java.util.Arrays;
 import java.util.List;
@@ -28,7 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class Followers {
 
     public enum Ack {
-        APPLIED,
+        ACKED,
         TIMED_OUT,
         NO_FOLLOWER_IN_SYNC
     }
@@ -108,23 +109,25 @@ public final class Followers {
 
 
     /**
-     * Waits until every follower in sync for the session applied the event at {@code offset}. A follower falling out
-     * of sync stops being waited for, and with none left the wait ends at once. A follower a wait timed out on is not
-     * waited for again until it applies what it missed, so a hung follower costs one timeout, not one per send.
-     * Allocates nothing.
+     * Waits until every follower in sync for the session received or applied the event at {@code offset}, as its mode
+     * asks. A follower falling out of sync stops being waited for, and with none left the wait ends at once. A follower
+     * a wait timed out on is not waited for again until it applies what it missed, so a hung follower costs one
+     * timeout, not one per send. Allocates nothing.
      *
+     * @param mode         {@code SYNC_RECEIVED} or {@code SYNC_APPLIED}
      * @param timeoutNanos 0 to wait as long as a follower is in sync
      */
-    public Ack awaitApplied(int sessionKey, long offset, long timeoutNanos, IdleStrategy idle) {
+    public Ack awaitAck(int sessionKey, long offset, ReplicationMode mode, long timeoutNanos, IdleStrategy idle) {
+        boolean received = mode == ReplicationMode.SYNC_RECEIVED;
         long startNanos = timeoutNanos == 0 ? 0 : System.nanoTime();
-        Ack ack = ackOf(sessionKey, offset, timeoutNanos, startNanos);
+        Ack ack = ackOf(sessionKey, offset, received, timeoutNanos, startNanos);
         if (ack != null) {
             return ack;
         }
         idle.reset();
         waiting.incrementAndGet();
         try {
-            while ((ack = ackOf(sessionKey, offset, timeoutNanos, startNanos)) == null) {
+            while ((ack = ackOf(sessionKey, offset, received, timeoutNanos, startNanos)) == null) {
                 idle.idle();
             }
             return ack;
@@ -137,16 +140,16 @@ public final class Followers {
     /**
      * @return null while it waits on
      */
-    private @Nullable Ack ackOf(int sessionKey, long offset, long timeoutNanos, long startNanos) {
+    private @Nullable Ack ackOf(int sessionKey, long offset, boolean received, long timeoutNanos, long startNanos) {
         boolean anyInSync = false;
         boolean anyWaitedFor = false;
-        boolean applied = true;
+        boolean acked = true;
         for (FollowerLink link : links) {
             if (link.isInSync(sessionKey)) {
                 anyInSync = true;
                 if (!link.isAckOverdue()) {
                     anyWaitedFor = true;
-                    applied &= link.getAppliedOffset() >= offset;
+                    acked &= ackedOffset(link, received) >= offset;
                 }
             }
         }
@@ -156,17 +159,25 @@ public final class Followers {
         if (!anyWaitedFor) {
             return Ack.TIMED_OUT;
         }
-        if (applied) {
-            return Ack.APPLIED;
+        if (acked) {
+            return Ack.ACKED;
         }
         if (timeoutNanos != 0 && System.nanoTime() - startNanos >= timeoutNanos) {
             for (FollowerLink link : links) {
-                if (link.isInSync(sessionKey) && link.getAppliedOffset() < offset) {
+                if (link.isInSync(sessionKey) && ackedOffset(link, received) < offset) {
                     link.ackOverdue(offset);
                 }
             }
             return Ack.TIMED_OUT;
         }
         return null;
+    }
+
+    /**
+     * A read with no {@code SYNC_RECEIVED} event sends no {@code RECEIVED}, so the received offset can trail the applied.
+     */
+    private static long ackedOffset(FollowerLink link, boolean received) {
+        long applied = link.getAppliedOffset();
+        return received ? Math.max(link.getReceivedOffset(), applied) : applied;
     }
 }

@@ -152,8 +152,10 @@ class TestReplicationAllocation {
         double baseline = bytesPerRoundTrip.get(ReplicationMode.NONE);
         assertThat(bytesPerRoundTrip.get(ReplicationMode.ASYNC)).as("ASYNC against NONE, bytes per round trip: %s", bytesPerRoundTrip)
                 .isLessThan(baseline + 1);
-        assertThat(bytesPerRoundTrip.get(ReplicationMode.SYNC_APPLIED)).as("SYNC against NONE, bytes per round trip: %s", bytesPerRoundTrip)
-                .isLessThan(baseline + 1);
+        assertThat(bytesPerRoundTrip.get(ReplicationMode.SYNC_RECEIVED)).as("SYNC_RECEIVED against NONE, bytes per round trip: %s",
+                bytesPerRoundTrip).isLessThan(baseline + 1);
+        assertThat(bytesPerRoundTrip.get(ReplicationMode.SYNC_APPLIED)).as("SYNC_APPLIED against NONE, bytes per round trip: %s",
+                bytesPerRoundTrip).isLessThan(baseline + 1);
 
         long start = System.nanoTime();
         double syncWithMeters = measure(ReplicationMode.SYNC_APPLIED, true);

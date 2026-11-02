@@ -1306,7 +1306,7 @@ components:
           enum: [INITIATOR, ACCEPTOR]
         replicationMode:
           type: string
-          enum: [ASYNC, SYNC_APPLIED]
+          enum: [ASYNC, SYNC_RECEIVED, SYNC_APPLIED]
         replicationAckTimeout:
           type: string
           format: duration

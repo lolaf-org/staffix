@@ -104,13 +104,13 @@ class TestSwitchover {
     }
 
     static Stream<Arguments> pairsAndModes() {
-        return Stream.of(Pair.values()).flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC_APPLIED)
+        return Stream.of(Pair.values()).flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC_RECEIVED, ReplicationMode.SYNC_APPLIED)
                 .map(mode -> Arguments.of(pair, mode)));
     }
 
     static Stream<Arguments> pairs() {
         return Stream.of(Storage.values()).flatMap(storage -> Stream.of(Pair.values())
-                .flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC_APPLIED)
+                .flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC_RECEIVED, ReplicationMode.SYNC_APPLIED)
                         .map(mode -> Arguments.of(storage, pair, mode))));
     }
 
@@ -354,7 +354,7 @@ class TestSwitchover {
      * new leader from what it replicated, whole.
      */
     @ParameterizedTest
-    @EnumSource(value = ReplicationMode.class, names = {"ASYNC", "SYNC_APPLIED"})
+    @EnumSource(value = ReplicationMode.class, names = {"ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED"})
     void aMessageLongerThanALogFrameReachesTheFollowerWholeAndTheNewLeaderResendsIt(ReplicationMode mode) {
         start(Storage.SEPARATE, Pair.ACCEPTORS, mode);
         long bigSeqNum = counterpartyIncomingSeqNum();

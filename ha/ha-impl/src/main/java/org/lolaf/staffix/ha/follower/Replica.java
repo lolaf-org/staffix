@@ -103,10 +103,16 @@ public final class Replica {
     }
 
     /**
-     * The offset in the link's log of the last event received, written or not yet, -1 for none. The link's thread only.
+     * The offset in the link's log of the last event received, written or not yet, when the read held an event of a
+     * {@code SYNC_RECEIVED} session since the last call, else -1: only such a send waits for it. The link's thread only.
      */
-    long getReceivedOffset(int link) {
-        return position(link).pendingOffset;
+    long takeReceivedToAck(int link) {
+        LinkPosition position = position(link);
+        if (!position.receivedToAck) {
+            return -1;
+        }
+        position.receivedToAck = false;
+        return position.pendingOffset;
     }
 
     private LinkPosition position(int link) {
@@ -126,6 +132,7 @@ public final class Replica {
         }
         position.pendingEpoch = position.lastAppliedEpoch;
         position.pendingOffset = position.lastAppliedOffset;
+        position.receivedToAck = false;
     }
 
     /**
@@ -219,6 +226,13 @@ public final class Replica {
 
     private ReplicaSession openSession(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
                                        @Nullable String leaderStorageIdentity) {
+        ReplicaSession session = newSession(fixSessionType, fixSessionId, leaderMode, leaderStorageIdentity);
+        session.setLeaderMode(leaderMode);
+        return session;
+    }
+
+    private ReplicaSession newSession(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
+                                      @Nullable String leaderStorageIdentity) {
         FixSessionSettings settings = findSettings(fixSessionType, fixSessionId).orElse(null);
         if (settings == null) {
             return leaderMode == ReplicationMode.NONE
@@ -309,6 +323,7 @@ public final class Replica {
         LinkPosition position = positions[link];
         position.pendingEpoch = epoch;
         position.pendingOffset = offset;
+        position.receivedToAck |= session.getLeaderMode() == ReplicationMode.SYNC_RECEIVED;
         return true;
     }
 
@@ -440,5 +455,6 @@ public final class Replica {
          */
         private long pendingEpoch;
         private long pendingOffset = -1;
+        private boolean receivedToAck;
     }
 }
