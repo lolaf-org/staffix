@@ -19,10 +19,11 @@ could mean.
 ### Added
 
 - **High availability.** Two engines run the same sessions: one leads and runs them, the other is a standby that
-  receives every write to their stores and takes them over when the leader fails. Each session chooses `NONE`,
-  `ASYNC` (nothing waits, unless the standby falls a whole replication log behind) or `SYNC_APPLIED` (a message reaches
-  the counterparty only once the standby has applied it to its store), with `haSessionSettings.replicationMode`. A standby that cannot keep up
-  makes the writes wait at most `logFullTimeout` (1 s), is then dropped, and is let back to catch up after
+  receives every write to their stores and takes them over when the leader fails. Each session chooses, with
+  `haSessionSettings.replicationMode`, `NONE`, `ASYNC` (nothing waits, unless the standby falls a whole replication
+  log behind), `SYNC_APPLIED` (a message reaches the counterparty only once the standby has written it to its store)
+  or `SYNC_RECEIVED` (only once the standby holds it in memory: faster with a durable standby store, and lost only if
+  both engines fail before the standby writes it). A standby that cannot keep up makes the writes wait at most `logFullTimeout` (1 s), is then dropped, and is let back to catch up after
   `slowFollowerHoldOff` (1 s, doubling up to a minute). `replicationLinks` splits the sessions over several
   connections to the standby, so a slow one or a session being caught up holds back only the sessions of its link,
   and the standby applies them in parallel. The leader is elected by primos with a witness, or by an election of your

@@ -86,6 +86,9 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (sendBuffers < 2 || Integer.bitCount(sendBuffers) != 1) {
             throw new IllegalArgumentException("sendBuffers must be a power of two of at least 2, got " + sendBuffers);
         }
+        if (settings.getFollowerApplyThreads() < 0) {
+            throw new IllegalArgumentException("followerApplyThreads must not be negative, got " + settings.getFollowerApplyThreads());
+        }
         if (settings.getSnapshotChunkBytes() < 1) {
             throw new IllegalArgumentException("snapshotChunkBytes must be positive, got " + settings.getSnapshotChunkBytes());
         }

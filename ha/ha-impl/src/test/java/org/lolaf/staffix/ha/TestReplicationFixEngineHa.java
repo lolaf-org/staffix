@@ -181,6 +181,14 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void followerApplyThreadsMustNotBeNegative() {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().followerApplyThreads(-1).build();
+
+        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("followerApplyThreads");
+    }
+
+    @Test
     void thereIsAtLeastOneReplicationLink() {
         ReplicationHaSettings settings = ReplicationHaSettings.builder().replicationLinks(0).build();
 

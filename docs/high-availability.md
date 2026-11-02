@@ -74,8 +74,8 @@ Then ask for replication per session, in its settings:
 
 ```yaml
 haSessionSettings:
-  replicationMode: ASYNC        # NONE (default), ASYNC or SYNC_APPLIED
-  replicationAckTimeout: PT1S   # SYNC_APPLIED only: how long a send waits for the follower, zero for ever
+  replicationMode: ASYNC        # NONE (default), ASYNC, SYNC_RECEIVED or SYNC_APPLIED
+  replicationAckTimeout: PT1S   # SYNC modes only: how long a send waits for the follower, zero for ever
 ```
 
 **Configure the same sessions, with the same settings, on both nodes.** Each node reads its own settings, and a node
@@ -94,6 +94,8 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `snapshotChunkBytes` | 64 KiB | The most bytes of a snapshot sent between two batches of the other sessions' writes. The leader reads each chunk from the session's store while the link's live writes wait, about 70 µs from a file store at 64 KiB. Larger finishes a snapshot sooner under load, smaller delays the other sessions less. |
 | `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower link, waits for writes. It parks when idle, woken by a write; `BusySpinIdleStrategy` saves the wake-up, for a core per follower. |
 | `syncAckIdleStrategy` | backs off | How a `SYNC` send waits for its acknowledgement, on the session's thread. `BusySpinIdleStrategy` sees it at once, for that thread's core while it waits. |
+| `followerApplyThreads` | 0 | Threads applying the follower's writes to its stores, its links spread over them; 0 applies on each link's network thread. Set it, to the link count typically, with a durable follower store or `SYNC_RECEIVED` sessions: the network thread then keeps reading while a store writes. A memory store gains nothing. |
+| `followerApplyIdleStrategy` | backs off | How an apply thread waits for writes, woken by the network thread that read them. |
 | `selectStrategy` | betty's, blocking | How the replication's network threads wait, on both nodes. An `IdleStrategySelectStrategy` busy spinning saves a system call per wake-up, for a core on each node. |
 | `promotionOutgoingSeqNumJump` | 10 000 | How far a new leader moves its outgoing sequence numbers ahead. |
 | `handOverTimeout` | 5s | How long a leader stopping cleanly waits to give its follower every write. |

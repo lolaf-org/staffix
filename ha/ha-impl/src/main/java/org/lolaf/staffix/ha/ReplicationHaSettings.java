@@ -119,6 +119,21 @@ public class ReplicationHaSettings extends HaSettings {
     private final Supplier<IdleStrategy> syncAckIdleStrategy = BackoffIdleStrategy::new;
 
     /**
+     * Threads applying a follower's writes to its stores, its links spread over them; 0 applies on each link's network
+     * thread. With apply threads the network thread keeps reading while a store writes, so a {@code SYNC_RECEIVED} send
+     * is acknowledged without waiting for the write before it: worth it with a durable follower store, while a memory
+     * one pays the hand-off for nothing.
+     */
+    @Builder.Default
+    private final int followerApplyThreads = 0;
+
+    /**
+     * How a follower's apply thread waits for writes, woken by the network thread that read them.
+     */
+    @Builder.Default
+    private final Supplier<IdleStrategy> followerApplyIdleStrategy = BackoffIdleStrategy::new;
+
+    /**
      * How the replication's network threads wait, the leader's and the follower's: betty's default blocks in the
      * selector, woken by a system call; busy spinning on an {@code IdleStrategySelectStrategy} saves it, at the cost of
      * a core on each node.
@@ -138,8 +153,8 @@ public class ReplicationHaSettings extends HaSettings {
     /**
      * The most bytes of a snapshot the leader sends between two batches of the other sessions' writes, a session's
      * longer message going whole anyway. The sender reads each chunk from the session's store, the cost of a snapshot,
-     * while the link's live writes wait: 64 KiB takes about 0.2 ms from a file store. Larger finishes a snapshot sooner
-     * under load, smaller delays the other sessions less. Capped at the largest event frame's batch.
+     * while the link's live writes wait. Larger finishes a snapshot sooner under load, smaller delays the other
+     * sessions less. Capped at the largest event frame's batch.
      */
     @Builder.Default
     private final int snapshotChunkBytes = 64 << 10;
