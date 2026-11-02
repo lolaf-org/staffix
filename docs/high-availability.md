@@ -91,7 +91,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
 | `sendBuffers` | 4 | Write buffers per follower link, a power of two, allocated as first needed. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower link. |
-| `snapshotChunkBytes` | 64 KiB | The most bytes of a snapshot sent between two batches of the other sessions' writes. The leader reads each chunk from the session's store while the link's live writes wait, about 0.2 ms from a file store at 64 KiB. Larger finishes a snapshot sooner under load, smaller delays the other sessions less. |
+| `snapshotChunkBytes` | 64 KiB | The most bytes of a snapshot sent between two batches of the other sessions' writes. The leader reads each chunk from the session's store while the link's live writes wait, about 70 µs from a file store at 64 KiB. Larger finishes a snapshot sooner under load, smaller delays the other sessions less. |
 | `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower link, waits for writes. It parks when idle, woken by a write; `BusySpinIdleStrategy` saves the wake-up, for a core per follower. |
 | `syncAckIdleStrategy` | backs off | How a `SYNC` send waits for its acknowledgement, on the session's thread. `BusySpinIdleStrategy` sees it at once, for that thread's core while it waits. |
 | `selectStrategy` | betty's, blocking | How the replication's network threads wait, on both nodes. An `IdleStrategySelectStrategy` busy spinning saves a system call per wake-up, for a core on each node. |
@@ -178,6 +178,12 @@ For comparison, the same round trip is 11 µs without replication and 15 µs wit
   every `SYNC` send, typically tens of microseconds in one data center.
 - **One message at a time.** The benchmark waits for each answer before sending the next, which measures latency, not
   the latency at a high message rate.
+- **A snapshot slows the `SYNC` sends of its link while it runs.** The leader sends a snapshot in chunks between the
+  link's live writes, so a write can wait for the chunk in progress, and the follower for the one it is applying.
+  With a snapshot always running beside a busy session, a `SYNC` send's wait for its acknowledgement went from 35 to
+  93 µs at p50 and from 68 to 229 µs at p99. A snapshot is the exception (a follower that connects late or lost the stream, one dropped as
+  too slow, a re-sync from the admin API), `ASYNC` sends do not wait for it, and more `replicationLinks` keep it to the
+  sessions of one link.
 
 In production, `ha.follower.ack.latency` times the follower's part (a batch sent to its acknowledgement) and
 `ha.sync.ack.latency` the whole wait; a large gap between them is the leader's wake-ups. See [Monitoring](monitoring.md).
@@ -266,8 +272,8 @@ message it never stored. A clean handover does not.
 - **A snapshot copies every message the leader's store keeps, and the follower's store then keeps what its own
   settings allow.** Give the follower's store at least the leader's retention (`maxEntriesInMemory`, the file store's
   `blocksCount` and `blockSize`, `maxMessagesPerSession`): a resend asking for a message it dropped is answered with a
-  gap fill once it leads. A store keeping everything makes a long snapshot; it does not hold the other sessions back,
-  but the session is not in sync until it ends.
+  gap fill once it leads. A store keeping everything makes a long snapshot, which slows the `SYNC` sends of its link a little
+  (see Latency), and the session is not in sync until it ends.
 - **A restarted follower is caught up by snapshot**: it does not remember where it left the stream.
 
 ## Watching it
