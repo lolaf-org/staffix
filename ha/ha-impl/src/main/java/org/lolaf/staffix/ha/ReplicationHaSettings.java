@@ -122,7 +122,8 @@ public class ReplicationHaSettings extends HaSettings {
      * Threads writing what a follower receives into its stores, its links spread over them; 0 writes on each link's
      * network thread. With store writer threads the network thread keeps reading while a store writes, so a
      * {@code SYNC_RECEIVED} send is acknowledged without waiting for the write before it: worth it with a durable
-     * follower store, while a memory one pays the hand-off for nothing.
+     * follower store, while a memory one pays the hand-off for nothing. Links sharing a thread wait for each other's
+     * writes, so give one per link.
      */
     @Builder.Default
     private final int followerStoreWriterThreads = 0;

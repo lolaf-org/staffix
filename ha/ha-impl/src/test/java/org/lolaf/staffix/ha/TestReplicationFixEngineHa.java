@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.ringos.Deadline;
@@ -51,8 +52,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
- * Two nodes, each an engine's high availability with an election the test decides, replicating over TCP.
+ * Two nodes, each an engine's high availability with an election the test decides, replicating over TCP, the follower
+ * writing on its network threads or on a store writer thread.
  */
+@ParameterizedClass
+@ValueSource(booleans = {false, true})
 class TestReplicationFixEngineHa {
 
     private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.ACCEPTOR);
@@ -61,8 +65,18 @@ class TestReplicationFixEngineHa {
     private final InetSocketAddress addressA = new InetSocketAddress("localhost", freePort());
     private final InetSocketAddress addressB = new InetSocketAddress("localhost", freePort());
     private final List<ReplicationFixEngineHa> started = new ArrayList<>();
-    private final Node a = new Node("a");
-    private final Node b = new Node("b");
+    /**
+     * One per link, so a stalled link holds back no other.
+     */
+    private final boolean storeWriterThreads;
+    private final Node a;
+    private final Node b;
+
+    TestReplicationFixEngineHa(boolean storeWriterThreads) {
+        this.storeWriterThreads = storeWriterThreads;
+        a = new Node("a");
+        b = new Node("b");
+    }
 
     private static int freePort() {
         try (ServerSocket socket = new ServerSocket(0)) {
@@ -109,6 +123,7 @@ class TestReplicationFixEngineHa {
                     .peer("b", addressB)
                     .logCapacity(1 << 16)
                     .replicationLinks(replicationLinks)
+                    .followerStoreWriterThreads(storeWriterThreads ? replicationLinks : 0)
                     .heartbeatInterval(heartbeatInterval)
                     .reconnectInterval(Duration.ofMillis(50))
                     .switchoverTimeout(Duration.ofSeconds(2))
