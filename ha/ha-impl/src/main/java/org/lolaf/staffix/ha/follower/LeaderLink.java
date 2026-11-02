@@ -34,6 +34,7 @@ import org.lolaf.staffix.ha.wire.WireFormatException;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 import java.util.function.IntConsumer;
 import java.util.function.LongSupplier;
 
@@ -212,8 +213,12 @@ public final class LeaderLink implements FrameHandler {
         if (state == State.STREAMING && received > replica.getLastAppliedOffset(link)) {
             ByteBuffer frame = connection.borrow(FrameEncoder.fixedBytes(FrameType.RECEIVED));
             connection.send(written(frame, FrameEncoder.received(frame.clear(), 0, leaderEpoch, received)), true);
+            long receivedSentNanos = System.nanoTime();
+            replica.writeApplied(link);
+            replica.getReceivedWriteLatency().record(System.nanoTime() - receivedSentNanos, TimeUnit.NANOSECONDS);
+        } else {
+            replica.writeApplied(link);
         }
-        replica.writeApplied(link);
         if (state == State.STREAMING) {
             bindSessionsAgain();
         }

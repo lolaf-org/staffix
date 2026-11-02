@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.leader.Followers;
@@ -53,18 +54,20 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     private final StoreEventRecord storeEventRecord;
     private final IdleStrategy ackIdle;
     private final ReplicatedAhead replicatedAhead;
-    private final Timer syncAckLatency;
+    private final Timer syncReceivedAckLatency;
+    private final Timer syncAppliedAckLatency;
     private final Consumer<FixSessionMessagesStore> onStarted;
     private Timer sessionSyncAckLatency;
     private long lastAppendedOffset = -1;
 
     /**
-     * @param syncAckLatency records how long a {@code SYNC} send waited for the follower's ack, when it came
+     * @param syncReceivedAckLatency records how long a {@code SYNC_RECEIVED} send waited for the follower's ack, when
+     *                               it came; {@code syncAppliedAckLatency} the same for {@code SYNC_APPLIED}
      * @param onStarted    given this store once started, before the session writes, so what it writes is replicated
      */
     ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog,
                                        LogFullWait logFullWait, ReplicatedSession session, Followers followers,
-                                       Timer syncAckLatency, IdleStrategy ackIdle,
+                                       Timer syncReceivedAckLatency, Timer syncAppliedAckLatency, IdleStrategy ackIdle,
                                        Consumer<FixSessionMessagesStore> onStarted) {
         this.store = store;
         this.replicationLog = replicationLog;
@@ -74,7 +77,8 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         this.storeEventRecord = new StoreEventRecord();
         this.ackIdle = ackIdle;
         this.replicatedAhead = new ReplicatedAhead();
-        this.syncAckLatency = syncAckLatency;
+        this.syncReceivedAckLatency = syncReceivedAckLatency;
+        this.syncAppliedAckLatency = syncAppliedAckLatency;
         this.sessionSyncAckLatency = Timer.VoidTimer.getInstance();
         this.onStarted = onStarted;
     }
@@ -102,7 +106,9 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
                     config.getReplicationAckTimeoutNanos(), ackIdle);
             if (ack == Followers.Ack.ACKED) {
                 long waitedNanos = System.nanoTime() - startNanos;
-                syncAckLatency.record(waitedNanos, TimeUnit.NANOSECONDS);
+                Timer engineTimer = config.getReplicationMode() == ReplicationMode.SYNC_RECEIVED ? syncReceivedAckLatency
+                        : syncAppliedAckLatency;
+                engineTimer.record(waitedNanos, TimeUnit.NANOSECONDS);
                 sessionSyncAckLatency.record(waitedNanos, TimeUnit.NANOSECONDS);
             }
             session.acknowledged(ack);

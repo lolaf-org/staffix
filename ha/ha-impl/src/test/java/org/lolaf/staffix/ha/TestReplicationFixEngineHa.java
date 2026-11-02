@@ -484,6 +484,24 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void aSyncReceivedSendIsTimedUnderItsModeAndTheFollowerTimesTheWriteItAcknowledgedFirst() {
+        aLeadsBFollows();
+        FixSessionSettings syncReceived = MAIN.toBuilder()
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
+                .build();
+        b.engine.replace(syncReceived);
+        ReplicatingStore store = a.ha.replicatingStore(syncReceived, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        await().until(() -> a.ha.getSessionsStatus().get(0).isInSync());
+
+        store.storeNextIncomingSeqNum(7);
+        store.awaitReplicated();
+
+        assertThat(a.engine.meters.recordings(HaMeters.SYNC_ACK_LATENCY, Map.of("mode", "sync_received"))).isEqualTo(1);
+        assertThat(a.engine.meters.recordings(HaMeters.SYNC_ACK_LATENCY, Map.of("mode", "sync_applied"))).isZero();
+        await().until(() -> b.engine.meters.recordings(HaMeters.REPLICA_RECEIVED_WRITE_LATENCY) > 0);
+    }
+
+    @Test
     void theMetersFollowTheReplicationOnBothNodes() {
         aLeadsBFollows();
         RecordingMeters leader = a.engine.meters;
@@ -507,7 +525,7 @@ class TestReplicationFixEngineHa {
         a.store.awaitReplicated();
 
         assertThat(leader.read("ha.log.written")).isGreaterThan(written);
-        assertThat(leader.recordings(HaMeters.SYNC_ACK_LATENCY)).isEqualTo(1);
+        assertThat(leader.recordings(HaMeters.SYNC_ACK_LATENCY, Map.of("mode", "sync_applied"))).isEqualTo(1);
         await().until(() -> leader.read("ha.follower.unsent") == 0);
         assertThat(leader.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isZero();
         await().until(() -> leader.recordings(HaMeters.FOLLOWER_ACK_LATENCY, Map.of("follower", "b", "link", "0")) > 0);
@@ -610,7 +628,8 @@ class TestReplicationFixEngineHa {
 
         assertThat(timedMeters.recordings(HaMeters.SESSION_SYNC_ACK_LATENCY)).isEqualTo(1);
         assertThat(untimedMeters.recordings(HaMeters.SESSION_SYNC_ACK_LATENCY)).isZero();
-        assertThat(a.engine.meters.recordings(HaMeters.SYNC_ACK_LATENCY)).as("the engine's timer counts both").isEqualTo(2);
+        assertThat(a.engine.meters.recordings(HaMeters.SYNC_ACK_LATENCY, Map.of("mode", "sync_applied")))
+                .as("the engine's timer counts both").isEqualTo(2);
     }
 
     private static FixSessionSettings sync(FixSessionSettings settings, boolean syncAckLatencyEnabled) {
@@ -676,7 +695,7 @@ class TestReplicationFixEngineHa {
         RecordingMeters meters = a.engine.meters;
         assertThat(meters.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isEqualTo(1);
         assertThat(meters.read("ha.sync.unacknowledged", Map.of("reason", "timed_out"))).isZero();
-        assertThat(meters.recordings(HaMeters.SYNC_ACK_LATENCY)).isZero();
+        assertThat(meters.recordings(HaMeters.SYNC_ACK_LATENCY, Map.of("mode", "sync_applied"))).isZero();
     }
 
     @Test

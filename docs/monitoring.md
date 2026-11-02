@@ -108,7 +108,7 @@ apply to, and all but the timers are read at export, so they cost the session th
 | `ha.followers.connected`, `ha.followers.in.sync` | followers streaming this leader's writes, and holding every replicated session |
 | `ha.follower.unsent` | the most bytes written and not yet sent to a follower; one falling the log's capacity behind is caught up by snapshot |
 | `ha.log.written` | bytes written to the replication log: its rate is the replication's throughput |
-| `ha.sync.ack.latency` | how long `SYNC` sends waited for the follower, for those it acknowledged |
+| `ha.sync.ack.latency` | how long `SYNC` sends waited for the follower, for those it acknowledged, tagged `mode` = `sync_received` or `sync_applied` |
 | `ha.sync.unacknowledged` | `SYNC` sends that went out unacknowledged, tagged `reason` = `timed_out` or `no_follower` |
 | `ha.follower.ack.latency` | a follower's round trip, from a batch of writes sent to its acknowledgement, tagged `follower`; covers `ASYNC` too |
 | `ha.follower.lag` | how far a follower is behind: from a write to the replication log to the follower applying it, tagged `follower`, sampled once per round trip |
@@ -117,6 +117,7 @@ apply to, and all but the timers are read at export, so they cost the session th
 | `ha.follower.send.buffers.exhausted` | times the leader paused sending to a follower because all its send buffers were still waiting for the network; growing steadily while the network is healthy means `sendBuffers` is too small |
 | `ha.follower.send.buffers.allocated` | send buffers allocated because the pool had none free; should always be 0, any other value is a bug |
 | `ha.replica.connected`, `ha.replica.in.sync` | on a follower: streaming its leader's writes, and holding every replicated session |
+| `ha.replica.received.write.latency` | on a follower: how long it took to write a read's events to its store after acknowledging them as received, the window in which a `SYNC_RECEIVED` send is held in its memory only |
 
 A session with `haSessionSettings.syncAckLatencyEnabled` also gets `ha.session.sync.ack.latency` in its own meters,
 the same wait as `ha.sync.ack.latency` for that session alone.

@@ -62,7 +62,9 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final ReplicationLogs replicationLogs;
     private final ReplicatedSessions sessions;
     private final Followers followers;
-    private final LateTimer syncAckLatency;
+    private final LateTimer syncReceivedAckLatency = new LateTimer();
+    private final LateTimer syncAppliedAckLatency = new LateTimer();
+    private final LateTimer receivedWriteLatency = new LateTimer();
     private final Map<String, Long> sessionPromotions;
     private volatile ReplicationStats stats;
     private volatile EngineAccess engine;
@@ -100,7 +102,6 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         this.sessions = new ReplicatedSessions();
         this.followers = new Followers();
         this.sessionPromotions = new ConcurrentHashMap<>();
-        this.syncAckLatency = new LateTimer();
     }
 
     private static String sessionKey(FixSessionSettings sessionSettings) {
@@ -124,7 +125,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         probes.add(HaProbes.sessionProbe(session, followers));
         return new ReplicatingFixSessionMessagesStore(store, replicationLogs.forSession(session.getKey()),
                 new LogFullWait(settings.getLogFullTimeout()),
-                session, followers, syncAckLatency, settings.getSyncAckIdleStrategy().get(),
+                session, followers, syncReceivedAckLatency, syncAppliedAckLatency, settings.getSyncAckIdleStrategy().get(),
                 started -> jumpIfNewToPromotion(sessionSettings, started));
     }
 
@@ -147,6 +148,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     public void bind(EngineAccess engine) {
         this.engine = engine;
         this.replica = new Replica(engine);
+        replica.setReceivedWriteLatency(receivedWriteLatency);
         this.stats = new ReplicationStats(new SlowFollowers(settings.getSlowFollowerHoldOff(), engine.getClock()));
     }
 
@@ -358,7 +360,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         election = settings.getLeaderElection().instance();
         if (settings.getMonitoringInstanceId() != null) {
-            syncAckLatency.target = HaMeters.register(engine.monitoring(settings.getMonitoringInstanceId()), this, stats);
+            HaMeters.Timers timers = HaMeters.register(engine.monitoring(settings.getMonitoringInstanceId()), this, stats);
+            syncReceivedAckLatency.target = timers.getSyncReceivedAckLatency();
+            syncAppliedAckLatency.target = timers.getSyncAppliedAckLatency();
+            receivedWriteLatency.target = timers.getReceivedWriteLatency();
         }
         if (settings.getAlertsPublisherInstanceId() != null) {
             HaProbes.register(engine.probes(HaProbes.COMPONENT, settings.getAlertsPublisherInstanceId(), this::isStarted), this);

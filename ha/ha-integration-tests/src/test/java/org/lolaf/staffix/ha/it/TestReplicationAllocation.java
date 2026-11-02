@@ -227,7 +227,8 @@ class TestReplicationAllocation {
             }
         }
         if (meters) {
-            assertThat(registry.find("ha.sync.ack.latency").timer().count()).as("SYNC acks timed").isGreaterThan(MEASURED);
+            assertThat(registry.find("ha.sync.ack.latency").tag("mode", "sync_applied").timer().count()).as("SYNC acks timed")
+                    .isGreaterThan(MEASURED);
         }
         return (double) allocated / MEASURED;
     }

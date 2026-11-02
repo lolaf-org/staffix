@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha;
 
+import lombok.Value;
 import lombok.experimental.UtilityClass;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
@@ -42,14 +43,22 @@ import java.util.function.ToLongFunction;
 class HaMeters {
 
     static final String SYNC_ACK_LATENCY = "ha.sync.ack.latency";
+    static final String REPLICA_RECEIVED_WRITE_LATENCY = "ha.replica.received.write.latency";
     static final String SESSION_SYNC_ACK_LATENCY = "ha.session.sync.ack.latency";
     static final String FOLLOWER_ACK_LATENCY = "ha.follower.ack.latency";
     static final String FOLLOWER_LAG = "ha.follower.lag";
 
     /**
-     * @return the timer of the {@code SYNC} sends' wait for the follower's ack
+     * The timers recorded on the replication's hot paths, which the engine binds late.
      */
-    static Timer register(FixEngineMonitoringContext meters, ReplicationFixEngineHa ha, ReplicationStats stats) {
+    @Value
+    static class Timers {
+        Timer syncReceivedAckLatency;
+        Timer syncAppliedAckLatency;
+        Timer receivedWriteLatency;
+    }
+
+    static Timers register(FixEngineMonitoringContext meters, ReplicationFixEngineHa ha, ReplicationStats stats) {
         meters.getGauge("ha.role", "The role the engine acts on: 2 leader, 1 follower, 0 unknown.", Map.of(),
                 () -> role(ha.getFollowedRole()));
         meters.getGauge("ha.epoch", "The leader election's epoch, -1 when unknown.", Map.of(), () -> {
@@ -107,8 +116,15 @@ class HaMeters {
                 () -> following(ha, ReplicationReceiver::isConnected));
         meters.getGauge("ha.replica.in.sync", "1 while this follower holds every replicated session in full.", Map.of(),
                 () -> following(ha, ReplicationReceiver::isInSync));
+        return new Timers(syncAckLatency(meters, "sync_received"), syncAckLatency(meters, "sync_applied"),
+                meters.getTimer(REPLICA_RECEIVED_WRITE_LATENCY, "How long this follower took to write a read's events to"
+                        + " its store after acknowledging them as received: the window in which a SYNC_RECEIVED send is"
+                        + " held in its memory only.", Map.of()));
+    }
+
+    private static Timer syncAckLatency(FixEngineMonitoringContext meters, String mode) {
         return meters.getTimer(SYNC_ACK_LATENCY, "How long a SYNC send waited for the follower's ack, for the sends it"
-                + " acknowledged.", Map.of());
+                + " acknowledged, tagged by the session's mode.", Map.of("mode", mode));
     }
 
     static Timer sessionSyncAckLatency(MetersContext sessionMeters) {

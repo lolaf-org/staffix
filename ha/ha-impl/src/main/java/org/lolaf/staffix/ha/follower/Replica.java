@@ -15,11 +15,15 @@
  */
 package org.lolaf.staffix.ha.follower;
 
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -56,6 +60,12 @@ public final class Replica {
     private static final LinkPosition NOTHING_APPLIED = new LinkPosition();
     private volatile ReplicaSession[] sessionsByKey = new ReplicaSession[16];
     private volatile LinkPosition[] positions = {new LinkPosition()};
+    /**
+     * Times a read's store write after its events were acknowledged as received.
+     */
+    @Getter(AccessLevel.PACKAGE)
+    @Setter
+    private Timer receivedWriteLatency = Timer.VoidTimer.getInstance();
 
     public Replica(EngineAccess engine) {
         this.engine = engine;
@@ -192,6 +202,8 @@ public final class Replica {
         ReplicaSession current = key < sessionsByKey.length ? sessionsByKey[key] : null;
         if (current != null && current.matches(fixSessionType, fixSessionId) && current.isReplicated()
                 && leaderMode != ReplicationMode.NONE && leaderMode == modeHere(fixSessionType, fixSessionId)) {
+            // switched between the SYNC modes: the same copy, only its acknowledgement changes
+            current.setLeaderMode(leaderMode);
             return current.status();
         }
         if (current != null) {
