@@ -99,6 +99,11 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
+    public void onReceived(long epoch, long receivedOffset) {
+        frames.add("RECEIVED epoch=" + epoch + " received=" + receivedOffset);
+    }
+
+    @Override
     public void onHeartbeat(long epoch, long logTailOffset) {
         frames.add("HEARTBEAT epoch=" + epoch + " tail=" + logTailOffset);
     }

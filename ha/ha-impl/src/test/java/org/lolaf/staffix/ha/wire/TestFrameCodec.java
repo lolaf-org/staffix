@@ -56,7 +56,7 @@ class TestFrameCodec {
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("HELLO epoch=7 version=2 node=node-b lastEpoch=6 lastOffset=1234 link=3");
+        assertThat(handler.frames).containsExactly("HELLO epoch=7 version=1 node=node-b lastEpoch=6 lastOffset=1234 link=3");
     }
 
     @Test
@@ -66,7 +66,7 @@ class TestFrameCodec {
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("WELCOME epoch=7 version=2 leader=node-a resume=-1 links=4");
+        assertThat(handler.frames).containsExactly("WELCOME epoch=7 version=1 leader=node-a resume=-1 links=4");
     }
 
     @Test
@@ -170,15 +170,18 @@ class TestFrameCodec {
     }
 
     @Test
-    void ackAndHeartbeat() {
+    void ackReceivedAndHeartbeat() {
         ByteBuffer buffer = buffer(false);
         int ack = FrameEncoder.ack(buffer, 0, 7, 4096, true);
-        int heartbeat = FrameEncoder.heartbeat(buffer, ack, 7, 8192);
+        int received = FrameEncoder.received(buffer, ack, 7, 6144);
+        int heartbeat = FrameEncoder.heartbeat(buffer, ack + received, 7, 8192);
 
         decodeWhole(buffer, 0, ack);
-        decodeWhole(buffer, ack, heartbeat);
+        decodeWhole(buffer, ack, received);
+        decodeWhole(buffer, ack + received, heartbeat);
 
-        assertThat(handler.frames).containsExactly("ACK epoch=7 applied=4096 inSync=true", "HEARTBEAT epoch=7 tail=8192");
+        assertThat(handler.frames).containsExactly("ACK epoch=7 applied=4096 inSync=true", "RECEIVED epoch=7 received=6144",
+                "HEARTBEAT epoch=7 tail=8192");
     }
 
     @Test

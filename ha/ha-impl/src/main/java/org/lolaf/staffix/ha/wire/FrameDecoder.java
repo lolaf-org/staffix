@@ -114,6 +114,9 @@ public class FrameDecoder {
             case ACK:
                 handler.onAck(epoch, in.getLong(p), (flags & WireFormat.FLAG_IN_SYNC) != 0);
                 break;
+            case RECEIVED:
+                handler.onReceived(epoch, in.getLong(p));
+                break;
             case HEARTBEAT:
                 handler.onHeartbeat(epoch, in.getLong(p));
                 break;

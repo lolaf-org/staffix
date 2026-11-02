@@ -98,6 +98,14 @@ public interface FrameHandler {
     void onAck(long epoch, long appliedOffset, boolean inSync);
 
     /**
+     * Sent before a read's events are written to the follower's store, then followed by its {@link #onAck ACK}.
+     *
+     * @param receivedOffset the offset of the last event the follower holds in memory, which releases the
+     *                       {@code SYNC_RECEIVED} sends waiting for it
+     */
+    void onReceived(long epoch, long receivedOffset);
+
+    /**
      * Sent when the leader sent nothing for a heartbeat interval. The follower answers with an ACK, so a quiet stream
      * still carries traffic both ways.
      *

@@ -235,6 +235,12 @@ public class FrameEncoder {
         return length;
     }
 
+    public static int received(ByteBuffer out, int index, long epoch, long receivedOffset) {
+        int length = header(out, index, FrameType.RECEIVED, 0, epoch, 0);
+        out.putLong(index + HEADER_BYTES, receivedOffset);
+        return length;
+    }
+
     public static int heartbeat(ByteBuffer out, int index, long epoch, long logTailOffset) {
         int length = header(out, index, FrameType.HEARTBEAT, 0, epoch, 0);
         out.putLong(index + HEADER_BYTES, logTailOffset);

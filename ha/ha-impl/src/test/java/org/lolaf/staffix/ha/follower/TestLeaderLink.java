@@ -172,15 +172,15 @@ class TestLeaderLink {
         second.hello();
 
         assertThat(sent.frames).containsExactly(
-                "HELLO epoch=7 version=2 node=follower-b lastEpoch=0 lastOffset=-1 link=0",
-                "HELLO epoch=7 version=2 node=follower-b lastEpoch=7 lastOffset=96 link=1");
+                "HELLO epoch=7 version=1 node=follower-b lastEpoch=0 lastOffset=-1 link=0",
+                "HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=96 link=1");
     }
 
     @Test
     void theHelloCarriesTheLastEventApplied() {
         link.hello();
 
-        assertThat(sent.frames).containsExactly("HELLO epoch=7 version=2 node=follower-b lastEpoch=0 lastOffset=-1 link=0");
+        assertThat(sent.frames).containsExactly("HELLO epoch=7 version=1 node=follower-b lastEpoch=0 lastOffset=-1 link=0");
     }
 
     @Test
@@ -230,7 +230,8 @@ class TestLeaderLink {
 
         assertThat(engine.stores).isEmpty();
         assertThat(sent.frames).as("a session it should hold is missing, so it is not in sync")
-                .containsExactly("SESSION_STATUS epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=false");
+                .containsExactly("SESSION_STATUS epoch=7 key=3 UNKNOWN_SESSION", "RECEIVED epoch=7 received=0",
+                        "ACK epoch=7 applied=0 inSync=false");
     }
 
     @Test
@@ -258,7 +259,8 @@ class TestLeaderLink {
 
         assertThat(engine.store(MAIN).started).isFalse();
         assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=true");
+        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SHARED_STORAGE", "RECEIVED epoch=7 received=0",
+                "ACK epoch=7 applied=0 inSync=true");
     }
 
     @Test
@@ -306,7 +308,7 @@ class TestLeaderLink {
                 .containsExactly("message 5 " + MESSAGE, "incoming 3", "outgoing 7", "reset");
         assertThat(replica.getLastAppliedEpoch(0)).isEqualTo(EPOCH);
         assertThat(replica.getLastAppliedOffset(0)).isEqualTo(128);
-        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
+        assertThat(sent.frames).containsExactly("RECEIVED epoch=7 received=128", "ACK epoch=7 applied=128 inSync=false");
     }
 
     @Test
@@ -335,7 +337,7 @@ class TestLeaderLink {
                 event(EPOCH, 160, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
         assertThat(engine.store(MAIN).writes).containsExactly("batch 5 five, 6 six", "incoming 3", "outgoing 7");
-        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=160 inSync=false");
+        assertThat(sent.frames).containsExactly("RECEIVED epoch=7 received=160", "ACK epoch=7 applied=160 inSync=false");
     }
 
     @Test
@@ -368,7 +370,7 @@ class TestLeaderLink {
     }
 
     @Test
-    void aBatchThatFailsLeavesTheReadUnappliedAndUnacknowledged() {
+    void aBatchThatFailsLeavesTheReadReceivedButUnapplied() {
         engine.batchingStores = true;
         streaming();
         engine.store(MAIN).messageWritesFail = true;
@@ -379,7 +381,8 @@ class TestLeaderLink {
         assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
         assertThat(engine.store(MAIN).writes).isEmpty();
         assertThat(replica.getLastAppliedOffset(0)).isEqualTo(-1);
-        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
+        assertThat(sent.frames).hasSize(2).first().isEqualTo("RECEIVED epoch=7 received=32");
+        assertThat(sent.frames.get(1)).as("never acknowledged as applied").startsWith("CLOSE epoch=7 APPLY_FAILED");
     }
 
     @Test
@@ -393,7 +396,7 @@ class TestLeaderLink {
         next.hello();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), next);
 
-        assertThat(sent.frames).startsWith("HELLO epoch=7 version=2 node=follower-b lastEpoch=7 lastOffset=0 link=0");
+        assertThat(sent.frames).startsWith("HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=0 link=0");
         assertThat(engine.store(MAIN)).isSameAs(store);
         assertThat(store.started).isTrue();
     }
@@ -604,6 +607,17 @@ class TestLeaderLink {
         read(event(EPOCH, 0, 1, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    }
+
+    @Test
+    void aReadWithoutNewEventsIsAcknowledgedAsAppliedOnly() {
+        streaming();
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
+        sent.frames.clear();
+
+        read((out, index) -> FrameEncoder.heartbeat(out, index, EPOCH, 0));
+
+        assertThat(sent.frames).singleElement().asString().startsWith("ACK epoch=7 applied=0");
     }
 
     @Test

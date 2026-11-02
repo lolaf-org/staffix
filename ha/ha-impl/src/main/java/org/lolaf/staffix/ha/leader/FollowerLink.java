@@ -130,6 +130,11 @@ public final class FollowerLink implements FrameHandler {
     @Getter
     private volatile long appliedOffset = -1;
     /**
+     * The offset of the last event the follower holds, written to its store or not yet, -1 before it said.
+     */
+    @Getter
+    private volatile long receivedOffset = -1;
+    /**
      * What the follower said of itself in its last ACK; {@link #isInSync(int)} relies on the leader's own account.
      */
     @Getter
@@ -242,6 +247,7 @@ public final class FollowerLink implements FrameHandler {
             reader.seekToTail();
         }
         appliedOffset = lastAppliedOffset;
+        receivedOffset = lastAppliedOffset;
         ackLatency = new AckLatencySampler(stats.ackLatency(nodeId, link));
         lag = new LagSampler(stats.lag(nodeId, link));
         state = State.STREAMING;
@@ -262,6 +268,11 @@ public final class FollowerLink implements FrameHandler {
         }
         ByteBuffer skipped = ByteBuffer.allocate(maxEventFrameBytes);
         return reader.readInto(skipped, 0) >= 0;
+    }
+
+    @Override
+    public void onReceived(long epoch, long receivedOffset) {
+        this.receivedOffset = receivedOffset;
     }
 
     void wakeSender() {

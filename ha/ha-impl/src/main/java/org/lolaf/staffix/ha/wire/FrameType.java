@@ -36,6 +36,7 @@ import lombok.Getter;
  * SNAPSHOT_MESSAGE  leader to follower  session key 4, message length 4, sequence number 8; then the message
  * SNAPSHOT_END      leader to follower  session key 4, message count 4, next incoming 8, next outgoing 8
  * ACK               follower to leader  applied offset 8
+ * RECEIVED          follower to leader  received offset 8
  * HEARTBEAT         leader to follower  log tail offset 8
  * CLOSE             either way          reason 2, text length 2; then the text
  * </pre>
@@ -53,7 +54,8 @@ public enum FrameType {
     SNAPSHOT_END(8, 24),
     ACK(9, 8),
     HEARTBEAT(10, 8),
-    CLOSE(11, 4);
+    CLOSE(11, 4),
+    RECEIVED(12, 8);
 
     private static final FrameType[] BY_CODE = new FrameType[256];
 

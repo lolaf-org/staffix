@@ -102,6 +102,13 @@ public final class Replica {
         return position(link).lastAppliedOffset;
     }
 
+    /**
+     * The offset in the link's log of the last event received, written or not yet, -1 for none. The link's thread only.
+     */
+    long getReceivedOffset(int link) {
+        return position(link).pendingOffset;
+    }
+
     private LinkPosition position(int link) {
         LinkPosition[] current = positions;
         return link < current.length ? current[link] : NOTHING_APPLIED;

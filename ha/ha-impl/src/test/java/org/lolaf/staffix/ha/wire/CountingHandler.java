@@ -80,6 +80,12 @@ class CountingHandler implements FrameHandler {
     }
 
     @Override
+    public void onReceived(long epoch, long receivedOffset) {
+        frames++;
+        checksum += epoch + receivedOffset;
+    }
+
+    @Override
     public void onHeartbeat(long epoch, long logTailOffset) {
         frames++;
         checksum += epoch + logTailOffset;
