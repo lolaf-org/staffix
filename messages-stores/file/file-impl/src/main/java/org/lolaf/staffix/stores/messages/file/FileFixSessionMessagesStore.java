@@ -97,6 +97,36 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         this.fixSessionId = fixSessionId;
     }
 
+    /**
+     * @return false for no file, or one created but never written, which a crash before its first sync leaves
+     * @throws StartStopException for a file of another format, such as one written by 0.9.1 or older, which had no version
+     */
+    private static boolean isFormatted(File sessionFile) throws StartStopException {
+        if (!sessionFile.exists()) {
+            return false;
+        }
+        ByteBuffer header = ByteBuffer.allocate(VERSION_POSITION + Integer.BYTES);
+        try (FileChannel fc = FileChannel.open(sessionFile.toPath(), StandardOpenOption.READ)) {
+            fc.read(header, 0);
+        } catch (IOException e) {
+            throw new StartStopException("Unable to read the file messages store " + sessionFile, e);
+        }
+        long magic = header.getLong(MAGIC_POSITION);
+        int version = header.getInt(VERSION_POSITION);
+        if (magic == 0 && version == 0) {
+            return false;
+        }
+        if (magic != MAGIC) {
+            throw new StartStopException("The file messages store " + sessionFile + " is not of format " + FORMAT_VERSION
+                    + ", likely written by staffix 0.9.1 or older: delete it, which resets the session's sequence numbers");
+        }
+        if (version != FORMAT_VERSION) {
+            throw new StartStopException("The file messages store " + sessionFile + " is of format " + version
+                    + ", this version reads format " + FORMAT_VERSION);
+        }
+        return true;
+    }
+
     @Override
     public Optional<String> getStorageIdentity() {
         return Optional.ofNullable(storageIdentity);
@@ -409,36 +439,6 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     private int blocksCount(int messageSize) {
         return (int) Math.ceil((messageSize + RECORD_OVERHEAD) / (double) blockSize);
-    }
-
-    /**
-     * @return false for no file, or one created but never written, which a crash before its first sync leaves
-     * @throws StartStopException for a file of another format, such as one written by 0.9.1 or older, which had no version
-     */
-    private static boolean isFormatted(File sessionFile) throws StartStopException {
-        if (!sessionFile.exists()) {
-            return false;
-        }
-        ByteBuffer header = ByteBuffer.allocate(VERSION_POSITION + Integer.BYTES);
-        try (FileChannel fc = FileChannel.open(sessionFile.toPath(), StandardOpenOption.READ)) {
-            fc.read(header, 0);
-        } catch (IOException e) {
-            throw new StartStopException("Unable to read the file messages store " + sessionFile, e);
-        }
-        long magic = header.getLong(MAGIC_POSITION);
-        int version = header.getInt(VERSION_POSITION);
-        if (magic == 0 && version == 0) {
-            return false;
-        }
-        if (magic != MAGIC) {
-            throw new StartStopException("The file messages store " + sessionFile + " is not of format " + FORMAT_VERSION
-                    + ", likely written by staffix 0.9.1 or older: delete it, which resets the session's sequence numbers");
-        }
-        if (version != FORMAT_VERSION) {
-            throw new StartStopException("The file messages store " + sessionFile + " is of format " + version
-                    + ", this version reads format " + FORMAT_VERSION);
-        }
-        return true;
     }
 
     private MappedByteBuffer mapSessionFile(File sessionFile, int size) {

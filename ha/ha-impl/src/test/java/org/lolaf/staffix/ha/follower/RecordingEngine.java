@@ -164,6 +164,10 @@ public final class RecordingEngine implements EngineAccess {
          */
         public volatile CountDownLatch incomingWritesHeld = new CountDownLatch(0);
         /**
+         * Whether a held write was interrupted, which would fail the write of a store that does not swallow it.
+         */
+        public volatile boolean heldWriteInterrupted;
+        /**
          * Fails every message write, as a storage gone would.
          */
         public volatile boolean messageWritesFail;
@@ -222,6 +226,7 @@ public final class RecordingEngine implements EngineAccess {
             try {
                 incomingWritesHeld.await();
             } catch (InterruptedException e) {
+                heldWriteInterrupted = true;
                 Thread.currentThread().interrupt();
             }
             writes.add("incoming " + nextIncomingSeqNum);

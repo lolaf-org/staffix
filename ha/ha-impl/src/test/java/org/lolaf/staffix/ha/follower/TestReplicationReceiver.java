@@ -38,6 +38,8 @@ import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -72,6 +74,7 @@ class TestReplicationReceiver {
     }
 
     private ReplicationPublisher twoLinksPublisher;
+    private ReplicationPublisher syncReceivedPublisher;
     private final ReplicationStats twoLinksStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
     private ReplicatingStore twoLinksMain;
     private ReplicatingStore twoLinksOther;
@@ -134,7 +137,47 @@ class TestReplicationReceiver {
         if (twoLinksPublisher != null) {
             twoLinksPublisher.stop(Deadline.of(Duration.ofSeconds(2)));
         }
+        if (syncReceivedPublisher != null) {
+            syncReceivedPublisher.stop(Deadline.of(Duration.ofSeconds(2)));
+        }
         replica.close(Deadline.of(Duration.ofSeconds(2)));
+    }
+
+    /**
+     * What a follower acknowledged as received is written before a promotion stops its receiver: the stop waits for
+     * the read in progress, and does not interrupt the write it makes.
+     */
+    @Test
+    void aStopWaitsForTheWriteOfWhatWasAcknowledgedAsReceived() {
+        FixSessionSettings syncReceived = MAIN.toBuilder()
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
+                .build();
+        follower.replace(syncReceived);
+        ReplicationFixEngineHa syncReceivedLeader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
+        InetSocketAddress syncReceivedAddress = new InetSocketAddress("localhost", freePort());
+        syncReceivedPublisher = publisher(syncReceivedAddress, syncReceivedLeader);
+        ReplicatingStore store = syncReceivedLeader.replicatingStore(syncReceived, new RecordingEngine.RecordingStore().start(),
+                new RecordingProbes());
+        store.storeNextIncomingSeqNum(1);
+        syncReceivedPublisher.start();
+        connect(syncReceivedAddress);
+        await().until(() -> !syncReceivedLeader.getFollowers().all().isEmpty()
+                && syncReceivedLeader.getFollowers().all().get(0).isInSync(0));
+        FollowerLink link = syncReceivedLeader.getFollowers().all().get(0);
+        CountDownLatch writeHeld = new CountDownLatch(1);
+        follower.store(MAIN).incomingWritesHeld = writeHeld;
+
+        store.storeNextIncomingSeqNum(2);
+        await().until(() -> link.getReceivedOffset() > link.getAppliedOffset());
+        ReplicationReceiver stopping = receiver;
+        receiver = null;
+        CompletableFuture<Void> stopped = CompletableFuture.runAsync(() -> stopping.stop(Deadline.of(Duration.ofSeconds(10))));
+        await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(2)).until(() -> !stopped.isDone());
+        writeHeld.countDown();
+
+        assertThat(stopped).succeedsWithin(Duration.ofSeconds(10));
+        assertThat(follower.store(MAIN).heldWriteInterrupted).as("the write was not interrupted").isFalse();
+        assertThat(follower.store(MAIN).writes).contains("incoming 2");
     }
 
     @Test
