@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.messages.file;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.stores.messages.testkit.AbstractAllocationFreeFixSessionMessagesStoreTest;
@@ -25,6 +26,8 @@ import org.lolaf.staffix.stores.messages.testkit.AbstractAllocationFreeFixSessio
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiPredicate;
@@ -32,6 +35,7 @@ import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMessagesStoreTest<FileFixSessionMessagesStore> {
 
@@ -52,7 +56,9 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
 
     @Override
     protected void beforeTearDown() throws Exception {
-        deleteDir(storeFile);
+        if (storeFile.exists()) {
+            deleteDir(storeFile);
+        }
     }
 
     void deleteDir(File f) throws IOException {
@@ -79,9 +85,9 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
 
         messageStore.start();
         // block size = 32, blocks count = 16
-        // message with 11 chars will take 1 block (block header is 21), more will take 2 or more
+        // a message of 12 chars takes 1 block (20 bytes of overhead), more take 2 or more
 
-        int messageSizeForOneBlock = 32 - FileFixSessionMessagesStore.BLOCK_HEADER_SIZE;
+        int messageSizeForOneBlock = 32 - FileFixSessionMessagesStore.RECORD_OVERHEAD;
         int i = 0;
         for (; i < 8; i++) {
             messageStore.storeMessageSent(i + 1, ByteBuffer.wrap((i + "a".repeat(messageSizeForOneBlock - 1)).getBytes()));
@@ -132,7 +138,7 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
 
         messageStore.start();
 
-        // block is 32 bytes, block header is 13 bytes, so to store a message over 2 blocks or more we must have a message greater than 19 bytes
+        // a block is 32 bytes and a message takes 20 more, so a message over 12 bytes spans 2 blocks
         messageStore.storeMessageSent(1, ByteBuffer.wrap("a".repeat(19).getBytes()));
         messageStore.storeMessageSent(2, ByteBuffer.wrap("a".repeat(20).getBytes()));
         messageStore.storeMessageSent(3, ByteBuffer.wrap("a".repeat(21).getBytes()));
@@ -291,5 +297,73 @@ class TestFileFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMe
         ByteBuffer message = ByteBuffer.wrap("8=FIX.4.4\u00019=5\u000135=0\u000110=000\u0001".getBytes());
 
         assertThat(allocatedBytes(seqNum -> store.storeMessageSent(seqNum, message.position(0)), 2_000, 200)).isZero();
+    }
+
+    @Test
+    void aFileStartsWithItsFormatAtFixedOffsets() throws IOException {
+        FileFixSessionMessagesStore store = started(16);
+        store.storeNextIncomingSeqNum(7);
+        store.storeMessageSent(3, message(3));
+        store.stop(Deadline.unlimited());
+
+        ByteBuffer header = ByteBuffer.wrap(Files.readAllBytes(sessionFile()));
+
+        assertThat(header.getLong(0)).isEqualTo(FileFixSessionMessagesStore.MAGIC);
+        assertThat(header.getInt(8)).isEqualTo(FileFixSessionMessagesStore.FORMAT_VERSION);
+        assertThat(header.getLong(16)).isEqualTo(7);
+        assertThat(header.getLong(24)).isEqualTo(4);
+        assertThat(header.getInt(32)).isEqualTo(64 + 32);
+        assertThat(header.getLong(64 + 8)).isEqualTo(3);
+    }
+
+    @Test
+    void aFileOfAnOlderFormatFailsTheStartAndIsLeftAsItIs() throws IOException {
+        byte[] olderFormat = ByteBuffer.allocate(1024).putLong(0, 12).putLong(64, 34).array();
+        Files.createDirectories(storeFile.toPath());
+        Files.write(sessionFile(), olderFormat);
+
+        assertThatThrownBy(() -> started(16))
+                .isInstanceOf(Startable.StartStopException.class)
+                .hasMessageContaining(sessionFile().toString())
+                .hasMessageContaining("0.9.1 or older");
+        assertThat(Files.readAllBytes(sessionFile())).isEqualTo(olderFormat);
+    }
+
+    @Test
+    void aFileOfAnUnknownVersionFailsTheStart() throws IOException {
+        Files.createDirectories(storeFile.toPath());
+        Files.write(sessionFile(), ByteBuffer.allocate(1024).putLong(0, FileFixSessionMessagesStore.MAGIC).putInt(8, 3).array());
+
+        assertThatThrownBy(() -> started(16))
+                .isInstanceOf(Startable.StartStopException.class)
+                .hasMessageContaining("is of format 3");
+    }
+
+    @Test
+    void aFileCreatedButNeverWrittenStartsEmpty() throws IOException {
+        Files.createDirectories(storeFile.toPath());
+        Files.write(sessionFile(), new byte[1024]);
+
+        FileFixSessionMessagesStore store = started(16);
+        store.storeMessageSent(1, message(1));
+
+        assertThat(store.getIncomingSeqNum()).isEqualTo(1);
+        assertThat(seqNums(store.find(1, 10))).containsExactly(1L);
+    }
+
+    @Test
+    void aBlockSizeNotAMultipleOf8IsRefused() {
+        FileMessageStoreSettings settings = FileMessageStoreSettings.builder()
+                .storageDirectoryPath(storeFile.getPath())
+                .blockSize(36)
+                .build();
+
+        assertThatThrownBy(() -> new FileFixSessionMessagesStore(settings, sessionId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("multiple of 8");
+    }
+
+    private Path sessionFile() {
+        return new File(storeFile, sessionId.forFileName(".bin")).toPath();
     }
 }

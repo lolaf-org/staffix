@@ -40,30 +40,25 @@ import java.util.function.BiPredicate;
 @Slf4j
 class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesStore.FixSessionMessagesStore> implements FixMessagesStore.BatchingFixSessionMessagesStore {
 
-    static final int BLOCK_HEADER_SIZE = 21;
     /**
-     * Store header structure:
-     * - inSeqNum   (long:8)
-     * - padding    (UnsafeOperationsApi.get().getL1CacheLineSize() - 8)
-     * - outSeqNum  (long:8)
-     * - padding    (UnsafeOperationsApi.get().getL1CacheLineSize() - 8)
-     * - lastMsgPos (int:4)
-     * - padding    (UnsafeOperationsApi.get().getL1CacheLineSize() - 4)
-     * <p>
-     * Message storage structure:
-     * - startMarker      (int:4)
-     * - blocksCount      (byte:1)
-     * - sequenceNumber   (long:8)
-     * - messageSize      (int:4)
-     * - messageBytes     (byte:x)
-     * - endMarker        (int:4)
+     * File format 1, at fixed offsets so that a file reads the same on any machine. Header, 64 bytes: magic (long),
+     * version (int), padding (int), incoming seqnum (long), outgoing seqnum (long), next write position (int). Each
+     * message starts on a block: start marker (int), size (int), seqnum (long), the message, end marker (int).
      */
-    private static final int INCOMING_SEQUENCE_POSITION = 0;
-    private static final int L1_CACHE_LINE_SIZE = UnsafeOperationsApi.ifAvailableDoReturn(UnsafeOperations::getL1CacheLineSize, UnsafeOperations.DEFAULT_L1_CACHE_LINE_SIZE);
-    private static final int OUTGOING_SEQUENCE_POSITION = L1_CACHE_LINE_SIZE;
-    private static final int LAST_MESSAGE_POSITION = L1_CACHE_LINE_SIZE * 2;
-    private static final int STORE_HEADER_LEN = L1_CACHE_LINE_SIZE * 3;
-    private static final int BLOCK_MARKER = 0xffffffff;
+    static final int FORMAT_VERSION = 1;
+    static final long MAGIC = 0xC0DEF1E5_53544658L;
+    static final int RECORD_OVERHEAD = 20;
+    private static final int MAGIC_POSITION = 0;
+    private static final int VERSION_POSITION = 8;
+    private static final int INCOMING_SEQUENCE_POSITION = 16;
+    private static final int OUTGOING_SEQUENCE_POSITION = 24;
+    private static final int LAST_MESSAGE_POSITION = 32;
+    private static final int STORE_HEADER_LEN = 64;
+    private static final int SIZE_OFFSET = 4;
+    private static final int SEQNUM_OFFSET = 8;
+    private static final int PAYLOAD_OFFSET = 16;
+    // no byte of it is ASCII, which most of a FIX message is
+    private static final int BLOCK_MARKER = 0xC0DEF1E5;
     private static final ByteBuffer CORRUPTED = ByteBuffer.allocate(0);
 
     private final AtomicLong outgoingSequenceNumber;
@@ -96,8 +91,8 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         this.incomingSequenceNumber = new AtomicLong(1);
         this.sessionFile = new File(settings.getStorageDirectoryPath(), fixSessionId.forFileName(".bin"));
         this.blockSize = settings.getBlockSize();
-        if (blockSize < 32) {
-            throw new IllegalArgumentException("Minimum block size is 32 bytes");
+        if (blockSize < 32 || blockSize % Long.BYTES != 0) {
+            throw new IllegalArgumentException("The block size must be at least 32 bytes and a multiple of 8, not " + blockSize);
         }
         this.fixSessionId = fixSessionId;
     }
@@ -116,9 +111,9 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                 throw new IllegalStateException("Unable to create directory " + storageDir);
             }
         }
-        boolean fileExists = sessionFile.exists();
+        boolean fileExists = isFormatted(sessionFile);
         int fileLen = STORE_HEADER_LEN + (settings.getBlocksCount() * blockSize);
-        int alignment = L1_CACHE_LINE_SIZE;
+        int alignment = STORE_HEADER_LEN;
         if (mappedByteBuffer == null) {
             // null on a first start, and again after a stop released the previous mapping
             mappedByteBuffer = mapSessionFile(sessionFile, fileLen + alignment);
@@ -133,9 +128,11 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             outgoingSequenceNumber.set(alignedByteBuffer.getLong(OUTGOING_SEQUENCE_POSITION));
             alignedByteBuffer.position(alignedByteBuffer.getInt(LAST_MESSAGE_POSITION));
         } else {
-            // important save the initial sequence number
-            alignedByteBuffer.putLong(INCOMING_SEQUENCE_POSITION, incomingSequenceNumber.get());
-            alignedByteBuffer.putLong(OUTGOING_SEQUENCE_POSITION, outgoingSequenceNumber.get());
+            alignedByteBuffer.putLong(MAGIC_POSITION, MAGIC)
+                    .putInt(VERSION_POSITION, FORMAT_VERSION)
+                    .putLong(INCOMING_SEQUENCE_POSITION, incomingSequenceNumber.get())
+                    .putLong(OUTGOING_SEQUENCE_POSITION, outgoingSequenceNumber.get())
+                    .putInt(LAST_MESSAGE_POSITION, STORE_HEADER_LEN);
             syncWrites();
         }
         previousLapFrom = alignedByteBuffer.position();
@@ -264,8 +261,7 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     private int storeMessage(long outgoingSequenceNumber, ByteBuffer message) {
         int messageSize = message.remaining();
-        int neededBlocksCount = blocksCount(messageSize);
-        int requiredSpace = neededBlocksCount * blockSize;
+        int requiredSpace = blocksCount(messageSize) * blockSize;
         if (alignedByteBuffer.remaining() < requiredSpace) {
             log.debug("Rolling over for FIX message store {}", settings.getInstanceId());
             if (unsynced.isNotEmpty()) {
@@ -278,16 +274,15 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         int nextPosition = position + requiredSpace;
         clearStartMarkersOverwritten(position, nextPosition);
         VarHandle.storeStoreFence();
-        alignedByteBuffer.position(position + Integer.BYTES)
-                .put((byte) neededBlocksCount)
-                .putLong(outgoingSequenceNumber)
+        alignedByteBuffer.position(position + SIZE_OFFSET)
                 .putInt(messageSize)
+                .putLong(outgoingSequenceNumber)
                 .put(message);
         int endMarkerPosition = alignedByteBuffer.position();
         alignedByteBuffer.putInt(BLOCK_MARKER);
         if ((endMarkerPosition - STORE_HEADER_LEN) % blockSize == 0) {
             // on a block start, the end marker reads as a start marker over the header an older message left there
-            alignedByteBuffer.put((byte) 0).putLong(0).putInt(0);
+            alignedByteBuffer.putInt(-1).putLong(0);
         }
         VarHandle.storeStoreFence();
         alignedByteBuffer.putInt(position, BLOCK_MARKER)
@@ -314,19 +309,19 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     private void indexFrom(int from, int to) {
         int position = from;
-        while (position + BLOCK_HEADER_SIZE <= to) {
+        while (position + RECORD_OVERHEAD <= to) {
             int span = spanAt(alignedByteBuffer, position);
             if (span == 0) {
                 position += blockSize;
             } else {
-                index.add(alignedByteBuffer.getLong(position + 5), position);
+                index.add(alignedByteBuffer.getLong(position + SEQNUM_OFFSET), position);
                 position += span;
             }
         }
     }
 
     private boolean holds(long seqNum, int position) {
-        return alignedByteBuffer.getInt(position) == BLOCK_MARKER && alignedByteBuffer.getLong(position + 5) == seqNum;
+        return alignedByteBuffer.getInt(position) == BLOCK_MARKER && alignedByteBuffer.getLong(position + SEQNUM_OFFSET) == seqNum;
     }
 
     /**
@@ -349,17 +344,15 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
      * @return the bytes taken by the message starting at {@code position}, 0 for no whole message header there
      */
     private int spanAt(ByteBuffer file, int position) {
-        if (file.limit() - position < BLOCK_HEADER_SIZE || file.getInt(position) != BLOCK_MARKER) {
+        if (file.limit() - position < RECORD_OVERHEAD || file.getInt(position) != BLOCK_MARKER) {
             return 0;
         }
         VarHandle.loadLoadFence();
-        int messageSize = file.getInt(position + 13);
-        // the count is a byte, which a message longer than 255 blocks overflows: the size gives the span
-        int span = messageSize < 0 ? 0 : blocksCount(messageSize) * blockSize;
-        if (span == 0 || (byte) (span / blockSize) != file.get(position + 4) || span > file.limit() - position) {
+        int messageSize = file.getInt(position + SIZE_OFFSET);
+        if (messageSize < 0 || messageSize > file.limit() - position - RECORD_OVERHEAD) {
             return 0;
         }
-        return span;
+        return blocksCount(messageSize) * blockSize;
     }
 
     /**
@@ -387,20 +380,20 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
      */
     private @Nullable ByteBuffer readMessage(ByteBuffer file, int position, long seqNum) {
         int span = spanAt(file, position);
-        if (span == 0 || file.getLong(position + 5) != seqNum) {
+        if (span == 0 || file.getLong(position + SEQNUM_OFFSET) != seqNum) {
             return null;
         }
-        int messageSize = file.getInt(position + 13);
+        int messageSize = file.getInt(position + SIZE_OFFSET);
         if (messageSize < 0 || blocksCount(messageSize) * blockSize != span) {
             return null;
         }
         byte[] msgBytes = new byte[messageSize];
-        file.position(position + 17);
+        file.position(position + PAYLOAD_OFFSET);
         file.get(msgBytes);
-        int blockEndMarker = file.getInt(position + 17 + messageSize);
+        int blockEndMarker = file.getInt(position + PAYLOAD_OFFSET + messageSize);
         VarHandle.loadLoadFence();
-        if (file.getInt(position) != BLOCK_MARKER || file.getLong(position + 5) != seqNum
-                || file.getInt(position + 13) != messageSize) {
+        if (file.getInt(position) != BLOCK_MARKER || file.getLong(position + SEQNUM_OFFSET) != seqNum
+                || file.getInt(position + SIZE_OFFSET) != messageSize) {
             return null;
         }
         if (blockEndMarker != BLOCK_MARKER) {
@@ -411,7 +404,37 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     }
 
     private int blocksCount(int messageSize) {
-        return (int) Math.ceil((messageSize + BLOCK_HEADER_SIZE) / (double) blockSize);
+        return (int) Math.ceil((messageSize + RECORD_OVERHEAD) / (double) blockSize);
+    }
+
+    /**
+     * @return false for no file, or one created but never written, which a crash before its first sync leaves
+     * @throws StartStopException for a file of another format, such as one written by 0.9.1 or older, which had no version
+     */
+    private static boolean isFormatted(File sessionFile) throws StartStopException {
+        if (!sessionFile.exists()) {
+            return false;
+        }
+        ByteBuffer header = ByteBuffer.allocate(VERSION_POSITION + Integer.BYTES);
+        try (FileChannel fc = FileChannel.open(sessionFile.toPath(), StandardOpenOption.READ)) {
+            fc.read(header, 0);
+        } catch (IOException e) {
+            throw new StartStopException("Unable to read the file messages store " + sessionFile, e);
+        }
+        long magic = header.getLong(MAGIC_POSITION);
+        int version = header.getInt(VERSION_POSITION);
+        if (magic == 0 && version == 0) {
+            return false;
+        }
+        if (magic != MAGIC) {
+            throw new StartStopException("The file messages store " + sessionFile + " is not of format " + FORMAT_VERSION
+                    + ", likely written by staffix 0.9.1 or older: delete it, which resets the session's sequence numbers");
+        }
+        if (version != FORMAT_VERSION) {
+            throw new StartStopException("The file messages store " + sessionFile + " is of format " + version
+                    + ", this version reads format " + FORMAT_VERSION);
+        }
+        return true;
     }
 
     private MappedByteBuffer mapSessionFile(File sessionFile, int size) {

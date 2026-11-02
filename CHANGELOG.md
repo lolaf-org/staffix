@@ -60,6 +60,10 @@ could mean.
 
 ### Changed
 
+- **The file messages store has a new file format**, the same on every machine (the old one depended on the CPU's
+  cache line size, so a file could not move between x86 and Apple Silicon) and versioned for later changes. A store
+  refuses to start on a file written by 0.9.1 or older, naming it: delete it, which resets the session's sequence
+  numbers. `blockSize` must now be a multiple of 8.
 - **An encoder that is not reusable now refuses a second message**: `begin()` throws `IllegalStateException` once its
   first message was sent. Before, reusing it silently worked with the default heap buffers, and crashed the JVM with
   direct buffers. To send several messages with one encoder, take it from a pool or call `asReusable()`.

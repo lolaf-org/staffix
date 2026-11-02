@@ -54,11 +54,8 @@ public class FileMessageStoreSettings implements FixMessagesStoreSettings {
     @Builder.Default
     private int blocksCount = DEFAULT_BLOCKS_COUNT;
     /**
-     * Size of a block to store messages, I.E for a 256 block size :
-     * - a 128 byte message will consume 1 block
-     * - a 256 byte message will consume 2 blocks (each stored message has a 21 bytes header)
-     * - a 1003 byte message will consume exactly 4 blocks (1003 + 21 = 1024)
-     * So this block size should match your typical payload size to avoid waisting too much storage space
+     * At least 32 and a multiple of 8. A message takes 20 bytes more than its size, rounded up to whole blocks: with 256
+     * byte blocks, a 1004 byte message takes exactly 4. Match it to the typical message size to waste less space.
      */
     @Builder.Default
     private int blockSize = DEFAULT_BLOCKS_SIZE;
