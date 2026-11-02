@@ -186,7 +186,7 @@ staffix.ha-replication.leadership-control=true
 staffix.ha-replication.fencing-margin=50ms
 
 # per session
-…sessions[0].ha.replication-mode=SYNC
+…sessions[0].ha.replication-mode=SYNC_APPLIED
 …sessions[0].ha.replication-ack-timeout=50ms
 …sessions[0].ha.sync-ack-latency-enabled=true
 ```

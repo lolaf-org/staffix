@@ -474,7 +474,7 @@ class TestReplicationFixEngineHa {
         aLeadsBFollows();
         await().until(() -> b.ha.getSessionsStatus().get(0).isInSync());
         FixSessionSettings sync = MAIN.toBuilder()
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build();
 
         a.ha.replicatingStore(sync, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
@@ -615,7 +615,7 @@ class TestReplicationFixEngineHa {
 
     private static FixSessionSettings sync(FixSessionSettings settings, boolean syncAckLatencyEnabled) {
         return settings.toBuilder().haSessionSettings(FixSessionSettings.HaSessionSettings.builder()
-                .replicationMode(ReplicationMode.SYNC).syncAckLatencyEnabled(syncAckLatencyEnabled).build()).build();
+                .replicationMode(ReplicationMode.SYNC_APPLIED).syncAckLatencyEnabled(syncAckLatencyEnabled).build()).build();
     }
 
     @Test

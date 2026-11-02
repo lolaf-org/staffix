@@ -104,13 +104,13 @@ class TestSwitchover {
     }
 
     static Stream<Arguments> pairsAndModes() {
-        return Stream.of(Pair.values()).flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC)
+        return Stream.of(Pair.values()).flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC_APPLIED)
                 .map(mode -> Arguments.of(pair, mode)));
     }
 
     static Stream<Arguments> pairs() {
         return Stream.of(Storage.values()).flatMap(storage -> Stream.of(Pair.values())
-                .flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC)
+                .flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC_APPLIED)
                         .map(mode -> Arguments.of(storage, pair, mode))));
     }
 
@@ -354,7 +354,7 @@ class TestSwitchover {
      * new leader from what it replicated, whole.
      */
     @ParameterizedTest
-    @EnumSource(value = ReplicationMode.class, names = {"ASYNC", "SYNC"})
+    @EnumSource(value = ReplicationMode.class, names = {"ASYNC", "SYNC_APPLIED"})
     void aMessageLongerThanALogFrameReachesTheFollowerWholeAndTheNewLeaderResendsIt(ReplicationMode mode) {
         start(Storage.SEPARATE, Pair.ACCEPTORS, mode);
         long bigSeqNum = counterpartyIncomingSeqNum();
@@ -417,7 +417,7 @@ class TestSwitchover {
     @org.junit.jupiter.api.Test
     void severalSessionsSwitchOverTogetherAndOnlyTheUnreplicatedOneIsRefused() {
         storage = Storage.SEPARATE;
-        ReplicationMode[] modes = {ReplicationMode.ASYNC, ReplicationMode.SYNC, ReplicationMode.NONE};
+        ReplicationMode[] modes = {ReplicationMode.ASYNC, ReplicationMode.SYNC_APPLIED, ReplicationMode.NONE};
         InetSocketAddress replicationA = new InetSocketAddress("localhost", TestPorts.findFree());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", TestPorts.findFree());
         InetSocketAddress fixA = new InetSocketAddress("localhost", TestPorts.findFree());
@@ -481,6 +481,6 @@ class TestSwitchover {
                 + "the counterparty's through the refused Logons, then b asked it to resend from 1: the counterparty's old "
                 + "messages, which a already processed, reach b's application again").hasValueGreaterThanOrEqualTo(10));
         assertThat(followerApplication.possibleDuplicates.get("async")).hasValue(0);
-        assertThat(followerApplication.possibleDuplicates.get("sync")).hasValue(0);
+        assertThat(followerApplication.possibleDuplicates.get("sync_applied")).hasValue(0);
     }
 }

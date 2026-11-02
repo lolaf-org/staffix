@@ -353,7 +353,7 @@ class TestFixSessionSettingsValidator {
     void rejectsANegativeReplicationAckTimeout() {
         FixSessionSettings settings = validSettings()
                 .haSessionSettings(FixSessionSettings.HaSessionSettings.builder()
-                        .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC)
+                        .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC_APPLIED)
                         .replicationAckTimeout(Duration.ofMillis(-1))
                         .build())
                 .build();

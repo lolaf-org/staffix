@@ -111,7 +111,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void sessionMeters(FixSessionsMonitoringContext meters) {
         ReplicatedSession.Config config = session.getConfig();
-        if (config.getReplicationMode() == ReplicationMode.SYNC && config.isSyncAckLatencyEnabled()) {
+        if (config.getReplicationMode() == ReplicationMode.SYNC_APPLIED && config.isSyncAckLatencyEnabled()) {
             sessionSyncAckLatency = HaMeters.sessionSyncAckLatency(meters);
         }
     }

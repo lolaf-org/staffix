@@ -129,7 +129,7 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
     interface ReplicatingStore extends FixSessionMessagesStore {
 
         /**
-         * Called by a {@link FixSessionSettings.HaSessionSettings.ReplicationMode#SYNC SYNC} session as a message is
+         * Called by a {@link FixSessionSettings.HaSessionSettings.ReplicationMode#SYNC_APPLIED SYNC_APPLIED} session as a message is
          * built, before it goes out: replicates the store write its sending makes afterwards, which then only applies
          * locally. {@code message} is read from its position to its limit and left as it is.
          */

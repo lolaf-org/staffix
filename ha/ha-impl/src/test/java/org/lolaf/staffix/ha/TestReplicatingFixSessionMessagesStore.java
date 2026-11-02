@@ -242,7 +242,7 @@ class TestReplicatingFixSessionMessagesStore {
         ReplicatingStore store = ha.replicatingStore(FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.INITIATOR)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build(), local, new RecordingProbes());
 
         store.awaitReplicated();

@@ -74,8 +74,8 @@ Then ask for replication per session, in its settings:
 
 ```yaml
 haSessionSettings:
-  replicationMode: ASYNC        # NONE (default), ASYNC or SYNC
-  replicationAckTimeout: PT1S   # SYNC only: how long a send waits for the follower, zero for ever
+  replicationMode: ASYNC        # NONE (default), ASYNC or SYNC_APPLIED
+  replicationAckTimeout: PT1S   # SYNC_APPLIED only: how long a send waits for the follower, zero for ever
 ```
 
 **Configure the same sessions, with the same settings, on both nodes.** Each node reads its own settings, and a node
@@ -114,10 +114,10 @@ Each session picks one.
 - **`ASYNC`**: each write is replicated as it is made, after the message went out. Nothing waits unless a follower is
   a whole `logCapacity` behind, so it costs the session almost nothing; a leader that fails may have sent messages the
   follower never received, which the new leader covers by moving its sequence numbers ahead.
-- **`SYNC`**: a message is replicated before it is sent, and the send waits for the follower's acknowledgement. The
-  counterparty never receives a message the follower does not have. Each send pays a round trip to the follower: on one
-  machine, about 170 µs more than `ASYNC` with the defaults, 15 µs with the replication busy spinning; see
-  [Latency](#latency).
+- **`SYNC_APPLIED`**: a message is replicated before it is sent, and the send waits for the follower to have applied it
+  to its store. The counterparty never receives a message the follower does not have. Each send pays a round trip to
+  the follower: on one machine, about 30 µs more than `ASYNC` with the defaults, 15 µs with the replication busy
+  spinning; see [Latency](#latency).
 
 **`SYNC` never stops trading for a missing follower.** A send waits at most `replicationAckTimeout` (1 s by default),
 then goes out anyway, and the sends after it do not wait for that follower until it has caught up, so a hung follower

@@ -236,7 +236,7 @@ class TestLeaderLink {
     @Test
     void aSessionWithAnotherReplicationModeHereIsRefusedUntilTheSettingsHereAgree() {
         FixSessionSettings sync = MAIN.toBuilder()
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build();
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, sync));
 

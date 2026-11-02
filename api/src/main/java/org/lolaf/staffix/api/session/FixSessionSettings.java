@@ -394,7 +394,7 @@ public class FixSessionSettings {
         ReplicationMode replicationMode = ReplicationMode.NONE;
 
         /**
-         * How long a {@link ReplicationMode#SYNC SYNC} send waits for the standby's acknowledgement before going out
+         * How long a {@link ReplicationMode#SYNC_APPLIED SYNC_APPLIED} send waits for the standby's acknowledgement before going out
          * anyway; {@link Duration#ZERO} waits forever, which a hung standby turns into a frozen session. A standby
          * that missed it is not waited for again until it catches up.
          */
@@ -402,7 +402,7 @@ public class FixSessionSettings {
         Duration replicationAckTimeout = Duration.ofSeconds(1);
 
         /**
-         * Whether the session's monitoring times each {@link ReplicationMode#SYNC SYNC} send's wait for the standby's
+         * Whether the session's monitoring times each {@link ReplicationMode#SYNC_APPLIED SYNC_APPLIED} send's wait for the standby's
          * acknowledgement. Off by default: recording costs the session's thread on every send.
          */
         @Builder.Default
@@ -422,9 +422,9 @@ public class FixSessionSettings {
             ASYNC((byte) 1),
             /**
              * A message is replicated before it is sent, so the counterparty never receives one the standby lacks;
-             * each send waits for the standby.
+             * each send waits for the standby to have applied it to its store.
              */
-            SYNC((byte) 2);
+            SYNC_APPLIED((byte) 2);
 
             /**
              * Fixed rather than the ordinal, so a binary format carrying it survives a reordering.
@@ -443,8 +443,8 @@ public class FixSessionSettings {
                     return NONE;
                 } else if (code == ASYNC.code) {
                     return ASYNC;
-                } else if (code == SYNC.code) {
-                    return SYNC;
+                } else if (code == SYNC_APPLIED.code) {
+                    return SYNC_APPLIED;
                 }
                 throw new IllegalStateException("Unknown replication mode code " + code);
             }

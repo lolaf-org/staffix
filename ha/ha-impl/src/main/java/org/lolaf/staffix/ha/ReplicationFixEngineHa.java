@@ -117,7 +117,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             log.info("FIX session {} {} is replicated again, {}: its followers catch up by snapshot",
                     session.getFixSessionType(), session.getFixSessionId(), mode);
         }
-        // ASYNC to SYNC too: a follower refuses a mode its own settings do not give
+        // ASYNC to SYNC_APPLIED too: a follower refuses a mode its own settings do not give
         if (previousMode != null && previousMode != mode) {
             followers.reannounce(session.getKey());
         }

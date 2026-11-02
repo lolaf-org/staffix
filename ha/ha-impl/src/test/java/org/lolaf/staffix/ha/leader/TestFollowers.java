@@ -59,7 +59,7 @@ class TestFollowers {
         FixSessionMessagesStore store = ha.replicatingStore(FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.INITIATOR)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build(), mock(FixSessionMessagesStore.class), new RecordingProbes());
         store.storeNextIncomingSeqNum(1);
         offset = ha.getReplicationLogs().get(0).getTailOffset();
@@ -186,7 +186,7 @@ class TestFollowers {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.INITIATOR)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build();
     }
 

@@ -135,7 +135,7 @@ class TestFollowerLink {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.INITIATOR)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC).build())
+                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build();
     }
 
@@ -328,7 +328,7 @@ class TestFollowerLink {
         assertThat(link.getFollowerId()).isEqualTo("follower-b");
         assertThat(sent.frames).containsExactly(
                 "WELCOME epoch=7 version=2 leader=leader-a resume=-1 links=1",
-                "SESSION epoch=7 key=0 INITIATOR SYNC id=" + SESSION + " identity=null");
+                "SESSION epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null");
     }
 
     @Test
@@ -382,7 +382,7 @@ class TestFollowerLink {
         assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
         assertThat(sent.frames).containsExactly(
                 "WELCOME epoch=7 version=2 leader=leader-a resume=" + second + " links=1",
-                "SESSION epoch=7 key=0 INITIATOR SYNC id=" + SESSION + " identity=null",
+                "SESSION epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
                 "STORE_EVENT epoch=7 offset=" + second + " key=0 STORE_INCOMING_SEQ_NUM seq=6 message=",
                 "STORE_EVENT epoch=7 offset=" + third + " key=0 STORE_INCOMING_SEQ_NUM seq=7 message=");
     }
@@ -584,7 +584,7 @@ class TestFollowerLink {
         fill();
 
         assertThat(sent.frames).hasSize(2);
-        assertThat(sent.frames.get(0)).isEqualTo("SESSION epoch=7 key=1 INITIATOR SYNC id=default.other:VERSION_44:SENDER->TARGET identity=null");
+        assertThat(sent.frames.get(0)).isEqualTo("SESSION epoch=7 key=1 INITIATOR SYNC_APPLIED id=default.other:VERSION_44:SENDER->TARGET identity=null");
         assertThat(sent.frames.get(1)).contains("key=1 STORE_OUTGOING_SEQ_NUM seq=3");
     }
 

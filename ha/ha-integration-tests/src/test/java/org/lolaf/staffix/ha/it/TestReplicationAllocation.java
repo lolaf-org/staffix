@@ -152,11 +152,11 @@ class TestReplicationAllocation {
         double baseline = bytesPerRoundTrip.get(ReplicationMode.NONE);
         assertThat(bytesPerRoundTrip.get(ReplicationMode.ASYNC)).as("ASYNC against NONE, bytes per round trip: %s", bytesPerRoundTrip)
                 .isLessThan(baseline + 1);
-        assertThat(bytesPerRoundTrip.get(ReplicationMode.SYNC)).as("SYNC against NONE, bytes per round trip: %s", bytesPerRoundTrip)
+        assertThat(bytesPerRoundTrip.get(ReplicationMode.SYNC_APPLIED)).as("SYNC against NONE, bytes per round trip: %s", bytesPerRoundTrip)
                 .isLessThan(baseline + 1);
 
         long start = System.nanoTime();
-        double syncWithMeters = measure(ReplicationMode.SYNC, true);
+        double syncWithMeters = measure(ReplicationMode.SYNC_APPLIED, true);
         log.info("SYNC with the replication's meters: {} bytes per round trip on the session thread, {} ms", syncWithMeters,
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
         // Micrometer's percentile histogram allocates each time a wait falls outside the range it covers so far

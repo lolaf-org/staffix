@@ -312,7 +312,7 @@ class JmxAdminApiTest {
                 .leader(HaStatus.Leader.builder().leaderId("2").address("/10.0.0.2:17101").connected(true).inSync(true).build())
                 .build());
         when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
-                .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC)
+                .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC_APPLIED)
                 .replicationAckTimeout(Duration.ofMillis(200)).inSync(true).nextIncomingSeqNum(12).nextOutgoingSeqNum(34)
                 .handedOver(true).build()));
         adminApi.ha = ha;
@@ -329,7 +329,7 @@ class JmxAdminApiTest {
         assertThat(status.getLeader().isInSync()).isTrue();
         assertThat(proxy.getSessionsStatus()).singleElement().satisfies(session -> {
             assertThat(session.getFixSessionId()).isEqualTo(ACCEPTOR_SESSION.toString());
-            assertThat(session.getReplicationMode()).isEqualTo("SYNC");
+            assertThat(session.getReplicationMode()).isEqualTo("SYNC_APPLIED");
             assertThat(session.getReplicationAckTimeout()).isEqualTo("PT0.2S");
             assertThat(session.getNextOutgoingSeqNum()).isEqualTo(34);
             assertThat(session.isHandedOver()).isTrue();
@@ -346,7 +346,7 @@ class JmxAdminApiTest {
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
                 .leaderElection("PrimosLeaderElection").candidacySupported(true).candidate(true).build());
         when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
-                .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC)
+                .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC_APPLIED)
                 .replicationAckTimeout(Duration.ZERO).build()));
         adminApi.ha = ha;
         exporter.export(adminApi);

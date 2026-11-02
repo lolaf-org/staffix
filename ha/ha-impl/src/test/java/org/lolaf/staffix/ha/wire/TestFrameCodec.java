@@ -72,13 +72,13 @@ class TestFrameCodec {
     @Test
     void sessionWithAStorageIdentity() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.session(buffer, 0, 7, 3, FixSessionType.INITIATOR, ReplicationMode.SYNC,
+        int length = FrameEncoder.session(buffer, 0, 7, 3, FixSessionType.INITIATOR, ReplicationMode.SYNC_APPLIED,
                 "default.main:VERSION_44:SENDER->TARGET", "jdbc-postgres-1");
 
         decodeWhole(buffer, 0, length);
 
         assertThat(handler.frames).containsExactly(
-                "SESSION epoch=7 key=3 INITIATOR SYNC id=default.main:VERSION_44:SENDER->TARGET identity=jdbc-postgres-1");
+                "SESSION epoch=7 key=3 INITIATOR SYNC_APPLIED id=default.main:VERSION_44:SENDER->TARGET identity=jdbc-postgres-1");
     }
 
     @Test
@@ -109,7 +109,7 @@ class TestFrameCodec {
     @Test
     void anUnknownReplicationModeIsRefused() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.session(buffer, 0, 7, 3, FixSessionType.ACCEPTOR, ReplicationMode.SYNC, "s", null);
+        int length = FrameEncoder.session(buffer, 0, 7, 3, FixSessionType.ACCEPTOR, ReplicationMode.SYNC_APPLIED, "s", null);
         buffer.put(WireFormat.HEADER_BYTES + 5, (byte) 9);
 
         assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))

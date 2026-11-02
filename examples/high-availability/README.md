@@ -171,7 +171,7 @@ counterparty  Counterparty - Gap 20073 to 30072 filled
 
 - **Planned switchover** without stopping a process: the leader's admin API (`POST v1/ha/switchover`, see
   [Runtime administration](../../docs/runtime-administration.md)); this example does not start the HTTP admin.
-- **`SYNC`** replication: change `ReplicationMode.ASYNC` in `HaNode`. A message then reaches the counterparty only once
+- **`SYNC_APPLIED`** replication: change `ReplicationMode.ASYNC` in `HaNode`. A message then reaches the counterparty only once
   the follower has it.
 - **Real deployment**: the witness on a third machine, the secret out of the code and out of `witness.properties`
   (`env:` or `file:`), and the same session settings on both nodes. See the

@@ -86,7 +86,7 @@ public class HaPair {
     private static final String APPLICATION = "app";
     private static final String MONITORING = "metrics";
 
-    @Param({"NONE", "ASYNC", "SYNC"})
+    @Param({"NONE", "ASYNC", "SYNC_APPLIED"})
     ReplicationMode mode;
     @Param({"MEMORY", "FILE"})
     FollowerStorage.Kind followerStore;

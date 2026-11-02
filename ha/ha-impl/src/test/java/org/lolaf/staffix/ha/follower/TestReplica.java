@@ -103,7 +103,7 @@ class TestReplica {
         replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage");
         RecordingEngine.RecordingStore replicaStore = engine.store(REPLICATED);
 
-        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.SYNC, "leader-storage"))
+        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.SYNC_APPLIED, "leader-storage"))
                 .isEqualTo(SessionStatus.MODE_MISMATCH);
         assertThat(replicaStore.started).isFalse();
     }

@@ -327,11 +327,11 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     void aReplicatedSessionWritesThroughTheReplicatingStore() {
         withHighAvailability();
 
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC)).build());
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED)).build());
         logonClient();
 
         verify(ha).start();
-        verify(ha).replicatingStore(argThat(settings -> settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.SYNC),
+        verify(ha).replicatingStore(argThat(settings -> settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.SYNC_APPLIED),
                 any(), any());
     }
 
@@ -350,7 +350,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
                 .build();
         withHighAvailability();
 
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC))
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED))
                 .fixSessionPluginsInstanceId(FixSessionsMonitoringManager.class, "monitoring").build());
         logonClient();
 
@@ -361,7 +361,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     void aSyncSessionReplicatesEachMessageAndWaitsBeforeWritingItThenStoresIt() {
         withHighAvailability();
 
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC)).build());
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED)).build());
         logonClient();
 
         await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
@@ -372,7 +372,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     @Test
     void aSyncBatchReplicatesAllItsMessagesThenWaitsOnce() {
         withHighAvailability();
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC)).build());
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED)).build());
         logonClient();
         FixSession fixSession = getFixSession(ConnectorType.INITIATOR);
         await().until(() -> stores.get(0).outgoingWrites.contains("outgoing 2"));
@@ -459,7 +459,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     @Test
     void aReplicationTurnedOffThroughTheAdminApiReachesTheHighAvailabilityAsTheSessionRestarts() {
         withHighAvailability();
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC)).build());
+        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED)).build());
         logonClient();
         AdminApi admin = (AdminApi) initiatorFixEngine;
         FixSessionSettings sync = admin.getManagedFixSessionsSettings().get(0);

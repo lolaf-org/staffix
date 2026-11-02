@@ -218,7 +218,7 @@ class TestToFixSessionSettingsDocumentTransformer {
                         .requiredPeerMaxMessageSize(200)
                         .maxSendingTime(Duration.ofSeconds(10)).build())
                 .haSessionSettings(FixSessionSettings.HaSessionSettings.builder()
-                        .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC)
+                        .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC_APPLIED)
                         .replicationAckTimeout(Duration.ofMillis(500))
                         .syncAckLatencyEnabled(true)
                         .build())
