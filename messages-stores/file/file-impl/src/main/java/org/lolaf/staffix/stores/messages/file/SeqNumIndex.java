@@ -26,7 +26,8 @@ import java.util.Arrays;
  * every message still in the file. An entry is a seqlock read against its writer, and its message is still checked in
  * the file, which may have overwritten it since. The ring stays sorted by seqnum, which a find's binary search needs:
  * a message written at or below the last seqnum, only after an outgoing seqnum was lowered without a reset, is merged
- * into a copy, replacing the entry of the same seqnum.
+ * into a copy, replacing the entry of the same seqnum. Entries of overwritten messages are skipped from the oldest on,
+ * as a find from below the file's oldest message would otherwise read each of them to reject it.
  */
 final class SeqNumIndex {
 
@@ -86,12 +87,19 @@ final class SeqNumIndex {
     }
 
     /**
+     * Skips the oldest entries whose message the file no longer holds, up to the first it still does. Writer only.
+     */
+    void dropOverwritten() {
+        entries.dropOverwritten(inFile);
+    }
+
+    /**
      * Hands over, in ascending seqnum, the entries from {@code start} to {@code stop} while the consumer asks for more.
      */
     void find(long start, long stop, EntryConsumer consumer) {
         Entries current = entries;
         long count = current.count;
-        long low = Math.max(0, count - current.capacity());
+        long low = Math.max(current.firstHeld, count - current.capacity());
         long from = current.firstAtOrAfter(start, low, count);
         for (long number = from; number < count; number++) {
             long seqNum = current.seqNumOf(number);
@@ -119,6 +127,7 @@ final class SeqNumIndex {
         private final long[] numbers;
         private final int mask;
         private volatile long count;
+        private volatile long firstHeld;
 
         Entries(int capacity) {
             seqNums = new long[capacity];
@@ -134,6 +143,19 @@ final class SeqNumIndex {
 
         boolean isFull() {
             return count >= capacity();
+        }
+
+        void dropOverwritten(InFile inFile) {
+            long last = count;
+            long number = Math.max(firstHeld, last - capacity());
+            while (number < last) {
+                int slot = (int) (number & mask);
+                if (inFile.holds(seqNums[slot], positions[slot])) {
+                    break;
+                }
+                number++;
+            }
+            firstHeld = number;
         }
 
         boolean oldestStillIn(InFile inFile) {
@@ -155,6 +177,7 @@ final class SeqNumIndex {
                 grown.numbers[to] = number;
             }
             grown.count = last;
+            grown.firstHeld = firstHeld;
             return grown;
         }
 
@@ -163,7 +186,7 @@ final class SeqNumIndex {
          */
         Entries merging(long seqNum, int position) {
             long last = count;
-            long first = Math.max(0, last - capacity());
+            long first = Math.max(firstHeld, last - capacity());
             Entries merged = new Entries(last - first < capacity() ? capacity() : capacity() * 2);
             boolean added = false;
             for (long number = first; number < last; number++) {

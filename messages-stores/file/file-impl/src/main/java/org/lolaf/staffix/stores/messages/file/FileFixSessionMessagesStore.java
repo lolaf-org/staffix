@@ -330,10 +330,14 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
      * set on a new message only once it is whole, which a hard crash benefits from too.
      */
     private void clearStartMarkersOverwritten(int position, int nextPosition) {
+        int lapClearedFrom = previousLapFrom;
         while (previousLapFrom < nextPosition) {
             int span = spanAt(alignedByteBuffer, previousLapFrom);
             alignedByteBuffer.putInt(previousLapFrom, 0);
             previousLapFrom += span == 0 ? blockSize : span;
+        }
+        if (previousLapFrom != lapClearedFrom) {
+            index.dropOverwritten();
         }
         for (int block = position; block < nextPosition; block += blockSize) {
             alignedByteBuffer.putInt(block, 0);
