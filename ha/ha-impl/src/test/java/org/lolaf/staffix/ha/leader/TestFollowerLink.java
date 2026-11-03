@@ -723,7 +723,7 @@ class TestFollowerLink {
 
         assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_PENDING);
         assertThat(link.isInSync(0)).as("not waited for until the snapshot lands").isFalse();
-        assertThat(link.getSessionSync(1)).isEqualTo(FollowerLink.SessionSync.IN_SYNC);
+        assertThat(link.getSessionSync(1)).as("refused").isEqualTo(FollowerLink.SessionSync.NOT_REPLICATED);
         assertThat(link.getSessionSync(2)).isEqualTo(FollowerLink.SessionSync.NOT_REPLICATED);
         sent.frames.clear();
         snapshot();

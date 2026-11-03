@@ -278,17 +278,18 @@ a leader whose heartbeats go unanswered for longer than the difference drops its
 a sequence number jump once contact is back. Keep the primos timings the same on all three nodes, and put the witness
 where neither node's network failure takes it down too.
 
-## Shared storage
+## Each node needs its own storage
 
-When both nodes use the same storage, the same database or the same directory, replicating into it would rewrite the
-leader's own rows. The follower detects it and replicates nothing for that session, which a failover then reads
-directly from the storage. Each store names its storage: the JDBC store from the database server's own id (or its URL)
-plus catalog, schema and table prefix; the file store from a marker file in its directory. When the two nodes reach one
-database under different names (a VIP, a proxy), set `JdbcMessageStoreSettings.storageIdentity` to the same value on
-both. A storage that cannot be identified is not replicated at all, rather than risk it.
+Replication gives each node its own copy of every session, so the two nodes must not share a store: the same
+database tables or the same directory. Replicating into the leader's own storage would rewrite its data, so the follower
+detects it, logs an error and refuses the session, and the leader's `ha-replication` probe alerts until it is fixed:
+the session is not in sync, and a switchover answers `NO_FOLLOWER_IN_SYNC`. Give each node its own schema or table
+prefix, or its own directory. A highly available database is fine underneath, with one copy per node.
 
-Taking over after a failure still moves the sequence numbers ahead with shared storage: the old leader may have sent a
-message it never stored. A clean handover does not.
+Each store names its storage: the JDBC store from the database server's own id (or its URL) plus catalog, schema and
+table prefix; the file store from a marker file in its directory. When the derived names match for two different
+databases (cloned servers), set `JdbcMessageStoreSettings.storageIdentity` to a different value on each node. A
+storage that cannot be identified is refused too, rather than risk it.
 
 ## Caveats
 
@@ -297,8 +298,7 @@ message it never stored. A clean handover does not.
   counterparty refuses the new leader's Logons as MsgSeqNum too low, but each refused Logon still uses a sequence
   number, so after enough reconnections one is accepted. The new leader then asks for everything it never received,
   and **the counterparty's old messages, which the old leader already processed, reach your application again**, as
-  possible duplicates. Replicate every session that must survive a failover, or give it `resetSeqNumOnLogon` or a
-  shared store.
+  possible duplicates. Replicate every session that must survive a failover, or give it `resetSeqNumOnLogon`.
 - **A message longer than half of `logCapacity` is not replicated** (8 MiB with the default). The session logs an
   error and alerts; a resend of that message after a failover is gap filled. Messages up to that size are replicated
   in pieces, but a large message takes a large share of the log, and a follower a whole log behind makes writes wait:

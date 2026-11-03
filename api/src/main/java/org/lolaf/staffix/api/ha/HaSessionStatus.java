@@ -42,10 +42,6 @@ public class HaSessionStatus {
      */
     boolean inSync;
     /**
-     * Its storage is the same on both nodes, as a shared database, so nothing of it needs replicating.
-     */
-    boolean sharedStorage;
-    /**
      * Why it is not replicated, such as its storage being unidentified on the follower; null when it is.
      */
     @Nullable String notReplicatedReason;

@@ -33,7 +33,6 @@ public class HaSession {
     ReplicationMode replicationMode;
     Duration replicationAckTimeout;
     boolean inSync;
-    boolean sharedStorage;
     String notReplicatedReason;
     boolean unprotected;
     long unacknowledgedSends;
@@ -44,7 +43,7 @@ public class HaSession {
     public static HaSession of(HaSessionStatus status) {
         return new HaSession(status.getFixSessionId().getGroup(), status.getFixSessionId().getName(),
                 status.getFixSessionType(), status.getReplicationMode(), status.getReplicationAckTimeout(),
-                status.isInSync(), status.isSharedStorage(), status.getNotReplicatedReason(), status.isUnprotected(),
+                status.isInSync(), status.getNotReplicatedReason(), status.isUnprotected(),
                 status.getUnacknowledgedSends(), status.getNextIncomingSeqNum(), status.getNextOutgoingSeqNum(),
                 status.isHandedOver());
     }

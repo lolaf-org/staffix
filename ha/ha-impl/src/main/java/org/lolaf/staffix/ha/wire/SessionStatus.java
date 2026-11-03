@@ -25,7 +25,8 @@ public enum SessionStatus {
 
     REPLICATING(0),
     /**
-     * The follower's store is the leader's own storage: replaying into it would rewrite the leader's data.
+     * The follower's store is the leader's own storage, a configuration error: replicating into it would rewrite the
+     * leader's data, and each node needs a copy of its own.
      */
     SHARED_STORAGE(1),
     /**
@@ -59,7 +60,7 @@ public enum SessionStatus {
      * The follower would replicate the session but cannot: a problem to fix, unlike a status the leader expects.
      */
     public boolean isRefusal() {
-        return this == UNKNOWN_STORAGE || this == UNKNOWN_SESSION || this == MODE_MISMATCH;
+        return this == SHARED_STORAGE || this == UNKNOWN_STORAGE || this == UNKNOWN_SESSION || this == MODE_MISMATCH;
     }
 
     /**

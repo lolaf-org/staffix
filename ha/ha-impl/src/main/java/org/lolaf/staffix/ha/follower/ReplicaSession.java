@@ -114,16 +114,13 @@ final class ReplicaSession {
         }
         return complete ? SessionStatus.REPLICATING : SessionStatus.SNAPSHOT_NEEDED;
     }
-
-    /**
-     * Complete here, or not needed here, being in the leader's own storage or not replicated at all.
-     */
-    boolean isCaughtUp() {
-        return replicated ? complete : !notReplicatedStatus.isRefusal();
+    
+    boolean isNotCaughtUp() {
+        return replicated ? !complete : notReplicatedStatus.isRefusal();
     }
 
     void handOver() {
-        handedOver = replicated ? complete : notReplicatedStatus == SessionStatus.SHARED_STORAGE;
+        handedOver = replicated && complete;
     }
 
     void describe(HaSessionStatus.HaSessionStatusBuilder status) {
@@ -132,8 +129,6 @@ final class ReplicaSession {
             status.inSync(complete)
                     .nextIncomingSeqNum(store.getIncomingSeqNum())
                     .nextOutgoingSeqNum(store.getOutgoingSeqNum());
-        } else if (notReplicatedStatus == SessionStatus.SHARED_STORAGE) {
-            status.inSync(true).sharedStorage(true);
         } else {
             status.notReplicatedReason(notReplicatedStatus.name());
         }

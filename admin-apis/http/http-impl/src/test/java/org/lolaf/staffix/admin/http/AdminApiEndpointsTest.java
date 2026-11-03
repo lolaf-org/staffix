@@ -601,7 +601,7 @@ class AdminApiEndpointsTest {
                         + "\"heldOffUntil\":\"2026-10-10T10:05:02Z\"}]}");
         assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
-                        + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"sharedStorage\":false,\"unprotected\":false,"
+                        + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"unprotected\":false,"
                         + "\"unacknowledgedSends\":0,\"nextIncomingSeqNum\":-1,\"nextOutgoingSeqNum\":-1,\"handedOver\":false}]");
     }
 

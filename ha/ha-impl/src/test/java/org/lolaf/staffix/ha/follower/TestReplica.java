@@ -51,7 +51,7 @@ class TestReplica {
 
         assertThat(engine.store(REPLICATED).writes).containsExactly("outgoing 1001");
         assertThat(engine.store(REPLICATED).started).as("still the replica's").isTrue();
-        assertThat(engine.store(SHARED).writes).as("its storage, shared with the old leader").containsExactly("outgoing 1001");
+        assertThat(engine.store(SHARED).writes).as("refused as the leader's storage").containsExactly("outgoing 1001");
         assertThat(engine.store(SHARED).started).as("opened for the jump only").isFalse();
         assertThat(engine.store(NOT_REPLICATED)).isNull();
     }

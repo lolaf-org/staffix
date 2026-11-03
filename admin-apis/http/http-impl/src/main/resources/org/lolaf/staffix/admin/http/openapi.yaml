@@ -1294,7 +1294,7 @@ components:
           description: Holds every replicated session in full.
     HaSession:
       type: object
-      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, inSync, sharedStorage, unprotected,
+      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, inSync, unprotected,
                  unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver]
       properties:
         group:
@@ -1313,9 +1313,6 @@ components:
         inSync:
           type: boolean
           description: On a leader, a follower holds it in sync; on a follower, it holds it in full.
-        sharedStorage:
-          type: boolean
-          description: Its storage is the same on both nodes, so nothing of it needs replicating.
         notReplicatedReason:
           type: string
           description: Why it is not replicated; absent when it is.

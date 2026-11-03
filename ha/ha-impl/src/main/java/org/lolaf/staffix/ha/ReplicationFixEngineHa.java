@@ -334,18 +334,15 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             return;
         }
         boolean inSync = false;
-        boolean sharedStorage = false;
         String refusal = null;
         for (FollowerLink link : followers.all()) {
             SessionStatus reported = link.getReportedStatus(session.getKey());
             inSync |= link.isInSync(session.getKey());
-            sharedStorage |= reported == SessionStatus.SHARED_STORAGE;
             if (reported != null && reported.isRefusal()) {
                 refusal = reported.name();
             }
         }
         status.inSync(inSync)
-                .sharedStorage(sharedStorage)
                 .notReplicatedReason(inSync ? null : refusal)
                 .unprotected(session.isUnprotected())
                 .unacknowledgedSends(session.getUnacknowledgedSends());

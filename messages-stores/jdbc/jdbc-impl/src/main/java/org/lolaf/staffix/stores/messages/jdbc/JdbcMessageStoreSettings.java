@@ -56,9 +56,9 @@ public class JdbcMessageStoreSettings implements FixMessagesStoreSettings {
     private final String tablePrefix = "";
 
     /**
-     * Overrides the storage identity derived from the database, which high availability compares to tell a database
-     * the standby shares from its own. Set the same value on both nodes when the derived one differs for one database
-     * (a proxy hiding the server's id, say), and different values when it matches for two.
+     * Overrides the storage identity derived from the database, which high availability compares to refuse replicating
+     * into the leader's own tables. Set different values on the two nodes when the derived one matches for two
+     * databases (cloned servers, say).
      */
     private final @Nullable String storageIdentity;
 

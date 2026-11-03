@@ -451,7 +451,6 @@ class TestReplicationFixEngineHa {
         await().untilAsserted(() -> assertThat(a.ha.getSessionsStatus()).singleElement().satisfies(session -> {
             assertThat(session.getFixSessionId()).isEqualTo(MAIN.getFixSessionId());
             assertThat(session.isInSync()).isTrue();
-            assertThat(session.isSharedStorage()).isFalse();
             assertThat(session.getNotReplicatedReason()).isNull();
             assertThat(session.getNextOutgoingSeqNum()).isEqualTo(-1);
         }));

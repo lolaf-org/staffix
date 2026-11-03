@@ -77,14 +77,15 @@ class TestSwitchover {
     private HaAdmin b;
     private AdminApi counterpartyEngine;
     private FixSessionId counterpartySession;
-    private Storage storage;
+    private boolean sharedStorage;
+    private Duration switchoverTimeout = Duration.ofSeconds(30);
     private Supplier<FixEngine> startFollower;
     private FixEngine follower;
     private FixEngine leader;
     private Echo followerApplication;
 
     @TempDir
-    Path sharedDirectory;
+    Path storageDirectory;
 
     /**
      * Which side of the session the highly available pair runs.
@@ -94,24 +95,9 @@ class TestSwitchover {
         INITIATORS
     }
 
-    /**
-     * Where the pair's nodes store the session: each its own, replicated, or one file directory both see, which the
-     * follower detects and replicates nothing into.
-     */
-    enum Storage {
-        SEPARATE,
-        SHARED
-    }
-
     static Stream<Arguments> pairsAndModes() {
         return Stream.of(Pair.values()).flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC_RECEIVED, ReplicationMode.SYNC_APPLIED)
                 .map(mode -> Arguments.of(pair, mode)));
-    }
-
-    static Stream<Arguments> pairs() {
-        return Stream.of(Storage.values()).flatMap(storage -> Stream.of(Pair.values())
-                .flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC_RECEIVED, ReplicationMode.SYNC_APPLIED)
-                        .map(mode -> Arguments.of(storage, pair, mode))));
     }
 
     private static FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode) {
@@ -149,11 +135,12 @@ class TestSwitchover {
                 .ioSettings(IOSettings.builder().readBufferSize(8 << 20).build()).build();
     }
 
-    /**
-     * Starts the pair, a leading and b following, and the counterparty, then trades until b holds the session.
-     */
-    private void start(Storage storage, Pair pair, ReplicationMode mode) {
-        this.storage = storage;
+    private void start(Pair pair, ReplicationMode mode) {
+        startPair(pair, mode);
+        await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
+    }
+
+    private void startPair(Pair pair, ReplicationMode mode) {
         InetSocketAddress replicationA = new InetSocketAddress("localhost", TestPorts.findFree());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", TestPorts.findFree());
         if (pair == Pair.ACCEPTORS) {
@@ -193,9 +180,6 @@ class TestSwitchover {
         await().until(() -> counterparty.logons.get() == 1);
         counterparty.roundTrips(10);
         countGapsFromHere(counterparty);
-        await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
-        assertThat(b.getSessionsStatus()).singleElement().satisfies(session -> assertThat(session.isSharedStorage())
-                .as("the follower sees whether its storage is the leader's").isEqualTo(storage == Storage.SHARED));
     }
 
     /**
@@ -216,8 +200,8 @@ class TestSwitchover {
         if (nodeId.equals("b")) {
             followerApplication = echo;
         }
-        FixEngine engine = start(engine(nodeId, echo, settings[0], storage == Storage.SHARED
-                ? FileMessageStoreSettings.builder().storageDirectoryPath(sharedDirectory.toString()).syncWrites(false).build()
+        FixEngine engine = start(engine(nodeId, echo, settings[0], sharedStorage
+                ? FileMessageStoreSettings.builder().storageDirectoryPath(storageDirectory.toString()).syncWrites(false).build()
                 : MemoryMessageStoreSettings.builder().build())
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSettings(List.of(settings)).build())
@@ -228,6 +212,7 @@ class TestSwitchover {
                         .heartbeatInterval(Duration.ofMillis(100))
                         .reconnectInterval(Duration.ofMillis(50))
                         .promotionOutgoingSeqNumJump(JUMP)
+                        .switchoverTimeout(switchoverTimeout)
                         .leaderElection(SharedLeaderElection.Settings.builder().ballot(ballot).nodeId(nodeId).build())
                         .build())
                 .build().instance());
@@ -256,11 +241,10 @@ class TestSwitchover {
         stops.forEach(Runnable::run);
     }
 
-    @ParameterizedTest(name = "{0} {1} {2}")
-    @MethodSource("pairs")
-    void aSwitchoverLogsTheCounterpartyOutAndTheNewLeaderCarriesOnFromTheSameSequenceNumbers(Storage storage, Pair pair,
-                                                                                              ReplicationMode mode) {
-        start(storage, pair, mode);
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("pairsAndModes")
+    void aSwitchoverLogsTheCounterpartyOutAndTheNewLeaderCarriesOnFromTheSameSequenceNumbers(Pair pair, ReplicationMode mode) {
+        start(pair, mode);
         long expected = counterpartyIncomingSeqNum();
 
         assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
@@ -273,14 +257,10 @@ class TestSwitchover {
         assertThat(b.getStatus().getRole()).isEqualTo(org.lolaf.staffix.api.ha.LeaderElection.Role.LEADER);
     }
 
-    /**
-     * Shared storage too: the old leader may have sent a message it never stored.
-     */
-    @ParameterizedTest(name = "{0} {1} {2}")
-    @MethodSource("pairs")
-    void aFailoverDropsTheCounterpartyWithoutALogoutAndTheNewLeaderMovesItsSequenceNumbersAhead(Storage storage, Pair pair,
-                                                                                                 ReplicationMode mode) {
-        start(storage, pair, mode);
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("pairsAndModes")
+    void aFailoverDropsTheCounterpartyWithoutALogoutAndTheNewLeaderMovesItsSequenceNumbersAhead(Pair pair, ReplicationMode mode) {
+        start(pair, mode);
         long expected = counterpartyIncomingSeqNum();
 
         ballot.elect("b");
@@ -299,7 +279,7 @@ class TestSwitchover {
     @ParameterizedTest(name = "{0} {1}")
     @MethodSource("pairsAndModes")
     void aFollowerRestartedWhileTheLeaderTradesIsCaughtUpAndTakesOverCleanly(Pair pair, ReplicationMode mode) {
-        start(Storage.SEPARATE, pair, mode);
+        start(pair, mode);
 
         follower.stop(Deadline.of(Duration.ofSeconds(5)));
         counterparty.roundTrips(10);
@@ -324,7 +304,7 @@ class TestSwitchover {
     @MethodSource("pairsAndModes")
     void aFollowerRestartedWhileTheCounterpartyKeepsTradingIsCaughtUpAndTakesOverCleanly(Pair pair, ReplicationMode mode)
             throws InterruptedException {
-        start(Storage.SEPARATE, pair, mode);
+        start(pair, mode);
         counterparty.roundTrips(100);
         follower.stop(Deadline.of(Duration.ofSeconds(5)));
         AtomicBoolean trading = new AtomicBoolean(true);
@@ -356,7 +336,7 @@ class TestSwitchover {
     @ParameterizedTest
     @EnumSource(value = ReplicationMode.class, names = {"ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED"})
     void aMessageLongerThanALogFrameReachesTheFollowerWholeAndTheNewLeaderResendsIt(ReplicationMode mode) {
-        start(Storage.SEPARATE, Pair.ACCEPTORS, mode);
+        start(Pair.ACCEPTORS, mode);
         long bigSeqNum = counterpartyIncomingSeqNum();
         counterparty.bigRoundTrip();
         assertThat(counterparty.lastTextLength.get()).isEqualTo(Counterparty.BIG_ANSWER_LENGTH);
@@ -374,7 +354,7 @@ class TestSwitchover {
     @ParameterizedTest(name = "{0} {1}")
     @MethodSource("pairsAndModes")
     void aLeaderStoppingCleanlyLogsTheCounterpartyOutAndItsFollowerCarriesOnWithoutAJump(Pair pair, ReplicationMode mode) {
-        start(Storage.SEPARATE, pair, mode);
+        start(pair, mode);
         long expected = counterpartyIncomingSeqNum();
 
         leader.stop(Deadline.of(Duration.ofSeconds(5)));
@@ -391,7 +371,7 @@ class TestSwitchover {
     @ParameterizedTest(name = "{0} {1}")
     @MethodSource("pairsAndModes")
     void aPairThatFailedOverFailsBackCleanlyOnceTheOldLeaderCaughtUp(Pair pair, ReplicationMode mode) {
-        start(Storage.SEPARATE, pair, mode);
+        start(pair, mode);
         ballot.elect("b");
         await().until(() -> counterparty.logons.get() == 2 && counterparty.resendRequests.get() == 1);
         counterparty.roundTrips(10);
@@ -409,6 +389,34 @@ class TestSwitchover {
     }
 
     /**
+     * Replicating into the leader's own storage would rewrite its data, so the follower refuses it: nothing is in sync
+     * to switch over to, and a failover takes the session over from the storage, moving its seqnums ahead.
+     */
+    @org.junit.jupiter.api.Test
+    void aStorageSharedWithTheLeaderIsRefusedAndAFailoverStillMovesTheSequenceNumbersAhead() {
+        sharedStorage = true;
+        switchoverTimeout = Duration.ofMillis(500);
+        startPair(Pair.ACCEPTORS, ReplicationMode.SYNC_APPLIED);
+        await().untilAsserted(() -> assertThat(a.getSessionsStatus()).singleElement().satisfies(session -> {
+            assertThat(session.isInSync()).isFalse();
+            assertThat(session.getNotReplicatedReason()).isEqualTo("SHARED_STORAGE");
+        }));
+        assertThat(b.getSessionsStatus()).singleElement()
+                .satisfies(session -> assertThat(session.getNotReplicatedReason()).isEqualTo("SHARED_STORAGE"));
+
+        assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.NO_FOLLOWER_IN_SYNC);
+        counterparty.roundTrips(10);
+        long expected = counterpartyIncomingSeqNum();
+
+        ballot.elect("b");
+
+        await().until(() -> counterparty.logons.get() == 2);
+        await().until(() -> counterparty.resendRequests.get() == 1);
+        counterparty.roundTrips(10);
+        assertThat(counterpartyIncomingSeqNum()).as("past the jump").isGreaterThan(expected + JUMP);
+    }
+
+    /**
      * One pair of acceptors serving three sessions: the replicated ones move together. The one that is not starts on the
      * new leader from that node's own empty store: its counterparty refuses its Logons as MsgSeqNum too low until the
      * refused Logons have carried its seqnum past the counterparty's, then the new leader asks for everything from 1 and
@@ -416,7 +424,6 @@ class TestSwitchover {
      */
     @org.junit.jupiter.api.Test
     void severalSessionsSwitchOverTogetherAndOnlyTheUnreplicatedOneIsRefused() {
-        storage = Storage.SEPARATE;
         ReplicationMode[] modes = {ReplicationMode.ASYNC, ReplicationMode.SYNC_APPLIED, ReplicationMode.NONE};
         InetSocketAddress replicationA = new InetSocketAddress("localhost", TestPorts.findFree());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", TestPorts.findFree());

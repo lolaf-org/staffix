@@ -36,8 +36,8 @@ public class JdbcStoreEntryProps {
      */
     private String tablePrefix;
     /**
-     * Overrides the storage identity derived from the database, which high availability compares to tell a shared
-     * database from a separate one.
+     * Overrides the storage identity derived from the database, which high availability compares to refuse replicating
+     * into the leader's own tables.
      */
     private String storageIdentity;
     /**

@@ -111,7 +111,7 @@ public final class FollowerLink implements FrameHandler {
     private @Nullable ByteBuffer spareBatch;
     private final ReplicationStats stats;
     /**
-     * What the follower last said of each session, by key, which tells a shared storage and a refusal's reason apart.
+     * What the follower last said of each session, by key, which keeps a refusal's reason.
      */
     private final Map<Integer, SessionStatus> reportedStatuses = new ConcurrentHashMap<>();
     /**
@@ -355,7 +355,6 @@ public final class FollowerLink implements FrameHandler {
         reportedStatuses.put(sessionKey, status);
         switch (status) {
             case REPLICATING:
-            case SHARED_STORAGE:
                 sessionSync(sessionKey, SessionSync.IN_SYNC);
                 break;
             case SNAPSHOT_NEEDED:
@@ -375,7 +374,7 @@ public final class FollowerLink implements FrameHandler {
 
     /**
      * Sends the session again by snapshot, which resets the follower's copy first. Only a copy the follower holds is
-     * replaced: a session it shares the storage of, refuses or is still catching up on is left as it is.
+     * replaced: a session it refuses or is still catching up on is left as it is.
      */
     void resync(int sessionKey) {
         if (carries(sessionKey) && reportedStatuses.get(sessionKey) == SessionStatus.REPLICATING

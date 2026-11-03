@@ -56,8 +56,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public final class Replica {
 
-    private final EngineAccess engine;
     private static final LinkPosition NOTHING_APPLIED = new LinkPosition();
+    private final EngineAccess engine;
     private volatile ReplicaSession[] sessionsByKey = new ReplicaSession[16];
     private volatile LinkPosition[] positions = {new LinkPosition()};
     /**
@@ -146,21 +146,20 @@ public final class Replica {
     }
 
     /**
-     * The leader stopped cleanly after sending every event of the link, so each of its sessions complete here, or
-     * whose storage is the leader's own, holds exactly what the leader last wrote: taking it over needs no seqnum
-     * jump. Holds until the link's next stream.
+     * The leader stopped cleanly after sending every event of the link, so each of its sessions complete here holds
+     * exactly what the leader last wrote: taking it over needs no seqnum jump. Holds until the link's next stream.
      */
     void handedOver(int link) {
         forEachOf(link, ReplicaSession::handOver);
     }
 
     /**
-     * Every session the leader replicates is complete here, or held by the leader's own storage: one refused for an
-     * unknown session or storage is missing, although nothing is replicated into it.
+     * Every session the leader replicates is complete here: one refused is missing, although nothing is replicated
+     * into it.
      */
     public boolean isComplete() {
         for (ReplicaSession session : sessionsByKey) {
-            if (session != null && !session.isCaughtUp()) {
+            if (session != null && session.isNotCaughtUp()) {
                 return false;
             }
         }
@@ -174,7 +173,7 @@ public final class Replica {
         ReplicaSession[] sessions = sessionsByKey;
         int links = positions.length;
         for (int key = link; key < sessions.length; key += links) {
-            if (sessions[key] != null && !sessions[key].isCaughtUp()) {
+            if (sessions[key] != null && sessions[key].isNotCaughtUp()) {
                 return false;
             }
         }
@@ -198,7 +197,7 @@ public final class Replica {
      * replication mode here, has its store closed, and is caught up again by snapshot once both agree it is replicated.
      */
     synchronized SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
-                       @Nullable String leaderStorageIdentity) {
+                                    @Nullable String leaderStorageIdentity) {
         ReplicaSession current = key < sessionsByKey.length ? sessionsByKey[key] : null;
         if (current != null && current.matches(fixSessionType, fixSessionId) && current.isReplicated()
                 && leaderMode != ReplicationMode.NONE && leaderMode == modeHere(fixSessionType, fixSessionId)) {
@@ -213,7 +212,8 @@ public final class Replica {
         if (status == SessionStatus.NOT_REPLICATED) {
             log.info("FIX session {} {} is not replicated: the leader's settings do not ask for it", fixSessionType, fixSessionId);
         } else if (status == SessionStatus.SHARED_STORAGE) {
-            log.info("FIX session {} {} is not replicated: its storage is the leader's own", fixSessionType, fixSessionId);
+            log.error("FIX session {} {} is not replicated here: its storage is the leader's own (the same database, "
+                    + "schema and table prefix, or the same directory); give each node its own", fixSessionType, fixSessionId);
         } else if (status == SessionStatus.MODE_MISMATCH) {
             log.error("FIX session {} {} is not replicated here: the leader's settings give it replication mode {}, this "
                     + "node's {}", fixSessionType, fixSessionId, leaderMode, modeHere(fixSessionType, fixSessionId));
@@ -425,8 +425,8 @@ public final class Replica {
 
     /**
      * Moves the outgoing seqnum of every session configured with replication by {@code jump}, before this node runs
-     * them as leader: in the replica's store, or in one opened for it when the replica holds none (its storage shared
-     * with the old leader, unidentified, or never announced). A session the old leader {@link #handedOver(int) handed
+     * them as leader: in the replica's store, or in one opened for it when the replica holds none (refused or never
+     * announced). A session the old leader {@link #handedOver(int) handed
      * over} cleanly keeps its seqnum.
      *
      * @return the sessions taken over, moved or handed over

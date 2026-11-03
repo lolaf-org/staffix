@@ -143,8 +143,6 @@ public interface FixHaMXBean {
 
         boolean isInSync();
 
-        boolean isSharedStorage();
-
         String getNotReplicatedReason();
 
         boolean isUnprotected();

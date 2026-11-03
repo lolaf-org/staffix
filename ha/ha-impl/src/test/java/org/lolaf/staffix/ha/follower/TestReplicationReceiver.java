@@ -33,6 +33,7 @@ import org.lolaf.staffix.ha.leader.FollowerLink;
 import org.lolaf.staffix.ha.leader.ReplicationPublisher;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
 import org.lolaf.staffix.ha.leader.SlowFollowers;
+import org.lolaf.staffix.ha.wire.SessionStatus;
 import org.lolaf.staffix.tests.TestingClock;
 
 import java.io.IOException;
@@ -274,16 +275,20 @@ class TestReplicationReceiver {
     }
 
     @Test
-    void aSessionWhoseStorageTheFollowerSharesIsInSyncWithoutBeingWritten() {
+    void aSessionWhoseStorageTheFollowerSharesIsRefusedAndNotWaitedFor() {
         follower.nextStorageIdentity = leader.getSessions().get(0).getConfig().getStorageIdentity();
         connect();
-        inSync();
+        await().until(() -> !leader.getFollowers().all().isEmpty()
+                && leader.getFollowers().all().get(0).getReportedStatus(0) == SessionStatus.SHARED_STORAGE);
+        long unacknowledged = leader.getSessions().get(0).getUnacknowledgedSends();
 
         leaderStore.storeNextOutgoingSeqNum(2);
         leaderStore.awaitReplicated();
 
         assertThat(follower.store(MAIN).writes).isEmpty();
-        assertThat(leader.getSessions().get(0).getUnacknowledgedSends()).isZero();
+        assertThat(leader.getFollowers().all().get(0).isInSync(0)).isFalse();
+        assertThat(leader.getSessions().get(0).getUnacknowledgedSends()).as("sent without waiting")
+                .isEqualTo(unacknowledged + 1);
     }
 
     @Test

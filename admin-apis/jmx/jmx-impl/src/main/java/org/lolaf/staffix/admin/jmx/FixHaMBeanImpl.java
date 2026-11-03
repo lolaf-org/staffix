@@ -91,7 +91,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     private static Session session(HaSessionStatus status) {
         return new SessionImpl(status.getFixSessionId().toString(), status.getFixSessionType().name(),
                 status.getReplicationMode().name(), status.getReplicationAckTimeout().toString(), status.isInSync(),
-                status.isSharedStorage(), status.getNotReplicatedReason(), status.isUnprotected(),
+                status.getNotReplicatedReason(), status.isUnprotected(),
                 status.getUnacknowledgedSends(), status.getNextIncomingSeqNum(), status.getNextOutgoingSeqNum(),
                 status.isHandedOver());
     }
@@ -148,7 +148,6 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         String replicationMode;
         String replicationAckTimeout;
         boolean inSync;
-        boolean sharedStorage;
         String notReplicatedReason;
         boolean unprotected;
         long unacknowledgedSends;

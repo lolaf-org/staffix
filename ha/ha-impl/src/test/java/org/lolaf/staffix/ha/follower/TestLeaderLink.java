@@ -261,13 +261,23 @@ class TestLeaderLink {
     }
 
     @Test
-    void aSessionWhoseStorageIsTheLeadersOwnIsNeitherStartedNorWrittenTo() {
+    void aSessionWhoseStorageIsTheLeadersOwnIsRefusedNeitherStartedNorWrittenTo() {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN, "follower-storage"),
                 event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
 
         assertThat(engine.store(MAIN).started).isFalse();
         assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=true");
+        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=false");
+    }
+
+    @Test
+    void aSessionWhoseStorageIsTheLeadersOwnIsMovedAheadEvenAfterACleanShutdown() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN, "follower-storage"));
+
+        read(close(CloseReason.SHUTDOWN));
+        replica.jumpOutgoingSeqNums(1_000);
+
+        assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");
     }
 
     @Test
