@@ -137,6 +137,13 @@ A lost follower loses nothing because the leader still has every message: the fo
 returns. In every mode, the follower is only as durable as its store: a memory store keeps nothing across a crash, a
 file store without `syncWrites` nothing across a machine failure.
 
+**Memory stores on both nodes** survive the loss of either node, and are the fastest choice, but not the loss of
+both: a stop counts, even a clean one, since a memory store empties when its engine stops. Restarted together, the
+nodes hold no session: each logs on from sequence number 1, which the counterparty refuses as too low until the
+sequence numbers are reset on both sides. Restart such a pair one node at a time, waiting for the restarted
+one to be back in sync, and switch over before stopping the leader. Mind also that the follower's store becomes the leader's at a failover: a memory follower makes the new
+leader memory only, whatever the old leader's store was.
+
 **`SYNC` never stops a session for a missing follower.** A send waits at most `replicationAckTimeout` (1 s by default),
 then goes out anyway, and the sends after it do not wait for that follower until it has caught up, so a hung follower
 costs one timeout, not one per message; the leader drops it after `followerStallTimeout`. With no follower in sync
