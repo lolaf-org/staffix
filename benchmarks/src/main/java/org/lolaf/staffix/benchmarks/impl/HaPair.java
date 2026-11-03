@@ -127,6 +127,11 @@ public class HaPair {
      */
     @Param({"true"})
     boolean fileSyncWrites;
+    /**
+     * Zero, the follower's network thread writes its stores; otherwise a pool of writer threads does.
+     */
+    @Param({"0"})
+    int followerStoreWriterThreads;
 
     /**
      * Which of the replication's threads busy spin, each one more core.
@@ -217,8 +222,9 @@ public class HaPair {
                 resyncer.start();
             }
         }
-        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}, leader IO threads {}, busy resync {}, replication links {}",
-                mode, followerStore, busySession, replicationWaiting, leaderIoThreads, busyResync, replicationLinks);
+        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}, leader IO threads {}, busy resync {}, replication links {}, follower store writer threads {}",
+                mode, followerStore, busySession, replicationWaiting, leaderIoThreads, busyResync, replicationLinks,
+                followerStoreWriterThreads);
     }
 
     public void roundTrip() {
@@ -305,6 +311,7 @@ public class HaPair {
                 .highAvailability(replicationWaiting(ReplicationHaSettings.builder(), replicationWaiting)
                         .nodeId(nodeId)
                         .replicationLinks(replicationLinks)
+                        .followerStoreWriterThreads(followerStoreWriterThreads)
                         .peer("a", replicationA)
                         .peer("b", replicationB)
                         .monitoringInstanceId(nodeId.equals("a") ? MONITORING : null)
