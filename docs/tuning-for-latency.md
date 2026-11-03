@@ -155,5 +155,5 @@ java -jar benchmarks/target/benchmarks.jar
 
 Two habits worth keeping. Measure allocation as well as time: JMH's GC profiler is what shows a change that trades
 0.4 bytes per message for a microsecond. And measure the tail, not the mean: the difference between Staffix's stock
-and busy-spin modes is visible in the mean, but it is *dramatic* at the maximum, and the maximum is what a trading
+and busy-spin modes is visible in the mean, but it is *dramatic* at the maximum, and the maximum is what a latency-sensitive
 system feels.

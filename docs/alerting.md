@@ -1,7 +1,7 @@
 # Alerting
 
-An alert says that something about a session is wrong **right now**: it is down inside its trading hours, its async
-store has stopped keeping up, no order has arrived for ten minutes. Staffix evaluates these conditions itself, once a
+An alert says that something about a session is wrong **right now**: it is down inside its session time, its async
+store has stopped keeping up, no application message has arrived for ten minutes. Staffix evaluates these conditions itself, once a
 second, and tells a publisher each time one starts, changes or ends. What you do with that (a log line, a page, a
 dashboard) is the publisher's job.
 

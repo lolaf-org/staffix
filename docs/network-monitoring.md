@@ -168,7 +168,7 @@ send path costs.
 ## What the numbers are and are not
 
 - **RTT is application-level, not ICMP.** It measures the line *plus* the peer's engine picking the TestRequest up
-  and answering it. For a trading session that is the more useful number, the one your order will experience,
+  and answering it. For a session that is the more useful number, the one its application messages experience,
   but do not compare it with `ping` and expect agreement.
 - **The offset assumes symmetric one-way latency.** That is NTP's assumption too, and it is what makes the midpoint
   meaningful. On an asymmetric route the offset is wrong by half the asymmetry; RTT is unaffected.

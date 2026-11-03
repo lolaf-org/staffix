@@ -186,7 +186,7 @@ properties are in [Spring Boot](spring-boot.md#monitoring-and-admin).
 
 `staffix.actuator.fix-session-state-contributes-to-health-status=true` turns the health endpoint DOWN when a session
 that should be logged in is not: it is inside its schedule, nobody logged it out on purpose, and it is not logged in.
-A session outside its trading hours, or logged out through the admin API, stays UP: DOWN is exactly a
+A session outside its session time, or logged out through the admin API, stays UP: DOWN is exactly a
 `logonStatus` of `LOGGED_OUT_INSIDE_SESSION_TIME`. The health details show each session's `logonStatus`,
 `desiredState` and `withinSessionTime`, so a DOWN can be traced to its session. It is off by
 default: a load balancer should usually see a counterparty outage, but a liveness probe should not restart the
@@ -249,7 +249,7 @@ through the store's `add`, `remove` and `update`, which is what initiators and a
 
 **Reloading is not a read-only operation.** By default a session whose settings changed is restarted so the new
 values take effect, and a session whose settings disappeared is disconnected. On a running engine that means a reload
-can drop sessions, which is rarely what you want in the middle of a trading day.
+can drop sessions, which is rarely what you want while the sessions are active.
 
 Each session decides its own exposure, through two settings covered in
 [Configuring a session](configuring-sessions.md#when-settings-change-under-a-running-session):

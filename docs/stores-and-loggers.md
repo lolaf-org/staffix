@@ -155,7 +155,7 @@ format's prefixes are under `plain.`. A format of your own implements `FileLogLi
 
 ## When a store or logger fails
 
-A store or logger failure never reaches the session, which keeps trading. The engine logs it and raises the session's
+A store or logger failure never reaches the session, which keeps running. The engine logs it and raises the session's
 `messages-store` or `messages-logger` [alert](alerting.md#built-in-probes), then checks, off the session thread,
 whether the store's or logger's resource is available. If it is down, until a check every `resourceCheckInterval` finds
 it back:

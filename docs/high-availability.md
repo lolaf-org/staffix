@@ -116,12 +116,28 @@ Each session picks one.
 - **`ASYNC`**: each write is replicated as it is made, after the message went out. Nothing waits unless a follower is
   a whole `logCapacity` behind, so it costs the session almost nothing; a leader that fails may have sent messages the
   follower never received, which the new leader covers by moving its sequence numbers ahead.
-- **`SYNC_APPLIED`**: a message is replicated before it is sent, and the send waits for the follower to have applied it
-  to its store. The counterparty never receives a message the follower does not have. Each send pays a round trip to
-  the follower: on one machine, about 30 µs more than `ASYNC` with the defaults, 15 µs with the replication busy
-  spinning; see [Latency](#latency).
+- **`SYNC_RECEIVED`**: a message is replicated before it is sent, and the send waits for the follower to have read it
+  into memory, not to have written it. The counterparty never receives a message the follower does not have: a leader
+  that fails is replaced by a follower that first writes everything it received. A send does not wait for the
+  follower's store write, so a durable follower store costs it nothing, given `followerStoreWriterThreads`; see
+  [Latency](#latency).
+- **`SYNC_APPLIED`**: as `SYNC_RECEIVED`, but the send waits for the follower to have applied it to its store. Each
+  send pays a round trip to the follower and its store write: on one machine with a memory store, about 30 µs more than
+  `ASYNC` with the defaults, 15 µs with the replication busy spinning; see [Latency](#latency).
 
-**`SYNC` never stops trading for a missing follower.** A send waits at most `replicationAckTimeout` (1 s by default),
+What each mode loses when a node fails:
+
+| Mode | Leader lost | Follower lost | Both lost together |
+|---|---|---|---|
+| `ASYNC` | The last messages sent, if the follower had not received them yet; the new leader moves its sequence numbers ahead | Nothing | The same, plus what the follower had received but not yet written |
+| `SYNC_RECEIVED` | Nothing | Nothing | What the follower had received but not yet written: milliseconds of messages with a store forcing its writes |
+| `SYNC_APPLIED` | Nothing | Nothing | Nothing the follower's store keeps across a crash |
+
+A lost follower loses nothing because the leader still has every message: the follower is caught up by snapshot when it
+returns. In every mode, the follower is only as durable as its store: a memory store keeps nothing across a crash, a
+file store without `syncWrites` nothing across a machine failure.
+
+**`SYNC` never stops a session for a missing follower.** A send waits at most `replicationAckTimeout` (1 s by default),
 then goes out anyway, and the sends after it do not wait for that follower until it has caught up, so a hung follower
 costs one timeout, not one per message; the leader drops it after `followerStallTimeout`. With no follower in sync
 (not connected, catching up), a send does not wait at all. Either way the
@@ -144,7 +160,7 @@ with many messages delays only its link's sessions. The status has an entry per 
 per-follower meters a `link` tag. Raise it when snapshots of a busy session slow the others, or when the follower's
 store applies one stream too slowly, a database for instance.
 
-Neither mode replicates what the session receives as it arrives: only the expected incoming sequence number, after the
+No mode replicates what the session receives as it arrives: only the expected incoming sequence number, after the
 message was processed. A new leader that is a few messages behind asks the counterparty to resend them, which it does.
 
 ## Latency
@@ -164,7 +180,7 @@ in Spring Boot, `busy-spin` for each. Measured with `HaRttBenchmark` (in `benchm
 leader's answer, the answer's store write replicated `SYNC`, leader, follower and counterparty in one JVM on 14 cores,
 the FIX side busy spinning. Round trip in µs, mean / p99:
 
-| busy spinning | one session | beside a second session trading continuously |
+| busy spinning | one session | beside a second session sending continuously |
 |---|---|---|
 | nothing (the defaults) | 43 / 60 | 82 / 98 |
 | sender | 42 / 57 | 79 / 85 |
@@ -186,6 +202,22 @@ For comparison, the same round trip is 11 µs without replication and 15 µs wit
   93 µs at p50 and from 68 to 229 µs at p99. A snapshot is the exception (a follower that connects late or lost the stream, one dropped as
   too slow, a re-sync from the admin API), `ASYNC` sends do not wait for it, and more `replicationLinks` keep it to the
   sessions of one link.
+
+**A durable follower store is where the modes part.** A store forcing its writes to disk, a file store with
+`syncWrites` or a database, adds its write to every `SYNC_APPLIED` send. `SYNC_RECEIVED` skips it, but only with
+`followerStoreWriterThreads` set to the link count: otherwise the follower's network thread writes, and reads the next
+send only once the write before it is forced. Same benchmark, a file store with `syncWrites` on an NVMe disk as the
+follower's, the defaults otherwise, mean / p99 in µs:
+
+| mode | store writer threads | one session | beside a second session sending continuously |
+|---|---|---|---|
+| `SYNC_APPLIED` | 0 or 1 | 2 625 / 3 386 | 5 657 / 8 765 |
+| `SYNC_RECEIVED` | 0 | 2 043 / 5 259 | 5 304 / 7 932 |
+| `SYNC_RECEIVED` | 1 | 52 / 81 | 90 / 169 |
+
+With a writer thread, `SYNC_RECEIVED` costs what it does with a memory store, while the follower's store stays a few
+milliseconds behind: a writer forces many messages at once and keeps up. A memory store gains nothing from a writer
+thread and pays a few µs for the hand-off.
 
 In production, `ha.follower.ack.latency` times the follower's part (a batch sent to its acknowledgement) and
 `ha.sync.ack.latency` the whole wait; a large gap between them is the leader's wake-ups. See [Monitoring](monitoring.md).
