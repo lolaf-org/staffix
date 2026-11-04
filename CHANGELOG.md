@@ -59,8 +59,16 @@ could mean.
   standby on a database commits once per read from the leader instead of up to three times, and acknowledges `SYNC`
   messages sooner. A store of your own needs no change: by default the method makes the separate calls.
 
+- **Messages larger than 8 KB are received**, up to 1 MB by default. Raise the limit with
+  `IOSettings.maxReadBufferSize` on the acceptor or initiator builder, or `io-settings.max-read-buffer-size` with
+  Spring Boot. A message past it disconnects the session with a session event and a warning naming the limit.
+
 ### Changed
 
+- **`IdleStrategySelectStrategy` now takes a `Supplier<IdleStrategy>`**, from betty 0.9.4, so that each IO thread
+  gets its own idle strategy. Replace `new IdleStrategySelectStrategy(new BackoffIdleStrategy())` with
+  `new IdleStrategySelectStrategy(BackoffIdleStrategy::new)`, and `BusySpinIdleStrategy.getInstance()` with
+  `BusySpinIdleStrategy::getInstance`.
 - **The file messages store has a new file format**, the same on every machine (the old one depended on the CPU's
   cache line size, so a file could not move between x86 and Apple Silicon) and versioned for later changes. A store
   refuses to start on a file written by 0.9.1 or older, naming it: delete it, which resets the session's sequence
@@ -117,6 +125,8 @@ could mean.
 
 ### Fixed
 
+- A message larger than 8 KB stalled the session without any error, and over TLS one larger than about 16 KB ended it
+  with an `IllegalStateException`.
 - An initiator could log on with its SenderCompID and TargetCompID swapped, and be refused as an unknown session,
   when an acceptor in the same JVM had created the opposite session first, as a loopback test does.
 - A session whose dictionary lacks BusinessMessageReject, or any session message, failed to start with a

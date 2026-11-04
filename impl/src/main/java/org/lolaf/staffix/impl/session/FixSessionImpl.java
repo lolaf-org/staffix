@@ -19,6 +19,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.betty.api.io.IOSession;
+import org.lolaf.betty.api.io.ReadBufferFullException;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.admin.AdminApi;
@@ -769,6 +770,15 @@ public class FixSessionImpl implements FixSession {
             // be processed, and the parser above is done with its buffer
             resendRecovery.replayOutOfSequenceMessages();
         }
+    }
+
+    /**
+     * A message larger than {@code IOSettings.maxReadBufferSize} arrived; betty disconnects the session after this.
+     */
+    public void onReadBufferFull(ReadBufferFullException ex) {
+        log.warn("Session {} received a message larger than {} bytes, raise IOSettings.maxReadBufferSize to accept it",
+                fixSessionId, ex.getMaxReadBufferSize());
+        logEvent("Message larger than the read buffer maximum of %d bytes, disconnecting", ex.getMaxReadBufferSize());
     }
 
     public void onTestRequestResponseReceived(String testReqID, UTCTime sendingTime, long recvMonotonicNanos, long recvWallTimeNanos) {

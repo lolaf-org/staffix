@@ -90,6 +90,12 @@ public class WireFormat {
     public static final int FLAG_IN_SYNC = 0x01;
 
     /**
+     * Initial read buffer of a link, holding many small frames per read. Betty grows it for a larger frame, up to the
+     * link's frame limit, so a link pays for its largest frame only once it receives one.
+     */
+    public static final int READ_BUFFER_BYTES = 64 * 1024;
+
+    /**
      * The size of a buffer holding frames up to {@code maxFrameBytes}, and many small ones at once. A multiple of 64,
      * the only buffer sizes betty pools.
      */

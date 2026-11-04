@@ -329,7 +329,7 @@ public class HaPair {
             settings.syncAckIdleStrategy(BusySpinIdleStrategy::getInstance);
         }
         if (replicationWaiting == ReplicationWaiting.ALL_SPIN) {
-            settings.selectStrategy(() -> new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()));
+            settings.selectStrategy(() -> new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance));
         }
         return settings;
     }
@@ -366,7 +366,7 @@ public class HaPair {
     static org.lolaf.betty.api.io.IOWorkersGroup busySpinning(int ioThreads) {
         return IOWorkersGroupSettings.builder()
                 .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder()
-                        .selectStrategy(new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()))
+                        .selectStrategy(new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance))
                         .ioThreadCount(ioThreads)
                         .build())
                 .build().newInstance();

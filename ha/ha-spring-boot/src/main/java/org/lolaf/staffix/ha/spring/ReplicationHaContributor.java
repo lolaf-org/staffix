@@ -60,7 +60,7 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         if (props.getFollowerStoreWriterThreads() != null) b.followerStoreWriterThreads(props.getFollowerStoreWriterThreads());
         if (props.getFollowerStoreWriterIdleStrategy() == ReplicationHaProps.Waiting.BUSY_SPIN) b.followerStoreWriterIdleStrategy(BusySpinIdleStrategy::getInstance);
         if (props.getSelectStrategy() == ReplicationHaProps.Waiting.BUSY_SPIN) {
-            b.selectStrategy(() -> new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()));
+            b.selectStrategy(() -> new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance));
         }
         if (props.getPromotionOutgoingSeqNumJump() != null) b.promotionOutgoingSeqNumJump(props.getPromotionOutgoingSeqNumJump());
         if (props.getHandOverTimeout() != null) b.handOverTimeout(props.getHandOverTimeout());

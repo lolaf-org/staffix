@@ -179,6 +179,16 @@ SessionRejectReason 9, *CompID problem*, without dropping the session.
 | `maxMessageSize` | `null` | advertised to the peer in MaxMessageSize(383) on the Logon, and used to reject oversized inbound messages |
 | `requiredPeerMaxMessageSize` | `null` | the smallest MaxMessageSize you will accept from the peer; a smaller one ends the session with a Logout explaining why |
 
+Two more limits come from the connector rather than the session:
+
+- **The largest message received is 1 MB by default.** The read buffer starts at `IOSettings.readBufferSize` (8 KB)
+  and grows for a larger message up to `IOSettings.maxReadBufferSize`, set on `FixAcceptorBuilder.ioSettings` or
+  `FixInitiatorBuilder.ioSettings` (`io-settings.max-read-buffer-size` with Spring Boot). A message past it
+  disconnects the session, with a session event and a warning naming the limit. Raise it for large security lists
+  or market data snapshots.
+- **A single field value is at most 2048 bytes**, set with the `staffix.FixMessageParser.maxFieldValueSize` system
+  property. A longer one stops the session.
+
 ---
 
 ## Measuring round-trip time and clock offset

@@ -32,6 +32,7 @@ import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
+import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.ha.wire.WireFormatException;
 
 import java.net.InetSocketAddress;
@@ -103,7 +104,8 @@ public final class ReplicationPublisher {
                 .bindAddress(bindAddress)
                 .ioWorkersGroup(ioWorkers)
                 .ioSettings(IOSettings.builder()
-                        .readBufferSize(MAX_INBOUND_FRAME_BYTES)
+                        .readBufferSize(WireFormat.READ_BUFFER_BYTES)
+                        .maxReadBufferSize(Math.max(WireFormat.READ_BUFFER_BYTES, MAX_INBOUND_FRAME_BYTES))
                         .socketOptions(Map.of(StandardSocketOptions.TCP_NODELAY, true))
                         .writeIoBufferPoolSettings(IOBufferPoolSettings.builder()
                                 .zone(IOBufferPoolSettings.IOBufferPoolZone.builder().bufferSize(256).poolSize(64).build())

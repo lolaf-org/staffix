@@ -79,7 +79,7 @@ public class StaffixEngine extends AbstractBenchmark {
                 ss = new WakeupSelectStrategy(1);
                 break;
             case LOW_LATENCY:
-                ss = new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance());
+                ss = new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance);
                 break;
             default:
                 throw new IllegalStateException("Implement me");

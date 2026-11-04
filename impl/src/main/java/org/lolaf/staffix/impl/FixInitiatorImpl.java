@@ -21,6 +21,7 @@ import org.lolaf.betty.api.ClientBuilder;
 import org.lolaf.betty.api.io.IOEventsListener;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.io.IOWorkersGroup;
+import org.lolaf.betty.api.io.ReadBufferFullException;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.stats.IOStats;
 import org.lolaf.ringos.Deadline;
@@ -635,6 +636,15 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         @Override
         public void onRead(IOSession session, ByteBuffer message, long localReceiveTimeInNanos) {
             fixSession.onMessageRead(message, localReceiveTimeInNanos);
+        }
+
+        @Override
+        public void onError(IOSession session, Exception error) {
+            if (error instanceof ReadBufferFullException) {
+                fixSession.onReadBufferFull((ReadBufferFullException) error);
+                return;
+            }
+            IOEventsListener.super.onError(session, error);
         }
 
         @Override

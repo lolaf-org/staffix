@@ -23,6 +23,7 @@ import org.lolaf.betty.api.ServerBuilder;
 import org.lolaf.betty.api.io.IOEventsListener;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.io.IOWorkersGroup;
+import org.lolaf.betty.api.io.ReadBufferFullException;
 import org.lolaf.betty.api.settings.IOBufferPoolSettings;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
@@ -895,6 +896,16 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 return;
             }
             fixSession.onIOThreadTask(task, taskCallback);
+        }
+
+        @Override
+        public void onError(IOSession session, Exception error) {
+            FixSessionImpl fixSession = session.getAttachment();
+            if (fixSession != null && error instanceof ReadBufferFullException) {
+                fixSession.onReadBufferFull((ReadBufferFullException) error);
+                return;
+            }
+            IOEventsListener.super.onError(session, error);
         }
 
         @Override

@@ -130,9 +130,9 @@ class TestSwitchover {
         for (InetSocketAddress address : addresses) {
             target.connectAddress(address);
         }
-        // betty reads 8 KiB at most by default, and the counterparty receives a message of several MiB
+        // the counterparty receives a message of several MiB, past the 1 MiB betty grows its read buffer to by default
         return FixInitiatorBuilder.builder().connectionRetry(Duration.ofMillis(100)).mainTarget(target.build())
-                .ioSettings(IOSettings.builder().readBufferSize(8 << 20).build()).build();
+                .ioSettings(IOSettings.builder().maxReadBufferSize(8 << 20).build()).build();
     }
 
     private void start(Pair pair, ReplicationMode mode) {
