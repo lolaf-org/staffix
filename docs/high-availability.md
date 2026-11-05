@@ -249,6 +249,13 @@ The same applies to a follower that was not fully caught up when the leader stop
 fresh pair**: a node cannot tell a first start from a failover after the other node crashed, so a new deployment's
 first logon already shows a gap of the jump's size.
 
+**A node restarting as leader jumps too, even after its own clean stop.** A clean stop proves something to a running
+follower, not to the node's next start: that node cannot prove no other node led in between, and reusing numbers
+another leader sent would get the session refused. So stopping a pair, or a leader whose follower is down, and starting
+it again shows the same gap on every replicated session, each time. No message is lost, and the resend request and gap
+fill are expected. Warn counterparties that watch their sequence numbers before a planned restart of the whole pair;
+to avoid the gap, restart one node at a time, with a switchover between the two.
+
 ## Planned switchover and maintenance
 
 The high availability has its own admin entry point, `AdminApi.getHa()`, also over HTTP (under `v1/ha`) and JMX (MBean
