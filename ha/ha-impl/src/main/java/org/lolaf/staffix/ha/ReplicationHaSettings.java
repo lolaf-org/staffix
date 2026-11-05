@@ -47,6 +47,12 @@ public class ReplicationHaSettings extends HaSettings {
     private final @Nullable LeaderElectionSettings leaderElection;
 
     /**
+     * Names the pair in the status, the same on both nodes; unset takes the leader election's name, such as primos's
+     * application name.
+     */
+    private final @Nullable String pairName;
+
+    /**
      * The instance id of the engine's monitoring manager publishing the replication's meters; none when unset.
      */
     private final @Nullable String monitoringInstanceId;

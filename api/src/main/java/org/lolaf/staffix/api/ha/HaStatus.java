@@ -34,6 +34,11 @@ import java.util.List;
 public class HaStatus {
 
     String nodeId;
+
+    /**
+     * The same on every node of a pair, so a console can group them: node ids repeat across pairs. Null when unnamed.
+     */
+    @Nullable String pairName;
     /**
      * The role the engine acts on, which trails the election's while it changes over.
      */

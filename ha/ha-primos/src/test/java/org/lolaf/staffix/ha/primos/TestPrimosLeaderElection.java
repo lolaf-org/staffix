@@ -120,6 +120,7 @@ class TestPrimosLeaderElection {
                 && e.getEpoch() == leader.getEpoch()));
         await().until(leader::isLeadershipValid);
         assertThat(cluster.stream().filter(e -> e != leader)).noneMatch(LeaderElection::isLeadershipValid);
+        assertThat(cluster).allMatch(e -> e.getPairName().equals(Optional.of("staffix-test")));
     }
 
     @Test

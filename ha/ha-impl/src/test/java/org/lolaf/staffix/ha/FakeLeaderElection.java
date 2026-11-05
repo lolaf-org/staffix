@@ -16,8 +16,8 @@
 package org.lolaf.staffix.ha;
 
 import lombok.Getter;
-import org.jspecify.annotations.Nullable;
 import lombok.experimental.SuperBuilder;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
@@ -34,6 +34,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class FakeLeaderElection implements LeaderElection {
 
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
+    volatile String pairName;
     private volatile Role role = Role.UNKNOWN;
     private volatile long epoch;
     private volatile String leaderId;
@@ -87,6 +88,11 @@ public final class FakeLeaderElection implements LeaderElection {
     }
 
     @Override
+    public Optional<String> getPairName() {
+        return Optional.ofNullable(pairName);
+    }
+
+    @Override
     public Optional<String> getLeaderId() {
         return Optional.ofNullable(leaderId);
     }
@@ -118,13 +124,13 @@ public final class FakeLeaderElection implements LeaderElection {
     }
 
     @Override
-    public void setCandidate(boolean candidate) {
-        this.candidate = candidate;
+    public boolean isCandidate() {
+        return candidate;
     }
 
     @Override
-    public boolean isCandidate() {
-        return candidate;
+    public void setCandidate(boolean candidate) {
+        this.candidate = candidate;
     }
 
     @Override

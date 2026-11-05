@@ -46,6 +46,12 @@ public class ReplicationHaProps {
     private Map<String, String> peers = new LinkedHashMap<>();
 
     /**
+     * Names the pair in the status, the same on both nodes; unset takes the leader election's name, such as primos's
+     * application name.
+     */
+    private String pairName;
+
+    /**
      * The instance id of the monitoring publishing the replication's meters, such as the one staffix.monitoring sets up;
      * none when unset.
      */

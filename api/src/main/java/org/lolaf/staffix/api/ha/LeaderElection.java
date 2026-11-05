@@ -57,6 +57,14 @@ public interface LeaderElection extends Startable<LeaderElection> {
     }
 
     /**
+     * The name the nodes of this election share, for a technology that has one. Empty leaves the pair unnamed unless
+     * the high availability settings name it.
+     */
+    default Optional<String> getPairName() {
+        return Optional.empty();
+    }
+
+    /**
      * Where the leader accepts replication, for a technology that advertises it with the leadership. Empty falls back
      * to the endpoints configured per leader id.
      */

@@ -56,6 +56,7 @@ class TestReplicationHaAutoConfiguration {
                         "staffix.ha-replication.follower-stall-timeout=3s",
                         "staffix.ha-replication.log-full-timeout=500ms",
                         "staffix.ha-replication.slow-follower-hold-off=0s",
+                        "staffix.ha-replication.pair-name=gateway",
                         "staffix.ha-replication.monitoring-instance-id=metrics",
                         "staffix.ha-replication.alerts-publisher-instance-id=alerts")
                 .run(context -> {
@@ -63,6 +64,7 @@ class TestReplicationHaAutoConfiguration {
 
                     assertThat(settings.getLeaderElection()).isSameAs(election);
                     assertThat(settings.getNodeId()).isEqualTo("1");
+                    assertThat(settings.getPairName()).isEqualTo("gateway");
                     assertThat(settings.getPeers()).containsOnlyKeys("1", "2");
                     assertThat(settings.getPeers().get("2")).isEqualTo(new InetSocketAddress("127.0.0.1", 17102));
                     assertThat(settings.getLogCapacity()).isEqualTo(1 << 20);

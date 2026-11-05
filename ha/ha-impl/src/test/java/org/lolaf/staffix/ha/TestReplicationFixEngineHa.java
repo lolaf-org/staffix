@@ -854,6 +854,17 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void thePairTakesItsNameFromTheSettingsAndElseFromTheElection() {
+        ReplicationFixEngineHa named = new ReplicationFixEngineHa(ReplicationHaSettings.builder().nodeId("a").pairName("gateway").build());
+        assertThat(named.getStatus().getPairName()).isEqualTo("gateway");
+
+        aLeadsBFollows();
+        assertThat(a.ha.getStatus().getPairName()).as("an election naming nothing").isNull();
+        a.election.pairName = "cluster";
+        assertThat(a.ha.getStatus().getPairName()).isEqualTo("cluster");
+    }
+
+    @Test
     void anUnknownAlertsPublisherIsRefused() {
         ReplicationFixEngineHa unknown = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
                 .nodeId("a").peer("a", addressA).alertsPublisherInstanceId("elsewhere")

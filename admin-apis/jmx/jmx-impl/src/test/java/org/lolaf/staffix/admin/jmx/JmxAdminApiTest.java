@@ -279,7 +279,7 @@ class JmxAdminApiTest {
     @Test
     void aLeadersFollowersAreReadable() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
-        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
                 .leaderId("1").leaderElection("PrimosLeaderElection").roleSince(SINCE)
                 .follower(HaStatus.Follower.builder().nodeId("2").link(1).address("/10.0.0.2:40000").connected(true).inSync(true)
                         .unsentBytes(128).lagMillis(3).build())
@@ -290,6 +290,7 @@ class JmxAdminApiTest {
 
         FixHaMXBean.Status status = JMX.newMXBeanProxy(mBeanServer, haName(), FixHaMXBean.class).getStatus();
 
+        assertThat(status.getPairName()).isEqualTo("gateway");
         assertThat(status.getFollowers()).singleElement().satisfies(follower -> {
             assertThat(follower.getNodeId()).isEqualTo("2");
             assertThat(follower.getLink()).isEqualTo(1);

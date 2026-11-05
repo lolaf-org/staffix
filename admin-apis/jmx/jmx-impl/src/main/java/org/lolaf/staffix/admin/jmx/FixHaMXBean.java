@@ -58,6 +58,11 @@ public interface FixHaMXBean {
 
         String getNodeId();
 
+        /**
+         * Null when the pair is unnamed.
+         */
+        String getPairName();
+
         String getRole();
 
         long getEpoch();

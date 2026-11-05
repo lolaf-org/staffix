@@ -577,7 +577,7 @@ class AdminApiEndpointsTest {
     @Test
     void theHighAvailabilityAndItsSessionsAreRead() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
-        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
                 .leaderId("1").leadershipValid(true).leaderElection("PrimosLeaderElection")
                 .roleSince(Instant.parse("2026-10-10T10:00:00Z"))
                 .follower(HaStatus.Follower.builder().nodeId("2").link(1).address("/10.0.0.2:40000").connected(true).inSync(true)
@@ -592,7 +592,7 @@ class AdminApiEndpointsTest {
         when(adminApi.getHa()).thenReturn(Optional.of(ha));
 
         assertThat(call("GET", "/engines/alpha-engine/v1/ha", null).body())
-                .isEqualTo("{\"nodeId\":\"1\",\"role\":\"LEADER\",\"epoch\":7,\"leaderId\":\"1\",\"leadershipValid\":true,"
+                .isEqualTo("{\"nodeId\":\"1\",\"pairName\":\"gateway\",\"role\":\"LEADER\",\"epoch\":7,\"leaderId\":\"1\",\"leadershipValid\":true,"
                         + "\"leaderElection\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
                         + "\"transferLeadershipSupported\":false,\"candidacySupported\":false,\"candidate\":false,"
                         + "\"followers\":[{\"nodeId\":\"2\",\"link\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"

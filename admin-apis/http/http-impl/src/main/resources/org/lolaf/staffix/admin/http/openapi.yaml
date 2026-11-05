@@ -1186,6 +1186,9 @@ components:
       properties:
         nodeId:
           type: string
+        pairName:
+          type: string
+          description: The same on every node of a pair, absent when the pair is unnamed.
         role:
           type: string
           enum: [LEADER, FOLLOWER, UNKNOWN]

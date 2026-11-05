@@ -104,6 +104,11 @@ public final class PrimosLeaderElection implements LeaderElection {
     }
 
     @Override
+    public Optional<String> getPairName() {
+        return Optional.of(node.config().applicationName());
+    }
+
+    @Override
     public Optional<String> getLeaderId() {
         return node.leader().map(leader -> String.valueOf(leader.id()));
     }

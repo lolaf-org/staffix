@@ -38,7 +38,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     public Status getStatus() {
         HaStatus status = delegate.getStatus();
         HaStatus.Leader leader = status.getLeader();
-        return new StatusImpl(status.getNodeId(), status.getRole().name(), status.getEpoch(), status.getLeaderId(),
+        return new StatusImpl(status.getNodeId(), status.getPairName(), status.getRole().name(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElection(),
                 status.getRoleSince() == null ? null : status.getRoleSince().toString(),
                 status.isTransferLeadershipSupported(), status.isCandidacySupported(), status.isCandidate(),
@@ -99,6 +99,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     @Value
     private static class StatusImpl implements Status {
         String nodeId;
+        String pairName;
         String role;
         long epoch;
         String leaderId;

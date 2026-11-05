@@ -28,6 +28,10 @@ import java.util.List;
 @Value
 public class HaNodeStatus {
     String nodeId;
+    /**
+     * Absent when the pair is unnamed.
+     */
+    String pairName;
     Role role;
     long epoch;
     String leaderId;
@@ -45,7 +49,7 @@ public class HaNodeStatus {
     HaStatus.Leader leader;
 
     public static HaNodeStatus of(HaStatus status) {
-        return new HaNodeStatus(status.getNodeId(), status.getRole(), status.getEpoch(), status.getLeaderId(),
+        return new HaNodeStatus(status.getNodeId(), status.getPairName(), status.getRole(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElection(),
                 status.getRoleSince(), status.isTransferLeadershipSupported(), status.isCandidacySupported(),
                 status.isCandidate(), status.getFollowers(), status.getDroppedFollowers(), status.getLeader());

@@ -155,12 +155,20 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         this.stats = new ReplicationStats(new SlowFollowers(settings.getSlowFollowerHoldOff(), engine.getClock()));
     }
 
+    private @Nullable String pairName(@Nullable LeaderElection currentElection) {
+        if (settings.getPairName() != null || currentElection == null) {
+            return settings.getPairName();
+        }
+        return currentElection.getPairName().orElse(null);
+    }
+
     @Override
     public HaStatus getStatus() {
         LeaderElection currentElection = election;
         Role role = followedRole;
         HaStatus.HaStatusBuilder status = HaStatus.builder()
                 .nodeId(settings.getNodeId())
+                .pairName(pairName(currentElection))
                 .role(role)
                 .epoch(currentElection == null ? -1 : currentElection.getEpoch())
                 .leaderId(currentElection == null ? null : currentElection.getLeaderId().orElse(null))
