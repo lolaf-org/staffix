@@ -23,12 +23,9 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.FixAcceptorBuilder;
-import org.lolaf.staffix.api.FixEngine;
-import org.lolaf.staffix.api.FixEngineBuilder;
-import org.lolaf.staffix.api.FixInitiatorBuilder;
-import org.lolaf.staffix.api.FixInitiatorTarget;
+import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.ha.HaAdmin;
 import org.lolaf.staffix.api.ha.SwitchoverOutcome;
@@ -36,16 +33,19 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.stores.messages.file.FileMessageStoreSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
+import org.lolaf.staffix.stores.messages.memory.MemoryMessagesStore;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.TestPorts;
+import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
@@ -73,27 +73,20 @@ class TestSwitchover {
     private final List<Runnable> stops = new ArrayList<>();
     private final SharedLeaderElection.Ballot ballot = new SharedLeaderElection.Ballot("a");
     private final Counterparty counterparty = new Counterparty();
+    @TempDir
+    Path storageDirectory;
     private HaAdmin a;
     private HaAdmin b;
     private AdminApi counterpartyEngine;
     private FixSessionId counterpartySession;
     private boolean sharedStorage;
     private Duration switchoverTimeout = Duration.ofSeconds(30);
+    private Duration followerStallTimeout = Duration.ofSeconds(10);
+    private HoldableStore followerStore;
     private Supplier<FixEngine> startFollower;
     private FixEngine follower;
     private FixEngine leader;
     private Echo followerApplication;
-
-    @TempDir
-    Path storageDirectory;
-
-    /**
-     * Which side of the session the highly available pair runs.
-     */
-    enum Pair {
-        ACCEPTORS,
-        INITIATORS
-    }
 
     static Stream<Arguments> pairsAndModes() {
         return Stream.of(Pair.values()).flatMap(pair -> Stream.of(ReplicationMode.ASYNC, ReplicationMode.SYNC_RECEIVED, ReplicationMode.SYNC_APPLIED)
@@ -133,6 +126,14 @@ class TestSwitchover {
         // the counterparty receives a message of several MiB, past the 1 MiB betty grows its read buffer to by default
         return FixInitiatorBuilder.builder().connectionRetry(Duration.ofMillis(100)).mainTarget(target.build())
                 .ioSettings(IOSettings.builder().maxReadBufferSize(8 << 20).build()).build();
+    }
+
+    /**
+     * A fresh pair's first leader moved its sessions ahead as it took the lead, so the first Logon showed a gap.
+     */
+    private static void countGapsFromHere(Counterparty counterparty) {
+        assertThat(counterparty.resendRequests.get()).as("the boot jump").isEqualTo(1);
+        counterparty.resendRequests.set(0);
     }
 
     private void start(Pair pair, ReplicationMode mode) {
@@ -182,14 +183,6 @@ class TestSwitchover {
         countGapsFromHere(counterparty);
     }
 
-    /**
-     * A fresh pair's first leader moved its sessions ahead as it took the lead, so the first Logon showed a gap.
-     */
-    private static void countGapsFromHere(Counterparty counterparty) {
-        assertThat(counterparty.resendRequests.get()).as("the boot jump").isEqualTo(1);
-        counterparty.resendRequests.set(0);
-    }
-
     private FixEngine haEngine(String nodeId, FixSessionSettings settings, InetSocketAddress replicationA, InetSocketAddress replicationB) {
         return haEngine(nodeId, replicationA, replicationB, settings);
     }
@@ -200,9 +193,7 @@ class TestSwitchover {
         if (nodeId.equals("b")) {
             followerApplication = echo;
         }
-        FixEngine engine = start(engine(nodeId, echo, settings[0], sharedStorage
-                ? FileMessageStoreSettings.builder().storageDirectoryPath(storageDirectory.toString()).syncWrites(false).build()
-                : MemoryMessageStoreSettings.builder().build())
+        FixEngine engine = start(engine(nodeId, echo, settings[0], storeOf(nodeId))
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSettings(List.of(settings)).build())
                 .highAvailability(ReplicationHaSettings.builder()
@@ -213,6 +204,7 @@ class TestSwitchover {
                         .reconnectInterval(Duration.ofMillis(50))
                         .promotionOutgoingSeqNumJump(JUMP)
                         .switchoverTimeout(switchoverTimeout)
+                        .followerStallTimeout(followerStallTimeout)
                         .leaderElection(SharedLeaderElection.Settings.builder().ballot(ballot).nodeId(nodeId).build())
                         .build())
                 .build().instance());
@@ -224,6 +216,15 @@ class TestSwitchover {
             b = ha;
         }
         return engine;
+    }
+
+    private FixMessagesStoreSettings storeOf(String nodeId) {
+        if (followerStore != null && nodeId.equals("b")) {
+            return TestingFixMessagesStoreSettings.builder().testingFixSessionMessagesStore(followerStore).build();
+        }
+        return sharedStorage
+                ? FileMessageStoreSettings.builder().storageDirectoryPath(storageDirectory.toString()).syncWrites(false).build()
+                : MemoryMessageStoreSettings.builder().build();
     }
 
     private FixEngine start(FixEngine engine) {
@@ -330,9 +331,42 @@ class TestSwitchover {
     }
 
     /**
-     * Longer than two frames of the default replication log, so it reaches the follower in fragments; resent by the
-     * new leader from what it replicated, whole.
+     * Unlike a restarted follower, a dropped one keeps its copy, which the snapshot replaces under a running session.
      */
+    @ParameterizedTest
+    @EnumSource(value = ReplicationMode.class, names = {"ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED"})
+    void aFollowerDroppedAsTooSlowIsCaughtUpAndTakesOverCleanly(ReplicationMode mode) {
+        followerStore = new HoldableStore(new MemoryMessagesStore.MemoryStoreFactoryImpl()
+                .newInstance(MemoryMessageStoreSettings.builder().build()).getStore(ACCEPTOR_ID, new ProbesImpl(ProbeScope.builder().type("session").name("follower").build())));
+        followerStallTimeout = Duration.ZERO;
+        start(Pair.ACCEPTORS, mode);
+
+        int resetsBefore = followerStore.resets();
+        followerStore.hold();
+        try {
+            for (int answers = 0; a.getStatus().getDroppedFollowers().isEmpty(); answers++) {
+                assertThat(answers).as("big answers before the log filled up").isLessThan(20);
+                counterparty.bigRoundTrip();
+            }
+            assertThat(counterparty.logons.get()).as("the writes waited, the session stayed up").isEqualTo(1);
+        } finally {
+            followerStore.release();
+        }
+
+        await().atMost(Duration.ofSeconds(60)).until(() -> a.getStatus().getDroppedFollowers().isEmpty());
+        await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
+        assertThat(followerStore.resets()).as("a snapshot replaced the follower's copy").isGreaterThan(resetsBefore);
+        counterparty.roundTrips(10);
+        long expected = counterpartyIncomingSeqNum();
+
+        assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+
+        await().until(() -> counterparty.logons.get() == 2);
+        counterparty.roundTrips(10);
+        assertThat(counterparty.resendRequests.get()).as("no gap: the snapshot gave b all of a's state").isZero();
+        assertThat(counterpartyIncomingSeqNum()).as("a's Logout, b's Logon and ten answers").isEqualTo(expected + 12);
+    }
+
     @ParameterizedTest
     @EnumSource(value = ReplicationMode.class, names = {"ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED"})
     void aMessageLongerThanALogFrameReachesTheFollowerWholeAndTheNewLeaderResendsIt(ReplicationMode mode) {
@@ -489,5 +523,13 @@ class TestSwitchover {
                 + "messages, which a already processed, reach b's application again").hasValueGreaterThanOrEqualTo(10));
         assertThat(followerApplication.possibleDuplicates.get("async")).hasValue(0);
         assertThat(followerApplication.possibleDuplicates.get("sync_applied")).hasValue(0);
+    }
+
+    /**
+     * Which side of the session the highly available pair runs.
+     */
+    enum Pair {
+        ACCEPTORS,
+        INITIATORS
     }
 }
