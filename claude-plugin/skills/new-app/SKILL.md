@@ -17,7 +17,7 @@ Everything this skill needs ships with it, under `${CLAUDE_PLUGIN_ROOT}`:
   follows. **Read both before writing anything.**
 - `skills/new-app/references/dictionary-setup.md` and `dictionary-messages.md`: the FIX dictionary and its messages.
 - `references/catalogue.md`: how to read the components catalogue, bundled under `catalogue/` at the staffix
-  version this plugin targets: every store, logger, monitoring, alerting and admin component, with its settings and
+  version this plugin targets: every store, logger, monitoring, alerting, admin and high availability component, with its settings and
   guide. **Read it before choosing components.** `references/components.md`: what the catalogue cannot say.
 - `docs/`: the staffix documentation, and `dictionaries/`: the dictionaries staffix ships.
 
@@ -57,6 +57,9 @@ from the request and the defaults, and list the defaults taken when handing over
    5. **Tracing** (the `session-plugin` tracing component): none by default, or yes.
    6. **Alerting** (`alerts-publisher`): none by default, or which publishers.
    7. **Admin API** (`admin-api-exporter`, at most one): none by default, or which one.
+   8. **High availability** (`high-availability`, at most one): none by default. Offer an HA pair only when the purpose
+      calls for surviving the loss of a machine; it means two nodes and a witness to run. If yes, which sessions
+      replicate and in which mode, `ASYNC` by default: see the High availability section of `components.md`.
 
 Each choice is a component of the bundled catalogue's index: open its file, as `catalogue.md` says, before
 configuring it.
@@ -81,7 +84,7 @@ run, show it and go on.
    settings, one of its `requiresOneOf`, and its `jvmFlags` where `environment-rules.md` says. Every path under
    `STAFFIX_DATA_DIR`, every endpoint or secret from an environment variable.
 5. Adapt the tests: the counterparty simulator speaks the chosen messages, and the round trip runs in dev and in
-   prod, proving each prod component as its guide's `proving` says.
+   prod, proving each prod component as its guide's `proving` says, and an HA pair as `components.md` says.
 6. Write a README: what the application does, a **Choices** section (the recap's table: each choice and why), how
    to run it (`mvn exec:exec` in plain Java, `mvn spring-boot:run` with Spring Boot, both already passing the JVM
    flags; `STAFFIX_ENV=prod` or `SPRING_PROFILES_ACTIVE=prod` for prod), every environment variable with its default,

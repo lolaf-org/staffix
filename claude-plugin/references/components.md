@@ -19,6 +19,7 @@ built while writing this plugin; for the others, the generated environment test 
 - Messages loggers: SLF4J, file, async (reference projects).
 - Sessions settings stores: memory with Spring Boot, file in plain Java (reference projects).
 - Micrometer over OTLP (a generated project).
+- High availability: no reference project; the staffix repository's `examples/high-availability` runs a pair.
 
 ## The doc to read for each kind
 
@@ -29,12 +30,38 @@ built while writing this plugin; for the others, the generated environment test 
 | `session-plugin` | `docs/monitoring.md`, `docs/session-plugins.md` |
 | `alerts-publisher` | `docs/alerting.md` |
 | `admin-api-exporter` | `docs/runtime-administration.md` |
+| `high-availability` | `docs/high-availability.md`, and its section in `docs/spring-boot.md` |
 
 ## Naming a session plugin
 
 A session names its plugins in `fixSessionPluginsInstanceIds`, a map keyed by the plugin class (the schema's
 `x-staffix.pluginClasses`): in a session file, the class name as key under `fixSessionPluginsInstanceIds`; in Spring
 Boot properties, `...sessions[0].fix-session-plugins-instance-ids.[org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager]=<id>`.
+
+## High availability
+
+The catalogue holds `ReplicationHaSettings`, not its leader election: `docs/high-availability.md`, "Setting it up",
+gives the primos settings.
+
+- **Election artifacts**: plain Java, `staffix-ha-primos` beside the component's `java.artifact`; Spring Boot,
+  `staffix-ha-primos-spring-boot` and the primos starter beside its `spring.artifact`, at the project's staffix
+  version. Take the primos version from the staffix version's root pom (`primos.version`).
+- **Three voters**: the two nodes and a witness, on a third machine, run from `primos-witness-cli`. It never leads; it
+  gives the node left after a loss its majority. Losing any two of the three stops the sessions.
+- **Per node, from environment variables**: `nodeId`, the primos node id, its durable `stateDirectory`, its own
+  storage. The `peers`, the cluster secret, the sessions and their settings are the same on both nodes.
+- **A session is replicated only if it asks**: `haSessionSettings.replicationMode` in a session file,
+  `...sessions[0].ha.replication-mode` in Spring Boot properties, the same on both nodes. A mismatch is refused.
+  `ASYNC` unless the user cannot lose a message at a failover; the modes and what each loses are in
+  `docs/high-availability.md`, "Replication modes".
+- **Two nodes never share a store**: same tables or directory, the session is refused. A memory store on both nodes
+  loses everything once both stop.
+- **Application state is not replicated**: what the application keeps itself, such as open requests, is its own to
+  rebuild on the node that takes over.
+- **A standby does not run its sessions**: no acceptor bound, no initiator connecting. Counterparties of an acceptor
+  pair need both addresses or a virtual address in front.
+- **Proving it**: a test starts both nodes and a witness on local ports, waits for a leader, runs the round trip,
+  stops the leader, and runs it again against the other node.
 
 ## Facts about a whole kind
 

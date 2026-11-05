@@ -159,6 +159,12 @@ Then build an engine, hand it an application per session, and start an acceptor 
 [`QuickstartExample`](examples/quickstart/src/main/java/org/lolaf/staffix/examples/quickstart/QuickstartExample.java)
 is that program, and it is the one the command above runs.
 
+## AI ready
+
+Staffix is AI ready: its [Claude Code plugin](claude-plugin/README.md) creates a new application, changes the components
+of an existing one, and migrates a QuickFIX/J application, each proven by a test it runs. It works from the documentation
+and a catalogue of every component, at your staffix version.
+
 ## Documentation
 
 Everything else is in the [documentation](docs/README.md).

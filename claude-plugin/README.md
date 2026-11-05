@@ -5,7 +5,7 @@ Skills that create a staffix application, change its components, and migrate a Q
 | Skill | What it does |
 | :- | :- |
 | `/staffix:new-app` | Creates a Maven project for a staffix initiator or acceptor |
-| `/staffix:configure` | Switches or adds a store, logger, monitoring, alerting or admin component, or an environment |
+| `/staffix:configure` | Switches or adds a store, logger, monitoring, alerting, admin or high availability component, or an environment |
 | `/staffix:migrate-from-quickfixj` | Replaces QuickFIX/J in an existing application with staffix |
 
 ## Install

@@ -1,6 +1,6 @@
 ---
 name: configure
-description: Changes the components of an existing staffix FIX application, in plain Java or Spring Boot: switches a message store or logger (file, JDBC, OTLP...), adds monitoring, tracing, alerting or a runtime admin API, or adds an environment such as staging, and proves the change with a round trip test. Use when the user wants to change how a staffix application stores, logs, monitors or is administered, or to add an environment.
+description: Changes the components of an existing staffix FIX application, in plain Java or Spring Boot: switches a message store or logger (file, JDBC, OTLP...), adds monitoring, tracing, alerting, a runtime admin API or high availability (an HA pair, per-session replication), or adds an environment such as staging, and proves the change with a round trip test. Use when the user wants to change how a staffix application stores, logs, monitors or is administered, or to add an environment.
 argument-hint: "[what to change]"
 allowed-tools: Read(/${CLAUDE_PLUGIN_ROOT}/**) Grep(/${CLAUDE_PLUGIN_ROOT}/**) Glob(/${CLAUDE_PLUGIN_ROOT}/**) Bash(grep *) Bash(mvn -q org.apache.maven.plugins:maven-dependency-plugin:3.8.1:unpack *) Bash(./mvnw -q org.apache.maven.plugins:maven-dependency-plugin:3.8.1:unpack *)
 ---
@@ -20,7 +20,7 @@ Under `${CLAUDE_PLUGIN_ROOT}`:
 - `docs/`: the staffix documentation. `skills/new-app/reference-projects/`: working projects showing each rule.
 
 Sessions, counterparties and messages are out of scope: a new counterparty speaks its own FIX API, so it is a new
-application, not a configuration change.
+application, not a configuration change. The one exception is a session's replication mode, part of high availability.
 
 ## 1. Inspect the project
 
@@ -45,6 +45,9 @@ Without the tool, take the answers from the request and the defaults, and list t
 2. **Which component**, from the index's components of that kind, by their `summary`, then its settings: open its
    file, offer the guide's `production` settings and what the schema `required`, and read the doc of its kind in
    `components.md` for anything the guide leaves open. Endpoints and secrets become environment variables.
+3. **For high availability** (`high-availability`), as `components.md` says in its section: adding it, which sessions
+   replicate and in which mode, and where the witness runs; on a project that has it, the sessions or the mode to
+   change. Recommend `ASYNC`. Changing a mode means changing it on both nodes.
 
 ## 3. Change it
 
@@ -59,6 +62,9 @@ Without the tool, take the answers from the request and the defaults, and list t
 - **`needsJvmFlags`**: put the file's `jvmFlags` where `environment-rules.md` says, if they are not there.
 - **The facts about a whole kind** in `components.md`, such as a replaced store losing its sequence numbers: tell the
   user.
+- **High availability**: follow the section of `components.md`. Run from one code base, the two nodes differ only by
+  environment variables. Tell the user the deployment changes: two nodes and a witness, and what a counterparty
+  connects to.
 - **A new environment**: plain Java, a `StaffixEnvironment` implementation and its case; Spring, an
   `application-<name>.properties`. Its data directory and endpoints come from environment variables like prod's.
 - In a project not shaped like the reference projects, make the change where the project already selects its

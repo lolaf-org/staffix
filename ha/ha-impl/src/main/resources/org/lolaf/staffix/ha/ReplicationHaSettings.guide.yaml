@@ -11,8 +11,8 @@ production:
     stream fast enough: each link carries its share of the sessions with its own logCapacity log and sender thread,
     and a network thread on each node. Set it on the leader; the follower opens as many as the leader has.
   - >-
-    Size snapshotMaxMessages to the oldest message a counterparty may ask to be resent after a failover to a follower
-    that was caught up by snapshot; older ones are gap filled.
+    Give the follower's store at least the leader's retention: a snapshot copies everything the leader's store keeps,
+    and after a failover a message the follower's store no longer holds is gap filled.
   - >-
     Give both nodes the same peers and logCapacity: a node binds its own peers entry while it leads and connects to
     the leader's, and a follower sizes its receive buffer from logCapacity.
