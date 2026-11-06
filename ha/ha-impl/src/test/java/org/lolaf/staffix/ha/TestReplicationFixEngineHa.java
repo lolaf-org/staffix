@@ -464,6 +464,11 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
+    void theStatusTellsWhichMonitoringPluginPublishesTheMeters() {
+        assertThat(a.ha.getStatus().getMonitoringInstanceId()).isEqualTo("monitoring");
+    }
+
+    @Test
     void theStatusTellsTheLongestASwitchoverCanTake() {
         assertThat(a.ha.getStatus().getSwitchoverMaxDuration()).as("waiting, then the switchover").isEqualTo(Duration.ofSeconds(4));
         assertThat(notWaitingToSwitchOver("a").ha.getStatus().getSwitchoverMaxDuration()).as("the default hand over timeout")

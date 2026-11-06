@@ -189,7 +189,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                 .transferLeadershipSupported(currentElection != null && currentElection.isTransferLeadershipSupported())
                 .candidacySupported(currentElection != null && currentElection.isCandidacySupported())
                 .candidate(currentElection == null || currentElection.isCandidate())
-                .switchoverMaxDuration(switchoverMaxDuration());
+                .switchoverMaxDuration(switchoverMaxDuration())
+                .monitoringInstanceId(settings.getMonitoringInstanceId());
         if (role == Role.LEADER) {
             for (FollowerLink link : followers.all()) {
                 status.follower(link.status(sessions.count()));

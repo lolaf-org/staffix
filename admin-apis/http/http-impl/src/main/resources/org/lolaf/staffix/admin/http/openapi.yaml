@@ -1209,6 +1209,9 @@ components:
           type: string
           format: duration
           description: The longest a switchover can take, from waiting for a follower ready to lead to leadership leaving this node.
+        monitoringInstanceId:
+          type: string
+          description: The instance of the monitoring plugin publishing the node's own meters; absent when it publishes none.
         roleSince:
           type: string
           format: date-time

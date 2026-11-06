@@ -79,6 +79,10 @@ public class HaStatus {
      */
     @Nullable Duration switchoverMaxDuration;
     /**
+     * The instance of the monitoring plugin publishing the node's own meters. Null when it publishes none.
+     */
+    @Nullable String monitoringInstanceId;
+    /**
      * The followers connected to this node, while it leads.
      */
     @Singular
