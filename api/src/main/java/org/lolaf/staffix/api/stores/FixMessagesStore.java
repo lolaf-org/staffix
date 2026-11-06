@@ -163,6 +163,14 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
         }
 
         /**
+         * Writes this store accepted that have not reached its underlying storage yet, 0 for a store writing before it
+         * returns.
+         */
+        default long getPendingWrites() {
+            return 0;
+        }
+
+        /**
          * Indicates it the message should be filtered from the store.
          * Admin messages are de facto filtered
          *

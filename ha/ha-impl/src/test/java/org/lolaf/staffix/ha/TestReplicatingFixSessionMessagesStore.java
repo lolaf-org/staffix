@@ -93,6 +93,15 @@ class TestReplicatingFixSessionMessagesStore {
     }
 
     @Test
+    void thePendingWritesAreTheLocalStores() {
+        FixSessionMessagesStore pending = mock(FixSessionMessagesStore.class);
+        when(pending.getPendingWrites()).thenReturn(7L);
+
+        assertThat(ha.replicatingStore(session("main", FixSessionType.INITIATOR), pending, new RecordingProbes()).getPendingWrites())
+                .isEqualTo(7);
+    }
+
+    @Test
     void readsGoToTheLocalStoreAndAreNotLogged() {
         FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes());
 

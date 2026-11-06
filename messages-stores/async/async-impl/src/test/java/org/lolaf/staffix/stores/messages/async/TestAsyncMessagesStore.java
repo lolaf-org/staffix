@@ -214,7 +214,7 @@ class TestAsyncMessagesStore {
         resource.replayFailsOnceThenSucceeds(asyncMessageStore);
         await().untilAsserted(() -> verify(messageStore, times(3)).storeMessageSent(1L, testMessage));
         await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
-        assertThat(asyncMessageStore.pendingWrites()).isZero();
+        assertThat(asyncMessageStore.getPendingWrites()).isZero();
     }
 
     @Test
@@ -232,7 +232,7 @@ class TestAsyncMessagesStore {
         resource.replayFailsOnceThenSucceeds(asyncMessageStore);
         assertBatchingMessageProcessed(3, 1, 1, batchingFixSessionMessagesStore, testMessage);
         await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
-        assertThat(asyncMessageStore.pendingWrites()).isZero();
+        assertThat(asyncMessageStore.getPendingWrites()).isZero();
     }
 
     @Test
@@ -251,7 +251,7 @@ class TestAsyncMessagesStore {
 
         await().untilAsserted(() -> verify(messageStore, times(2)).storeMessageSent(1L, testMessage));
         await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
-        assertThat(asyncMessageStore.pendingWrites()).isZero();
+        assertThat(asyncMessageStore.getPendingWrites()).isZero();
     }
 
     @Test
@@ -267,7 +267,7 @@ class TestAsyncMessagesStore {
         asyncMessageStore.storeMessageSent(2L, testMessage2);
 
         await().untilAsserted(() -> verify(messageStore).storeMessageSent(2L, testMessage2));
-        await().untilAsserted(() -> assertThat(asyncMessageStore.pendingWrites()).isZero());
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
     }
 
     @Test
@@ -449,6 +449,24 @@ class TestAsyncMessagesStore {
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore, times(1)).storeNextOutgoingSeqNum(anyLong()));
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore).storeNextOutgoingSeqNum(5L));
         assertBatchingMessageProcessed(1, 10, 2, batchingFixSessionMessagesStore, testMessage);
+    }
+
+    @Test
+    void writesArePendingUntilTheyReachTheWrappedStore() throws InterruptedException {
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            release.await();
+            return null;
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        asyncMessageStore.start();
+        assertThat(asyncMessageStore.getPendingWrites()).isZero();
+
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        asyncMessageStore.storeMessageSent(2L, testMessage);
+
+        assertThat(asyncMessageStore.getPendingWrites()).isEqualTo(2);
+        release.countDown();
+        await().until(() -> asyncMessageStore.getPendingWrites() == 0);
     }
 
     @Test

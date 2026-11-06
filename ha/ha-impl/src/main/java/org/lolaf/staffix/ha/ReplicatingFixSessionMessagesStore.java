@@ -159,6 +159,11 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     }
 
     @Override
+    public long getPendingWrites() {
+        return store.getPendingWrites();
+    }
+
+    @Override
     public boolean filter(MessageType messageType, ByteBuffer message) {
         return store.filter(messageType, message);
     }

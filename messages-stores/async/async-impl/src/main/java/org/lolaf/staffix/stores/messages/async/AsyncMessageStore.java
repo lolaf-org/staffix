@@ -253,7 +253,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     }
 
     private void failStartIfWritesArePending() throws StartStopException {
-        long pendingWrites = pendingWrites();
+        long pendingWrites = getPendingWrites();
         if (pendingWrites > 0) {
             stopMe(Deadline.immediate());
             throw new StartStopException("Async messages store for FIX session " + fixSessionId + " still has " + pendingWrites
@@ -291,13 +291,13 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     }
 
     private void flushMessagesIfNeeded(Deadline flushDeadline) {
-        if (!flushDeadline.isImmediate() && pendingWrites() > 0) {
+        if (!flushDeadline.isImmediate() && getPendingWrites() > 0) {
             Duration deadlineDuration = flushDeadline.getRemainingTime();
-            log.info("Waiting up to {} to flush {} messages for FIX session {}", deadlineDuration, pendingWrites(), fixSessionId);
-            if (flushDeadline.waitAsLongAs(() -> pendingWrites() > 0)) {
+            log.info("Waiting up to {} to flush {} messages for FIX session {}", deadlineDuration, getPendingWrites(), fixSessionId);
+            if (flushDeadline.waitAsLongAs(() -> getPendingWrites() > 0)) {
                 log.info("All messages flushed for FIX session {}", fixSessionId);
             } else {
-                log.warn("Unable to flush all messages for FIX session {} within {}, remaining {}", fixSessionId, deadlineDuration, pendingWrites());
+                log.warn("Unable to flush all messages for FIX session {} within {}, remaining {}", fixSessionId, deadlineDuration, getPendingWrites());
             }
         }
     }
@@ -428,7 +428,11 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         }
     }
 
-    long pendingWrites() {
-        return messagesQueue.offersCount() - processedEvents.get();
+    /**
+     * Never negative, though a reader can process an event just before the queue counts its offer.
+     */
+    @Override
+    public long getPendingWrites() {
+        return Math.max(0, messagesQueue.offersCount() - processedEvents.get());
     }
 }

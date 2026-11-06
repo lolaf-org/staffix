@@ -285,6 +285,13 @@ class TestGuardedFixSessionMessagesStore {
     }
 
     @Test
+    void thePendingWritesAreTheWrappedStores() {
+        when(store.getPendingWrites()).thenReturn(7L);
+
+        assertThat(guarded(Duration.ofSeconds(1)).getPendingWrites()).isEqualTo(7);
+    }
+
+    @Test
     void theStorageIdentityIsTheWrappedStores() {
         when(store.getStorageIdentity()).thenReturn(Optional.of("shared-database"));
 

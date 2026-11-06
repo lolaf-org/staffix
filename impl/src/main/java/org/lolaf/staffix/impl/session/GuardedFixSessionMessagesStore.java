@@ -91,6 +91,11 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
     }
 
     @Override
+    public long getPendingWrites() {
+        return fixSessionMessagesStore.getPendingWrites();
+    }
+
+    @Override
     public boolean filter(MessageType messageType, ByteBuffer message) {
         return fixSessionMessagesStore.filter(messageType, message);
     }

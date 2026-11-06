@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesS
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -39,6 +40,21 @@ class TestReplicaStore {
 
         verify(store).storeSentFixMessages(messages, 1);
         verify(store).storeSentFixMessagesAndSeqNums(messages, 1, 5, 6);
+    }
+
+    @Test
+    void thePendingWritesAreTheWrappedStores() {
+        FixSessionMessagesStore store = mock(FixSessionMessagesStore.class);
+        BatchingFixSessionMessagesStore batching = mock(BatchingFixSessionMessagesStore.class);
+        when(store.getPendingWrites()).thenReturn(7L);
+        when(batching.getPendingWrites()).thenReturn(9L);
+
+        assertThat(ReplicaStore.of(store, () -> {
+        }, () -> {
+        }).getPendingWrites()).isEqualTo(7);
+        assertThat(ReplicaStore.of(batching, () -> {
+        }, () -> {
+        }).getPendingWrites()).isEqualTo(9);
     }
 
     @Test
