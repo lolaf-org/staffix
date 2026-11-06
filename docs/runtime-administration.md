@@ -61,7 +61,7 @@ as its high availability, are listed by the engine-level MBean's `ProbedComponen
 An engine with [high availability](high-availability.md) also registers `type=FixHa`: `Status` and `SessionsStatus`
 (the role, the epoch, the leader, what the election supports, each follower and replicated session), and the
 operations `switchover()` (answering its outcome), `updateCandidacy(boolean)` (maintenance mode), `resync()` and
-`resyncSession(String fixSessionId, String fixSessionType)`. A standby engine refuses the session actions above, since
+`resyncSession(String fixSessionId, String fixSessionType)`. An engine that does not lead refuses the session actions above, since
 running one there would put the session up on both nodes.
 
 The engine-level MBean names a session by its full `toString()` form, `alpha.trading:VERSION_44:SENDER->TARGET`, in

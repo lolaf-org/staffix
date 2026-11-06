@@ -279,7 +279,7 @@ public class FixSessionSettings {
     private CancelOnDisconnectSettings cancelOnDisconnectSettings = CancelOnDisconnectSettings.builder().build();
 
     /**
-     * Whether and how this session's store is replicated to the standby engine.
+     * Whether and how this session's store is replicated to the follower engine.
      */
     @Builder.Default
     private HaSessionSettings haSessionSettings = HaSessionSettings.builder().build();
@@ -386,23 +386,23 @@ public class FixSessionSettings {
     public static class HaSessionSettings {
 
         /**
-         * Whether the session's store is replicated, and whether a send waits for the standby. A change applies when the
-         * session is next built, as {@code restartLiveSessionOnUpdate} decides: turned on, the standby catches up
+         * Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the
+         * session is next built, as {@code restartLiveSessionOnUpdate} decides: turned on, the follower catches up
          * by snapshot; turned off, it stops holding the session.
          */
         @Builder.Default
         ReplicationMode replicationMode = ReplicationMode.NONE;
 
         /**
-         * How long a {@link ReplicationMode#isSync() SYNC} send waits for the standby's acknowledgement before going out
-         * anyway; {@link Duration#ZERO} waits forever, which a hung standby turns into a frozen session. A standby
+         * How long a {@link ReplicationMode#isSync() SYNC} send waits for the follower's acknowledgement before going out
+         * anyway; {@link Duration#ZERO} waits forever, which a hung follower turns into a frozen session. A follower
          * that missed it is not waited for again until it catches up.
          */
         @Builder.Default
         Duration replicationAckTimeout = Duration.ofSeconds(1);
 
         /**
-         * Whether the session's monitoring times each {@link ReplicationMode#isSync() SYNC} send's wait for the standby's
+         * Whether the session's monitoring times each {@link ReplicationMode#isSync() SYNC} send's wait for the follower's
          * acknowledgement. Off by default: recording costs the session's thread on every send.
          */
         @Builder.Default
@@ -411,7 +411,7 @@ public class FixSessionSettings {
         @Getter
         public enum ReplicationMode {
             /**
-             * Not replicated: after a failover the session starts from the standby's own store.
+             * Not replicated: after a failover the session starts from the follower's own store.
              */
             NONE((byte) 0),
             /**
@@ -421,14 +421,14 @@ public class FixSessionSettings {
              */
             ASYNC((byte) 1),
             /**
-             * A message is replicated before it is sent, each send waiting for the standby to hold it in memory, not
-             * for its store write: faster with a durable standby store. Lost only if the standby fails before writing
+             * A message is replicated before it is sent, each send waiting for the follower to hold it in memory, not
+             * for its store write: faster with a durable follower store. Lost only if the follower fails before writing
              * it and the leader is lost too.
              */
             SYNC_RECEIVED((byte) 3),
             /**
-             * A message is replicated before it is sent, so the counterparty never receives one the standby lacks;
-             * each send waits for the standby to have applied it to its store.
+             * A message is replicated before it is sent, so the counterparty never receives one the follower lacks;
+             * each send waits for the follower to have applied it to its store.
              */
             SYNC_APPLIED((byte) 2);
 
@@ -442,7 +442,7 @@ public class FixSessionSettings {
             }
 
             /**
-             * Whether a send waits for the standby.
+             * Whether a send waits for the follower.
              */
             public boolean isSync() {
                 return this == SYNC_RECEIVED || this == SYNC_APPLIED;

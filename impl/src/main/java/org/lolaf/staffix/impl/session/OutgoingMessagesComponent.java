@@ -63,7 +63,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
     private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
     /**
      * A {@code SYNC} session's store, null for any other: its messages are replicated as they are built, before the
-     * write, so the standby has them before the counterparty does, then stored after the write like any other.
+     * write, so the follower has them before the counterparty does, then stored after the write like any other.
      */
     private final ReplicatingStore syncReplicatingStore;
     private final Consumer<FixSessionFixMessageContext> beforeWrite;

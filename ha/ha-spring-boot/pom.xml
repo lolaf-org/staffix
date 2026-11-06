@@ -11,7 +11,7 @@
 
     <name>Staffix High Availability (Spring Boot)</name>
     <description>
-        Spring Boot auto-configuration for store replication to a standby engine, bound from staffix.* properties, with
+        Spring Boot auto-configuration for store replication to a follower engine, bound from staffix.* properties, with
         the leader election taken from the application context.
     </description>
 

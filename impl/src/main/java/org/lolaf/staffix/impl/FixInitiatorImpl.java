@@ -80,7 +80,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     private boolean startedUnderLock;
 
     /**
-     * @param engineActive false while the engine is a standby: the session is not even built until it is true
+     * @param engineActive false while the engine does not lead: the session is not even built until it is true
      */
     FixInitiatorImpl(FixInitiatorBuilder fixInitiatorBuilder, Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesProvider,
                      List<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver,
@@ -248,7 +248,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             checkNoBackupHasStoredSettings(fixInitiatorBuilder, fixSessionsSettingsStores);
             startInitiatorResources();
             if (!engineActive.getAsBoolean()) {
-                log.info("Started initiator for FIX session {} on a standby engine: it connects once the engine leads",
+                log.info("Started initiator for FIX session {} on an engine that does not lead: it connects once the engine leads",
                         fixSessionSettings.getFixSessionId());
                 startedUnderLock = true;
                 return;
@@ -285,8 +285,8 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     void deactivate() {
         synchronized (lifecycleLock) {
             if (targetRunning) {
-                log.info("Engine on standby, dropping FIX session {}", fixSessionSettings.getFixSessionId());
-                stopTarget("Fix engine on standby", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), false);
+                log.info("Engine no longer leads, dropping FIX session {}", fixSessionSettings.getFixSessionId());
+                stopTarget("Fix engine no longer leads", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), false);
             }
         }
     }

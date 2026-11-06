@@ -218,7 +218,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
                 () -> admin.switchInitiatorSession(id));
         actions.forEach(action -> assertThatThrownBy(action)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("is a standby and does not run FIX session " + id)
+                .hasMessageContaining("does not lead and does not run FIX session " + id)
                 .hasMessageContaining("on the engine that leads"));
     }
 

@@ -18,15 +18,15 @@ could mean.
 
 ### Added
 
-- **High availability.** Two engines run the same sessions: one leads and runs them, the other is a standby that
+- **High availability.** Two engines run the same sessions: one leads and runs them, the other is a follower that
   receives every write to their stores and takes them over when the leader fails. Each session chooses, with
-  `haSessionSettings.replicationMode`, `NONE`, `ASYNC` (nothing waits, unless the standby falls a whole replication
-  log behind), `SYNC_APPLIED` (a message reaches the counterparty only once the standby has written it to its store)
-  or `SYNC_RECEIVED` (only once the standby holds it in memory: faster with a durable standby store, and lost only if
-  both engines fail before the standby writes it). A standby that cannot keep up makes the writes wait at most `logFullTimeout` (1 s), is then dropped, and is let back to catch up after
+  `haSessionSettings.replicationMode`, `NONE`, `ASYNC` (nothing waits, unless the follower falls a whole replication
+  log behind), `SYNC_APPLIED` (a message reaches the counterparty only once the follower has written it to its store)
+  or `SYNC_RECEIVED` (only once the follower holds it in memory: faster with a durable follower store, and lost only if
+  both engines fail before the follower writes it). A follower that cannot keep up makes the writes wait at most `logFullTimeout` (1 s), is then dropped, and is let back to catch up after
   `slowFollowerHoldOff` (1 s, doubling up to a minute). `replicationLinks` splits the sessions over several
-  connections to the standby, so a slow one or a session being caught up holds back only the sessions of its link,
-  and the standby applies them in parallel. The leader is elected by primos with a witness, or by an election of your
+  connections to the follower, so a slow one or a session being caught up holds back only the sessions of its link,
+  and the follower applies them in parallel. The leader is elected by primos with a witness, or by an election of your
   own.
   A planned switchover logs the sessions out and the other engine carries on at the same sequence numbers; after a
   failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. A leader cut off from
@@ -35,7 +35,7 @@ could mean.
   `staffix-ha-primos`, `staffix-ha-spring-boot` and `staffix-ha-primos-spring-boot`; see [High availability](docs/high-availability.md),
   including what it does not do.
 - **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
-  switchover, maintenance mode and a re-sync of the standby; it publishes `ha.*` meters and alerts when the standby
+  switchover, maintenance mode and a re-sync of the follower; it publishes `ha.*` meters and alerts when the follower
   is missing, out of sync, behind, or dropped for being too slow.
 - **The engine's own components have meters and probes**, beside the sessions': a monitoring manager that supports
   it (Micrometer's does) publishes engine meters, listed by the HTTP admin API's `GET engine/meters`, and their probes
@@ -56,7 +56,7 @@ could mean.
   whether it is currently waiting for a logon (`suspended`).
 - **A message store that writes in batches can store a batch and the sequence numbers in one call**, with
   `BatchingFixSessionMessagesStore.storeSentFixMessagesAndSeqNums`. The JDBC store does it in one transaction, so a
-  standby on a database commits once per read from the leader instead of up to three times, and acknowledges `SYNC`
+  follower on a database commits once per read from the leader instead of up to three times, and acknowledges `SYNC`
   messages sooner. A store of your own needs no change: by default the method makes the separate calls.
 
 - **Messages larger than 8 KB are received**, up to 1 MB by default. Raise the limit with
@@ -87,7 +87,7 @@ could mean.
 - **The file messages logger's line prefixes belong to the plain line format**: `logInPrefix`, `logOutPrefix` and
   `logEventPrefix` moved from `FileMessagesLoggerSettings` to `PlainFileLogLineFormat`, and their Spring Boot
   properties under `plain.`, for example `staffix.messages-loggers-file.instances.<id>.plain.log-in-prefix`.
-- **The file messages store finds messages without reading its whole file**: a resend, or a standby catching up,
+- **The file messages store finds messages without reading its whole file**: a resend, or a follower catching up,
   reads only the messages it asks for, and stops as soon as it has what it needs. Finds over a large file were
   proportional to the file's size, whatever they returned. The store keeps a small index in memory, rebuilt from the
   file when it starts.

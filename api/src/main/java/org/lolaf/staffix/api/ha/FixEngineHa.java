@@ -62,7 +62,7 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
     void bind(EngineAccess engine);
 
     /**
-     * What the engine lends its high availability: a standby replays the leader's writes into its sessions' stores
+     * What the engine lends its high availability: a follower replays the leader's writes into its sessions' stores
      * while the sessions themselves are not running.
      */
     interface EngineAccess {
@@ -104,7 +104,7 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
 
         /**
          * Runs the sessions: the initiators and acceptors the application started connect and bind. An engine with
-         * high availability starts without them, so a standby never builds a session; call this once this node leads
+         * high availability starts without them, so a follower never builds a session; call this once this node leads
          * and the replica's stores are closed.
          */
         void activate();
@@ -137,9 +137,9 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
 
         /**
          * Called by a {@code SYNC} session after {@link #replicateSent}, before the message goes out, from the
-         * session's thread. Returns when the standby has every write replicated so far, when
-         * {@link FixSessionSettings.HaSessionSettings#getReplicationAckTimeout()} runs out, or at once while no standby
-         * is in sync, so that a lost standby never stops trading.
+         * session's thread. Returns when the follower has every write replicated so far, when
+         * {@link FixSessionSettings.HaSessionSettings#getReplicationAckTimeout()} runs out, or at once while no follower
+         * is in sync, so that a lost follower never stops trading.
          */
         void awaitReplicated();
 

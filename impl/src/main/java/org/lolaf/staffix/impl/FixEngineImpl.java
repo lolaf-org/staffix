@@ -735,7 +735,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     /**
-     * The control of a session this engine runs: a standby runs none, and acting on a session there would act on the
+     * The control of a session this engine runs: an engine that does not lead runs none, and acting on a session there would act on the
      * leader's in the store the replica writes, or bring it up on two nodes at once.
      */
     private FixSessionAdminControl runningControl(FixSessionId fixSessionId, String action) {
@@ -746,7 +746,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     private void requireActive(FixSessionId fixSessionId, String action) {
         if (!active) {
-            throw new IllegalStateException("Engine " + getInstanceId() + " is a standby and does not run FIX session "
+            throw new IllegalStateException("Engine " + getInstanceId() + " does not lead and does not run FIX session "
                     + fixSessionId + ": " + action + " it on the engine that leads");
         }
     }

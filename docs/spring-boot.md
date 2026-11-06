@@ -169,7 +169,7 @@ registered in its place. Same result, and the wrapper is transparent either way:
 
 ## High availability
 
-`staffix-ha-spring-boot` replicates the sessions' stores to a standby engine, and `staffix-ha-primos-spring-boot`
+`staffix-ha-spring-boot` replicates the sessions' stores to a follower engine, and `staffix-ha-primos-spring-boot`
 elects the leading engine with the node of `primos-spring-boot-starter`, so your own leader-only beans and the FIX
 sessions follow one election. See [High availability](high-availability.md) for what it does and what it does not.
 

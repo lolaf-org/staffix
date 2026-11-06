@@ -10,7 +10,7 @@
 
     <name>Staffix High Availability (Parent)</name>
     <description>
-        Replicating sessions' stores to a standby engine that takes over when it is elected leader.
+        Replicating sessions' stores to a follower engine that takes over when it is elected leader.
     </description>
 
     <artifactId>staffix-ha-parent</artifactId>

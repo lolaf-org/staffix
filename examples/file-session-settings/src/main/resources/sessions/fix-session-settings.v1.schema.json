@@ -394,13 +394,13 @@
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
           } ],
-          "description" : "How long a SYNC send waits for the standby's acknowledgement before going out anyway; Duration.ZERO waits forever, which a hung standby turns into a frozen session. A standby that missed it is not waited for again until it catches up.",
+          "description" : "How long a SYNC send waits for the follower's acknowledgement before going out anyway; Duration.ZERO waits forever, which a hung follower turns into a frozen session. A follower that missed it is not waited for again until it catches up.",
           "default" : "PT1S"
         },
         "replicationMode" : {
           "type" : "string",
           "enum" : [ "NONE", "ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED" ],
-          "description" : "Whether the session's store is replicated, and whether a send waits for the standby. A change applies when the session is next built, as restartLiveSessionOnUpdate decides: turned on, the standby catches up by snapshot; turned off, it stops holding the session.",
+          "description" : "Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the session is next built, as restartLiveSessionOnUpdate decides: turned on, the follower catches up by snapshot; turned off, it stops holding the session.",
           "default" : "NONE"
         },
         "syncAckLatencyEnabled" : {
@@ -411,11 +411,11 @@
             "pattern" : ".*\\$\\{[^}]+}.*",
             "description" : "A ${...} placeholder, resolved when the file is loaded"
           } ],
-          "description" : "Whether the session's monitoring times each SYNC send's wait for the standby's acknowledgement. Off by default: recording costs the session's thread on every send.",
+          "description" : "Whether the session's monitoring times each SYNC send's wait for the follower's acknowledgement. Off by default: recording costs the session's thread on every send.",
           "default" : false
         }
       },
-      "description" : "Whether and how this session's store is replicated to the standby engine."
+      "description" : "Whether and how this session's store is replicated to the follower engine."
     },
     "heartBeatInterval" : {
       "type" : "object",

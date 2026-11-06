@@ -15,6 +15,6 @@
  */
 /**
  * The follower's side of replication: the connection to the leader, and the stores it replays the leader's writes
- * into while the sessions are on standby.
+ * into while the sessions are not running.
  */
 package org.lolaf.staffix.ha.follower;

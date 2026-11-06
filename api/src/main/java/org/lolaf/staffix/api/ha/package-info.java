@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /**
- * High availability: an engine replicating its sessions' stores to a standby engine, which takes over when a leader
+ * High availability: an engine replicating its sessions' stores to a follower engine, which takes over when a leader
  * election makes it the leader.
  */
 package org.lolaf.staffix.api.ha;

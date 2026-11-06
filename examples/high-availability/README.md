@@ -46,7 +46,7 @@ The lines below are from a real run of these steps, trimmed of their time, threa
 
 ### The pair comes up
 
-Both nodes start as standby: the acceptor binds nothing. Node 1 is elected, binds its FIX port and listens for
+Both nodes start without leading: the acceptor binds nothing. Node 1 is elected, binds its FIX port and listens for
 replication; node 2 connects to it and receives a snapshot.
 
 ```

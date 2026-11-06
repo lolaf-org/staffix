@@ -1,8 +1,8 @@
 # High availability
 
-Two engines run the same sessions. One leads and runs them; the other is a **standby**: started, but with no acceptor
+Two engines run the same sessions. One leads and runs them; the other is a **follower**: started, but with no acceptor
 bound and no initiator connecting. It receives every write the leader makes to its session stores, over TCP, and
-applies it to its own stores. When the leader fails, the standby takes over its sessions from where the leader left
+applies it to its own stores. When the leader fails, the follower takes over its sessions from where the leader left
 them, close enough that the counterparty only sees a disconnection and, at worst, a sequence gap it fills by itself.
 
 What it is not: **your application's state is not replicated.** Staffix replicates what the session layer stores
@@ -19,7 +19,7 @@ one on your machine, with a witness and a counterparty, to kill and restart by h
 - **A leader election decides which engine leads.** The shipped one is [primos](https://github.com/lolaf-org/primos),
   which runs the election half of Raft. With two nodes it needs a third voter that never leads, a primos **witness**,
   in a third failure domain, or losing either node would leave no majority.
-- **The standby engine builds no session.** Its acceptors bind nothing and its initiators connect nowhere until it
+- **An engine that does not lead builds no session.** Its acceptors bind nothing and its initiators connect nowhere until it
   leads. Session actions sent to it through the admin API (logon, reset, send a message) are refused with a clear
   message (HTTP 409), since running one there would put the session up on both nodes.
 - **The leader replicates each write as it makes it**, per session, in the mode the session asks for (see below). The

@@ -41,11 +41,11 @@ public final class ReplicatedSession {
      */
     private volatile Config config;
     /**
-     * {@code SYNC} sends that went out without the standby's ack because it did not come in time.
+     * {@code SYNC} sends that went out without the follower's ack because it did not come in time.
      */
     private volatile long timedOutSends;
     /**
-     * {@code SYNC} sends that went out without the standby's ack because no standby was in sync.
+     * {@code SYNC} sends that went out without the follower's ack because no follower was in sync.
      */
     private volatile long noFollowerSends;
     private volatile long lastTimedOutNanos;
@@ -82,7 +82,7 @@ public final class ReplicatedSession {
         if (ack == Followers.Ack.ACKED) {
             if (wasUnprotected) {
                 unprotected = false;
-                log.info("FIX session {} {} sends are acknowledged by the standby again", fixSessionType, fixSessionId);
+                log.info("FIX session {} {} sends are acknowledged by the follower again", fixSessionType, fixSessionId);
             }
             return;
         }
@@ -94,7 +94,7 @@ public final class ReplicatedSession {
         }
         if (!wasUnprotected) {
             unprotected = true;
-            log.warn("FIX session {} {} sends without the standby's ack: {}", fixSessionType, fixSessionId, ack);
+            log.warn("FIX session {} {} sends without the follower's ack: {}", fixSessionType, fixSessionId, ack);
         }
     }
 
@@ -107,7 +107,7 @@ public final class ReplicatedSession {
     }
 
     /**
-     * {@code SYNC} sends that went out without the standby's ack, on a timeout or with no standby in sync.
+     * {@code SYNC} sends that went out without the follower's ack, on a timeout or with no follower in sync.
      */
     public long getUnacknowledgedSends() {
         return timedOutSends + noFollowerSends;

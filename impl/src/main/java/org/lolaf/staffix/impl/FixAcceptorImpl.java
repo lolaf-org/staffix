@@ -117,7 +117,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private boolean startedUnderLock;
 
     /**
-     * @param engineActive false while the engine is a standby: no session is built and nothing is bound until it is
+     * @param engineActive false while the engine does not lead: no session is built and nothing is bound until it is
      *                     true
      */
     FixAcceptorImpl(FixAcceptorBuilder fixAcceptorBuilder, Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesSupplier,
@@ -200,8 +200,8 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             if (engineActive.getAsBoolean()) {
                 startAcceptor();
             } else {
-                log.info("Started FIX server {} on a standby engine: it binds once the engine leads", fixAcceptorBuilder.getInstanceId());
-                listStandbySessions();
+                log.info("Started FIX server {} on an engine that does not lead: it binds once the engine leads", fixAcceptorBuilder.getInstanceId());
+                listSessionsWithoutBuilding();
             }
             startedUnderLock = true;
         }
@@ -226,9 +226,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     void deactivate() {
         synchronized (lifecycleLock) {
             if (running) {
-                log.info("Engine on standby, dropping the sessions of FIX server {}", fixAcceptorBuilder.getInstanceId());
+                log.info("Engine no longer leads, dropping the sessions of FIX server {}", fixAcceptorBuilder.getInstanceId());
                 stopAcceptor(Deadline.of(fixAcceptorBuilder.getShutdownMaxDelay()), false);
-                listStandbySessions();
+                listSessionsWithoutBuilding();
             }
         }
     }
@@ -241,17 +241,17 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             if (running) {
                 log.info("Engine hands leadership over, logging out the sessions of FIX server {}", fixAcceptorBuilder.getInstanceId());
                 stopAcceptor(deadline, true);
-                listStandbySessions();
+                listSessionsWithoutBuilding();
             }
         }
     }
 
     /**
-     * Lists the settings of this acceptor's sessions without building any, for a standby engine whose high availability
+     * Lists the settings of this acceptor's sessions without building any, for an engine not leading whose high availability
      * replicates them before the acceptor runs one. Read once, so a settings store changed meanwhile is seen when the
      * engine leads.
      */
-    private void listStandbySessions() {
+    private void listSessionsWithoutBuilding() {
         synchronized (configuredSessionsSettings) {
             configuredSessionsSettings.clear();
             fixSessionsSettingsStores.forEach(store -> store.getSettings().stream()
@@ -416,7 +416,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                         if (logout) {
                             fixSession.stopProtocol("FIX server stop", sessionStopDeadline);
                         } else {
-                            fixSession.dropProtocol("Fix engine on standby", sessionStopDeadline);
+                            fixSession.dropProtocol("Fix engine no longer leads", sessionStopDeadline);
                         }
                     } finally {
                         countDownLatch.countDown();

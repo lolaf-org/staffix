@@ -34,7 +34,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Replicates the stores of the sessions asking for it to a standby engine over TCP.
+ * Replicates the stores of the sessions asking for it to a follower engine over TCP.
  */
 @NullMarked
 @Getter

@@ -271,7 +271,7 @@ public final class Replica {
 
     /**
      * Binds again each session refused as unknown whose settings the engine has by now, or for a mode mismatch its
-     * settings here now agree with: a standby's connectors may register their sessions after the leader announced
+     * settings here now agree with: a follower's connectors may register their sessions after the leader announced
      * them, and a settings change may reach this node after the leader. Either would otherwise stay refused until
      * the next connection.
      *

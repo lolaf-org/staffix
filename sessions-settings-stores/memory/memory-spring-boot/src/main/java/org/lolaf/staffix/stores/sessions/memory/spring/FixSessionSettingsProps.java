@@ -234,7 +234,7 @@ public class FixSessionSettingsProps {
     private RttMeasurementProps rttMeasurement;
 
     /**
-     * Whether and how this session's store is replicated to the standby engine.
+     * Whether and how this session's store is replicated to the follower engine.
      */
     @NestedConfigurationProperty
     private HaProps ha;
@@ -438,15 +438,15 @@ public class FixSessionSettingsProps {
     public static class HaProps {
         /**
          * NONE, ASYNC (replicated once sent), SYNC_RECEIVED or SYNC_APPLIED (replicated before it is sent, each send waiting
-         * for the standby to hold it in memory, or to have applied it to its store).
+         * for the follower to hold it in memory, or to have applied it to its store).
          */
         private FixSessionSettings.HaSessionSettings.ReplicationMode replicationMode;
         /**
-         * How long a SYNC send waits for the standby before going out anyway; unset keeps 1s, zero waits forever.
+         * How long a SYNC send waits for the follower before going out anyway; unset keeps 1s, zero waits forever.
          */
         private Duration replicationAckTimeout;
         /**
-         * Whether the session's monitoring times each SYNC send's wait for the standby's acknowledgement.
+         * Whether the session's monitoring times each SYNC send's wait for the follower's acknowledgement.
          */
         private Boolean syncAckLatencyEnabled;
     }

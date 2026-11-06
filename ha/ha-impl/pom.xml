@@ -10,7 +10,7 @@
 
     <name>Staffix High Availability</name>
     <description>
-        Replicates the stores of the sessions that ask for it to a standby engine over TCP, so the standby takes over
+        Replicates the stores of the sessions that ask for it to a follower engine over TCP, so the follower takes over
         a session where the leader left it.
     </description>
 

@@ -176,7 +176,7 @@ public class HaPair {
         leaderEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
                         .ioWorkersGroup(busySpinning(leaderIoThreads)).build()).start();
         FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB);
-        // a standby knows the sessions its connectors register, and binds nothing until it leads
+        // a follower knows the sessions its connectors register, and binds nothing until it leads
         followerEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", freePort())).build()).start();
         HaAdmin follower = ((AdminApi) followerEngine).getHa().orElseThrow();
 

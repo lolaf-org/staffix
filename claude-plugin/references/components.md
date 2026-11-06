@@ -58,7 +58,7 @@ gives the primos settings.
   loses everything once both stop.
 - **Application state is not replicated**: what the application keeps itself, such as open requests, is its own to
   rebuild on the node that takes over.
-- **A standby does not run its sessions**: no acceptor bound, no initiator connecting. Counterparties of an acceptor
+- **A follower does not run its sessions**: no acceptor bound, no initiator connecting. Counterparties of an acceptor
   pair need both addresses or a virtual address in front.
 - **Proving it**: a test starts both nodes and a witness on local ports, waits for a leader, runs the round trip,
   stops the leader, and runs it again against the other node.

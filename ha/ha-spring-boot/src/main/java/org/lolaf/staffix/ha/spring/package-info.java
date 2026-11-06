@@ -14,6 +14,6 @@
  * limitations under the License.
  */
 /**
- * Spring Boot auto-configuration for replicating the sessions' stores to a standby engine.
+ * Spring Boot auto-configuration for replicating the sessions' stores to a follower engine.
  */
 package org.lolaf.staffix.ha.spring;

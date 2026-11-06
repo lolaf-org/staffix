@@ -169,7 +169,7 @@ final class SessionWiring {
     }
 
     /**
-     * Outside the guarded store, so replication goes on while the session's own storage is down: the standby's copy
+     * Outside the guarded store, so replication goes on while the session's own storage is down: the follower's copy
      * is what a failover needs then.
      */
     private static FixSessionMessagesStore replicated(FixSessionSettings settings, GuardedFixSessionMessagesStore store,

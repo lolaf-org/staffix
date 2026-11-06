@@ -25,7 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Properties for replicating the sessions' stores to a standby engine.
+ * Properties for replicating the sessions' stores to a follower engine.
  *
  * <p>Bound from {@code staffix.ha-replication.*}. The leader election is the application context's
  * {@code LeaderElectionSettings} bean, such as the one {@code staffix-ha-primos-spring-boot} declares.

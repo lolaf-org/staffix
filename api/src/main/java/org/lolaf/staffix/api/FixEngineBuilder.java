@@ -51,7 +51,7 @@ public class FixEngineBuilder implements InstanceProvider<FixEngine> {
      */
     private AdminApiExporterSettings adminApiExporter;
     /**
-     * Replicates the sessions' stores to a standby engine that takes over when it is elected leader. Without it, a
+     * Replicates the sessions' stores to a follower engine that takes over when it is elected leader. Without it, a
      * session asking for replication is refused.
      */
     private HaSettings highAvailability;

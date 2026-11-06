@@ -14,6 +14,6 @@
  * limitations under the License.
  */
 /**
- * Store replication to a standby engine, the shipped high availability.
+ * Store replication to a follower engine, the shipped high availability.
  */
 package org.lolaf.staffix.ha;
