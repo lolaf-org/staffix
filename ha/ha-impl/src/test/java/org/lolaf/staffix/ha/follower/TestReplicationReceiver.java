@@ -331,6 +331,7 @@ class TestReplicationReceiver {
         await().until(() -> follower.store(OTHER).writes.contains("incoming 6"));
         long snapshots = twoLinksStats.getSnapshots();
         follower.store(OTHER).messageWritesFail = true;
+        follower.store(OTHER).resourceDown = true;
 
         twoLinksOther.storeMessageSent(5, ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII)));
 
@@ -338,6 +339,7 @@ class TestReplicationReceiver {
         twoLinksMain.storeNextIncomingSeqNum(7);
         await().untilAsserted(() -> assertThat(follower.store(MAIN).writes).as("the other link carries on").endsWith("incoming 7"));
         follower.store(OTHER).messageWritesFail = false;
+        follower.store(OTHER).resourceDown = false;
         await().until(receiver::isInSync);
         await().untilAsserted(() -> assertThat(follower.store(OTHER).writes).endsWith("message 5 " + MESSAGE));
         assertThat(twoLinksStats.getSnapshots()).as("resumed").isEqualTo(snapshots);

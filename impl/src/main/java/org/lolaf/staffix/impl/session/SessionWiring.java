@@ -110,6 +110,7 @@ final class SessionWiring {
                 runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes), fixSessionId,
                 runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
         probes.add(guardedStore.getProbe());
+        probes.add(guardedStore.getLostWritesProbe());
         this.messagesStore = replicated(settings, guardedStore, probes, runtimeDependencies);
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
         this.messagesLogger = messagesLogger(fixInstanceId, probes, runtimeDependencies);

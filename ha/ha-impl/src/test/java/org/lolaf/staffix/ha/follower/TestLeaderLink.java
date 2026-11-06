@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha.follower;
 import org.junit.jupiter.api.Test;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -374,9 +375,10 @@ class TestLeaderLink {
     }
 
     @Test
-    void aStoreWriteThatFailsClosesTheStreamWithoutApplyingOrAcknowledgingWhatFollowsIt() {
+    void aStoreWriteFailingWithItsResourceDownClosesTheStreamWithoutApplyingOrAcknowledgingWhatFollowsIt() {
         streaming();
         engine.store(MAIN).messageWritesFail = true;
+        engine.store(MAIN).resourceDown = true;
 
         read(event(EPOCH, 0, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 4, null),
                 event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, MESSAGE),
@@ -436,6 +438,7 @@ class TestLeaderLink {
         engine.batchingStores = true;
         streamingSyncReceived();
         engine.store(MAIN).messageWritesFail = true;
+        engine.store(MAIN).resourceDown = true;
 
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null),
                 event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, "five"));
@@ -445,6 +448,53 @@ class TestLeaderLink {
         assertThat(replica.getLastAppliedOffset(0)).isEqualTo(-1);
         assertThat(sent.frames).hasSize(2).first().isEqualTo("RECEIVED epoch=7 received=32");
         assertThat(sent.frames.get(1)).as("never acknowledged as applied").startsWith("CLOSE epoch=7 APPLY_FAILED");
+    }
+
+    private long lostWrites() {
+        HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder();
+        replica.describe(FixSessionType.INITIATOR, MAIN.getFixSessionId().toString(), status);
+        return status.build().getLostWrites();
+    }
+
+    @Test
+    void aStoreWriteFailingWithItsResourceUpCostsThatMessageAlone() {
+        streaming();
+        engine.store(MAIN).refusedSeqNum = 5;
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
+                event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 6, "six"));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.STREAMING);
+        assertThat(engine.store(MAIN).writes).containsExactly("message 6 six");
+        assertThat(replica.getLastAppliedOffset(0)).isEqualTo(32);
+        assertThat(lostWrites()).isEqualTo(1);
+    }
+
+    @Test
+    void aBatchFailingWithItsResourceUpCostsTheMessageTheStoreRefusesAlone() {
+        engine.batchingStores = true;
+        streaming();
+        engine.store(MAIN).refusedSeqNum = 5;
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 4, "four"),
+                event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
+                event(EPOCH, 64, 0, StoreEventType.STORE_MESSAGE, 6, "six"));
+
+        assertThat(link.getState()).isEqualTo(LeaderLink.State.STREAMING);
+        assertThat(engine.store(MAIN).writes).contains("message 4 four", "message 6 six");
+        assertThat(lostWrites()).isEqualTo(1);
+    }
+
+    @Test
+    void aSnapshotForgetsTheWritesLost() {
+        streaming();
+        engine.store(MAIN).refusedSeqNum = 5;
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"));
+        assertThat(lostWrites()).isEqualTo(1);
+
+        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13));
+
+        assertThat(lostWrites()).isZero();
     }
 
     @Test

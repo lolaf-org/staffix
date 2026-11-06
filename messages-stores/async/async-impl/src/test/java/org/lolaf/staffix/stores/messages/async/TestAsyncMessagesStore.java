@@ -362,6 +362,19 @@ class TestAsyncMessagesStore {
     }
 
     @Test
+    void aResetForgetsTheWritesLost() {
+        doThrow(new IllegalStateException("test exception")).when(messageStore).storeMessageSent(eq(1L), any());
+        recreateStore(0);
+        asyncMessageStore.start();
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getLostWrites()).isEqualTo(1));
+
+        asyncMessageStore.resetSequenceNumbers();
+
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getLostWrites()).isZero());
+    }
+
+    @Test
     void aMessageTheStoreAlreadyHoldsIsNotLost() {
         List<Long> stored = new CopyOnWriteArrayList<>();
         FixMessagesStore.BatchingFixSessionMessagesStore batching = getBatchingFixSessionMessagesStoreMock();

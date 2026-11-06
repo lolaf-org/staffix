@@ -37,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -95,6 +96,48 @@ class TestGuardedFixSessionMessagesStore {
 
     private static Optional<AlertLevel> alertLevel(GuardedFixSessionMessagesStore guarded) {
         return guarded.getProbe().getEvaluator().evaluate().map(Alert::getLevel);
+    }
+
+    @Test
+    void aMessageThatFailedOrWasSkippedCountsAsLostUntilAReset() {
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
+        storeBlocksThenFails();
+        available.set(false);
+
+        guarded.storeMessageSent(1, MESSAGE);
+        await().until(() -> alertLevel(guarded).equals(Optional.of(AlertLevel.MAJOR)));
+        guarded.storeMessageSent(2, MESSAGE);
+        assertThat(guarded.getLostWrites()).isEqualTo(2);
+
+        guarded.resetSequenceNumbers();
+        assertThat(guarded.getLostWrites()).isZero();
+    }
+
+    @Test
+    void theWritesTheStoreLostCountToo() {
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
+        when(store.getLostWrites()).thenReturn(3L);
+
+        assertThat(guarded.getLostWrites()).isEqualTo(3);
+    }
+
+    @Test
+    void theLostWritesAlertStaysUntilClearedAndComesBackOnTheNextLoss() {
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
+        doThrow(new FixSessionMessagesStore.StoreException("refused")).when(store).storeMessageSent(eq(1L), any());
+        guarded.storeMessageSent(1, MESSAGE);
+        guarded.storeMessageSent(2, MESSAGE);
+
+        assertThat(guarded.getLostWritesProbe().getEvaluator().evaluate()).hasValueSatisfying(alert -> {
+            assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
+            assertThat(alert.getMessage()).contains("1 message");
+        });
+
+        assertThat(guarded.getLostWritesProbe().getEvaluator().clear()).isTrue();
+        assertThat(guarded.getLostWritesProbe().getEvaluator().evaluate()).isEmpty();
+
+        guarded.storeMessageSent(1, MESSAGE);
+        assertThat(guarded.getLostWritesProbe().getEvaluator().evaluate()).isPresent();
     }
 
     @Test

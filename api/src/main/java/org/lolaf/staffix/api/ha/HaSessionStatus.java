@@ -72,4 +72,9 @@ public class HaSessionStatus {
      * it is, a large count here delays a takeover. 0 on a leader.
      */
     long pendingWrites;
+    /**
+     * Messages this node's store gave up on since its last reset, which a resend gap fills. A re-sync of the session
+     * clears it on the follower, by copying the leader's store, holes included.
+     */
+    long lostWrites;
 }

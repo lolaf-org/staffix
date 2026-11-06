@@ -1305,7 +1305,7 @@ components:
     HaSession:
       type: object
       required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, inSync, unprotected,
-                 unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver, pendingWrites]
+                 unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver, pendingWrites, lostWrites]
       properties:
         group:
           type: string
@@ -1347,6 +1347,10 @@ components:
           type: integer
           format: int64
           description: Writes this follower's store has accepted and not stored yet, which it must store before it can lead. 0 on a leader.
+        lostWrites:
+          type: integer
+          format: int64
+          description: Messages this node's store gave up on since its last reset, which a resend gap fills. A re-sync of the session clears it on the follower, by copying the leader's store, holes included.
     SessionComponents:
       type: object
       required: [applicationFactories, messagesStores, messagesLoggers, alertsPublishers, sessionsPlugins]

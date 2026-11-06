@@ -66,6 +66,7 @@ final class ReplicaSession {
     @Getter
     @Setter(AccessLevel.PACKAGE)
     private volatile @Nullable ReplicationMode leaderMode;
+    private final LostWrites lostWrites;
     private volatile boolean complete;
     @Getter
     private volatile boolean handedOver;
@@ -88,8 +89,10 @@ final class ReplicaSession {
         this.replicated = replicated;
         this.store = store;
         this.notReplicatedStatus = notReplicatedStatus;
+        this.lostWrites = new LostWrites(store, fixSessionId);
         this.storeWrites = store instanceof BatchingFixSessionMessagesStore
-                ? new BatchedStoreWrites((BatchingFixSessionMessagesStore) store) : new OneByOneStoreWrites(store);
+                ? new BatchedStoreWrites((BatchingFixSessionMessagesStore) store, lostWrites)
+                : new OneByOneStoreWrites(store, lostWrites);
     }
 
     static ReplicaSession replicated(FixSessionType fixSessionType, String fixSessionId, FixSessionMessagesStore store) {
@@ -129,7 +132,8 @@ final class ReplicaSession {
             status.inSync(complete)
                     .nextIncomingSeqNum(store.getIncomingSeqNum())
                     .nextOutgoingSeqNum(store.getOutgoingSeqNum())
-                    .pendingWrites(getPendingWrites());
+                    .pendingWrites(getPendingWrites())
+                    .lostWrites(lostWrites.getCount() + store.getLostWrites());
         } else {
             status.notReplicatedReason(notReplicatedStatus.name());
         }
@@ -190,6 +194,7 @@ final class ReplicaSession {
             case RESET_SEQ_NUM:
                 writePending();
                 store.resetSequenceNumbers();
+                lostWrites.reset();
                 highestStoredSeqNum = 0;
                 break;
             default:
@@ -203,6 +208,7 @@ final class ReplicaSession {
         discardPendingWrites();
         snapshotMessageCount = 0;
         store.resetSequenceNumbers();
+        lostWrites.reset();
         highestStoredSeqNum = 0;
         store.storeNextIncomingSeqNum(nextIncomingSeqNum);
         store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);

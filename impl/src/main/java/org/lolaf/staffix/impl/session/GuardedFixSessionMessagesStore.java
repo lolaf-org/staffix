@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.ProbeEvaluator;
 import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -49,6 +50,7 @@ import java.util.concurrent.locks.LockSupport;
 public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessionMessagesStore {
 
     static final String PROBE_NAME = "messages-store";
+    static final String LOST_WRITES_PROBE_NAME = "messages-lost";
     private static final long FIND_POLL_NANOS = TimeUnit.MILLISECONDS.toNanos(1);
 
     private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
@@ -57,9 +59,12 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
     private final UnderlyingResourceBreaker underlyingResourceBreaker;
     @Getter
     private final Probe probe;
+    @Getter
+    private final Probe lostWritesProbe;
     private final AtomicInteger findsInProgress;
     private String lastFailure;
     private volatile boolean readable;
+    private volatile long skippedOrFailedMessages;
 
     public GuardedFixSessionMessagesStore(FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore, FixSessionId fixSessionId,
                                           FixMessagesStoreSettings settings, UnderlyingResourceChecker checker) {
@@ -72,6 +77,8 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
                 checker, this::raiseResourceDown);
         this.probe = Probe.builder().name(PROBE_NAME).description("Messages store")
                 .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).onlyWhileActive(false).build();
+        this.lostWritesProbe = Probe.builder().name(LOST_WRITES_PROBE_NAME).description("Messages not stored")
+                .evaluator(new LostWritesEvaluator()).onlyWhileActive(false).build();
         this.findsInProgress = new AtomicInteger();
     }
 
@@ -96,6 +103,11 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
     }
 
     @Override
+    public long getLostWrites() {
+        return skippedOrFailedMessages + fixSessionMessagesStore.getLostWrites();
+    }
+
+    @Override
     public boolean filter(MessageType messageType, ByteBuffer message) {
         return fixSessionMessagesStore.filter(messageType, message);
     }
@@ -104,6 +116,7 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
     public void resetSequenceNumbers() {
         try {
             fixSessionMessagesStore.resetSequenceNumbers();
+            skippedOrFailedMessages = 0;
             succeeded();
         } catch (Exception ex) {
             failed("resetSequenceNumbers()", ex);
@@ -148,12 +161,14 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
     @Override
     public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
         if (skipped()) {
+            skippedOrFailedMessages++;
             return;
         }
         try {
             fixSessionMessagesStore.storeMessageSent(outgoingSeqNum, message);
             succeeded();
         } catch (Exception ex) {
+            skippedOrFailedMessages++;
             failed("storeMessageSent()", ex);
         }
     }
@@ -256,6 +271,32 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
         lastFailure = call + " failed: " + ex;
         raise(Alert.warning(lastFailure));
         underlyingResourceBreaker.callFailed();
+    }
+
+    /**
+     * Stays raised once the failures are over, unlike the store's own alert: what was lost stays lost, so an operator
+     * says when it is known, and only a new loss raises it again.
+     */
+    private final class LostWritesEvaluator implements ProbeEvaluator {
+
+        private volatile long acknowledged;
+
+        @Override
+        public Optional<Alert> evaluate() {
+            long lost = getLostWrites();
+            if (lost < acknowledged) {
+                acknowledged = lost;
+            }
+            return lost > acknowledged
+                    ? Optional.of(Alert.major((lost - acknowledged) + " messages not stored, a resend gap fills them"))
+                    : Optional.empty();
+        }
+
+        @Override
+        public boolean clear() {
+            acknowledged = getLostWrites();
+            return true;
+        }
     }
 
     private void raiseResourceDown() {

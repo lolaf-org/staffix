@@ -171,6 +171,8 @@ public final class RecordingEngine implements EngineAccess {
          * Fails every message write, as a storage gone would.
          */
         public volatile boolean messageWritesFail;
+        public volatile boolean resourceDown;
+        public volatile long refusedSeqNum = -1;
         public volatile long pendingWrites;
         volatile boolean started;
         volatile @Nullable String storageIdentity = "recording:" + UUID.randomUUID();
@@ -200,6 +202,11 @@ public final class RecordingEngine implements EngineAccess {
         @Override
         public boolean isStarted() {
             return started;
+        }
+
+        @Override
+        public boolean isUnderlyingStorageResourceAvailable() {
+            return !resourceDown;
         }
 
         @Override
@@ -248,7 +255,7 @@ public final class RecordingEngine implements EngineAccess {
          */
         @Override
         public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
-            if (messageWritesFail) {
+            if (messageWritesFail || outgoingSeqNum == refusedSeqNum) {
                 throw new StoreException("storage down");
             }
             byte[] text = new byte[message.remaining()];
@@ -271,6 +278,11 @@ public final class RecordingEngine implements EngineAccess {
         public void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) {
             if (messageWritesFail) {
                 throw new StoreException("storage down");
+            }
+            for (int i = 0; i < sentFixMessageCount; i++) {
+                if (sentFixMessages[i].getSequenceNumber() == refusedSeqNum) {
+                    throw new StoreException("refused");
+                }
             }
             StringJoiner batch = new StringJoiner(", ", "batch ", "");
             for (int i = 0; i < sentFixMessageCount; i++) {

@@ -51,7 +51,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private final AtomicLong outgoingSequenceNumber;
     private final AtomicLong incomingSequenceNumber;
     private final AtomicLong processedEvents;
-    private final AtomicLong lostWrites = new AtomicLong();
+    private final AtomicLong lostWrites;
     private volatile boolean retryingFailedWrite;
 
     AsyncMessageStore(FixMessagesStore.FixSessionMessagesStore wrappedStore, FixSessionId fixSessionId,
@@ -61,6 +61,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         this.batchingWrappedStore = wrappedStore instanceof FixMessagesStore.BatchingFixSessionMessagesStore
                 ? (FixMessagesStore.BatchingFixSessionMessagesStore) wrappedStore : null;
         this.fixSessionId = fixSessionId;
+        this.lostWrites = new AtomicLong();
         this.asyncMessagesStoreSettings = asyncMessagesStoreSettings;
         this.asyncStoreThreads = asyncStoreThreads;
         this.eventsConsumer = this::onAsyncStoreEvent;
@@ -151,7 +152,9 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         if (alreadyStored(event)) {
             processedEvents.incrementAndGet();
         } else {
-            lost(1, "it failed alone with the resource up");
+            processedEvents.addAndGet(1);
+            lostWrites.addAndGet(1);
+            log.error("1 messages lost for FIX session {}, it failed alone with the resource up", fixSessionId);
         }
     }
 
@@ -184,14 +187,9 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         }
     }
 
-    long getLostWrites() {
+    @Override
+    public long getLostWrites() {
         return lostWrites.get();
-    }
-
-    private void lost(int eventsCount, String reason) {
-        processedEvents.addAndGet(eventsCount);
-        lostWrites.addAndGet(eventsCount);
-        log.error("{} messages lost for FIX session {}, {}", eventsCount, fixSessionId, reason);
     }
 
     private boolean writeEvent(AsyncStoreEvent event) {
@@ -208,6 +206,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                     break;
                 case RESET_SEQ_NUM:
                     wrappedStore.resetSequenceNumbers();
+                    lostWrites.set(0);
                     break;
             }
             processedEvents.incrementAndGet();
@@ -240,6 +239,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                         storeOutgoingSeqNum = -1;
                         storeIncomingSeqNum = -1;
                         wrappedStore.resetSequenceNumbers();
+                        lostWrites.set(0);
                         break;
                     case STORE_INCOMING_SEQ_NUM:
                         storeIncomingSeqNum = e.getSequenceNumber();

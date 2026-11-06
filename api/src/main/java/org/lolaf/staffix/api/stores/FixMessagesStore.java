@@ -171,6 +171,14 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
         }
 
         /**
+         * Messages this store accepted and gave up on since its sequence numbers were last reset: they will not be
+         * stored, so a resend gap fills them. 0 for a store that reports a failed write to its caller.
+         */
+        default long getLostWrites() {
+            return 0;
+        }
+
+        /**
          * Indicates it the message should be filtered from the store.
          * Admin messages are de facto filtered
          *

@@ -408,7 +408,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         status.inSync(inSync)
                 .notReplicatedReason(inSync ? null : refusal)
                 .unprotected(session.isUnprotected())
-                .unacknowledgedSends(session.getUnacknowledgedSends());
+                .unacknowledgedSends(session.getUnacknowledgedSends())
+                .lostWrites(session.getConfig().getStore().getLostWrites());
     }
 
     @Override

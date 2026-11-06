@@ -28,13 +28,15 @@ final class BatchedStoreWrites implements StoreWrites {
 
     private static final int MAX_MESSAGES = 256;
     private final BatchingFixSessionMessagesStore store;
+    private final LostWrites lostWrites;
     private final SentFixMessage[] messages = new SentFixMessage[MAX_MESSAGES];
     private int messageCount;
     private long nextIncomingSeqNum = -1;
     private long nextOutgoingSeqNum = -1;
 
-    BatchedStoreWrites(BatchingFixSessionMessagesStore store) {
+    BatchedStoreWrites(BatchingFixSessionMessagesStore store, LostWrites lostWrites) {
         this.store = store;
+        this.lostWrites = lostWrites;
     }
 
     @Override
@@ -78,8 +80,31 @@ final class BatchedStoreWrites implements StoreWrites {
     private void write(long incoming, long outgoing) {
         try {
             store.storeSentFixMessagesAndSeqNums(messages, messageCount, incoming, outgoing);
+        } catch (RuntimeException e) {
+            lostWrites.failed(0, e);
+            writeOneByOne(incoming, outgoing);
         } finally {
             messageCount = 0;
+        }
+    }
+
+    private void writeOneByOne(long incoming, long outgoing) {
+        for (int i = 0; i < messageCount; i++) {
+            try {
+                store.storeMessageSent(messages[i].getSequenceNumber(), messages[i].getMessage().rewind());
+            } catch (RuntimeException e) {
+                lostWrites.failed(1, e);
+            }
+        }
+        try {
+            if (incoming >= 0) {
+                store.storeNextIncomingSeqNum(incoming);
+            }
+            if (outgoing >= 0) {
+                store.storeNextOutgoingSeqNum(outgoing);
+            }
+        } catch (RuntimeException e) {
+            lostWrites.failed(0, e);
         }
     }
 

@@ -42,6 +42,17 @@ class TestReplicaSession {
     }
 
     @Test
+    void aReplicatedSessionReportsTheWritesItsStoreLost() {
+        FixSessionMessagesStore store = mock(FixSessionMessagesStore.class);
+        when(store.getLostWrites()).thenReturn(4L);
+        HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder();
+
+        ReplicaSession.replicated(FixSessionType.ACCEPTOR, "alpha", store).describe(status);
+
+        assertThat(status.build().getLostWrites()).isEqualTo(4);
+    }
+
+    @Test
     void aSessionNotReplicatedHasNoPendingWrites() {
         ReplicaSession session = ReplicaSession.notReplicated(FixSessionType.ACCEPTOR, "alpha", SessionStatus.NOT_REPLICATED);
 

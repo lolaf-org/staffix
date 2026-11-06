@@ -94,7 +94,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
                 status.getReplicationMode().name(), status.getReplicationAckTimeout().toString(), status.isInSync(),
                 status.getNotReplicatedReason(), status.isUnprotected(),
                 status.getUnacknowledgedSends(), status.getNextIncomingSeqNum(), status.getNextOutgoingSeqNum(),
-                status.isHandedOver(), status.getPendingWrites());
+                status.isHandedOver(), status.getPendingWrites(), status.getLostWrites());
     }
 
     @Value
@@ -158,5 +158,6 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         long nextOutgoingSeqNum;
         boolean handedOver;
         long pendingWrites;
+        long lostWrites;
     }
 }

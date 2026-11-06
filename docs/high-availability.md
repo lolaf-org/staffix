@@ -345,3 +345,8 @@ storage that cannot be identified is refused too, rather than risk it.
   `flushPendingMessagesOnStartupDelay` a session fails to start. So set `eventsBatching` on an async store in front of a
   database: on one machine with Postgres, a snapshot of about 58 000 messages took 126 s to store one at a time and under
   3 s with `eventsBatching` 1000, and a leader killed during it left no leader for 123 s, against 2 s.
+- **A store can lose a write and the node stay in sync.** A write failing with its resource up, a bug or a message the
+  store refuses, is given up rather than stopping the session or the replication of the others, on either node.
+  `lostWrites` in `GET v1/ha/sessions` counts them, per node, and a resend gap fills them. A re-sync clears the count on
+  the follower by copying the leader's store, so it wipes what only the follower holds: compare both counts first. With
+  the resource down nothing is lost: the follower's stream resumes once it is back.

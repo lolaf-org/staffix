@@ -25,11 +25,13 @@ import java.nio.ByteBuffer;
 final class OneByOneStoreWrites implements StoreWrites {
 
     private final FixSessionMessagesStore store;
+    private final LostWrites lostWrites;
     private long nextIncomingSeqNum = -1;
     private long nextOutgoingSeqNum = -1;
 
-    OneByOneStoreWrites(FixSessionMessagesStore store) {
+    OneByOneStoreWrites(FixSessionMessagesStore store, LostWrites lostWrites) {
         this.store = store;
+        this.lostWrites = lostWrites;
     }
 
     @Override
@@ -42,8 +44,13 @@ final class OneByOneStoreWrites implements StoreWrites {
     public void storeSnapshotMessage(long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength) {
         int position = receiveBuffer.position();
         int limit = receiveBuffer.limit();
-        store.storeMessageSent(seqNum, receiveBuffer.limit(messageStart + messageLength).position(messageStart));
-        receiveBuffer.limit(limit).position(position);
+        try {
+            store.storeMessageSent(seqNum, receiveBuffer.limit(messageStart + messageLength).position(messageStart));
+        } catch (RuntimeException e) {
+            lostWrites.failed(1, e);
+        } finally {
+            receiveBuffer.limit(limit).position(position);
+        }
     }
 
     @Override
@@ -61,11 +68,15 @@ final class OneByOneStoreWrites implements StoreWrites {
         long incoming = nextIncomingSeqNum;
         long outgoing = nextOutgoingSeqNum;
         discardPending();
-        if (incoming >= 0) {
-            store.storeNextIncomingSeqNum(incoming);
-        }
-        if (outgoing >= 0) {
-            store.storeNextOutgoingSeqNum(outgoing);
+        try {
+            if (incoming >= 0) {
+                store.storeNextIncomingSeqNum(incoming);
+            }
+            if (outgoing >= 0) {
+                store.storeNextOutgoingSeqNum(outgoing);
+            }
+        } catch (RuntimeException e) {
+            lostWrites.failed(0, e);
         }
     }
 

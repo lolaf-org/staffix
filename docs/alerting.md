@@ -226,6 +226,7 @@ session from the engine, or the session logging out for a probe evaluated only w
 | `async-store-queue`, `async-logger-queue` | per threshold | the async store's or logger's queue is deeper than a threshold |
 | `async-store-resource`, `async-logger-resource` | `MAJOR` | what the async store or logger writes to is unavailable |
 | `messages-store`, `messages-logger` | `WARNING`, then `MAJOR` | a store or logger call failed, then its resource was found down |
+| `messages-lost` | `MAJOR` | messages were not stored and never will be; stays raised once the failures are over, until an operator clears it, and a new loss raises it again |
 | `ha-replication` | `MAJOR` | while leading: a `SYNC` send went out without the follower's ack in time, a message was too long for the replication log, or a follower refuses to replicate the session |
 
 **Every built-in probe is evaluated whether the session is logged in or not**: each watches something a logout does

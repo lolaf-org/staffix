@@ -163,5 +163,10 @@ public interface FixHaMXBean {
         boolean isHandedOver();
 
         long getPendingWrites();
+
+        /**
+         * Messages this node's store gave up on since its last reset.
+         */
+        long getLostWrites();
     }
 }
