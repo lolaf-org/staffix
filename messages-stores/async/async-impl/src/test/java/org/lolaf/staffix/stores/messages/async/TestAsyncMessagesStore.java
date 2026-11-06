@@ -32,7 +32,10 @@ import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.mockito.Mockito;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -374,9 +377,7 @@ class TestAsyncMessagesStore {
         await().untilAsserted(() -> assertThat(asyncMessageStore.getLostWrites()).isZero());
     }
 
-    @Test
-    void aMessageTheStoreAlreadyHoldsIsNotLost() {
-        List<Long> stored = new CopyOnWriteArrayList<>();
+    private void storeRefusingMessage2ItHolds(List<Long> stored) {
         FixMessagesStore.BatchingFixSessionMessagesStore batching = getBatchingFixSessionMessagesStoreMock();
         doAnswer(i -> {
             FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] messages = i.getArgument(0);
@@ -402,6 +403,24 @@ class TestAsyncMessagesStore {
         messageStore = batching;
         recreateStore(10);
         asyncMessageStore.start();
+    }
+
+    private static String loggedWhile(Runnable action) {
+        PrintStream err = System.err;
+        ByteArrayOutputStream logged = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(logged, true, StandardCharsets.UTF_8));
+        try {
+            action.run();
+        } finally {
+            System.setErr(err);
+        }
+        return logged.toString(StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void aMessageTheStoreAlreadyHoldsIsNotLost() {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        storeRefusingMessage2ItHolds(stored);
 
         for (long seqNum = 1; seqNum <= 3; seqNum++) {
             asyncMessageStore.storeMessageSent(seqNum, testMessage);
@@ -410,6 +429,37 @@ class TestAsyncMessagesStore {
         await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
         assertThat(stored).containsExactlyInAnyOrder(1L, 3L);
         assertThat(asyncMessageStore.getLostWrites()).isZero();
+    }
+
+    @Test
+    void aMessageTheStoreAlreadyHoldsIsNoErrorAndCarriesNoStackTrace() {
+        storeRefusingMessage2ItHolds(new CopyOnWriteArrayList<>());
+
+        String logged = loggedWhile(() -> {
+            for (long seqNum = 1; seqNum <= 3; seqNum++) {
+                asyncMessageStore.storeMessageSent(seqNum, testMessage);
+            }
+            await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
+        });
+
+        assertThat(logged).contains("already stored").doesNotContain("ERROR").doesNotContain("\tat ");
+    }
+
+    @Test
+    void aLostWriteIsAnErrorWithItsStackTrace() {
+        FixMessagesStore.BatchingFixSessionMessagesStore batching = getBatchingFixSessionMessagesStoreMock();
+        doThrow(new IllegalStateException("test exception")).when(batching).storeSentFixMessages(any(), anyInt());
+        doThrow(new IllegalStateException("test exception")).when(batching).storeMessageSent(anyLong(), any());
+        messageStore = batching;
+        recreateStore(10);
+        asyncMessageStore.start();
+
+        String logged = loggedWhile(() -> {
+            asyncMessageStore.storeMessageSent(1, testMessage);
+            await().untilAsserted(() -> assertThat(asyncMessageStore.getLostWrites()).isEqualTo(1));
+        });
+
+        assertThat(logged).contains("ERROR").contains("test exception").contains("\tat ");
     }
 
     @Test

@@ -53,6 +53,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private final AtomicLong processedEvents;
     private final AtomicLong lostWrites;
     private volatile boolean retryingFailedWrite;
+    private Exception lastWriteFailure;
 
     AsyncMessageStore(FixMessagesStore.FixSessionMessagesStore wrappedStore, FixSessionId fixSessionId,
                       AsyncMessagesStoreSettings asyncMessagesStoreSettings, AsyncStoreThreads<AsyncStoreEvent> asyncStoreThreads,
@@ -99,7 +100,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
             if (writeEvent(event)) {
                 retryingFailedWrite = false;
             } else if (failsWithTheResourceUp()) {
-                writeFailedAlone(event);
+                logAlreadyStored(writeFailedAlone(event) ? 1 : 0);
             } else {
                 retryLater();
             }
@@ -135,27 +136,37 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     }
 
     private void writeOneByOne(AsyncStoreEvent[] asyncStoreEvents) {
+        int alreadyStored = 0;
         for (AsyncStoreEvent event : asyncStoreEvents) {
             if (event == null) {
                 break;
             }
-            if (!writeEvent(event)) {
-                writeFailedAlone(event);
+            if (!writeEvent(event) && writeFailedAlone(event)) {
+                alreadyStored++;
             }
+        }
+        logAlreadyStored(alreadyStored);
+    }
+
+    private void logAlreadyStored(int writes) {
+        if (writes > 0) {
+            log.info("{} writes read again for FIX session {} were already stored", writes, fixSessionId);
         }
     }
 
     /**
      * A write read again after a crash may be one the store already holds, and refuses.
+     *
+     * @return whether it is one
      */
-    private void writeFailedAlone(AsyncStoreEvent event) {
+    private boolean writeFailedAlone(AsyncStoreEvent event) {
+        processedEvents.incrementAndGet();
         if (alreadyStored(event)) {
-            processedEvents.incrementAndGet();
-        } else {
-            processedEvents.addAndGet(1);
-            lostWrites.addAndGet(1);
-            log.error("1 messages lost for FIX session {}, it failed alone with the resource up", fixSessionId);
+            return true;
         }
+        lostWrites.incrementAndGet();
+        log.error("A write of FIX session {} is lost, it failed alone with the resource up", fixSessionId, lastWriteFailure);
+        return false;
     }
 
     private boolean alreadyStored(AsyncStoreEvent event) {
@@ -178,6 +189,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
      * What failed stays in the queue, on disk, so a stop or a crash until the retry costs nothing.
      */
     private void retryLater() {
+        log.warn("Failed to store for FIX session {}, the write stays queued: {}", fixSessionId, lastWriteFailure.toString());
         if (!messagesQueue.returnPolled()) {
             return;
         }
@@ -212,7 +224,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
             processedEvents.incrementAndGet();
             return true;
         } catch (Exception ex) {
-            log.error("Failed to store a message for FIX session {}", fixSessionId, ex);
+            lastWriteFailure = ex;
             return false;
         }
     }
@@ -261,7 +273,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
             processedEvents.addAndGet(batchSize);
             return true;
         } catch (Exception ex) {
-            log.error("Failed to store a batch of messages for FIX session {}", fixSessionId, ex);
+            lastWriteFailure = ex;
             return false;
         }
     }
