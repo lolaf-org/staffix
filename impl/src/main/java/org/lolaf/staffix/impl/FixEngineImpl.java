@@ -52,6 +52,7 @@ import java.time.Clock;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -868,6 +869,13 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         @Override
         public List<FixSessionSettings> getFixSessionsSettings() {
             return getManagedFixSessionsSettings();
+        }
+
+        @Override
+        public void forEachFixSessionSettings(Consumer<FixSessionSettings> action) {
+            for (FixSessionAdminControl control : sessionAdminControls) {
+                control.forEachManagedFixSessionSettings(action);
+            }
         }
 
         @Override

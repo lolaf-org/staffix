@@ -67,6 +67,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -598,6 +599,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         synchronized (configuredSessionsSettings) {
             return new ArrayList<>(configuredSessionsSettings);
         }
+    }
+
+    @Override
+    public void forEachManagedFixSessionSettings(Consumer<FixSessionSettings> action) {
+        configuredSessionsSettings.forEach(action);
     }
 
     @Override

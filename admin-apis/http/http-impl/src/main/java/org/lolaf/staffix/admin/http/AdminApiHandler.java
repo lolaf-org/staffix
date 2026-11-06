@@ -53,6 +53,7 @@ public class AdminApiHandler implements HttpHandler {
     private final ObjectMapper mapper;
     @Getter
     private final ProbesDocuments probesDocuments;
+    private final JsonResponseBuffer json;
     private final Route[] routes;
 
     AdminApiHandler(AdminApi adminApi, String apiToken, String readOnlyApiToken) {
@@ -60,7 +61,8 @@ public class AdminApiHandler implements HttpHandler {
         this.readOnlyAuthorization = readOnlyApiToken == null ? null : bearer(readOnlyApiToken);
         this.mapper = newObjectMapper();
         this.probesDocuments = new ProbesDocuments(adminApi, mapper);
-        this.routes = routes(adminApi, mapper, probesDocuments);
+        this.json = new JsonResponseBuffer(mapper);
+        this.routes = routes(adminApi, mapper, probesDocuments, json);
     }
 
     static ObjectMapper newObjectMapper() {
@@ -71,16 +73,14 @@ public class AdminApiHandler implements HttpHandler {
                 .disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS);
     }
 
-    static void sendProblem(HttpExchange exchange, ObjectMapper mapper, HttpProblemException problem) throws IOException {
-        Route.send(exchange, problem.getStatus(), "application/problem+json",
-                mapper.writeValueAsBytes(new Problem(problem.getStatus(), problem.getMessage())));
+    static void sendProblem(HttpExchange exchange, JsonResponseBuffer json, HttpProblemException problem) throws IOException {
+        json.send(exchange, problem.getStatus(), "application/problem+json", new Problem(problem.getStatus(), problem.getMessage()));
     }
 
-    private static Route[] routes(AdminApi adminApi, ObjectMapper mapper, ProbesDocuments probes) {
+    private static Route[] routes(AdminApi adminApi, ObjectMapper mapper, ProbesDocuments probes, JsonResponseBuffer json) {
         SessionLookup sessions = new SessionLookup(adminApi);
         ComponentLookup components = new ComponentLookup(adminApi);
         SessionsDocumentCache documents = new SessionsDocumentCache(adminApi, mapper);
-        JsonResponseBuffer json = new JsonResponseBuffer(mapper);
         return new Route[]{
                 new EngineInfoRoute(adminApi, json),
                 new SessionsRoute(documents),
@@ -142,16 +142,16 @@ public class AdminApiHandler implements HttpHandler {
             }
             route(exchange, pathAfterEngine(exchange), access);
         } catch (HttpProblemException e) {
-            sendProblem(exchange, mapper, e);
+            sendProblem(exchange, json, e);
         } catch (JacksonException e) {
-            sendProblem(exchange, mapper, new HttpProblemException(400, "Invalid request body: " + e.getOriginalMessage()));
+            sendProblem(exchange, json, new HttpProblemException(400, "Invalid request body: " + e.getOriginalMessage()));
         } catch (IllegalArgumentException e) {
-            sendProblem(exchange, mapper, new HttpProblemException(400, e.getMessage()));
+            sendProblem(exchange, json, new HttpProblemException(400, e.getMessage()));
         } catch (IllegalStateException e) {
-            sendProblem(exchange, mapper, new HttpProblemException(409, e.getMessage()));
+            sendProblem(exchange, json, new HttpProblemException(409, e.getMessage()));
         } catch (RuntimeException e) {
             log.error("Admin API request {} {} failed", exchange.getRequestMethod(), exchange.getRequestURI(), e);
-            sendProblem(exchange, mapper, new HttpProblemException(500, "The engine failed to serve the request; see its log"));
+            sendProblem(exchange, json, new HttpProblemException(500, "The engine failed to serve the request; see its log"));
         } finally {
             exchange.close();
         }

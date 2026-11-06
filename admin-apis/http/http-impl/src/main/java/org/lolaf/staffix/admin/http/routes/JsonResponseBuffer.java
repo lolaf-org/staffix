@@ -39,10 +39,14 @@ public final class JsonResponseBuffer extends ByteArrayOutputStream {
     }
 
     void send(HttpExchange exchange, Object body) throws IOException {
+        send(exchange, 200, "application/json", body);
+    }
+
+    public void send(HttpExchange exchange, int status, String contentType, Object body) throws IOException {
         reset();
         mapper.writeValue(this, body);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(200, size());
+        exchange.getResponseHeaders().set("Content-Type", contentType);
+        exchange.sendResponseHeaders(status, size());
         try (OutputStream out = exchange.getResponseBody()) {
             writeTo(out);
         }

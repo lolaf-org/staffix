@@ -369,26 +369,29 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         Role role = followedRole;
         List<HaSessionStatus> statuses = new ArrayList<>();
-        for (FixSessionSettings sessionSettings : currentEngine.getFixSessionsSettings()) {
-            HaSessionSettings haSettings = sessionSettings.getHaSessionSettings();
-            if (haSettings.getReplicationMode() == ReplicationMode.NONE) {
-                continue;
+        currentEngine.forEachFixSessionSettings(sessionSettings -> {
+            if (!ReplicationMode.NONE.equals(sessionSettings.getHaSessionSettings().getReplicationMode())) {
+                statuses.add(sessionStatus(sessionSettings, role));
             }
-            HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder()
-                    .fixSessionId(sessionSettings.getFixSessionId())
-                    .fixSessionType(sessionSettings.getFixSessionType())
-                    .replicationMode(haSettings.getReplicationMode())
-                    .replicationAckTimeout(haSettings.getReplicationAckTimeout())
-                    .nextIncomingSeqNum(-1)
-                    .nextOutgoingSeqNum(-1);
-            if (role == Role.LEADER) {
-                describeLed(sessionSettings, status);
-            } else if (role == Role.FOLLOWER) {
-                replica.describe(sessionSettings.getFixSessionType(), sessionSettings.getFixSessionId().toString(), status);
-            }
-            statuses.add(status.build());
-        }
+        });
         return statuses;
+    }
+
+    private HaSessionStatus sessionStatus(FixSessionSettings sessionSettings, Role role) {
+        HaSessionSettings haSettings = sessionSettings.getHaSessionSettings();
+        HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder()
+                .fixSessionId(sessionSettings.getFixSessionId())
+                .fixSessionType(sessionSettings.getFixSessionType())
+                .replicationMode(haSettings.getReplicationMode())
+                .replicationAckTimeout(haSettings.getReplicationAckTimeout())
+                .nextIncomingSeqNum(-1)
+                .nextOutgoingSeqNum(-1);
+        if (Role.LEADER.equals(role)) {
+            describeLed(sessionSettings, status);
+        } else if (Role.FOLLOWER.equals(role)) {
+            replica.describe(sessionSettings.getFixSessionType(), sessionSettings.getFixSessionId().toString(), status);
+        }
+        return status.build();
     }
 
     private void describeLed(FixSessionSettings sessionSettings, HaSessionStatus.HaSessionStatusBuilder status) {

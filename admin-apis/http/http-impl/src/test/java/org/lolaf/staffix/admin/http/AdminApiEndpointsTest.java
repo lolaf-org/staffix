@@ -523,6 +523,17 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void aProblemAfterADocumentHoldsOnlyItself() throws Exception {
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).statusCode()).isEqualTo(200);
+
+        HttpResponse<String> problem = call("GET", "/engines/alpha-engine/v1/ha", null);
+
+        assertThat(problem.statusCode()).isEqualTo(404);
+        assertThat(problem.headers().firstValue("Content-Type")).hasValue("application/problem+json");
+        assertThat(problem.body()).isEqualTo("{\"status\":404,\"detail\":\"This engine has no high availability\"}");
+    }
+
+    @Test
     void errorsAreProblemDetails() throws Exception {
         doThrow(new IllegalStateException("trading is not logged in"))
                 .when(adminApi).sendFixMessages(any(), anyList(), anyChar(), anyBoolean());

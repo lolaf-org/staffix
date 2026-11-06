@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Internal per-runtime (initiator/acceptor) session-control surface. The engine's
@@ -46,6 +47,12 @@ interface FixSessionAdminControl {
     long getOutgoingSeqNum(FixSessionId fixSessionId);
 
     List<FixSessionSettings> getManagedFixSessionsSettings();
+
+    /**
+     * Visits {@link #getManagedFixSessionsSettings()} without copying them. Sessions cannot be added or changed while
+     * {@code action} runs.
+     */
+    void forEachManagedFixSessionSettings(Consumer<FixSessionSettings> action);
 
     /**
      * Same answer as searching {@link #getManagedFixSessionsSettings()}, without copying them: the engine routes every

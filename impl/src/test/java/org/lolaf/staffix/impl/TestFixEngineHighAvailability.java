@@ -199,6 +199,21 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     }
 
     @Test
+    void visitingTheSettingsMeetsThoseListed() {
+        acceptorFixEngineBuilder = acceptorFixEngineBuilder.toBuilder()
+                .highAvailability(TestingHaSettings.builder().mock(ha).build())
+                .build();
+        withStandbyHighAvailability();
+        setupAcceptorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);
+        fixAcceptor.start();
+        List<FixSessionSettings> visited = new CopyOnWriteArrayList<>();
+
+        engine.forEachFixSessionSettings(visited::add);
+
+        assertThat(visited).isNotEmpty().containsExactlyInAnyOrderElementsOf(engine.getFixSessionsSettings());
+    }
+
+    @Test
     void aStandbyRefusesEverySessionActionWithAClearMessage() {
         withStandbyHighAvailability();
         setupInitiatorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);

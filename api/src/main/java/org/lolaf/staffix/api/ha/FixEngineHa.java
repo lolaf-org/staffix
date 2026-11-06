@@ -29,6 +29,7 @@ import org.lolaf.staffix.api.time.Clock;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /**
  * An engine's high availability: everything the engine calls to replicate its sessions and to follow the leader
@@ -71,6 +72,14 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
          * The settings of every session the engine manages now.
          */
         List<FixSessionSettings> getFixSessionsSettings();
+
+        /**
+         * Visits what {@link #getFixSessionsSettings()} lists without copying it. Sessions cannot be added or changed
+         * while {@code action} runs, so it must be short.
+         */
+        default void forEachFixSessionSettings(Consumer<FixSessionSettings> action) {
+            getFixSessionsSettings().forEach(action);
+        }
 
         /**
          * The engine's time, which the high availability reads too, so a test that controls one controls both.

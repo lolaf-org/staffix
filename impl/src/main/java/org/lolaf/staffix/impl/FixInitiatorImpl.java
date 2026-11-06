@@ -43,6 +43,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -564,6 +565,11 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     @Override
     public List<FixSessionSettings> getManagedFixSessionsSettings() {
         return List.of(fixSessionSettings);
+    }
+
+    @Override
+    public void forEachManagedFixSessionSettings(Consumer<FixSessionSettings> action) {
+        action.accept(fixSessionSettings);
     }
 
     @Override
