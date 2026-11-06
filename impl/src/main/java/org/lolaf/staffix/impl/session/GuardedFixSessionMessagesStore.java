@@ -65,6 +65,7 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
     private String lastFailure;
     private volatile boolean readable;
     private volatile long skippedOrFailedMessages;
+    private volatile long acknowledgedLostWrites;
 
     public GuardedFixSessionMessagesStore(FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore, FixSessionId fixSessionId,
                                           FixMessagesStoreSettings settings, UnderlyingResourceChecker checker) {
@@ -104,7 +105,11 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
 
     @Override
     public long getLostWrites() {
-        return skippedOrFailedMessages + fixSessionMessagesStore.getLostWrites();
+        long lost = skippedOrFailedMessages + fixSessionMessagesStore.getLostWrites();
+        if (lost < acknowledgedLostWrites) {
+            acknowledgedLostWrites = lost;
+        }
+        return lost - acknowledgedLostWrites;
     }
 
     @Override
@@ -275,26 +280,19 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
 
     /**
      * Stays raised once the failures are over, unlike the store's own alert: what was lost stays lost, so an operator
-     * says when it is known, and only a new loss raises it again.
+     * says when it is known, which also takes it out of the count, and only a new loss raises it again.
      */
     private final class LostWritesEvaluator implements ProbeEvaluator {
-
-        private volatile long acknowledged;
 
         @Override
         public Optional<Alert> evaluate() {
             long lost = getLostWrites();
-            if (lost < acknowledged) {
-                acknowledged = lost;
-            }
-            return lost > acknowledged
-                    ? Optional.of(Alert.major((lost - acknowledged) + " messages not stored, a resend gap fills them"))
-                    : Optional.empty();
+            return lost > 0 ? Optional.of(Alert.major(lost + " messages not stored, a resend gap fills them")) : Optional.empty();
         }
 
         @Override
         public boolean clear() {
-            acknowledged = getLostWrites();
+            acknowledgedLostWrites += getLostWrites();
             return true;
         }
     }

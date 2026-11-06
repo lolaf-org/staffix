@@ -141,6 +141,34 @@ class TestGuardedFixSessionMessagesStore {
     }
 
     @Test
+    void clearingTheLostWritesAlertAcknowledgesWhatTheCountSaid() {
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
+        when(store.getLostWrites()).thenReturn(3L);
+        doThrow(new FixSessionMessagesStore.StoreException("refused")).when(store).storeMessageSent(eq(1L), any());
+        guarded.storeMessageSent(1, MESSAGE);
+        assertThat(guarded.getLostWrites()).isEqualTo(4);
+
+        guarded.getLostWritesProbe().getEvaluator().clear();
+        assertThat(guarded.getLostWrites()).isZero();
+
+        guarded.storeMessageSent(1, MESSAGE);
+        assertThat(guarded.getLostWrites()).isEqualTo(1);
+    }
+
+    @Test
+    void aStoreCountingLessAfterItsResetLeavesNothingAcknowledged() {
+        GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
+        when(store.getLostWrites()).thenReturn(3L);
+        guarded.getLostWritesProbe().getEvaluator().clear();
+
+        when(store.getLostWrites()).thenReturn(0L);
+        assertThat(guarded.getLostWrites()).isZero();
+        when(store.getLostWrites()).thenReturn(1L);
+
+        assertThat(guarded.getLostWrites()).isEqualTo(1);
+    }
+
+    @Test
     void messageWritesAreSkippedAtOnceWhileTheResourceIsDown() {
         GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
         storeBlocksThenFails();

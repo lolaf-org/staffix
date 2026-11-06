@@ -64,7 +64,7 @@ could mean.
   Spring Boot. A message past it disconnects the session with a session event and a warning naming the limit.
 - **Lost messages are now counted and alerted on.** A message a store gives up on, which a resend then gap fills, counts
   in `getLostWrites()` and in `lostWrites` in `GET v1/ha/sessions`, and raises the `messages-lost` alert, which stays
-  until an operator clears it. A follower's store failing a write while its storage is up no longer stops replication
+  until an operator clears it, which also takes them out of the count. A follower's store failing a write while its storage is up no longer stops replication
   for the other sessions.
 
 ### Changed

@@ -167,7 +167,7 @@ it back:
 
 A sent message that was not stored is gap filled if the peer later asks for it again: the peer stays in sequence but
 never receives that message a second time. The store counts them, as `getLostWrites()`, until its next sequence number
-reset, and the `messages-lost` alert stays raised until an operator clears it. To lose nothing through an outage, put the store behind the
+reset or an operator clears the `messages-lost` alert, which stays raised until then. To lose nothing through an outage, put the store behind the
 [async wrapper](#taking-io-off-the-session-thread), which queues to local disk and replays once the resource is back.
 
 | setting                 | default    | what it is for                                                                     |
