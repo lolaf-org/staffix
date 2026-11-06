@@ -67,4 +67,9 @@ public class HaSessionStatus {
      * outgoing seqnum rather than moving it ahead.
      */
     boolean handedOver;
+    /**
+     * Writes this follower's store has accepted and not stored yet, which it must store before it can lead: in sync as
+     * it is, a large count here delays a takeover. 0 on a leader.
+     */
+    long pendingWrites;
 }

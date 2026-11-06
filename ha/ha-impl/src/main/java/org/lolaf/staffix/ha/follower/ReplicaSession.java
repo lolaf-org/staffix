@@ -128,7 +128,8 @@ final class ReplicaSession {
         if (replicated) {
             status.inSync(complete)
                     .nextIncomingSeqNum(store.getIncomingSeqNum())
-                    .nextOutgoingSeqNum(store.getOutgoingSeqNum());
+                    .nextOutgoingSeqNum(store.getOutgoingSeqNum())
+                    .pendingWrites(store.getPendingWrites());
         } else {
             status.notReplicatedReason(notReplicatedStatus.name());
         }

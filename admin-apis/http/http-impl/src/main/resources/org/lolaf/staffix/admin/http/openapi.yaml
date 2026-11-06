@@ -1298,7 +1298,7 @@ components:
     HaSession:
       type: object
       required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, inSync, unprotected,
-                 unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver]
+                 unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver, pendingWrites]
       properties:
         group:
           type: string
@@ -1336,6 +1336,10 @@ components:
         handedOver:
           type: boolean
           description: The old leader stopped cleanly with this follower holding it in full, so taking over keeps its seqnum.
+        pendingWrites:
+          type: integer
+          format: int64
+          description: Writes this follower's store has accepted and not stored yet, which it must store before it can lead. 0 on a leader.
     SessionComponents:
       type: object
       required: [applicationFactories, messagesStores, messagesLoggers, alertsPublishers, sessionsPlugins]

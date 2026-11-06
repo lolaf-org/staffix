@@ -315,7 +315,7 @@ class JmxAdminApiTest {
         when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC_APPLIED)
                 .replicationAckTimeout(Duration.ofMillis(200)).inSync(true).nextIncomingSeqNum(12).nextOutgoingSeqNum(34)
-                .handedOver(true).build()));
+                .handedOver(true).pendingWrites(7).build()));
         adminApi.ha = ha;
         exporter.export(adminApi);
 
@@ -334,6 +334,7 @@ class JmxAdminApiTest {
             assertThat(session.getReplicationAckTimeout()).isEqualTo("PT0.2S");
             assertThat(session.getNextOutgoingSeqNum()).isEqualTo(34);
             assertThat(session.isHandedOver()).isTrue();
+            assertThat(session.getPendingWrites()).isEqualTo(7);
             assertThat(session.getNotReplicatedReason()).isNull();
         });
 

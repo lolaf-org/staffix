@@ -159,5 +159,7 @@ public interface FixHaMXBean {
         long getNextOutgoingSeqNum();
 
         boolean isHandedOver();
+
+        long getPendingWrites();
     }
 }
