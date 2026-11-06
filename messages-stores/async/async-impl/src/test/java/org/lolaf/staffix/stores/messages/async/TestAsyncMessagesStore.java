@@ -271,6 +271,96 @@ class TestAsyncMessagesStore {
     }
 
     @Test
+    void aWriteFailedWithTheResourceDownOutlivesAStop() {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        AtomicBoolean available = new AtomicBoolean(true);
+        when(messageStore.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> available.get());
+        doAnswer(i -> {
+            if (!available.get()) {
+                throw new IllegalStateException("test exception");
+            }
+            return stored.add(i.getArgument(0));
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        recreateStore(0);
+        asyncMessageStore.start();
+
+        restartsThroughAnOutage(available);
+
+        assertThat(stored).containsExactly(1L, 2L, 3L);
+    }
+
+    @Test
+    void aBatchFailedWithTheResourceDownOutlivesAStop() {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        AtomicBoolean available = new AtomicBoolean(true);
+        FixMessagesStore.BatchingFixSessionMessagesStore batching = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
+        when(batching.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> available.get());
+        doAnswer(i -> {
+            if (!available.get()) {
+                throw new IllegalStateException("test exception");
+            }
+            FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] messages = i.getArgument(0);
+            for (int n = 0; n < i.<Integer>getArgument(1); n++) {
+                stored.add(messages[n].getSequenceNumber());
+            }
+            return null;
+        }).when(batching).storeSentFixMessages(any(), anyInt());
+        messageStore = batching;
+        recreateStore(10);
+        asyncMessageStore.start();
+
+        restartsThroughAnOutage(available);
+
+        assertThat(stored).containsExactly(1L, 2L, 3L);
+    }
+
+    private void restartsThroughAnOutage(AtomicBoolean available) {
+        available.set(false);
+        for (long seqNum = 1; seqNum <= 3; seqNum++) {
+            asyncMessageStore.storeMessageSent(seqNum, testMessage);
+        }
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isFalse());
+        asyncMessageStore.stop(Deadline.immediate());
+        available.set(true);
+        asyncMessageStore.start();
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
+    }
+
+    @Test
+    void aBadMessageInABatchCostsThatMessageAlone() {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        FixMessagesStore.BatchingFixSessionMessagesStore batching = getBatchingFixSessionMessagesStoreMock();
+        doAnswer(i -> {
+            FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] messages = i.getArgument(0);
+            for (int n = 0; n < i.<Integer>getArgument(1); n++) {
+                if (messages[n].getSequenceNumber() == 3) {
+                    throw new IllegalStateException("test exception");
+                }
+            }
+            for (int n = 0; n < i.<Integer>getArgument(1); n++) {
+                stored.add(messages[n].getSequenceNumber());
+            }
+            return null;
+        }).when(batching).storeSentFixMessages(any(), anyInt());
+        doAnswer(i -> {
+            if (i.<Long>getArgument(0) == 3) {
+                throw new IllegalStateException("test exception");
+            }
+            return stored.add(i.getArgument(0));
+        }).when(batching).storeMessageSent(anyLong(), any());
+        messageStore = batching;
+        recreateStore(10);
+        asyncMessageStore.start();
+
+        for (long seqNum = 1; seqNum <= 5; seqNum++) {
+            asyncMessageStore.storeMessageSent(seqNum, testMessage);
+        }
+
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
+        assertThat(stored).containsExactlyInAnyOrder(1L, 2L, 4L, 5L);
+    }
+
+    @Test
     void testWriteFailingAfterStopDoesNotStartAWatchdog() throws InterruptedException {
         asyncMessageStore.start();
         CountDownLatch writeStarted = new CountDownLatch(1);

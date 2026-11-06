@@ -24,7 +24,6 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.stores.core.async.*;
-import org.lolaf.staffix.stores.core.async.QueueSizeEvaluator;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -51,6 +50,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private final AtomicLong outgoingSequenceNumber;
     private final AtomicLong incomingSequenceNumber;
     private final AtomicLong processedEvents;
+    private volatile boolean retryingFailedWrite;
 
     AsyncMessageStore(FixMessagesStore.FixSessionMessagesStore wrappedStore, FixSessionId fixSessionId,
                       AsyncMessagesStoreSettings asyncMessagesStoreSettings, AsyncStoreThreads<AsyncStoreEvent> asyncStoreThreads,
@@ -70,14 +70,29 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         this.batchedSentFixMessages = isBatchingEnabled()
                 ? new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[asyncMessagesStoreSettings.getAsyncStoreSettings().getEventsBatching()]
                 : null;
-        this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(this::replayAsyncStoreEvents,
-                this::replayAsyncStoreEvent, wrappedStore::isUnderlyingStorageResourceAvailable, wrappedStore.getClass().getSimpleName(),
+        this.underlyingResourceWatchContext = new UnderlyingResourceWatchContext<>(wrappedStore::isUnderlyingStorageResourceAvailable, wrappedStore.getClass().getSimpleName(),
                 asyncMessagesStoreSettings.getUnderlyingStoreResourceWatchTaskCheckDelay(), () -> unregisterEventsHandlingFromAsyncLoggersThreads(Deadline.immediate()),
-                this::onUnderlyingResourceBackUp,
-                "async-store-resource", "Availability of the store the async store persists to");
+                this::onUnderlyingResourceBackUp, "async-store-resource", "Availability of the store the async store persists to");
         outgoingSequenceNumber = new AtomicLong(1);
         incomingSequenceNumber = new AtomicLong(1);
         processedEvents = new AtomicLong();
+    }
+
+    private static int batchSize(AsyncStoreEvent[] asyncStoreEvents) {
+        int batchSize = 0;
+        while (batchSize < asyncStoreEvents.length && asyncStoreEvents[batchSize] != null) {
+            batchSize++;
+        }
+        return batchSize;
+    }
+
+    private static void release(AsyncStoreEvent[] asyncStoreEvents) {
+        for (AsyncStoreEvent e : asyncStoreEvents) {
+            if (e == null) {
+                break;
+            }
+            e.release();
+        }
     }
 
     Probe getResourceDownProbe() {
@@ -86,8 +101,12 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
 
     private void onAsyncStoreEvent(AsyncStoreEvent event) {
         try {
-            if (!writeEvent(event)) {
-                keepForReplay(null, event, 1);
+            if (writeEvent(event)) {
+                retryingFailedWrite = false;
+            } else if (failsWithTheResourceUp()) {
+                lost(1, "the retry failed with the resource up");
+            } else {
+                retryLater(1);
             }
         } finally {
             event.release();
@@ -96,8 +115,12 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
 
     private void onAsyncStoreEvents(AsyncStoreEvent[] asyncStoreEvents) {
         try {
-            if (!writeEvents(asyncStoreEvents)) {
-                keepForReplay(asyncStoreEvents, null, batchSize(asyncStoreEvents));
+            if (writeEvents(asyncStoreEvents)) {
+                retryingFailedWrite = false;
+            } else if (failsWithTheResourceUp()) {
+                writeOneByOne(asyncStoreEvents);
+            } else {
+                retryLater(batchSize(asyncStoreEvents));
             }
         } finally {
             release(asyncStoreEvents);
@@ -105,34 +128,40 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     }
 
     /**
-     * Even when the resource reports up: a write can fail on a connection that died in an outage just ended.
+     * Whether a write failed again though its resource is up, so waiting will not help. Its first failure says nothing:
+     * a write can fail on a connection that died in an outage just ended, while the resource reports up.
      */
-    private void keepForReplay(AsyncStoreEvent[] asyncStoreEvents, AsyncStoreEvent asyncStoreEvent, int eventsCount) {
-        if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
-            startUnderlyingResourceWatchdog(asyncStoreEvents, asyncStoreEvent);
-        } else {
-            lost(eventsCount, "stopped or already replaying");
-        }
-    }
-
-    private boolean replayAsyncStoreEvent(AsyncStoreEvent event) {
-        return writeEvent(event) || dropUnlessResourceDown(1);
-    }
-
-    private boolean replayAsyncStoreEvents(AsyncStoreEvent[] asyncStoreEvents) {
-        if (writeEvents(asyncStoreEvents) || dropUnlessResourceDown(batchSize(asyncStoreEvents))) {
-            release(asyncStoreEvents);
+    private boolean failsWithTheResourceUp() {
+        if (retryingFailedWrite && wrappedStore.isUnderlyingStorageResourceAvailable()) {
+            retryingFailedWrite = false;
             return true;
         }
         return false;
     }
 
-    private boolean dropUnlessResourceDown(int eventsCount) {
-        if (!wrappedStore.isUnderlyingStorageResourceAvailable()) {
-            return false;
+    private void writeOneByOne(AsyncStoreEvent[] asyncStoreEvents) {
+        for (AsyncStoreEvent event : asyncStoreEvents) {
+            if (event == null) {
+                break;
+            }
+            if (!writeEvent(event)) {
+                lost(1, "it failed alone with the resource up");
+            }
         }
-        lost(eventsCount, "the replay failed with the resource up");
-        return true;
+    }
+
+    /**
+     * Back in the queue, on disk, so a stop or a crash until the retry costs nothing.
+     */
+    private void retryLater(int eventsCount) {
+        if (!messagesQueue.returnPolled()) {
+            lost(eventsCount, "its queue is stopped");
+            return;
+        }
+        retryingFailedWrite = true;
+        if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
+            startUnderlyingResourceWatchdog();
+        }
     }
 
     private void lost(int eventsCount, String reason) {
@@ -212,23 +241,6 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         }
     }
 
-    private static int batchSize(AsyncStoreEvent[] asyncStoreEvents) {
-        int batchSize = 0;
-        while (batchSize < asyncStoreEvents.length && asyncStoreEvents[batchSize] != null) {
-            batchSize++;
-        }
-        return batchSize;
-    }
-
-    private static void release(AsyncStoreEvent[] asyncStoreEvents) {
-        for (AsyncStoreEvent e : asyncStoreEvents) {
-            if (e == null) {
-                break;
-            }
-            e.release();
-        }
-    }
-
     @Override
     protected void startMe() throws StartStopException {
         if (isBatchingEnabled() && batchingWrappedStore == null) {
@@ -237,6 +249,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         }
         // the queue restarts its offers count, from what a previous run left unprocessed
         processedEvents.set(0);
+        retryingFailedWrite = false;
         messagesQueue.start(asyncMessagesStoreSettings.getAsyncStoreSettings(), "fix-messages");
         if (wrappedStore.isUnderlyingStorageResourceAvailable()) {
             wrappedStore.start();
@@ -266,7 +279,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         flushMessagesIfNeeded(stopDeadline);
         // unregistering first lets a write that fails meanwhile start its watchdog before it is stopped below
         if (!unregisterEventsHandlingFromAsyncLoggersThreads(stopDeadline)) {
-            log.warn("Async messages store for FIX session {} stops while its reader thread is still writing to it, a write it fails will be lost", fixSessionId);
+            log.warn("Async messages store for FIX session {} stops while its reader thread is still writing to it, a write it fails after the queue stops will be lost", fixSessionId);
         }
         if (underlyingResourceWatchContext.isStarted()) {
             log.warn("AsyncMessageStore shutdown with an underlying resource state active watchdog for FIX session {}", fixSessionId);
@@ -302,13 +315,13 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         }
     }
 
-    private void startUnderlyingResourceWatchdog(AsyncStoreEvent[] asyncEventsToReplay, AsyncStoreEvent asyncEventToReplay) {
+    private void startUnderlyingResourceWatchdog() {
         if (underlyingResourceWatchContext.isStarted()) {
             log.error("AsyncMessageStore for FIX session {} underlying resource state watchdog is already existing abnormal situation", fixSessionId);
             return;
         }
         log.info("Starting AsyncMessageStore underlying resource state watchdog for FIX session {}", fixSessionId);
-        underlyingResourceWatchContext.startWatchDog(asyncEventsToReplay, asyncEventToReplay, wrappedStore.getUnderlyingStorageResourceDescription());
+        underlyingResourceWatchContext.startWatchDog(wrappedStore.getUnderlyingStorageResourceDescription());
     }
 
     private void registerEventsHandlingFromAsyncLoggersThreads() {

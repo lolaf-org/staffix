@@ -68,7 +68,8 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
     /**
      * Assigns the queue to the next reader thread in turn, for good: a write blocking there delays every queue sharing
      * it. The consumer gets up to {@code eventsBatching} events, the array null-terminated when fewer, once that many
-     * are waiting or the flush interval has passed. It must release each event, which returns it to the pool.
+     * are waiting or the flush interval has passed. It must release each event, which returns it to the pool. What it
+     * does not return to the queue is confirmed once it returns.
      */
     public synchronized void registerBatching(PersistentQueue<T> messagesQueue, Consumer<T[]> eventsConsumer,
                                               AsyncEventSerde<T> asyncEventSerde, Class<T> eventClass) {
@@ -88,7 +89,8 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
 
     /**
      * Assigns the queue to the next reader thread in turn, for good: a write blocking there delays every queue sharing
-     * it. The event handed to the consumer is reused once it returns, so it must not be kept.
+     * it. The event handed to the consumer is reused once it returns, so it must not be kept. What it does not return
+     * to the queue is confirmed once it returns.
      */
     public synchronized void register(PersistentQueue<T> messagesQueue, Consumer<T> eventsConsumer,
                                       AsyncEventSerde<T> asyncEventSerde) {
@@ -286,6 +288,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
                 while (isActiveRegistration() && readOperation++ < maxEventsProcessing && messagesQueue.poll(asyncEventSerde, asyncEvent)) {
                     eventsConsumer.accept(asyncEvent);
                     asyncEvent.release();
+                    messagesQueue.confirmPolled();
                 }
                 return readOperation;
             }
@@ -344,6 +347,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
                     Arrays.fill(asyncEvents, null);
                     readEvents(elementsToRead);
                     eventsConsumer.accept(asyncEvents);
+                    messagesQueue.confirmPolled();
                 }
                 return elementsToRead;
             }

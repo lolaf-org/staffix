@@ -56,6 +56,16 @@ public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Starta
     private String failedUnderlyingStoreDescription;
 
     /**
+     * For a consumer keeping nothing here, whose events stay in its queue.
+     */
+    public UnderlyingResourceWatchContext(BooleanSupplier underlyingStorageResourceAvailable, String name,
+                                          Duration underlyingResourceWatchTaskCheckDelay, Runnable startCallback,
+                                          Runnable resourceBackUpCallback, String probeName, String probeDescription) {
+        this(events -> true, event -> true, underlyingStorageResourceAvailable, name, underlyingResourceWatchTaskCheckDelay,
+                startCallback, resourceBackUpCallback, probeName, probeDescription);
+    }
+
+    /**
      * The replayers return false when the resource went down again, so the events are kept for the next check.
      */
     public UnderlyingResourceWatchContext(Predicate<T[]> asyncLogEventsReplayer, Predicate<T> asyncLogEventReplayer,
@@ -82,6 +92,10 @@ public class UnderlyingResourceWatchContext<T extends AsyncEvent> extends Starta
         this.asyncLogEventToReplay = asyncLogEventToReplay;
         this.failedUnderlyingStoreDescription = failedUnderlyingStoreDescription;
         start();
+    }
+
+    public void startWatchDog(String failedUnderlyingStoreDescription) {
+        startWatchDog(null, null, failedUnderlyingStoreDescription);
     }
 
     @Override

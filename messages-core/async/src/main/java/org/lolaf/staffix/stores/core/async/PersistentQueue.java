@@ -58,17 +58,20 @@ public class PersistentQueue<T extends AsyncEvent> {
      */
     private final AtomicInteger generation;
     /**
-     * Sweeps {@link #poll(AsyncEventSerde, AsyncEvent)} triggered on the cleaner. Only bumped when the tailer has
+     * Sweeps {@link #confirmPolled()} triggered on the cleaner. Only bumped when the tailer has
      * actually rolled past a pending cycle, ie when a sweep can delete something, so draining a backlog behind a
      * released-but-not-yet-deletable cycle leaves it untouched. Visible for testing.
      */
     private final AtomicLong pendingDeletionSweeps;
     private SingleChronicleQueue queue;
     private ExcerptTailer tailer;
+    private int unconfirmedPolls;
+    private long firstUnconfirmedIndex;
+    private int lastUnconfirmedCycle;
     /**
      * Non-null when the current {@link StoreFilesCleaner} holds cycles waiting for the tailer to move past them, so
      * that the polling thread can complete the deletions Chronicle notified too early. Reading this single reference
-     * is all {@link #poll(AsyncEventSerde, AsyncEvent)} does for the cleanup when there is nothing pending.
+     * is all {@link #confirmPolled()} does for the cleanup when there is nothing pending.
      */
     @SuppressWarnings("java:S3077")
     private volatile StoreFilesCleaner pendingDeletions;
@@ -111,6 +114,7 @@ public class PersistentQueue<T extends AsyncEvent> {
         tailer.singleThreadedCheckDisabled(true);
         polls.set(0);
         offers.set(0);
+        unconfirmedPolls = 0;
         try (DocumentContext dc = tailer.readingDocument()) {
             if (dc.isPresent()) {
                 long lastQueueWriteIndex = queue.lastIndex();
@@ -185,21 +189,55 @@ public class PersistentQueue<T extends AsyncEvent> {
         }
         try (DocumentContext dc = localTailer.readingDocument()) {
             if (dc.isPresent()) {
-                int polledCycle = localTailer.cycle();
-                lastPolledCycle.set(polledCycle);
+                if (unconfirmedPolls++ == 0) {
+                    firstUnconfirmedIndex = dc.index();
+                }
+                lastUnconfirmedCycle = localTailer.cycle();
                 asyncEventSerde.deserialize(dc, target);
                 polls.getAndIncrement();
-                StoreFilesCleaner cleaner = pendingDeletions;
-                // sweeping is worth its monitor only once the tailer has rolled past the oldest pending cycle,
-                // otherwise every event of a backlog would take the cleaner lock for nothing
-                if (cleaner != null && cleaner.hasDeletableCycle(polledCycle)) {
-                    pendingDeletionSweeps.getAndIncrement();
-                    cleaner.deletePolledCycles();
-                }
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * The events polled since the last confirmation are stored: they will not be returned, and files holding nothing
+     * else may go.
+     */
+    public void confirmPolled() {
+        if (unconfirmedPolls == 0) {
+            return;
+        }
+        unconfirmedPolls = 0;
+        lastPolledCycle.set(lastUnconfirmedCycle);
+        StoreFilesCleaner cleaner = pendingDeletions;
+        // sweeping is worth its monitor only once the tailer has rolled past the oldest pending cycle,
+        // otherwise every event of a backlog would take the cleaner lock for nothing
+        if (cleaner != null && cleaner.hasDeletableCycle(lastUnconfirmedCycle)) {
+            pendingDeletionSweeps.getAndIncrement();
+            cleaner.deletePolledCycles();
+        }
+    }
+
+    /**
+     * Puts back the events polled since the last confirmation, so the next poll reads them again, also after a restart.
+     *
+     * @return false when the queue is stopped: they cannot be put back
+     */
+    public boolean returnPolled() {
+        ExcerptTailer localTailer = tailer;
+        if (localTailer == null) {
+            return false;
+        }
+        if (unconfirmedPolls > 0) {
+            if (!localTailer.moveToIndex(firstUnconfirmedIndex)) {
+                return false;
+            }
+            polls.addAndGet(-unconfirmedPolls);
+            unconfirmedPolls = 0;
+        }
+        return true;
     }
 
     /**

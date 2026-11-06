@@ -110,6 +110,7 @@ class TestPersistentQueue {
         }
         assertThat(polled).containsExactly("test-0", "test-1", "test-2", "test-3", "test-4");
         assertThat(persistentQueue.getSize()).isZero();
+        persistentQueue.confirmPolled();
 
         // everything has been polled, files should be deleted and only last one kept
         BackgroundResourceReleaser.releasePendingResources();
@@ -157,6 +158,7 @@ class TestPersistentQueue {
         int polled = 0;
         while (persistentQueue.poll(asyncEventSerde, testingRead)) {
             assertThat(testingRead.value).isEqualTo("test-" + polled++);
+            persistentQueue.confirmPolled();
         }
         assertThat(polled).isEqualTo(500);
 
@@ -256,6 +258,93 @@ class TestPersistentQueue {
         persistentQueue.start(asyncStoreSettings, "test");
 
         assertThat(persistentQueue.getSize()).isZero();
+    }
+
+    private List<String> pollAll() {
+        TestingEvent read = new TestingEvent(null);
+        List<String> polled = new ArrayList<>();
+        while (persistentQueue.poll(asyncEventSerde, read)) {
+            polled.add(read.value);
+        }
+        return polled;
+    }
+
+    private void offer(String... values) {
+        for (String value : values) {
+            persistentQueue.offer(asyncEventSerde, new TestingEvent(value));
+        }
+    }
+
+    @Test
+    void eventsReturnedAreReadAgainInOrder() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a", "b", "c");
+
+        assertThat(pollAll()).containsExactly("a", "b", "c");
+        persistentQueue.returnPolled();
+
+        assertThat(persistentQueue.getSize()).isEqualTo(3);
+        assertThat(pollAll()).containsExactly("a", "b", "c");
+    }
+
+    @Test
+    void eventsConfirmedAreNotReturned() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a");
+        assertThat(pollAll()).containsExactly("a");
+        persistentQueue.confirmPolled();
+        offer("b", "c");
+        assertThat(pollAll()).containsExactly("b", "c");
+
+        persistentQueue.returnPolled();
+
+        assertThat(persistentQueue.getSize()).isEqualTo(2);
+        assertThat(pollAll()).containsExactly("b", "c");
+    }
+
+    @Test
+    void eventsReturnedAreReadAgainAfterARestart() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a");
+        assertThat(pollAll()).containsExactly("a");
+        persistentQueue.confirmPolled();
+        offer("b", "c");
+        assertThat(pollAll()).containsExactly("b", "c");
+        persistentQueue.returnPolled();
+
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+
+        assertThat(persistentQueue.getSize()).isEqualTo(2);
+        assertThat(pollAll()).containsExactly("b", "c");
+    }
+
+    @Test
+    void theFilesOfEventsPolledAreKeptUntilTheyAreConfirmed() {
+        File chronicleDir = new File("./target/chronicle-" + System.nanoTime());
+        File fixSessionDir = new File(chronicleDir, "test-" + fixSessionId.forFileName(""));
+        asyncStoreSettings = AsyncStoreSettings.builder()
+                .asyncQueueDirectory(chronicleDir.getPath())
+                .rollCycleProvider(sid -> TestRollCycles.TEST_SECONDLY)
+                .build();
+        persistentQueue.start(asyncStoreSettings, "test");
+        for (int i = 0; i < 3; i++) {
+            offer("test-" + i);
+            LockSupport.parkNanos(Duration.ofMillis(1100).toNanos());
+        }
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+
+        assertThat(pollAll()).containsExactly("test-0", "test-1", "test-2");
+        BackgroundResourceReleaser.releasePendingResources();
+        assertThat(queueFiles(fixSessionDir)).hasSize(3);
+
+        persistentQueue.returnPolled();
+        assertThat(pollAll()).containsExactly("test-0", "test-1", "test-2");
+
+        persistentQueue.confirmPolled();
+        BackgroundResourceReleaser.releasePendingResources();
+        assertThat(queueFiles(fixSessionDir)).hasSize(1);
     }
 
     @AllArgsConstructor
