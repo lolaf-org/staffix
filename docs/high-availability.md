@@ -341,4 +341,7 @@ storage that cannot be identified is refused too, rather than risk it.
   session would be taken over cleanly now.
 - **A follower in sync may still have writes to store.** With the async store, in sync means queued: `pendingWrites` in
   `GET v1/ha/sessions` counts what it has not stored yet, and it must store all of it before it can lead, so a large
-  count delays a takeover, a snapshot after a restart above all. A switchover waits for it; a failover cannot.
+  count delays a takeover, a snapshot after a restart above all. A switchover waits for it; a failover cannot, and past
+  `flushPendingMessagesOnStartupDelay` a session fails to start. So set `eventsBatching` on an async store in front of a
+  database: on one machine with Postgres, a snapshot of about 58 000 messages took 126 s to store one at a time and under
+  3 s with `eventsBatching` 1000, and a leader killed during it left no leader for 123 s, against 2 s.
