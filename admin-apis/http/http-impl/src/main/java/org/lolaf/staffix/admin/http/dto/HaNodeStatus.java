@@ -19,6 +19,7 @@ import lombok.Value;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -44,6 +45,10 @@ public class HaNodeStatus {
     boolean transferLeadershipSupported;
     boolean candidacySupported;
     boolean candidate;
+    /**
+     * Absent without high availability.
+     */
+    Duration switchoverMaxDuration;
     List<HaStatus.Follower> followers;
     List<HaStatus.DroppedFollower> droppedFollowers;
     HaStatus.Leader leader;
@@ -52,6 +57,6 @@ public class HaNodeStatus {
         return new HaNodeStatus(status.getNodeId(), status.getPairName(), status.getRole(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElection(),
                 status.getRoleSince(), status.isTransferLeadershipSupported(), status.isCandidacySupported(),
-                status.isCandidate(), status.getFollowers(), status.getDroppedFollowers(), status.getLeader());
+                status.isCandidate(), status.getSwitchoverMaxDuration(), status.getFollowers(), status.getDroppedFollowers(), status.getLeader());
     }
 }

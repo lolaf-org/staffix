@@ -75,7 +75,7 @@ class TestFollowers {
         link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0, 0);
         link.fill(ByteBuffer.allocate(1 << 16));
         link.onSessionStatus(EPOCH, KEY, SessionStatus.REPLICATING);
-        link.onAck(EPOCH, appliedOffset, true);
+        link.onAck(EPOCH, appliedOffset, true, 0);
         followers.add(link);
         return link;
     }
@@ -113,7 +113,7 @@ class TestFollowers {
         assertThat(CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy())))
                 .as("no second wait, even without a timeout").succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.TIMED_OUT);
 
-        follower.onAck(EPOCH, offset, true);
+        follower.onAck(EPOCH, offset, true, 0);
 
         assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
     }
@@ -123,7 +123,7 @@ class TestFollowers {
         FollowerLink follower = inSyncFollower(0);
 
         CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy()));
-        follower.onAck(EPOCH, offset, true);
+        follower.onAck(EPOCH, offset, true, 0);
 
         assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.ACKED);
     }
@@ -151,7 +151,7 @@ class TestFollowers {
     void aSyncReceivedWaitEndsOnAnApplyTheFollowerSentNoReceivedFor() {
         FollowerLink follower = inSyncFollower(0);
 
-        follower.onAck(EPOCH, offset, true);
+        follower.onAck(EPOCH, offset, true, 0);
 
         assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_RECEIVED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
     }
@@ -167,7 +167,7 @@ class TestFollowers {
         waiter.start();
         await().until(() -> waiter.getState() == Thread.State.TIMED_WAITING);
 
-        follower.onAck(EPOCH, offset, true);
+        follower.onAck(EPOCH, offset, true, 0);
         followers.wakeWaiters();
 
         assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.ACKED);
@@ -202,7 +202,7 @@ class TestFollowers {
         linkOfMain.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, 0);
         linkOfMain.fill(ByteBuffer.allocate(1 << 16));
         linkOfMain.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
-        linkOfMain.onAck(EPOCH, twoLinks.getReplicationLogs().get(0).getTailOffset(), true);
+        linkOfMain.onAck(EPOCH, twoLinks.getReplicationLogs().get(0).getTailOffset(), true, 0);
         followers.add(linkOfMain);
 
         assertThat(followers.awaitAck(0, 0, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);

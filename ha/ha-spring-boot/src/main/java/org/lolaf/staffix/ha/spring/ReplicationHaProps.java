@@ -141,6 +141,11 @@ public class ReplicationHaProps {
     private Duration switchoverTimeout;
 
     /**
+     * The most a follower may have left to store for a switchover to go ahead; unset keeps 1000.
+     */
+    private Long switchoverMaxPendingWrites;
+
+    /**
      * How long a connected follower may go without applying a write before the leader alerts; unset keeps 5s.
      */
     private Duration followerLagAlertThreshold;

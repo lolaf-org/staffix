@@ -52,6 +52,7 @@ class TestReplicationHaAutoConfiguration {
                         "staffix.ha-replication.snapshot-chunk-bytes=16384",
                         "staffix.ha-replication.hand-over-timeout=2s",
                         "staffix.ha-replication.switchover-timeout=20s",
+                        "staffix.ha-replication.switchover-max-pending-writes=500",
                         "staffix.ha-replication.follower-lag-alert-threshold=2s",
                         "staffix.ha-replication.follower-stall-timeout=3s",
                         "staffix.ha-replication.log-full-timeout=500ms",
@@ -72,6 +73,7 @@ class TestReplicationHaAutoConfiguration {
                     assertThat(settings.getSnapshotChunkBytes()).isEqualTo(16384);
                     assertThat(settings.getHandOverTimeout()).isEqualTo(Duration.ofSeconds(2));
                     assertThat(settings.getSwitchoverTimeout()).isEqualTo(Duration.ofSeconds(20));
+                    assertThat(settings.getSwitchoverMaxPendingWrites()).isEqualTo(500);
                     assertThat(settings.getFollowerLagAlertThreshold()).isEqualTo(Duration.ofSeconds(2));
                     assertThat(settings.getFollowerStallTimeout()).isEqualTo(Duration.ofSeconds(3));
                     assertThat(settings.getLogFullTimeout()).isEqualTo(Duration.ofMillis(500));

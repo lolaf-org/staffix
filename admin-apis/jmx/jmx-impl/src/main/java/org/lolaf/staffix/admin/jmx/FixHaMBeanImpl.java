@@ -40,6 +40,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         HaStatus.Leader leader = status.getLeader();
         return new StatusImpl(status.getNodeId(), status.getPairName(), status.getRole().name(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElection(),
+                status.getSwitchoverMaxDuration() == null ? null : status.getSwitchoverMaxDuration().toString(),
                 status.getRoleSince() == null ? null : status.getRoleSince().toString(),
                 status.isTransferLeadershipSupported(), status.isCandidacySupported(), status.isCandidate(),
                 status.getFollowers().stream()
@@ -105,6 +106,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         String leaderId;
         boolean leadershipValid;
         String leaderElection;
+        String switchoverMaxDuration;
         String roleSince;
         boolean transferLeadershipSupported;
         boolean candidacySupported;

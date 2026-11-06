@@ -29,6 +29,11 @@ public enum SwitchoverOutcome {
      */
     NO_FOLLOWER_IN_SYNC,
     /**
+     * A follower was in sync but had too much left to store to take over quickly, up to the timeout: nothing was
+     * changed, this node still leads and its sessions never stopped.
+     */
+    FOLLOWER_STORE_BEHIND,
+    /**
      * The follower was not sent every write before the timeout: this node leads its sessions again.
      */
     NOT_HANDED_OVER,

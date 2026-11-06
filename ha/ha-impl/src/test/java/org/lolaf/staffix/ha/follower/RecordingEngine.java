@@ -171,8 +171,14 @@ public final class RecordingEngine implements EngineAccess {
          * Fails every message write, as a storage gone would.
          */
         public volatile boolean messageWritesFail;
+        public volatile long pendingWrites;
         volatile boolean started;
         volatile @Nullable String storageIdentity = "recording:" + UUID.randomUUID();
+
+        @Override
+        public long getPendingWrites() {
+            return pendingWrites;
+        }
 
         @Override
         public Optional<String> getStorageIdentity() {

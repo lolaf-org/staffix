@@ -229,9 +229,10 @@ public class FrameEncoder {
         return length;
     }
 
-    public static int ack(ByteBuffer out, int index, long epoch, long appliedOffset, boolean inSync) {
+    public static int ack(ByteBuffer out, int index, long epoch, long appliedOffset, boolean inSync, long pendingWrites) {
         int length = header(out, index, FrameType.ACK, inSync ? WireFormat.FLAG_IN_SYNC : 0, epoch, 0);
         out.putLong(index + HEADER_BYTES, appliedOffset);
+        out.putLong(index + HEADER_BYTES + Long.BYTES, pendingWrites);
         return length;
     }
 

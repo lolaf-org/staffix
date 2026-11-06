@@ -99,7 +99,8 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `selectStrategy` | betty's, blocking | How the replication's network threads wait, on both nodes. An `IdleStrategySelectStrategy` busy spinning saves a system call per wake-up, for a core on each node. |
 | `promotionOutgoingSeqNumJump` | 10 000 | How far a new leader moves its outgoing sequence numbers ahead. |
 | `handOverTimeout` | 5s | How long a leader stopping cleanly waits to give its follower every write. |
-| `switchoverTimeout` | 30s | How long a planned switchover may take before this node leads again. |
+| `switchoverTimeout` | 30s | How long a planned switchover waits for a follower ready to lead, its sessions running meanwhile, then how long it may take before this node leads again. `0s` does not wait: a follower not ready now is refused, and `handOverTimeout` bounds the rest. |
+| `switchoverMaxPendingWrites` | 1 000 | The most a follower may have left to store for a switchover to go ahead. Never 0 under traffic. |
 | `followerLagAlertThreshold` | 5s | How long a connected follower may go without applying a write before the leader raises a major alert. A follower stalled while connected still reads as in sync, as of its last acknowledgement. |
 | `followerStallTimeout` | 10s | How long a follower owing an acknowledgement may stay silent before the leader drops it as hung; it reconnects and is caught up. A slow follower still acknowledges each read and is kept. Zero never drops. |
 | `logFullTimeout` | 1s | How long a write waits for a follower a whole `logCapacity` behind before the leader drops it as too slow; it reconnects and is caught up by snapshot. The wait holds the FIX IO thread writing, and every session on it. Must be positive. |
@@ -265,11 +266,13 @@ The high availability has its own admin entry point, `AdminApi.getHa()`, also ov
 - **Switchover** (`POST v1/ha/switchover`) hands leadership to the follower while this node keeps running: once the
   follower holds every replicated session, this node logs its sessions out, gives the follower every write, then has
   the election transfer leadership. The counterparty sees an orderly Logout and logs on to the new leader at the same
-  sequence numbers. The answer names the outcome: `TRANSFERRED`; `NO_FOLLOWER_IN_SYNC`, nothing was changed;
-  `NOT_HANDED_OVER` or `NOT_TRANSFERRED`, this node leads its sessions again.
+  sequence numbers. A follower also has to be close to done storing what it received, as it must store
+  all of it before it can lead: see `switchoverMaxPendingWrites`. The answer names the outcome: `TRANSFERRED`;
+  `NO_FOLLOWER_IN_SYNC` or `FOLLOWER_STORE_BEHIND`, nothing was changed; `NOT_HANDED_OVER` or `NOT_TRANSFERRED`, this node
+  leads its sessions again.
 - **Maintenance mode** (`POST v1/ha/candidacy`, `{"candidate": false}`) takes a node out of elections: it still votes,
-  but will not lead. A leader withdrawing hands leadership over and keeps leading until the other node takes it, so
-  this alone never leaves the pair without a leader.
+  but will not lead. A leader withdrawing switches over first, so its sessions move as cleanly as in a switchover;
+  when that does not succeed the call fails, and the node stays a candidate and keeps leading.
 - **Re-sync** (`POST v1/ha/resync`, or one session with `POST v1/ha/sessions/{group}/{name}/resync`) sends the follower
   a fresh copy of each replicated session. Until it holds a session again, that session's `SYNC` sends do not wait
   for it.
@@ -338,4 +341,4 @@ storage that cannot be identified is refused too, rather than risk it.
   session would be taken over cleanly now.
 - **A follower in sync may still have writes to store.** With the async store, in sync means queued: `pendingWrites` in
   `GET v1/ha/sessions` counts what it has not stored yet, and it must store all of it before it can lead, so a large
-  count delays a takeover, a snapshot after a restart above all.
+  count delays a takeover, a snapshot after a restart above all. A switchover waits for it; a failover cannot.

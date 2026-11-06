@@ -154,6 +154,11 @@ public final class FollowerLink implements FrameHandler {
     private long storeRetryNanos = Long.MAX_VALUE;
     private volatile boolean paused;
     /**
+     * What the follower's stores for this link have yet to store, as of its last ack.
+     */
+    @Getter
+    private volatile long followerPendingWrites;
+    /**
      * Where the next batch starts reading the log: once it is the log's tail, every event has been handed to betty.
      */
     private volatile long sentOffset = -1;
@@ -280,8 +285,9 @@ public final class FollowerLink implements FrameHandler {
     }
 
     @Override
-    public void onAck(long epoch, long appliedOffset, boolean inSync) {
+    public void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites) {
         this.appliedOffset = appliedOffset;
+        this.followerPendingWrites = pendingWrites;
         this.reportedInSync = inSync;
         if (inSync && recoveringFromTooSlow) {
             recoveringFromTooSlow = false;

@@ -73,6 +73,8 @@ public interface FixHaMXBean {
 
         String getLeaderElection();
 
+        String getSwitchoverMaxDuration();
+
         String getRoleSince();
 
         boolean isTransferLeadershipSupported();

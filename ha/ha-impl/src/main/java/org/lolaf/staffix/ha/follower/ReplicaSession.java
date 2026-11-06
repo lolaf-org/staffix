@@ -129,10 +129,14 @@ final class ReplicaSession {
             status.inSync(complete)
                     .nextIncomingSeqNum(store.getIncomingSeqNum())
                     .nextOutgoingSeqNum(store.getOutgoingSeqNum())
-                    .pendingWrites(store.getPendingWrites());
+                    .pendingWrites(getPendingWrites());
         } else {
             status.notReplicatedReason(notReplicatedStatus.name());
         }
+    }
+
+    long getPendingWrites() {
+        return store.getPendingWrites();
     }
 
     boolean isRefusedUntilSettingsChange() {

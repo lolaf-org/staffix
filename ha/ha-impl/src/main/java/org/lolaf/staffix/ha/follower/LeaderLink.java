@@ -80,6 +80,9 @@ public final class LeaderLink implements FrameHandler {
     private final boolean receivedAckedByNetworkThread;
     private final long rebindCheckNanos;
     private long rebindCheckedNanos;
+    private long pendingWrites;
+    private long pendingWritesReadNanos = System.nanoTime() - Long.MAX_VALUE / 2;
+    private boolean ackedComplete;
 
     /**
      * @param onLinks told the leader's link count from its WELCOME, before the stream starts
@@ -291,9 +294,24 @@ public final class LeaderLink implements FrameHandler {
             return;
         }
         ackDue = false;
+        boolean complete = replica.isComplete(link);
         ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.ACK));
-        answers.send(frame, FrameEncoder.ack(frame, 0, leaderEpoch, replica.getLastAppliedOffset(link),
-                replica.isComplete(link)));
+        answers.send(frame, FrameEncoder.ack(frame, 0, leaderEpoch, replica.getLastAppliedOffset(link), complete,
+                pendingWrites(complete)));
+    }
+
+    /**
+     * At most once a check interval, as it asks every session's store, and at once on turning in sync, when the leader
+     * starts to trust it.
+     */
+    private long pendingWrites(boolean complete) {
+        long now = System.nanoTime();
+        if (complete != ackedComplete || now - pendingWritesReadNanos >= rebindCheckNanos) {
+            ackedComplete = complete;
+            pendingWritesReadNanos = now;
+            pendingWrites = replica.getPendingWrites(link);
+        }
+        return pendingWrites;
     }
 
     /**
@@ -367,7 +385,7 @@ public final class LeaderLink implements FrameHandler {
     }
 
     @Override
-    public void onAck(long epoch, long appliedOffset, boolean inSync) {
+    public void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites) {
         unexpected(FrameType.ACK);
     }
 

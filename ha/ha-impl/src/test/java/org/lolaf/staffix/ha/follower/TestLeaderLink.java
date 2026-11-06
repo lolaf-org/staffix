@@ -32,6 +32,7 @@ import org.lolaf.staffix.ha.wire.WireFormat;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.ToIntBiFunction;
 import java.util.stream.IntStream;
 
@@ -199,6 +200,50 @@ class TestLeaderLink {
         assertThat(link.getState()).isEqualTo(LeaderLink.State.STREAMING);
         assertThat(link.getLeaderId()).isEqualTo("leader-a");
         assertThat(sent.frames).as("nothing replicated yet, nothing missing").containsExactly("ACK epoch=7 applied=-1 inSync=true");
+    }
+
+    @Test
+    void anAckCarriesWhatTheStoresHaveYetToStore() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
+        engine.store(MAIN).pendingWrites = 7;
+        sent.frames.clear();
+
+        read(heartbeat());
+
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=-1 inSync=false pending=7");
+    }
+
+    @Test
+    void theStoresAreAskedAtMostOnceACheckInterval() {
+        LeaderLink checkingHourly = checkingHourly();
+        checkingHourly.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), new FrameDecoder(1 << 20));
+        engine.store(MAIN).pendingWrites = 7;
+        sent.frames.clear();
+
+        checkingHourly.read(writeFrames(heartbeat()), new FrameDecoder(1 << 20));
+
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=-1 inSync=false");
+    }
+
+    @Test
+    void theStoresAreAskedAtOnceOnTurningInSync() {
+        LeaderLink checkingHourly = checkingHourly();
+        checkingHourly.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), new FrameDecoder(1 << 20));
+        engine.store(MAIN).pendingWrites = 7;
+        sent.frames.clear();
+
+        checkingHourly.read(writeFrames((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 22, 14)), new FrameDecoder(1 << 20));
+
+        assertThat(sent.frames).last().isEqualTo("ACK epoch=7 applied=-1 inSync=true pending=7");
+    }
+
+    private LeaderLink checkingHourly() {
+        return new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks, TimeUnit.HOURS.toNanos(1));
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> heartbeat() {
+        return (out, index) -> FrameEncoder.heartbeat(out, index, EPOCH, 0);
     }
 
     @Test

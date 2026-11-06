@@ -172,7 +172,7 @@ class TestFrameCodec {
     @Test
     void ackReceivedAndHeartbeat() {
         ByteBuffer buffer = buffer(false);
-        int ack = FrameEncoder.ack(buffer, 0, 7, 4096, true);
+        int ack = FrameEncoder.ack(buffer, 0, 7, 4096, true, 12);
         int received = FrameEncoder.received(buffer, ack, 7, 6144);
         int heartbeat = FrameEncoder.heartbeat(buffer, ack + received, 7, 8192);
 
@@ -180,7 +180,7 @@ class TestFrameCodec {
         decodeWhole(buffer, ack, received);
         decodeWhole(buffer, ack + received, heartbeat);
 
-        assertThat(handler.frames).containsExactly("ACK epoch=7 applied=4096 inSync=true", "RECEIVED epoch=7 received=6144",
+        assertThat(handler.frames).containsExactly("ACK epoch=7 applied=4096 inSync=true pending=12", "RECEIVED epoch=7 received=6144",
                 "HEARTBEAT epoch=7 tail=8192");
     }
 
@@ -309,7 +309,7 @@ class TestFrameCodec {
 
     private void encodeAndDecodeFrequentFrames(ByteBuffer buffer, ByteBuffer message, CountingHandler counting, long i) {
         int event = FrameEncoder.storeEvent(buffer, 0, 7, i, 3, StoreEventType.STORE_MESSAGE, i, message);
-        int ack = FrameEncoder.ack(buffer, event, 7, i, true);
+        int ack = FrameEncoder.ack(buffer, event, 7, i, true, 0);
         int heartbeat = FrameEncoder.heartbeat(buffer, event + ack, 7, i);
         int decoded = 0;
         while (decoded < event + ack + heartbeat) {

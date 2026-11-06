@@ -235,7 +235,7 @@ class TestFollowerLink {
             for (int seq = 1; seq <= 10; seq++) {
                 main.storeNextIncomingSeqNum(seq);
                 await().pollDelay(Duration.ofMillis(40)).until(() -> true);
-                link.onAck(EPOCH, 0, true);
+                link.onAck(EPOCH, 0, true, 0);
             }
 
             assertThat(link.getState()).as("behind all along, never silent").isEqualTo(FollowerLink.State.STREAMING);
@@ -256,7 +256,7 @@ class TestFollowerLink {
             long offset = ha.getReplicationLogs().get(0).getTailOffset();
             main.storeNextIncomingSeqNum(1);
             await().pollDelay(Duration.ofMillis(30)).until(() -> true);
-            link.onAck(EPOCH, offset, true);
+            link.onAck(EPOCH, offset, true, 0);
             await().pollDelay(Duration.ofMillis(150)).until(() -> true);
 
             assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
@@ -368,6 +368,15 @@ class TestFollowerLink {
     private FollowerLink senderRunningLink(int snapshotChunkBytes) {
         return new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
                 Duration.ZERO, 4, snapshotChunkBytes, new BackoffIdleStrategy(), stats, loop -> new Thread(loop).start());
+    }
+
+    @Test
+    void anAckTellsWhatTheFollowerHasYetToStore() {
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+
+        link.onAck(EPOCH, 0, true, 7);
+
+        assertThat(link.getFollowerPendingWrites()).isEqualTo(7);
     }
 
     @Test
@@ -580,7 +589,7 @@ class TestFollowerLink {
         link = link();
 
         link.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
-        link.onAck(EPOCH, -1, true);
+        link.onAck(EPOCH, -1, true, 0);
 
         assertThat(link.getState()).isEqualTo(FollowerLink.State.STREAMING);
         assertThat(stats.getSlowFollowers().notBackInSync()).isEmpty();
@@ -667,13 +676,13 @@ class TestFollowerLink {
         long second = ha.getReplicationLogs().get(0).getTailOffset();
         store.storeNextIncomingSeqNum(6);
         fill();
-        link.onAck(EPOCH, first, true);
+        link.onAck(EPOCH, first, true, 0);
         verify(lagTimer).record(anyLong(), eq(TimeUnit.NANOSECONDS));
         assertThat(link.getLagNanos(System.nanoTime())).as("the sample is covered").isZero();
 
         fill();
         assertThat(link.getLagNanos(System.nanoTime())).as("sent, not acked yet").isPositive();
-        link.onAck(EPOCH, second, true);
+        link.onAck(EPOCH, second, true, 0);
         verify(lagTimer, times(2)).record(anyLong(), eq(TimeUnit.NANOSECONDS));
         fill();
         assertThat(link.getLagNanos(System.nanoTime())).as("caught up, nothing new written").isZero();
@@ -681,7 +690,7 @@ class TestFollowerLink {
 
     @Test
     void anAckRecordsWhatTheFollowerApplied() {
-        link.onAck(EPOCH, 4096, true);
+        link.onAck(EPOCH, 4096, true, 0);
 
         assertThat(link.getAppliedOffset()).isEqualTo(4096);
         assertThat(List.copyOf(sent.frames)).isEmpty();

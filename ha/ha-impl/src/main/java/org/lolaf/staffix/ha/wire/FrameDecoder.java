@@ -112,7 +112,7 @@ public class FrameDecoder {
                 handler.onSnapshotEnd(epoch, in.getInt(p), in.getInt(p + 4), in.getLong(p + 8), in.getLong(p + 16));
                 break;
             case ACK:
-                handler.onAck(epoch, in.getLong(p), (flags & WireFormat.FLAG_IN_SYNC) != 0);
+                handler.onAck(epoch, in.getLong(p), (flags & WireFormat.FLAG_IN_SYNC) != 0, in.getLong(p + Long.BYTES));
                 break;
             case RECEIVED:
                 handler.onReceived(epoch, in.getLong(p));

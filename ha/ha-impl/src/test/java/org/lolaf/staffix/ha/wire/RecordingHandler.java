@@ -94,8 +94,9 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
-    public void onAck(long epoch, long appliedOffset, boolean inSync) {
-        frames.add("ACK epoch=" + epoch + " applied=" + appliedOffset + " inSync=" + inSync);
+    public void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites) {
+        frames.add("ACK epoch=" + epoch + " applied=" + appliedOffset + " inSync=" + inSync
+                + (pendingWrites > 0 ? " pending=" + pendingWrites : ""));
     }
 
     @Override

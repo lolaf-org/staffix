@@ -22,6 +22,7 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -72,6 +73,11 @@ public class HaStatus {
      * Whether this node stands for election.
      */
     boolean candidate;
+    /**
+     * The longest a switchover can take, from waiting for a follower ready to lead to leadership leaving this node. Null
+     * without high availability.
+     */
+    @Nullable Duration switchoverMaxDuration;
     /**
      * The followers connected to this node, while it leads.
      */

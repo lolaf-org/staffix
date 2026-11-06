@@ -270,6 +270,22 @@ public final class Replica {
     }
 
     /**
+     * What the stores of the link's sessions have accepted and not stored yet. Allocates nothing.
+     */
+    long getPendingWrites(int link) {
+        ReplicaSession[] sessions = sessionsByKey;
+        int links = positions.length;
+        long pendingWrites = 0;
+        for (int key = link; key < sessions.length; key += links) {
+            ReplicaSession session = sessions[key];
+            if (session != null) {
+                pendingWrites += session.getPendingWrites();
+            }
+        }
+        return pendingWrites;
+    }
+
+    /**
      * Binds again each session refused as unknown whose settings the engine has by now, or for a mode mismatch its
      * settings here now agree with: a follower's connectors may register their sessions after the leader announced
      * them, and a settings change may reach this node after the leader. Either would otherwise stay refused until

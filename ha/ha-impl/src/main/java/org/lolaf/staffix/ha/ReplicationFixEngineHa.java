@@ -89,6 +89,16 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (settings.getFollowerStoreWriterThreads() < 0) {
             throw new IllegalArgumentException("followerStoreWriterThreads must not be negative, got " + settings.getFollowerStoreWriterThreads());
         }
+        if (settings.getSwitchoverTimeout().isNegative()) {
+            throw new IllegalArgumentException("switchoverTimeout must not be negative, got " + settings.getSwitchoverTimeout());
+        }
+        if (settings.getHandOverTimeout().isNegative() || settings.getHandOverTimeout().isZero()) {
+            throw new IllegalArgumentException("handOverTimeout must be positive, got " + settings.getHandOverTimeout());
+        }
+        if (settings.getSwitchoverMaxPendingWrites() < 0) {
+            throw new IllegalArgumentException("switchoverMaxPendingWrites must not be negative, got "
+                    + settings.getSwitchoverMaxPendingWrites());
+        }
         if (settings.getSnapshotChunkBytes() < 1) {
             throw new IllegalArgumentException("snapshotChunkBytes must be positive, got " + settings.getSnapshotChunkBytes());
         }
@@ -178,7 +188,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                 .roleSince(roleSince)
                 .transferLeadershipSupported(currentElection != null && currentElection.isTransferLeadershipSupported())
                 .candidacySupported(currentElection != null && currentElection.isCandidacySupported())
-                .candidate(currentElection == null || currentElection.isCandidate());
+                .candidate(currentElection == null || currentElection.isCandidate())
+                .switchoverMaxDuration(switchoverMaxDuration());
         if (role == Role.LEADER) {
             for (FollowerLink link : followers.all()) {
                 status.follower(link.status(sessions.count()));
@@ -198,6 +209,13 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (currentElection == null || !currentElection.isCandidacySupported()) {
             throw new IllegalStateException("The leader election "
                     + (currentElection == null ? "has not started" : currentElection.getClass().getSimpleName() + " cannot decline candidacy"));
+        }
+        if (!candidate && Role.LEADER.equals(currentElection.getRole()) && currentElection.isTransferLeadershipSupported()) {
+            SwitchoverOutcome outcome = switchover();
+            if (!SwitchoverOutcome.TRANSFERRED.equals(outcome)) {
+                throw new IllegalStateException("Node " + settings.getNodeId() + " stays a candidate: its switchover ended "
+                        + outcome);
+            }
         }
         log.info("Node {} {} elections", settings.getNodeId(), candidate ? "stands for" : "withdraws from");
         currentElection.setCandidate(candidate);
@@ -255,11 +273,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             throw new IllegalStateException("The leader election " + currentElection.getClass().getSimpleName()
                     + " cannot transfer leadership");
         }
-        Deadline deadline = Deadline.of(settings.getSwitchoverTimeout());
-        if (!deadline.waitAsLongAs(() -> !isAnyFollowerInSyncForAll())) {
-            log.warn("Node {} does not switch over: no follower holds every replicated session", settings.getNodeId());
-            return SwitchoverOutcome.NO_FOLLOWER_IN_SYNC;
+        if (!awaitFollowerReadyToLead()) {
+            return notReadyToLead();
         }
+        // a follower ready at the last moment must not leave the logged out sessions no time to hand over
+        Deadline deadline = Deadline.of(switchingTimeout());
         log.info("Node {} switches over at epoch {}: logging its sessions out", settings.getNodeId(), followedEpoch);
         engine.deactivateWithLogout(deadline);
         if (!publisher.handOver(deadline)) {
@@ -277,6 +295,42 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         log.info("Node {} handed leadership over", settings.getNodeId());
         return SwitchoverOutcome.TRANSFERRED;
+    }
+
+    private SwitchoverOutcome notReadyToLead() {
+        if (isAnyFollowerInSyncForAll()) {
+            log.warn("Node {} does not switch over: its follower has {} writes left to store, more than {}", settings.getNodeId(),
+                    getFollowerPendingWrites(), settings.getSwitchoverMaxPendingWrites());
+            return SwitchoverOutcome.FOLLOWER_STORE_BEHIND;
+        }
+        log.warn("Node {} does not switch over: no follower holds every replicated session", settings.getNodeId());
+        return SwitchoverOutcome.NO_FOLLOWER_IN_SYNC;
+    }
+
+    private boolean isAnyFollowerReadyToLead() {
+        return isAnyFollowerInSyncForAll() && getFollowerPendingWrites() <= settings.getSwitchoverMaxPendingWrites();
+    }
+
+    private boolean awaitFollowerReadyToLead() {
+        Duration timeout = settings.getSwitchoverTimeout();
+        return timeout.isZero() ? isAnyFollowerReadyToLead() : Deadline.of(timeout).waitAsLongAs(() -> !isAnyFollowerReadyToLead());
+    }
+
+    private Duration switchingTimeout() {
+        Duration timeout = settings.getSwitchoverTimeout();
+        return timeout.isZero() ? settings.getHandOverTimeout() : timeout;
+    }
+
+    private Duration switchoverMaxDuration() {
+        return settings.getSwitchoverTimeout().plus(switchingTimeout());
+    }
+
+    long getFollowerPendingWrites() {
+        long pendingWrites = 0;
+        for (FollowerLink link : followers.all()) {
+            pendingWrites += link.getFollowerPendingWrites();
+        }
+        return pendingWrites;
     }
 
     private boolean isAnyFollowerInSyncForAll() {

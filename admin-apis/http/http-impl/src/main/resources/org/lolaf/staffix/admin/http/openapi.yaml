@@ -1205,6 +1205,10 @@ components:
         leaderElection:
           type: string
           description: The leader election's implementation.
+        switchoverMaxDuration:
+          type: string
+          format: duration
+          description: The longest a switchover can take, from waiting for a follower ready to lead to leadership leaving this node.
         roleSince:
           type: string
           format: date-time
@@ -1452,8 +1456,8 @@ components:
       properties:
         outcome:
           type: string
-          enum: [TRANSFERRED, NO_FOLLOWER_IN_SYNC, NOT_HANDED_OVER, NOT_TRANSFERRED]
-          description: TRANSFERRED, this node now follows; NO_FOLLOWER_IN_SYNC, nothing was changed; NOT_HANDED_OVER
+          enum: [TRANSFERRED, NO_FOLLOWER_IN_SYNC, FOLLOWER_STORE_BEHIND, NOT_HANDED_OVER, NOT_TRANSFERRED]
+          description: TRANSFERRED, this node now follows; NO_FOLLOWER_IN_SYNC and FOLLOWER_STORE_BEHIND, nothing was changed; NOT_HANDED_OVER
             and NOT_TRANSFERRED, this node leads its sessions again.
     CandidacyRequest:
       type: object

@@ -34,9 +34,11 @@ public interface HaAdmin {
     List<HaSessionStatus> getSessionsStatus();
 
     /**
-     * Takes this node out of elections for maintenance, or back in; see {@link LeaderElection#setCandidate(boolean)}.
+     * Takes this node out of elections for maintenance, or back in; a leader first {@link #switchover() switches over}
+     * when its election can transfer leadership, so its sessions move cleanly; see {@link LeaderElection#setCandidate(boolean)}.
      *
-     * @throws IllegalStateException when the leader election cannot, as {@link HaStatus#isCandidacySupported()} tells
+     * @throws IllegalStateException when that switchover fails, this node staying a candidate, or when the leader
+     *                               election cannot, as {@link HaStatus#isCandidacySupported()} tells
      */
     void setCandidate(boolean candidate);
 

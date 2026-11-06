@@ -52,7 +52,7 @@ public enum FrameType {
     SNAPSHOT_BEGIN(6, 32),
     SNAPSHOT_MESSAGE(7, 16),
     SNAPSHOT_END(8, 24),
-    ACK(9, 8),
+    ACK(9, 16),
     HEARTBEAT(10, 8),
     CLOSE(11, 4),
     RECEIVED(12, 8);

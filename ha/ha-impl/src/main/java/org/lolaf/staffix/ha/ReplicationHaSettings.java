@@ -182,11 +182,19 @@ public class ReplicationHaSettings extends HaSettings {
     private final Duration handOverTimeout = Duration.ofSeconds(5);
 
     /**
-     * How long a switchover may take, from waiting for a follower in sync to leadership leaving this node; past it,
-     * this node leads its sessions again.
+     * How long a switchover waits for a follower ready to lead, its sessions running meanwhile; once it has one, how long
+     * it may take from logging them out to leadership leaving this node, past which this node leads them again. Zero does
+     * not wait: a follower not ready now is refused, and {@link #getHandOverTimeout() handOverTimeout} bounds the rest.
      */
     @Builder.Default
     private final Duration switchoverTimeout = Duration.ofSeconds(30);
+
+    /**
+     * The most a follower may have left to store for a switchover to go ahead: it must store all of it before it can
+     * lead, with the sessions down. Never 0 under traffic, whose writes are always in flight.
+     */
+    @Builder.Default
+    private final long switchoverMaxPendingWrites = 1_000;
 
     /**
      * How long a connected follower may go without applying a write before the {@code ha-followers} probe raises a

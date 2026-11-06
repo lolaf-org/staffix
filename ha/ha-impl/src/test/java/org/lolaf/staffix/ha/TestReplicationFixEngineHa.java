@@ -69,8 +69,8 @@ class TestReplicationFixEngineHa {
      * One per link, so a stalled link holds back no other.
      */
     private final boolean storeWriterThreads;
-    private final Node a;
-    private final Node b;
+    private Node a;
+    private Node b;
 
     TestReplicationFixEngineHa(boolean storeWriterThreads) {
         this.storeWriterThreads = storeWriterThreads;
@@ -116,6 +116,10 @@ class TestReplicationFixEngineHa {
         }
 
         Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLinks) {
+            this(nodeId, engine, heartbeatInterval, replicationLinks, Duration.ofSeconds(2));
+        }
+
+        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLinks, Duration switchoverTimeout) {
             this.engine = engine;
             ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
                     .nodeId(nodeId)
@@ -126,7 +130,7 @@ class TestReplicationFixEngineHa {
                     .followerStoreWriterThreads(storeWriterThreads ? replicationLinks : 0)
                     .heartbeatInterval(heartbeatInterval)
                     .reconnectInterval(Duration.ofMillis(50))
-                    .switchoverTimeout(Duration.ofSeconds(2))
+                    .switchoverTimeout(switchoverTimeout)
                     .followerLagAlertThreshold(Duration.ofMillis(200))
                     .leaderElection(FakeLeaderElection.Settings.builder().election(election).build())
                     .monitoringInstanceId("monitoring")
@@ -315,6 +319,171 @@ class TestReplicationFixEngineHa {
 
         assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.NO_FOLLOWER_IN_SYNC);
         assertThat(a.engine.activity).containsExactly("activate, stores open 0");
+    }
+
+    private void bTakesOverOnTransfer() {
+        a.election.transfersWith(() -> {
+            a.election.elect(Role.FOLLOWER, 4, "b");
+            b.election.elect(Role.LEADER, 4, "b");
+        });
+    }
+
+    private void bHasLeftToStore(long pendingWrites) {
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        b.engine.store(MAIN).pendingWrites = pendingWrites;
+        await().until(() -> a.ha.getFollowerPendingWrites() == pendingWrites);
+    }
+
+    private void bStoresAllAfter(Duration delay) {
+        Thread storing = new Thread(() -> {
+            await().pollDelay(delay).until(() -> true);
+            b.engine.store(MAIN).pendingWrites = 0;
+        });
+        storing.setDaemon(true);
+        storing.start();
+    }
+
+    @Test
+    void aSwitchoverRefusesAFollowerWithTooMuchLeftToStoreAndChangesNothing() {
+        aLeadsBFollows();
+        bTakesOverOnTransfer();
+        bHasLeftToStore(1_001);
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.FOLLOWER_STORE_BEHIND);
+
+        assertThat(a.engine.activity).doesNotContain("deactivate with logout");
+        assertThat(a.ha.getStatus().getRole()).isEqualTo(Role.LEADER);
+    }
+
+    @Test
+    void aSwitchoverGoesAheadWithAsMuchLeftToStoreAsItAllows() {
+        aLeadsBFollows();
+        bTakesOverOnTransfer();
+        bHasLeftToStore(1_000);
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+    }
+
+    @Test
+    void aSwitchoverWaitsForTheFollowerToStoreItsBacklog() {
+        aLeadsBFollows();
+        bTakesOverOnTransfer();
+        bHasLeftToStore(5_000);
+        bStoresAllAfter(Duration.ofMillis(300));
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+
+        assertThat(a.engine.activity).contains("deactivate with logout");
+    }
+
+    @Test
+    void aBacklogStoredLateLeavesTheSwitchoverItsWholeTimeout() {
+        aLeadsBFollows();
+        a.election.transfersWith(() -> {
+            Thread landing = new Thread(() -> {
+                await().pollDelay(Duration.ofMillis(800)).until(() -> true);
+                a.election.elect(Role.FOLLOWER, 4, "b");
+                b.election.elect(Role.LEADER, 4, "b");
+            });
+            landing.setDaemon(true);
+            landing.start();
+        });
+        bHasLeftToStore(5_000);
+        bStoresAllAfter(Duration.ofMillis(1_600));
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+    }
+
+    @Test
+    void aLeaderWithdrawingFromElectionsSwitchesOverFirst() {
+        aLeadsBFollows();
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        a.election.candidacySupported(true);
+        bTakesOverOnTransfer();
+
+        a.ha.setCandidate(false);
+
+        assertThat(a.engine.activity).contains("deactivate with logout");
+        assertThat(a.ha.getStatus().isCandidate()).isFalse();
+        await().until(() -> b.engine.activity.contains("activate, stores open 0"));
+        assertThat(b.engine.store(MAIN).writes).as("handed over, not failed over").doesNotContain("outgoing 10001");
+    }
+
+    @Test
+    void aLeaderThatCannotSwitchOverStaysACandidate() {
+        aLeadsBFollows();
+        a.election.candidacySupported(true);
+        bTakesOverOnTransfer();
+        bHasLeftToStore(1_001);
+
+        assertThatThrownBy(() -> a.ha.setCandidate(false)).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("FOLLOWER_STORE_BEHIND");
+
+        assertThat(a.ha.getStatus().isCandidate()).isTrue();
+        assertThat(a.ha.getStatus().getRole()).isEqualTo(Role.LEADER);
+    }
+
+    @Test
+    void aFollowerWithdrawsFromElectionsWithoutASwitchover() {
+        aLeadsBFollows();
+        b.election.candidacySupported(true);
+        bTakesOverOnTransfer();
+
+        b.ha.setCandidate(false);
+
+        assertThat(b.ha.getStatus().isCandidate()).isFalse();
+        assertThat(a.engine.activity).doesNotContain("deactivate with logout");
+    }
+
+    private Node notWaitingToSwitchOver(String nodeId) {
+        return new Node(nodeId, new RecordingEngine().with(MAIN), Duration.ofMillis(50), 1, Duration.ZERO);
+    }
+
+    @Test
+    void aZeroSwitchoverTimeoutRefusesAFollowerNotReadyAtOnce() {
+        a = notWaitingToSwitchOver("a");
+        aLeadsBFollows();
+        bTakesOverOnTransfer();
+        bHasLeftToStore(1_001);
+        long start = System.nanoTime();
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.FOLLOWER_STORE_BEHIND);
+
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(1));
+        assertThat(a.engine.activity).doesNotContain("deactivate with logout");
+    }
+
+    @Test
+    void aZeroSwitchoverTimeoutStillSwitchesOverToAFollowerReadyNow() {
+        a = notWaitingToSwitchOver("a");
+        aLeadsBFollows();
+        bTakesOverOnTransfer();
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+    }
+
+    @Test
+    void theStatusTellsTheLongestASwitchoverCanTake() {
+        assertThat(a.ha.getStatus().getSwitchoverMaxDuration()).as("waiting, then the switchover").isEqualTo(Duration.ofSeconds(4));
+        assertThat(notWaitingToSwitchOver("a").ha.getStatus().getSwitchoverMaxDuration()).as("the default hand over timeout")
+                .isEqualTo(Duration.ofSeconds(5));
+    }
+
+    @Test
+    void timeoutsMustBeWhatASwitchoverCanRunOn() {
+        assertThatThrownBy(() -> new ReplicationFixEngineHa(ReplicationHaSettings.builder().switchoverTimeout(Duration.ofSeconds(-1)).build()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("switchoverTimeout");
+        assertThatThrownBy(() -> new ReplicationFixEngineHa(ReplicationHaSettings.builder().handOverTimeout(Duration.ZERO).build()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("handOverTimeout");
+    }
+
+    @Test
+    void switchoverMaxPendingWritesMustNotBeNegative() {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().switchoverMaxPendingWrites(-1).build();
+
+        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("switchoverMaxPendingWrites");
     }
 
     @Test

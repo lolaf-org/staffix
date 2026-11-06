@@ -94,8 +94,9 @@ public interface FrameHandler {
      * @param appliedOffset the offset of the last event the follower applied, which releases the {@code SYNC} sends
      *                      waiting for it
      * @param inSync        whether the follower holds every session the leader replicates
+     * @param pendingWrites what the follower's stores for this link have yet to store, as of the last second or so
      */
-    void onAck(long epoch, long appliedOffset, boolean inSync);
+    void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites);
 
     /**
      * Sent before a read's events are written to the follower's store, then followed by its {@link #onAck ACK}.

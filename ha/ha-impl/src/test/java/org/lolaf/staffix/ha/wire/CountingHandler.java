@@ -74,7 +74,7 @@ class CountingHandler implements FrameHandler {
     }
 
     @Override
-    public void onAck(long epoch, long appliedOffset, boolean inSync) {
+    public void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites) {
         frames++;
         checksum += epoch + appliedOffset + (inSync ? 1 : 0);
     }
