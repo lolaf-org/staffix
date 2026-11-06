@@ -381,7 +381,7 @@ class TestReplicationFixEngineHa {
         aLeadsBFollows();
         a.election.transfersWith(() -> {
             Thread landing = new Thread(() -> {
-                await().pollDelay(Duration.ofMillis(800)).until(() -> true);
+                await().pollDelay(Duration.ofMillis(1_500)).until(() -> true);
                 a.election.elect(Role.FOLLOWER, 4, "b");
                 b.election.elect(Role.LEADER, 4, "b");
             });
@@ -389,7 +389,8 @@ class TestReplicationFixEngineHa {
             landing.start();
         });
         bHasLeftToStore(5_000);
-        bStoresAllAfter(Duration.ofMillis(1_600));
+        // the follower reports once a second: seen a second in, leaving less than the landing takes
+        bStoresAllAfter(Duration.ofMillis(400));
 
         assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
     }
