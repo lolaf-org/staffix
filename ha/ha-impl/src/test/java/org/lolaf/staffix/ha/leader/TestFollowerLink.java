@@ -304,10 +304,15 @@ class TestFollowerLink {
                 await().until(() -> batchesSent.get() == sent);
             }
 
+            await().during(Duration.ofMillis(200)).alias("all four in flight, nothing to send")
+                    .until(() -> stats.getSendWaits() == 0);
+
             main.storeNextIncomingSeqNum(4);
 
             await().during(Duration.ofMillis(200)).until(() -> batchesSent.get() == 4);
-            assertThat(stats.getSendBuffersExhausted()).as("all four in flight").isEqualTo(1);
+            assertThat(stats.getSendWaits()).as("a write held back").isEqualTo(1);
+            main.storeNextIncomingSeqNum(5);
+            await().during(Duration.ofMillis(200)).alias("the same wait").until(() -> stats.getSendWaits() == 1);
             unwrittenBatches.poll().run();
             await().during(Duration.ofMillis(200)).alias("the batch written last is kept").until(() -> batchesSent.get() == 4);
             unwrittenBatches.poll().run();
@@ -315,6 +320,54 @@ class TestFollowerLink {
         } finally {
             link.disconnected();
         }
+    }
+
+    @Test
+    void aWriteHeldBackByTheWriteWatermarkIsASendWaitButTheWatermarkAloneIsNot() {
+        FixSessionMessagesStore main = replicated("main");
+        link = senderRunningLink();
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        try {
+            await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
+
+            link.pause(true);
+            await().during(Duration.ofMillis(200)).until(() -> stats.getSendWaits() == 0);
+
+            main.storeNextIncomingSeqNum(1);
+            await().until(() -> stats.getSendWaits() == 1);
+
+            link.pause(false);
+            await().until(() -> batchesSent.get() == 2);
+        } finally {
+            link.disconnected();
+        }
+    }
+
+    @Test
+    void aSnapshotHeldBackIsASendWait() {
+        ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
+        link = senderRunningLink(4 << 10);
+        holdingWrites = true;
+        link.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        try {
+            await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
+
+            link.onSessionStatus(EPOCH, 0, SessionStatus.SNAPSHOT_NEEDED);
+
+            await().until(() -> stats.getSendWaits() == 1);
+            assertThat(batchesSent.get()).as("all four in flight").isEqualTo(4);
+        } finally {
+            link.disconnected();
+        }
+    }
+
+    private FollowerLink senderRunningLink() {
+        return senderRunningLink(Integer.MAX_VALUE);
+    }
+
+    private FollowerLink senderRunningLink(int snapshotChunkBytes) {
+        return new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
+                Duration.ZERO, 4, snapshotChunkBytes, new BackoffIdleStrategy(), stats, loop -> new Thread(loop).start());
     }
 
     @Test

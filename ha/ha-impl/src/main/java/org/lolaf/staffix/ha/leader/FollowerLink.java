@@ -119,7 +119,7 @@ public final class FollowerLink implements FrameHandler {
      */
     private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
     private final Consumer<Runnable> senderLauncher;
-    private boolean sendBuffersExhausted;
+    private boolean sendWaitCounted;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
     @Getter
@@ -616,6 +616,7 @@ public final class FollowerLink implements FrameHandler {
                 break;
             }
             if (hasNoRoomToSend()) {
+                countSendWaitIfHeldBack();
                 senderIdle.idle();
                 continue;
             }
@@ -696,12 +697,24 @@ public final class FollowerLink implements FrameHandler {
      * Neither betty's write watermark is reached nor every send buffer in flight.
      */
     private boolean hasNoRoomToSend() {
-        boolean exhausted = spareBatch == null && batchesAllocated >= sendBuffers && writtenBatches.isEmpty();
-        if (exhausted && !sendBuffersExhausted) {
-            stats.sendBuffersExhausted();
+        boolean noRoom = paused || spareBatch == null && batchesAllocated >= sendBuffers && writtenBatches.isEmpty();
+        if (!noRoom) {
+            sendWaitCounted = false;
         }
-        sendBuffersExhausted = exhausted;
-        return paused || exhausted;
+        return noRoom;
+    }
+
+    private void countSendWaitIfHeldBack() {
+        if (!sendWaitCounted && (snapshot != null || reader.getOffset() != replicationLog.getTailOffset())) {
+            countSendWait();
+        }
+    }
+
+    private void countSendWait() {
+        if (!sendWaitCounted) {
+            sendWaitCounted = true;
+            stats.sendWait();
+        }
     }
 
     /**
@@ -1016,6 +1029,7 @@ public final class FollowerLink implements FrameHandler {
 
         private void awaitRoomToSend() {
             while (hasNoRoomToSend() && state == State.STREAMING) {
+                countSendWait();
                 sendBufferWait.idle();
             }
             sendBufferWait.reset();

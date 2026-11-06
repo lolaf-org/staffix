@@ -32,7 +32,7 @@ public final class ReplicationStats {
     private final SlowFollowers slowFollowers;
     private final AtomicLong snapshots = new AtomicLong();
     private final AtomicLong snapshotMessages = new AtomicLong();
-    private final AtomicLong sendBuffersExhausted = new AtomicLong();
+    private final AtomicLong sendWaits = new AtomicLong();
     private final AtomicLong sendBuffersAllocated = new AtomicLong();
     private BiFunction<String, Integer, Timer> ackLatencyTimers = (followerId, link) -> Timer.VoidTimer.getInstance();
     private BiFunction<String, Integer, Timer> lagTimers = (followerId, link) -> Timer.VoidTimer.getInstance();
@@ -77,8 +77,8 @@ public final class ReplicationStats {
         snapshotMessages.addAndGet(messages);
     }
 
-    void sendBuffersExhausted() {
-        sendBuffersExhausted.incrementAndGet();
+    void sendWait() {
+        sendWaits.incrementAndGet();
     }
 
     void sendBuffersAllocated(int count) {
@@ -86,10 +86,10 @@ public final class ReplicationStats {
     }
 
     /**
-     * Times a sender waited for a send buffer, every one holding a batch its follower's socket had not taken yet.
+     * Times a sender had something to send and could not: every send buffer in flight, or betty's write watermark reached.
      */
-    public long getSendBuffersExhausted() {
-        return sendBuffersExhausted.get();
+    public long getSendWaits() {
+        return sendWaits.get();
     }
 
     /**

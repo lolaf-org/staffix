@@ -114,7 +114,7 @@ apply to, and all but the timers are read at export, so they cost the session th
 | `ha.follower.lag` | how far a follower is behind: from a write to the replication log to the follower applying it, tagged `follower`, sampled once per round trip |
 | `ha.follower.lag.pending` | how long, in milliseconds, the most behind follower has not applied a write, 0 when all are caught up; unlike the timer, it keeps growing while a follower is stalled |
 | `ha.follower.too.slow`, `ha.snapshots`, `ha.snapshot.messages` | followers dropped for reading the log so slowly that a write waited `logFullTimeout` for them, snapshots sent, messages they copied |
-| `ha.follower.send.buffers.exhausted` | times the leader paused sending to a follower because all its send buffers were still waiting for the network; growing steadily while the network is healthy means `sendBuffers` is too small |
+| `ha.follower.send.waits` | times the leader had writes for a follower and could not send them, every send buffer being in flight or the connection's write limit reached; growing steadily while the network is healthy means `sendBuffers` is too small |
 | `ha.follower.send.buffers.allocated` | send buffers allocated because the pool had none free; should always be 0, any other value is a bug |
 | `ha.replica.connected`, `ha.replica.in.sync` | on a follower: streaming its leader's writes, and holding every replicated session |
 | `ha.replica.received.write.latency` | on a follower: how long it took to write a read's events to its store after acknowledging them as received, the window in which a `SYNC_RECEIVED` send is held in its memory only |
