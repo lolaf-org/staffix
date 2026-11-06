@@ -161,10 +161,11 @@ could mean.
   resend.
 - The JDBC messages store read a whole resend range into memory before sending its first message on PostgreSQL, and
   read it 10 rows per round trip on Oracle. It now streams the range, `findFetchSize` rows at a time (500 by default).
-- **Async store: writes could be lost when an engine stopped or crashed during a storage outage.** The first messages
-  that failed to store were kept in memory, so a stop or crash before the storage came back lost them, with nothing in
-  the log. They now stay in the queue on disk and are stored once it is back. A message the store keeps refusing while
-  its storage is up now costs that message alone, not its whole batch.
+- **Async store: writes could be lost when an engine stopped or crashed during a storage outage, or crashed during a
+  write.** The first messages that failed to store were kept in memory, so a stop or crash before the storage came back
+  lost them, with nothing in the log. They now stay in the queue on disk and are stored once it is back. After a crash,
+  what was being written is written again, which the store ignores if it already holds it. A message the store keeps
+  refusing while its storage is up now costs that message alone, not its whole batch.
 
 ## [0.9.1] - 2026-10-14
 

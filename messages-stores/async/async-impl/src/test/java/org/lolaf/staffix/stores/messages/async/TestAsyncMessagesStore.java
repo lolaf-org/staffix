@@ -358,6 +358,72 @@ class TestAsyncMessagesStore {
 
         await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
         assertThat(stored).containsExactlyInAnyOrder(1L, 2L, 4L, 5L);
+        assertThat(asyncMessageStore.getLostWrites()).isEqualTo(1);
+    }
+
+    @Test
+    void aMessageTheStoreAlreadyHoldsIsNotLost() {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        FixMessagesStore.BatchingFixSessionMessagesStore batching = getBatchingFixSessionMessagesStoreMock();
+        doAnswer(i -> {
+            FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] messages = i.getArgument(0);
+            for (int n = 0; n < i.<Integer>getArgument(1); n++) {
+                if (messages[n].getSequenceNumber() == 2) {
+                    throw new IllegalStateException("duplicate key");
+                }
+            }
+            return null;
+        }).when(batching).storeSentFixMessages(any(), anyInt());
+        doAnswer(i -> {
+            if (i.<Long>getArgument(0) == 2) {
+                throw new IllegalStateException("duplicate key");
+            }
+            return stored.add(i.getArgument(0));
+        }).when(batching).storeMessageSent(anyLong(), any());
+        doAnswer(i -> {
+            if (i.<Long>getArgument(0) == 2) {
+                ((FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer) i.getArgument(2)).onMessage(2, testMessage);
+            }
+            return null;
+        }).when(batching).find(anyLong(), anyLong(), any());
+        messageStore = batching;
+        recreateStore(10);
+        asyncMessageStore.start();
+
+        for (long seqNum = 1; seqNum <= 3; seqNum++) {
+            asyncMessageStore.storeMessageSent(seqNum, testMessage);
+        }
+
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
+        assertThat(stored).containsExactlyInAnyOrder(1L, 3L);
+        assertThat(asyncMessageStore.getLostWrites()).isZero();
+    }
+
+    @Test
+    void aWriteInProgressWhenTheStoreStopsIsWrittenAtItsNextStart() throws InterruptedException {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        CountDownLatch writeStarted = new CountDownLatch(1);
+        CountDownLatch writeReleased = new CountDownLatch(1);
+        AtomicBoolean firstWrite = new AtomicBoolean(true);
+        doAnswer(i -> {
+            if (firstWrite.getAndSet(false)) {
+                writeStarted.countDown();
+                writeReleased.await();
+                throw new IllegalStateException("test exception");
+            }
+            return stored.add(i.getArgument(0));
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        recreateStore(0);
+        asyncMessageStore.start();
+
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        writeStarted.await();
+        asyncMessageStore.stop(Deadline.immediate());
+        writeReleased.countDown();
+        asyncMessageStore.start();
+
+        await().untilAsserted(() -> assertThat(stored).containsExactly(1L));
+        assertThat(asyncMessageStore.getLostWrites()).isZero();
     }
 
     @Test

@@ -251,6 +251,7 @@ class TestPersistentQueue {
 
         assertThat(persistentQueue.poll(asyncEventSerde, testingEvent)).isTrue();
         assertThat(persistentQueue.poll(asyncEventSerde, testingEvent)).isTrue();
+        persistentQueue.confirmPolled();
         assertThat(persistentQueue.getSize()).isZero();
 
         persistentQueue.stop();
@@ -317,6 +318,60 @@ class TestPersistentQueue {
 
         assertThat(persistentQueue.getSize()).isEqualTo(2);
         assertThat(pollAll()).containsExactly("b", "c");
+    }
+
+    @Test
+    void eventsPolledButNotConfirmedAreReadAgainAfterARestart() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a");
+        assertThat(pollAll()).containsExactly("a");
+        persistentQueue.confirmPolled();
+        offer("b", "c");
+        assertThat(pollAll()).containsExactly("b", "c");
+
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+
+        assertThat(persistentQueue.getSize()).isEqualTo(2);
+        assertThat(pollAll()).containsExactly("b", "c");
+    }
+
+    @Test
+    void aRestartOnAQueueFullyConfirmedReadsWhatComesNext() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a", "b");
+        assertThat(pollAll()).containsExactly("a", "b");
+        persistentQueue.confirmPolled();
+
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("c");
+
+        assertThat(persistentQueue.getSize()).isEqualTo(1);
+        assertThat(pollAll()).containsExactly("c");
+    }
+
+    @Test
+    void theConfirmedPositionCrossesFiles() {
+        asyncStoreSettings = AsyncStoreSettings.builder()
+                .asyncQueueDirectory("./target/chronicle-" + System.nanoTime())
+                .rollCycleProvider(sid -> TestRollCycles.TEST_SECONDLY)
+                .build();
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a");
+        LockSupport.parkNanos(Duration.ofMillis(1100).toNanos());
+        offer("b");
+        LockSupport.parkNanos(Duration.ofMillis(1100).toNanos());
+        offer("c");
+        assertThat(pollAll()).containsExactly("a", "b", "c");
+        persistentQueue.confirmPolled();
+        offer("d");
+        assertThat(pollAll()).containsExactly("d");
+
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+
+        assertThat(pollAll()).containsExactly("d");
     }
 
     @Test

@@ -28,6 +28,7 @@ import org.lolaf.staffix.stores.core.async.*;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -50,6 +51,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private final AtomicLong outgoingSequenceNumber;
     private final AtomicLong incomingSequenceNumber;
     private final AtomicLong processedEvents;
+    private final AtomicLong lostWrites = new AtomicLong();
     private volatile boolean retryingFailedWrite;
 
     AsyncMessageStore(FixMessagesStore.FixSessionMessagesStore wrappedStore, FixSessionId fixSessionId,
@@ -78,14 +80,6 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         processedEvents = new AtomicLong();
     }
 
-    private static int batchSize(AsyncStoreEvent[] asyncStoreEvents) {
-        int batchSize = 0;
-        while (batchSize < asyncStoreEvents.length && asyncStoreEvents[batchSize] != null) {
-            batchSize++;
-        }
-        return batchSize;
-    }
-
     private static void release(AsyncStoreEvent[] asyncStoreEvents) {
         for (AsyncStoreEvent e : asyncStoreEvents) {
             if (e == null) {
@@ -104,9 +98,9 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
             if (writeEvent(event)) {
                 retryingFailedWrite = false;
             } else if (failsWithTheResourceUp()) {
-                lost(1, "the retry failed with the resource up");
+                writeFailedAlone(event);
             } else {
-                retryLater(1);
+                retryLater();
             }
         } finally {
             event.release();
@@ -120,7 +114,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
             } else if (failsWithTheResourceUp()) {
                 writeOneByOne(asyncStoreEvents);
             } else {
-                retryLater(batchSize(asyncStoreEvents));
+                retryLater();
             }
         } finally {
             release(asyncStoreEvents);
@@ -145,17 +139,43 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                 break;
             }
             if (!writeEvent(event)) {
-                lost(1, "it failed alone with the resource up");
+                writeFailedAlone(event);
             }
         }
     }
 
     /**
-     * Back in the queue, on disk, so a stop or a crash until the retry costs nothing.
+     * A write read again after a crash may be one the store already holds, and refuses.
      */
-    private void retryLater(int eventsCount) {
+    private void writeFailedAlone(AsyncStoreEvent event) {
+        if (alreadyStored(event)) {
+            processedEvents.incrementAndGet();
+        } else {
+            lost(1, "it failed alone with the resource up");
+        }
+    }
+
+    private boolean alreadyStored(AsyncStoreEvent event) {
+        if (!FixMessagesStore.StoreEventType.STORE_MESSAGE.equals(event.getStoreEvent())) {
+            return false;
+        }
+        AtomicBoolean found = new AtomicBoolean();
+        try {
+            wrappedStore.find(event.getSequenceNumber(), event.getSequenceNumber(), (seqNum, message) -> {
+                found.set(true);
+                return false;
+            });
+        } catch (Exception ex) {
+            log.warn("Unable to tell whether FIX session {} holds message {}", fixSessionId, event.getSequenceNumber(), ex);
+        }
+        return found.get();
+    }
+
+    /**
+     * What failed stays in the queue, on disk, so a stop or a crash until the retry costs nothing.
+     */
+    private void retryLater() {
         if (!messagesQueue.returnPolled()) {
-            lost(eventsCount, "its queue is stopped");
             return;
         }
         retryingFailedWrite = true;
@@ -164,8 +184,13 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         }
     }
 
+    long getLostWrites() {
+        return lostWrites.get();
+    }
+
     private void lost(int eventsCount, String reason) {
         processedEvents.addAndGet(eventsCount);
+        lostWrites.addAndGet(eventsCount);
         log.error("{} messages lost for FIX session {}, {}", eventsCount, fixSessionId, reason);
     }
 
@@ -279,7 +304,7 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         flushMessagesIfNeeded(stopDeadline);
         // unregistering first lets a write that fails meanwhile start its watchdog before it is stopped below
         if (!unregisterEventsHandlingFromAsyncLoggersThreads(stopDeadline)) {
-            log.warn("Async messages store for FIX session {} stops while its reader thread is still writing to it, a write it fails after the queue stops will be lost", fixSessionId);
+            log.warn("Async messages store for FIX session {} stops while its reader thread is still writing to it, it will read that write again at its next start", fixSessionId);
         }
         if (underlyingResourceWatchContext.isStarted()) {
             log.warn("AsyncMessageStore shutdown with an underlying resource state active watchdog for FIX session {}", fixSessionId);

@@ -64,10 +64,14 @@ public class PersistentQueue<T extends AsyncEvent> {
      */
     private final AtomicLong pendingDeletionSweeps;
     private SingleChronicleQueue queue;
+    /**
+     * Named, so its position outlives the process: it only ever moves past what was confirmed, so a crash reads again
+     * what was polled and not confirmed.
+     */
+    private ExcerptTailer confirmedTailer;
     private ExcerptTailer tailer;
     private int unconfirmedPolls;
     private long firstUnconfirmedIndex;
-    private int lastUnconfirmedCycle;
     /**
      * Non-null when the current {@link StoreFilesCleaner} holds cycles waiting for the tailer to move past them, so
      * that the polling thread can complete the deletions Chronicle notified too early. Reading this single reference
@@ -110,16 +114,19 @@ public class PersistentQueue<T extends AsyncEvent> {
                 .rollCycle(asyncStoreSettings.getRollCycleProvider().apply(fixSessionId));
         asyncStoreSettings.getBuilderConfigurer().accept(fixSessionId, builder);
         queue = builder.build();
-        tailer = queue.createTailer(name);
+        confirmedTailer = queue.createTailer(name);
+        confirmedTailer.singleThreadedCheckDisabled(true);
+        tailer = queue.createTailer();
         tailer.singleThreadedCheckDisabled(true);
         polls.set(0);
         offers.set(0);
         unconfirmedPolls = 0;
-        try (DocumentContext dc = tailer.readingDocument()) {
+        try (DocumentContext dc = confirmedTailer.readingDocument()) {
             if (dc.isPresent()) {
+                tailer.moveToIndex(dc.index());
                 long lastQueueWriteIndex = queue.lastIndex();
                 log.debug("Chronicle lastQueueWriteIndex {}", lastQueueWriteIndex);
-                long lastQueueReadIndex = tailer.lastReadIndex();
+                long lastQueueReadIndex = confirmedTailer.lastReadIndex();
                 log.debug("Chronicle lastQueueReadIndex  {}", lastQueueReadIndex);
                 long size = 0;
                 if (lastQueueWriteIndex != lastQueueReadIndex) {
@@ -128,11 +135,13 @@ public class PersistentQueue<T extends AsyncEvent> {
                 log.info("Chronicle computed queue size is {}", size);
                 offers.set(size);
                 dc.rollbackOnClose();
+            } else {
+                tailer.toEnd();
             }
         }
         // the tailer sits on the oldest cycle that is not fully polled yet, so every cycle strictly before it can be
         // deleted by the StoreFilesCleaner. On an empty queue cycle() returns Integer.MIN_VALUE, which keeps every file.
-        lastPolledCycle.set(tailer.cycle());
+        lastPolledCycle.set(confirmedTailer.cycle());
         started.set(true);
         log.info("Persistent queue {} for FIX session {} started with {} unprocessed elements and last polled cycle {}", type, fixSessionId, getSize(), lastPolledCycle);
     }
@@ -146,8 +155,11 @@ public class PersistentQueue<T extends AsyncEvent> {
             return;
         }
         started.set(false);
+        unconfirmedPolls = 0;
         tailer.close();
         tailer = null;
+        confirmedTailer.close();
+        confirmedTailer = null;
         queue.close();
         queue = null;
         log.info("Persistent queue for FIX session {} is stopped with {} unprocessed elements", fixSessionId, getSize());
@@ -192,7 +204,6 @@ public class PersistentQueue<T extends AsyncEvent> {
                 if (unconfirmedPolls++ == 0) {
                     firstUnconfirmedIndex = dc.index();
                 }
-                lastUnconfirmedCycle = localTailer.cycle();
                 asyncEventSerde.deserialize(dc, target);
                 polls.getAndIncrement();
                 return true;
@@ -206,24 +217,34 @@ public class PersistentQueue<T extends AsyncEvent> {
      * else may go.
      */
     public void confirmPolled() {
-        if (unconfirmedPolls == 0) {
+        ExcerptTailer localTailer = confirmedTailer;
+        if (unconfirmedPolls == 0 || localTailer == null) {
             return;
         }
+        for (; unconfirmedPolls > 0; unconfirmedPolls--) {
+            try (DocumentContext dc = localTailer.readingDocument()) {
+                if (!dc.isPresent()) {
+                    log.error("Unable to confirm a polled event of FIX session {}, abnormal situation", fixSessionId);
+                    break;
+                }
+            }
+        }
         unconfirmedPolls = 0;
-        lastPolledCycle.set(lastUnconfirmedCycle);
+        int confirmedCycle = localTailer.cycle();
+        lastPolledCycle.set(confirmedCycle);
         StoreFilesCleaner cleaner = pendingDeletions;
         // sweeping is worth its monitor only once the tailer has rolled past the oldest pending cycle,
         // otherwise every event of a backlog would take the cleaner lock for nothing
-        if (cleaner != null && cleaner.hasDeletableCycle(lastUnconfirmedCycle)) {
+        if (cleaner != null && cleaner.hasDeletableCycle(confirmedCycle)) {
             pendingDeletionSweeps.getAndIncrement();
             cleaner.deletePolledCycles();
         }
     }
 
     /**
-     * Puts back the events polled since the last confirmation, so the next poll reads them again, also after a restart.
+     * Puts back the events polled since the last confirmation, so the next poll reads them again.
      *
-     * @return false when the queue is stopped: they cannot be put back
+     * @return false when the queue is stopped: they are read again at its next start
      */
     public boolean returnPolled() {
         ExcerptTailer localTailer = tailer;
