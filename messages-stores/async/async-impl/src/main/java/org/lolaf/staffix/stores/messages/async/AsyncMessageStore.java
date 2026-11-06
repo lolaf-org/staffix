@@ -181,6 +181,10 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
                         storeOutgoingSeqNum = e.getSequenceNumber() + 1;
                         break;
                     case RESET_SEQ_NUM:
+                        // the reset wipes what came before it: written after, it would collide with the next messages
+                        eventsCount = 0;
+                        storeOutgoingSeqNum = -1;
+                        storeIncomingSeqNum = -1;
                         wrappedStore.resetSequenceNumbers();
                         break;
                     case STORE_INCOMING_SEQ_NUM:

@@ -452,6 +452,63 @@ class TestAsyncMessagesStore {
     }
 
     @Test
+    void aBatchWritesNothingFromBeforeAResetAfterIt() {
+        List<String> writes = batchingStoreRecording();
+
+        asyncMessageStore.storeMessageSent(7L, testMessage);
+        asyncMessageStore.storeNextIncomingSeqNum(50L);
+        asyncMessageStore.resetSequenceNumbers();
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+
+        await().untilAsserted(() -> assertThat(writes).contains("message 1"));
+        assertThat(writes.subList(writes.indexOf("reset") + 1, writes.size())).containsExactly("message 1", "outgoing 2");
+    }
+
+    @Test
+    void aBatchEndingInAResetLeavesTheStoreReset() {
+        List<String> writes = batchingStoreRecording();
+
+        asyncMessageStore.storeMessageSent(7L, testMessage);
+        asyncMessageStore.storeNextIncomingSeqNum(50L);
+        asyncMessageStore.resetSequenceNumbers();
+
+        await().untilAsserted(() -> assertThat(writes).contains("reset"));
+        await().during(Duration.ofMillis(200)).untilAsserted(() -> assertThat(writes).endsWith("reset"));
+    }
+
+    private List<String> batchingStoreRecording() {
+        asyncMessagesStore.stop(Deadline.immediate());
+        List<String> writes = new CopyOnWriteArrayList<>();
+        FixMessagesStore.BatchingFixSessionMessagesStore store = getBatchingFixSessionMessagesStoreMock();
+        doAnswer(invocation -> {
+            FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] messages = invocation.getArgument(0);
+            int count = invocation.getArgument(1);
+            for (int i = 0; i < count; i++) {
+                writes.add("message " + messages[i].getSequenceNumber());
+            }
+            return null;
+        }).when(store).storeSentFixMessages(any(), anyInt());
+        doAnswer(invocation -> writes.add("outgoing " + invocation.getArgument(0))).when(store).storeNextOutgoingSeqNum(anyLong());
+        doAnswer(invocation -> writes.add("incoming " + invocation.getArgument(0))).when(store).storeNextIncomingSeqNum(anyLong());
+        doAnswer(invocation -> writes.add("reset")).when(store).resetSequenceNumbers();
+        asyncMessagesStoreSettings = asyncMessagesStoreSettings.toBuilder()
+                .asyncStoreSettings(asyncMessagesStoreSettings.getAsyncStoreSettings().toBuilder()
+                        .asyncQueueDirectory("./target/" + System.nanoTime())
+                        .eventsBatching(10)
+                        .batchingFlushInterval(Duration.ofMillis(100))
+                        .build())
+                .wrappedFixMessagesStoreSettings(TestingFixMessagesStoreSettings.builder()
+                        .testingFixSessionMessagesStore(store)
+                        .build())
+                .build();
+        asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
+        asyncMessagesStore.start();
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
+        asyncMessageStore.start();
+        return writes;
+    }
+
+    @Test
     void testBatching() {
         asyncMessagesStore.stop(Deadline.immediate());
 
