@@ -38,18 +38,24 @@ public final class Followers {
     private static final IdleStrategy[] NO_WAITERS = new IdleStrategy[0];
 
     private volatile FollowerLink[] links = NONE;
+    private volatile List<FollowerLink> linksList = List.of();
     private volatile IdleStrategy[] waiters = NO_WAITERS;
     private final AtomicInteger waiting = new AtomicInteger();
 
     synchronized void add(FollowerLink link) {
         FollowerLink[] added = Arrays.copyOf(links, links.length + 1);
         added[links.length] = link;
-        links = added;
+        links(added);
     }
 
     synchronized void remove(FollowerLink link) {
-        links = Arrays.stream(links).filter(other -> other != link).toArray(FollowerLink[]::new);
+        links(Arrays.stream(links).filter(other -> other != link).toArray(FollowerLink[]::new));
         wakeWaiters();
+    }
+
+    private void links(FollowerLink[] changed) {
+        links = changed;
+        linksList = List.of(changed);
     }
 
     /**
@@ -86,7 +92,7 @@ public final class Followers {
     }
 
     public List<FollowerLink> all() {
-        return List.of(links);
+        return linksList;
     }
 
     /**

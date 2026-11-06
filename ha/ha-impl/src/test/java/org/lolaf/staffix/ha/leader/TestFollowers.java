@@ -238,4 +238,16 @@ class TestFollowers {
 
         assertThat(AllocatedBytes.ofCurrentThread() - before).as("less than a byte per wait").isLessThan(100_000);
     }
+
+    @Test
+    void theListOfFollowersIsBuiltOnlyWhenOneJoinsOrLeaves() {
+        FollowerLink first = inSyncFollower(offset);
+        assertThat(followers.all()).containsExactly(first).isSameAs(followers.all());
+
+        FollowerLink second = inSyncFollower(offset);
+        assertThat(followers.all()).containsExactly(first, second);
+
+        followers.remove(first);
+        assertThat(followers.all()).containsExactly(second);
+    }
 }

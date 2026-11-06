@@ -40,6 +40,7 @@ import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.tests.TestingClock;
 import org.mockito.ArgumentCaptor;
 
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -1075,5 +1076,16 @@ class TestFollowerLink {
         assertThat(link.getState()).isEqualTo(FollowerLink.State.CLOSED);
         assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 SNAPSHOT_FAILED"));
         assertThat(link.getSessionSync(0)).isEqualTo(FollowerLink.SessionSync.SNAPSHOT_PENDING);
+    }
+
+    @Test
+    void theAddressIsWrittenOutOnce() {
+        when(connection.getSocketAddress()).thenReturn(new InetSocketAddress("127.0.0.1", 40000));
+        FollowerLink follower = link();
+
+        String address = follower.status(0).getAddress();
+
+        assertThat(address).isEqualTo("/127.0.0.1:40000");
+        assertThat(follower.status(0).getAddress()).isSameAs(address);
     }
 }

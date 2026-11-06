@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.leader;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.ha.HaStatus;
+import org.lolaf.staffix.ha.wire.AllocatedBytes;
 import org.lolaf.staffix.tests.TestingClock;
 
 import java.time.Duration;
@@ -123,5 +124,17 @@ class TestSlowFollowers {
 
         assertThat(neverHolding.heldOffUntil("b", 0)).isEmpty();
         assertThat(neverHolding.notBackInSync()).extracting(HaStatus.DroppedFollower::getNodeId).containsExactly("b");
+    }
+
+    @Test
+    void askingWithNoDropAllocatesNothing() {
+        slowFollowers.notBackInSync();
+
+        long before = AllocatedBytes.ofCurrentThread();
+        for (int i = 0; i < 100_000; i++) {
+            slowFollowers.notBackInSync();
+        }
+
+        assertThat(AllocatedBytes.ofCurrentThread() - before).as("less than a byte per call").isLessThan(100_000);
     }
 }

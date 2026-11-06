@@ -72,6 +72,7 @@ public final class FollowerLink implements FrameHandler {
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     private static final long STORE_RETRY_NANOS = Duration.ofMillis(10).toNanos();
     private final IOSession connection;
+    private final String address;
     private final ReplicationLogs logs;
     /**
      * Link 0's until the HELLO says which link this connection carries.
@@ -198,6 +199,7 @@ public final class FollowerLink implements FrameHandler {
         this.stats = stats;
         this.senderLauncher = senderLauncher;
         this.connection = connection;
+        this.address = String.valueOf(connection.getSocketAddress());
         this.logs = logs;
         this.replicationLog = logs.get(0);
         this.reader = replicationLog.newReader();
@@ -405,7 +407,7 @@ public final class FollowerLink implements FrameHandler {
         return HaStatus.Follower.builder()
                 .nodeId(followerId)
                 .link(link)
-                .address(String.valueOf(connection.getSocketAddress()))
+                .address(address)
                 .connected(isConnected())
                 .inSync(isInSyncForAll(sessionCount))
                 .snapshotInProgress(snapshotInProgress)

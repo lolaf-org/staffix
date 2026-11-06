@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.ha;
 
-import lombok.Value;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -23,6 +22,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,23 +34,32 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class ReplicatedSessions {
 
-    private final Map<Id, ReplicatedSession> byId = new HashMap<>();
+    /**
+     * By type first, as one id may be configured as an initiator and as an acceptor: two sessions.
+     */
+    private final Map<FixSessionType, Map<FixSessionId, ReplicatedSession>> byTypeAndId = new EnumMap<>(FixSessionType.class);
     private final List<ReplicatedSession> byKey = new CopyOnWriteArrayList<>();
+
+    public ReplicatedSessions() {
+        for (FixSessionType fixSessionType : FixSessionType.values()) {
+            byTypeAndId.put(fixSessionType, new HashMap<>());
+        }
+    }
 
     /**
      * Registers a session as it is built, or takes the latest settings and store of one already known.
      */
     synchronized ReplicatedSession register(FixSessionSettings settings, FixSessionMessagesStore store) {
         ReplicatedSession.Config config = ReplicatedSession.Config.of(settings.getHaSessionSettings(), store);
-        Id id = new Id(settings.getFixSessionId().toString(), settings.getFixSessionType());
-        ReplicatedSession known = byId.get(id);
+        Map<FixSessionId, ReplicatedSession> byId = byTypeAndId.get(settings.getFixSessionType());
+        ReplicatedSession known = byId.get(settings.getFixSessionId());
         if (known != null) {
             known.update(config);
             return known;
         }
         // built with its config before it is listed, so a sender never finds it without one
         ReplicatedSession added = new ReplicatedSession(byKey.size(), settings.getFixSessionId(), settings.getFixSessionType(), config);
-        byId.put(id, added);
+        byId.put(settings.getFixSessionId(), added);
         byKey.add(added);
         return added;
     }
@@ -66,7 +75,7 @@ public final class ReplicatedSessions {
      * Null for a session not built yet. Any thread.
      */
     synchronized @Nullable ReplicatedSession find(FixSessionId fixSessionId, FixSessionType fixSessionType) {
-        return byId.get(new Id(fixSessionId.toString(), fixSessionType));
+        return byTypeAndId.get(fixSessionType).get(fixSessionId);
     }
 
     /**
@@ -78,14 +87,5 @@ public final class ReplicatedSessions {
 
     public Collection<ReplicatedSession> all() {
         return byKey;
-    }
-
-    /**
-     * One id may be configured as an initiator and as an acceptor: two sessions.
-     */
-    @Value
-    private static class Id {
-        String fixSessionId;
-        FixSessionType fixSessionType;
     }
 }

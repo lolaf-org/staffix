@@ -88,6 +88,9 @@ public final class SlowFollowers {
      * Those not back in sync since their last drop, by node id and link.
      */
     public List<HaStatus.DroppedFollower> notBackInSync() {
+        if (drops.isEmpty()) {
+            return List.of();
+        }
         Instant now = now();
         return drops.entrySet().stream()
                 .filter(entry -> entry.getValue().backInSyncAt == null)

@@ -163,6 +163,16 @@ class TestReplicationPublisher {
     }
 
     @Test
+    void aConnectedFollowerIsReportedAtItsAddress() {
+        publisher.start();
+        connectFollower(0, -1);
+
+        await().untilAsserted(() -> assertThat(ha.getFollowers().all()).hasSize(1));
+
+        assertThat(ha.getFollowers().all().get(0).status(0).getAddress()).matches(".*:\\d+");
+    }
+
+    @Test
     void aFollowerThatDisconnectsIsForgotten() {
         publisher.start();
         connectFollower(0, -1);
