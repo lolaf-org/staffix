@@ -524,7 +524,7 @@ class TestLeaderConnection {
 
         assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13", "message 11 eleven",
                 "message 12 twelve", "incoming 22", "outgoing 14");
-        assertThat(replicaSessions.isComplete()).isTrue();
+        assertThat(replicaSessions.isInSync()).isTrue();
         assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 REPLICATING", "ACK epoch=7 applied=-1 inSync=true");
     }
 
@@ -568,7 +568,7 @@ class TestLeaderConnection {
                 snapshotMessage(11, "eleven"),
                 (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2, 21, 13));
 
-        assertThat(replicaSessions.isComplete()).isFalse();
+        assertThat(replicaSessions.isInSync()).isFalse();
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
     }
 

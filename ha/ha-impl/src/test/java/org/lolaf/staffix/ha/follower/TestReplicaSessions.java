@@ -67,13 +67,13 @@ class TestReplicaSessions {
         assertThat(replicaSessions.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.NONE, "leader-storage"))
                 .isEqualTo(SessionAnswer.NOT_REPLICATED);
         assertThat(first.started).isFalse();
-        assertThat(replicaSessions.isComplete()).as("a session not replicated is not waited for").isTrue();
+        assertThat(replicaSessions.isInSync()).as("a session not replicated is not waited for").isTrue();
 
         engine.replace(REPLICATED);
         assertThat(replicaSessions.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage"))
                 .isEqualTo(SessionAnswer.SNAPSHOT_NEEDED);
         assertThat(engine.store(REPLICATED)).isNotSameAs(first);
-        assertThat(replicaSessions.isComplete()).isFalse();
+        assertThat(replicaSessions.isInSync()).isFalse();
     }
 
     @Test
@@ -83,7 +83,7 @@ class TestReplicaSessions {
         assertThat(replicaSessions.bind(0, NOT_REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage"))
                 .isEqualTo(SessionAnswer.MODE_MISMATCH);
         assertThat(engine.store(NOT_REPLICATED)).isNull();
-        assertThat(replicaSessions.isComplete()).as("a refused session is missing").isFalse();
+        assertThat(replicaSessions.isInSync()).as("a refused session is missing").isFalse();
 
         replicaSessions.jumpOutgoingSeqNums(1_000);
 

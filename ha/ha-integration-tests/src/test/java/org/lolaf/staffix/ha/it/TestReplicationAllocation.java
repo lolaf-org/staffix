@@ -207,7 +207,7 @@ class TestReplicationAllocation {
                         .build()).start();
         await().until(() -> initiator.session != null);
         if (follower != null) {
-            await().until(() -> follower.getReplicaSessions().isComplete()
+            await().until(() -> follower.getReplicaSessions().isInSync()
                     && follower.getReplicaSessions().getStore(FixSession.FixSessionType.ACCEPTOR, ACCEPTOR_ID.toString()) != null);
         }
 
@@ -237,7 +237,7 @@ class TestReplicationAllocation {
                                  FixSessionMessagesStore replica) {
         log.error("STALL {}: replica outgoing seqnum {}, follower applied epoch {} offset {}, complete {}",
                 mode, replica.getOutgoingSeqNum(), follower.getReplicaSessions().getLastAppliedEpoch(0),
-                follower.getReplicaSessions().getLastAppliedOffset(0), follower.getReplicaSessions().isComplete());
+                follower.getReplicaSessions().getLastAppliedOffset(0), follower.getReplicaSessions().isInSync());
         log.error("STALL leader status: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getStatus).orElse(null));
         log.error("STALL leader sessions: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getSessionStatuses).orElse(null));
         log.error("STALL follower status: {}", follower.getStatus());

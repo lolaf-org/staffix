@@ -143,7 +143,7 @@ class HaProbes {
                 return Optional.of(Alert.major("No address for the leader, " + leaderId(ha) + ", to replicate from"));
             }
             if (!client.isConnected()) {
-                return Optional.of(Alert.major("Not connected to the leader " + client.status().getAddress()
+                return Optional.of(Alert.major("Not connected to the leader " + client.getStatus().getAddress()
                         + " for " + RAISE_DELAY.toSeconds() + " s"));
             }
             return client.isInSync() ? Optional.empty()

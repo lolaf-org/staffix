@@ -53,7 +53,7 @@ final class ReplicaSession {
      * Why the session is not replicated here, unused when it is.
      */
     @Getter
-    private final SessionAnswer notReplicatedStatus;
+    private final SessionAnswer notReplicatedAnswer;
     /**
      * Kept by a session refused until its settings here change, to bind it again once they do.
      */
@@ -67,7 +67,7 @@ final class ReplicaSession {
     @Setter(AccessLevel.PACKAGE)
     private volatile @Nullable ReplicationMode leaderMode;
     private final LostWrites lostWrites;
-    private volatile boolean complete;
+    private volatile boolean inSync;
     @Getter
     private volatile boolean handedOver;
     private int snapshotMessageCount;
@@ -83,12 +83,12 @@ final class ReplicaSession {
     private @Nullable ByteBuffer assembledMessage;
 
     private ReplicaSession(FixSessionType fixSessionType, String fixSessionId, boolean replicated,
-                           FixSessionMessagesStore store, SessionAnswer notReplicatedStatus) {
+                           FixSessionMessagesStore store, SessionAnswer notReplicatedAnswer) {
         this.fixSessionType = fixSessionType;
         this.fixSessionId = fixSessionId;
         this.replicated = replicated;
         this.store = store;
-        this.notReplicatedStatus = notReplicatedStatus;
+        this.notReplicatedAnswer = notReplicatedAnswer;
         this.lostWrites = new LostWrites(store, fixSessionId);
         this.storeWrites = store instanceof BatchingFixSessionMessagesStore
                 ? new BatchedStoreWrites((BatchingFixSessionMessagesStore) store, lostWrites)
@@ -99,8 +99,8 @@ final class ReplicaSession {
         return new ReplicaSession(fixSessionType, fixSessionId, true, store, SessionAnswer.SNAPSHOT_NEEDED);
     }
 
-    static ReplicaSession notReplicated(FixSessionType fixSessionType, String fixSessionId, SessionAnswer status) {
-        return new ReplicaSession(fixSessionType, fixSessionId, false, NoStore.INSTANCE, status);
+    static ReplicaSession notReplicated(FixSessionType fixSessionType, String fixSessionId, SessionAnswer answer) {
+        return new ReplicaSession(fixSessionType, fixSessionId, false, NoStore.INSTANCE, answer);
     }
 
     static ReplicaSession refused(FixSessionType fixSessionType, String fixSessionId, SessionAnswer refusal,
@@ -111,31 +111,31 @@ final class ReplicaSession {
         return session;
     }
 
-    SessionAnswer status() {
+    SessionAnswer answer() {
         if (!replicated) {
-            return notReplicatedStatus;
+            return notReplicatedAnswer;
         }
-        return complete ? SessionAnswer.REPLICATING : SessionAnswer.SNAPSHOT_NEEDED;
+        return inSync ? SessionAnswer.REPLICATING : SessionAnswer.SNAPSHOT_NEEDED;
     }
-    
-    boolean isNotCaughtUp() {
-        return replicated ? !complete : notReplicatedStatus.isRefusal();
+
+    boolean isOutOfSync() {
+        return replicated ? !inSync : notReplicatedAnswer.isRefusal();
     }
 
     void handOver() {
-        handedOver = replicated && complete;
+        handedOver = replicated && inSync;
     }
 
     void describe(HaSessionStatus.HaSessionStatusBuilder status) {
         status.handedOver(handedOver);
         if (replicated) {
-            status.inSync(complete)
+            status.inSync(inSync)
                     .nextIncomingSeqNum(store.getIncomingSeqNum())
                     .nextOutgoingSeqNum(store.getOutgoingSeqNum())
                     .pendingWrites(getPendingWrites())
                     .lostWrites(lostWrites.getCount() + store.getLostWrites());
         } else {
-            status.notReplicatedReason(notReplicatedStatus.name());
+            status.notReplicatedReason(notReplicatedAnswer.name());
         }
     }
 
@@ -144,8 +144,8 @@ final class ReplicaSession {
     }
 
     boolean isRefusedUntilSettingsChange() {
-        return !replicated && (notReplicatedStatus == SessionAnswer.UNKNOWN_SESSION
-                || notReplicatedStatus == SessionAnswer.MODE_MISMATCH);
+        return !replicated && (notReplicatedAnswer == SessionAnswer.UNKNOWN_SESSION
+                || notReplicatedAnswer == SessionAnswer.MODE_MISMATCH);
     }
 
     boolean matches(FixSessionType fixSessionType, String fixSessionId) {
@@ -155,7 +155,7 @@ final class ReplicaSession {
     void streamStarted(boolean resumed) {
         handedOver = false;
         // a resume may start past the first fragments of a message this session was assembling
-        complete &= resumed && !assembling;
+        inSync &= resumed && !assembling;
         discardAssembledMessage();
         discardPendingWrites();
     }
@@ -203,7 +203,7 @@ final class ReplicaSession {
     }
 
     void snapshotBegin(long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        complete = false;
+        inSync = false;
         discardAssembledMessage();
         discardPendingWrites();
         snapshotMessageCount = 0;
@@ -233,7 +233,7 @@ final class ReplicaSession {
     }
 
     /**
-     * Completes the session with the leader's seqnums at the snapshot's end: its events in between went through
+     * Brings the session in sync with the leader's seqnums at the snapshot's end: its events in between went through
      * the snapshot, and storing a message moved the outgoing seqnum.
      *
      * @return false when the count is not what was received
@@ -245,7 +245,7 @@ final class ReplicaSession {
         writePending();
         store.storeNextIncomingSeqNum(nextIncomingSeqNum);
         store.storeNextOutgoingSeqNum(nextOutgoingSeqNum);
-        complete = true;
+        inSync = true;
         return true;
     }
 

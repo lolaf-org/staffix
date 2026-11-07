@@ -206,7 +206,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         ReplicationClient currentClient = client;
         if (currentRole == Role.FOLLOWER && currentClient != null) {
-            status.leader(currentClient.status());
+            status.leader(currentClient.getStatus());
         }
         return status.build();
     }
@@ -538,7 +538,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         stopClient(deadline);
         stopServer(deadline);
         if (role != Role.LEADER) {
-            if (!replicaSessions.isComplete()) {
+            if (!replicaSessions.isInSync()) {
                 log.warn("Node {} leads at epoch {} with sessions its follower copy did not hold in full", settings.getNodeId(), electionEpoch);
             }
             currentPromotion = ++promotionsCounter;

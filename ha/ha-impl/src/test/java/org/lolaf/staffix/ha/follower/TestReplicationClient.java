@@ -248,7 +248,7 @@ class TestReplicationClient {
         connect();
         FollowerConnection connection = inSync();
         assertThat(follower.store(MAIN).writes).startsWith("reset");
-        assertThat(replicaSessions.isComplete()).isTrue();
+        assertThat(replicaSessions.isInSync()).isTrue();
         follower.store(MAIN).writes.clear();
 
         leaderStore.storeMessageSent(5, ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII)));

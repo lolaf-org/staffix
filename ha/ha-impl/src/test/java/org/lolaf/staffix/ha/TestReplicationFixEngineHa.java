@@ -169,7 +169,7 @@ class TestReplicationFixEngineHa {
         a.start();
         b.start();
         await().until(() -> a.engine.activity.contains("activate, stores open 0"));
-        await().until(() -> b.engine.store(MAIN) != null && b.ha.getReplicaSessions().isComplete());
+        await().until(() -> b.engine.store(MAIN) != null && b.ha.getReplicaSessions().isInSync());
     }
 
     @ParameterizedTest
@@ -656,7 +656,7 @@ class TestReplicationFixEngineHa {
         a.ha.onSessionNotReplicated(MAIN);
 
         await().until(() -> !replicaStore.isStarted());
-        assertThat(b.ha.getReplicaSessions().isComplete()).isTrue();
+        assertThat(b.ha.getReplicaSessions().isInSync()).isTrue();
         assertThat(a.ha.getStatus().getFollowerConnections()).singleElement().satisfies(follower -> assertThat(follower.isInSync()).isTrue());
 
         b.engine.replace(MAIN);
@@ -740,7 +740,7 @@ class TestReplicationFixEngineHa {
         leader.start();
         follower.start();
         await().until(() -> leader.engine.meters.read("ha.followers.in.sync") == 1
-                && follower.engine.store(OTHER) != null && follower.ha.getReplicaSessions().isComplete());
+                && follower.engine.store(OTHER) != null && follower.ha.getReplicaSessions().isInSync());
     }
 
     @Test
