@@ -26,6 +26,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -64,6 +65,14 @@ class TestPrimosLeaderElectionAutoConfiguration {
         runner.withPropertyValues(singleNodeCluster()).withPropertyValues("primos.lifecycle=manual",
                         "staffix.ha-replication.leadership-control=true")
                 .run(context -> assertThat(context.getBean(PrimosLeaderElectionSettings.class).isLeadershipControl()).isTrue());
+    }
+
+    @Test
+    void takesTheFencingMarginFromTheProperties() {
+        runner.withPropertyValues(singleNodeCluster()).withPropertyValues("primos.lifecycle=manual",
+                        "staffix.ha-replication.fencing-margin=20ms")
+                .run(context -> assertThat(context.getBean(PrimosLeaderElectionSettings.class).getFencingMargin())
+                        .isEqualTo(Duration.ofMillis(20)));
     }
 
     @Test
