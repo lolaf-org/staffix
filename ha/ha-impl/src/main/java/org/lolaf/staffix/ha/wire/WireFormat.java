@@ -49,14 +49,15 @@ public class WireFormat {
     public static final int STORE_EVENT_BODY_OFFSET = HEADER_BYTES + Long.BYTES;
 
     /**
-     * Set in a {@link FrameType#STORE_EVENT}'s fragment byte when more fragments of its message follow. A message
-     * longer than a frame is sent as consecutive events of its session: the first with this bit, the middle ones with
-     * both, the last with {@link #CONTINUED_FRAGMENT} alone, so a last fragment never reads as a whole message.
+     * Set in the fragment flags of a {@link FrameType#STORE_EVENT}, or the header flags of a
+     * {@link FrameType#SNAPSHOT_MESSAGE}, when more fragments of its message follow. A message longer than a frame is
+     * sent as consecutive frames of its session: the first with this bit, the middle ones with both, the last with
+     * {@link #CONTINUED_FRAGMENT} alone, so a last fragment never reads as a whole message.
      */
     public static final byte MORE_FRAGMENTS = 0x01;
 
     /**
-     * Set in a {@link FrameType#STORE_EVENT}'s fragment byte on every fragment but a message's first.
+     * Set on every fragment but a message's first, as {@link #MORE_FRAGMENTS}.
      */
     public static final byte CONTINUED_FRAGMENT = 0x02;
 
@@ -90,8 +91,8 @@ public class WireFormat {
     public static final int FLAG_IN_SYNC = 0x01;
 
     /**
-     * Initial read buffer of a connection, holding many small frames per read. Betty grows it for a larger frame, up to the
-     * connection's frame limit, so a connection pays for its largest frame only once it receives one.
+     * Initial read buffer of a connection, holding many small frames per read. Betty grows it for a larger frame, up
+     * to the connection's frame limit, so a connection pays for its largest frame only once it receives one.
      */
     public static final int READ_BUFFER_BYTES = 64 * 1024;
 

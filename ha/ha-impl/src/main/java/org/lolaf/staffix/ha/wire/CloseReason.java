@@ -29,41 +29,47 @@ public enum CloseReason {
      * The other side's epoch is older than this side's: it leads, or follows, a leadership that is over.
      */
     STALE_EPOCH(2),
-    /**
-     * The follower connected to a node that does not lead.
-     */
-    NOT_LEADER(3),
-    PROTOCOL_ERROR(4),
+    PROTOCOL_ERROR(3),
     /**
      * The leader could not read a session's store for a snapshot; the follower reconnects to try again.
      */
-    SNAPSHOT_FAILED(6),
+    SNAPSHOT_FAILED(4),
     /**
      * The follower could not apply what it received, a store write failing: it reconnects to resume after the last
      * event it applied.
      */
-    APPLY_FAILED(7),
+    APPLY_FAILED(5),
     /**
      * The follower owed an acknowledgement and stayed silent for the stall timeout: it reconnects and is caught up.
      */
-    STALLED(8),
+    STALLED(6),
     /**
      * The follower read the log so slowly that a write waited the log full timeout for it: it reconnects and is
      * caught up by snapshot.
      */
-    TOO_SLOW(9),
+    TOO_SLOW(7),
     /**
      * The follower was dropped as too slow and is held off before it may resync: it tries again at its next reconnect.
      */
-    RETRY_LATER(10),
+    RETRY_LATER(8),
     /**
      * The follower opened a lane past the count the leader announced in its WELCOME.
      */
-    NO_SUCH_LANE(11),
+    NO_SUCH_LANE(9),
     /**
      * Any other code, from a newer peer; kept rather than refused so the close is still reported.
      */
     UNKNOWN(0xFFFF);
+
+    private static final CloseReason[] BY_CODE = new CloseReason[NO_SUCH_LANE.code + 1];
+
+    static {
+        for (CloseReason reason : values()) {
+            if (reason != UNKNOWN) {
+                BY_CODE[reason.code] = reason;
+            }
+        }
+    }
 
     private final int code;
 
@@ -72,31 +78,6 @@ public enum CloseReason {
     }
 
     public static CloseReason forCode(int code) {
-        switch (code) {
-            case 0:
-                return SHUTDOWN;
-            case 1:
-                return VERSION_MISMATCH;
-            case 2:
-                return STALE_EPOCH;
-            case 3:
-                return NOT_LEADER;
-            case 4:
-                return PROTOCOL_ERROR;
-            case 6:
-                return SNAPSHOT_FAILED;
-            case 7:
-                return APPLY_FAILED;
-            case 8:
-                return STALLED;
-            case 9:
-                return TOO_SLOW;
-            case 10:
-                return RETRY_LATER;
-            case 11:
-                return NO_SUCH_LANE;
-            default:
-                return UNKNOWN;
-        }
+        return code >= 0 && code < BY_CODE.length ? BY_CODE[code] : UNKNOWN;
     }
 }

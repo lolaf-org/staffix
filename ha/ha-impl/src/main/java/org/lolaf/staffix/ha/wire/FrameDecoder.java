@@ -75,44 +75,31 @@ public class FrameDecoder {
                                  FrameHandler handler) {
         switch (type) {
             case HELLO:
-                checkMagic(in, p);
-                handler.onHello(epoch, in.getShort(p + 4), string(in, p + 32, unsignedShort(in, p + 6), variableBytes, type),
-                        in.getLong(p + 8), in.getLong(p + 16), unsignedShort(in, p + 24));
+                decodeHello(in, p, epoch, variableBytes, handler);
                 break;
             case WELCOME:
-                checkMagic(in, p);
-                handler.onWelcome(epoch, in.getShort(p + 4), string(in, p + 24, unsignedShort(in, p + 6), variableBytes, type),
-                        in.getLong(p + 8), unsignedShort(in, p + 16));
+                decodeWelcome(in, p, epoch, variableBytes, handler);
                 break;
             case SESSION:
-                onSession(in, p, flags, epoch, variableBytes, handler);
+                decodeSession(in, p, flags, epoch, variableBytes, handler);
                 break;
             case SESSION_ANSWER:
-                SessionAnswer status = SessionAnswer.forCode(in.get(p + 4));
-                if (status == null) {
-                    throw new WireFormatException("Unknown session answer " + in.get(p + 4));
-                }
-                handler.onSessionAnswer(epoch, in.getInt(p), status);
+                decodeSessionAnswer(in, p, epoch, handler);
                 break;
             case STORE_EVENT:
-                int eventLength = in.getInt(p + 24);
-                checkVariableBytes(type, eventLength, variableBytes);
-                handler.onStoreEvent(epoch, in.getLong(p), in.getInt(p + 8), eventType(in.get(p + 12)), in.getLong(p + 16),
-                        in, p + 28, eventLength, in.get(p + 13));
+                decodeStoreEvent(in, p, epoch, variableBytes, handler);
                 break;
             case SNAPSHOT_BEGIN:
                 handler.onSnapshotBegin(epoch, in.getInt(p), in.getLong(p + 8), in.getLong(p + 16), in.getLong(p + 24));
                 break;
             case SNAPSHOT_MESSAGE:
-                int messageLength = in.getInt(p + 4);
-                checkVariableBytes(type, messageLength, variableBytes);
-                handler.onSnapshotMessage(epoch, in.getInt(p), in.getLong(p + 8), in, p + 16, messageLength, (byte) flags);
+                decodeSnapshotMessage(in, p, flags, epoch, variableBytes, handler);
                 break;
             case SNAPSHOT_END:
                 handler.onSnapshotEnd(epoch, in.getInt(p), in.getInt(p + 4), in.getLong(p + 8), in.getLong(p + 16));
                 break;
             case ACK:
-                handler.onAck(epoch, in.getLong(p), (flags & WireFormat.FLAG_IN_SYNC) != 0, in.getLong(p + Long.BYTES));
+                handler.onAck(epoch, in.getLong(p), (flags & WireFormat.FLAG_IN_SYNC) != 0, in.getLong(p + 8));
                 break;
             case RECEIVED:
                 handler.onReceived(epoch, in.getLong(p));
@@ -121,15 +108,26 @@ public class FrameDecoder {
                 handler.onHeartbeat(epoch, in.getLong(p));
                 break;
             case CLOSE:
-                handler.onClose(epoch, CloseReason.forCode(unsignedShort(in, p)),
-                        string(in, p + 4, unsignedShort(in, p + 2), variableBytes, type));
+                decodeClose(in, p, epoch, variableBytes, handler);
                 break;
             default:
                 throw new WireFormatException("No decoding for " + type);
         }
     }
 
-    private static void onSession(ByteBuffer in, int p, int flags, long epoch, int variableBytes, FrameHandler handler) {
+    private static void decodeHello(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+        checkMagic(in, p);
+        String nodeId = string(in, p + 32, unsignedShort(in, p + 6), variableBytes, FrameType.HELLO);
+        handler.onHello(epoch, in.getShort(p + 4), nodeId, in.getLong(p + 8), in.getLong(p + 16), unsignedShort(in, p + 24));
+    }
+
+    private static void decodeWelcome(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+        checkMagic(in, p);
+        String leaderId = string(in, p + 24, unsignedShort(in, p + 6), variableBytes, FrameType.WELCOME);
+        handler.onWelcome(epoch, in.getShort(p + 4), leaderId, in.getLong(p + 8), unsignedShort(in, p + 16));
+    }
+
+    private static void decodeSession(ByteBuffer in, int p, int flags, long epoch, int variableBytes, FrameHandler handler) {
         int idLength = unsignedShort(in, p + 6);
         int identityLength = unsignedShort(in, p + 8);
         checkVariableBytes(FrameType.SESSION, idLength + identityLength, variableBytes);
@@ -138,6 +136,33 @@ public class FrameDecoder {
                 : null;
         handler.onSession(epoch, in.getInt(p), fixSessionType(in.get(p + 4)), replicationMode(in.get(p + 5)),
                 new String(bytes(in, p + 10, idLength), StandardCharsets.UTF_8), identity);
+    }
+
+    private static void decodeSessionAnswer(ByteBuffer in, int p, long epoch, FrameHandler handler) {
+        SessionAnswer answer = SessionAnswer.forCode(in.get(p + 4));
+        if (answer == null) {
+            throw new WireFormatException("Unknown session answer " + in.get(p + 4));
+        }
+        handler.onSessionAnswer(epoch, in.getInt(p), answer);
+    }
+
+    private static void decodeStoreEvent(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+        int messageLength = in.getInt(p + 24);
+        checkVariableBytes(FrameType.STORE_EVENT, messageLength, variableBytes);
+        handler.onStoreEvent(epoch, in.getLong(p), in.getInt(p + 8), eventType(in.get(p + 12)), in.getLong(p + 16),
+                in, p + 28, messageLength, in.get(p + 13));
+    }
+
+    private static void decodeSnapshotMessage(ByteBuffer in, int p, int flags, long epoch, int variableBytes,
+                                              FrameHandler handler) {
+        int messageLength = in.getInt(p + 4);
+        checkVariableBytes(FrameType.SNAPSHOT_MESSAGE, messageLength, variableBytes);
+        handler.onSnapshotMessage(epoch, in.getInt(p), in.getLong(p + 8), in, p + 16, messageLength, (byte) flags);
+    }
+
+    private static void decodeClose(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+        String text = string(in, p + 4, unsignedShort(in, p + 2), variableBytes, FrameType.CLOSE);
+        handler.onClose(epoch, CloseReason.forCode(unsignedShort(in, p)), text);
     }
 
     private static void checkMagic(ByteBuffer in, int p) {

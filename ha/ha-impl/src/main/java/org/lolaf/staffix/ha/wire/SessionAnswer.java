@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.wire;
 
 import lombok.Getter;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The follower's answer to a {@link FrameType#SESSION}: whether it replicates the session, and why not.
@@ -57,16 +58,16 @@ public enum SessionAnswer {
     }
 
     /**
-     * The follower would replicate the session but cannot: a problem to fix, unlike a status the leader expects.
+     * The follower would replicate the session but cannot: a problem to fix, unlike an answer the leader expects.
      */
     public boolean isRefusal() {
         return this == SHARED_STORAGE || this == UNKNOWN_STORAGE || this == UNKNOWN_SESSION || this == MODE_MISMATCH;
     }
 
     /**
-     * @return the status, or null for an unknown code
+     * @return the answer, or null for an unknown code
      */
-    public static SessionAnswer forCode(int code) {
+    public static @Nullable SessionAnswer forCode(int code) {
         switch (code) {
             case 0:
                 return REPLICATING;

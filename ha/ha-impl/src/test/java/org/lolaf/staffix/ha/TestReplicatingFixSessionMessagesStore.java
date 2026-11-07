@@ -44,7 +44,8 @@ class TestReplicatingFixSessionMessagesStore {
     private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
 
     private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
-    private final ReplicationLog.Reader reader = ha.getReplicationLogs().get(0).newReader();
+    private final ReplicationLog.Reader reader = ha.getReplicationLogs().get(0).newReader(() -> {
+    });
     private final ConsumingStore local = new ConsumingStore();
     private final ByteBuffer event = ByteBuffer.allocate(1 << 16);
 

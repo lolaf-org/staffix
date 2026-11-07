@@ -114,11 +114,11 @@ public class FrameEncoder {
         return length;
     }
 
-    public static int sessionAnswer(ByteBuffer out, int index, long epoch, int sessionKey, SessionAnswer status) {
+    public static int sessionAnswer(ByteBuffer out, int index, long epoch, int sessionKey, SessionAnswer answer) {
         int length = header(out, index, FrameType.SESSION_ANSWER, 0, epoch, 0);
         int p = index + HEADER_BYTES;
         out.putInt(p, sessionKey);
-        out.put(p + 4, (byte) status.getCode());
+        out.put(p + 4, (byte) answer.getCode());
         return length;
     }
 

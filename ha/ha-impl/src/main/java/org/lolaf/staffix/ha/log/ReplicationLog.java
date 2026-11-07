@@ -34,8 +34,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Each event is held as a {@link FrameEncoder#storeEventBody store event body}; a sender adds the header and the
  * event's offset, its position in the log, when it sends it. Appending allocates nothing, and waits only while a
- * gating reader is a whole log behind: past the appender's retry strategy, the log drops the slowest gating reader,
- * telling its owner, and writes over what it had not read.
+ * reader is a whole log behind: past the appender's retry strategy, the log drops the slowest reader, telling its
+ * owner, and writes over what it had not read.
  */
 public class ReplicationLog {
 
@@ -47,7 +47,7 @@ public class ReplicationLog {
                     storeEventRecord.getFragmentLength(), storeEventRecord.getFragmentFlags());
 
     private final BroadcastByteRingBuffer ring;
-    private final List<Reader> gatingReaders = new CopyOnWriteArrayList<>();
+    private final List<Reader> readers = new CopyOnWriteArrayList<>();
     /**
      * Counts the readers dropped, so writers that gave up together drop one reader, not one each.
      */
@@ -88,7 +88,7 @@ public class ReplicationLog {
      * possibly between them. Allocates nothing.
      *
      * @param storeEventRecord the event
-     * @param logFullWait      how long to wait for a gating reader a whole log behind, the appending thread's own
+     * @param logFullWait      how long to wait for a reader a whole log behind, the appending thread's own
      * @return the offset of the event, or of the message's last fragment
      * @throws IllegalArgumentException for a message longer than {@link #getMaxMessageLength()}
      */
@@ -128,7 +128,7 @@ public class ReplicationLog {
             return;
         }
         Reader slowest = null;
-        for (Reader reader : gatingReaders) {
+        for (Reader reader : readers) {
             if (slowest == null || reader.offset < slowest.offset) {
                 slowest = reader;
             }
@@ -148,46 +148,22 @@ public class ReplicationLog {
     }
 
     /**
-     * A reader at the tail that holds no append back, so it can be lapped.
-     */
-    public Reader newReader() {
-        return new Reader(ring.newReader(), null);
-    }
-
-    /**
      * A reader for one streaming follower, at the tail: appends wait for it rather than overwrite what it has not
      * read, until it is {@link Reader#close() closed}, or dropped as the slowest by an append that waited too long.
      *
      * @param onDropped run on the appending thread once the log dropped this reader, already closed
      */
-    public Reader newGatingReader(Runnable onDropped) {
+    public Reader newReader(Runnable onDropped) {
         Reader reader = new Reader(ring.newGatingReader(), onDropped);
-        gatingReaders.add(reader);
+        readers.add(reader);
         return reader;
     }
 
     /**
-     * Reads the log from its own offset, independently of the other readers. One thread at a time, but for
-     * {@link #close()}.
+     * Reads the log from its own offset, independently of the other readers, holding appends back while open. One
+     * thread at a time, but for {@link #close()}.
      */
     public final class Reader {
-
-        /**
-         * Returned by {@link #readInto} when writers overwrote events this reader had not read, which a gating reader
-         * sees only once closed: the follower needs a snapshot.
-         */
-        public static final int LAPPED = ByteRingReader.LAPPED;
-
-        /**
-         * Returned by {@link #readInto} when no event was appended past this reader.
-         */
-        public static final int NO_EVENT = ByteRingReader.NO_FRAME;
-
-        /**
-         * Returned by {@link #readInto} when the next event is larger than the room left in {@code dst}: the reader
-         * stays on it.
-         */
-        public static final int NO_ROOM = ByteRingReader.NO_ROOM;
 
         private final ByteRingReader byteRingReader;
         private final Runnable onDropped;
@@ -205,8 +181,8 @@ public class ReplicationLog {
         /**
          * Copies the next event's body into {@code dst}, checked whole.
          *
-         * @return the body's length, {@link #NO_EVENT}, {@link #NO_ROOM} or {@link #LAPPED}, after which the reader stays put until
-         * {@link #seek} or {@link #seekToTail}
+         * @return the body's length, or a negative value with the reader left where it was: no event past it, the
+         * next one larger than the room left in {@code dst}, or, once it was closed, events overwritten
          */
         public int readInto(ByteBuffer dst, int dstIndex) {
             int body = byteRingReader.readInto(dst, dstIndex);
@@ -245,8 +221,8 @@ public class ReplicationLog {
         }
 
         /**
-         * Steps back to the event last read, so the next read returns it again: one a sender cannot send yet. A gating
-         * reader keeps that event; once closed, the next read may find it lapped instead.
+         * Steps back to the event last read, so the next read returns it again: one a sender cannot send yet. Appends
+         * keep that event until the reader is closed.
          */
         public void unread() {
             byteRingReader.unread();
@@ -257,7 +233,7 @@ public class ReplicationLog {
          * Stops holding appends back. Any thread, since the log closes the reader it drops from the appending one.
          */
         public void close() {
-            gatingReaders.remove(this);
+            readers.remove(this);
             byteRingReader.close();
         }
     }

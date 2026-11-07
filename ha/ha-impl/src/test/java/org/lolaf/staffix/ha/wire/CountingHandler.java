@@ -46,7 +46,7 @@ class CountingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer status) {
+    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer answer) {
         frames++;
     }
 

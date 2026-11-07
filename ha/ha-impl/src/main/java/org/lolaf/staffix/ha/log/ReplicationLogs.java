@@ -63,7 +63,7 @@ public final class ReplicationLogs {
     /**
      * The bytes written to every lane's log since the start.
      */
-    public long getTailOffsets() {
+    public long getBytesWritten() {
         long written = 0;
         for (ReplicationLog log : logs) {
             written += log.getTailOffset();

@@ -59,8 +59,8 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer status) {
-        frames.add("SESSION_ANSWER epoch=" + epoch + " key=" + sessionKey + " " + status);
+    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer answer) {
+        frames.add("SESSION_ANSWER epoch=" + epoch + " key=" + sessionKey + " " + answer);
     }
 
     @Override

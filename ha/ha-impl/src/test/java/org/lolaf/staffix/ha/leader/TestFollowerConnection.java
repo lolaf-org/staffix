@@ -655,6 +655,8 @@ class TestFollowerConnection {
     @Test
     void aHeartbeatCarriesTheLogTailOnceAnIntervalPassedWithoutSending() {
         replicated("main").storeNextIncomingSeqNum(1);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        sent.frames.clear();
         ByteBuffer batch = ByteBuffer.allocate(256);
 
         assertThat(connection.heartbeatIfDue(batch, 0)).isZero();

@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.wire;
 
 import lombok.Getter;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The frames of the replication stream, with the size of their fixed payload; a variable part (a string, a message)
@@ -30,12 +31,13 @@ import lombok.Getter;
  * SESSION           leader to follower  session key 4, session type 1, replication mode 1, session id length 2,
  *                                       storage identity length 2; then the session id, then the identity
  * SESSION_ANSWER    follower to leader  session key 4, answer 1
- * STORE_EVENT       leader to follower  log offset 8, session key 4, event type 1, reserved 3, sequence number 8,
- *                                       message length 4; then the message
+ * STORE_EVENT       leader to follower  log offset 8, session key 4, event type 1, fragment flags 1, reserved 2,
+ *                                       sequence number 8, message length 4; then the message
  * SNAPSHOT_BEGIN    leader to follower  session key 4, reserved 4, snapshot offset 8, next incoming 8, next outgoing 8
- * SNAPSHOT_MESSAGE  leader to follower  session key 4, message length 4, sequence number 8; then the message
+ * SNAPSHOT_MESSAGE  leader to follower  session key 4, message length 4, sequence number 8; then the message,
+ *                                       its fragment flags in the header's flags
  * SNAPSHOT_END      leader to follower  session key 4, message count 4, next incoming 8, next outgoing 8
- * ACK               follower to leader  applied offset 8
+ * ACK               follower to leader  applied offset 8, pending writes 8
  * RECEIVED          follower to leader  received offset 8
  * HEARTBEAT         leader to follower  log tail offset 8
  * CLOSE             either way          reason 2, text length 2; then the text
@@ -76,7 +78,7 @@ public enum FrameType {
     /**
      * @return the type, or null for a code no version of the format defines
      */
-    public static FrameType forCode(int code) {
+    public static @Nullable FrameType forCode(int code) {
         return BY_CODE[code & 0xFF];
     }
 }

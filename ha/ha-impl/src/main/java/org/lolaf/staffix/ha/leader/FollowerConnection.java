@@ -57,13 +57,13 @@ public final class FollowerConnection implements FrameHandler {
     private final String address;
     private final ReplicationLogs logs;
     /**
-     * Lane 0's until the HELLO says which lane this connection carries.
+     * The log of the lane the HELLO named, null before it.
      */
-    private volatile ReplicationLog replicationLog;
+    private volatile @Nullable ReplicationLog replicationLog;
     /**
-     * Gating from the follower's HELLO until the connection closes, from any thread.
+     * Opened by the HELLO, holding the lane's appends back until the connection closes; null before it.
      */
-    private volatile ReplicationLog.Reader reader;
+    private volatile ReplicationLog.@Nullable Reader reader;
     private final ReplicatedSessions sessions;
     /**
      * This node's current election epoch, stamped on every frame it sends; read once per batch, so a batch carries one.
@@ -155,8 +155,6 @@ public final class FollowerConnection implements FrameHandler {
         this.ioSession = ioSession;
         this.address = String.valueOf(ioSession.getSocketAddress());
         this.logs = logs;
-        this.replicationLog = logs.get(0);
-        this.reader = replicationLog.newReader();
         this.sessions = sessions;
         this.nodeEpoch = nodeEpoch;
         this.leaderId = leaderId;
@@ -198,7 +196,7 @@ public final class FollowerConnection implements FrameHandler {
             close(CloseReason.RETRY_LATER, "dropped as too slow, held off until " + heldOffUntil.get());
             return;
         }
-        reader = replicationLog.newGatingReader(this::droppedAsTooSlow);
+        reader = replicationLog.newReader(this::droppedAsTooSlow);
         recoveringFromTooSlow = stats.getSlowFollowers().isNotBackInSync(nodeId, lane);
         boolean resumed = lastAppliedEpoch == currentEpoch && resume(lastAppliedOffset);
         if (!resumed) {
@@ -636,7 +634,10 @@ public final class FollowerConnection implements FrameHandler {
 
     private void markClosed() {
         state = State.CLOSED;
-        reader.close();
+        ReplicationLog.Reader opened = reader;
+        if (opened != null) {
+            opened.close();
+        }
     }
 
     public enum State {
