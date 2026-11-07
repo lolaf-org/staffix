@@ -29,7 +29,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.wire.SessionStatus;
+import org.lolaf.staffix.ha.wire.SessionAnswer;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -49,17 +49,17 @@ import java.util.stream.Collectors;
  * applied twice changes nothing. A read's writes are gathered per session and written once, before it is
  * acknowledged.
  *
- * <p>The leader's sessions come over its links, session {@code key} over link {@code key % links} only, each link on
- * its own IO thread: a session is touched by its link's thread only, and the last event applied is kept per link,
- * each link's offsets being those of its own log.
+ * <p>The leader's sessions come over its lanes, session {@code key} over lane {@code key % lanes} only, each lane on
+ * its own IO thread: a session is touched by its lane's thread only, and the last event applied is kept per lane,
+ * each lane's offsets being those of its own log.
  */
 @Slf4j
-public final class Replica {
+public final class ReplicaSessions {
 
-    private static final LinkPosition NOTHING_APPLIED = new LinkPosition();
+    private static final LanePosition NOTHING_APPLIED = new LanePosition();
     private final EngineAccess engine;
     private volatile ReplicaSession[] sessionsByKey = new ReplicaSession[16];
-    private volatile LinkPosition[] positions = {new LinkPosition()};
+    private volatile LanePosition[] positions = {new LanePosition()};
     /**
      * Times a read's store write after its events were acknowledged as received.
      */
@@ -67,7 +67,7 @@ public final class Replica {
     @Setter
     private Timer receivedWriteLatency = Timer.VoidTimer.getInstance();
 
-    public Replica(EngineAccess engine) {
+    public ReplicaSessions(EngineAccess engine) {
         this.engine = engine;
     }
 
@@ -78,46 +78,46 @@ public final class Replica {
                 + "unreplicated", settings.getFixSessionType(), settings.getFixSessionId(), outgoingSeqNum, outgoingSeqNum + jump);
     }
 
-    public int getLinks() {
+    public int getLanes() {
         return positions.length;
     }
 
     /**
-     * The leader's link count, from its WELCOME. A link's position is kept while the count does not change.
+     * The leader's lane count, from its WELCOME. A lane's position is kept while the count does not change.
      */
-    synchronized void setLinks(int links) {
-        LinkPosition[] current = positions;
-        if (links == current.length) {
+    synchronized void setLanes(int lanes) {
+        LanePosition[] current = positions;
+        if (lanes == current.length) {
             return;
         }
-        LinkPosition[] resized = Arrays.copyOf(current, links);
-        for (int link = current.length; link < links; link++) {
-            resized[link] = new LinkPosition();
+        LanePosition[] resized = Arrays.copyOf(current, lanes);
+        for (int lane = current.length; lane < lanes; lane++) {
+            resized[lane] = new LanePosition();
         }
         positions = resized;
     }
 
-    public boolean carries(int link, int key) {
-        return key % positions.length == link;
+    public boolean carries(int lane, int key) {
+        return key % positions.length == lane;
     }
 
-    public long getLastAppliedEpoch(int link) {
-        return position(link).lastAppliedEpoch;
-    }
-
-    /**
-     * The offset in the link's log of the last event written, -1 for none.
-     */
-    public long getLastAppliedOffset(int link) {
-        return position(link).lastAppliedOffset;
+    public long getLastAppliedEpoch(int lane) {
+        return position(lane).lastAppliedEpoch;
     }
 
     /**
-     * The offset in the link's log of the last event received, written or not yet, when the read held an event of a
-     * {@code SYNC_RECEIVED} session since the last call, else -1: only such a send waits for it. The link's thread only.
+     * The offset in the lane's log of the last event written, -1 for none.
      */
-    long takeReceivedToAck(int link) {
-        LinkPosition position = position(link);
+    public long getLastAppliedOffset(int lane) {
+        return position(lane).lastAppliedOffset;
+    }
+
+    /**
+     * The offset in the lane's log of the last event received, written or not yet, when the read held an event of a
+     * {@code SYNC_RECEIVED} session since the last call, else -1: only such a send waits for it. The lane's thread only.
+     */
+    long takeReceivedToAck(int lane) {
+        LanePosition position = position(lane);
         if (!position.receivedToAck) {
             return -1;
         }
@@ -125,18 +125,18 @@ public final class Replica {
         return position.pendingOffset;
     }
 
-    private LinkPosition position(int link) {
-        LinkPosition[] current = positions;
-        return link < current.length ? current[link] : NOTHING_APPLIED;
+    private LanePosition position(int lane) {
+        LanePosition[] current = positions;
+        return lane < current.length ? current[lane] : NOTHING_APPLIED;
     }
 
     /**
-     * Starts a link's stream, ending any handover of its sessions: one that did not resume leaves each a gap only a
+     * Starts a lane's stream, ending any handover of its sessions: one that did not resume leaves each a gap only a
      * snapshot fills, and nothing to resume from.
      */
-    void streamStarted(int link, boolean resumed) {
-        forEachOf(link, session -> session.streamStarted(resumed));
-        LinkPosition position = positions[link];
+    void streamStarted(int lane, boolean resumed) {
+        forEachOf(lane, session -> session.streamStarted(resumed));
+        LanePosition position = positions[lane];
         if (!resumed) {
             position.lastAppliedOffset = -1;
         }
@@ -146,11 +146,11 @@ public final class Replica {
     }
 
     /**
-     * The leader stopped cleanly after sending every event of the link, so each of its sessions complete here holds
-     * exactly what the leader last wrote: taking it over needs no seqnum jump. Holds until the link's next stream.
+     * The leader stopped cleanly after sending every event of the lane, so each of its sessions complete here holds
+     * exactly what the leader last wrote: taking it over needs no seqnum jump. Holds until the lane's next stream.
      */
-    void handedOver(int link) {
-        forEachOf(link, ReplicaSession::handOver);
+    void handedOver(int lane) {
+        forEachOf(lane, ReplicaSession::handOver);
     }
 
     /**
@@ -167,12 +167,12 @@ public final class Replica {
     }
 
     /**
-     * {@link #isComplete()} for the sessions of one link.
+     * {@link #isComplete()} for the sessions of one lane.
      */
-    boolean isComplete(int link) {
+    boolean isComplete(int lane) {
         ReplicaSession[] sessions = sessionsByKey;
-        int links = positions.length;
-        for (int key = link; key < sessions.length; key += links) {
+        int lanes = positions.length;
+        for (int key = lane; key < sessions.length; key += lanes) {
             if (sessions[key] != null && sessions[key].isNotCaughtUp()) {
                 return false;
             }
@@ -180,10 +180,10 @@ public final class Replica {
         return true;
     }
 
-    private void forEachOf(int link, Consumer<ReplicaSession> action) {
+    private void forEachOf(int lane, Consumer<ReplicaSession> action) {
         ReplicaSession[] sessions = sessionsByKey;
-        int links = positions.length;
-        for (int key = link; key < sessions.length; key += links) {
+        int lanes = positions.length;
+        for (int key = lane; key < sessions.length; key += lanes) {
             if (sessions[key] != null) {
                 action.accept(sessions[key]);
             }
@@ -196,7 +196,7 @@ public final class Replica {
      * connection, its storage being readable by then perhaps. One the leader no longer replicates, or with another
      * replication mode here, has its store closed, and is caught up again by snapshot once both agree it is replicated.
      */
-    synchronized SessionStatus bind(int key, FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
+    synchronized SessionAnswer bind(int key, FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
                                     @Nullable String leaderStorageIdentity) {
         ReplicaSession current = key < sessionsByKey.length ? sessionsByKey[key] : null;
         if (current != null && current.matches(fixSessionType, fixSessionId) && current.isReplicated()
@@ -208,25 +208,25 @@ public final class Replica {
         if (current != null) {
             current.stop(Deadline.unlimited());
         }
-        SessionStatus status = put(key, openSession(fixSessionType, fixSessionId, leaderMode, leaderStorageIdentity));
-        if (status == SessionStatus.NOT_REPLICATED) {
+        SessionAnswer status = put(key, openSession(fixSessionType, fixSessionId, leaderMode, leaderStorageIdentity));
+        if (status == SessionAnswer.NOT_REPLICATED) {
             log.info("FIX session {} {} is not replicated: the leader's settings do not ask for it", fixSessionType, fixSessionId);
-        } else if (status == SessionStatus.SHARED_STORAGE) {
+        } else if (status == SessionAnswer.SHARED_STORAGE) {
             log.error("FIX session {} {} is not replicated here: its storage is the leader's own (the same database, "
                     + "schema and table prefix, or the same directory); give each node its own", fixSessionType, fixSessionId);
-        } else if (status == SessionStatus.MODE_MISMATCH) {
+        } else if (status == SessionAnswer.MODE_MISMATCH) {
             log.error("FIX session {} {} is not replicated here: the leader's settings give it replication mode {}, this "
                     + "node's {}", fixSessionType, fixSessionId, leaderMode, modeHere(fixSessionType, fixSessionId));
-        } else if (status != SessionStatus.SNAPSHOT_NEEDED) {
+        } else if (status != SessionAnswer.SNAPSHOT_NEEDED) {
             log.warn("FIX session {} {} is not replicated here: {}", fixSessionType, fixSessionId, status);
         }
         return status;
     }
 
     /**
-     * Republishes the array, so a thread reading the sessions of another link sees the one put.
+     * Republishes the array, so a thread reading the sessions of another lane sees the one put.
      */
-    private SessionStatus put(int key, ReplicaSession session) {
+    private SessionAnswer put(int key, ReplicaSession session) {
         ReplicaSession[] sessions = sessionsByKey;
         if (key >= sessions.length) {
             sessions = Arrays.copyOf(sessions, Math.max(key + 1, sessions.length * 2));
@@ -248,35 +248,35 @@ public final class Replica {
         FixSessionSettings settings = findSettings(fixSessionType, fixSessionId).orElse(null);
         if (settings == null) {
             return leaderMode == ReplicationMode.NONE
-                    ? ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionStatus.NOT_REPLICATED)
-                    : ReplicaSession.refused(fixSessionType, fixSessionId, SessionStatus.UNKNOWN_SESSION, leaderMode, leaderStorageIdentity);
+                    ? ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.NOT_REPLICATED)
+                    : ReplicaSession.refused(fixSessionType, fixSessionId, SessionAnswer.UNKNOWN_SESSION, leaderMode, leaderStorageIdentity);
         }
         if (settings.getHighAvailability().getReplicationMode() != leaderMode) {
-            return ReplicaSession.refused(fixSessionType, fixSessionId, SessionStatus.MODE_MISMATCH, leaderMode, leaderStorageIdentity);
+            return ReplicaSession.refused(fixSessionType, fixSessionId, SessionAnswer.MODE_MISMATCH, leaderMode, leaderStorageIdentity);
         }
         if (leaderMode == ReplicationMode.NONE) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionStatus.NOT_REPLICATED);
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.NOT_REPLICATED);
         }
         FixSessionMessagesStore store = engine.openStore(settings);
         String storageIdentity = store.getStorageIdentity().orElse(null);
         if (storageIdentity == null || leaderStorageIdentity == null) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionStatus.UNKNOWN_STORAGE);
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.UNKNOWN_STORAGE);
         }
         if (storageIdentity.equals(leaderStorageIdentity)) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionStatus.SHARED_STORAGE);
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.SHARED_STORAGE);
         }
         store.start();
         return ReplicaSession.replicated(fixSessionType, fixSessionId, store);
     }
 
     /**
-     * What the stores of the link's sessions have accepted and not stored yet. Allocates nothing.
+     * What the stores of the lane's sessions have accepted and not stored yet. Allocates nothing.
      */
-    long getPendingWrites(int link) {
+    long getPendingWrites(int lane) {
         ReplicaSession[] sessions = sessionsByKey;
-        int links = positions.length;
+        int lanes = positions.length;
         long pendingWrites = 0;
-        for (int key = link; key < sessions.length; key += links) {
+        for (int key = lane; key < sessions.length; key += lanes) {
             ReplicaSession session = sessions[key];
             if (session != null) {
                 pendingWrites += session.getPendingWrites();
@@ -291,16 +291,16 @@ public final class Replica {
      * them, and a settings change may reach this node after the leader. Either would otherwise stay refused until
      * the next connection.
      *
-     * @param onBound told each key of the link bound now, with its status for the leader
+     * @param onBound told each key of the lane bound now, with its status for the leader
      */
-    synchronized void bindAgain(int link, ObjIntConsumer<SessionStatus> onBound) {
-        int links = positions.length;
-        for (int key = link; key < sessionsByKey.length; key += links) {
+    synchronized void bindAgain(int lane, ObjIntConsumer<SessionAnswer> onBound) {
+        int lanes = positions.length;
+        for (int key = lane; key < sessionsByKey.length; key += lanes) {
             ReplicaSession refused = sessionsByKey[key];
             if (refused == null || !refused.isRefusedUntilSettingsChange() || !settingsHereNowAgree(refused)) {
                 continue;
             }
-            SessionStatus status = put(key, openSession(refused.getFixSessionType(), refused.getFixSessionId(),
+            SessionAnswer status = put(key, openSession(refused.getFixSessionType(), refused.getFixSessionId(),
                     refused.getLeaderMode(), refused.getLeaderStorageIdentity()));
             log.info("FIX session {} {} is now configured here as on the leader: {}", refused.getFixSessionType(),
                     refused.getFixSessionId(), status);
@@ -308,10 +308,10 @@ public final class Replica {
         }
     }
 
-    boolean hasSessionsToBindAgain(int link) {
+    boolean hasSessionsToBindAgain(int lane) {
         ReplicaSession[] sessions = sessionsByKey;
-        int links = positions.length;
-        for (int key = link; key < sessions.length; key += links) {
+        int lanes = positions.length;
+        for (int key = lane; key < sessions.length; key += lanes) {
             if (sessions[key] != null && sessions[key].isRefusedUntilSettingsChange()) {
                 return true;
             }
@@ -321,7 +321,7 @@ public final class Replica {
 
     private boolean settingsHereNowAgree(ReplicaSession refused) {
         return findSettings(refused.getFixSessionType(), refused.getFixSessionId())
-                .filter(settings -> refused.getNotReplicatedStatus() == SessionStatus.UNKNOWN_SESSION
+                .filter(settings -> refused.getNotReplicatedStatus() == SessionAnswer.UNKNOWN_SESSION
                         || settings.getHighAvailability().getReplicationMode() == refused.getLeaderMode())
                 .isPresent();
     }
@@ -340,15 +340,15 @@ public final class Replica {
     }
 
     /**
-     * @return false for a key the leader never bound, or of another link
+     * @return false for a key the leader never bound, or of another lane
      */
-    boolean apply(int link, long epoch, long offset, int key, StoreEventType eventType, long seqNum,
+    boolean apply(int lane, long epoch, long offset, int key, StoreEventType eventType, long seqNum,
                   ByteBuffer receiveBuffer, int messageStart, int messageLength, byte fragmentFlags) {
-        ReplicaSession session = session(link, key);
+        ReplicaSession session = session(lane, key);
         if (session == null || !session.apply(eventType, seqNum, receiveBuffer, messageStart, messageLength, fragmentFlags)) {
             return false;
         }
-        LinkPosition position = positions[link];
+        LanePosition position = positions[lane];
         position.pendingEpoch = epoch;
         position.pendingOffset = offset;
         position.receivedToAck |= session.getLeaderMode() == ReplicationMode.SYNC_RECEIVED;
@@ -356,10 +356,10 @@ public final class Replica {
     }
 
     /**
-     * @return false for a key the leader never bound, of another link, or not replicated here
+     * @return false for a key the leader never bound, of another lane, or not replicated here
      */
-    boolean snapshotBegin(int link, int key, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        ReplicaSession session = replicatedSession(link, key);
+    boolean snapshotBegin(int lane, int key, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        ReplicaSession session = replicatedSession(lane, key);
         if (session == null) {
             return false;
         }
@@ -367,47 +367,47 @@ public final class Replica {
         return true;
     }
 
-    boolean snapshotMessage(int link, int key, long seqNum, ByteBuffer receiveBuffer, int messageStart,
+    boolean snapshotMessage(int lane, int key, long seqNum, ByteBuffer receiveBuffer, int messageStart,
                             int messageLength, byte fragmentFlags) {
-        ReplicaSession session = replicatedSession(link, key);
+        ReplicaSession session = replicatedSession(lane, key);
         return session != null && session.snapshotMessage(seqNum, receiveBuffer, messageStart, messageLength, fragmentFlags);
     }
 
     /**
      * @return false when the session is unknown or the count is not what was received
      */
-    boolean snapshotEnd(int link, int key, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        ReplicaSession session = replicatedSession(link, key);
+    boolean snapshotEnd(int lane, int key, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        ReplicaSession session = replicatedSession(lane, key);
         return session != null && session.snapshotEnd(messageCount, nextIncomingSeqNum, nextOutgoingSeqNum);
     }
 
     /**
-     * Writes what the frames of a link's read left pending, before it is acknowledged, then counts their events
+     * Writes what the frames of a lane's read left pending, before it is acknowledged, then counts their events
      * applied: a write failing leaves them unapplied, so a reconnection resumes before them.
      */
-    void writeApplied(int link) {
-        forEachOf(link, ReplicaSession::writePending);
-        LinkPosition position = positions[link];
+    void writeApplied(int lane) {
+        forEachOf(lane, ReplicaSession::writePending);
+        LanePosition position = positions[lane];
         position.lastAppliedEpoch = position.pendingEpoch;
         position.lastAppliedOffset = position.pendingOffset;
     }
 
     /**
      * Whether the leader waits for this follower to receive the session's events, not to apply them. Any thread: the
-     * network thread reads it for a link applied on another.
+     * network thread reads it for a lane applied on another.
      */
-    boolean acksOnReceipt(int link, int key) {
-        ReplicaSession session = session(link, key);
+    boolean acksOnReceipt(int lane, int key) {
+        ReplicaSession session = session(lane, key);
         return session != null && session.getLeaderMode() == ReplicationMode.SYNC_RECEIVED;
     }
 
-    private @Nullable ReplicaSession session(int link, int key) {
+    private @Nullable ReplicaSession session(int lane, int key) {
         ReplicaSession[] sessions = sessionsByKey;
-        return key < sessions.length && carries(link, key) ? sessions[key] : null;
+        return key < sessions.length && carries(lane, key) ? sessions[key] : null;
     }
 
-    private @Nullable ReplicaSession replicatedSession(int link, int key) {
-        ReplicaSession session = session(link, key);
+    private @Nullable ReplicaSession replicatedSession(int lane, int key) {
+        ReplicaSession session = session(lane, key);
         return session == null || !session.isReplicated() ? null : session;
     }
 
@@ -484,11 +484,11 @@ public final class Replica {
         Arrays.fill(sessionsByKey, null);
     }
 
-    private static final class LinkPosition {
+    private static final class LanePosition {
         private volatile long lastAppliedEpoch;
         private volatile long lastAppliedOffset = -1;
         /**
-         * The last event applied but not yet written, promoted by {@link Replica#writeApplied(int)}.
+         * The last event applied but not yet written, promoted by {@link ReplicaSessions#writeApplied(int)}.
          */
         private long pendingEpoch;
         private long pendingOffset = -1;

@@ -46,7 +46,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class TestLeaderLink {
+class TestLeaderConnection {
 
     private static final long EPOCH = 7;
     private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.INITIATOR);
@@ -55,19 +55,19 @@ class TestLeaderLink {
     private static final int LAST = WireFormat.CONTINUED_FRAGMENT;
     private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
 
-    private final IOSession connection = mock(IOSession.class);
+    private final IOSession ioSession = mock(IOSession.class);
     private final RecordingHandler sent = new RecordingHandler();
     private final RecordingEngine engine = new RecordingEngine().with(MAIN);
-    private final Replica replica = new Replica(engine);
-    private final LeaderLink link = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks, 0);
+    private final ReplicaSessions replicaSessions = new ReplicaSessions(engine);
+    private final LeaderConnection connection = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes, 0);
 
-    TestLeaderLink() {
-        when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
+    TestLeaderConnection() {
+        when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         doAnswer(invocation -> {
             ByteBuffer frames = invocation.getArgument(0);
             decode(frames.duplicate().flip(), sent);
             return null;
-        }).when(connection).send(any(ByteBuffer.class), anyBoolean());
+        }).when(ioSession).send(any(ByteBuffer.class), anyBoolean());
     }
 
     private static void decode(ByteBuffer frames, FrameHandler handler) {
@@ -80,19 +80,19 @@ class TestLeaderLink {
     }
 
     /**
-     * Hands the link the frames written by each encoder in one read, as the receiver does.
+     * Hands the connection the frames written by each encoder in one read, as the client does.
      */
     @SafeVarargs
     private void read(ToIntBiFunction<ByteBuffer, Integer>... frames) {
-        link.read(writeFrames(frames), new FrameDecoder(1 << 20));
+        connection.read(writeFrames(frames), new FrameDecoder(1 << 20));
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset) {
         return welcome(epoch, resumeOffset, 1);
     }
 
-    private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset, int links) {
-        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, links);
+    private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset, int lanes) {
+        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, lanes);
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings) {
@@ -146,60 +146,60 @@ class TestLeaderLink {
     }
 
     @Test
-    void theWelcomeGivesTheReplicaTheLeadersLinkCount() {
+    void theWelcomeGivesTheReplicaTheLeadersLaneCount() {
         read(welcome(EPOCH, WireFormat.NO_RESUME, 3));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.STREAMING);
-        assertThat(replica.getLinks()).isEqualTo(3);
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.STREAMING);
+        assertThat(replicaSessions.getLanes()).isEqualTo(3);
     }
 
     @Test
-    void aWelcomeOnALinkTheLeaderDoesNotHaveClosesTheStream() {
-        LeaderLink second = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 1, replica::setLinks);
+    void aWelcomeOnALaneTheLeaderDoesNotHaveClosesTheStream() {
+        LeaderConnection second = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 1, replicaSessions::setLanes);
 
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME, 1)), second);
 
-        assertThat(second.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(second.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
     }
 
     @Test
-    void aSessionOfAnotherLinkClosesTheStream() {
+    void aSessionOfAnotherLaneClosesTheStream() {
         read(welcome(EPOCH, WireFormat.NO_RESUME, 2), session(1, MAIN));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
-        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR session key 1 on link 0 of 2");
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR session key 1 on lane 0 of 2");
     }
 
     @Test
-    void eachLinkResumesFromTheLastEventItApplied() {
-        LeaderLink second = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 1, replica::setLinks);
+    void eachLaneResumesFromTheLastEventItApplied() {
+        LeaderConnection second = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 1, replicaSessions::setLanes);
         read(welcome(EPOCH, WireFormat.NO_RESUME, 2));
         second.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME, 2), session(1, MAIN),
                 event(EPOCH, 96, 1, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null)), new FrameDecoder(1 << 20));
         sent.frames.clear();
 
-        link.hello();
+        connection.hello();
         second.hello();
 
         assertThat(sent.frames).containsExactly(
-                "HELLO epoch=7 version=1 node=follower-b lastEpoch=0 lastOffset=-1 link=0",
-                "HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=96 link=1");
+                "HELLO epoch=7 version=1 node=follower-b lastEpoch=0 lastOffset=-1 lane=0",
+                "HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=96 lane=1");
     }
 
     @Test
     void theHelloCarriesTheLastEventApplied() {
-        link.hello();
+        connection.hello();
 
-        assertThat(sent.frames).containsExactly("HELLO epoch=7 version=1 node=follower-b lastEpoch=0 lastOffset=-1 link=0");
+        assertThat(sent.frames).containsExactly("HELLO epoch=7 version=1 node=follower-b lastEpoch=0 lastOffset=-1 lane=0");
     }
 
     @Test
     void aWelcomeStartsTheStreamAndIsAcknowledged() {
         read(welcome(EPOCH, WireFormat.NO_RESUME));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.STREAMING);
-        assertThat(link.getLeaderId()).isEqualTo("leader-a");
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.STREAMING);
+        assertThat(connection.getLeaderId()).isEqualTo("leader-a");
         assertThat(sent.frames).as("nothing replicated yet, nothing missing").containsExactly("ACK epoch=7 applied=-1 inSync=true");
     }
 
@@ -216,7 +216,7 @@ class TestLeaderLink {
 
     @Test
     void theStoresAreAskedAtMostOnceACheckInterval() {
-        LeaderLink checkingHourly = checkingHourly();
+        LeaderConnection checkingHourly = checkingHourly();
         checkingHourly.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), new FrameDecoder(1 << 20));
         engine.store(MAIN).pendingWrites = 7;
         sent.frames.clear();
@@ -228,7 +228,7 @@ class TestLeaderLink {
 
     @Test
     void theStoresAreAskedAtOnceOnTurningInSync() {
-        LeaderLink checkingHourly = checkingHourly();
+        LeaderConnection checkingHourly = checkingHourly();
         checkingHourly.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), new FrameDecoder(1 << 20));
         engine.store(MAIN).pendingWrites = 7;
         sent.frames.clear();
@@ -239,8 +239,8 @@ class TestLeaderLink {
         assertThat(sent.frames).last().isEqualTo("ACK epoch=7 applied=-1 inSync=true pending=7");
     }
 
-    private LeaderLink checkingHourly() {
-        return new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks, TimeUnit.HOURS.toNanos(1));
+    private LeaderConnection checkingHourly() {
+        return new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes, TimeUnit.HOURS.toNanos(1));
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> heartbeat() {
@@ -251,9 +251,9 @@ class TestLeaderLink {
     void aLeaderOfAnOlderEpochIsRefused() {
         read(welcome(EPOCH - 1, 0));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 STALE_EPOCH");
-        verify(connection).stop(any());
+        verify(ioSession).stop(any());
     }
 
     @Test
@@ -261,7 +261,7 @@ class TestLeaderLink {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
 
         assertThat(engine.store(MAIN).started).isTrue();
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED", "ACK epoch=7 applied=-1 inSync=false");
+        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED", "ACK epoch=7 applied=-1 inSync=false");
     }
 
     @Test
@@ -274,7 +274,7 @@ class TestLeaderLink {
         read(event(EPOCH, 0, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
 
         assertThat(engine.store(late).started).isTrue();
-        assertThat(sent.frames).contains("SESSION_STATUS epoch=7 key=3 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=3 SNAPSHOT_NEEDED");
     }
 
     @Test
@@ -285,7 +285,7 @@ class TestLeaderLink {
 
         assertThat(engine.stores).isEmpty();
         assertThat(sent.frames).as("a session it should hold is missing, so it is not in sync")
-                .containsExactly("SESSION_STATUS epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=false");
+                .containsExactly("SESSION_ANSWER epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=false");
     }
 
     @Test
@@ -296,14 +296,14 @@ class TestLeaderLink {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, sync));
 
         assertThat(engine.store(MAIN)).as("no store opened").isNull();
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 MODE_MISMATCH", "ACK epoch=7 applied=-1 inSync=false");
+        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 MODE_MISMATCH", "ACK epoch=7 applied=-1 inSync=false");
         sent.frames.clear();
 
         engine.replace(sync);
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
 
         assertThat(engine.store(sync).started).isTrue();
-        assertThat(sent.frames).contains("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
     }
 
     @Test
@@ -313,7 +313,7 @@ class TestLeaderLink {
 
         assertThat(engine.store(MAIN).started).isFalse();
         assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=false");
+        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=false");
     }
 
     @Test
@@ -321,7 +321,7 @@ class TestLeaderLink {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN, "follower-storage"));
 
         read(close(CloseReason.SHUTDOWN));
-        replica.jumpOutgoingSeqNums(1_000);
+        replicaSessions.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");
     }
@@ -333,7 +333,7 @@ class TestLeaderLink {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
 
         assertThat(engine.store(MAIN).started).isFalse();
-        assertThat(sent.frames).first().isEqualTo("SESSION_STATUS epoch=7 key=0 UNKNOWN_STORAGE");
+        assertThat(sent.frames).first().isEqualTo("SESSION_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
     }
 
     @Test
@@ -341,7 +341,7 @@ class TestLeaderLink {
         read(welcome(EPOCH, WireFormat.NO_RESUME), (out, index) -> FrameEncoder.session(out, index, EPOCH, 0,
                 MAIN.getFixSessionType(), ReplicationMode.ASYNC, MAIN.getFixSessionId().toString(), null));
 
-        assertThat(sent.frames).first().isEqualTo("SESSION_STATUS epoch=7 key=0 UNKNOWN_STORAGE");
+        assertThat(sent.frames).first().isEqualTo("SESSION_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
     }
 
     @Test
@@ -350,11 +350,11 @@ class TestLeaderLink {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
         engine.nextStorageIdentity = "follower-storage-back";
 
-        LeaderLink next = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
+        LeaderConnection next = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), next);
 
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
         assertThat(engine.store(MAIN).started).isTrue();
     }
 
@@ -369,8 +369,8 @@ class TestLeaderLink {
 
         assertThat(engine.store(MAIN).writes).as("seqnums coalesced, written before the reset")
                 .containsExactly("message 5 " + MESSAGE, "incoming 3", "outgoing 7", "reset");
-        assertThat(replica.getLastAppliedEpoch(0)).isEqualTo(EPOCH);
-        assertThat(replica.getLastAppliedOffset(0)).isEqualTo(128);
+        assertThat(replicaSessions.getLastAppliedEpoch(0)).isEqualTo(EPOCH);
+        assertThat(replicaSessions.getLastAppliedOffset(0)).isEqualTo(128);
         assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
     }
 
@@ -384,9 +384,9 @@ class TestLeaderLink {
                 event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, MESSAGE),
                 event(EPOCH, 96, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(engine.store(MAIN).writes).as("the seqnum before it still pending").isEmpty();
-        assertThat(replica.getLastAppliedOffset(0)).as("resumed before the read").isEqualTo(-1);
+        assertThat(replicaSessions.getLastAppliedOffset(0)).as("resumed before the read").isEqualTo(-1);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
     }
 
@@ -443,16 +443,16 @@ class TestLeaderLink {
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null),
                 event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, "five"));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(replica.getLastAppliedOffset(0)).isEqualTo(-1);
+        assertThat(replicaSessions.getLastAppliedOffset(0)).isEqualTo(-1);
         assertThat(sent.frames).hasSize(2).first().isEqualTo("RECEIVED epoch=7 received=32");
         assertThat(sent.frames.get(1)).as("never acknowledged as applied").startsWith("CLOSE epoch=7 APPLY_FAILED");
     }
 
     private long lostWrites() {
         HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder();
-        replica.describe(FixSessionType.INITIATOR, MAIN.getFixSessionId().toString(), status);
+        replicaSessions.describe(FixSessionType.INITIATOR, MAIN.getFixSessionId().toString(), status);
         return status.build().getLostWrites();
     }
 
@@ -464,9 +464,9 @@ class TestLeaderLink {
         read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
                 event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 6, "six"));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.STREAMING);
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.STREAMING);
         assertThat(engine.store(MAIN).writes).containsExactly("message 6 six");
-        assertThat(replica.getLastAppliedOffset(0)).isEqualTo(32);
+        assertThat(replicaSessions.getLastAppliedOffset(0)).isEqualTo(32);
         assertThat(lostWrites()).isEqualTo(1);
     }
 
@@ -480,7 +480,7 @@ class TestLeaderLink {
                 event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
                 event(EPOCH, 64, 0, StoreEventType.STORE_MESSAGE, 6, "six"));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.STREAMING);
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.STREAMING);
         assertThat(engine.store(MAIN).writes).contains("message 4 four", "message 6 six");
         assertThat(lostWrites()).isEqualTo(1);
     }
@@ -503,12 +503,12 @@ class TestLeaderLink {
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
         RecordingEngine.RecordingStore store = engine.store(MAIN);
 
-        LeaderLink next = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
+        LeaderConnection next = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
         sent.frames.clear();
         next.hello();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), next);
 
-        assertThat(sent.frames).startsWith("HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=0 link=0");
+        assertThat(sent.frames).startsWith("HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=0 lane=0");
         assertThat(engine.store(MAIN)).isSameAs(store);
         assertThat(store.started).isTrue();
     }
@@ -524,8 +524,8 @@ class TestLeaderLink {
 
         assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13", "message 11 eleven",
                 "message 12 twelve", "incoming 22", "outgoing 14");
-        assertThat(replica.isComplete()).isTrue();
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 REPLICATING", "ACK epoch=7 applied=-1 inSync=true");
+        assertThat(replicaSessions.isComplete()).isTrue();
+        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 REPLICATING", "ACK epoch=7 applied=-1 inSync=true");
     }
 
     @Test
@@ -541,7 +541,7 @@ class TestLeaderLink {
 
         assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13",
                 "batch 11 eleven, 12 twelve", "batch 13 thirteen", "incoming 22", "outgoing 14");
-        assertThat(sent.frames).contains("SESSION_STATUS epoch=7 key=0 REPLICATING");
+        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=0 REPLICATING");
     }
 
     @Test
@@ -568,7 +568,7 @@ class TestLeaderLink {
                 snapshotMessage(11, "eleven"),
                 (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2, 21, 13));
 
-        assertThat(replica.isComplete()).isFalse();
+        assertThat(replicaSessions.isComplete()).isFalse();
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
     }
 
@@ -583,7 +583,7 @@ class TestLeaderLink {
         read(fragment(96, 0, 5, "9=5\u0001", MIDDLE), fragment(128, 0, 5, "35=D\u000110=000\u0001", LAST));
 
         assertThat(engine.store(MAIN).writes).containsExactly("message 5 " + MESSAGE);
-        assertThat(replica.getLastAppliedOffset(0)).isEqualTo(128);
+        assertThat(replicaSessions.getLastAppliedOffset(0)).isEqualTo(128);
     }
 
     @Test
@@ -596,7 +596,7 @@ class TestLeaderLink {
                 (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 1, 1, 6));
 
         assertThat(engine.store(MAIN).writes).contains("message 5 " + MESSAGE);
-        assertThat(sent.frames).contains("SESSION_STATUS epoch=7 key=0 REPLICATING");
+        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=0 REPLICATING");
     }
 
     @Test
@@ -605,7 +605,7 @@ class TestLeaderLink {
 
         read(fragment(0, 0, 5, "8=FIX.4.4", FIRST), fragment(64, 0, 6, "9=5", LAST));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 PROTOCOL_ERROR"));
         assertThat(engine.store(MAIN).writes).isEmpty();
     }
@@ -620,11 +620,11 @@ class TestLeaderLink {
         complete();
         read(fragment(0, 0, 5, "8=FIX.4.4", FIRST));
 
-        LeaderLink resumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
+        LeaderConnection resumed = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, 0), session(0, MAIN)), resumed);
 
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
         decode(writeFrames(fragment(64, 0, 5, "9=5", LAST)), resumed);
         assertThat(engine.store(MAIN).writes).as("the rest of a message alone is not applied").noneMatch(w -> w.startsWith("message"));
     }
@@ -636,16 +636,16 @@ class TestLeaderLink {
                 (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
-        LeaderLink resumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
+        LeaderConnection resumed = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), resumed);
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 REPLICATING");
+        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 REPLICATING");
 
-        LeaderLink notResumed = new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks);
+        LeaderConnection notResumed = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), notResumed);
-        assertThat(sent.frames).containsExactly("SESSION_STATUS epoch=7 key=0 SNAPSHOT_NEEDED");
-        assertThat(replica.getLastAppliedOffset(0)).as("nothing left to resume from").isEqualTo(-1);
+        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(replicaSessions.getLastAppliedOffset(0)).as("nothing left to resume from").isEqualTo(-1);
     }
 
     private void complete() {
@@ -664,7 +664,7 @@ class TestLeaderLink {
         complete();
 
         read(close(CloseReason.SHUTDOWN));
-        replica.jumpOutgoingSeqNums(1_000);
+        replicaSessions.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(MAIN).writes).isEmpty();
     }
@@ -674,7 +674,7 @@ class TestLeaderLink {
         streaming();
 
         read(close(CloseReason.SHUTDOWN));
-        replica.jumpOutgoingSeqNums(1_000);
+        replicaSessions.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");
     }
@@ -685,7 +685,7 @@ class TestLeaderLink {
         complete();
 
         read(close(CloseReason.TOO_SLOW));
-        replica.jumpOutgoingSeqNums(1_000);
+        replicaSessions.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");
     }
@@ -696,8 +696,8 @@ class TestLeaderLink {
         complete();
         read(close(CloseReason.SHUTDOWN));
 
-        decode(writeFrames(welcome(EPOCH, 48)), new LeaderLink(connection, replica, () -> EPOCH, "follower-b", 0, replica::setLinks));
-        replica.jumpOutgoingSeqNums(1_000);
+        decode(writeFrames(welcome(EPOCH, 48)), new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes));
+        replicaSessions.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");
     }
@@ -754,7 +754,7 @@ class TestLeaderLink {
     void aFrameBeforeTheWelcomeIsAProtocolError() {
         read((out, index) -> FrameEncoder.heartbeat(out, index, EPOCH, 0));
 
-        assertThat(link.getState()).isEqualTo(LeaderLink.State.CLOSED);
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
     }
 
@@ -762,7 +762,7 @@ class TestLeaderLink {
     void closingTheReplicaStopsItsStores() {
         streaming();
 
-        replica.close(Deadline.unlimited());
+        replicaSessions.close(Deadline.unlimited());
 
         assertThat(engine.store(MAIN).started).isFalse();
     }

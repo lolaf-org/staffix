@@ -24,8 +24,8 @@ could mean.
   log behind), `SYNC_APPLIED` (a message reaches the counterparty only once the follower has written it to its store)
   or `SYNC_RECEIVED` (only once the follower holds it in memory: faster with a durable follower store, and lost only if
   both engines fail before the follower writes it). A follower that cannot keep up makes the writes wait at most `logFullTimeout` (1 s), is then dropped, and is let back to catch up after
-  `slowFollowerHoldOff` (1 s, doubling up to a minute). `replicationLinks` splits the sessions over several
-  connections to the follower, so a slow one or a session being caught up holds back only the sessions of its link,
+  `slowFollowerHoldOff` (1 s, doubling up to a minute). `replicationLanes` splits the sessions over several
+  connections to the follower, so a slow one or a session being caught up holds back only the sessions of its lane,
   and the follower applies them in parallel. The leader is elected by primos with a witness, or by an election of your
   own.
   A planned switchover logs the sessions out and the other engine carries on at the same sequence numbers; after a

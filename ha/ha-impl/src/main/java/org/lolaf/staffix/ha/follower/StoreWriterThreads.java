@@ -22,8 +22,8 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 
 /**
- * The threads writing what a follower's links read into its stores, off their network threads, link {@code i} on
- * thread {@code i % count}, so a link's writes keep their order.
+ * The threads writing what a follower's lanes read into its stores, off their network threads, lane {@code i} on
+ * thread {@code i % count}, so a lane's writes keep their order.
  */
 final class StoreWriterThreads {
 
@@ -36,12 +36,12 @@ final class StoreWriterThreads {
         }
     }
 
-    StoreWriterThread forLink(int link) {
-        return threads[link % threads.length];
+    StoreWriterThread forLane(int lane) {
+        return threads[lane % threads.length];
     }
 
     /**
-     * Once every link was drained and removed.
+     * Once every lane was drained and removed.
      */
     void stop() {
         for (StoreWriterThread thread : threads) {
@@ -50,7 +50,7 @@ final class StoreWriterThreads {
     }
 
     /**
-     * A link's frames, queued by its network thread for a store writer thread.
+     * A lane's frames, queued by its network thread for a store writer thread.
      */
     interface WriteQueue {
         /**
@@ -104,7 +104,7 @@ final class StoreWriterThreads {
                     try {
                         framesTaken += writeQueue.writeQueued();
                     } catch (RuntimeException e) {
-                        log.error("Replication store writer thread {} failed on a link", thread.getName(), e);
+                        log.error("Replication store writer thread {} failed on a lane", thread.getName(), e);
                     }
                 }
                 idle.idle(framesTaken);

@@ -40,15 +40,15 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int link) {
+    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane) {
         frames.add("HELLO epoch=" + epoch + " version=" + version + " node=" + nodeId + " lastEpoch=" + lastAppliedEpoch
-                + " lastOffset=" + lastAppliedOffset + " link=" + link);
+                + " lastOffset=" + lastAppliedOffset + " lane=" + lane);
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int links) {
+    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes) {
         frames.add("WELCOME epoch=" + epoch + " version=" + version + " leader=" + leaderId + " resume=" + resumeOffset
-                + " links=" + links);
+                + " lanes=" + lanes);
     }
 
     @Override
@@ -59,8 +59,8 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSessionStatus(long epoch, int sessionKey, SessionStatus status) {
-        frames.add("SESSION_STATUS epoch=" + epoch + " key=" + sessionKey + " " + status);
+    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer status) {
+        frames.add("SESSION_ANSWER epoch=" + epoch + " key=" + sessionKey + " " + status);
     }
 
     @Override
@@ -73,8 +73,8 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSnapshotBegin(long epoch, int sessionKey, long cutOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        frames.add("SNAPSHOT_BEGIN epoch=" + epoch + " key=" + sessionKey + " cut=" + cutOffset + " nextIn=" + nextIncomingSeqNum
+    public void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        frames.add("SNAPSHOT_BEGIN epoch=" + epoch + " key=" + sessionKey + " snapshotOffset=" + snapshotOffset + " nextIn=" + nextIncomingSeqNum
                 + " nextOut=" + nextOutgoingSeqNum);
     }
 

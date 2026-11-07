@@ -66,7 +66,7 @@ class TestReplicationFixEngineHa {
     private final InetSocketAddress addressB = new InetSocketAddress("localhost", freePort());
     private final List<ReplicationFixEngineHa> started = new ArrayList<>();
     /**
-     * One per link, so a stalled link holds back no other.
+     * One per lane, so a stalled lane holds back no other.
      */
     private final boolean storeWriterThreads;
     private Node a;
@@ -115,19 +115,19 @@ class TestReplicationFixEngineHa {
             this(nodeId, engine, heartbeatInterval, 1);
         }
 
-        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLinks) {
-            this(nodeId, engine, heartbeatInterval, replicationLinks, Duration.ofSeconds(2));
+        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLanes) {
+            this(nodeId, engine, heartbeatInterval, replicationLanes, Duration.ofSeconds(2));
         }
 
-        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLinks, Duration switchoverTimeout) {
+        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLanes, Duration switchoverTimeout) {
             this.engine = engine;
             ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
                     .nodeId(nodeId)
                     .peer("a", addressA)
                     .peer("b", addressB)
                     .logCapacity(1 << 16)
-                    .replicationLinks(replicationLinks)
-                    .followerStoreWriterThreads(storeWriterThreads ? replicationLinks : 0)
+                    .replicationLanes(replicationLanes)
+                    .followerStoreWriterThreads(storeWriterThreads ? replicationLanes : 0)
                     .heartbeatInterval(heartbeatInterval)
                     .reconnectInterval(Duration.ofMillis(50))
                     .switchoverTimeout(switchoverTimeout)
@@ -141,7 +141,7 @@ class TestReplicationFixEngineHa {
         }
 
         /**
-         * Registers {@link #OTHER} after {@link #MAIN}, so with two links each has a link of its own.
+         * Registers {@link #OTHER} after {@link #MAIN}, so with two lanes each has a lane of its own.
          */
         Node withOther() {
             other = ha.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
@@ -169,7 +169,7 @@ class TestReplicationFixEngineHa {
         a.start();
         b.start();
         await().until(() -> a.engine.activity.contains("activate, stores open 0"));
-        await().until(() -> b.engine.store(MAIN) != null && b.ha.getReplica().isComplete());
+        await().until(() -> b.engine.store(MAIN) != null && b.ha.getReplicaSessions().isComplete());
     }
 
     @ParameterizedTest
@@ -208,11 +208,11 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
-    void thereIsAtLeastOneReplicationLink() {
-        ReplicationHaSettings settings = ReplicationHaSettings.builder().replicationLinks(0).build();
+    void thereIsAtLeastOneReplicationLane() {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().replicationLanes(0).build();
 
         assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("replicationLinks");
+                .hasMessageContaining("replicationLanes");
     }
 
     @Test
@@ -656,7 +656,7 @@ class TestReplicationFixEngineHa {
         a.ha.onSessionNotReplicated(MAIN);
 
         await().until(() -> !replicaStore.isStarted());
-        assertThat(b.ha.getReplica().isComplete()).isTrue();
+        assertThat(b.ha.getReplicaSessions().isComplete()).isTrue();
         assertThat(a.ha.getStatus().getFollowerConnections()).singleElement().satisfies(follower -> assertThat(follower.isInSync()).isTrue());
 
         b.engine.replace(MAIN);
@@ -725,13 +725,13 @@ class TestReplicationFixEngineHa {
         assertThat(leader.recordings(HaMeters.SYNC_ACK_LATENCY, Map.of("mode", "sync_applied"))).isEqualTo(1);
         await().until(() -> leader.read("ha.follower.unsent") == 0);
         assertThat(leader.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isZero();
-        await().until(() -> leader.recordings(HaMeters.FOLLOWER_ACK_LATENCY, Map.of("follower", "b", "link", "0")) > 0);
-        await().until(() -> leader.recordings(HaMeters.FOLLOWER_LAG, Map.of("follower", "b", "link", "0")) > 0);
+        await().until(() -> leader.recordings(HaMeters.FOLLOWER_ACK_LATENCY, Map.of("follower", "b", "lane", "0")) > 0);
+        await().until(() -> leader.recordings(HaMeters.FOLLOWER_LAG, Map.of("follower", "b", "lane", "0")) > 0);
         await().until(() -> leader.read("ha.follower.lag.pending") == 0);
     }
 
-    private Node linked(String nodeId, int replicationLinks) {
-        return new Node(nodeId, new RecordingEngine().with(MAIN).with(OTHER), Duration.ofMillis(50), replicationLinks).withOther();
+    private Node linked(String nodeId, int replicationLanes) {
+        return new Node(nodeId, new RecordingEngine().with(MAIN).with(OTHER), Duration.ofMillis(50), replicationLanes).withOther();
     }
 
     private static void leads(Node leader, Node follower) {
@@ -740,11 +740,11 @@ class TestReplicationFixEngineHa {
         leader.start();
         follower.start();
         await().until(() -> leader.engine.meters.read("ha.followers.in.sync") == 1
-                && follower.engine.store(OTHER) != null && follower.ha.getReplica().isComplete());
+                && follower.engine.store(OTHER) != null && follower.ha.getReplicaSessions().isComplete());
     }
 
     @Test
-    void aFollowerOverTwoLinksCountsOnceWithAStatusPerLink() {
+    void aFollowerOverTwoLanesCountsOnceWithAStatusPerLane() {
         Node leader = linked("a", 2);
         Node follower = linked("b", 2);
 
@@ -758,18 +758,18 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
-    void theFollowerOpensAsManyLinksAsTheLeaderHasWhateverItsOwnSetting() {
+    void theFollowerOpensAsManyLanesAsTheLeaderHasWhateverItsOwnSetting() {
         Node leader = linked("a", 2);
         Node follower = linked("b", 1);
 
         leads(leader, follower);
 
-        assertThat(follower.ha.getReplica().getLinks()).isEqualTo(2);
+        assertThat(follower.ha.getReplicaSessions().getLanes()).isEqualTo(2);
         assertThat(leader.ha.getStatus().getFollowerConnections()).extracting(HaStatus.FollowerConnection::getLane).containsExactlyInAnyOrder(0, 1);
     }
 
     @Test
-    void aSnapshotStalledOnOneLinkDoesNotHoldBackTheSessionsOfAnother() {
+    void aSnapshotStalledOnOneLaneDoesNotHoldBackTheSessionsOfAnother() {
         Node leader = linked("a", 2);
         Node follower = linked("b", 2);
         leads(leader, follower);
@@ -791,7 +791,7 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
-    void aLeaderStoppingCleanlyHandsOverTheSessionsOfEveryLink() {
+    void aLeaderStoppingCleanlyHandsOverTheSessionsOfEveryLane() {
         Node leader = linked("a", 2);
         Node follower = linked("b", 2);
         leads(leader, follower);
@@ -900,7 +900,7 @@ class TestReplicationFixEngineHa {
         a.start();
 
         assertThat(a.engine.probes.list()).extracting(Probe::getName)
-                .containsExactlyInAnyOrder(HaProbes.FOLLOWERS, HaProbes.LEADER_LINK, HaProbes.LEADERSHIP);
+                .containsExactlyInAnyOrder(HaProbes.FOLLOWERS, HaProbes.LEADER_CONNECTION, HaProbes.LEADERSHIP);
         assertThat(a.engine.probes.active.getAsBoolean()).isTrue();
         assertThat(a.sessionProbes.list()).extracting(Probe::getName).containsExactly(HaProbes.REPLICATION);
 
@@ -974,14 +974,14 @@ class TestReplicationFixEngineHa {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
             assertThat(alert.getMessage()).startsWith("No follower connected");
         });
-        assertThat(HaProbes.leaderLink(a.ha).evaluate()).as("a follower's probe").isEmpty();
+        assertThat(HaProbes.leaderConnection(a.ha).evaluate()).as("a follower's probe").isEmpty();
         assertThat(HaProbes.leadership(a.ha).evaluate()).isEmpty();
 
         b.election.elect(Role.FOLLOWER, 3, "a");
         b.start();
 
         await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
-        await().until(() -> HaProbes.leaderLink(b.ha).evaluate().isEmpty());
+        await().until(() -> HaProbes.leaderConnection(b.ha).evaluate().isEmpty());
         assertThat(HaProbes.followers(b.ha).evaluate()).as("a leader's probe").isEmpty();
     }
 
@@ -989,9 +989,9 @@ class TestReplicationFixEngineHa {
     void aFollowerAlertsWhileNotConnectedToItsLeader() {
         b.election.elect(Role.FOLLOWER, 3, "a");
         b.start();
-        await().until(() -> b.ha.getFollowedRole() == Role.FOLLOWER);
+        await().until(() -> b.ha.getRole() == Role.FOLLOWER);
 
-        assertThat(HaProbes.leaderLink(b.ha).evaluate()).hasValueSatisfying(alert -> {
+        assertThat(HaProbes.leaderConnection(b.ha).evaluate()).hasValueSatisfying(alert -> {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
             assertThat(alert.getMessage()).startsWith("Not connected to the leader");
         });

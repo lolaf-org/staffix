@@ -116,10 +116,10 @@ public class HaLoad {
     @Param({"5"})
     int seconds;
     /**
-     * The sessions split over this many replication links, session {@code n} on link {@code n} modulo the count.
+     * The sessions split over this many replication lanes, session {@code n} on lane {@code n} modulo the count.
      */
     @Param({"1"})
-    int replicationLinks;
+    int replicationLanes;
     /**
      * Off, a FILE store writes to the page cache only, as every file store did before {@code syncWrites} forced.
      */
@@ -182,8 +182,8 @@ public class HaLoad {
             HaStatus.Leader leader = follower.getStatus().getLeader();
             return leader != null && leader.isInSync();
         });
-        log.info("HA load ready: {} sessions at {} msg/s, {} replication, {} follower store, replication waiting {}, leader IO threads {}, replication links {}",
-                sessions, rate, mode, followerStore, replicationWaiting, leaderIoThreads, replicationLinks);
+        log.info("HA load ready: {} sessions at {} msg/s, {} replication, {} follower store, replication waiting {}, leader IO threads {}, replication lanes {}",
+                sessions, rate, mode, followerStore, replicationWaiting, leaderIoThreads, replicationLanes);
     }
 
     @Setup(Level.Iteration)
@@ -323,7 +323,7 @@ public class HaLoad {
                         .build())
                 .highAvailability(replicationWaiting(ReplicationHaSettings.builder(), replicationWaiting)
                         .nodeId(nodeId)
-                        .replicationLinks(replicationLinks)
+                        .replicationLanes(replicationLanes)
                         .peer("a", replicationA)
                         .peer("b", replicationB)
                         .monitoringInstanceId(nodeId.equals("a") ? MONITORING : null)

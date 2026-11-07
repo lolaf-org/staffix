@@ -27,7 +27,7 @@ one on your machine, with a witness and a counterparty, to kill and restart by h
 - **A follower that connects late, or lost the stream, catches up**: from where it left off when the leader still holds
   those writes, else by a snapshot of each session (its sequence numbers and every message its store keeps). A snapshot
   goes in chunks between the other sessions' writes, so they keep replicating, and their `SYNC` sends keep flowing,
-  while it lasts, if more slowly: `replicationLinks` keeps that to the sessions sharing its link.
+  while it lasts, if more slowly: `replicationLanes` keeps that to the sessions sharing its lane.
 - **On taking over**, the new leader runs the sessions at the sequence numbers the old one left them, when the old
   leader handed over cleanly. After a failure it moves them ahead first, since the old leader may have sent messages it
   never received (see [Failover and sequence numbers](#failover-and-sequence-numbers)).
@@ -87,14 +87,14 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | setting | default | what it decides |
 |---|---|---|
 | `logCapacity` | 16 MiB | Off-heap memory holding the writes the follower has not received yet. A follower this far behind makes the sessions' writes wait for it, at most `logFullTimeout`. The largest message replicated is half of it. |
-| `replicationLinks` | 1 | How many links the leader splits the sessions over, each its own connection, `logCapacity` log and sender thread, with a network thread on each node. A snapshot, or a follower slow to apply, then holds back only the sessions of its link, and the follower applies the links in parallel. Costs `logCapacity` of off-heap memory and the threads again per link. The follower opens as many as the leader has. |
+| `replicationLanes` | 1 | How many lanes the leader splits the sessions over, each its own connection, `logCapacity` log and sender thread, with a network thread on each node. A snapshot, or a follower slow to apply, then holds back only the sessions of its lane, and the follower applies the lanes in parallel. Costs `logCapacity` of off-heap memory and the threads again per lane. The follower opens as many as the leader has. |
 | `heartbeatInterval` | 1s | How often an idle leader tells its follower where it stands. |
 | `reconnectInterval` | 1s | How long a follower waits between two attempts to reach its leader. |
-| `sendBuffers` | 4 | Write buffers per follower link, a power of two, allocated as first needed. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower link. |
-| `snapshotChunkBytes` | 64 KiB | The most bytes of a snapshot sent between two batches of the other sessions' writes. The leader reads each chunk from the session's store while the link's live writes wait, about 70 µs from a file store at 64 KiB. Larger finishes a snapshot sooner under load, smaller delays the other sessions less. |
-| `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower link, waits for writes. It parks when idle, woken by a write; `BusySpinIdleStrategy` saves the wake-up, for a core per follower. |
+| `sendBuffers` | 4 | Write buffers per follower lane, a power of two, allocated as first needed. More help a distant follower; each costs the largest event frame (`logCapacity` / 8, 64 KiB at least) of off-heap memory per follower lane. |
+| `snapshotChunkBytes` | 64 KiB | The most bytes of a snapshot sent between two batches of the other sessions' writes. The leader reads each chunk from the session's store while the lane's live writes wait, about 70 µs from a file store at 64 KiB. Larger finishes a snapshot sooner under load, smaller delays the other sessions less. |
+| `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower lane, waits for writes. It parks when idle, woken by a write; `BusySpinIdleStrategy` saves the wake-up, for a core per follower. |
 | `syncAckIdleStrategy` | backs off | How a `SYNC` send waits for its acknowledgement, on the session's thread. `BusySpinIdleStrategy` sees it at once, for that thread's core while it waits. |
-| `followerStoreWriterThreads` | 0 | Threads writing what the follower receives into its stores, its links spread over them; 0 writes on each link's network thread. Set it to the link count with a durable follower store or `SYNC_RECEIVED` sessions: the network thread then keeps reading while a store writes. Fewer threads than links make the links sharing one wait for each other's writes. A memory store gains nothing. |
+| `followerStoreWriterThreads` | 0 | Threads writing what the follower receives into its stores, its lanes spread over them; 0 writes on each lane's network thread. Set it to the lane count with a durable follower store or `SYNC_RECEIVED` sessions: the network thread then keeps reading while a store writes. Fewer threads than lanes make the lanes sharing one wait for each other's writes. A memory store gains nothing. |
 | `followerStoreWriterIdleStrategy` | backs off | How a store writer thread waits for what to write, woken by the network thread that read it. |
 | `selectStrategy` | betty's, blocking | How the replication's network threads wait, on both nodes. An `IdleStrategySelectStrategy` busy spinning saves a system call per wake-up, for a core on each node. |
 | `promotionOutgoingSeqNumJump` | 10 000 | How far a new leader moves its outgoing sequence numbers ahead. |
@@ -162,11 +162,11 @@ snapshot, so its catching up does not add to the load. Until it is back in sync,
 major alert and the status lists it under `droppedFollowers`. Size `logCapacity` so a healthy follower never falls a
 whole log behind.
 
-**More replication links keep a slow stream to its own sessions.** With `replicationLinks` above 1, session `n` (in
-the order the sessions were created) goes over link `n` modulo the link count. Each link has its own log, so a follower
-behind on one link makes only that link's sessions wait, and is dropped from that link alone; a snapshot of a session
-with many messages delays only its link's sessions. The status has an entry per follower and link, and the
-per-follower meters a `link` tag. Raise it when snapshots of a busy session slow the others, or when the follower's
+**More replication lanes keep a slow stream to its own sessions.** With `replicationLanes` above 1, session `n` (in
+the order the sessions were created) goes over lane `n` modulo the lane count. Each lane has its own log, so a follower
+behind on one lane makes only that lane's sessions wait, and is dropped from that lane alone; a snapshot of a session
+with many messages delays only its lane's sessions. The status has an entry per follower and lane, and the
+per-follower meters a `lane` tag. Raise it when snapshots of a busy session slow the others, or when the follower's
 store applies one stream too slowly, a database for instance.
 
 No mode replicates what the session receives as it arrives: only the expected incoming sequence number, after the
@@ -178,7 +178,7 @@ A `SYNC` send waits for the leader's sender to pick the write up, for the follow
 for the session to see the acknowledgement. By default each of those threads backs off when idle and parks, and the
 write or the acknowledgement wakes it, so most of the wait is wake-ups, not work. Three settings trade cores for it:
 
-- **`senderIdleStrategy`**: the leader's sender, one thread per follower link, busy spinning. One core per link.
+- **`senderIdleStrategy`**: the leader's sender, one thread per follower lane, busy spinning. One core per lane.
 - **`syncAckIdleStrategy`**: the session thread waiting for its acknowledgement, busy spinning. That thread's core,
   for as long as it waits.
 - **`selectStrategy`**: the replication's network threads on both nodes, busy spinning instead of blocking in the
@@ -205,16 +205,16 @@ For comparison, the same round trip is 11 µs without replication and 15 µs wit
   every `SYNC` send, typically tens of microseconds in one data center.
 - **One message at a time.** The benchmark waits for each answer before sending the next, which measures latency, not
   the latency at a high message rate.
-- **A snapshot slows the `SYNC` sends of its link while it runs.** The leader sends a snapshot in chunks between the
-  link's live writes, so a write can wait for the chunk in progress, and the follower for the one it is applying.
+- **A snapshot slows the `SYNC` sends of its lane while it runs.** The leader sends a snapshot in chunks between the
+  lane's live writes, so a write can wait for the chunk in progress, and the follower for the one it is applying.
   With a snapshot always running beside a busy session, a `SYNC` send's wait for its acknowledgement went from 35 to
   93 µs at p50 and from 68 to 229 µs at p99. A snapshot is the exception (a follower that connects late or lost the stream, one dropped as
-  too slow, a re-sync from the admin API), `ASYNC` sends do not wait for it, and more `replicationLinks` keep it to the
-  sessions of one link.
+  too slow, a re-sync from the admin API), `ASYNC` sends do not wait for it, and more `replicationLanes` keep it to the
+  sessions of one lane.
 
 **A durable follower store is where the modes part.** A store forcing its writes to disk, a file store with
 `syncWrites` or a database, adds its write to every `SYNC_APPLIED` send. `SYNC_RECEIVED` skips it, but only with
-`followerStoreWriterThreads` set to the link count: otherwise the follower's network thread writes, and reads the next
+`followerStoreWriterThreads` set to the lane count: otherwise the follower's network thread writes, and reads the next
 send only once the write before it is forced. Same benchmark, a file store with `syncWrites` on an NVMe disk as the
 follower's, the defaults otherwise, mean / p99 in µs:
 
@@ -324,7 +324,7 @@ storage that cannot be identified is refused too, rather than risk it.
 - **A snapshot copies every message the leader's store keeps, and the follower's store then keeps what its own
   settings allow.** Give the follower's store at least the leader's retention (`maxEntriesInMemory`, the file store's
   `blocksCount` and `blockSize`, `maxMessagesPerSession`): a resend asking for a message it dropped is answered with a
-  gap fill once it leads. A store keeping everything makes a long snapshot, which slows the `SYNC` sends of its link a little
+  gap fill once it leads. A store keeping everything makes a long snapshot, which slows the `SYNC` sends of its lane a little
   (see Latency), and the session is not in sync until it ends.
 - **A restarted follower is caught up by snapshot**: it does not remember where it left the stream.
 
@@ -332,9 +332,9 @@ storage that cannot be identified is refused too, rather than risk it.
 
 - **Meters** (`ha.*`): role, epoch, followers connected and in sync, unsent bytes, how far each follower is behind,
   `SYNC` sends that went out unacknowledged, snapshots, followers dropped as too slow, and the acknowledgement round
-  trip per follower and link; see
+  trip per follower and lane; see
   [Monitoring](monitoring.md).
-- **Probes**: the node's (`ha-followers`, `ha-leader-link`, `ha-leadership`) and each replicated session's
+- **Probes**: the node's (`ha-followers`, `ha-leader-connection`, `ha-leadership`) and each replicated session's
   (`ha-replication`); see [Alerting](alerting.md).
 - **Status**: `GET v1/ha` and `GET v1/ha/sessions` say who leads, whether the follower holds each session and how far
   behind it is, which followers were dropped as too slow and are not back in sync, and, on the follower, whether a

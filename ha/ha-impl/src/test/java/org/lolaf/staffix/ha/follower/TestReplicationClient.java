@@ -29,11 +29,11 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
-import org.lolaf.staffix.ha.leader.FollowerLink;
-import org.lolaf.staffix.ha.leader.ReplicationPublisher;
+import org.lolaf.staffix.ha.leader.FollowerConnection;
+import org.lolaf.staffix.ha.leader.ReplicationServer;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
 import org.lolaf.staffix.ha.leader.SlowFollowers;
-import org.lolaf.staffix.ha.wire.SessionStatus;
+import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.tests.TestingClock;
 
 import java.io.IOException;
@@ -52,12 +52,12 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * A leader's publisher and a follower's receiver over a real connection, the follower writing on its network threads
+ * A leader's server and a follower's client over a real connection, the follower writing on its network threads
  * or on a store writer thread.
  */
 @ParameterizedClass
 @ValueSource(ints = {0, 1})
-class TestReplicationReceiver {
+class TestReplicationClient {
 
     @Parameter
     int storeWriterThreads;
@@ -72,11 +72,11 @@ class TestReplicationReceiver {
 
     private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
-    private final ReplicationPublisher publisher = publisher(address, leader);
+    private final ReplicationServer server = server(address, leader);
     private final RecordingEngine follower = new RecordingEngine().with(MAIN);
-    private final Replica replica = new Replica(follower);
+    private final ReplicaSessions replicaSessions = new ReplicaSessions(follower);
     private final ReplicatingStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-    private ReplicationReceiver receiver;
+    private ReplicationClient client;
 
     private static int freePort() {
         try (ServerSocket socket = new ServerSocket(0)) {
@@ -86,50 +86,50 @@ class TestReplicationReceiver {
         }
     }
 
-    private ReplicationPublisher twoLinksPublisher;
-    private ReplicationPublisher syncReceivedPublisher;
+    private ReplicationServer twoLanesServer;
+    private ReplicationServer syncReceivedServer;
     private ReplicationFixEngineHa syncReceivedLeader;
     private ReplicatingStore syncReceivedStore;
-    private final ReplicationStats twoLinksStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
-    private ReplicatingStore twoLinksMain;
-    private ReplicatingStore twoLinksOther;
+    private final ReplicationStats twoLanesStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
+    private ReplicatingStore twoLanesMain;
+    private ReplicatingStore twoLanesOther;
 
-    private static ReplicationPublisher publisher(InetSocketAddress address, ReplicationFixEngineHa leader) {
-        return publisher(address, leader, new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
+    private static ReplicationServer server(InetSocketAddress address, ReplicationFixEngineHa leader) {
+        return server(address, leader, new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
     }
 
-    private static ReplicationPublisher publisher(InetSocketAddress address, ReplicationFixEngineHa leader,
+    private static ReplicationServer server(InetSocketAddress address, ReplicationFixEngineHa leader,
                                                   ReplicationStats stats) {
-        return new ReplicationPublisher(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
+        return new ReplicationServer(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
                 () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE, BackoffIdleStrategy::new,
                 new WakeupSelectStrategy(10), stats);
     }
 
     /**
-     * A leader with two links, {@link #MAIN} on link 0 and {@link #OTHER} on link 1, and the receiver following it in
+     * A leader with two lanes, {@link #MAIN} on lane 0 and {@link #OTHER} on lane 1, and the client following it in
      * sync.
      */
-    private void followTwoLinks() {
+    private void followTwoLanes() {
         follower.with(OTHER);
-        ReplicationFixEngineHa twoLinks = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
-                .replicationLinks(2).build());
-        InetSocketAddress twoLinksAddress = new InetSocketAddress("localhost", freePort());
-        twoLinksPublisher = publisher(twoLinksAddress, twoLinks, twoLinksStats);
-        twoLinksMain = twoLinks.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        twoLinksOther = twoLinks.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        twoLinksPublisher.start();
-        connect(twoLinksAddress);
-        await().until(receiver::isInSync);
+        ReplicationFixEngineHa twoLanes = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
+                .replicationLanes(2).build());
+        InetSocketAddress twoLanesAddress = new InetSocketAddress("localhost", freePort());
+        twoLanesServer = server(twoLanesAddress, twoLanes, twoLanesStats);
+        twoLanesMain = twoLanes.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        twoLanesOther = twoLanes.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        twoLanesServer.start();
+        connect(twoLanesAddress);
+        await().until(client::isInSync);
     }
 
-    TestReplicationReceiver() {
+    TestReplicationClient() {
         leaderStore.storeNextIncomingSeqNum(1);
-        publisher.start();
+        server.start();
     }
 
     private void connect() {
         connect(address);
-        await().until(() -> receiver.getLink(0) != null && receiver.getLink(0).getState() == LeaderLink.State.STREAMING);
+        await().until(() -> client.getConnection(0) != null && client.getConnection(0).getState() == LeaderConnection.State.STREAMING);
     }
 
     private void connect(InetSocketAddress address) {
@@ -137,66 +137,66 @@ class TestReplicationReceiver {
     }
 
     private void connect(InetSocketAddress address, int maxFrameBytes) {
-        receiver = new ReplicationReceiver(address, replica, () -> EPOCH, "follower-b", maxFrameBytes, Duration.ofMillis(50),
+        client = new ReplicationClient(address, replicaSessions, () -> EPOCH, "follower-b", maxFrameBytes, Duration.ofMillis(50),
                 new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new);
-        receiver.start();
+        client.start();
     }
 
     /**
-     * {@link #MAIN} as {@code SYNC_RECEIVED} on a leader of its own, the receiver following it in sync.
+     * {@link #MAIN} as {@code SYNC_RECEIVED} on a leader of its own, the client following it in sync.
      */
-    private FollowerLink followSyncReceived(int maxFrameBytes) {
+    private FollowerConnection followSyncReceived(int maxFrameBytes) {
         FixSessionSettings syncReceived = MAIN.toBuilder()
                 .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
                 .build();
         follower.replace(syncReceived);
         syncReceivedLeader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
         InetSocketAddress syncReceivedAddress = new InetSocketAddress("localhost", freePort());
-        syncReceivedPublisher = publisher(syncReceivedAddress, syncReceivedLeader);
+        syncReceivedServer = server(syncReceivedAddress, syncReceivedLeader);
         syncReceivedStore = syncReceivedLeader.replicatingStore(syncReceived, new RecordingEngine.RecordingStore().start(),
                 new RecordingProbes());
         syncReceivedStore.storeNextIncomingSeqNum(1);
-        syncReceivedPublisher.start();
+        syncReceivedServer.start();
         connect(syncReceivedAddress, maxFrameBytes);
         await().until(() -> !syncReceivedLeader.getFollowers().all().isEmpty()
                 && syncReceivedLeader.getFollowers().all().get(0).isInSync(0));
         return syncReceivedLeader.getFollowers().all().get(0);
     }
 
-    private FollowerLink inSync() {
+    private FollowerConnection inSync() {
         await().until(() -> !leader.getFollowers().all().isEmpty() && leader.getFollowers().all().get(0).isInSync(0));
         return leader.getFollowers().all().get(0);
     }
 
     @AfterEach
     void stop() {
-        if (receiver != null) {
-            receiver.stop(Deadline.of(Duration.ofSeconds(2)));
+        if (client != null) {
+            client.stop(Deadline.of(Duration.ofSeconds(2)));
         }
-        publisher.stop(Deadline.of(Duration.ofSeconds(2)));
-        if (twoLinksPublisher != null) {
-            twoLinksPublisher.stop(Deadline.of(Duration.ofSeconds(2)));
+        server.stop(Deadline.of(Duration.ofSeconds(2)));
+        if (twoLanesServer != null) {
+            twoLanesServer.stop(Deadline.of(Duration.ofSeconds(2)));
         }
-        if (syncReceivedPublisher != null) {
-            syncReceivedPublisher.stop(Deadline.of(Duration.ofSeconds(2)));
+        if (syncReceivedServer != null) {
+            syncReceivedServer.stop(Deadline.of(Duration.ofSeconds(2)));
         }
-        replica.close(Deadline.of(Duration.ofSeconds(2)));
+        replicaSessions.close(Deadline.of(Duration.ofSeconds(2)));
     }
 
     /**
-     * What a follower acknowledged as received is written before a promotion stops its receiver: the stop waits for
+     * What a follower acknowledged as received is written before a promotion stops its client: the stop waits for
      * the read in progress, and does not interrupt the write it makes.
      */
     @Test
     void aStopWaitsForTheWriteOfWhatWasAcknowledgedAsReceived() {
-        FollowerLink link = followSyncReceived(leader.getReplicationLogs().get(0).getMaxEventFrameBytes());
+        FollowerConnection connection = followSyncReceived(leader.getReplicationLogs().get(0).getMaxEventFrameBytes());
         CountDownLatch writeHeld = new CountDownLatch(1);
         follower.store(MAIN).incomingWritesHeld = writeHeld;
 
         syncReceivedStore.storeNextIncomingSeqNum(2);
-        await().until(() -> link.getReceivedOffset() > link.getAppliedOffset());
-        ReplicationReceiver stopping = receiver;
-        receiver = null;
+        await().until(() -> connection.getReceivedOffset() > connection.getAppliedOffset());
+        ReplicationClient stopping = client;
+        client = null;
         CompletableFuture<Void> stopped = CompletableFuture.runAsync(() -> stopping.stop(Deadline.of(Duration.ofSeconds(10))));
         await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(2)).until(() -> !stopped.isDone());
         writeHeld.countDown();
@@ -209,7 +209,7 @@ class TestReplicationReceiver {
     @Test
     void aStoreWriterThreadLeavesTheNetworkThreadAcknowledgingAsReceivedWhatItHasNotWrittenYet() {
         assumeTrue(storeWriterThreads > 0, "the network thread writes itself otherwise");
-        FollowerLink link = followSyncReceived(leader.getReplicationLogs().get(0).getMaxEventFrameBytes());
+        FollowerConnection connection = followSyncReceived(leader.getReplicationLogs().get(0).getMaxEventFrameBytes());
         CountDownLatch writeHeld = new CountDownLatch(1);
         follower.store(MAIN).incomingWritesHeld = writeHeld;
 
@@ -217,7 +217,7 @@ class TestReplicationReceiver {
         long secondEvent = syncReceivedLeader.getReplicationLogs().get(0).getTailOffset();
         syncReceivedStore.storeNextIncomingSeqNum(3);
 
-        await().until(() -> link.getReceivedOffset() >= secondEvent);
+        await().until(() -> connection.getReceivedOffset() >= secondEvent);
         assertThat(follower.store(MAIN).writes).as("the first still held").doesNotContain("incoming 2", "incoming 3");
         writeHeld.countDown();
         await().until(() -> follower.store(MAIN).writes.contains("incoming 3"));
@@ -246,9 +246,9 @@ class TestReplicationReceiver {
     @Test
     void aFreshFollowerIsCaughtUpBySnapshotThenStreamedTheLeadersWrites() {
         connect();
-        FollowerLink link = inSync();
+        FollowerConnection connection = inSync();
         assertThat(follower.store(MAIN).writes).startsWith("reset");
-        assertThat(replica.isComplete()).isTrue();
+        assertThat(replicaSessions.isComplete()).isTrue();
         follower.store(MAIN).writes.clear();
 
         leaderStore.storeMessageSent(5, ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII)));
@@ -258,8 +258,8 @@ class TestReplicationReceiver {
 
         await().untilAsserted(() -> assertThat(follower.store(MAIN).writes)
                 .containsExactly("message 5 " + MESSAGE, "incoming 2", "outgoing 9"));
-        await().until(() -> link.getAppliedOffset() == lastOffset);
-        assertThat(link.isReportedInSync()).isTrue();
+        await().until(() -> connection.getAppliedOffset() == lastOffset);
+        assertThat(connection.isReportedInSync()).isTrue();
     }
 
     @Test
@@ -279,7 +279,7 @@ class TestReplicationReceiver {
         follower.nextStorageIdentity = leader.getSessions().get(0).getConfig().getStorageIdentity();
         connect();
         await().until(() -> !leader.getFollowers().all().isEmpty()
-                && leader.getFollowers().all().get(0).getReportedStatus(0) == SessionStatus.SHARED_STORAGE);
+                && leader.getFollowers().all().get(0).getSessionAnswer(0) == SessionAnswer.SHARED_STORAGE);
         long unacknowledged = leader.getSessions().get(0).getUnacknowledgedSends();
 
         leaderStore.storeNextOutgoingSeqNum(2);
@@ -297,7 +297,7 @@ class TestReplicationReceiver {
         inSync();
         leaderStore.storeNextIncomingSeqNum(2);
         await().until(() -> follower.store(MAIN).writes.contains("incoming 2"));
-        receiver.stop(Deadline.of(Duration.ofSeconds(2)));
+        client.stop(Deadline.of(Duration.ofSeconds(2)));
         await().until(() -> leader.getFollowers().all().isEmpty());
         follower.store(MAIN).writes.clear();
 
@@ -310,13 +310,13 @@ class TestReplicationReceiver {
     }
 
     @Test
-    void aFollowerOpensEveryLinkTheLeaderAnnouncesAndReplicatesTheSessionsOfEach() {
-        followTwoLinks();
+    void aFollowerOpensEveryLaneTheLeaderAnnouncesAndReplicatesTheSessionsOfEach() {
+        followTwoLanes();
 
-        assertThat(replica.getLinks()).isEqualTo(2);
-        assertThat(receiver.getLink(1).getLink()).isEqualTo(1);
-        twoLinksMain.storeNextIncomingSeqNum(5);
-        twoLinksOther.storeNextIncomingSeqNum(6);
+        assertThat(replicaSessions.getLanes()).isEqualTo(2);
+        assertThat(client.getConnection(1).getLane()).isEqualTo(1);
+        twoLanesMain.storeNextIncomingSeqNum(5);
+        twoLanesOther.storeNextIncomingSeqNum(6);
 
         await().untilAsserted(() -> {
             assertThat(follower.store(MAIN).writes).endsWith("incoming 5");
@@ -325,23 +325,23 @@ class TestReplicationReceiver {
     }
 
     @Test
-    void aFollowerWithOneLinkFailingIsNotInSyncAndResumesThatLinkWithoutASnapshot() {
-        followTwoLinks();
-        twoLinksOther.storeNextIncomingSeqNum(6);
+    void aFollowerWithOneLaneFailingIsNotInSyncAndResumesThatLaneWithoutASnapshot() {
+        followTwoLanes();
+        twoLanesOther.storeNextIncomingSeqNum(6);
         await().until(() -> follower.store(OTHER).writes.contains("incoming 6"));
-        long snapshots = twoLinksStats.getSnapshots();
+        long snapshots = twoLanesStats.getSnapshots();
         follower.store(OTHER).messageWritesFail = true;
         follower.store(OTHER).resourceDown = true;
 
-        twoLinksOther.storeMessageSent(5, ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII)));
+        twoLanesOther.storeMessageSent(5, ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII)));
 
-        await().until(() -> !receiver.isInSync());
-        twoLinksMain.storeNextIncomingSeqNum(7);
-        await().untilAsserted(() -> assertThat(follower.store(MAIN).writes).as("the other link carries on").endsWith("incoming 7"));
+        await().until(() -> !client.isInSync());
+        twoLanesMain.storeNextIncomingSeqNum(7);
+        await().untilAsserted(() -> assertThat(follower.store(MAIN).writes).as("the other lane carries on").endsWith("incoming 7"));
         follower.store(OTHER).messageWritesFail = false;
         follower.store(OTHER).resourceDown = false;
-        await().until(receiver::isInSync);
+        await().until(client::isInSync);
         await().untilAsserted(() -> assertThat(follower.store(OTHER).writes).endsWith("message 5 " + MESSAGE));
-        assertThat(twoLinksStats.getSnapshots()).as("resumed").isEqualTo(snapshots);
+        assertThat(twoLanesStats.getSnapshots()).as("resumed").isEqualTo(snapshots);
     }
 }

@@ -73,13 +73,13 @@ public class ReplicationHaSettings extends HaSettings {
     private final int logCapacity = 16 << 20;
 
     /**
-     * How many links the sessions are split over, each with its own {@link #getLogCapacity() logCapacity} log, sender
-     * thread and connection per follower: a snapshot, or a follower too slow for one link, then holds back only that
-     * link's sessions, and the follower applies the links in parallel. Costs a log, a thread and a connection each.
+     * How many lanes the sessions are split over, each with its own {@link #getLogCapacity() logCapacity} log, sender
+     * thread and connection per follower: a snapshot, or a follower too slow for one lane, then holds back only that
+     * lane's sessions, and the follower applies the lanes in parallel. Costs a log, a thread and a connection each.
      * Read on the leader, which tells its followers.
      */
     @Builder.Default
-    private final int replicationLinks = 1;
+    private final int replicationLanes = 1;
 
     /**
      * Names this engine to its peer in the replication handshake, and in their logs.
@@ -125,11 +125,11 @@ public class ReplicationHaSettings extends HaSettings {
     private final Supplier<IdleStrategy> syncAckIdleStrategy = BackoffIdleStrategy::new;
 
     /**
-     * Threads writing what a follower receives into its stores, its links spread over them; 0 writes on each link's
+     * Threads writing what a follower receives into its stores, its lanes spread over them; 0 writes on each lane's
      * network thread. With store writer threads the network thread keeps reading while a store writes, so a
      * {@code SYNC_RECEIVED} send is acknowledged without waiting for the write before it: worth it with a durable
-     * follower store, while a memory one pays the hand-off for nothing. Links sharing a thread wait for each other's
-     * writes, so give one per link.
+     * follower store, while a memory one pays the hand-off for nothing. Lanes sharing a thread wait for each other's
+     * writes, so give one per lane.
      */
     @Builder.Default
     private final int followerStoreWriterThreads = 0;
@@ -160,7 +160,7 @@ public class ReplicationHaSettings extends HaSettings {
     /**
      * The most bytes of a snapshot the leader sends between two batches of the other sessions' writes, a session's
      * longer message going whole anyway. The sender reads each chunk from the session's store, the cost of a snapshot,
-     * while the link's live writes wait. Larger finishes a snapshot sooner under load, smaller delays the other
+     * while the lane's live writes wait. Larger finishes a snapshot sooner under load, smaller delays the other
      * sessions less. Capped at the largest event frame's batch.
      */
     @Builder.Default

@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.wire.SessionStatus;
+import org.lolaf.staffix.ha.wire.SessionAnswer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -54,7 +54,7 @@ class TestReplicaSession {
 
     @Test
     void aSessionNotReplicatedHasNoPendingWrites() {
-        ReplicaSession session = ReplicaSession.notReplicated(FixSessionType.ACCEPTOR, "alpha", SessionStatus.NOT_REPLICATED);
+        ReplicaSession session = ReplicaSession.notReplicated(FixSessionType.ACCEPTOR, "alpha", SessionAnswer.NOT_REPLICATED);
 
         assertThat(pendingWritesOf(session)).isZero();
     }

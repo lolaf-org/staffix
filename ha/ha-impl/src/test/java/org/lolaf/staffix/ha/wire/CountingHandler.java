@@ -30,12 +30,12 @@ class CountingHandler implements FrameHandler {
     long checksum;
 
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int link) {
+    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane) {
         frames++;
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int links) {
+    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes) {
         frames++;
     }
 
@@ -46,7 +46,7 @@ class CountingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSessionStatus(long epoch, int sessionKey, SessionStatus status) {
+    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer status) {
         frames++;
     }
 
@@ -58,7 +58,7 @@ class CountingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSnapshotBegin(long epoch, int sessionKey, long cutOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+    public void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         frames++;
     }
 

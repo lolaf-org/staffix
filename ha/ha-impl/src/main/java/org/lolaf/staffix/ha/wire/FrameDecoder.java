@@ -87,12 +87,12 @@ public class FrameDecoder {
             case SESSION:
                 onSession(in, p, flags, epoch, variableBytes, handler);
                 break;
-            case SESSION_STATUS:
-                SessionStatus status = SessionStatus.forCode(in.get(p + 4));
+            case SESSION_ANSWER:
+                SessionAnswer status = SessionAnswer.forCode(in.get(p + 4));
                 if (status == null) {
-                    throw new WireFormatException("Unknown session status " + in.get(p + 4));
+                    throw new WireFormatException("Unknown session answer " + in.get(p + 4));
                 }
-                handler.onSessionStatus(epoch, in.getInt(p), status);
+                handler.onSessionAnswer(epoch, in.getInt(p), status);
                 break;
             case STORE_EVENT:
                 int eventLength = in.getInt(p + 24);

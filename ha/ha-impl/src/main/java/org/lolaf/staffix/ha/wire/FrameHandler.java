@@ -35,17 +35,17 @@ public interface FrameHandler {
      *
      * @param lastAppliedOffset the offset of the last event it applied in {@code lastAppliedEpoch}, -1 for none: the
      *                          leader resumes after it when its log still holds it in the same epoch
-     * @param link              which of the leader's links this connection carries, 0 for the first, the one that
+     * @param lane              which of the leader's lanes this connection carries, 0 for the first, the one that
      *                          learns how many there are
      */
-    void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int link);
+    void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane);
 
     /**
      * @param resumeOffset where the stream resumes, or {@link WireFormat#NO_RESUME} when every session is caught up
      *                     by snapshot
-     * @param links        how many links the leader splits its sessions over; the follower opens the others
+     * @param lanes        how many lanes the leader splits its sessions over; the follower opens the others
      */
-    void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int links);
+    void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes);
 
     /**
      * Binds a session key, used by every later frame about the session, to the session's id.
@@ -59,7 +59,7 @@ public interface FrameHandler {
      * The follower's answer to a {@code SESSION}, and again whenever the session's state on the follower changes, as
      * when a snapshot completes it.
      */
-    void onSessionStatus(long epoch, int sessionKey, SessionStatus status);
+    void onSessionAnswer(long epoch, int sessionKey, SessionAnswer status);
 
     /**
      * @param logOffset     the event's position in the leader's replication log
@@ -70,10 +70,10 @@ public interface FrameHandler {
                       ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags);
 
     /**
-     * @param cutOffset the log offset the snapshot starts at; the session's events after it come through the snapshot
+     * @param snapshotOffset the log offset the snapshot starts at; the session's events after it come through the snapshot
      *                  until its end, and through the stream again after that
      */
-    void onSnapshotBegin(long epoch, int sessionKey, long cutOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum);
+    void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum);
 
     /**
      * @param fragmentFlags as for {@link #onStoreEvent}, from the frame's header: a snapshot carries a message longer
@@ -94,7 +94,7 @@ public interface FrameHandler {
      * @param appliedOffset the offset of the last event the follower applied, which releases the {@code SYNC} sends
      *                      waiting for it
      * @param inSync        whether the follower holds every session the leader replicates
-     * @param pendingWrites what the follower's stores for this link have yet to store, as of the last second or so
+     * @param pendingWrites what the follower's stores for this lane have yet to store, as of the last second or so
      */
     void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites);
 

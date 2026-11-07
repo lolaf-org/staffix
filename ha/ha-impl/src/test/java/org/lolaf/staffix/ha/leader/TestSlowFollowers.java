@@ -104,7 +104,7 @@ class TestSlowFollowers {
     }
 
     @Test
-    void eachLinkOfAFollowerIsHeldOffOnItsOwn() {
+    void eachLaneOfAFollowerIsHeldOffOnItsOwn() {
         slowFollowers.dropped("b", 1);
 
         assertThat(slowFollowers.heldOffUntil("b", 1)).contains(START.plusSeconds(1));

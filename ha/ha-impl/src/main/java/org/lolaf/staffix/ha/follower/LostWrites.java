@@ -22,7 +22,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 /**
  * Tells a failed write that resuming will cure from one that stops a session alone. With the resource down the stream
  * resumes before the write once it is back, so nothing is lost; with it up the same write would fail again at each
- * resume and hold back every session of the link, so it is given up, as a session gives up a message its store refuses.
+ * resume and hold back every session of the lane, so it is given up, as a session gives up a message its store refuses.
  */
 @Slf4j
 @RequiredArgsConstructor

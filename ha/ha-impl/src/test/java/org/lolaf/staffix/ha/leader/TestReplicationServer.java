@@ -55,16 +55,16 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
 
 /**
- * The publisher over a real connection, its follower played by a betty client that sends a HELLO and records what
+ * The server over a real connection, its follower played by a betty client that sends a HELLO and records what
  * comes back.
  */
-class TestReplicationPublisher {
+class TestReplicationServer {
 
     private static final long EPOCH = 7;
 
     private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
-    private final ReplicationPublisher publisher = new ReplicationPublisher(address, ha.getReplicationLogs(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
+    private final ReplicationServer server = new ReplicationServer(address, ha.getReplicationLogs(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
             "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE,
             BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
     private final RecordingHandler received = new RecordingHandler();
@@ -128,25 +128,25 @@ class TestReplicationPublisher {
         if (follower != null) {
             follower.stop(Deadline.of(Duration.ofSeconds(2)));
         }
-        publisher.stop(Deadline.of(Duration.ofSeconds(2)));
+        server.stop(Deadline.of(Duration.ofSeconds(2)));
     }
 
     @Test
     void aResumingFollowerIsStreamedTheEventsAppendedAfterItsLastOne() {
         FixSessionMessagesStore store = replicated();
         store.storeNextIncomingSeqNum(1);
-        publisher.start();
+        server.start();
 
         connectFollower(EPOCH, 0);
         await().until(() -> !ha.getFollowers().all().isEmpty()
-                && ha.getFollowers().all().get(0).getState() == FollowerLink.State.STREAMING);
+                && ha.getFollowers().all().get(0).getState() == FollowerConnection.State.STREAMING);
         store.storeNextIncomingSeqNum(2);
         store.storeNextOutgoingSeqNum(9);
 
         await().untilAsserted(() -> assertThat(received())
                 .filteredOn(frame -> !frame.startsWith("HEARTBEAT"))
                 .containsExactly(
-                        "WELCOME epoch=7 version=1 leader=leader-a resume=48 links=1",
+                        "WELCOME epoch=7 version=1 leader=leader-a resume=48 lanes=1",
                         "SESSION epoch=7 key=0 ACCEPTOR ASYNC id=default.main:VERSION_44:SENDER->TARGET identity=null",
                         "STORE_EVENT epoch=7 offset=48 key=0 STORE_INCOMING_SEQ_NUM seq=2 message=",
                         "STORE_EVENT epoch=7 offset=96 key=0 STORE_OUTGOING_SEQ_NUM seq=9 message="));
@@ -155,7 +155,7 @@ class TestReplicationPublisher {
     @Test
     void anIdleLeaderSendsHeartbeatsWithTheLogTail() {
         replicated().storeNextIncomingSeqNum(1);
-        publisher.start();
+        server.start();
 
         connectFollower(0, -1);
 
@@ -164,7 +164,7 @@ class TestReplicationPublisher {
 
     @Test
     void aConnectedFollowerIsReportedAtItsAddress() {
-        publisher.start();
+        server.start();
         connectFollower(0, -1);
 
         await().untilAsserted(() -> assertThat(ha.getFollowers().all()).hasSize(1));
@@ -174,7 +174,7 @@ class TestReplicationPublisher {
 
     @Test
     void aFollowerThatDisconnectsIsForgotten() {
-        publisher.start();
+        server.start();
         connectFollower(0, -1);
         await().until(() -> ha.getFollowers().all().size() == 1);
 

@@ -29,7 +29,7 @@ import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
-import org.lolaf.staffix.ha.wire.SessionStatus;
+import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.tests.TestingClock;
 
@@ -66,25 +66,25 @@ class TestFollowers {
         store.storeNextIncomingSeqNum(2);
     }
 
-    private FollowerLink inSyncFollower(long appliedOffset) {
-        IOSession connection = mock(IOSession.class);
-        when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
-        FollowerLink link = new FollowerLink(connection, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
+    private FollowerConnection inSyncFollower(long appliedOffset) {
+        IOSession ioSession = mock(IOSession.class);
+        when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
+        FollowerConnection connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         });
-        link.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0, 0);
-        link.fill(ByteBuffer.allocate(1 << 16));
-        link.onSessionStatus(EPOCH, KEY, SessionStatus.REPLICATING);
-        link.onAck(EPOCH, appliedOffset, true, 0);
-        followers.add(link);
-        return link;
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0, 0);
+        connection.fill(ByteBuffer.allocate(1 << 16));
+        connection.onSessionAnswer(EPOCH, KEY, SessionAnswer.REPLICATING);
+        connection.onAck(EPOCH, appliedOffset, true, 0);
+        followers.add(connection);
+        return connection;
     }
 
     @Test
     void withoutAFollowerInSyncTheWaitEndsAtOnceEvenWithoutATimeout() {
         assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
 
-        inSyncFollower(0).onSessionStatus(EPOCH, KEY, SessionStatus.SNAPSHOT_NEEDED);
+        inSyncFollower(0).onSessionAnswer(EPOCH, KEY, SessionAnswer.SNAPSHOT_NEEDED);
 
         assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
     }
@@ -107,7 +107,7 @@ class TestFollowers {
 
     @Test
     void aFollowerAWaitTimedOutOnIsNotWaitedForAgainUntilItAppliesWhatItMissed() {
-        FollowerLink follower = inSyncFollower(0);
+        FollowerConnection follower = inSyncFollower(0);
         assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, TimeUnit.MILLISECONDS.toNanos(20), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
 
         assertThat(CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy())))
@@ -120,7 +120,7 @@ class TestFollowers {
 
     @Test
     void theWaitEndsWhenTheFollowerAcks() {
-        FollowerLink follower = inSyncFollower(0);
+        FollowerConnection follower = inSyncFollower(0);
 
         CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy()));
         follower.onAck(EPOCH, offset, true, 0);
@@ -130,7 +130,7 @@ class TestFollowers {
 
     @Test
     void aSyncReceivedWaitEndsOnceTheFollowerReceivedTheEvent() {
-        FollowerLink follower = inSyncFollower(0);
+        FollowerConnection follower = inSyncFollower(0);
 
         follower.onReceived(EPOCH, offset);
 
@@ -139,7 +139,7 @@ class TestFollowers {
 
     @Test
     void aSyncAppliedWaitIsNotEndedByTheEventReceivedOnly() {
-        FollowerLink follower = inSyncFollower(0);
+        FollowerConnection follower = inSyncFollower(0);
 
         follower.onReceived(EPOCH, offset);
 
@@ -149,7 +149,7 @@ class TestFollowers {
 
     @Test
     void aSyncReceivedWaitEndsOnAnApplyTheFollowerSentNoReceivedFor() {
-        FollowerLink follower = inSyncFollower(0);
+        FollowerConnection follower = inSyncFollower(0);
 
         follower.onAck(EPOCH, offset, true, 0);
 
@@ -158,7 +158,7 @@ class TestFollowers {
 
     @Test
     void anAckWakesAWaitParkedLongerThanTheTest() {
-        FollowerLink follower = inSyncFollower(0);
+        FollowerConnection follower = inSyncFollower(0);
         long parkNanos = TimeUnit.SECONDS.toNanos(30);
         IdleStrategy parking = new BackoffIdleStrategy(0, 0, parkNanos, parkNanos);
         followers.addWaiter(parking);
@@ -175,7 +175,7 @@ class TestFollowers {
 
     @Test
     void aFollowerDisconnectingReleasesTheWait() {
-        FollowerLink follower = inSyncFollower(0);
+        FollowerConnection follower = inSyncFollower(0);
 
         CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy()));
         follower.disconnected();
@@ -184,29 +184,29 @@ class TestFollowers {
     }
 
     @Test
-    void aSyncSendWaitsOnlyForTheLinkCarryingItsSession() {
-        ReplicationFixEngineHa twoLinks = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
-                .replicationLinks(2).build());
-        FixSessionMessagesStore main = twoLinks.replicatingStore(syncSession("main"), mock(FixSessionMessagesStore.class),
+    void aSyncSendWaitsOnlyForTheLaneCarryingItsSession() {
+        ReplicationFixEngineHa twoLanes = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
+                .replicationLanes(2).build());
+        FixSessionMessagesStore main = twoLanes.replicatingStore(syncSession("main"), mock(FixSessionMessagesStore.class),
                 new RecordingProbes());
-        FixSessionMessagesStore other = twoLinks.replicatingStore(syncSession("other"), mock(FixSessionMessagesStore.class),
+        FixSessionMessagesStore other = twoLanes.replicatingStore(syncSession("other"), mock(FixSessionMessagesStore.class),
                 new RecordingProbes());
         main.storeNextIncomingSeqNum(1);
         other.storeNextIncomingSeqNum(1);
-        IOSession connection = mock(IOSession.class);
-        when(connection.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
-        FollowerLink linkOfMain = new FollowerLink(connection, twoLinks.getReplicationLogs(), twoLinks.getSessions(),
+        IOSession ioSession = mock(IOSession.class);
+        when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
+        FollowerConnection connectionOfMain = new FollowerConnection(ioSession, twoLanes.getReplicationLogs(), twoLanes.getSessions(),
                 () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         });
-        linkOfMain.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, 0);
-        linkOfMain.fill(ByteBuffer.allocate(1 << 16));
-        linkOfMain.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
-        linkOfMain.onAck(EPOCH, twoLinks.getReplicationLogs().get(0).getTailOffset(), true, 0);
-        followers.add(linkOfMain);
+        connectionOfMain.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, 0);
+        connectionOfMain.fill(ByteBuffer.allocate(1 << 16));
+        connectionOfMain.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
+        connectionOfMain.onAck(EPOCH, twoLanes.getReplicationLogs().get(0).getTailOffset(), true, 0);
+        followers.add(connectionOfMain);
 
         assertThat(followers.awaitAck(0, 0, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
-        assertThat(followers.awaitAck(1, 0, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).as("other's link is not connected")
+        assertThat(followers.awaitAck(1, 0, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).as("other's lane is not connected")
                 .isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
     }
 
@@ -241,10 +241,10 @@ class TestFollowers {
 
     @Test
     void theListOfFollowersIsBuiltOnlyWhenOneJoinsOrLeaves() {
-        FollowerLink first = inSyncFollower(offset);
+        FollowerConnection first = inSyncFollower(offset);
         assertThat(followers.all()).containsExactly(first).isSameAs(followers.all());
 
-        FollowerLink second = inSyncFollower(offset);
+        FollowerConnection second = inSyncFollower(offset);
         assertThat(followers.all()).containsExactly(first, second);
 
         followers.remove(first);

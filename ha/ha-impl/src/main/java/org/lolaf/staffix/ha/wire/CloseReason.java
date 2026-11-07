@@ -57,9 +57,9 @@ public enum CloseReason {
      */
     RETRY_LATER(10),
     /**
-     * The follower opened a link past the count the leader announced in its WELCOME.
+     * The follower opened a lane past the count the leader announced in its WELCOME.
      */
-    NO_SUCH_LINK(11),
+    NO_SUCH_LANE(11),
     /**
      * Any other code, from a newer peer; kept rather than refused so the close is still reported.
      */
@@ -94,7 +94,7 @@ public enum CloseReason {
             case 10:
                 return RETRY_LATER;
             case 11:
-                return NO_SUCH_LINK;
+                return NO_SUCH_LANE;
             default:
                 return UNKNOWN;
         }

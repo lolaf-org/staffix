@@ -56,7 +56,7 @@ class TestFrameCodec {
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("HELLO epoch=7 version=1 node=node-b lastEpoch=6 lastOffset=1234 link=3");
+        assertThat(handler.frames).containsExactly("HELLO epoch=7 version=1 node=node-b lastEpoch=6 lastOffset=1234 lane=3");
     }
 
     @Test
@@ -66,7 +66,7 @@ class TestFrameCodec {
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("WELCOME epoch=7 version=1 leader=node-a resume=-1 links=4");
+        assertThat(handler.frames).containsExactly("WELCOME epoch=7 version=1 leader=node-a resume=-1 lanes=4");
     }
 
     @Test
@@ -117,13 +117,13 @@ class TestFrameCodec {
     }
 
     @Test
-    void sessionStatus() {
+    void sessionAnswer() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.sessionStatus(buffer, 0, 7, 3, SessionStatus.SHARED_STORAGE);
+        int length = FrameEncoder.sessionAnswer(buffer, 0, 7, 3, SessionAnswer.SHARED_STORAGE);
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("SESSION_STATUS epoch=7 key=3 SHARED_STORAGE");
+        assertThat(handler.frames).containsExactly("SESSION_ANSWER epoch=7 key=3 SHARED_STORAGE");
     }
 
     @ParameterizedTest
@@ -164,7 +164,7 @@ class TestFrameCodec {
         decodeWhole(buffer, begin + message, end);
 
         assertThat(handler.frames).containsExactly(
-                "SNAPSHOT_BEGIN epoch=7 key=3 cut=8192 nextIn=19 nextOut=43",
+                "SNAPSHOT_BEGIN epoch=7 key=3 snapshotOffset=8192 nextIn=19 nextOut=43",
                 "SNAPSHOT_MESSAGE epoch=7 key=3 seq=42 message=" + new String(MESSAGE, StandardCharsets.US_ASCII),
                 "SNAPSHOT_END epoch=7 key=3 count=1 nextIn=20 nextOut=44");
     }

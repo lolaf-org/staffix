@@ -25,10 +25,10 @@ import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
-import org.lolaf.staffix.ha.follower.ReplicationReceiver;
-import org.lolaf.staffix.ha.leader.FollowerLink;
+import org.lolaf.staffix.ha.follower.ReplicationClient;
+import org.lolaf.staffix.ha.leader.FollowerConnection;
 import org.lolaf.staffix.ha.leader.Followers;
-import org.lolaf.staffix.ha.wire.SessionStatus;
+import org.lolaf.staffix.ha.wire.SessionAnswer;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -46,7 +46,7 @@ class HaProbes {
 
     static final String COMPONENT = "ha";
     static final String FOLLOWERS = "ha-followers";
-    static final String LEADER_LINK = "ha-leader-link";
+    static final String LEADER_CONNECTION = "ha-leader-connection";
     static final String LEADERSHIP = "ha-leadership";
     static final String REPLICATION = "ha-replication";
 
@@ -66,8 +66,8 @@ class HaProbes {
     static void register(Probes probes, ReplicationFixEngineHa ha) {
         replace(probes, FOLLOWERS, "While leading: the followers connected, in sync and applying the writes, without"
                 + " which a failover loses the sessions' latest writes.", followers(ha));
-        replace(probes, LEADER_LINK, "While following: the connection to the leader and whether this node holds every"
-                + " replicated session in full, as a failover to it needs.", leaderLink(ha));
+        replace(probes, LEADER_CONNECTION, "While following: the connection to the leader and whether this node holds every"
+                + " replicated session in full, as a failover to it needs.", leaderConnection(ha));
         replace(probes, LEADERSHIP, "Whether this node knows its role: without one it neither runs the sessions nor"
                 + " replicates them.", leadership(ha));
     }
@@ -89,18 +89,18 @@ class HaProbes {
 
     static ProbeEvaluator followers(ReplicationFixEngineHa ha) {
         return () -> {
-            if (ha.getFollowedRole() != Role.LEADER) {
+            if (ha.getRole() != Role.LEADER) {
                 return Optional.empty();
             }
             List<String> lagging = new ArrayList<>();
             List<String> stalled = new ArrayList<>();
             long thresholdMillis = ha.getSettings().getFollowerLagAlertThreshold().toMillis();
             boolean anyConnected = false;
-            int links = ha.getReplicationLogs().count();
-            for (FollowerLink link : ha.getFollowers().all()) {
-                HaStatus.FollowerConnection follower = link.status(ha.getSessions().count());
+            int lanes = ha.getReplicationLogs().count();
+            for (FollowerConnection connection : ha.getFollowers().all()) {
+                HaStatus.FollowerConnection follower = connection.status(ha.getSessions().count());
                 anyConnected |= follower.isConnected();
-                String name = name(follower.getNodeId(), follower.getLane(), links);
+                String name = name(follower.getNodeId(), follower.getLane(), lanes);
                 if (follower.isConnected() && follower.getLagMillis() > thresholdMillis) {
                     stalled.add(name + " has not applied a write for " + follower.getLagMillis() + " ms");
                 } else if (follower.isConnected() && (!follower.isInSync() || follower.isSnapshotInProgress())) {
@@ -111,7 +111,7 @@ class HaProbes {
             List<HaStatus.DroppedFollower> droppedTooSlow = ha.getStats().getSlowFollowers().notBackInSync();
             if (!droppedTooSlow.isEmpty()) {
                 return Optional.of(Alert.major("Follower " + droppedTooSlow.stream()
-                        .map(dropped -> name(dropped.getNodeId(), dropped.getLane(), links) + " dropped as too slow at " + dropped.getDroppedAt()
+                        .map(dropped -> name(dropped.getNodeId(), dropped.getLane(), lanes) + " dropped as too slow at " + dropped.getDroppedAt()
                                 + (dropped.getHeldOffUntil() == null ? "" : ", held off until " + dropped.getHeldOffUntil()))
                         .collect(Collectors.joining("; ")) + ", a write having waited "
                         + ha.getSettings().getLogFullTimeout().toMillis() + " ms for it, and not back in sync: a"
@@ -129,31 +129,31 @@ class HaProbes {
         };
     }
 
-    private static String name(@Nullable String nodeId, int link, int links) {
-        return links == 1 ? String.valueOf(nodeId) : nodeId + " link " + link;
+    private static String name(@Nullable String nodeId, int lane, int lanes) {
+        return lanes == 1 ? String.valueOf(nodeId) : nodeId + " lane " + lane;
     }
 
-    static ProbeEvaluator leaderLink(ReplicationFixEngineHa ha) {
+    static ProbeEvaluator leaderConnection(ReplicationFixEngineHa ha) {
         return () -> {
-            if (ha.getFollowedRole() != Role.FOLLOWER) {
+            if (ha.getRole() != Role.FOLLOWER) {
                 return Optional.empty();
             }
-            ReplicationReceiver receiver = ha.getReceiver();
-            if (receiver == null) {
+            ReplicationClient client = ha.getClient();
+            if (client == null) {
                 return Optional.of(Alert.major("No address for the leader, " + leaderId(ha) + ", to replicate from"));
             }
-            if (!receiver.isConnected()) {
-                return Optional.of(Alert.major("Not connected to the leader " + receiver.status().getAddress()
+            if (!client.isConnected()) {
+                return Optional.of(Alert.major("Not connected to the leader " + client.status().getAddress()
                         + " for " + RAISE_DELAY.toSeconds() + " s"));
             }
-            return receiver.isInSync() ? Optional.empty()
+            return client.isInSync() ? Optional.empty()
                     : Optional.of(Alert.warning("Connected to the leader, but not holding every replicated session in full"));
         };
     }
 
     static ProbeEvaluator leadership(ReplicationFixEngineHa ha) {
         return () -> {
-            if (ha.getFollowedRole() != Role.UNKNOWN) {
+            if (ha.getRole() != Role.UNKNOWN) {
                 return Optional.empty();
             }
             LeaderElection election = ha.getElection();
@@ -183,10 +183,10 @@ class HaProbes {
         @Override
         public Optional<Alert> evaluate() {
             List<String> problems = new ArrayList<>();
-            for (FollowerLink link : followers.all()) {
-                SessionStatus reported = link.getReportedStatus(session.getKey());
+            for (FollowerConnection connection : followers.all()) {
+                SessionAnswer reported = connection.getSessionAnswer(session.getKey());
                 if (reported != null && reported.isRefusal()) {
-                    problems.add("follower " + link.getFollowerId() + " refuses to replicate it: " + reported);
+                    problems.add("follower " + connection.getFollowerId() + " refuses to replicate it: " + reported);
                 }
             }
             long now = nanoClock.getAsLong();

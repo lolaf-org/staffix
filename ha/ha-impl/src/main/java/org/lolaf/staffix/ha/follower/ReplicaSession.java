@@ -26,7 +26,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.wire.SessionStatus;
+import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
@@ -53,7 +53,7 @@ final class ReplicaSession {
      * Why the session is not replicated here, unused when it is.
      */
     @Getter
-    private final SessionStatus notReplicatedStatus;
+    private final SessionAnswer notReplicatedStatus;
     /**
      * Kept by a session refused until its settings here change, to bind it again once they do.
      */
@@ -83,7 +83,7 @@ final class ReplicaSession {
     private @Nullable ByteBuffer assembledMessage;
 
     private ReplicaSession(FixSessionType fixSessionType, String fixSessionId, boolean replicated,
-                           FixSessionMessagesStore store, SessionStatus notReplicatedStatus) {
+                           FixSessionMessagesStore store, SessionAnswer notReplicatedStatus) {
         this.fixSessionType = fixSessionType;
         this.fixSessionId = fixSessionId;
         this.replicated = replicated;
@@ -96,14 +96,14 @@ final class ReplicaSession {
     }
 
     static ReplicaSession replicated(FixSessionType fixSessionType, String fixSessionId, FixSessionMessagesStore store) {
-        return new ReplicaSession(fixSessionType, fixSessionId, true, store, SessionStatus.SNAPSHOT_NEEDED);
+        return new ReplicaSession(fixSessionType, fixSessionId, true, store, SessionAnswer.SNAPSHOT_NEEDED);
     }
 
-    static ReplicaSession notReplicated(FixSessionType fixSessionType, String fixSessionId, SessionStatus status) {
+    static ReplicaSession notReplicated(FixSessionType fixSessionType, String fixSessionId, SessionAnswer status) {
         return new ReplicaSession(fixSessionType, fixSessionId, false, NoStore.INSTANCE, status);
     }
 
-    static ReplicaSession refused(FixSessionType fixSessionType, String fixSessionId, SessionStatus refusal,
+    static ReplicaSession refused(FixSessionType fixSessionType, String fixSessionId, SessionAnswer refusal,
                                   ReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
         ReplicaSession session = notReplicated(fixSessionType, fixSessionId, refusal);
         session.leaderMode = leaderMode;
@@ -111,11 +111,11 @@ final class ReplicaSession {
         return session;
     }
 
-    SessionStatus status() {
+    SessionAnswer status() {
         if (!replicated) {
             return notReplicatedStatus;
         }
-        return complete ? SessionStatus.REPLICATING : SessionStatus.SNAPSHOT_NEEDED;
+        return complete ? SessionAnswer.REPLICATING : SessionAnswer.SNAPSHOT_NEEDED;
     }
     
     boolean isNotCaughtUp() {
@@ -144,8 +144,8 @@ final class ReplicaSession {
     }
 
     boolean isRefusedUntilSettingsChange() {
-        return !replicated && (notReplicatedStatus == SessionStatus.UNKNOWN_SESSION
-                || notReplicatedStatus == SessionStatus.MODE_MISMATCH);
+        return !replicated && (notReplicatedStatus == SessionAnswer.UNKNOWN_SESSION
+                || notReplicatedStatus == SessionAnswer.MODE_MISMATCH);
     }
 
     boolean matches(FixSessionType fixSessionType, String fixSessionId) {

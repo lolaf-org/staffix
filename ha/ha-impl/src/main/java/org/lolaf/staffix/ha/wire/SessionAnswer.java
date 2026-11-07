@@ -21,7 +21,7 @@ import lombok.Getter;
  * The follower's answer to a {@link FrameType#SESSION}: whether it replicates the session, and why not.
  */
 @Getter
-public enum SessionStatus {
+public enum SessionAnswer {
 
     REPLICATING(0),
     /**
@@ -52,7 +52,7 @@ public enum SessionStatus {
 
     private final int code;
 
-    SessionStatus(int code) {
+    SessionAnswer(int code) {
         this.code = code;
     }
 
@@ -66,7 +66,7 @@ public enum SessionStatus {
     /**
      * @return the status, or null for an unknown code
      */
-    public static SessionStatus forCode(int code) {
+    public static SessionAnswer forCode(int code) {
         switch (code) {
             case 0:
                 return REPLICATING;

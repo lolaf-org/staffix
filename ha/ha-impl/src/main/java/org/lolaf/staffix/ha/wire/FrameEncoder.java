@@ -70,7 +70,7 @@ public class FrameEncoder {
     }
 
     public static int hello(ByteBuffer out, int index, long epoch, String nodeId, long lastAppliedEpoch,
-                            long lastAppliedOffset, int link) {
+                            long lastAppliedOffset, int lane) {
         byte[] id = utf8(nodeId);
         int length = header(out, index, FrameType.HELLO, 0, epoch, id.length);
         int p = index + HEADER_BYTES;
@@ -79,12 +79,12 @@ public class FrameEncoder {
         out.putShort(p + 6, (short) id.length);
         out.putLong(p + 8, lastAppliedEpoch);
         out.putLong(p + 16, lastAppliedOffset);
-        out.putShort(p + 24, (short) link);
+        out.putShort(p + 24, (short) lane);
         putBytes(out, p + 32, id);
         return length;
     }
 
-    public static int welcome(ByteBuffer out, int index, long epoch, String leaderId, long resumeOffset, int links) {
+    public static int welcome(ByteBuffer out, int index, long epoch, String leaderId, long resumeOffset, int lanes) {
         byte[] id = utf8(leaderId);
         int length = header(out, index, FrameType.WELCOME, 0, epoch, id.length);
         int p = index + HEADER_BYTES;
@@ -92,7 +92,7 @@ public class FrameEncoder {
         out.putShort(p + 4, WireFormat.VERSION);
         out.putShort(p + 6, (short) id.length);
         out.putLong(p + 8, resumeOffset);
-        out.putShort(p + 16, (short) links);
+        out.putShort(p + 16, (short) lanes);
         putBytes(out, p + 24, id);
         return length;
     }
@@ -114,8 +114,8 @@ public class FrameEncoder {
         return length;
     }
 
-    public static int sessionStatus(ByteBuffer out, int index, long epoch, int sessionKey, SessionStatus status) {
-        int length = header(out, index, FrameType.SESSION_STATUS, 0, epoch, 0);
+    public static int sessionAnswer(ByteBuffer out, int index, long epoch, int sessionKey, SessionAnswer status) {
+        int length = header(out, index, FrameType.SESSION_ANSWER, 0, epoch, 0);
         int p = index + HEADER_BYTES;
         out.putInt(p, sessionKey);
         out.put(p + 4, (byte) status.getCode());
@@ -183,13 +183,13 @@ public class FrameEncoder {
         return length;
     }
 
-    public static int snapshotBegin(ByteBuffer out, int index, long epoch, int sessionKey, long cutOffset,
+    public static int snapshotBegin(ByteBuffer out, int index, long epoch, int sessionKey, long snapshotOffset,
                                     long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         int length = header(out, index, FrameType.SNAPSHOT_BEGIN, 0, epoch, 0);
         int p = index + HEADER_BYTES;
         out.putInt(p, sessionKey);
         out.putInt(p + 4, 0);
-        out.putLong(p + 8, cutOffset);
+        out.putLong(p + 8, snapshotOffset);
         out.putLong(p + 16, nextIncomingSeqNum);
         out.putLong(p + 24, nextOutgoingSeqNum);
         return length;

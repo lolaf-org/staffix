@@ -118,10 +118,10 @@ public class HaPair {
     @Param({"false"})
     boolean busyResync;
     /**
-     * The sessions split over this many replication links, session {@code n} on link {@code n} modulo the count.
+     * The sessions split over this many replication lanes, session {@code n} on lane {@code n} modulo the count.
      */
     @Param({"1"})
-    int replicationLinks;
+    int replicationLanes;
     /**
      * Off, a FILE store writes to the page cache only, as every file store did before {@code syncWrites} forced.
      */
@@ -222,8 +222,8 @@ public class HaPair {
                 resyncer.start();
             }
         }
-        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}, leader IO threads {}, busy resync {}, replication links {}, follower store writer threads {}",
-                mode, followerStore, busySession, replicationWaiting, leaderIoThreads, busyResync, replicationLinks,
+        log.info("HA pair ready: {} replication, {} follower store, busy session {}, replication waiting {}, leader IO threads {}, busy resync {}, replication lanes {}, follower store writer threads {}",
+                mode, followerStore, busySession, replicationWaiting, leaderIoThreads, busyResync, replicationLanes,
                 followerStoreWriterThreads);
     }
 
@@ -310,7 +310,7 @@ public class HaPair {
                         .build())
                 .highAvailability(replicationWaiting(ReplicationHaSettings.builder(), replicationWaiting)
                         .nodeId(nodeId)
-                        .replicationLinks(replicationLinks)
+                        .replicationLanes(replicationLanes)
                         .followerStoreWriterThreads(followerStoreWriterThreads)
                         .peer("a", replicationA)
                         .peer("b", replicationB)

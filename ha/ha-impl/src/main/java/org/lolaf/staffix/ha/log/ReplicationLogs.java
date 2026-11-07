@@ -16,8 +16,8 @@
 package org.lolaf.staffix.ha.log;
 
 /**
- * The leader's replication links, each with its own log, so a snapshot or a slow follower on one link holds back only
- * the sessions of that link. A session belongs to link {@code key % count}, keys being given out in registration
+ * The leader's replication lanes, each with its own log, so a snapshot or a slow follower on one lane holds back only
+ * the sessions of that lane. A session belongs to lane {@code key % count}, keys being given out in registration
  * order.
  */
 public final class ReplicationLogs {
@@ -25,15 +25,15 @@ public final class ReplicationLogs {
     private final ReplicationLog[] logs;
 
     /**
-     * @param capacity of each link's log, bytes, a power of two of at least 1024
+     * @param capacity of each lane's log, bytes, a power of two of at least 1024
      */
-    public ReplicationLogs(int links, int capacity) {
-        if (links < 1) {
-            throw new IllegalArgumentException("replicationLinks must be at least 1, got " + links);
+    public ReplicationLogs(int lanes, int capacity) {
+        if (lanes < 1) {
+            throw new IllegalArgumentException("replicationLanes must be at least 1, got " + lanes);
         }
-        this.logs = new ReplicationLog[links];
-        for (int link = 0; link < links; link++) {
-            logs[link] = new ReplicationLog(capacity);
+        this.logs = new ReplicationLog[lanes];
+        for (int lane = 0; lane < lanes; lane++) {
+            logs[lane] = new ReplicationLog(capacity);
         }
     }
 
@@ -41,27 +41,27 @@ public final class ReplicationLogs {
         return logs.length;
     }
 
-    public ReplicationLog get(int link) {
-        return logs[link];
+    public ReplicationLog get(int lane) {
+        return logs[lane];
     }
 
-    public int linkOf(int sessionKey) {
+    public int laneOf(int sessionKey) {
         return sessionKey % logs.length;
     }
 
     public ReplicationLog forSession(int sessionKey) {
-        return logs[linkOf(sessionKey)];
+        return logs[laneOf(sessionKey)];
     }
 
     /**
-     * The same for every link, whose logs all have one capacity.
+     * The same for every lane, whose logs all have one capacity.
      */
     public int getMaxEventFrameBytes() {
         return logs[0].getMaxEventFrameBytes();
     }
 
     /**
-     * The bytes written to every link's log since the start.
+     * The bytes written to every lane's log since the start.
      */
     public long getTailOffsets() {
         long written = 0;

@@ -207,8 +207,8 @@ class TestReplicationAllocation {
                         .build()).start();
         await().until(() -> initiator.session != null);
         if (follower != null) {
-            await().until(() -> follower.getReplica().isComplete()
-                    && follower.getReplica().getStore(FixSession.FixSessionType.ACCEPTOR, ACCEPTOR_ID.toString()) != null);
+            await().until(() -> follower.getReplicaSessions().isComplete()
+                    && follower.getReplicaSessions().getStore(FixSession.FixSessionType.ACCEPTOR, ACCEPTOR_ID.toString()) != null);
         }
 
         initiator.roundTrips(WARM_UP);
@@ -218,7 +218,7 @@ class TestReplicationAllocation {
         long allocated = THREADS.getThreadAllocatedBytes(acceptor.sessionThread.getId()) - before;
 
         if (follower != null) {
-            FixSessionMessagesStore replica = follower.getReplica().getStore(FixSession.FixSessionType.ACCEPTOR, ACCEPTOR_ID.toString());
+            FixSessionMessagesStore replica = follower.getReplicaSessions().getStore(FixSession.FixSessionType.ACCEPTOR, ACCEPTOR_ID.toString());
             try {
                 await().untilAsserted(() -> assertThat(replica.getOutgoingSeqNum()).as("replicated").isGreaterThan(WARM_UP + MEASURED));
             } catch (ConditionTimeoutException e) {
@@ -236,8 +236,8 @@ class TestReplicationAllocation {
     private static void logStall(ReplicationMode mode, FixEngine leaderEngine, ReplicationFixEngineHa follower,
                                  FixSessionMessagesStore replica) {
         log.error("STALL {}: replica outgoing seqnum {}, follower applied epoch {} offset {}, complete {}",
-                mode, replica.getOutgoingSeqNum(), follower.getReplica().getLastAppliedEpoch(0),
-                follower.getReplica().getLastAppliedOffset(0), follower.getReplica().isComplete());
+                mode, replica.getOutgoingSeqNum(), follower.getReplicaSessions().getLastAppliedEpoch(0),
+                follower.getReplicaSessions().getLastAppliedOffset(0), follower.getReplicaSessions().isComplete());
         log.error("STALL leader status: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getStatus).orElse(null));
         log.error("STALL leader sessions: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getSessionStatuses).orElse(null));
         log.error("STALL follower status: {}", follower.getStatus());

@@ -34,28 +34,28 @@ public final class Followers {
         NO_FOLLOWER_IN_SYNC
     }
 
-    private static final FollowerLink[] NONE = new FollowerLink[0];
+    private static final FollowerConnection[] NONE = new FollowerConnection[0];
     private static final IdleStrategy[] NO_WAITERS = new IdleStrategy[0];
 
-    private volatile FollowerLink[] links = NONE;
-    private volatile List<FollowerLink> linksList = List.of();
+    private volatile FollowerConnection[] connections = NONE;
+    private volatile List<FollowerConnection> lanesList = List.of();
     private volatile IdleStrategy[] waiters = NO_WAITERS;
     private final AtomicInteger waiting = new AtomicInteger();
 
-    synchronized void add(FollowerLink link) {
-        FollowerLink[] added = Arrays.copyOf(links, links.length + 1);
-        added[links.length] = link;
-        links(added);
+    synchronized void add(FollowerConnection connection) {
+        FollowerConnection[] added = Arrays.copyOf(connections, connections.length + 1);
+        added[connections.length] = connection;
+        connections(added);
     }
 
-    synchronized void remove(FollowerLink link) {
-        links(Arrays.stream(links).filter(other -> other != link).toArray(FollowerLink[]::new));
+    synchronized void remove(FollowerConnection connection) {
+        connections(Arrays.stream(connections).filter(other -> other != connection).toArray(FollowerConnection[]::new));
         wakeWaiters();
     }
 
-    private void links(FollowerLink[] changed) {
-        links = changed;
-        linksList = List.of(changed);
+    private void connections(FollowerConnection[] changed) {
+        connections = changed;
+        lanesList = List.of(changed);
     }
 
     /**
@@ -86,21 +86,21 @@ public final class Followers {
      * After a write to the log: wakes the senders parked waiting for one.
      */
     public void wakeSenders() {
-        for (FollowerLink link : links) {
-            link.wakeSender();
+        for (FollowerConnection connection : connections) {
+            connection.wakeSender();
         }
     }
 
-    public List<FollowerLink> all() {
-        return linksList;
+    public List<FollowerConnection> all() {
+        return lanesList;
     }
 
     /**
      * Announces the session again to every follower, its replication mode having changed to or from {@code NONE}.
      */
     public void reannounce(int sessionKey) {
-        for (FollowerLink link : links) {
-            link.reannounce(sessionKey);
+        for (FollowerConnection connection : connections) {
+            connection.reannounce(sessionKey);
         }
     }
 
@@ -108,8 +108,8 @@ public final class Followers {
      * Sends the session again by snapshot to every follower holding a copy of it.
      */
     public void resync(int sessionKey) {
-        for (FollowerLink link : links) {
-            link.resync(sessionKey);
+        for (FollowerConnection connection : connections) {
+            connection.resync(sessionKey);
         }
     }
 
@@ -150,12 +150,12 @@ public final class Followers {
         boolean anyInSync = false;
         boolean anyWaitedFor = false;
         boolean acked = true;
-        for (FollowerLink link : links) {
-            if (link.isInSync(sessionKey)) {
+        for (FollowerConnection connection : connections) {
+            if (connection.isInSync(sessionKey)) {
                 anyInSync = true;
-                if (!link.isAckOverdue()) {
+                if (!connection.isAckOverdue()) {
                     anyWaitedFor = true;
-                    acked &= ackedOffset(link, received) >= offset;
+                    acked &= ackedOffset(connection, received) >= offset;
                 }
             }
         }
@@ -169,9 +169,9 @@ public final class Followers {
             return Ack.ACKED;
         }
         if (timeoutNanos != 0 && System.nanoTime() - startNanos >= timeoutNanos) {
-            for (FollowerLink link : links) {
-                if (link.isInSync(sessionKey) && ackedOffset(link, received) < offset) {
-                    link.ackOverdue(offset);
+            for (FollowerConnection connection : connections) {
+                if (connection.isInSync(sessionKey) && ackedOffset(connection, received) < offset) {
+                    connection.ackOverdue(offset);
                 }
             }
             return Ack.TIMED_OUT;
@@ -182,8 +182,8 @@ public final class Followers {
     /**
      * A read with no {@code SYNC_RECEIVED} event sends no {@code RECEIVED}, so the received offset can trail the applied.
      */
-    private static long ackedOffset(FollowerLink link, boolean received) {
-        long applied = link.getAppliedOffset();
-        return received ? Math.max(link.getReceivedOffset(), applied) : applied;
+    private static long ackedOffset(FollowerConnection connection, boolean received) {
+        long applied = connection.getAppliedOffset();
+        return received ? Math.max(connection.getReceivedOffset(), applied) : applied;
     }
 }

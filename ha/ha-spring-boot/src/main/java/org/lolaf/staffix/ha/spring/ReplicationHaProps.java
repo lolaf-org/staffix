@@ -69,10 +69,10 @@ public class ReplicationHaProps {
     private Integer logCapacity;
 
     /**
-     * How many links the sessions are split over, each with its own log, sender thread and connection per follower;
+     * How many lanes the sessions are split over, each with its own log, sender thread and connection per follower;
      * unset keeps 1.
      */
-    private Integer replicationLinks;
+    private Integer replicationLanes;
 
     /**
      * How long a follower waits between two attempts to connect to its leader; unset keeps 1s.
@@ -107,8 +107,8 @@ public class ReplicationHaProps {
     private Waiting syncAckIdleStrategy;
 
     /**
-     * Threads writing what the follower receives into its stores; unset keeps 0, writing on each link's network thread.
-     * Set it, to the link count typically, with a durable follower store or {@code SYNC_RECEIVED} sessions.
+     * Threads writing what the follower receives into its stores; unset keeps 0, writing on each lane's network thread.
+     * Set it, to the lane count typically, with a durable follower store or {@code SYNC_RECEIVED} sessions.
      */
     private Integer followerStoreWriterThreads;
 

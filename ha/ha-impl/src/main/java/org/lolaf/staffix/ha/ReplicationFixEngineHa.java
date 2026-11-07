@@ -30,12 +30,12 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.follower.Replica;
-import org.lolaf.staffix.ha.follower.ReplicationReceiver;
+import org.lolaf.staffix.ha.follower.ReplicaSessions;
+import org.lolaf.staffix.ha.follower.ReplicationClient;
 import org.lolaf.staffix.ha.leader.*;
 import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
-import org.lolaf.staffix.ha.wire.SessionStatus;
+import org.lolaf.staffix.ha.wire.SessionAnswer;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
@@ -48,7 +48,7 @@ import java.util.concurrent.*;
  * node leads: a follower keeps them unbuilt and replays the leader's writes into their stores instead.
  *
  * <p>The election's role is followed on a thread of its own, one change at a time. Promotion stops following,
- * moves every replicated session's outgoing seqnum ahead, closes the replica's stores, starts the publisher, then
+ * moves every replicated session's outgoing seqnum ahead, closes the replica's stores, starts the server, then
  * activates the engine; demotion deactivates the engine first, so a node that no longer leads stops writing before
  * anything else.
  */
@@ -68,16 +68,23 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final Map<String, Long> sessionPromotions;
     private volatile ReplicationStats stats;
     private volatile EngineAccess engine;
-    private volatile Replica replica;
+    private volatile ReplicaSessions replicaSessions;
     private volatile LeaderElection election;
     private volatile ScheduledExecutorService roleThread;
     private @Nullable ScheduledFuture<?> leaseCheck;
-    private volatile Role followedRole = Role.UNKNOWN;
-    private long followedEpoch = -1;
+    /**
+     * The role this engine acts on, which trails the election's while it changes over.
+     */
+    private volatile Role role = Role.UNKNOWN;
+    /**
+     * The election epoch {@link #role} was taken at, -1 while unknown. Written before {@code role}, so a reader of
+     * {@code role} sees it.
+     */
+    private long roleEpoch = -1;
     private @Nullable InetSocketAddress followedLeader;
     private volatile @Nullable Instant roleSince;
-    private volatile @Nullable ReplicationPublisher publisher;
-    private volatile @Nullable ReplicationReceiver receiver;
+    private volatile @Nullable ReplicationServer server;
+    private volatile @Nullable ReplicationClient client;
     private volatile long currentPromotion;
     private long promotionsCounter;
 
@@ -111,7 +118,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                     + settings.getSlowFollowerHoldOff());
         }
         this.settings = settings;
-        this.replicationLogs = new ReplicationLogs(settings.getReplicationLinks(), settings.getLogCapacity());
+        this.replicationLogs = new ReplicationLogs(settings.getReplicationLanes(), settings.getLogCapacity());
         this.sessions = new ReplicatedSessions();
         this.followers = new Followers();
         this.sessionPromotions = new ConcurrentHashMap<>();
@@ -160,8 +167,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     @Override
     public void bind(EngineAccess engine) {
         this.engine = engine;
-        this.replica = new Replica(engine);
-        replica.setReceivedWriteLatency(receivedWriteLatency);
+        this.replicaSessions = new ReplicaSessions(engine);
+        replicaSessions.setReceivedWriteLatency(receivedWriteLatency);
         this.stats = new ReplicationStats(new SlowFollowers(settings.getSlowFollowerHoldOff(), engine.getClock()));
     }
 
@@ -175,12 +182,12 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     @Override
     public HaStatus getStatus() {
         LeaderElection currentElection = election;
-        Role role = followedRole;
+        Role currentRole = role;
         HaStatus.HaStatusBuilder status = HaStatus.builder()
                 .nodeId(settings.getNodeId())
                 .pairName(pairName(currentElection))
-                .role(role)
-                .epoch(followedEpoch)
+                .role(currentRole)
+                .epoch(roleEpoch)
                 .leaderId(currentElection == null ? null : currentElection.getLeaderId().orElse(null))
                 .leadershipValid(currentElection != null && currentElection.getRole() == Role.LEADER
                         && currentElection.isLeadershipValid())
@@ -191,15 +198,15 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                 .candidate(currentElection == null || currentElection.isCandidate())
                 .switchoverMaxDuration(switchoverMaxDuration())
                 .monitoringInstanceId(settings.getMonitoringInstanceId());
-        if (role == Role.LEADER) {
-            for (FollowerLink link : followers.all()) {
-                status.followerConnection(link.status(sessions.count()));
+        if (currentRole == Role.LEADER) {
+            for (FollowerConnection connection : followers.all()) {
+                status.followerConnection(connection.status(sessions.count()));
             }
             status.droppedFollowers(stats.getSlowFollowers().notBackInSync());
         }
-        ReplicationReceiver currentReceiver = receiver;
-        if (role == Role.FOLLOWER && currentReceiver != null) {
-            status.leader(currentReceiver.status());
+        ReplicationClient currentClient = client;
+        if (currentRole == Role.FOLLOWER && currentClient != null) {
+            status.leader(currentClient.status());
         }
         return status.build();
     }
@@ -267,8 +274,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     private SwitchoverOutcome switchOverOnRoleThread() {
         LeaderElection currentElection = election;
-        if (followedRole != Role.LEADER) {
-            throw new IllegalStateException("Only the leader switches over; node " + settings.getNodeId() + " is " + followedRole);
+        if (role != Role.LEADER) {
+            throw new IllegalStateException("Only the leader switches over; node " + settings.getNodeId() + " is " + role);
         }
         if (!currentElection.isTransferLeadershipSupported()) {
             throw new IllegalStateException("The leader election " + currentElection.getClass().getSimpleName()
@@ -279,14 +286,14 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         // a follower ready at the last moment must not leave the logged out sessions no time to hand over
         Deadline deadline = Deadline.of(switchingTimeout());
-        log.info("Node {} switches over at epoch {}: logging its sessions out", settings.getNodeId(), followedEpoch);
+        log.info("Node {} switches over at epoch {}: logging its sessions out", settings.getNodeId(), roleEpoch);
         engine.deactivateWithLogout(deadline);
-        if (!publisher.handOver(deadline)) {
+        if (!server.handOver(deadline)) {
             resumeLeading("its follower was not sent every write");
             return SwitchoverOutcome.NOT_HANDED_OVER;
         }
         // a follower reconnecting to this node, which still leads, would start a stream and forget it was handed over
-        stopPublisher(deadline);
+        stopServer(deadline);
         boolean transferring = currentElection.transferLeadership();
         if (!transferring || !deadline.waitAsLongAs(() -> currentElection.getRole() == Role.LEADER)) {
             if (currentElection.getRole() == Role.LEADER) {
@@ -328,15 +335,15 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     long getFollowerPendingWrites() {
         long pendingWrites = 0;
-        for (FollowerLink link : followers.all()) {
-            pendingWrites += link.getFollowerPendingWrites();
+        for (FollowerConnection connection : followers.all()) {
+            pendingWrites += connection.getFollowerPendingWrites();
         }
         return pendingWrites;
     }
 
     private boolean isAnyFollowerInSyncForAll() {
-        for (FollowerLink link : followers.all()) {
-            if (link.isInSyncForAll(sessions.count())) {
+        for (FollowerConnection connection : followers.all()) {
+            if (connection.isInSyncForAll(sessions.count())) {
                 return true;
             }
         }
@@ -347,17 +354,17 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
      * Same leadership, so no seqnum jump; the follower reconnects, and its new stream clears the hand over.
      */
     private void resumeLeading(String reason) {
-        log.warn("Node {} leads its sessions again at epoch {}: {}", settings.getNodeId(), followedEpoch, reason);
-        if (publisher == null) {
-            startPublisher(followedEpoch);
+        log.warn("Node {} leads its sessions again at epoch {}: {}", settings.getNodeId(), roleEpoch, reason);
+        if (server == null) {
+            startServer(roleEpoch);
         }
         engine.activate();
     }
 
     private void requireLeading() {
-        if (followedRole != Role.LEADER) {
+        if (role != Role.LEADER) {
             throw new IllegalStateException("Only the leader re-syncs its followers; node " + settings.getNodeId() + " is "
-                    + followedRole);
+                    + role);
         }
     }
 
@@ -367,11 +374,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (currentEngine == null) {
             return List.of();
         }
-        Role role = followedRole;
+        Role currentRole = role;
         List<HaSessionStatus> statuses = new ArrayList<>();
         currentEngine.forEachFixSessionSettings(sessionSettings -> {
             if (!ReplicationMode.NONE.equals(sessionSettings.getHighAvailability().getReplicationMode())) {
-                statuses.add(sessionStatus(sessionSettings, role));
+                statuses.add(sessionStatus(sessionSettings, currentRole));
             }
         });
         return statuses;
@@ -389,7 +396,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (Role.LEADER.equals(role)) {
             describeLed(sessionSettings, status);
         } else if (Role.FOLLOWER.equals(role)) {
-            replica.describe(sessionSettings.getFixSessionType(), sessionSettings.getFixSessionId().toString(), status);
+            replicaSessions.describe(sessionSettings.getFixSessionType(), sessionSettings.getFixSessionId().toString(), status);
         }
         return status.build();
     }
@@ -401,9 +408,9 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         boolean inSync = false;
         String refusal = null;
-        for (FollowerLink link : followers.all()) {
-            SessionStatus reported = link.getReportedStatus(session.getKey());
-            inSync |= link.isInSync(session.getKey());
+        for (FollowerConnection connection : followers.all()) {
+            SessionAnswer reported = connection.getSessionAnswer(session.getKey());
+            inSync |= connection.isInSync(session.getKey());
             if (reported != null && reported.isRefusal()) {
                 refusal = reported.name();
             }
@@ -463,13 +470,13 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        if (followedRole == Role.LEADER && publisher != null) {
+        if (role == Role.LEADER && server != null) {
             // the engine stopped the sessions before this, so what they last wrote is all in the log
-            publisher.handOver(Deadline.of(settings.getHandOverTimeout()));
+            server.handOver(Deadline.of(settings.getHandOverTimeout()));
         }
-        stopPublisher(stopDeadline);
-        stopReceiver(stopDeadline);
-        replica.close(stopDeadline);
+        stopServer(stopDeadline);
+        stopClient(stopDeadline);
+        replicaSessions.close(stopDeadline);
         election.stop(stopDeadline);
     }
 
@@ -479,11 +486,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
      */
     private void followRole() {
         try {
-            Role role = election.getRole();
-            if (role == Role.LEADER && !election.isLeadershipValid()) {
-                role = Role.UNKNOWN;
+            Role electedRole = election.getRole();
+            if (electedRole == Role.LEADER && !election.isLeadershipValid()) {
+                electedRole = Role.UNKNOWN;
             }
-            switch (role) {
+            switch (electedRole) {
                 case LEADER:
                     lead(election.getEpoch());
                     break;
@@ -504,7 +511,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             leaseCheck.cancel(false);
             leaseCheck = null;
         }
-        OptionalLong leaseEnd = followedRole == Role.LEADER ? election.getLeaseEndNanos() : OptionalLong.empty();
+        OptionalLong leaseEnd = role == Role.LEADER ? election.getLeaseEndNanos() : OptionalLong.empty();
         if (leaseEnd.isPresent()) {
             long delay = Math.max(0, leaseEnd.getAsLong() - System.nanoTime());
             try {
@@ -520,27 +527,27 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         return advertised.orElseGet(() -> election.getLeaderId().map(settings.getPeers()::get).orElse(null));
     }
 
-    private void lead(long epoch) {
-        if (followedRole == Role.LEADER && followedEpoch == epoch) {
+    private void lead(long electionEpoch) {
+        if (role == Role.LEADER && roleEpoch == electionEpoch) {
             return;
         }
         Deadline deadline = Deadline.of(ROLE_CHANGE_DEADLINE);
-        if (followedRole == Role.LEADER) {
+        if (role == Role.LEADER) {
             engine.deactivate();
         }
-        stopReceiver(deadline);
-        stopPublisher(deadline);
-        if (followedRole != Role.LEADER) {
-            if (!replica.isComplete()) {
-                log.warn("Node {} leads at epoch {} with sessions its follower copy did not hold in full", settings.getNodeId(), epoch);
+        stopClient(deadline);
+        stopServer(deadline);
+        if (role != Role.LEADER) {
+            if (!replicaSessions.isComplete()) {
+                log.warn("Node {} leads at epoch {} with sessions its follower copy did not hold in full", settings.getNodeId(), electionEpoch);
             }
             currentPromotion = ++promotionsCounter;
-            replica.jumpOutgoingSeqNums(settings.getPromotionOutgoingSeqNumJump()).forEach(this::markCurrentPromotion);
+            replicaSessions.jumpOutgoingSeqNums(settings.getPromotionOutgoingSeqNumJump()).forEach(this::markCurrentPromotion);
         }
-        replica.close(deadline);
-        startPublisher(epoch);
+        replicaSessions.close(deadline);
+        startServer(electionEpoch);
         engine.activate();
-        changed(Role.LEADER, epoch, null);
+        changed(Role.LEADER, electionEpoch, null);
     }
 
     private void jumpIfNewToPromotion(FixSessionSettings sessionSettings, FixSessionMessagesStore store) {
@@ -566,47 +573,47 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
     }
 
-    private void startPublisher(long epoch) {
-        publisher = new ReplicationPublisher(settings.getPeers().get(settings.getNodeId()), replicationLogs, sessions, followers,
-                () -> epoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getFollowerStallTimeout(),
+    private void startServer(long electionEpoch) {
+        server = new ReplicationServer(settings.getPeers().get(settings.getNodeId()), replicationLogs, sessions, followers,
+                () -> electionEpoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getFollowerStallTimeout(),
                 settings.getSendBuffers(), settings.getSnapshotChunkBytes(),
                 settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats);
-        publisher.start();
+        server.start();
     }
 
-    private void follow(long epoch, @Nullable InetSocketAddress leader) {
-        if (followedRole == Role.FOLLOWER && followedEpoch == epoch && sameAddress(leader)) {
+    private void follow(long electionEpoch, @Nullable InetSocketAddress leader) {
+        if (role == Role.FOLLOWER && roleEpoch == electionEpoch && sameAddress(leader)) {
             return;
         }
         Deadline deadline = Deadline.of(ROLE_CHANGE_DEADLINE);
-        if (followedRole == Role.LEADER) {
+        if (role == Role.LEADER) {
             currentPromotion = 0;
             engine.deactivate();
-            stopPublisher(deadline);
+            stopServer(deadline);
         }
-        stopReceiver(deadline);
+        stopClient(deadline);
         if (leader == null) {
-            log.warn("Node {} follows at epoch {} but has no address for its leader", settings.getNodeId(), epoch);
+            log.warn("Node {} follows at epoch {} but has no address for its leader", settings.getNodeId(), electionEpoch);
         } else {
-            receiver = new ReplicationReceiver(leader, replica, election::getEpoch, settings.getNodeId(),
+            client = new ReplicationClient(leader, replicaSessions, election::getEpoch, settings.getNodeId(),
                     replicationLogs.getMaxEventFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get(),
                     settings.getFollowerStoreWriterThreads(), settings.getFollowerStoreWriterIdleStrategy());
-            receiver.start();
+            client.start();
         }
-        changed(Role.FOLLOWER, epoch, leader);
+        changed(Role.FOLLOWER, electionEpoch, leader);
     }
 
     private void stand() {
-        if (followedRole == Role.UNKNOWN) {
+        if (role == Role.UNKNOWN) {
             return;
         }
         Deadline deadline = Deadline.of(ROLE_CHANGE_DEADLINE);
-        if (followedRole == Role.LEADER) {
+        if (role == Role.LEADER) {
             currentPromotion = 0;
             engine.deactivate();
-            stopPublisher(deadline);
+            stopServer(deadline);
         }
-        stopReceiver(deadline);
+        stopClient(deadline);
         changed(Role.UNKNOWN, -1, null);
     }
 
@@ -614,25 +621,25 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         return leader == null ? followedLeader == null : leader.equals(followedLeader);
     }
 
-    private void changed(Role role, long epoch, @Nullable InetSocketAddress leader) {
-        log.info("Node {} is now {} at epoch {}{}", settings.getNodeId(), role, epoch, leader == null ? "" : ", following " + leader);
-        followedEpoch = epoch;
+    private void changed(Role newRole, long electionEpoch, @Nullable InetSocketAddress leader) {
+        log.info("Node {} is now {} at epoch {}{}", settings.getNodeId(), newRole, electionEpoch, leader == null ? "" : ", following " + leader);
+        roleEpoch = electionEpoch;
         followedLeader = leader;
         roleSince = Instant.now();
-        followedRole = role;
+        role = newRole;
     }
 
-    private void stopPublisher(Deadline deadline) {
-        if (publisher != null) {
-            publisher.stop(deadline);
-            publisher = null;
+    private void stopServer(Deadline deadline) {
+        if (server != null) {
+            server.stop(deadline);
+            server = null;
         }
     }
 
-    private void stopReceiver(Deadline deadline) {
-        if (receiver != null) {
-            receiver.stop(deadline);
-            receiver = null;
+    private void stopClient(Deadline deadline) {
+        if (client != null) {
+            client.stop(deadline);
+            client = null;
         }
     }
 

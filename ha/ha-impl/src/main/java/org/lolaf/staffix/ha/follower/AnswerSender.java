@@ -25,7 +25,7 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * How a {@link LeaderLink}'s answers to the leader reach its connection: a frame is encoded from index 0 of the buffer claimed, then
+ * How a {@link LeaderConnection}'s answers to the leader reach its connection: a frame is encoded from index 0 of the buffer claimed, then
  * sent.
  */
 interface AnswerSender {
@@ -40,16 +40,16 @@ interface AnswerSender {
     @RequiredArgsConstructor
     final class OnNetworkThread implements AnswerSender {
 
-        private final IOSession connection;
+        private final IOSession ioSession;
 
         @Override
         public ByteBuffer claim(int bytes) {
-            return connection.borrow(bytes).clear();
+            return ioSession.borrow(bytes).clear();
         }
 
         @Override
         public void send(ByteBuffer frame, int length) {
-            connection.send(frame.clear().position(length), true);
+            ioSession.send(frame.clear().position(length), true);
         }
     }
 
@@ -61,13 +61,13 @@ interface AnswerSender {
 
         private static final int CAPACITY = 64 << 10;
 
-        private final IOSession connection;
+        private final IOSession ioSession;
         private final ByteRingBuffer answers = ByteRingBufferFactory.queue(CAPACITY);
         private final ByteBuffer answer = ByteBuffer.allocate(answers.getMaxPayloadLength());
         private final AtomicBoolean sendScheduled = new AtomicBoolean();
 
-        ThroughNetworkThread(IOSession connection) {
-            this.connection = connection;
+        ThroughNetworkThread(IOSession ioSession) {
+            this.ioSession = ioSession;
         }
 
         @Override
@@ -86,7 +86,7 @@ interface AnswerSender {
 
         private void scheduleSend() {
             if (sendScheduled.compareAndSet(false, true)) {
-                connection.processTask(this);
+                ioSession.processTask(this);
             }
         }
 
@@ -98,11 +98,11 @@ interface AnswerSender {
 
         @Override
         public void onFrame(int type, ByteBuffer buffer, int index, int length) {
-            ByteBuffer frame = connection.borrow(length).clear();
+            ByteBuffer frame = ioSession.borrow(length).clear();
             for (int i = 0; i < length; i++) {
                 frame.put(i, buffer.get(index + i));
             }
-            connection.send(frame.position(length), true);
+            ioSession.send(frame.position(length), true);
         }
     }
 }

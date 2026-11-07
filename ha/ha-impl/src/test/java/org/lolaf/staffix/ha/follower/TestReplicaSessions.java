@@ -22,14 +22,14 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.wire.SessionStatus;
+import org.lolaf.staffix.ha.wire.SessionAnswer;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class TestReplica {
+class TestReplicaSessions {
 
     private static final FixSessionSettings REPLICATED = RecordingEngine.session("main", FixSessionType.ACCEPTOR);
     private static final FixSessionSettings SHARED = RecordingEngine.session("shared", FixSessionType.ACCEPTOR);
@@ -38,16 +38,16 @@ class TestReplica {
             .build();
 
     private final RecordingEngine engine = new RecordingEngine().with(REPLICATED).with(SHARED).with(NOT_REPLICATED);
-    private final Replica replica = new Replica(engine);
+    private final ReplicaSessions replicaSessions = new ReplicaSessions(engine);
 
     @Test
     void promotionMovesTheOutgoingSeqNumOfEveryReplicatedSessionAhead() {
-        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage"))
-                .isEqualTo(SessionStatus.SNAPSHOT_NEEDED);
-        assertThat(replica.bind(1, SHARED.getFixSessionType(), SHARED.getFixSessionId().toString(), ReplicationMode.ASYNC, "follower-storage"))
-                .isEqualTo(SessionStatus.SHARED_STORAGE);
+        assertThat(replicaSessions.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage"))
+                .isEqualTo(SessionAnswer.SNAPSHOT_NEEDED);
+        assertThat(replicaSessions.bind(1, SHARED.getFixSessionType(), SHARED.getFixSessionId().toString(), ReplicationMode.ASYNC, "follower-storage"))
+                .isEqualTo(SessionAnswer.SHARED_STORAGE);
 
-        replica.jumpOutgoingSeqNums(1_000);
+        replicaSessions.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(REPLICATED).writes).containsExactly("outgoing 1001");
         assertThat(engine.store(REPLICATED).started).as("still the replica's").isTrue();
@@ -59,52 +59,52 @@ class TestReplica {
     @Test
     void aSessionTheLeaderStopsReplicatingIsClosedThenCaughtUpAgainBySnapshot() {
         String id = REPLICATED.getFixSessionId().toString();
-        replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage");
+        replicaSessions.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage");
         RecordingEngine.RecordingStore first = engine.store(REPLICATED);
-        assertThat(replica.snapshotBegin(0, 0, 1, 1) && replica.snapshotEnd(0, 0, 0, 1, 1)).isTrue();
+        assertThat(replicaSessions.snapshotBegin(0, 0, 1, 1) && replicaSessions.snapshotEnd(0, 0, 0, 1, 1)).isTrue();
 
         engine.replace(NOT_REPLICATED.toBuilder().fixSessionId(REPLICATED.getFixSessionId()).build());
-        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.NONE, "leader-storage"))
-                .isEqualTo(SessionStatus.NOT_REPLICATED);
+        assertThat(replicaSessions.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.NONE, "leader-storage"))
+                .isEqualTo(SessionAnswer.NOT_REPLICATED);
         assertThat(first.started).isFalse();
-        assertThat(replica.isComplete()).as("a session not replicated is not waited for").isTrue();
+        assertThat(replicaSessions.isComplete()).as("a session not replicated is not waited for").isTrue();
 
         engine.replace(REPLICATED);
-        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage"))
-                .isEqualTo(SessionStatus.SNAPSHOT_NEEDED);
+        assertThat(replicaSessions.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage"))
+                .isEqualTo(SessionAnswer.SNAPSHOT_NEEDED);
         assertThat(engine.store(REPLICATED)).isNotSameAs(first);
-        assertThat(replica.isComplete()).isFalse();
+        assertThat(replicaSessions.isComplete()).isFalse();
     }
 
     @Test
     void aSessionReplicatedByTheLeaderButNotHereIsRefusedAndNotMovedAhead() {
         String id = NOT_REPLICATED.getFixSessionId().toString();
 
-        assertThat(replica.bind(0, NOT_REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage"))
-                .isEqualTo(SessionStatus.MODE_MISMATCH);
+        assertThat(replicaSessions.bind(0, NOT_REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage"))
+                .isEqualTo(SessionAnswer.MODE_MISMATCH);
         assertThat(engine.store(NOT_REPLICATED)).isNull();
-        assertThat(replica.isComplete()).as("a refused session is missing").isFalse();
+        assertThat(replicaSessions.isComplete()).as("a refused session is missing").isFalse();
 
-        replica.jumpOutgoingSeqNums(1_000);
+        replicaSessions.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(NOT_REPLICATED)).as("this node's settings do not replicate it").isNull();
     }
 
     @Test
     void aSessionReplicatedHereButNotByTheLeaderIsRefused() {
-        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.NONE,
-                "leader-storage")).isEqualTo(SessionStatus.MODE_MISMATCH);
+        assertThat(replicaSessions.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.NONE,
+                "leader-storage")).isEqualTo(SessionAnswer.MODE_MISMATCH);
         assertThat(engine.store(REPLICATED)).isNull();
     }
 
     @Test
     void aReplicationModeChangedOnTheLeaderAloneStopsTheReplica() {
         String id = REPLICATED.getFixSessionId().toString();
-        replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage");
+        replicaSessions.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.ASYNC, "leader-storage");
         RecordingEngine.RecordingStore replicaStore = engine.store(REPLICATED);
 
-        assertThat(replica.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.SYNC_APPLIED, "leader-storage"))
-                .isEqualTo(SessionStatus.MODE_MISMATCH);
+        assertThat(replicaSessions.bind(0, REPLICATED.getFixSessionType(), id, ReplicationMode.SYNC_APPLIED, "leader-storage"))
+                .isEqualTo(SessionAnswer.MODE_MISMATCH);
         assertThat(replicaStore.started).isFalse();
     }
 
@@ -112,19 +112,19 @@ class TestReplica {
     @ValueSource(booleans = {false, true})
     void aMessageTheStreamBringsAgainAfterTheSnapshotIsSkippedUntilAReset(boolean batchingStore) {
         engine.batchingStores = batchingStore;
-        replica.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage");
-        replica.snapshotBegin(0, 0, 1, 1);
-        replica.snapshotMessage(0, 0, 4, text("four"), 0, 4, (byte) 0);
-        replica.snapshotMessage(0, 0, 5, text("five"), 0, 4, (byte) 0);
-        replica.snapshotEnd(0, 0, 2, 1, 6);
+        replicaSessions.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage");
+        replicaSessions.snapshotBegin(0, 0, 1, 1);
+        replicaSessions.snapshotMessage(0, 0, 4, text("four"), 0, 4, (byte) 0);
+        replicaSessions.snapshotMessage(0, 0, 5, text("five"), 0, 4, (byte) 0);
+        replicaSessions.snapshotEnd(0, 0, 2, 1, 6);
         RecordingEngine.RecordingStore store = engine.store(REPLICATED);
         store.writes.clear();
 
         storeMessage(5, "five");
         storeMessage(6, "six");
-        replica.apply(0, 1, 3, 0, StoreEventType.RESET_SEQ_NUM, 1, text(""), 0, 0, (byte) 0);
+        replicaSessions.apply(0, 1, 3, 0, StoreEventType.RESET_SEQ_NUM, 1, text(""), 0, 0, (byte) 0);
         storeMessage(1, "one");
-        replica.writeApplied(0);
+        replicaSessions.writeApplied(0);
 
         assertThat(store.writes).containsExactly(batchingStore
                 ? new String[]{"batch 6 six", "outgoing 7", "reset", "batch 1 one", "outgoing 2"}
@@ -132,7 +132,7 @@ class TestReplica {
     }
 
     private void storeMessage(long seq, String message) {
-        replica.apply(0, 1, seq, 0, StoreEventType.STORE_MESSAGE, seq, text(message), 0, message.length(), (byte) 0);
+        replicaSessions.apply(0, 1, seq, 0, StoreEventType.STORE_MESSAGE, seq, text(message), 0, message.length(), (byte) 0);
     }
 
     private static ByteBuffer text(String message) {
@@ -141,7 +141,7 @@ class TestReplica {
 
     @Test
     void aSessionTheLeaderNeverAnnouncedIsMovedAheadToo() {
-        replica.jumpOutgoingSeqNums(1_000);
+        replicaSessions.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(REPLICATED).writes).containsExactly("outgoing 1001");
         assertThat(engine.store(SHARED).writes).containsExactly("outgoing 1001");

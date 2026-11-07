@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 
 /**
- * What the leader's links did over the engine's life, across connections, read by the meters on another thread.
+ * What the leader's connections did over the engine's life, across reconnections, read by the meters on another thread.
  */
 public final class ReplicationStats {
 
@@ -34,41 +34,41 @@ public final class ReplicationStats {
     private final AtomicLong snapshotMessages = new AtomicLong();
     private final AtomicLong sendWaits = new AtomicLong();
     private final AtomicLong sendBuffersAllocated = new AtomicLong();
-    private BiFunction<String, Integer, Timer> ackLatencyTimers = (followerId, link) -> Timer.VoidTimer.getInstance();
-    private BiFunction<String, Integer, Timer> lagTimers = (followerId, link) -> Timer.VoidTimer.getInstance();
+    private BiFunction<String, Integer, Timer> ackLatencyTimers = (followerId, lane) -> Timer.VoidTimer.getInstance();
+    private BiFunction<String, Integer, Timer> lagTimers = (followerId, lane) -> Timer.VoidTimer.getInstance();
 
     public ReplicationStats(SlowFollowers slowFollowers) {
         this.slowFollowers = slowFollowers;
     }
 
     /**
-     * Where the links time their followers' round trips, by follower node id and link, once the engine's meters
+     * Where the connections time their followers' round trips, by follower node id and lane, once the engine's meters
      * exist.
      */
     public void ackLatencyTimers(BiFunction<String, Integer, Timer> timers) {
         ackLatencyTimers = timers;
     }
 
-    Timer ackLatency(String followerId, int link) {
-        return ackLatencyTimers.apply(followerId, link);
+    Timer ackLatency(String followerId, int lane) {
+        return ackLatencyTimers.apply(followerId, lane);
     }
 
     /**
-     * Where the links time how far their followers are behind, by follower node id and link, once the engine's
+     * Where the connections time how far their followers are behind, by follower node id and lane, once the engine's
      * meters exist.
      */
     public void lagTimers(BiFunction<String, Integer, Timer> timers) {
         lagTimers = timers;
     }
 
-    Timer lag(String followerId, int link) {
-        return lagTimers.apply(followerId, link);
+    Timer lag(String followerId, int lane) {
+        return lagTimers.apply(followerId, lane);
     }
 
-    void droppedTooSlow(@Nullable String followerId, int link) {
+    void droppedTooSlow(@Nullable String followerId, int lane) {
         tooSlow.incrementAndGet();
         if (followerId != null) {
-            slowFollowers.dropped(followerId, link);
+            slowFollowers.dropped(followerId, lane);
         }
     }
 
@@ -100,7 +100,7 @@ public final class ReplicationStats {
     }
 
     /**
-     * Follower links dropped for reading the replication log so slowly that a write waited the log full timeout for them.
+     * Follower lanes dropped for reading the replication log so slowly that a write waited the log full timeout for them.
      */
     public long getTooSlow() {
         return tooSlow.get();

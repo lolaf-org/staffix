@@ -54,12 +54,12 @@ import java.util.function.LongSupplier;
 /**
  * One connected follower: the handshake, the frames it sends back, and the thread streaming the log to it.
  *
- * <p>Frames from the follower arrive on the connection's IO thread; the log is streamed from a thread of the link's
+ * <p>Frames from the follower arrive on the connection's IO thread; the log is streamed from a thread of the connection's
  * own, which takes one of its own write buffers, reads as many events as fit straight into it behind room for their
  * headers, and sends it. While streaming, its reader holds appends back rather than be lapped; a writer that waited
  * the log full timeout for it drops it, and it reconnects to be caught up.
  *
- * <p>A session the follower answers {@link SessionStatus#SNAPSHOT_NEEDED} for is snapshot by that thread one chunk per
+ * <p>A session the follower answers {@link SessionAnswer#SNAPSHOT_NEEDED} for is snapshot by that thread one chunk per
  * batch, so the other sessions keep streaming. Its own events are skipped meanwhile, except a reset, which ends the
  * snapshot: a session's message is in its store before its event is in the log, so the snapshot copies what was
  * skipped, and the follower's store is written in seqnum order as by the stream. The snapshot copies in rounds, each up
@@ -67,34 +67,37 @@ import java.util.function.LongSupplier;
  * one before, the session writing faster than it is copied, is sent whole, holding the other sessions for its time.
  */
 @Slf4j
-public final class FollowerLink implements FrameHandler {
+public final class FollowerConnection implements FrameHandler {
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     private static final long STORE_RETRY_NANOS = Duration.ofMillis(10).toNanos();
-    private final IOSession connection;
+    private final IOSession ioSession;
     private final String address;
     private final ReplicationLogs logs;
     /**
-     * Link 0's until the HELLO says which link this connection carries.
+     * Lane 0's until the HELLO says which lane this connection carries.
      */
     private volatile ReplicationLog replicationLog;
     /**
-     * Gating from the follower's HELLO until the link closes, from any thread.
+     * Gating from the follower's HELLO until the connection closes, from any thread.
      */
     private volatile ReplicationLog.Reader reader;
     private final ReplicatedSessions sessions;
-    private final LongSupplier epoch;
+    /**
+     * This node's current election epoch, stamped on every frame it sends; read once per batch, so a batch carries one.
+     */
+    private final LongSupplier nodeEpoch;
     private final String leaderId;
     private final long heartbeatIntervalNanos;
     private final int maxEventFrameBytes;
     private final int batchBytes;
     @Getter
-    private volatile int link;
+    private volatile int lane;
     private final int sendBuffers;
     private final int snapshotChunkBytes;
     private final IdleStrategy senderIdle;
     /**
-     * Batch buffers betty wrote, handed back by its IO thread. The link owns its batch buffers rather than borrowing
+     * Batch buffers betty wrote, handed back by its IO thread. The connection owns its batch buffers rather than borrowing
      * the connection's: betty frees a pool's memory when the connection stops, whichever thread still writes into one.
      */
     private final RingBuffer<ByteBuffer> writtenBatches;
@@ -114,7 +117,7 @@ public final class FollowerLink implements FrameHandler {
     /**
      * What the follower last said of each session, by key, which keeps a refusal's reason.
      */
-    private final Map<Integer, SessionStatus> reportedStatuses = new ConcurrentHashMap<>();
+    private final Map<Integer, SessionAnswer> sessionAnswers = new ConcurrentHashMap<>();
     /**
      * Keys of sessions already announced whose replication mode changed since.
      */
@@ -146,7 +149,7 @@ public final class FollowerLink implements FrameHandler {
      * applies it, so a hung follower costs one timeout rather than one per send.
      */
     private volatile long overdueOffset = -1;
-    private volatile AtomicReferenceArray<SessionSync> sessionSyncs = new AtomicReferenceArray<>(16);
+    private volatile AtomicReferenceArray<SessionSyncState> sessionSyncs = new AtomicReferenceArray<>(16);
     private volatile boolean snapshotRequested;
     /**
      * The session being snapshot, only one at a time; read and written by the sender thread only.
@@ -155,7 +158,7 @@ public final class FollowerLink implements FrameHandler {
     private long storeRetryNanos = Long.MAX_VALUE;
     private volatile boolean paused;
     /**
-     * What the follower's stores for this link have yet to store, as of its last ack.
+     * What the follower's stores for this lane have yet to store, as of its last ack.
      */
     @Getter
     private volatile long followerPendingWrites;
@@ -185,12 +188,12 @@ public final class FollowerLink implements FrameHandler {
     private LagSampler lag = new LagSampler(Timer.VoidTimer.getInstance());
 
     /**
-     * @param sendBuffers    the batch buffers the link allocates at most, a power of two; the one written last is
+     * @param sendBuffers    the batch buffers the connection allocates at most, a power of two; the one written last is
      *                       reused only once the next is written
      * @param snapshotChunkBytes the most bytes of a snapshot sent between two live batches, at most a batch
      * @param senderLauncher starts the loop streaming the log, on a thread of its own
      */
-    FollowerLink(IOSession connection, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier epoch, String leaderId,
+    FollowerConnection(IOSession ioSession, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier nodeEpoch, String leaderId,
                  Duration heartbeatInterval, Duration stallTimeout, int sendBuffers, int snapshotChunkBytes, IdleStrategy senderIdle,
                  ReplicationStats stats, Consumer<Runnable> senderLauncher) {
         this.sendBuffers = sendBuffers;
@@ -198,13 +201,13 @@ public final class FollowerLink implements FrameHandler {
         this.senderIdle = senderIdle;
         this.stats = stats;
         this.senderLauncher = senderLauncher;
-        this.connection = connection;
-        this.address = String.valueOf(connection.getSocketAddress());
+        this.ioSession = ioSession;
+        this.address = String.valueOf(ioSession.getSocketAddress());
         this.logs = logs;
         this.replicationLog = logs.get(0);
         this.reader = replicationLog.newReader();
         this.sessions = sessions;
-        this.epoch = epoch;
+        this.nodeEpoch = nodeEpoch;
         this.leaderId = leaderId;
         this.heartbeatIntervalNanos = heartbeatInterval.toNanos();
         this.stallTimeoutNanos = stallTimeout.toNanos();
@@ -221,9 +224,9 @@ public final class FollowerLink implements FrameHandler {
     }
 
     @Override
-    public void onHello(long followerEpoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int link) {
+    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane) {
         followerId = nodeId;
-        long leaderEpoch = epoch.getAsLong();
+        long currentEpoch = nodeEpoch.getAsLong();
         if (state != State.AWAITING_HELLO) {
             close(CloseReason.PROTOCOL_ERROR, "a second HELLO");
             return;
@@ -232,37 +235,37 @@ public final class FollowerLink implements FrameHandler {
             close(CloseReason.VERSION_MISMATCH, "leader speaks version " + WireFormat.VERSION + ", follower " + version);
             return;
         }
-        if (followerEpoch > leaderEpoch) {
-            close(CloseReason.STALE_EPOCH, "follower is at epoch " + followerEpoch + ", this leader at " + leaderEpoch);
+        if (epoch > currentEpoch) {
+            close(CloseReason.STALE_EPOCH, "follower is at epoch " + epoch + ", this leader at " + currentEpoch);
             return;
         }
-        if (link >= logs.count()) {
-            close(CloseReason.NO_SUCH_LINK, "link " + link + " of " + logs.count());
+        if (lane >= logs.count()) {
+            close(CloseReason.NO_SUCH_LANE, "lane " + lane + " of " + logs.count());
             return;
         }
-        this.link = link;
-        replicationLog = logs.get(link);
-        Optional<Instant> heldOffUntil = stats.getSlowFollowers().heldOffUntil(nodeId, link);
+        this.lane = lane;
+        replicationLog = logs.get(lane);
+        Optional<Instant> heldOffUntil = stats.getSlowFollowers().heldOffUntil(nodeId, lane);
         if (heldOffUntil.isPresent()) {
             close(CloseReason.RETRY_LATER, "dropped as too slow, held off until " + heldOffUntil.get());
             return;
         }
         reader = replicationLog.newGatingReader(this::droppedAsTooSlow);
-        recoveringFromTooSlow = stats.getSlowFollowers().isNotBackInSync(nodeId, link);
-        boolean resumed = lastAppliedEpoch == leaderEpoch && resume(lastAppliedOffset);
+        recoveringFromTooSlow = stats.getSlowFollowers().isNotBackInSync(nodeId, lane);
+        boolean resumed = lastAppliedEpoch == currentEpoch && resume(lastAppliedOffset);
         if (!resumed) {
             reader.seekToTail();
         }
         appliedOffset = lastAppliedOffset;
         receivedOffset = lastAppliedOffset;
-        ackLatency = new AckLatencySampler(stats.ackLatency(nodeId, link));
-        lag = new LagSampler(stats.lag(nodeId, link));
+        ackLatency = new AckLatencySampler(stats.ackLatency(nodeId, lane));
+        lag = new LagSampler(stats.lag(nodeId, lane));
         state = State.STREAMING;
-        log.info("Follower {} connected link {} of {} at epoch {}, {}", nodeId, link, logs.count(), leaderEpoch,
+        log.info("Follower {} connected lane {} of {} at epoch {}, {}", nodeId, lane, logs.count(), currentEpoch,
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
-        ByteBuffer welcome = connection.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
-        int length = FrameEncoder.welcome(welcome.clear(), 0, leaderEpoch, leaderId, resumed ? reader.getOffset() : WireFormat.NO_RESUME, logs.count());
-        connection.send(written(welcome, length), true);
+        ByteBuffer welcome = ioSession.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
+        int length = FrameEncoder.welcome(welcome.clear(), 0, currentEpoch, leaderId, resumed ? reader.getOffset() : WireFormat.NO_RESUME, logs.count());
+        ioSession.send(written(welcome, length), true);
         senderLauncher.accept(this::send);
     }
 
@@ -293,7 +296,7 @@ public final class FollowerLink implements FrameHandler {
         this.reportedInSync = inSync;
         if (inSync && recoveringFromTooSlow) {
             recoveringFromTooSlow = false;
-            stats.getSlowFollowers().backInSync(followerId, link);
+            stats.getSlowFollowers().backInSync(followerId, lane);
         }
         lastAckNanos = System.nanoTime();
         long overdue = overdueOffset;
@@ -316,7 +319,7 @@ public final class FollowerLink implements FrameHandler {
      * for its ack. Allocates nothing.
      */
     public boolean isInSync(int sessionKey) {
-        return state == State.STREAMING && getSessionSync(sessionKey) == SessionSync.IN_SYNC;
+        return state == State.STREAMING && getSessionSync(sessionKey) == SessionSyncState.IN_SYNC;
     }
 
     boolean isAckOverdue() {
@@ -333,15 +336,15 @@ public final class FollowerLink implements FrameHandler {
         }
     }
 
-    public @Nullable SessionSync getSessionSync(int sessionKey) {
-        AtomicReferenceArray<SessionSync> syncs = sessionSyncs;
+    public @Nullable SessionSyncState getSessionSync(int sessionKey) {
+        AtomicReferenceArray<SessionSyncState> syncs = sessionSyncs;
         return sessionKey < syncs.length() ? syncs.get(sessionKey) : null;
     }
 
-    private synchronized void sessionSync(int sessionKey, SessionSync sync) {
-        AtomicReferenceArray<SessionSync> syncs = sessionSyncs;
+    private synchronized void sessionSync(int sessionKey, SessionSyncState sync) {
+        AtomicReferenceArray<SessionSyncState> syncs = sessionSyncs;
         if (sessionKey >= syncs.length()) {
-            AtomicReferenceArray<SessionSync> grown = new AtomicReferenceArray<>(Math.max(sessionKey + 1, syncs.length() * 2));
+            AtomicReferenceArray<SessionSyncState> grown = new AtomicReferenceArray<>(Math.max(sessionKey + 1, syncs.length() * 2));
             for (int key = 0; key < syncs.length(); key++) {
                 grown.set(key, syncs.get(key));
             }
@@ -350,30 +353,30 @@ public final class FollowerLink implements FrameHandler {
         syncs.set(sessionKey, sync);
     }
 
-    private synchronized boolean sessionSync(int sessionKey, SessionSync expected, SessionSync sync) {
+    private synchronized boolean sessionSync(int sessionKey, SessionSyncState expected, SessionSyncState sync) {
         return sessionSyncs.compareAndSet(sessionKey, expected, sync);
     }
 
     @Override
-    public void onSessionStatus(long epoch, int sessionKey, SessionStatus status) {
+    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer status) {
         if (getSessionSync(sessionKey) == null) {
-            close(CloseReason.PROTOCOL_ERROR, "a SESSION_STATUS for session key " + sessionKey + ", never announced");
+            close(CloseReason.PROTOCOL_ERROR, "a SESSION_ANSWER for session key " + sessionKey + ", never announced");
             return;
         }
-        reportedStatuses.put(sessionKey, status);
+        sessionAnswers.put(sessionKey, status);
         switch (status) {
             case REPLICATING:
-                sessionSync(sessionKey, SessionSync.IN_SYNC);
+                sessionSync(sessionKey, SessionSyncState.IN_SYNC);
                 break;
             case SNAPSHOT_NEEDED:
-                sessionSync(sessionKey, SessionSync.SNAPSHOT_PENDING);
+                sessionSync(sessionKey, SessionSyncState.SNAPSHOT_PENDING);
                 snapshotRequested = true;
                 break;
             case NOT_REPLICATED:
-                sessionSync(sessionKey, SessionSync.NOT_REPLICATED);
+                sessionSync(sessionKey, SessionSyncState.NOT_REPLICATED);
                 break;
             default:
-                sessionSync(sessionKey, SessionSync.NOT_REPLICATED);
+                sessionSync(sessionKey, SessionSyncState.NOT_REPLICATED);
                 ReplicatedSession session = sessions.get(sessionKey);
                 log.warn("Follower {} does not replicate FIX session {} {}: {}", followerId, session.getFixSessionType(),
                         session.getFixSessionId(), status);
@@ -385,14 +388,14 @@ public final class FollowerLink implements FrameHandler {
      * replaced: a session it refuses or is still catching up on is left as it is.
      */
     void resync(int sessionKey) {
-        if (carries(sessionKey) && reportedStatuses.get(sessionKey) == SessionStatus.REPLICATING
-                && sessionSync(sessionKey, SessionSync.IN_SYNC, SessionSync.SNAPSHOT_PENDING)) {
+        if (carries(sessionKey) && sessionAnswers.get(sessionKey) == SessionAnswer.REPLICATING
+                && sessionSync(sessionKey, SessionSyncState.IN_SYNC, SessionSyncState.SNAPSHOT_PENDING)) {
             snapshotRequested = true;
         }
     }
 
-    public @Nullable SessionStatus getReportedStatus(int sessionKey) {
-        return reportedStatuses.get(sessionKey);
+    public @Nullable SessionAnswer getSessionAnswer(int sessionKey) {
+        return sessionAnswers.get(sessionKey);
     }
 
     /**
@@ -401,12 +404,12 @@ public final class FollowerLink implements FrameHandler {
     public HaStatus.FollowerConnection status(int sessionCount) {
         boolean snapshotInProgress = false;
         for (int key = 0; key < sessionCount; key++) {
-            SessionSync sync = getSessionSync(key);
-            snapshotInProgress |= sync == SessionSync.SNAPSHOT_PENDING || sync == SessionSync.SNAPSHOT_SENT;
+            SessionSyncState sync = getSessionSync(key);
+            snapshotInProgress |= sync == SessionSyncState.SNAPSHOT_PENDING || sync == SessionSyncState.SNAPSHOT_SENT;
         }
         return HaStatus.FollowerConnection.builder()
                 .nodeId(followerId)
-                .lane(link)
+                .lane(lane)
                 .address(address)
                 .connected(isConnected())
                 .inSync(isInSyncForAll(sessionCount))
@@ -433,10 +436,10 @@ public final class FollowerLink implements FrameHandler {
     }
 
     /**
-     * Whether the session is replicated over this link, rather than another of the follower's.
+     * Whether the session is replicated over this lane, rather than another of the follower's.
      */
     public boolean carries(int sessionKey) {
-        return logs.linkOf(sessionKey) == link;
+        return logs.laneOf(sessionKey) == lane;
     }
 
     /**
@@ -454,7 +457,7 @@ public final class FollowerLink implements FrameHandler {
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int links) {
+    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes) {
         unexpected(FrameType.WELCOME);
     }
 
@@ -471,7 +474,7 @@ public final class FollowerLink implements FrameHandler {
     }
 
     @Override
-    public void onSnapshotBegin(long epoch, int sessionKey, long cutOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+    public void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         unexpected(FrameType.SNAPSHOT_BEGIN);
     }
 
@@ -505,7 +508,7 @@ public final class FollowerLink implements FrameHandler {
     int fill(ByteBuffer dst) {
         lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getEventOffset(), appliedOffset);
         int filled = announce(dst);
-        long leaderEpoch = epoch.getAsLong();
+        long currentEpoch = nodeEpoch.getAsLong();
         filledEventOffset = -1;
         while (state == State.STREAMING && dst.limit() - filled >= WireFormat.STORE_EVENT_BODY_OFFSET) {
             int body = reader.readInto(dst, filled + WireFormat.STORE_EVENT_BODY_OFFSET);
@@ -528,7 +531,7 @@ public final class FollowerLink implements FrameHandler {
             }
             filledEventOffset = reader.getEventOffset();
             lag.onEventRead(filledEventOffset, reader.getOffset());
-            filled += FrameEncoder.storeEventHeader(dst, filled, leaderEpoch, filledEventOffset, body);
+            filled += FrameEncoder.storeEventHeader(dst, filled, currentEpoch, filledEventOffset, body);
         }
         sentOffset = reader.getOffset();
         return filled;
@@ -536,10 +539,10 @@ public final class FollowerLink implements FrameHandler {
 
     private int announce(ByteBuffer dst) {
         int filled = 0;
-        long leaderEpoch = epoch.getAsLong();
+        long currentEpoch = nodeEpoch.getAsLong();
         while (announced < sessions.count()) {
             if (carries(announced)) {
-                int bytes = announce(dst, filled, leaderEpoch, sessions.get(announced));
+                int bytes = announce(dst, filled, currentEpoch, sessions.get(announced));
                 if (bytes == 0) {
                     return filled;
                 }
@@ -551,7 +554,7 @@ public final class FollowerLink implements FrameHandler {
         while ((key = reannouncements.peek()) != null) {
             // a key not announced yet goes out with its current mode once it is
             if (key < announced && carries(key)) {
-                int bytes = announce(dst, filled, leaderEpoch, sessions.get(key));
+                int bytes = announce(dst, filled, currentEpoch, sessions.get(key));
                 if (bytes == 0) {
                     return filled;
                 }
@@ -569,14 +572,14 @@ public final class FollowerLink implements FrameHandler {
     /**
      * @return the bytes written, 0 when the frame does not fit
      */
-    private int announce(ByteBuffer dst, int index, long leaderEpoch, ReplicatedSession session) {
+    private int announce(ByteBuffer dst, int index, long currentEpoch, ReplicatedSession session) {
         String id = session.getFixSessionId().toString();
         ReplicatedSession.Config config = session.getConfig();
         if (dst.limit() - index < FrameEncoder.bytesWith(FrameType.SESSION, id, config.getStorageIdentity())) {
             return 0;
         }
-        sessionSync(session.getKey(), SessionSync.ANNOUNCED);
-        return FrameEncoder.session(dst, index, leaderEpoch, session.getKey(), session.getFixSessionType(),
+        sessionSync(session.getKey(), SessionSyncState.ANNOUNCED);
+        return FrameEncoder.session(dst, index, currentEpoch, session.getKey(), session.getFixSessionType(),
                 config.getReplicationMode(), id, config.getStorageIdentity());
     }
 
@@ -597,7 +600,7 @@ public final class FollowerLink implements FrameHandler {
         if (nowNanos - lastSendNanos < heartbeatIntervalNanos) {
             return 0;
         }
-        return FrameEncoder.heartbeat(dst, 0, epoch.getAsLong(), replicationLog.getTailOffset());
+        return FrameEncoder.heartbeat(dst, 0, nodeEpoch.getAsLong(), replicationLog.getTailOffset());
     }
 
     void pause(boolean paused) {
@@ -698,7 +701,7 @@ public final class FollowerLink implements FrameHandler {
     }
 
     private void sendBatch(ByteBuffer batch, int length) {
-        connection.send(written(batch, length), batch, batchWritten, false);
+        ioSession.send(written(batch, length), batch, batchWritten, false);
     }
 
     /**
@@ -726,7 +729,7 @@ public final class FollowerLink implements FrameHandler {
     }
 
     /**
-     * Starts the snapshot of the first session the follower asked one for, when none is in progress. Its cut is the
+     * Starts the snapshot of the first session the follower asked one for, when none is in progress. Its snapshot offset is the
      * reader's position: the session's events after it are skipped until the snapshot ends.
      */
     void startPendingSnapshot() {
@@ -738,7 +741,7 @@ public final class FollowerLink implements FrameHandler {
         for (int key = 0; key < announced && state == State.STREAMING; key++) {
             // marked sent before it goes: the follower's REPLICATING may come back before the snapshot's last frame
             // is handed over
-            if (!sessionSync(key, SessionSync.SNAPSHOT_PENDING, SessionSync.SNAPSHOT_SENT)) {
+            if (!sessionSync(key, SessionSyncState.SNAPSHOT_PENDING, SessionSyncState.SNAPSHOT_SENT)) {
                 continue;
             }
             FixSessionMessagesStore store = sessions.get(key).getConfig().getStore();
@@ -750,7 +753,7 @@ public final class FollowerLink implements FrameHandler {
             }
             // a session registered but not yet running, as on taking leadership: retried without holding the stream
             storeRetryNanos = System.nanoTime() + STORE_RETRY_NANOS;
-            sessionSync(key, SessionSync.SNAPSHOT_SENT, SessionSync.SNAPSHOT_PENDING);
+            sessionSync(key, SessionSyncState.SNAPSHOT_SENT, SessionSyncState.SNAPSHOT_PENDING);
         }
     }
 
@@ -765,7 +768,7 @@ public final class FollowerLink implements FrameHandler {
     void sendSnapshotChunk() {
         SnapshotCursor cursor = snapshot;
         ReplicatedSession session = sessions.get(cursor.sessionKey);
-        SnapshotWriter writer = new SnapshotWriter(cursor, epoch.getAsLong());
+        SnapshotWriter writer = new SnapshotWriter(cursor, nodeEpoch.getAsLong());
         try {
             boolean roundStarted = cursor.next > cursor.roundEnd;
             if (roundStarted || cursor.resetAhead) {
@@ -798,7 +801,7 @@ public final class FollowerLink implements FrameHandler {
         } catch (RuntimeException e) {
             log.warn("Snapshot of FIX session {} {} failed", session.getFixSessionType(), session.getFixSessionId(), e);
             snapshot = null;
-            sessionSync(cursor.sessionKey, SessionSync.SNAPSHOT_SENT, SessionSync.SNAPSHOT_PENDING);
+            sessionSync(cursor.sessionKey, SessionSyncState.SNAPSHOT_SENT, SessionSyncState.SNAPSHOT_PENDING);
             close(CloseReason.SNAPSHOT_FAILED, "FIX session " + session.getFixSessionId() + ": " + e.getMessage());
         }
     }
@@ -835,7 +838,7 @@ public final class FollowerLink implements FrameHandler {
      * For a leader stopping cleanly, its sessions already stopped: waits for every event of the log to be sent, then
      * closes with {@link CloseReason#SHUTDOWN}. Arriving after them on the same connection, it tells the follower it
      * holds everything, so the follower takes over without moving its seqnums ahead. When the deadline passes first,
-     * the link is dropped without it.
+     * the connection is dropped without it.
      *
      * @return whether the follower was told
      */
@@ -851,7 +854,7 @@ public final class FollowerLink implements FrameHandler {
             log.warn("Follower {} was not sent every event before the deadline: it will take over with its seqnums moved ahead",
                     followerId);
             closed();
-            connection.stop(Deadline.immediate());
+            ioSession.stop(Deadline.immediate());
             return false;
         }
         close(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent");
@@ -863,19 +866,19 @@ public final class FollowerLink implements FrameHandler {
      */
     void close(CloseReason reason, String text) {
         if (reason == CloseReason.SHUTDOWN || reason == CloseReason.RETRY_LATER) {
-            log.info("Closing the replication stream to follower {} link {}: {} {}", followerId, link, reason, text);
+            log.info("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, text);
         } else {
-            log.warn("Closing the replication stream to follower {} link {}: {} {}", followerId, link, reason, text);
+            log.warn("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, text);
         }
         closed();
         if (reason == CloseReason.TOO_SLOW) {
-            stats.droppedTooSlow(followerId, link);
+            stats.droppedTooSlow(followerId, lane);
         }
         // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
         ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, text));
-        int length = FrameEncoder.close(frame, 0, epoch.getAsLong(), reason, text);
-        connection.send(written(frame, length), false);
-        connection.stop(Deadline.of(CLOSE_FLUSH));
+        int length = FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, text);
+        ioSession.send(written(frame, length), false);
+        ioSession.stop(Deadline.of(CLOSE_FLUSH));
     }
 
     /**
@@ -903,18 +906,6 @@ public final class FollowerLink implements FrameHandler {
     }
 
     /**
-     * Where a session stands on this follower, as the leader knows it. A session whose storage the follower shares
-     * is in sync: what the leader stored is already there.
-     */
-    public enum SessionSync {
-        ANNOUNCED,
-        SNAPSHOT_PENDING,
-        SNAPSHOT_SENT,
-        IN_SYNC,
-        NOT_REPLICATED
-    }
-
-    /**
      * Where the snapshot of a session stands, across the chunks it is sent in.
      */
     private static final class SnapshotCursor {
@@ -923,7 +914,7 @@ public final class FollowerLink implements FrameHandler {
 
         private final int sessionKey;
         private final FixSessionMessagesStore store;
-        private final long cutOffset;
+        private final long snapshotOffset;
         /**
          * The next seqnum to copy, 0 before the first chunk.
          */
@@ -946,10 +937,10 @@ public final class FollowerLink implements FrameHandler {
          */
         private boolean resetAhead;
 
-        SnapshotCursor(int sessionKey, FixSessionMessagesStore store, long cutOffset) {
+        SnapshotCursor(int sessionKey, FixSessionMessagesStore store, long snapshotOffset) {
             this.sessionKey = sessionKey;
             this.store = store;
-            this.cutOffset = cutOffset;
+            this.snapshotOffset = snapshotOffset;
         }
 
         void startRound() {
@@ -967,19 +958,19 @@ public final class FollowerLink implements FrameHandler {
     private final class SnapshotWriter implements StoreMessagesConsumer {
 
         private final SnapshotCursor cursor;
-        private final long leaderEpoch;
+        private final long currentEpoch;
         private @Nullable ByteBuffer batch;
         private int filled;
         private boolean stopped;
 
-        SnapshotWriter(SnapshotCursor cursor, long leaderEpoch) {
+        SnapshotWriter(SnapshotCursor cursor, long currentEpoch) {
             this.cursor = cursor;
-            this.leaderEpoch = leaderEpoch;
+            this.currentEpoch = currentEpoch;
         }
 
         void begin() {
             room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_BEGIN));
-            filled += FrameEncoder.snapshotBegin(batch, filled, leaderEpoch, cursor.sessionKey, cursor.cutOffset,
+            filled += FrameEncoder.snapshotBegin(batch, filled, currentEpoch, cursor.sessionKey, cursor.snapshotOffset,
                     cursor.nextIncomingSeqNum, cursor.nextOutgoingSeqNum);
         }
 
@@ -1002,7 +993,7 @@ public final class FollowerLink implements FrameHandler {
                 int length = Math.min(maxFragmentLength, messageLength - from);
                 int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
                 room(FrameEncoder.snapshotMessageBytes(length));
-                filled += FrameEncoder.snapshotMessage(batch, filled, leaderEpoch, cursor.sessionKey, seqNum, message,
+                filled += FrameEncoder.snapshotMessage(batch, filled, currentEpoch, cursor.sessionKey, seqNum, message,
                         message.position() + from, length, (byte) flags);
                 from += length;
             } while (from < messageLength && state == State.STREAMING);
@@ -1013,7 +1004,7 @@ public final class FollowerLink implements FrameHandler {
 
         void end() {
             room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_END));
-            filled += FrameEncoder.snapshotEnd(batch, filled, leaderEpoch, cursor.sessionKey, cursor.messageCount,
+            filled += FrameEncoder.snapshotEnd(batch, filled, currentEpoch, cursor.sessionKey, cursor.messageCount,
                     cursor.nextIncomingSeqNum, cursor.nextOutgoingSeqNum);
             flush();
         }

@@ -44,10 +44,10 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * The leader's replication server: accepts its follower, and streams the log to it through a {@link FollowerLink}.
+ * The leader's replication server: accepts its follower, and streams the log to it through a {@link FollowerConnection}.
  */
 @Slf4j
-public final class ReplicationPublisher {
+public final class ReplicationServer {
 
     /**
      * Frames from a follower are small: a HELLO is the largest, its node id at most 64 KiB.
@@ -57,7 +57,7 @@ public final class ReplicationPublisher {
     private final InetSocketAddress bindAddress;
     private final ReplicationLogs replicationLogs;
     private final ReplicatedSessions sessions;
-    private final LongSupplier epoch;
+    private final LongSupplier nodeEpoch;
     private final String leaderId;
     private final Duration heartbeatInterval;
     private final Duration stallTimeout;
@@ -70,8 +70,8 @@ public final class ReplicationPublisher {
     private IOWorkersGroup ioWorkers;
     private Server server;
 
-    public ReplicationPublisher(InetSocketAddress bindAddress, ReplicationLogs logs, ReplicatedSessions sessions, Followers followers,
-                                LongSupplier epoch, String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
+    public ReplicationServer(InetSocketAddress bindAddress, ReplicationLogs logs, ReplicatedSessions sessions, Followers followers,
+                                LongSupplier nodeEpoch, String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
                                 int snapshotChunkBytes, Supplier<IdleStrategy> senderIdleStrategy, SelectStrategy selectStrategy, ReplicationStats stats) {
         this.sendBuffers = sendBuffers;
         this.snapshotChunkBytes = snapshotChunkBytes;
@@ -82,7 +82,7 @@ public final class ReplicationPublisher {
         this.bindAddress = bindAddress;
         this.replicationLogs = logs;
         this.sessions = sessions;
-        this.epoch = epoch;
+        this.nodeEpoch = nodeEpoch;
         this.leaderId = leaderId;
         this.heartbeatInterval = heartbeatInterval;
         this.stallTimeout = stallTimeout;
@@ -119,20 +119,20 @@ public final class ReplicationPublisher {
     }
 
     /**
-     * Hands over to every follower, for a leader stopping cleanly; see {@link FollowerLink#handOver(Deadline)}.
+     * Hands over to every follower, for a leader stopping cleanly; see {@link FollowerConnection#handOver(Deadline)}.
      *
      * @return whether a follower was told
      */
     public boolean handOver(Deadline deadline) {
         boolean told = false;
-        for (FollowerLink link : followers.all()) {
-            told |= link.handOver(deadline);
+        for (FollowerConnection connection : followers.all()) {
+            told |= connection.handOver(deadline);
         }
         return told;
     }
 
     public void stop(Deadline deadline) {
-        followers.all().forEach(FollowerLink::disconnected);
+        followers.all().forEach(FollowerConnection::disconnected);
         if (server != null) {
             server.stop(deadline);
         }
@@ -142,7 +142,7 @@ public final class ReplicationPublisher {
     }
 
     /**
-     * Counts the buffers betty allocated for want of a pooled one: for a WELCOME only, the links owning their batches.
+     * Counts the buffers betty allocated for want of a pooled one: for a WELCOME only, the connections owning their batches.
      */
     private final class PoolMisses implements IOBufferPoolStats {
 
@@ -163,23 +163,23 @@ public final class ReplicationPublisher {
 
         @Override
         public void onConnected(IOSession session) {
-            FollowerLink link = new FollowerLink(session, replicationLogs, sessions, epoch, leaderId, heartbeatInterval, stallTimeout,
-                    sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationPublisher::launchSender);
-            session.setAttachment(link);
-            followers.add(link);
+            FollowerConnection connection = new FollowerConnection(session, replicationLogs, sessions, nodeEpoch, leaderId, heartbeatInterval, stallTimeout,
+                    sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationServer::launchSender);
+            session.setAttachment(connection);
+            followers.add(connection);
         }
 
         @Override
         public void onRead(IOSession session, ByteBuffer message, long localReceiveTimeInNanos) {
-            FollowerLink link = session.getAttachment();
+            FollowerConnection connection = session.getAttachment();
             int index = message.position();
             try {
                 int consumed;
-                while ((consumed = decoder.decode(message, index, message.limit() - index, link)) > 0) {
+                while ((consumed = decoder.decode(message, index, message.limit() - index, connection)) > 0) {
                     index += consumed;
                 }
             } catch (WireFormatException e) {
-                link.close(CloseReason.PROTOCOL_ERROR, e.getMessage());
+                connection.close(CloseReason.PROTOCOL_ERROR, e.getMessage());
                 index = message.limit();
             }
             message.position(index);
@@ -191,17 +191,17 @@ public final class ReplicationPublisher {
             if (session == null) {
                 return;
             }
-            FollowerLink link = session.getAttachment();
-            if (link != null) {
-                link.disconnected();
-                followers.remove(link);
+            FollowerConnection connection = session.getAttachment();
+            if (connection != null) {
+                connection.disconnected();
+                followers.remove(connection);
             }
         }
 
         @Override
         public void onWatermarkEvent(IOSession session, boolean highWatermarkReached, long bytesLeftToWrite) {
-            FollowerLink link = session.getAttachment();
-            link.pause(highWatermarkReached);
+            FollowerConnection connection = session.getAttachment();
+            connection.pause(highWatermarkReached);
         }
     }
 }

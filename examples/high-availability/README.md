@@ -50,14 +50,14 @@ Both nodes start without leading: the acceptor binds nothing. Node 1 is elected,
 replication; node 2 connects to it and receives a snapshot.
 
 ```
-node-1        Replica - FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT outgoing sequence number moved from 1 to 10001, ...
+node-1        ReplicaSessions - FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT outgoing sequence number moved from 1 to 10001, ...
 node-1        ReplicationFixEngineHa - Node 1 is now LEADER at epoch 1
 node-2        ReplicationFixEngineHa - Node 2 is now FOLLOWER at epoch 1, following /127.0.0.1:17101
 counterparty  Counterparty - Gap in the gateway's MsgSeqNum: asked for 1 to 10000 again
 counterparty  Counterparty - Logged on
 counterparty  Counterparty - Gap 1 to 10000 filled
-node-2        LeaderLink - Following leader 1 at epoch 1, from its log tail, needing a snapshot
-node-1        FollowerLink - Snapshot of FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT sent to follower 2: 0 messages
+node-2        LeaderConnection - Following leader 1 at epoch 1, from its log tail, needing a snapshot
+node-1        FollowerConnection - Snapshot of FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT sent to follower 2: 0 messages
 counterparty  Counterparty - request 1 answered by node 1
 ```
 
@@ -78,7 +78,7 @@ to it after its next connection attempt:
 ```
 counterparty  Counterparty - Logged out: Remote disconnection
 node-2        ReplicationFixEngineHa - Node 2 is now UNKNOWN at epoch -1
-node-2        Replica - FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT outgoing sequence number moved from 10022 to 20022, ...
+node-2        ReplicaSessions - FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT outgoing sequence number moved from 10022 to 20022, ...
 node-2        ReplicationFixEngineHa - Node 2 is now LEADER at epoch 2
 counterparty  Counterparty - Gap in the gateway's MsgSeqNum: asked for 10022 to 20021 again
 counterparty  Counterparty - Logged on
@@ -103,9 +103,9 @@ The pair already has a leader, so it follows it and is caught up by snapshot:
 
 ```
 node-1        ReplicationFixEngineHa - Node 1 is now FOLLOWER at epoch 2, following /127.0.0.1:17102
-node-2        FollowerLink - Follower 1 connected at epoch 2, needing a snapshot
-node-1        LeaderLink - Following leader 2 at epoch 2, from its log tail, needing a snapshot
-node-2        FollowerLink - Snapshot of FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT sent to follower 1: 15 messages
+node-2        FollowerConnection - Follower 1 connected at epoch 2, needing a snapshot
+node-1        LeaderConnection - Following leader 2 at epoch 2, from its log tail, needing a snapshot
+node-2        FollowerConnection - Snapshot of FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT sent to follower 1: 15 messages
 ```
 
 The counterparty sees nothing of it.
@@ -123,9 +123,9 @@ no gap:
 ```
 counterparty  Counterparty - Logged out: FIX server stop
 node-2        HaNode - Node 2: logged out, FIX server stop
-node-2        FollowerLink - Closing the replication stream to follower 1: SHUTDOWN the leader stopped cleanly, every event was sent
-node-1        LeaderLink - Leader 2 stopped cleanly and handed over: the leader stopped cleanly, every event was sent
-node-1        Replica - FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT taken over where the old leader cleanly left it
+node-2        FollowerConnection - Closing the replication stream to follower 1: SHUTDOWN the leader stopped cleanly, every event was sent
+node-1        LeaderConnection - Leader 2 stopped cleanly and handed over: the leader stopped cleanly, every event was sent
+node-1        ReplicaSessions - FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT taken over where the old leader cleanly left it
 node-1        ReplicationFixEngineHa - Node 1 is now LEADER at epoch 3
 counterparty  Counterparty - Logged on
 counterparty  Counterparty - request 46 answered by node 1
@@ -154,7 +154,7 @@ Start the witness again (`./start-witness.sh`) and the leader is re-elected, log
 sequence number jump:
 
 ```
-node-1        Replica - FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT outgoing sequence number moved from 20073 to 30073, ...
+node-1        ReplicaSessions - FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT outgoing sequence number moved from 20073 to 30073, ...
 node-1        ReplicationFixEngineHa - Node 1 is now LEADER at epoch 4
 counterparty  Counterparty - Gap in the gateway's MsgSeqNum: asked for 20073 to 30072 again
 counterparty  Counterparty - Logged on

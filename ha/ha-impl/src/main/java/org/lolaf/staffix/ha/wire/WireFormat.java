@@ -90,8 +90,8 @@ public class WireFormat {
     public static final int FLAG_IN_SYNC = 0x01;
 
     /**
-     * Initial read buffer of a link, holding many small frames per read. Betty grows it for a larger frame, up to the
-     * link's frame limit, so a link pays for its largest frame only once it receives one.
+     * Initial read buffer of a connection, holding many small frames per read. Betty grows it for a larger frame, up to the
+     * connection's frame limit, so a connection pays for its largest frame only once it receives one.
      */
     public static final int READ_BUFFER_BYTES = 64 * 1024;
 
