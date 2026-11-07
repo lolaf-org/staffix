@@ -946,7 +946,7 @@ class TestReplicationFixEngineHa {
         try {
             a.store.storeNextIncomingSeqNum(7);
             ByteBuffer message = ByteBuffer.allocate(4096);
-            for (int seq = 1; a.ha.getStats().getTooSlow() == 0; seq++) {
+            for (int seq = 1; a.ha.getStats().getDroppedTooSlow() == 0; seq++) {
                 assertThat(seq).as("messages written before the follower was dropped").isLessThan(100_000);
                 a.store.storeMessageSent(seq, message.clear());
             }

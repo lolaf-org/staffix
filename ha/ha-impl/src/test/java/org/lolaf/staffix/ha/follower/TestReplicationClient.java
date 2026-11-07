@@ -158,14 +158,14 @@ class TestReplicationClient {
         syncReceivedStore.storeNextIncomingSeqNum(1);
         syncReceivedServer.start();
         connect(syncReceivedAddress, maxFrameBytes);
-        await().until(() -> !syncReceivedLeader.getFollowers().all().isEmpty()
-                && syncReceivedLeader.getFollowers().all().get(0).isInSync(0));
-        return syncReceivedLeader.getFollowers().all().get(0);
+        await().until(() -> !syncReceivedLeader.getFollowers().connections().isEmpty()
+                && syncReceivedLeader.getFollowers().connections().get(0).isSessionInSync(0));
+        return syncReceivedLeader.getFollowers().connections().get(0);
     }
 
     private FollowerConnection inSync() {
-        await().until(() -> !leader.getFollowers().all().isEmpty() && leader.getFollowers().all().get(0).isInSync(0));
-        return leader.getFollowers().all().get(0);
+        await().until(() -> !leader.getFollowers().connections().isEmpty() && leader.getFollowers().connections().get(0).isSessionInSync(0));
+        return leader.getFollowers().connections().get(0);
     }
 
     @AfterEach
@@ -278,15 +278,15 @@ class TestReplicationClient {
     void aSessionWhoseStorageTheFollowerSharesIsRefusedAndNotWaitedFor() {
         follower.nextStorageIdentity = leader.getSessions().get(0).getConfig().getStorageIdentity();
         connect();
-        await().until(() -> !leader.getFollowers().all().isEmpty()
-                && leader.getFollowers().all().get(0).getSessionAnswer(0) == SessionAnswer.SHARED_STORAGE);
+        await().until(() -> !leader.getFollowers().connections().isEmpty()
+                && leader.getFollowers().connections().get(0).getSessionAnswer(0) == SessionAnswer.SHARED_STORAGE);
         long unacknowledged = leader.getSessions().get(0).getUnacknowledgedSends();
 
         leaderStore.storeNextOutgoingSeqNum(2);
         leaderStore.awaitReplicated();
 
         assertThat(follower.store(MAIN).writes).isEmpty();
-        assertThat(leader.getFollowers().all().get(0).isInSync(0)).isFalse();
+        assertThat(leader.getFollowers().connections().get(0).isSessionInSync(0)).isFalse();
         assertThat(leader.getSessions().get(0).getUnacknowledgedSends()).as("sent without waiting")
                 .isEqualTo(unacknowledged + 1);
     }
@@ -298,7 +298,7 @@ class TestReplicationClient {
         leaderStore.storeNextIncomingSeqNum(2);
         await().until(() -> follower.store(MAIN).writes.contains("incoming 2"));
         client.stop(Deadline.of(Duration.ofSeconds(2)));
-        await().until(() -> leader.getFollowers().all().isEmpty());
+        await().until(() -> leader.getFollowers().connections().isEmpty());
         follower.store(MAIN).writes.clear();
 
         leaderStore.storeNextIncomingSeqNum(3);

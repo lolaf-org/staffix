@@ -199,8 +199,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                 .switchoverMaxDuration(switchoverMaxDuration())
                 .monitoringInstanceId(settings.getMonitoringInstanceId());
         if (currentRole == Role.LEADER) {
-            for (FollowerConnection connection : followers.all()) {
-                status.followerConnection(connection.status(sessions.count()));
+            for (FollowerConnection connection : followers.connections()) {
+                status.followerConnection(connection.getStatus(sessions.count()));
             }
             status.droppedFollowers(stats.getSlowFollowers().notBackInSync());
         }
@@ -335,15 +335,15 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     long getFollowerPendingWrites() {
         long pendingWrites = 0;
-        for (FollowerConnection connection : followers.all()) {
+        for (FollowerConnection connection : followers.connections()) {
             pendingWrites += connection.getFollowerPendingWrites();
         }
         return pendingWrites;
     }
 
     private boolean isAnyFollowerInSyncForAll() {
-        for (FollowerConnection connection : followers.all()) {
-            if (connection.isInSyncForAll(sessions.count())) {
+        for (FollowerConnection connection : followers.connections()) {
+            if (connection.isLaneInSync(sessions.count())) {
                 return true;
             }
         }
@@ -408,9 +408,9 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         boolean inSync = false;
         String refusal = null;
-        for (FollowerConnection connection : followers.all()) {
+        for (FollowerConnection connection : followers.connections()) {
             SessionAnswer reported = connection.getSessionAnswer(session.getKey());
-            inSync |= connection.isInSync(session.getKey());
+            inSync |= connection.isSessionInSync(session.getKey());
             if (reported != null && reported.isRefusal()) {
                 refusal = reported.name();
             }

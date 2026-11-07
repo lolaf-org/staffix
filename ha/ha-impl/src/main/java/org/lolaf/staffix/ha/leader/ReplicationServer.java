@@ -55,7 +55,7 @@ public final class ReplicationServer {
     private static final int MAX_INBOUND_FRAME_BYTES = 128 * 1024;
 
     private final InetSocketAddress bindAddress;
-    private final ReplicationLogs replicationLogs;
+    private final ReplicationLogs logs;
     private final ReplicatedSessions sessions;
     private final LongSupplier nodeEpoch;
     private final String leaderId;
@@ -80,7 +80,7 @@ public final class ReplicationServer {
         this.stats = stats;
         this.followers = followers;
         this.bindAddress = bindAddress;
-        this.replicationLogs = logs;
+        this.logs = logs;
         this.sessions = sessions;
         this.nodeEpoch = nodeEpoch;
         this.leaderId = leaderId;
@@ -97,7 +97,7 @@ public final class ReplicationServer {
     public void start() {
         ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-leader")
                 .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy)
-                        .ioThreadCount(replicationLogs.count()).build())
+                        .ioThreadCount(logs.count()).build())
                 .build().newInstance();
         server = ServerBuilder.builder()
                 .id("staffix-ha-leader")
@@ -125,14 +125,14 @@ public final class ReplicationServer {
      */
     public boolean handOver(Deadline deadline) {
         boolean told = false;
-        for (FollowerConnection connection : followers.all()) {
+        for (FollowerConnection connection : followers.connections()) {
             told |= connection.handOver(deadline);
         }
         return told;
     }
 
     public void stop(Deadline deadline) {
-        followers.all().forEach(FollowerConnection::disconnected);
+        followers.connections().forEach(FollowerConnection::disconnected);
         if (server != null) {
             server.stop(deadline);
         }
@@ -163,7 +163,7 @@ public final class ReplicationServer {
 
         @Override
         public void onConnected(IOSession session) {
-            FollowerConnection connection = new FollowerConnection(session, replicationLogs, sessions, nodeEpoch, leaderId, heartbeatInterval, stallTimeout,
+            FollowerConnection connection = new FollowerConnection(session, logs, sessions, nodeEpoch, leaderId, heartbeatInterval, stallTimeout,
                     sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationServer::launchSender);
             session.setAttachment(connection);
             followers.add(connection);
@@ -201,7 +201,7 @@ public final class ReplicationServer {
         @Override
         public void onWatermarkEvent(IOSession session, boolean highWatermarkReached, long bytesLeftToWrite) {
             FollowerConnection connection = session.getAttachment();
-            connection.pause(highWatermarkReached);
+            connection.onWriteWatermark(highWatermarkReached);
         }
     }
 }

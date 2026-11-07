@@ -97,8 +97,8 @@ class HaProbes {
             long thresholdMillis = ha.getSettings().getFollowerLagAlertThreshold().toMillis();
             boolean anyConnected = false;
             int lanes = ha.getReplicationLogs().count();
-            for (FollowerConnection connection : ha.getFollowers().all()) {
-                HaStatus.FollowerConnection follower = connection.status(ha.getSessions().count());
+            for (FollowerConnection connection : ha.getFollowers().connections()) {
+                HaStatus.FollowerConnection follower = connection.getStatus(ha.getSessions().count());
                 anyConnected |= follower.isConnected();
                 String name = name(follower.getNodeId(), follower.getLane(), lanes);
                 if (follower.isConnected() && follower.getLagMillis() > thresholdMillis) {
@@ -183,7 +183,7 @@ class HaProbes {
         @Override
         public Optional<Alert> evaluate() {
             List<String> problems = new ArrayList<>();
-            for (FollowerConnection connection : followers.all()) {
+            for (FollowerConnection connection : followers.connections()) {
                 SessionAnswer reported = connection.getSessionAnswer(session.getKey());
                 if (reported != null && reported.isRefusal()) {
                     problems.add("follower " + connection.getFollowerId() + " refuses to replicate it: " + reported);

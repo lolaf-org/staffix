@@ -381,30 +381,6 @@ public final class LeaderConnection implements FrameHandler {
         ackDue = true;
     }
 
-    @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane) {
-        unexpected(FrameType.HELLO);
-    }
-
-    @Override
-    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer status) {
-        unexpected(FrameType.SESSION_ANSWER);
-    }
-
-    @Override
-    public void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites) {
-        unexpected(FrameType.ACK);
-    }
-
-    @Override
-    public void onReceived(long epoch, long receivedOffset) {
-        unexpected(FrameType.RECEIVED);
-    }
-
-    private void unexpected(FrameType type) {
-        close(CloseReason.PROTOCOL_ERROR, "a leader does not send " + type);
-    }
-
     /**
      * Sends a CLOSE and disconnects, the connection flushing it first; the client connects again.
      */

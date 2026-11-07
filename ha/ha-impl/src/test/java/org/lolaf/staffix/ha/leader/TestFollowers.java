@@ -73,7 +73,7 @@ class TestFollowers {
                 Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         });
         connection.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0, 0);
-        connection.fill(ByteBuffer.allocate(1 << 16));
+        connection.fillBatch(ByteBuffer.allocate(1 << 16));
         connection.onSessionAnswer(EPOCH, KEY, SessionAnswer.REPLICATING);
         connection.onAck(EPOCH, appliedOffset, true, 0);
         followers.add(connection);
@@ -200,7 +200,7 @@ class TestFollowers {
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         });
         connectionOfMain.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, 0);
-        connectionOfMain.fill(ByteBuffer.allocate(1 << 16));
+        connectionOfMain.fillBatch(ByteBuffer.allocate(1 << 16));
         connectionOfMain.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
         connectionOfMain.onAck(EPOCH, twoLanes.getReplicationLogs().get(0).getTailOffset(), true, 0);
         followers.add(connectionOfMain);
@@ -242,12 +242,12 @@ class TestFollowers {
     @Test
     void theListOfFollowersIsBuiltOnlyWhenOneJoinsOrLeaves() {
         FollowerConnection first = inSyncFollower(offset);
-        assertThat(followers.all()).containsExactly(first).isSameAs(followers.all());
+        assertThat(followers.connections()).containsExactly(first).isSameAs(followers.connections());
 
         FollowerConnection second = inSyncFollower(offset);
-        assertThat(followers.all()).containsExactly(first, second);
+        assertThat(followers.connections()).containsExactly(first, second);
 
         followers.remove(first);
-        assertThat(followers.all()).containsExactly(second);
+        assertThat(followers.connections()).containsExactly(second);
     }
 }

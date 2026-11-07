@@ -138,8 +138,8 @@ class TestReplicationServer {
         server.start();
 
         connectFollower(EPOCH, 0);
-        await().until(() -> !ha.getFollowers().all().isEmpty()
-                && ha.getFollowers().all().get(0).getState() == FollowerConnection.State.STREAMING);
+        await().until(() -> !ha.getFollowers().connections().isEmpty()
+                && ha.getFollowers().connections().get(0).getState() == FollowerConnection.State.STREAMING);
         store.storeNextIncomingSeqNum(2);
         store.storeNextOutgoingSeqNum(9);
 
@@ -167,19 +167,19 @@ class TestReplicationServer {
         server.start();
         connectFollower(0, -1);
 
-        await().untilAsserted(() -> assertThat(ha.getFollowers().all()).hasSize(1));
+        await().untilAsserted(() -> assertThat(ha.getFollowers().connections()).hasSize(1));
 
-        assertThat(ha.getFollowers().all().get(0).status(0).getAddress()).matches(".*:\\d+");
+        assertThat(ha.getFollowers().connections().get(0).getStatus(0).getAddress()).matches(".*:\\d+");
     }
 
     @Test
     void aFollowerThatDisconnectsIsForgotten() {
         server.start();
         connectFollower(0, -1);
-        await().until(() -> ha.getFollowers().all().size() == 1);
+        await().until(() -> ha.getFollowers().connections().size() == 1);
 
         follower.stop(Deadline.of(Duration.ofSeconds(2)));
 
-        await().until(() -> ha.getFollowers().all().isEmpty());
+        await().until(() -> ha.getFollowers().connections().isEmpty());
     }
 }

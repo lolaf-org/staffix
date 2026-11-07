@@ -27,7 +27,7 @@ import java.util.function.BiFunction;
  */
 public final class ReplicationStats {
 
-    private final AtomicLong tooSlow = new AtomicLong();
+    private final AtomicLong droppedTooSlow = new AtomicLong();
     @Getter
     private final SlowFollowers slowFollowers;
     private final AtomicLong snapshots = new AtomicLong();
@@ -66,7 +66,7 @@ public final class ReplicationStats {
     }
 
     void droppedTooSlow(@Nullable String followerId, int lane) {
-        tooSlow.incrementAndGet();
+        droppedTooSlow.incrementAndGet();
         if (followerId != null) {
             slowFollowers.dropped(followerId, lane);
         }
@@ -77,7 +77,7 @@ public final class ReplicationStats {
         snapshotMessages.addAndGet(messages);
     }
 
-    void sendWait() {
+    void sendWaited() {
         sendWaits.incrementAndGet();
     }
 
@@ -102,8 +102,8 @@ public final class ReplicationStats {
     /**
      * Follower lanes dropped for reading the replication log so slowly that a write waited the log full timeout for them.
      */
-    public long getTooSlow() {
-        return tooSlow.get();
+    public long getDroppedTooSlow() {
+        return droppedTooSlow.get();
     }
 
     public long getSnapshots() {

@@ -74,11 +74,11 @@ class HaMeters {
         meters.getGauge("ha.followers.connected", "Followers streaming this leader's writes over every replication"
                 + " lane.", Map.of(), () -> countFollowers(ha, FollowerConnection::isConnected));
         meters.getGauge("ha.followers.in.sync", "Followers holding every replicated session in sync.", Map.of(),
-                () -> countFollowers(ha, connection -> connection.isInSyncForAll(ha.getSessions().count())));
+                () -> countFollowers(ha, connection -> connection.isLaneInSync(ha.getSessions().count())));
         meters.getGauge("ha.follower.unsent", "The most bytes this leader wrote and has not sent a follower yet: a follower"
                 + " falling the replication log's capacity behind is dropped, then caught up by snapshot.", Map.of(), () -> {
             long most = 0;
-            for (FollowerConnection connection : ha.getFollowers().all()) {
+            for (FollowerConnection connection : ha.getFollowers().connections()) {
                 most = Math.max(most, connection.getUnsentBytes());
             }
             return most;
@@ -97,13 +97,13 @@ class HaMeters {
                 + " 0 when every follower is caught up: it keeps growing while a follower is stalled.", Map.of(), () -> {
             long now = System.nanoTime();
             long most = 0;
-            for (FollowerConnection connection : ha.getFollowers().all()) {
+            for (FollowerConnection connection : ha.getFollowers().connections()) {
                 most = Math.max(most, connection.getLagNanos(now));
             }
             return TimeUnit.NANOSECONDS.toMillis(most);
         });
         meters.getCounter("ha.follower.too.slow", "Follower lanes dropped for reading the replication log so slowly that a "
-                + "write waited the log full timeout for them.", Map.of(), stats::getTooSlow);
+                + "write waited the log full timeout for them.", Map.of(), stats::getDroppedTooSlow);
         meters.getCounter("ha.snapshots", "Session snapshots sent to followers catching up.", Map.of(), stats::getSnapshots);
         meters.getCounter("ha.snapshot.messages", "Messages copied by the snapshots sent to followers.", Map.of(),
                 stats::getSnapshotMessages);
@@ -155,7 +155,7 @@ class HaMeters {
             return 0;
         }
         Map<String, Set<Integer>> matchingLanes = new HashMap<>();
-        for (FollowerConnection connection : ha.getFollowers().all()) {
+        for (FollowerConnection connection : ha.getFollowers().connections()) {
             if (connection.getFollowerId() != null && matching.test(connection)) {
                 matchingLanes.computeIfAbsent(connection.getFollowerId(), id -> new HashSet<>()).add(connection.getLane());
             }

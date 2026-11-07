@@ -26,7 +26,8 @@ import java.nio.ByteBuffer;
  * Receives decoded frames as primitives, so the frequent ones allocate nothing. A message is handed over as a range
  * of the receive buffer, valid only for the duration of the call.
  *
- * <p>Every method gets the sender's epoch: fencing a deposed leader applies to every frame alike.
+ * <p>Every method gets the sender's epoch: fencing a deposed leader applies to every frame alike. A frame the handler
+ * does not take, one of the other direction's, is refused: by default every method throws {@link WireFormatException}.
  */
 public interface FrameHandler {
 
@@ -38,49 +39,63 @@ public interface FrameHandler {
      * @param lane              which of the leader's lanes this connection carries, 0 for the first, the one that
      *                          learns how many there are
      */
-    void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane);
+    default void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane) {
+        throw unexpected(FrameType.HELLO);
+    }
 
     /**
      * @param resumeOffset where the stream resumes, or {@link WireFormat#NO_RESUME} when every session is caught up
      *                     by snapshot
      * @param lanes        how many lanes the leader splits its sessions over; the follower opens the others
      */
-    void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes);
+    default void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes) {
+        throw unexpected(FrameType.WELCOME);
+    }
 
     /**
      * Binds a session key, used by every later frame about the session, to the session's id.
      *
      * @param fixSessionId the id's {@link org.lolaf.staffix.api.session.FixSessionId#toString() full form}
      */
-    void onSession(long epoch, int sessionKey, FixSessionType fixSessionType, ReplicationMode replicationMode,
-                   String fixSessionId, @Nullable String storageIdentity);
+    default void onSession(long epoch, int sessionKey, FixSessionType fixSessionType, ReplicationMode replicationMode,
+                   String fixSessionId, @Nullable String storageIdentity) {
+        throw unexpected(FrameType.SESSION);
+    }
 
     /**
      * The follower's answer to a {@code SESSION}, and again whenever the session's state on the follower changes, as
      * when a snapshot completes it.
      */
-    void onSessionAnswer(long epoch, int sessionKey, SessionAnswer status);
+    default void onSessionAnswer(long epoch, int sessionKey, SessionAnswer answer) {
+        throw unexpected(FrameType.SESSION_ANSWER);
+    }
 
     /**
      * @param logOffset     the event's position in the leader's replication log
      * @param fragmentFlags {@link WireFormat#MORE_FRAGMENTS} and {@link WireFormat#CONTINUED_FRAGMENT}, zero for a
      *                      whole event
      */
-    void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                      ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags);
+    default void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
+                      ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
+        throw unexpected(FrameType.STORE_EVENT);
+    }
 
     /**
      * @param snapshotOffset the log offset the snapshot starts at; the session's events after it come through the snapshot
      *                  until its end, and through the stream again after that
      */
-    void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum);
+    default void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        throw unexpected(FrameType.SNAPSHOT_BEGIN);
+    }
 
     /**
      * @param fragmentFlags as for {@link #onStoreEvent}, from the frame's header: a snapshot carries a message longer
      *                      than a frame as consecutive fragments
      */
-    void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                           int messageLength, byte fragmentFlags);
+    default void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
+                           int messageLength, byte fragmentFlags) {
+        throw unexpected(FrameType.SNAPSHOT_MESSAGE);
+    }
 
     /**
      * @param messageCount       the messages the snapshot carried, a fragmented one counted once: the follower checks
@@ -88,7 +103,9 @@ public interface FrameHandler {
      * @param nextIncomingSeqNum the session's seqnums when the snapshot caught up with its store, which supersede the
      *                           ones of {@link #onSnapshotBegin}
      */
-    void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum);
+    default void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        throw unexpected(FrameType.SNAPSHOT_END);
+    }
 
     /**
      * @param appliedOffset the offset of the last event the follower applied, which releases the {@code SYNC} sends
@@ -96,7 +113,9 @@ public interface FrameHandler {
      * @param inSync        whether the follower holds every session the leader replicates
      * @param pendingWrites what the follower's stores for this lane have yet to store, as of the last second or so
      */
-    void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites);
+    default void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites) {
+        throw unexpected(FrameType.ACK);
+    }
 
     /**
      * Sent before a read's events are written to the follower's store, then followed by its {@link #onAck ACK}.
@@ -104,7 +123,9 @@ public interface FrameHandler {
      * @param receivedOffset the offset of the last event the follower holds in memory, which releases the
      *                       {@code SYNC_RECEIVED} sends waiting for it
      */
-    void onReceived(long epoch, long receivedOffset);
+    default void onReceived(long epoch, long receivedOffset) {
+        throw unexpected(FrameType.RECEIVED);
+    }
 
     /**
      * Sent when the leader sent nothing for a heartbeat interval. The follower answers with an ACK, so a quiet stream
@@ -112,11 +133,19 @@ public interface FrameHandler {
      *
      * @param logTailOffset where the leader's log ends
      */
-    void onHeartbeat(long epoch, long logTailOffset);
+    default void onHeartbeat(long epoch, long logTailOffset) {
+        throw unexpected(FrameType.HEARTBEAT);
+    }
 
     /**
      * The sender's last frame before it disconnects. A {@link CloseReason#SHUTDOWN} from the leader tells the follower
      * it was sent every event, so it takes over without moving its seqnums ahead.
      */
-    void onClose(long epoch, CloseReason reason, String text);
+    default void onClose(long epoch, CloseReason reason, String text) {
+        throw unexpected(FrameType.CLOSE);
+    }
+
+    private static WireFormatException unexpected(FrameType type) {
+        return new WireFormatException("Unexpected " + type + " frame");
+    }
 }

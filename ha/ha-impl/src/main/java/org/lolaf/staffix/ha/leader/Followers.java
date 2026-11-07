@@ -38,24 +38,24 @@ public final class Followers {
     private static final IdleStrategy[] NO_WAITERS = new IdleStrategy[0];
 
     private volatile FollowerConnection[] connections = NONE;
-    private volatile List<FollowerConnection> lanesList = List.of();
+    private volatile List<FollowerConnection> connectionList = List.of();
     private volatile IdleStrategy[] waiters = NO_WAITERS;
     private final AtomicInteger waiting = new AtomicInteger();
 
     synchronized void add(FollowerConnection connection) {
         FollowerConnection[] added = Arrays.copyOf(connections, connections.length + 1);
         added[connections.length] = connection;
-        connections(added);
+        setConnections(added);
     }
 
     synchronized void remove(FollowerConnection connection) {
-        connections(Arrays.stream(connections).filter(other -> other != connection).toArray(FollowerConnection[]::new));
+        setConnections(Arrays.stream(connections).filter(other -> other != connection).toArray(FollowerConnection[]::new));
         wakeWaiters();
     }
 
-    private void connections(FollowerConnection[] changed) {
+    private void setConnections(FollowerConnection[] changed) {
         connections = changed;
-        lanesList = List.of(changed);
+        connectionList = List.of(changed);
     }
 
     /**
@@ -91,8 +91,8 @@ public final class Followers {
         }
     }
 
-    public List<FollowerConnection> all() {
-        return lanesList;
+    public List<FollowerConnection> connections() {
+        return connectionList;
     }
 
     /**
@@ -151,7 +151,7 @@ public final class Followers {
         boolean anyWaitedFor = false;
         boolean acked = true;
         for (FollowerConnection connection : connections) {
-            if (connection.isInSync(sessionKey)) {
+            if (connection.isSessionInSync(sessionKey)) {
                 anyInSync = true;
                 if (!connection.isAckOverdue()) {
                     anyWaitedFor = true;
@@ -170,7 +170,7 @@ public final class Followers {
         }
         if (timeoutNanos != 0 && System.nanoTime() - startNanos >= timeoutNanos) {
             for (FollowerConnection connection : connections) {
-                if (connection.isInSync(sessionKey) && ackedOffset(connection, received) < offset) {
+                if (connection.isSessionInSync(sessionKey) && ackedOffset(connection, received) < offset) {
                     connection.ackOverdue(offset);
                 }
             }

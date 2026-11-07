@@ -37,6 +37,7 @@ import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.wire.WireFormatException;
 import org.lolaf.staffix.tests.TestingClock;
 import org.mockito.ArgumentCaptor;
 
@@ -56,6 +57,7 @@ import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -168,7 +170,7 @@ class TestFollowerConnection {
 
     private void fill(int batchBytes) {
         ByteBuffer batch = ByteBuffer.allocate(batchBytes);
-        int filled = connection.fill(batch);
+        int filled = connection.fillBatch(batch);
         decodeAll(batch.limit(filled));
     }
 
@@ -331,13 +333,13 @@ class TestFollowerConnection {
         try {
             await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
 
-            connection.pause(true);
+            connection.onWriteWatermark(true);
             await().during(Duration.ofMillis(200)).until(() -> stats.getSendWaits() == 0);
 
             main.storeNextIncomingSeqNum(1);
             await().until(() -> stats.getSendWaits() == 1);
 
-            connection.pause(false);
+            connection.onWriteWatermark(false);
             await().until(() -> batchesSent.get() == 2);
         } finally {
             connection.disconnected();
@@ -426,7 +428,7 @@ class TestFollowerConnection {
 
         connection.onSessionAnswer(EPOCH, 1, SessionAnswer.REPLICATING);
 
-        assertThat(connection.isInSyncForAll(2)).as("main is another lane's").isTrue();
+        assertThat(connection.isLaneInSync(2)).as("main is another lane's").isTrue();
     }
 
     @Test
@@ -463,7 +465,7 @@ class TestFollowerConnection {
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
         assertThat(sent.frames).first().asString().contains("resume=-1 ");
-        assertThat(stats.getTooSlow()).as("nobody gated the writes while it was away").isZero();
+        assertThat(stats.getDroppedTooSlow()).as("nobody gated the writes while it was away").isZero();
     }
 
     @Test
@@ -518,10 +520,9 @@ class TestFollowerConnection {
     }
 
     @Test
-    void aFrameAFollowerNeverSendsClosesTheStream() {
-        connection.onHeartbeat(EPOCH, 0);
-
-        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    void aFrameAFollowerNeverSendsIsAProtocolError() {
+        assertThatThrownBy(() -> connection.onHeartbeat(EPOCH, 0)).isInstanceOf(WireFormatException.class)
+                .hasMessage("Unexpected HEARTBEAT frame");
     }
 
     @Test
@@ -541,7 +542,7 @@ class TestFollowerConnection {
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("STORE_EVENT"));
         assertThat(sent.frames).filteredOn(frame -> frame.startsWith("CLOSE")).singleElement().asString()
                 .startsWith("CLOSE epoch=7 TOO_SLOW");
-        assertThat(stats.getTooSlow()).isEqualTo(1);
+        assertThat(stats.getDroppedTooSlow()).isEqualTo(1);
     }
 
     @Test
@@ -608,7 +609,7 @@ class TestFollowerConnection {
             store.storeNextIncomingSeqNum(seq);
         }
 
-        assertThat(stats.getTooSlow()).isZero();
+        assertThat(stats.getDroppedTooSlow()).isZero();
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("CLOSE"));
     }
 
@@ -728,16 +729,16 @@ class TestFollowerConnection {
     @Test
     void aSessionIsInSyncOnceTheFollowerSaysItReplicatesIt() {
         replicated("main").storeNextIncomingSeqNum(5);
-        assertThat(connection.isInSync(0)).as("before its hello").isFalse();
+        assertThat(connection.isSessionInSync(0)).as("before its hello").isFalse();
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         fill();
-        assertThat(connection.getSessionSync(0)).isEqualTo(SessionSyncState.ANNOUNCED);
-        assertThat(connection.isInSync(0)).as("announced").isFalse();
+        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.ANNOUNCED);
+        assertThat(connection.isSessionInSync(0)).as("announced").isFalse();
 
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
 
-        assertThat(connection.isInSync(0)).isTrue();
-        assertThat(connection.isInSync(1)).as("another session").isFalse();
+        assertThat(connection.isSessionInSync(0)).isTrue();
+        assertThat(connection.isSessionInSync(1)).as("another session").isFalse();
     }
 
     @Test
@@ -748,8 +749,8 @@ class TestFollowerConnection {
 
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.UNKNOWN_SESSION);
 
-        assertThat(connection.getSessionSync(0)).isEqualTo(SessionSyncState.NOT_REPLICATED);
-        assertThat(connection.isInSync(0)).isFalse();
+        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.NOT_REPLICATED);
+        assertThat(connection.isSessionInSync(0)).isFalse();
     }
 
     @Test
@@ -765,8 +766,8 @@ class TestFollowerConnection {
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.NOT_REPLICATED);
 
         assertThat(sent.frames).endsWith("SESSION epoch=7 key=0 INITIATOR NONE id=" + SESSION + " identity=null");
-        assertThat(connection.getSessionSync(0)).isEqualTo(SessionSyncState.NOT_REPLICATED);
-        assertThat(connection.isInSyncForAll(1)).as("a session not replicated is not waited for").isTrue();
+        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.NOT_REPLICATED);
+        assertThat(connection.isLaneInSync(1)).as("a session not replicated is not waited for").isTrue();
     }
 
     @Test
@@ -784,10 +785,10 @@ class TestFollowerConnection {
             connection.resync(key);
         }
 
-        assertThat(connection.getSessionSync(0)).isEqualTo(SessionSyncState.SNAPSHOT_PENDING);
-        assertThat(connection.isInSync(0)).as("not waited for until the snapshot lands").isFalse();
-        assertThat(connection.getSessionSync(1)).as("refused").isEqualTo(SessionSyncState.NOT_REPLICATED);
-        assertThat(connection.getSessionSync(2)).isEqualTo(SessionSyncState.NOT_REPLICATED);
+        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_PENDING);
+        assertThat(connection.isSessionInSync(0)).as("not waited for until the snapshot lands").isFalse();
+        assertThat(connection.getSyncState(1)).as("refused").isEqualTo(SessionSyncState.NOT_REPLICATED);
+        assertThat(connection.getSyncState(2)).isEqualTo(SessionSyncState.NOT_REPLICATED);
         sent.frames.clear();
         snapshot();
         assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
@@ -827,7 +828,7 @@ class TestFollowerConnection {
                 "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=twelve",
                 "SNAPSHOT_END epoch=7 key=0 count=2 nextIn=21 nextOut=13");
         verify(local).find(eq(1L), eq(12L), any(StoreMessagesConsumer.class));
-        assertThat(connection.getSessionSync(0)).isEqualTo(SessionSyncState.SNAPSHOT_SENT);
+        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_SENT);
         assertThat(stats.getSnapshots()).isEqualTo(1);
         assertThat(stats.getSnapshotMessages()).isEqualTo(2);
     }
@@ -1049,7 +1050,7 @@ class TestFollowerConnection {
 
         assertThat(sent.frames).isEmpty();
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
-        assertThat(connection.getSessionSync(0)).isEqualTo(SessionSyncState.SNAPSHOT_PENDING);
+        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_PENDING);
         verify(local, never()).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
 
         when(local.isStarted()).thenReturn(true);
@@ -1057,7 +1058,7 @@ class TestFollowerConnection {
             snapshot();
             assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
         });
-        assertThat(connection.getSessionSync(0)).isEqualTo(SessionSyncState.SNAPSHOT_SENT);
+        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_SENT);
     }
 
     @Test
@@ -1075,7 +1076,7 @@ class TestFollowerConnection {
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
         assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 SNAPSHOT_FAILED"));
-        assertThat(connection.getSessionSync(0)).isEqualTo(SessionSyncState.SNAPSHOT_PENDING);
+        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_PENDING);
     }
 
     @Test
@@ -1083,9 +1084,9 @@ class TestFollowerConnection {
         when(ioSession.getSocketAddress()).thenReturn(new InetSocketAddress("127.0.0.1", 40000));
         FollowerConnection follower = connection();
 
-        String address = follower.status(0).getAddress();
+        String address = follower.getStatus(0).getAddress();
 
         assertThat(address).isEqualTo("/127.0.0.1:40000");
-        assertThat(follower.status(0).getAddress()).isSameAs(address);
+        assertThat(follower.getStatus(0).getAddress()).isSameAs(address);
     }
 }

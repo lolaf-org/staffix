@@ -19,18 +19,10 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.betty.api.io.IOSession;
-import org.lolaf.betty.api.io.IOWriter.MessageSentCallback;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
-import org.lolaf.ringos.rb.RingBuffer;
-import org.lolaf.ringos.rb.RingBufferFactory;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.monitoring.Timer;
-import org.lolaf.staffix.api.session.FixSession.FixSessionType;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
-import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
@@ -41,36 +33,26 @@ import org.lolaf.staffix.ha.wire.*;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 /**
- * One connected follower: the handshake, the frames it sends back, and the thread streaming the log to it.
+ * One follower's connection for one lane: the handshake, the frames it sends back, and the thread streaming the log
+ * to it.
  *
  * <p>Frames from the follower arrive on the connection's IO thread; the log is streamed from a thread of the connection's
- * own, which takes one of its own write buffers, reads as many events as fit straight into it behind room for their
- * headers, and sends it. While streaming, its reader holds appends back rather than be lapped; a writer that waited
- * the log full timeout for it drops it, and it reconnects to be caught up.
- *
- * <p>A session the follower answers {@link SessionAnswer#SNAPSHOT_NEEDED} for is snapshot by that thread one chunk per
- * batch, so the other sessions keep streaming. Its own events are skipped meanwhile, except a reset, which ends the
- * snapshot: a session's message is in its store before its event is in the log, so the snapshot copies what was
- * skipped, and the follower's store is written in seqnum order as by the stream. The snapshot copies in rounds, each up
- * to the store's last message when it starts, and ends with a round that fits in one chunk; a round no shorter than the
- * one before, the session writing faster than it is copied, is sent whole, holding the other sessions for its time.
+ * own, which reads as many events as fit straight into a batch behind room for their headers, sends it, then a
+ * {@link SnapshotSender snapshot} chunk if one is in progress. While streaming, its reader holds appends back rather
+ * than be lapped; a writer that waited the log full timeout for it drops it, and it reconnects to be caught up.
  */
 @Slf4j
 public final class FollowerConnection implements FrameHandler {
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
-    private static final long STORE_RETRY_NANOS = Duration.ofMillis(10).toNanos();
     private final IOSession ioSession;
     private final String address;
     private final ReplicationLogs logs;
@@ -89,41 +71,20 @@ public final class FollowerConnection implements FrameHandler {
     private final LongSupplier nodeEpoch;
     private final String leaderId;
     private final long heartbeatIntervalNanos;
+    private final long stallTimeoutNanos;
     private final int maxEventFrameBytes;
-    private final int batchBytes;
     @Getter
     private volatile int lane;
-    private final int sendBuffers;
-    private final int snapshotChunkBytes;
     private final IdleStrategy senderIdle;
-    /**
-     * Batch buffers betty wrote, handed back by its IO thread. The connection owns its batch buffers rather than borrowing
-     * the connection's: betty frees a pool's memory when the connection stops, whichever thread still writes into one.
-     */
-    private final RingBuffer<ByteBuffer> writtenBatches;
-    private final MessageSentCallback<ByteBuffer> batchWritten = this::batchWritten;
-    /**
-     * The batch last written, handed back with the next: betty restores its position and limit once the callback
-     * returns, which would land on a sender already filling it. IO thread only.
-     */
-    private @Nullable ByteBuffer lastWrittenBatch;
-    private final IdleStrategy sendBufferWait = new BackoffIdleStrategy();
-    private int batchesAllocated;
-    /**
-     * A batch buffer taken for a pass with nothing to send, kept for the next one.
-     */
-    private @Nullable ByteBuffer spareBatch;
     private final ReplicationStats stats;
-    /**
-     * What the follower last said of each session, by key, which keeps a refusal's reason.
-     */
-    private final Map<Integer, SessionAnswer> sessionAnswers = new ConcurrentHashMap<>();
+    private final SessionSyncs syncs = new SessionSyncs();
+    private final BatchBuffers batches;
+    private final SnapshotSender snapshots;
     /**
      * Keys of sessions already announced whose replication mode changed since.
      */
     private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
     private final Consumer<Runnable> senderLauncher;
-    private boolean sendWaitCounted;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
     @Getter
@@ -139,7 +100,7 @@ public final class FollowerConnection implements FrameHandler {
     @Getter
     private volatile long receivedOffset = -1;
     /**
-     * What the follower said of itself in its last ACK; {@link #isInSync(int)} relies on the leader's own account.
+     * What the follower said of itself in its last ACK; {@link #isSessionInSync(int)} relies on the leader's own account.
      */
     @Getter
     private volatile boolean reportedInSync;
@@ -149,14 +110,6 @@ public final class FollowerConnection implements FrameHandler {
      * applies it, so a hung follower costs one timeout rather than one per send.
      */
     private volatile long overdueOffset = -1;
-    private volatile AtomicReferenceArray<SessionSyncState> sessionSyncs = new AtomicReferenceArray<>(16);
-    private volatile boolean snapshotRequested;
-    /**
-     * The session being snapshot, only one at a time; read and written by the sender thread only.
-     */
-    private @Nullable SnapshotCursor snapshot;
-    private long storeRetryNanos = Long.MAX_VALUE;
-    private volatile boolean paused;
     /**
      * What the follower's stores for this lane have yet to store, as of its last ack.
      */
@@ -172,35 +125,33 @@ public final class FollowerConnection implements FrameHandler {
     private boolean recoveringFromTooSlow;
     private volatile boolean handingOver;
     private volatile boolean senderRunning;
-    private int announced;
+    /**
+     * The next session key to announce, every key below it announced; sender thread only.
+     */
+    private int nextToAnnounce;
     private long lastSendNanos;
-    private final long stallTimeoutNanos;
     private long lastSentEventOffset = -1;
     /**
      * When the follower last went from owing nothing to owing an ack, sender thread only.
      */
     private long owedSinceNanos;
     /**
-     * The offset of the last event the last {@link #fill} took, -1 when it took none.
+     * The offset of the last event the last {@link #fillBatch} took, -1 when it took none.
      */
     private long filledEventOffset = -1;
     private AckLatencySampler ackLatency = new AckLatencySampler(Timer.VoidTimer.getInstance());
     private LagSampler lag = new LagSampler(Timer.VoidTimer.getInstance());
 
     /**
-     * @param sendBuffers    the batch buffers the connection allocates at most, a power of two; the one written last is
-     *                       reused only once the next is written
+     * @param sendBuffers        the batch buffers the connection allocates at most, a power of two; the one written
+     *                           last is reused only once the next is written
      * @param snapshotChunkBytes the most bytes of a snapshot sent between two live batches, at most a batch
-     * @param senderLauncher starts the loop streaming the log, on a thread of its own
+     * @param senderLauncher     starts the loop streaming the log, on a thread of its own
      */
-    FollowerConnection(IOSession ioSession, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier nodeEpoch, String leaderId,
-                 Duration heartbeatInterval, Duration stallTimeout, int sendBuffers, int snapshotChunkBytes, IdleStrategy senderIdle,
-                 ReplicationStats stats, Consumer<Runnable> senderLauncher) {
-        this.sendBuffers = sendBuffers;
-        this.writtenBatches = RingBufferFactory.build(RingBufferFactory.AccessType.SINGLE_CONSUMER_SINGLE_PRODUCER, sendBuffers);
-        this.senderIdle = senderIdle;
-        this.stats = stats;
-        this.senderLauncher = senderLauncher;
+    FollowerConnection(IOSession ioSession, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier nodeEpoch,
+                       String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
+                       int snapshotChunkBytes, IdleStrategy senderIdle, ReplicationStats stats,
+                       Consumer<Runnable> senderLauncher) {
         this.ioSession = ioSession;
         this.address = String.valueOf(ioSession.getSocketAddress());
         this.logs = logs;
@@ -212,15 +163,12 @@ public final class FollowerConnection implements FrameHandler {
         this.heartbeatIntervalNanos = heartbeatInterval.toNanos();
         this.stallTimeoutNanos = stallTimeout.toNanos();
         this.maxEventFrameBytes = logs.getMaxEventFrameBytes();
-        this.batchBytes = WireFormat.bufferBytes(logs.getMaxEventFrameBytes());
-        this.snapshotChunkBytes = Math.min(snapshotChunkBytes, batchBytes);
-    }
-
-    /**
-     * A buffer written from index 0 with absolute puts, as a send takes it: up to its position, which betty flips.
-     */
-    private static ByteBuffer written(ByteBuffer buffer, int length) {
-        return buffer.clear().position(length);
+        this.senderIdle = senderIdle;
+        this.stats = stats;
+        this.senderLauncher = senderLauncher;
+        this.batches = new BatchBuffers(ioSession, sendBuffers, WireFormat.bufferBytes(maxEventFrameBytes), stats);
+        this.snapshots = new SnapshotSender(this, sessions, syncs, batches, stats, nodeEpoch, maxEventFrameBytes,
+                snapshotChunkBytes);
     }
 
     @Override
@@ -265,8 +213,8 @@ public final class FollowerConnection implements FrameHandler {
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
         ByteBuffer welcome = ioSession.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
         int length = FrameEncoder.welcome(welcome.clear(), 0, currentEpoch, leaderId, resumed ? reader.getOffset() : WireFormat.NO_RESUME, logs.count());
-        ioSession.send(written(welcome, length), true);
-        senderLauncher.accept(this::send);
+        ioSession.send(BatchBuffers.written(welcome, length), true);
+        senderLauncher.accept(this::runSender);
     }
 
     /**
@@ -318,8 +266,8 @@ public final class FollowerConnection implements FrameHandler {
      * The follower holds everything of the session up to its last ack, so a {@code SYNC} send of the session waits
      * for its ack. Allocates nothing.
      */
-    public boolean isInSync(int sessionKey) {
-        return state == State.STREAMING && getSessionSync(sessionKey) == SessionSyncState.IN_SYNC;
+    public boolean isSessionInSync(int sessionKey) {
+        return state == State.STREAMING && syncs.get(sessionKey) == SessionSyncState.IN_SYNC;
     }
 
     boolean isAckOverdue() {
@@ -336,50 +284,33 @@ public final class FollowerConnection implements FrameHandler {
         }
     }
 
-    public @Nullable SessionSyncState getSessionSync(int sessionKey) {
-        AtomicReferenceArray<SessionSyncState> syncs = sessionSyncs;
-        return sessionKey < syncs.length() ? syncs.get(sessionKey) : null;
-    }
-
-    private synchronized void sessionSync(int sessionKey, SessionSyncState sync) {
-        AtomicReferenceArray<SessionSyncState> syncs = sessionSyncs;
-        if (sessionKey >= syncs.length()) {
-            AtomicReferenceArray<SessionSyncState> grown = new AtomicReferenceArray<>(Math.max(sessionKey + 1, syncs.length() * 2));
-            for (int key = 0; key < syncs.length(); key++) {
-                grown.set(key, syncs.get(key));
-            }
-            sessionSyncs = syncs = grown;
-        }
-        syncs.set(sessionKey, sync);
-    }
-
-    private synchronized boolean sessionSync(int sessionKey, SessionSyncState expected, SessionSyncState sync) {
-        return sessionSyncs.compareAndSet(sessionKey, expected, sync);
+    public @Nullable SessionSyncState getSyncState(int sessionKey) {
+        return syncs.get(sessionKey);
     }
 
     @Override
-    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer status) {
-        if (getSessionSync(sessionKey) == null) {
+    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer answer) {
+        if (syncs.get(sessionKey) == null) {
             close(CloseReason.PROTOCOL_ERROR, "a SESSION_ANSWER for session key " + sessionKey + ", never announced");
             return;
         }
-        sessionAnswers.put(sessionKey, status);
-        switch (status) {
+        syncs.answered(sessionKey, answer);
+        switch (answer) {
             case REPLICATING:
-                sessionSync(sessionKey, SessionSyncState.IN_SYNC);
+                syncs.set(sessionKey, SessionSyncState.IN_SYNC);
                 break;
             case SNAPSHOT_NEEDED:
-                sessionSync(sessionKey, SessionSyncState.SNAPSHOT_PENDING);
-                snapshotRequested = true;
+                syncs.set(sessionKey, SessionSyncState.SNAPSHOT_PENDING);
+                snapshots.request();
                 break;
             case NOT_REPLICATED:
-                sessionSync(sessionKey, SessionSyncState.NOT_REPLICATED);
+                syncs.set(sessionKey, SessionSyncState.NOT_REPLICATED);
                 break;
             default:
-                sessionSync(sessionKey, SessionSyncState.NOT_REPLICATED);
+                syncs.set(sessionKey, SessionSyncState.NOT_REPLICATED);
                 ReplicatedSession session = sessions.get(sessionKey);
                 log.warn("Follower {} does not replicate FIX session {} {}: {}", followerId, session.getFixSessionType(),
-                        session.getFixSessionId(), status);
+                        session.getFixSessionId(), answer);
         }
     }
 
@@ -388,32 +319,27 @@ public final class FollowerConnection implements FrameHandler {
      * replaced: a session it refuses or is still catching up on is left as it is.
      */
     void resync(int sessionKey) {
-        if (carries(sessionKey) && sessionAnswers.get(sessionKey) == SessionAnswer.REPLICATING
-                && sessionSync(sessionKey, SessionSyncState.IN_SYNC, SessionSyncState.SNAPSHOT_PENDING)) {
-            snapshotRequested = true;
+        if (carries(sessionKey) && syncs.getAnswer(sessionKey) == SessionAnswer.REPLICATING
+                && syncs.compareAndSet(sessionKey, SessionSyncState.IN_SYNC, SessionSyncState.SNAPSHOT_PENDING)) {
+            snapshots.request();
         }
     }
 
     public @Nullable SessionAnswer getSessionAnswer(int sessionKey) {
-        return sessionAnswers.get(sessionKey);
+        return syncs.getAnswer(sessionKey);
     }
 
     /**
      * @param sessionCount the sessions the leader replicates, every one of which the follower must hold to be in sync
      */
-    public HaStatus.FollowerConnection status(int sessionCount) {
-        boolean snapshotInProgress = false;
-        for (int key = 0; key < sessionCount; key++) {
-            SessionSyncState sync = getSessionSync(key);
-            snapshotInProgress |= sync == SessionSyncState.SNAPSHOT_PENDING || sync == SessionSyncState.SNAPSHOT_SENT;
-        }
+    public HaStatus.FollowerConnection getStatus(int sessionCount) {
         return HaStatus.FollowerConnection.builder()
                 .nodeId(followerId)
                 .lane(lane)
                 .address(address)
                 .connected(isConnected())
-                .inSync(isInSyncForAll(sessionCount))
-                .snapshotInProgress(snapshotInProgress)
+                .inSync(isLaneInSync(sessionCount))
+                .snapshotInProgress(syncs.isSnapshotInProgress(sessionCount))
                 .unsentBytes(getUnsentBytes())
                 .lagMillis(TimeUnit.NANOSECONDS.toMillis(getLagNanos(System.nanoTime())))
                 .build();
@@ -426,9 +352,9 @@ public final class FollowerConnection implements FrameHandler {
     /**
      * @param sessionCount the sessions the leader replicates, every one of which the follower must hold
      */
-    public boolean isInSyncForAll(int sessionCount) {
+    public boolean isLaneInSync(int sessionCount) {
         for (int key = 0; key < sessionCount; key++) {
-            if (carries(key) && !isInSync(key) && sessions.get(key).isReplicated()) {
+            if (carries(key) && !isSessionInSync(key) && sessions.get(key).isReplicated()) {
                 return false;
             }
         }
@@ -456,48 +382,6 @@ public final class FollowerConnection implements FrameHandler {
         state = State.CLOSED;
     }
 
-    @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes) {
-        unexpected(FrameType.WELCOME);
-    }
-
-    @Override
-    public void onSession(long epoch, int sessionKey, FixSessionType fixSessionType, ReplicationMode replicationMode,
-                          String fixSessionId, @Nullable String storageIdentity) {
-        unexpected(FrameType.SESSION);
-    }
-
-    @Override
-    public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                             ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
-        unexpected(FrameType.STORE_EVENT);
-    }
-
-    @Override
-    public void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        unexpected(FrameType.SNAPSHOT_BEGIN);
-    }
-
-    @Override
-    public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                                  int messageLength, byte fragmentFlags) {
-        unexpected(FrameType.SNAPSHOT_MESSAGE);
-    }
-
-    @Override
-    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        unexpected(FrameType.SNAPSHOT_END);
-    }
-
-    @Override
-    public void onHeartbeat(long epoch, long logTailOffset) {
-        unexpected(FrameType.HEARTBEAT);
-    }
-
-    private void unexpected(FrameType type) {
-        close(CloseReason.PROTOCOL_ERROR, "a follower does not send " + type);
-    }
-
     /**
      * Fills {@code dst} from index 0, up to its limit, with what the follower has not received: the sessions it does
      * not know yet, then events until the next one does not fit. An event of a session registered after this fill
@@ -505,9 +389,9 @@ public final class FollowerConnection implements FrameHandler {
      *
      * @return the bytes filled
      */
-    int fill(ByteBuffer dst) {
+    int fillBatch(ByteBuffer dst) {
         lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getEventOffset(), appliedOffset);
-        int filled = announce(dst);
+        int filled = announceSessions(dst);
         long currentEpoch = nodeEpoch.getAsLong();
         filledEventOffset = -1;
         while (state == State.STREAMING && dst.limit() - filled >= WireFormat.STORE_EVENT_BODY_OFFSET) {
@@ -516,16 +400,16 @@ public final class FollowerConnection implements FrameHandler {
                 break;
             }
             int sessionKey = dst.getInt(filled + WireFormat.STORE_EVENT_BODY_OFFSET);
-            if (sessionKey >= announced) {
+            if (sessionKey >= nextToAnnounce) {
                 reader.unread();
                 break;
             }
-            if (snapshot != null && snapshot.sessionKey == sessionKey) {
+            if (snapshots.isOf(sessionKey)) {
                 if (dst.get(filled + WireFormat.STORE_EVENT_BODY_OFFSET + Integer.BYTES) != StoreEventType.RESET_SEQ_NUM.getCode()) {
                     continue;
                 }
                 // left for the stream, after the snapshot's end
-                snapshot.resetAhead = true;
+                snapshots.resetAhead();
                 reader.unread();
                 break;
             }
@@ -537,31 +421,30 @@ public final class FollowerConnection implements FrameHandler {
         return filled;
     }
 
-    private int announce(ByteBuffer dst) {
+    private int announceSessions(ByteBuffer dst) {
         int filled = 0;
         long currentEpoch = nodeEpoch.getAsLong();
-        while (announced < sessions.count()) {
-            if (carries(announced)) {
-                int bytes = announce(dst, filled, currentEpoch, sessions.get(announced));
+        while (nextToAnnounce < sessions.count()) {
+            if (carries(nextToAnnounce)) {
+                int bytes = sessionFrame(dst, filled, currentEpoch, sessions.get(nextToAnnounce));
                 if (bytes == 0) {
                     return filled;
                 }
                 filled += bytes;
             }
-            announced++;
+            nextToAnnounce++;
         }
         Integer key;
         while ((key = reannouncements.peek()) != null) {
             // a key not announced yet goes out with its current mode once it is
-            if (key < announced && carries(key)) {
-                int bytes = announce(dst, filled, currentEpoch, sessions.get(key));
+            if (key < nextToAnnounce && carries(key)) {
+                int bytes = sessionFrame(dst, filled, currentEpoch, sessions.get(key));
                 if (bytes == 0) {
                     return filled;
                 }
                 filled += bytes;
-                if (snapshot != null && snapshot.sessionKey == key) {
-                    // the follower binds the session again and says whether it still needs one
-                    snapshot = null;
+                if (snapshots.isOf(key)) {
+                    snapshots.cancel();
                 }
             }
             reannouncements.poll();
@@ -572,13 +455,13 @@ public final class FollowerConnection implements FrameHandler {
     /**
      * @return the bytes written, 0 when the frame does not fit
      */
-    private int announce(ByteBuffer dst, int index, long currentEpoch, ReplicatedSession session) {
+    private int sessionFrame(ByteBuffer dst, int index, long currentEpoch, ReplicatedSession session) {
         String id = session.getFixSessionId().toString();
         ReplicatedSession.Config config = session.getConfig();
         if (dst.limit() - index < FrameEncoder.bytesWith(FrameType.SESSION, id, config.getStorageIdentity())) {
             return 0;
         }
-        sessionSync(session.getKey(), SessionSyncState.ANNOUNCED);
+        syncs.set(session.getKey(), SessionSyncState.ANNOUNCED);
         return FrameEncoder.session(dst, index, currentEpoch, session.getKey(), session.getFixSessionType(),
                 config.getReplicationMode(), id, config.getStorageIdentity());
     }
@@ -603,20 +486,32 @@ public final class FollowerConnection implements FrameHandler {
         return FrameEncoder.heartbeat(dst, 0, nodeEpoch.getAsLong(), replicationLog.getTailOffset());
     }
 
-    void pause(boolean paused) {
-        this.paused = paused;
+    void onWriteWatermark(boolean reached) {
+        batches.onWriteWatermark(reached);
     }
 
-    private void send() {
+    void startPendingSnapshot() {
+        snapshots.startPending(reader.getOffset(), nextToAnnounce);
+    }
+
+    boolean isSnapshotInProgress() {
+        return snapshots.isInProgress();
+    }
+
+    void sendSnapshotChunk() {
+        snapshots.sendChunk();
+    }
+
+    private void runSender() {
         senderRunning = true;
         try {
-            sendUntilClosedOrHandingOver();
+            sendLoop();
         } finally {
             senderRunning = false;
         }
     }
 
-    private void sendUntilClosedOrHandingOver() {
+    private void sendLoop() {
         senderIdle.reset();
         lastSendNanos = System.nanoTime();
         lastAckNanos = lastSendNanos;
@@ -626,15 +521,17 @@ public final class FollowerConnection implements FrameHandler {
                         + " ms with writes unapplied");
                 break;
             }
-            if (hasNoRoomToSend()) {
-                countSendWaitIfHeldBack();
+            if (batches.hasNoRoom()) {
+                if (snapshots.isInProgress() || reader.getOffset() != replicationLog.getTailOffset()) {
+                    batches.countSendWait();
+                }
                 senderIdle.idle();
                 continue;
             }
             startPendingSnapshot();
-            boolean sent = sendBatch();
-            if (snapshot != null && state == State.STREAMING) {
-                sendSnapshotChunk();
+            boolean sent = sendLiveBatch();
+            if (snapshots.isInProgress() && state == State.STREAMING) {
+                snapshots.sendChunk();
                 sent = true;
             }
             if (sent) {
@@ -646,14 +543,14 @@ public final class FollowerConnection implements FrameHandler {
         }
     }
 
-    private boolean sendBatch() {
-        ByteBuffer batch = takeBatch();
-        int filled = fill(batch);
+    private boolean sendLiveBatch() {
+        ByteBuffer batch = batches.take();
+        int filled = fillBatch(batch);
         if (filled == 0 && state == State.STREAMING) {
             filled = heartbeatIfDue(batch, System.nanoTime());
         }
         if (filled == 0 || state != State.STREAMING) {
-            spareBatch = batch;
+            batches.keep(batch);
             return false;
         }
         if (filledEventOffset >= 0) {
@@ -665,16 +562,8 @@ public final class FollowerConnection implements FrameHandler {
             // before the send: an ack processed in between would otherwise leave the sample to the next one
             ackLatency.onSent(filledEventOffset, nowNanos);
         }
-        sendBatch(batch, filled);
+        batches.send(batch, filled);
         return true;
-    }
-
-    private void batchWritten(ByteBuffer message, Exception error, ByteBuffer batch) {
-        ByteBuffer previous = lastWrittenBatch;
-        lastWrittenBatch = batch;
-        if (previous != null) {
-            writtenBatches.offer(previous);
-        }
     }
 
     /**
@@ -683,155 +572,6 @@ public final class FollowerConnection implements FrameHandler {
     private boolean isStalled(long nowNanos) {
         return stallTimeoutNanos > 0 && lastSentEventOffset > appliedOffset
                 && nowNanos - Math.max(owedSinceNanos, lastAckNanos) > stallTimeoutNanos;
-    }
-
-    private ByteBuffer takeBatch() {
-        ByteBuffer batch = spareBatch;
-        if (batch != null) {
-            spareBatch = null;
-            return batch;
-        }
-        batch = writtenBatches.poll();
-        if (batch == null) {
-            batchesAllocated++;
-            batch = ByteBuffer.allocateDirect(batchBytes);
-        }
-        // betty flips a buffer it writes
-        return batch.clear();
-    }
-
-    private void sendBatch(ByteBuffer batch, int length) {
-        ioSession.send(written(batch, length), batch, batchWritten, false);
-    }
-
-    /**
-     * Neither betty's write watermark is reached nor every send buffer in flight.
-     */
-    private boolean hasNoRoomToSend() {
-        boolean noRoom = paused || spareBatch == null && batchesAllocated >= sendBuffers && writtenBatches.isEmpty();
-        if (!noRoom) {
-            sendWaitCounted = false;
-        }
-        return noRoom;
-    }
-
-    private void countSendWaitIfHeldBack() {
-        if (!sendWaitCounted && (snapshot != null || reader.getOffset() != replicationLog.getTailOffset())) {
-            countSendWait();
-        }
-    }
-
-    private void countSendWait() {
-        if (!sendWaitCounted) {
-            sendWaitCounted = true;
-            stats.sendWait();
-        }
-    }
-
-    /**
-     * Starts the snapshot of the first session the follower asked one for, when none is in progress. Its snapshot offset is the
-     * reader's position: the session's events after it are skipped until the snapshot ends.
-     */
-    void startPendingSnapshot() {
-        if (snapshot != null || !snapshotRequested && (storeRetryNanos == Long.MAX_VALUE || System.nanoTime() < storeRetryNanos)) {
-            return;
-        }
-        snapshotRequested = false;
-        storeRetryNanos = Long.MAX_VALUE;
-        for (int key = 0; key < announced && state == State.STREAMING; key++) {
-            // marked sent before it goes: the follower's REPLICATING may come back before the snapshot's last frame
-            // is handed over
-            if (!sessionSync(key, SessionSyncState.SNAPSHOT_PENDING, SessionSyncState.SNAPSHOT_SENT)) {
-                continue;
-            }
-            FixSessionMessagesStore store = sessions.get(key).getConfig().getStore();
-            if (store.isStarted()) {
-                snapshot = new SnapshotCursor(key, store, reader.getOffset());
-                // others may be pending, started once this one ends
-                snapshotRequested = true;
-                return;
-            }
-            // a session registered but not yet running, as on taking leadership: retried without holding the stream
-            storeRetryNanos = System.nanoTime() + STORE_RETRY_NANOS;
-            sessionSync(key, SessionSyncState.SNAPSHOT_SENT, SessionSyncState.SNAPSHOT_PENDING);
-        }
-    }
-
-    boolean isSnapshotInProgress() {
-        return snapshot != null;
-    }
-
-    /**
-     * Sends the next chunk of the snapshot in progress: its next messages while a batch holds them, the whole round when
-     * the snapshot is not catching up, and its end once a round fitted in one chunk.
-     */
-    void sendSnapshotChunk() {
-        SnapshotCursor cursor = snapshot;
-        ReplicatedSession session = sessions.get(cursor.sessionKey);
-        SnapshotWriter writer = new SnapshotWriter(cursor, nodeEpoch.getAsLong());
-        try {
-            boolean roundStarted = cursor.next > cursor.roundEnd;
-            if (roundStarted || cursor.resetAhead) {
-                cursor.nextIncomingSeqNum = cursor.store.getIncomingSeqNum();
-                cursor.nextOutgoingSeqNum = cursor.store.getOutgoingSeqNum();
-            }
-            if (cursor.next == 0) {
-                writer.begin();
-                cursor.next = 1;
-            }
-            if (cursor.resetAhead) {
-                end(writer, session);
-                return;
-            }
-            if (roundStarted) {
-                cursor.startRound();
-            }
-            findChunk(cursor, writer);
-            if (state != State.STREAMING) {
-                return;
-            }
-            if (!writer.stopped) {
-                cursor.next = cursor.roundEnd + 1;
-                if (roundStarted) {
-                    end(writer, session);
-                    return;
-                }
-            }
-            writer.flush();
-        } catch (RuntimeException e) {
-            log.warn("Snapshot of FIX session {} {} failed", session.getFixSessionType(), session.getFixSessionId(), e);
-            snapshot = null;
-            sessionSync(cursor.sessionKey, SessionSyncState.SNAPSHOT_SENT, SessionSyncState.SNAPSHOT_PENDING);
-            close(CloseReason.SNAPSHOT_FAILED, "FIX session " + session.getFixSessionId() + ": " + e.getMessage());
-        }
-    }
-
-    /**
-     * Reads the chunk's messages a span at a time, a store's {@code find} copying its whole range before the writer can
-     * stop it: the span is what the last chunk held, doubled while it leaves room.
-     */
-    private void findChunk(SnapshotCursor cursor, SnapshotWriter writer) {
-        int messagesBefore = cursor.messageCount;
-        while (cursor.next <= cursor.roundEnd && !writer.stopped && state == State.STREAMING) {
-            long stop = Math.min(cursor.roundEnd, cursor.next + cursor.findSpan - 1);
-            cursor.store.find(cursor.next, stop, writer);
-            if (!writer.stopped) {
-                cursor.next = Math.max(cursor.next, stop + 1);
-                cursor.findSpan = Math.min(cursor.findSpan * 2, SnapshotCursor.MAX_FIND_SPAN);
-            }
-        }
-        if (writer.stopped) {
-            cursor.findSpan = cursor.messageCount - messagesBefore + 1;
-        }
-    }
-
-    private void end(SnapshotWriter writer, ReplicatedSession session) {
-        SnapshotCursor cursor = writer.cursor;
-        writer.end();
-        snapshot = null;
-        stats.snapshotSent(cursor.messageCount);
-        log.info("Snapshot of FIX session {} {} sent to follower {}: {} messages", session.getFixSessionType(),
-                session.getFixSessionId(), followerId, cursor.messageCount);
     }
 
     /**
@@ -853,7 +593,7 @@ public final class FollowerConnection implements FrameHandler {
         if (!sentAll || !senderStopped) {
             log.warn("Follower {} was not sent every event before the deadline: it will take over with its seqnums moved ahead",
                     followerId);
-            closed();
+            markClosed();
             ioSession.stop(Deadline.immediate());
             return false;
         }
@@ -870,14 +610,14 @@ public final class FollowerConnection implements FrameHandler {
         } else {
             log.warn("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, text);
         }
-        closed();
+        markClosed();
         if (reason == CloseReason.TOO_SLOW) {
             stats.droppedTooSlow(followerId, lane);
         }
         // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
         ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, text));
         int length = FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, text);
-        ioSession.send(written(frame, length), false);
+        ioSession.send(BatchBuffers.written(frame, length), false);
         ioSession.stop(Deadline.of(CLOSE_FLUSH));
     }
 
@@ -885,7 +625,7 @@ public final class FollowerConnection implements FrameHandler {
      * The connection is gone: the send loop ends at its next turn.
      */
     void disconnected() {
-        closed();
+        markClosed();
     }
 
     private void droppedAsTooSlow() {
@@ -894,7 +634,7 @@ public final class FollowerConnection implements FrameHandler {
         }
     }
 
-    private void closed() {
+    private void markClosed() {
         state = State.CLOSED;
         reader.close();
     }
@@ -903,135 +643,5 @@ public final class FollowerConnection implements FrameHandler {
         AWAITING_HELLO,
         STREAMING,
         CLOSED
-    }
-
-    /**
-     * Where the snapshot of a session stands, across the chunks it is sent in.
-     */
-    private static final class SnapshotCursor {
-
-        private static final int MAX_FIND_SPAN = 1 << 20;
-
-        private final int sessionKey;
-        private final FixSessionMessagesStore store;
-        private final long snapshotOffset;
-        /**
-         * The next seqnum to copy, 0 before the first chunk.
-         */
-        private long next;
-        private long roundEnd = -1;
-        private long previousRoundLength = Long.MAX_VALUE;
-        /**
-         * The round is sent in one chunk, whatever its size.
-         */
-        private boolean whole;
-        private long nextIncomingSeqNum;
-        private long nextOutgoingSeqNum;
-        private int messageCount;
-        /**
-         * The seqnums a store read covers.
-         */
-        private int findSpan = 64;
-        /**
-         * The stream holds a reset of the session, sent after the snapshot's end.
-         */
-        private boolean resetAhead;
-
-        SnapshotCursor(int sessionKey, FixSessionMessagesStore store, long snapshotOffset) {
-            this.sessionKey = sessionKey;
-            this.store = store;
-            this.snapshotOffset = snapshotOffset;
-        }
-
-        void startRound() {
-            roundEnd = nextOutgoingSeqNum - 1;
-            long length = roundEnd - next + 1;
-            whole = length >= previousRoundLength;
-            previousRoundLength = length;
-        }
-    }
-
-    /**
-     * Writes a chunk's frames into batch buffers, stopping before a message the batch cannot hold unless the round
-     * goes whole. A message longer than a batch goes anyway, over as many sends as it needs.
-     */
-    private final class SnapshotWriter implements StoreMessagesConsumer {
-
-        private final SnapshotCursor cursor;
-        private final long currentEpoch;
-        private @Nullable ByteBuffer batch;
-        private int filled;
-        private boolean stopped;
-
-        SnapshotWriter(SnapshotCursor cursor, long currentEpoch) {
-            this.cursor = cursor;
-            this.currentEpoch = currentEpoch;
-        }
-
-        void begin() {
-            room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_BEGIN));
-            filled += FrameEncoder.snapshotBegin(batch, filled, currentEpoch, cursor.sessionKey, cursor.snapshotOffset,
-                    cursor.nextIncomingSeqNum, cursor.nextOutgoingSeqNum);
-        }
-
-        /**
-         * A message too long for a frame goes in fragments, each no longer than the follower accepts: the longest event
-         * frame, which a batch, rounded up for betty's pools, exceeds.
-         */
-        @Override
-        public boolean onMessage(long seqNum, ByteBuffer message) {
-            int messageLength = message.remaining();
-            int maxFragmentLength = maxEventFrameBytes - FrameEncoder.snapshotMessageBytes(0);
-            int fragments = Math.max(1, (messageLength + maxFragmentLength - 1) / maxFragmentLength);
-            if (!cursor.whole && filled > 0 && snapshotChunkBytes - filled < fragments * FrameEncoder.snapshotMessageBytes(0) + messageLength) {
-                cursor.next = seqNum;
-                stopped = true;
-                return false;
-            }
-            int from = 0;
-            do {
-                int length = Math.min(maxFragmentLength, messageLength - from);
-                int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
-                room(FrameEncoder.snapshotMessageBytes(length));
-                filled += FrameEncoder.snapshotMessage(batch, filled, currentEpoch, cursor.sessionKey, seqNum, message,
-                        message.position() + from, length, (byte) flags);
-                from += length;
-            } while (from < messageLength && state == State.STREAMING);
-            cursor.messageCount++;
-            cursor.next = seqNum + 1;
-            return state == State.STREAMING;
-        }
-
-        void end() {
-            room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_END));
-            filled += FrameEncoder.snapshotEnd(batch, filled, currentEpoch, cursor.sessionKey, cursor.messageCount,
-                    cursor.nextIncomingSeqNum, cursor.nextOutgoingSeqNum);
-            flush();
-        }
-
-        void flush() {
-            if (batch != null) {
-                sendBatch(batch, filled);
-                batch = null;
-            }
-        }
-
-        private void room(int bytes) {
-            if (batch != null && batchBytes - filled >= bytes) {
-                return;
-            }
-            flush();
-            awaitRoomToSend();
-            batch = takeBatch();
-            filled = 0;
-        }
-
-        private void awaitRoomToSend() {
-            while (hasNoRoomToSend() && state == State.STREAMING) {
-                countSendWait();
-                sendBufferWait.idle();
-            }
-            sendBufferWait.reset();
-        }
     }
 }
