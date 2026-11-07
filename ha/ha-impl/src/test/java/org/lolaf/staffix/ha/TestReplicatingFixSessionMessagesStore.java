@@ -52,7 +52,7 @@ class TestReplicatingFixSessionMessagesStore {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(type)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
                 .build();
     }
 
@@ -251,7 +251,7 @@ class TestReplicatingFixSessionMessagesStore {
         ReplicatingStore store = ha.replicatingStore(FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.INITIATOR)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build(), local, new RecordingProbes());
 
         store.awaitReplicated();

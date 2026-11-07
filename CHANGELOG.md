@@ -20,7 +20,7 @@ could mean.
 
 - **High availability.** Two engines run the same sessions: one leads and runs them, the other is a follower that
   receives every write to their stores and takes them over when the leader fails. Each session chooses, with
-  `haSessionSettings.replicationMode`, `NONE`, `ASYNC` (nothing waits, unless the follower falls a whole replication
+  `highAvailability.replicationMode`, `NONE`, `ASYNC` (nothing waits, unless the follower falls a whole replication
   log behind), `SYNC_APPLIED` (a message reaches the counterparty only once the follower has written it to its store)
   or `SYNC_RECEIVED` (only once the follower holds it in memory: faster with a durable follower store, and lost only if
   both engines fail before the follower writes it). A follower that cannot keep up makes the writes wait at most `logFullTimeout` (1 s), is then dropped, and is let back to catch up after

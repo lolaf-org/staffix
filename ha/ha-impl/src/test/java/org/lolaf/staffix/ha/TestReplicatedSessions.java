@@ -37,7 +37,7 @@ class TestReplicatedSessions {
         return sessions.register(FixSessionSettings.builder()
                 .fixSessionId(ID)
                 .fixSessionType(fixSessionType)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build(), mock(FixSessionMessagesStore.class));
     }
 

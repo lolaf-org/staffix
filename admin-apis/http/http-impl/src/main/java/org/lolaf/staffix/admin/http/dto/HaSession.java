@@ -45,7 +45,7 @@ public class HaSession {
     public static HaSession of(HaSessionStatus status) {
         return new HaSession(status.getFixSessionId().getGroup(), status.getFixSessionId().getName(),
                 status.getFixSessionType(), status.getReplicationMode(), status.getReplicationAckTimeout(),
-                status.isInSync(), status.getNotReplicatedReason(), status.isUnprotected(),
+                status.isInSync(), status.getNotReplicatedReason(), status.isLastSendUnacknowledged(),
                 status.getUnacknowledgedSends(), status.getNextIncomingSeqNum(), status.getNextOutgoingSeqNum(),
                 status.isHandedOver(), status.getPendingWrites(), status.getLostWrites());
     }

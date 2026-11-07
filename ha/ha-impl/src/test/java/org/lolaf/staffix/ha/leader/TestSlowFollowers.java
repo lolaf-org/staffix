@@ -108,10 +108,10 @@ class TestSlowFollowers {
         slowFollowers.dropped("b", 1);
 
         assertThat(slowFollowers.heldOffUntil("b", 1)).contains(START.plusSeconds(1));
-        assertThat(slowFollowers.heldOffUntil("b", 0)).as("another link").isEmpty();
+        assertThat(slowFollowers.heldOffUntil("b", 0)).as("another lane").isEmpty();
         assertThat(slowFollowers.notBackInSync()).singleElement().satisfies(dropped -> {
             assertThat(dropped.getNodeId()).isEqualTo("b");
-            assertThat(dropped.getLink()).isEqualTo(1);
+            assertThat(dropped.getLane()).isEqualTo(1);
         });
     }
 

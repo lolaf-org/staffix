@@ -46,9 +46,9 @@ public class HaSessionStatus {
      */
     @Nullable String notReplicatedReason;
     /**
-     * A leader's {@code SYNC} session whose last send went out without the follower's ack.
+     * On a leader's {@code SYNC} session, a failover now may lose the last send: it went out without the follower's ack.
      */
-    boolean unprotected;
+    boolean lastSendUnacknowledged;
     /**
      * The leader's {@code SYNC} sends that went out without the follower's ack, on a timeout or with no follower in
      * sync.

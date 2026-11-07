@@ -84,7 +84,7 @@ public final class HaNode {
                                 .fixApplicationFactoryInstanceId("app")
                                 .fixApplicationInstanceId("app")
                                 .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
-                                .haSessionSettings(HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
+                                .highAvailability(HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
                                 .build())
                         .build())
                 .highAvailability(ReplicationHaSettings.builder()

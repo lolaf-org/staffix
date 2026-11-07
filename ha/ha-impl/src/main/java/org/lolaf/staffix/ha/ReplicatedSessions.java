@@ -50,7 +50,7 @@ public final class ReplicatedSessions {
      * Registers a session as it is built, or takes the latest settings and store of one already known.
      */
     synchronized ReplicatedSession register(FixSessionSettings settings, FixSessionMessagesStore store) {
-        ReplicatedSession.Config config = ReplicatedSession.Config.of(settings.getHaSessionSettings(), store);
+        ReplicatedSession.Config config = ReplicatedSession.Config.of(settings.getHighAvailability(), store);
         Map<FixSessionId, ReplicatedSession> byId = byTypeAndId.get(settings.getFixSessionType());
         ReplicatedSession known = byId.get(settings.getFixSessionId());
         if (known != null) {

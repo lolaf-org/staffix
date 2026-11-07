@@ -136,7 +136,7 @@ class TestFollowerLink {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.INITIATOR)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build();
     }
 
@@ -759,7 +759,7 @@ class TestFollowerLink {
         fill();
         link.onSessionStatus(EPOCH, 0, SessionStatus.REPLICATING);
 
-        ha.notReplicated(settings("main"));
+        ha.onSessionNotReplicated(settings("main"));
         link.reannounce(0);
         fill();
         link.onSessionStatus(EPOCH, 0, SessionStatus.NOT_REPLICATED);

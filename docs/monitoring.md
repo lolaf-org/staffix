@@ -119,7 +119,7 @@ apply to, and all but the timers are read at export, so they cost the session th
 | `ha.replica.connected`, `ha.replica.in.sync` | on a follower: streaming its leader's writes, and holding every replicated session |
 | `ha.replica.received.write.latency` | on a follower: how long it took to write a read's events to its store after acknowledging them as received, the window in which a `SYNC_RECEIVED` send is held in its memory only |
 
-A session with `haSessionSettings.syncAckLatencyEnabled` also gets `ha.session.sync.ack.latency` in its own meters,
+A session with `highAvailability.syncAckLatencyEnabled` also gets `ha.session.sync.ack.latency` in its own meters,
 the same wait as `ha.sync.ack.latency` for that session alone.
 
 ---

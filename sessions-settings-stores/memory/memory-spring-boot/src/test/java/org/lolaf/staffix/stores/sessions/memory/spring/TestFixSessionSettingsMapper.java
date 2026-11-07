@@ -113,7 +113,7 @@ class TestFixSessionSettingsMapper {
         FixSessionSettingsProps props = sessionProps();
         props.setHa(ha);
 
-        FixSessionSettings.HaSessionSettings mapped = FixSessionSettingsMapper.toSettings(props).getHaSessionSettings();
+        FixSessionSettings.HaSessionSettings mapped = FixSessionSettingsMapper.toSettings(props).getHighAvailability();
 
         assertThat(mapped.getReplicationMode()).isEqualTo(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC_APPLIED);
         assertThat(mapped.getReplicationAckTimeout()).isEqualTo(FixSessionSettings.HaSessionSettings.builder().build().getReplicationAckTimeout());
@@ -128,12 +128,12 @@ class TestFixSessionSettingsMapper {
         FixSessionSettingsProps props = sessionProps();
         props.setHa(ha);
 
-        assertThat(FixSessionSettingsMapper.toSettings(props).getHaSessionSettings().isSyncAckLatencyEnabled()).isTrue();
+        assertThat(FixSessionSettingsMapper.toSettings(props).getHighAvailability().isSyncAckLatencyEnabled()).isTrue();
     }
 
     @Test
     void leavesASessionUnreplicatedWithoutHaProps() {
-        assertThat(FixSessionSettingsMapper.toSettings(sessionProps()).getHaSessionSettings().getReplicationMode())
+        assertThat(FixSessionSettingsMapper.toSettings(sessionProps()).getHighAvailability().getReplicationMode())
                 .isEqualTo(FixSessionSettings.HaSessionSettings.ReplicationMode.NONE);
     }
 }

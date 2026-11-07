@@ -34,7 +34,7 @@ class TestReplica {
     private static final FixSessionSettings REPLICATED = RecordingEngine.session("main", FixSessionType.ACCEPTOR);
     private static final FixSessionSettings SHARED = RecordingEngine.session("shared", FixSessionType.ACCEPTOR);
     private static final FixSessionSettings NOT_REPLICATED = RecordingEngine.session("local", FixSessionType.ACCEPTOR).toBuilder()
-            .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.NONE).build())
+            .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.NONE).build())
             .build();
 
     private final RecordingEngine engine = new RecordingEngine().with(REPLICATED).with(SHARED).with(NOT_REPLICATED);

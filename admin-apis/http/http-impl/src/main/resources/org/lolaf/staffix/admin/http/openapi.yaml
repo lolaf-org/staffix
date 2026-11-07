@@ -374,7 +374,7 @@ paths:
   /v1/ha:
     get:
       summary: The engine's high availability
-      description: The role it acts on, and on a leader its followers, on a follower its link to the leader.
+      description: The role it acts on, and on a leader its followers' connections, on a follower its leader.
       operationId: getHaStatus
       responses:
         '200':
@@ -1227,7 +1227,7 @@ components:
           description: This node stands for election.
         followers:
           type: array
-          description: The links of the followers connected to this node, one entry per follower and link, while it leads.
+          description: The connections of the followers to this node, one entry per follower and lane, while it leads.
           items:
             $ref: '#/components/schemas/HaFollower'
         droppedFollowers:
@@ -1239,14 +1239,14 @@ components:
           $ref: '#/components/schemas/HaLeader'
     HaFollower:
       type: object
-      required: [link, address, connected, inSync, snapshotInProgress, unsentBytes, lagMillis]
+      required: [lane, address, connected, inSync, snapshotInProgress, unsentBytes, lagMillis]
       properties:
         nodeId:
           type: string
           description: Absent until the follower said.
-        link:
+        lane:
           type: integer
-          description: The replication link, below the leader's replicationLinks; a follower has an entry per link.
+          description: The lane, each carrying its own share of the sessions over its own connection.
         address:
           type: string
         connected:
@@ -1254,7 +1254,7 @@ components:
           description: Streaming the leader's writes.
         inSync:
           type: boolean
-          description: Holds every session replicated over the link in sync.
+          description: Holds every session of the lane in sync.
         snapshotInProgress:
           type: boolean
         unsentBytes:
@@ -1273,12 +1273,12 @@ components:
     HaDroppedFollower:
       type: object
       description: >-
-        A follower link dropped for reading its replication log so slowly that a write waited logFullTimeout for it.
-      required: [nodeId, link, droppedAt]
+        A follower's lane dropped for reading its replication log so slowly that a write waited logFullTimeout for it.
+      required: [nodeId, lane, droppedAt]
       properties:
         nodeId:
           type: string
-        link:
+        lane:
           type: integer
         droppedAt:
           type: string
@@ -1289,7 +1289,7 @@ components:
           description: Until when it is refused, so its resync does not add to the load; absent once it may connect.
     HaLeader:
       type: object
-      description: A follower's link to its leader.
+      description: The leader as its follower sees it, over all lanes.
       required: [address, connected, inSync]
       properties:
         leaderId:

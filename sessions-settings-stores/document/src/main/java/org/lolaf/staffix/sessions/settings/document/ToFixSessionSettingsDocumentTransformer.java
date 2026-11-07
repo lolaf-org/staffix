@@ -194,13 +194,13 @@ public class ToFixSessionSettingsDocumentTransformer {
     }
 
     private static void mergeHaSessionSettings(FixSessionSettings settings, FixSessionSettingsDocument.FixSessionSettingsDocumentBuilder builder) {
-        if (settings.getHaSessionSettings() != null) {
+        if (settings.getHighAvailability() != null) {
             FixSessionSettingsDocument.HaSessionSettings.HaSessionSettingsBuilder hb = FixSessionSettingsDocument.HaSessionSettings.builder();
-            FixSessionSettings.HaSessionSettings ha = settings.getHaSessionSettings();
+            FixSessionSettings.HaSessionSettings ha = settings.getHighAvailability();
             mergeIfNeeded(ha::getReplicationMode, hb::replicationMode);
             mergeIfNeeded(ha::getReplicationAckTimeout, hb::replicationAckTimeout);
             mergeIfNeeded(ha::isSyncAckLatencyEnabled, hb::syncAckLatencyEnabled);
-            builder.haSessionSettings(hb.build());
+            builder.highAvailability(hb.build());
         }
     }
 

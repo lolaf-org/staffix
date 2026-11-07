@@ -59,7 +59,7 @@ public final class RecordingEngine implements EngineAccess {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(type)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
                 .build();
     }
 

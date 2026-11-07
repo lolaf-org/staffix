@@ -16,5 +16,8 @@
 /**
  * High availability: an engine replicating its sessions' stores to a follower engine, which takes over when a leader
  * election makes it the leader.
+ *
+ * <p>The election's epoch, raised at every change of leader, fences a deposed leader: every replication frame carries
+ * its sender's epoch, and a node refuses frames from an older one.
  */
 package org.lolaf.staffix.api.ha;

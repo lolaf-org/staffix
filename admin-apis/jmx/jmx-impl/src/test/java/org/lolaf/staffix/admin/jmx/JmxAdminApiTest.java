@@ -280,10 +280,10 @@ class JmxAdminApiTest {
     void aLeadersFollowersAreReadable() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
-                .leaderId("1").leaderElection("PrimosLeaderElection").roleSince(SINCE)
-                .follower(HaStatus.Follower.builder().nodeId("2").link(1).address("/10.0.0.2:40000").connected(true).inSync(true)
+                .leaderId("1").leaderElectionType("PrimosLeaderElection").roleSince(SINCE)
+                .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
                         .unsentBytes(128).lagMillis(3).build())
-                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").link(1).droppedAt(SINCE).build())
+                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1).droppedAt(SINCE).build())
                 .build());
         adminApi.ha = ha;
         exporter.export(adminApi);
@@ -309,10 +309,10 @@ class JmxAdminApiTest {
     void theHighAvailabilityIsReadableAndUnregisteredOnShutdown() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.FOLLOWER).epoch(7)
-                .leaderId("2").leaderElection("PrimosLeaderElection").roleSince(SINCE)
+                .leaderId("2").leaderElectionType("PrimosLeaderElection").roleSince(SINCE)
                 .leader(HaStatus.Leader.builder().leaderId("2").address("/10.0.0.2:17101").connected(true).inSync(true).build())
                 .build());
-        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC_APPLIED)
                 .replicationAckTimeout(Duration.ofMillis(200)).inSync(true).nextIncomingSeqNum(12).nextOutgoingSeqNum(34)
                 .handedOver(true).pendingWrites(7).lostWrites(2).build()));
@@ -346,8 +346,8 @@ class JmxAdminApiTest {
     void theHighAvailabilityActionsReachItsAdmin() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
-                .leaderElection("PrimosLeaderElection").candidacySupported(true).candidate(true).build());
-        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
+                .leaderElectionType("PrimosLeaderElection").candidacySupported(true).candidate(true).build());
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC_APPLIED)
                 .replicationAckTimeout(Duration.ZERO).build()));
         adminApi.ha = ha;

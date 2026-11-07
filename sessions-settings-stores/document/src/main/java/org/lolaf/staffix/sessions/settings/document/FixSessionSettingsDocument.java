@@ -100,7 +100,7 @@ public class FixSessionSettingsDocument {
     @Valid
     private RttMeasurementSettings rttMeasurementSettings;
     @Valid
-    private HaSessionSettings haSessionSettings;
+    private HaSessionSettings highAvailability;
     @Valid
     private SessionScheduleSettings sessionScheduleSettings;
     private Boolean messageEncodersDirectByteBuffers;

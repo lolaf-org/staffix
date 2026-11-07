@@ -98,9 +98,9 @@ class HaProbes {
             boolean anyConnected = false;
             int links = ha.getReplicationLogs().count();
             for (FollowerLink link : ha.getFollowers().all()) {
-                HaStatus.Follower follower = link.status(ha.getSessions().count());
+                HaStatus.FollowerConnection follower = link.status(ha.getSessions().count());
                 anyConnected |= follower.isConnected();
-                String name = name(follower.getNodeId(), follower.getLink(), links);
+                String name = name(follower.getNodeId(), follower.getLane(), links);
                 if (follower.isConnected() && follower.getLagMillis() > thresholdMillis) {
                     stalled.add(name + " has not applied a write for " + follower.getLagMillis() + " ms");
                 } else if (follower.isConnected() && (!follower.isInSync() || follower.isSnapshotInProgress())) {
@@ -111,7 +111,7 @@ class HaProbes {
             List<HaStatus.DroppedFollower> droppedTooSlow = ha.getStats().getSlowFollowers().notBackInSync();
             if (!droppedTooSlow.isEmpty()) {
                 return Optional.of(Alert.major("Follower " + droppedTooSlow.stream()
-                        .map(dropped -> name(dropped.getNodeId(), dropped.getLink(), links) + " dropped as too slow at " + dropped.getDroppedAt()
+                        .map(dropped -> name(dropped.getNodeId(), dropped.getLane(), links) + " dropped as too slow at " + dropped.getDroppedAt()
                                 + (dropped.getHeldOffUntil() == null ? "" : ", held off until " + dropped.getHeldOffUntil()))
                         .collect(Collectors.joining("; ")) + ", a write having waited "
                         + ha.getSettings().getLogFullTimeout().toMillis() + " ms for it, and not back in sync: a"

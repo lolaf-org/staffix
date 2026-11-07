@@ -351,7 +351,7 @@ public class HaPair {
                 .fixApplicationFactoryInstanceId(APPLICATION)
                 .fixApplicationInstanceId(application)
                 .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
-                .haSessionSettings(HaSessionSettings.builder().replicationMode(mode).build())
+                .highAvailability(HaSessionSettings.builder().replicationMode(mode).build())
                 .build();
     }
 

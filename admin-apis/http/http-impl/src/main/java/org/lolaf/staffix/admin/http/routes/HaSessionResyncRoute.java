@@ -46,7 +46,7 @@ public final class HaSessionResyncRoute extends Route {
         String group = param(path, "group");
         String name = param(path, "name");
         HaAdmin ha = HaStatusRoute.ha(adminApi);
-        List<HaSessionStatus> named = ha.getSessionsStatus().stream()
+        List<HaSessionStatus> named = ha.getSessionStatuses().stream()
                 .filter(session -> session.getFixSessionId().getGroup().equals(group) && session.getFixSessionId().getName().equals(name))
                 .collect(Collectors.toList());
         if (named.isEmpty()) {

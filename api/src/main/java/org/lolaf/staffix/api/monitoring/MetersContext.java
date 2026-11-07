@@ -29,14 +29,8 @@ import java.util.function.LongSupplier;
 public interface MetersContext {
 
     /**
-     * Retrieves a timer to measure time
-     * The timer has a slight impact on performance, so it is recommended to use it only when needed.
-     * The returned NOOP timer return if monitoring is disabled has however no impact on performances
-     *
-     * @param id          the timer id
-     * @param description the time description
-     * @param tags        the timer tags
-     * @return a timer instance to measure time
+     * Retrieves a timer; the same id and tags give the same timer. Recording costs the caller's thread, so time only
+     * what is needed; the NOOP timer returned when monitoring is disabled costs nothing.
      */
     Timer getTimer(String id, String description, Map<String, String> tags);
 

@@ -352,7 +352,7 @@ class TestFixSessionSettingsValidator {
     @Test
     void rejectsANegativeReplicationAckTimeout() {
         FixSessionSettings settings = validSettings()
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder()
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder()
                         .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC_APPLIED)
                         .replicationAckTimeout(Duration.ofMillis(-1))
                         .build())
@@ -360,6 +360,6 @@ class TestFixSessionSettingsValidator {
 
         assertThatThrownBy(() -> FixSessionSettingsValidator.validate(settings))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("haSessionSettings.replicationAckTimeout must be set and not negative");
+                .hasMessageContaining("highAvailability.replicationAckTimeout must be set and not negative");
     }
 }

@@ -194,11 +194,11 @@ public class FixSessionSettingsValidator {
     }
 
     private static void validateHaSessionSettings(FixSessionSettings settings, List<String> violations) {
-        FixSessionSettings.HaSessionSettings ha = settings.getHaSessionSettings();
+        FixSessionSettings.HaSessionSettings ha = settings.getHighAvailability();
         if (ha.getReplicationMode() == null) {
-            violations.add("haSessionSettings.replicationMode must be set");
+            violations.add("highAvailability.replicationMode must be set");
         }
-        requireNonNegative(violations, ha.getReplicationAckTimeout(), "haSessionSettings.replicationAckTimeout");
+        requireNonNegative(violations, ha.getReplicationAckTimeout(), "highAvailability.replicationAckTimeout");
     }
 
     /**

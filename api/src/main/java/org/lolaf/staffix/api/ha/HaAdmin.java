@@ -31,7 +31,7 @@ public interface HaAdmin {
     /**
      * Every session configured with replication, whether this node leads or follows.
      */
-    List<HaSessionStatus> getSessionsStatus();
+    List<HaSessionStatus> getSessionStatuses();
 
     /**
      * Takes this node out of elections for maintenance, or back in; a leader first {@link #switchover() switches over}

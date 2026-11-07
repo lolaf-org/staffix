@@ -108,7 +108,7 @@ class TestReplicationAllocation {
                 .fixApplicationFactoryInstanceId("app")
                 .fixApplicationInstanceId("app")
                 .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
-                .haSessionSettings(HaSessionSettings.builder().replicationMode(mode).build())
+                .highAvailability(HaSessionSettings.builder().replicationMode(mode).build())
                 .build();
     }
 
@@ -239,7 +239,7 @@ class TestReplicationAllocation {
                 mode, replica.getOutgoingSeqNum(), follower.getReplica().getLastAppliedEpoch(0),
                 follower.getReplica().getLastAppliedOffset(0), follower.getReplica().isComplete());
         log.error("STALL leader status: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getStatus).orElse(null));
-        log.error("STALL leader sessions: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getSessionsStatus).orElse(null));
+        log.error("STALL leader sessions: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getSessionStatuses).orElse(null));
         log.error("STALL follower status: {}", follower.getStatus());
         StringBuilder threads = new StringBuilder();
         for (ThreadInfo thread : ManagementFactory.getThreadMXBean().dumpAllThreads(true, true)) {

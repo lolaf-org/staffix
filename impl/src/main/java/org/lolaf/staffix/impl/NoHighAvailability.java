@@ -43,12 +43,12 @@ final class NoHighAvailability implements FixEngineHa {
     @Override
     public ReplicatingStore replicatingStore(FixSessionSettings settings, FixSessionMessagesStore store, Probes probes) {
         throw new IllegalStateException("FIX session " + settings.getFixSessionId() + " asks for replication mode "
-                + settings.getHaSessionSettings().getReplicationMode()
+                + settings.getHighAvailability().getReplicationMode()
                 + ", but its engine has no high availability configured");
     }
 
     @Override
-    public void notReplicated(FixSessionSettings settings) {
+    public void onSessionNotReplicated(FixSessionSettings settings) {
         // nothing to do
     }
 
@@ -62,11 +62,11 @@ final class NoHighAvailability implements FixEngineHa {
      */
     @Override
     public HaStatus getStatus() {
-        return HaStatus.builder().nodeId("").role(LeaderElection.Role.UNKNOWN).epoch(-1).leaderElection("").build();
+        return HaStatus.builder().nodeId("").role(LeaderElection.Role.UNKNOWN).epoch(-1).leaderElectionType("").build();
     }
 
     @Override
-    public List<HaSessionStatus> getSessionsStatus() {
+    public List<HaSessionStatus> getSessionStatuses() {
         return List.of();
     }
 

@@ -68,7 +68,7 @@ rttMeasurementSettings:
   maxAcceptedRtt: "PT2S"
   probeTestReqIdPrefix: "RTT-measurement-"
   sendingTimeToWireDelay: "PT0.0000015S"
-haSessionSettings:
+highAvailability:
   replicationMode: "SYNC_APPLIED"
   replicationAckTimeout: "PT0.5S"
   syncAckLatencyEnabled: true

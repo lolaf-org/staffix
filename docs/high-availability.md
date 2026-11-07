@@ -73,7 +73,7 @@ FixEngineBuilder.builder()
 Then ask for replication per session, in its settings:
 
 ```yaml
-haSessionSettings:
+highAvailability:
   replicationMode: ASYNC        # NONE (default), ASYNC, SYNC_RECEIVED or SYNC_APPLIED
   replicationAckTimeout: PT1S   # SYNC modes only: how long a send waits for the follower, zero for ever
 ```

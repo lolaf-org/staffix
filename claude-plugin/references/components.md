@@ -50,7 +50,7 @@ gives the primos settings.
   gives the node left after a loss its majority. Losing any two of the three stops the sessions.
 - **Per node, from environment variables**: `nodeId`, the primos node id, its durable `stateDirectory`, its own
   storage. The `peers`, the cluster secret, the sessions and their settings are the same on both nodes.
-- **A session is replicated only if it asks**: `haSessionSettings.replicationMode` in a session file,
+- **A session is replicated only if it asks**: `highAvailability.replicationMode` in a session file,
   `...sessions[0].ha.replication-mode` in Spring Boot properties, the same on both nodes. A mismatch is refused.
   `ASYNC` unless the user cannot lose a message at a failover; the modes and what each loses are in
   `docs/high-availability.md`, "Replication modes".

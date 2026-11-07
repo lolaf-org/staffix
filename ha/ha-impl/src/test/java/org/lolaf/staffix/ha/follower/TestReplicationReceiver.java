@@ -64,7 +64,7 @@ class TestReplicationReceiver {
 
     private static final long EPOCH = 7;
     private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.ACCEPTOR).toBuilder()
-            .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
+            .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
             .build();
     private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
 
@@ -147,7 +147,7 @@ class TestReplicationReceiver {
      */
     private FollowerLink followSyncReceived(int maxFrameBytes) {
         FixSessionSettings syncReceived = MAIN.toBuilder()
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
                 .build();
         follower.replace(syncReceived);
         syncReceivedLeader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());

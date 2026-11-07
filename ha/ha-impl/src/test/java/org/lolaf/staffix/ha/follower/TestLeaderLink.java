@@ -101,7 +101,7 @@ class TestLeaderLink {
 
     private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings, String leaderStorageIdentity) {
         return (out, index) -> FrameEncoder.session(out, index, EPOCH, key, settings.getFixSessionType(),
-                settings.getHaSessionSettings().getReplicationMode(), settings.getFixSessionId().toString(), leaderStorageIdentity);
+                settings.getHighAvailability().getReplicationMode(), settings.getFixSessionId().toString(), leaderStorageIdentity);
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
@@ -138,7 +138,7 @@ class TestLeaderLink {
 
     private void streamingSyncReceived() {
         FixSessionSettings syncReceived = MAIN.toBuilder()
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
                 .build();
         engine.replace(syncReceived);
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, syncReceived));
@@ -291,7 +291,7 @@ class TestLeaderLink {
     @Test
     void aSessionWithAnotherReplicationModeHereIsRefusedUntilTheSettingsHereAgree() {
         FixSessionSettings sync = MAIN.toBuilder()
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build();
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, sync));
 

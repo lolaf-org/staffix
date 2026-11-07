@@ -253,7 +253,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     private void validate(FixSessionSettings settings) {
         FixSessionSettingsValidator.validate(settings);
-        ReplicationMode replicationMode = settings.getHaSessionSettings().getReplicationMode();
+        ReplicationMode replicationMode = settings.getHighAvailability().getReplicationMode();
         if (fixEngineBuilder.getHighAvailability() == null && replicationMode != ReplicationMode.NONE) {
             throw new IllegalArgumentException("FIX session " + settings.getFixSessionId() + " asks for replication mode "
                     + replicationMode + ", but engine " + getInstanceId() + " has no high availability configured");

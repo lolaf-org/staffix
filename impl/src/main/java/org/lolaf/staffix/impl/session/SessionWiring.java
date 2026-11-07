@@ -175,15 +175,15 @@ final class SessionWiring {
      */
     private static FixSessionMessagesStore replicated(FixSessionSettings settings, GuardedFixSessionMessagesStore store,
                                                       ProbesImpl probes, FixSessionRuntimeDependencies runtimeDependencies) {
-        if (settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.NONE) {
-            runtimeDependencies.getFixEngineHa().notReplicated(settings);
+        if (settings.getHighAvailability().getReplicationMode() == ReplicationMode.NONE) {
+            runtimeDependencies.getFixEngineHa().onSessionNotReplicated(settings);
             return store;
         }
         return runtimeDependencies.getFixEngineHa().replicatingStore(settings, store, probes);
     }
 
     private static ReplicatingStore syncReplicatingStore(FixSessionSettings settings, FixSessionMessagesStore store) {
-        return settings.getHaSessionSettings().getReplicationMode().isSync() ? (ReplicatingStore) store : null;
+        return settings.getHighAvailability().getReplicationMode().isSync() ? (ReplicatingStore) store : null;
     }
 
     private static FieldsRegistry fieldsRegistry(FixSessionSettings settings, FixDictionaryId fixDictionaryId, FixSessionId fixSessionId) {
@@ -207,7 +207,7 @@ final class SessionWiring {
         PluginsComponent plugins = components.get(PluginsComponent.class);
         plugins.setup(runtimeDependencies, codecs.getIncomingMessageTypes(), codecs.getOutgoingMessageTypes());
         if (messagesStore instanceof ReplicatingStore) {
-            plugins.getPluginContext(FixSessionsMonitoringContext.class).ifPresent(((ReplicatingStore) messagesStore)::sessionMeters);
+            plugins.getPluginContext(FixSessionsMonitoringContext.class).ifPresent(((ReplicatingStore) messagesStore)::onSessionMeters);
         }
         components.register(new ApplicationNotifierComponent(fixApplication, fixSession, fieldsRegistry, messageTypeRegistry, decoders));
     }

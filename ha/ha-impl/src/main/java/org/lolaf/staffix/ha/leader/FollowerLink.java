@@ -398,15 +398,15 @@ public final class FollowerLink implements FrameHandler {
     /**
      * @param sessionCount the sessions the leader replicates, every one of which the follower must hold to be in sync
      */
-    public HaStatus.Follower status(int sessionCount) {
+    public HaStatus.FollowerConnection status(int sessionCount) {
         boolean snapshotInProgress = false;
         for (int key = 0; key < sessionCount; key++) {
             SessionSync sync = getSessionSync(key);
             snapshotInProgress |= sync == SessionSync.SNAPSHOT_PENDING || sync == SessionSync.SNAPSHOT_SENT;
         }
-        return HaStatus.Follower.builder()
+        return HaStatus.FollowerConnection.builder()
                 .nodeId(followerId)
-                .link(link)
+                .lane(link)
                 .address(address)
                 .connected(isConnected())
                 .inSync(isInSyncForAll(sessionCount))

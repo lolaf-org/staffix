@@ -109,7 +109,7 @@ class TestPrimosFailover {
                 .fixApplicationFactoryInstanceId("app")
                 .fixApplicationInstanceId("app")
                 .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
-                .haSessionSettings(HaSessionSettings.builder().replicationMode(mode).build())
+                .highAvailability(HaSessionSettings.builder().replicationMode(mode).build())
                 .build();
     }
 

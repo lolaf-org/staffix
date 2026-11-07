@@ -380,43 +380,6 @@
       "enum" : [ "INITIATOR", "ACCEPTOR" ],
       "description" : "Whether these settings describe an initiator or an acceptor session. Required: the same FixSessionId may be configured for both roles, so this distinguishes them (e.g. in FixSessionsSettingsStore.find)."
     },
-    "haSessionSettings" : {
-      "type" : "object",
-      "properties" : {
-        "replicationAckTimeout" : {
-          "anyOf" : [ {
-            "type" : "string",
-            "format" : "duration",
-            "pattern" : "^[-+]?P(?!$)(?:[-+]?\\d+D)?(?:T(?=[-+]?\\d)(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
-            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
-          }, {
-            "type" : "string",
-            "pattern" : ".*\\$\\{[^}]+}.*",
-            "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ],
-          "description" : "How long a SYNC send waits for the follower's acknowledgement before going out anyway; Duration.ZERO waits forever, which a hung follower turns into a frozen session. A follower that missed it is not waited for again until it catches up.",
-          "default" : "PT1S"
-        },
-        "replicationMode" : {
-          "type" : "string",
-          "enum" : [ "NONE", "ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED" ],
-          "description" : "Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the session is next built, as restartLiveSessionOnUpdate decides: turned on, the follower catches up by snapshot; turned off, it stops holding the session.",
-          "default" : "NONE"
-        },
-        "syncAckLatencyEnabled" : {
-          "anyOf" : [ {
-            "type" : "boolean"
-          }, {
-            "type" : "string",
-            "pattern" : ".*\\$\\{[^}]+}.*",
-            "description" : "A ${...} placeholder, resolved when the file is loaded"
-          } ],
-          "description" : "Whether the session's monitoring times each SYNC send's wait for the follower's acknowledgement. Off by default: recording costs the session's thread on every send.",
-          "default" : false
-        }
-      },
-      "description" : "Whether and how this session's store is replicated to the follower engine."
-    },
     "heartBeatInterval" : {
       "type" : "object",
       "properties" : {
@@ -464,6 +427,43 @@
         }
       },
       "description" : "HeartBtInt(108): how often a quiet session proves it is alive, and how long it waits before asking.\n\nAn initiator proposes it at Logon and an acceptor may accept or impose its own, which is why this is a settings object rather than a single duration."
+    },
+    "highAvailability" : {
+      "type" : "object",
+      "properties" : {
+        "replicationAckTimeout" : {
+          "anyOf" : [ {
+            "type" : "string",
+            "format" : "duration",
+            "pattern" : "^[-+]?P(?!$)(?:[-+]?\\d+D)?(?:T(?=[-+]?\\d)(?:[-+]?\\d+H)?(?:[-+]?\\d+M)?(?:[-+]?\\d+(?:[.,]\\d+)?S)?)?$",
+            "description" : "ISO-8601 duration, e.g. PT10S, PT1H30M, P2DT3H, PT0.0000015S"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ],
+          "description" : "How long a SYNC send waits for the follower's acknowledgement before going out anyway; Duration.ZERO waits forever, which a hung follower turns into a frozen session. A follower that missed it is not waited for again until it catches up.",
+          "default" : "PT1S"
+        },
+        "replicationMode" : {
+          "type" : "string",
+          "enum" : [ "NONE", "ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED" ],
+          "description" : "Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the session is next built, as restartLiveSessionOnUpdate decides: turned on, the follower catches up by snapshot; turned off, it stops holding the session.",
+          "default" : "NONE"
+        },
+        "syncAckLatencyEnabled" : {
+          "anyOf" : [ {
+            "type" : "boolean"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ],
+          "description" : "Whether the session's monitoring times each SYNC send's wait for the follower's acknowledgement. Off by default: recording costs the session's thread on every send.",
+          "default" : false
+        }
+      },
+      "description" : "Whether and how this session's store is replicated to the follower engine."
     },
     "logInOrOutResponseTimeout" : {
       "anyOf" : [ {

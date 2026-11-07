@@ -282,7 +282,7 @@ public class FixSessionSettings {
      * Whether and how this session's store is replicated to the follower engine.
      */
     @Builder.Default
-    private HaSessionSettings haSessionSettings = HaSessionSettings.builder().build();
+    private HaSessionSettings highAvailability = HaSessionSettings.builder().build();
 
     /**
      * Whether removing these settings from their {@link FixSessionsSettingsStore} disconnects the live session. On
@@ -409,6 +409,7 @@ public class FixSessionSettings {
         boolean syncAckLatencyEnabled = false;
 
         @Getter
+        @RequiredArgsConstructor
         public enum ReplicationMode {
             /**
              * Not replicated: after a failover the session starts from the follower's own store.
@@ -436,10 +437,6 @@ public class FixSessionSettings {
              * Fixed rather than the ordinal, so a binary format carrying it survives a reordering.
              */
             private final byte code;
-
-            ReplicationMode(byte code) {
-                this.code = code;
-            }
 
             /**
              * Whether a send waits for the follower.

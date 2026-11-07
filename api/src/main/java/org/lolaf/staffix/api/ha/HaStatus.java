@@ -27,7 +27,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * An engine's high availability: the role it acts on, and its replication links.
+ * An engine's high availability: the role it acts on, and its replication connections.
  */
 @NullMarked
 @Value
@@ -45,7 +45,7 @@ public class HaStatus {
      */
     Role role;
     /**
-     * The election's epoch, -1 when unknown.
+     * The election epoch {@link #role} was taken at, -1 while the role is unknown.
      */
     long epoch;
     @Nullable String leaderId;
@@ -56,7 +56,7 @@ public class HaStatus {
     /**
      * The leader election's implementation, such as {@code PrimosLeaderElection}.
      */
-    String leaderElection;
+    String leaderElectionType;
     /**
      * When the engine took its role, null before it took any.
      */
@@ -83,43 +83,42 @@ public class HaStatus {
      */
     @Nullable String monitoringInstanceId;
     /**
-     * The followers connected to this node, while it leads.
+     * While this node leads: its followers' connections, one per follower and lane.
      */
     @Singular
-    List<Follower> followers;
+    List<FollowerConnection> followerConnections;
     /**
      * While this node leads: the followers it dropped as too slow and not back in sync since.
      */
     @Singular
     List<DroppedFollower> droppedFollowers;
     /**
-     * This node's link to its leader, while it follows one.
+     * This node's leader, over all its lanes, while it follows one.
      */
     @Nullable Leader leader;
 
     /**
-     * A follower as its leader sees it.
+     * One follower's connection for one lane, as its leader sees it.
      */
     @Value
     @Builder
-    public static class Follower {
+    public static class FollowerConnection {
 
         /**
          * Null until the follower said.
          */
         @Nullable String nodeId;
         /**
-         * The replication link, below the leader's {@code replicationLinks}: a follower has an entry per link, each
-         * carrying its own share of the sessions.
+         * The lane, each carrying its own share of the sessions over its own connection.
          */
-        int link;
+        int lane;
         String address;
         /**
          * Streaming the leader's writes, rather than greeting or closing.
          */
         boolean connected;
         /**
-         * Holds every session replicated over the link in sync, so a failover to it loses nothing acknowledged.
+         * Holds every session of the lane in sync, so a failover to it loses nothing acknowledged.
          */
         boolean inSync;
         /**
@@ -148,9 +147,9 @@ public class HaStatus {
 
         String nodeId;
         /**
-         * The link dropped, the follower's others carrying on.
+         * The lane dropped, the follower's others carrying on.
          */
-        int link;
+        int lane;
         Instant droppedAt;
         /**
          * Until when it is refused, so its resync does not add to the load that made it too slow; null once it may
@@ -160,7 +159,7 @@ public class HaStatus {
     }
 
     /**
-     * A follower's link to its leader.
+     * The leader as its follower sees it, over all lanes.
      */
     @Value
     @Builder
@@ -171,6 +170,9 @@ public class HaStatus {
          */
         @Nullable String leaderId;
         String address;
+        /**
+         * Every lane is streaming.
+         */
         boolean connected;
         /**
          * Holds every replicated session in full, as of the last write applied.

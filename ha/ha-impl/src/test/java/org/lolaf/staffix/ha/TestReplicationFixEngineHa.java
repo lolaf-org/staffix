@@ -554,7 +554,7 @@ class TestReplicationFixEngineHa {
         FixSessionSettings late = RecordingEngine.session("late", FixSessionType.ACCEPTOR);
         RecordingEngine.RecordingStore lateStore = new RecordingEngine.RecordingStore();
 
-        a.ha.notReplicated(late);
+        a.ha.onSessionNotReplicated(late);
         a.ha.replicatingStore(late, lateStore, new RecordingProbes()).start();
 
         assertThat(lateStore.writes).noneMatch(write -> write.startsWith("outgoing"));
@@ -600,7 +600,7 @@ class TestReplicationFixEngineHa {
             assertThat(leader.isLeadershipValid()).isTrue();
             assertThat(leader.getRoleSince()).isNotNull();
             assertThat(leader.getLeader()).isNull();
-            assertThat(leader.getFollowers()).singleElement().satisfies(follower -> {
+            assertThat(leader.getFollowerConnections()).singleElement().satisfies(follower -> {
                 assertThat(follower.getNodeId()).isEqualTo("b");
                 assertThat(follower.isConnected()).isTrue();
                 assertThat(follower.isInSync()).isTrue();
@@ -612,7 +612,7 @@ class TestReplicationFixEngineHa {
         HaStatus follower = b.ha.getStatus();
         assertThat(follower.getRole()).isEqualTo(Role.FOLLOWER);
         assertThat(follower.isLeadershipValid()).isFalse();
-        assertThat(follower.getFollowers()).isEmpty();
+        assertThat(follower.getFollowerConnections()).isEmpty();
         assertThat(follower.getLeader()).isNotNull();
         assertThat(follower.getLeader().getLeaderId()).isEqualTo("a");
         assertThat(follower.getLeader().isConnected()).isTrue();
@@ -623,13 +623,13 @@ class TestReplicationFixEngineHa {
     void eachNodeDescribesTheReplicatedSessionFromItsSide() {
         aLeadsBFollows();
 
-        await().untilAsserted(() -> assertThat(a.ha.getSessionsStatus()).singleElement().satisfies(session -> {
+        await().untilAsserted(() -> assertThat(a.ha.getSessionStatuses()).singleElement().satisfies(session -> {
             assertThat(session.getFixSessionId()).isEqualTo(MAIN.getFixSessionId());
             assertThat(session.isInSync()).isTrue();
             assertThat(session.getNotReplicatedReason()).isNull();
             assertThat(session.getNextOutgoingSeqNum()).isEqualTo(-1);
         }));
-        HaSessionStatus replicated = b.ha.getSessionsStatus().get(0);
+        HaSessionStatus replicated = b.ha.getSessionStatuses().get(0);
         assertThat(replicated.isInSync()).isTrue();
         assertThat(replicated.getNextIncomingSeqNum()).isEqualTo(1);
         assertThat(replicated.getNextOutgoingSeqNum()).isEqualTo(1);
@@ -642,7 +642,7 @@ class TestReplicationFixEngineHa {
 
         assertThat(a.ha.getStatus().getRole()).isEqualTo(Role.UNKNOWN);
         assertThat(a.ha.getStatus().getRoleSince()).isNull();
-        assertThat(a.ha.getSessionsStatus()).singleElement().satisfies(session -> assertThat(session.isInSync()).isFalse());
+        assertThat(a.ha.getSessionStatuses()).singleElement().satisfies(session -> assertThat(session.isInSync()).isFalse());
     }
 
     @Test
@@ -651,44 +651,44 @@ class TestReplicationFixEngineHa {
         RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);
 
         b.engine.replace(MAIN.toBuilder()
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.NONE).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.NONE).build())
                 .build());
-        a.ha.notReplicated(MAIN);
+        a.ha.onSessionNotReplicated(MAIN);
 
         await().until(() -> !replicaStore.isStarted());
         assertThat(b.ha.getReplica().isComplete()).isTrue();
-        assertThat(a.ha.getStatus().getFollowers()).singleElement().satisfies(follower -> assertThat(follower.isInSync()).isTrue());
+        assertThat(a.ha.getStatus().getFollowerConnections()).singleElement().satisfies(follower -> assertThat(follower.isInSync()).isTrue());
 
         b.engine.replace(MAIN);
         a.ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
 
-        await().until(() -> b.engine.store(MAIN) != replicaStore && b.ha.getSessionsStatus().get(0).isInSync());
+        await().until(() -> b.engine.store(MAIN) != replicaStore && b.ha.getSessionStatuses().get(0).isInSync());
         assertThat(a.engine.meters.read("ha.snapshots")).as("b caught up twice").isEqualTo(2);
     }
 
     @Test
     void aReplicationModeChangedOnTheLeaderAloneIsRefusedByTheFollower() {
         aLeadsBFollows();
-        await().until(() -> b.ha.getSessionsStatus().get(0).isInSync());
+        await().until(() -> b.ha.getSessionStatuses().get(0).isInSync());
         FixSessionSettings sync = MAIN.toBuilder()
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build();
 
         a.ha.replicatingStore(sync, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
 
-        await().until(() -> "MODE_MISMATCH".equals(a.ha.getSessionsStatus().get(0).getNotReplicatedReason()));
-        assertThat(b.ha.getSessionsStatus().get(0).getNotReplicatedReason()).isEqualTo("MODE_MISMATCH");
+        await().until(() -> "MODE_MISMATCH".equals(a.ha.getSessionStatuses().get(0).getNotReplicatedReason()));
+        assertThat(b.ha.getSessionStatuses().get(0).getNotReplicatedReason()).isEqualTo("MODE_MISMATCH");
     }
 
     @Test
     void aSyncReceivedSendIsTimedUnderItsModeAndTheFollowerTimesTheWriteItAcknowledgedFirst() {
         aLeadsBFollows();
         FixSessionSettings syncReceived = MAIN.toBuilder()
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
                 .build();
         b.engine.replace(syncReceived);
         ReplicatingStore store = a.ha.replicatingStore(syncReceived, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        await().until(() -> a.ha.getSessionsStatus().get(0).isInSync());
+        await().until(() -> a.ha.getSessionStatuses().get(0).isInSync());
 
         store.storeNextIncomingSeqNum(7);
         store.awaitReplicated();
@@ -751,7 +751,7 @@ class TestReplicationFixEngineHa {
         leads(leader, follower);
 
         assertThat(leader.engine.meters.read("ha.followers.connected")).isEqualTo(1);
-        assertThat(leader.ha.getStatus().getFollowers()).extracting(HaStatus.Follower::getNodeId, HaStatus.Follower::getLink)
+        assertThat(leader.ha.getStatus().getFollowerConnections()).extracting(HaStatus.FollowerConnection::getNodeId, HaStatus.FollowerConnection::getLane)
                 .containsExactlyInAnyOrder(tuple("b", 0), tuple("b", 1));
         leader.store.storeNextIncomingSeqNum(7);
         await().untilAsserted(() -> assertThat(follower.engine.store(MAIN).writes).endsWith("incoming 7"));
@@ -765,7 +765,7 @@ class TestReplicationFixEngineHa {
         leads(leader, follower);
 
         assertThat(follower.ha.getReplica().getLinks()).isEqualTo(2);
-        assertThat(leader.ha.getStatus().getFollowers()).extracting(HaStatus.Follower::getLink).containsExactlyInAnyOrder(0, 1);
+        assertThat(leader.ha.getStatus().getFollowerConnections()).extracting(HaStatus.FollowerConnection::getLane).containsExactlyInAnyOrder(0, 1);
     }
 
     @Test
@@ -777,13 +777,13 @@ class TestReplicationFixEngineHa {
         follower.engine.store(OTHER).incomingWritesHeld = stalled;
         try {
             leader.ha.resync(OTHER.getFixSessionId(), OTHER.getFixSessionType());
-            await().until(() -> !leader.ha.getStatus().getFollowers().stream().allMatch(HaStatus.Follower::isInSync));
+            await().until(() -> !leader.ha.getStatus().getFollowerConnections().stream().allMatch(HaStatus.FollowerConnection::isInSync));
 
             leader.store.storeNextIncomingSeqNum(7);
 
             await().untilAsserted(() -> assertThat(follower.engine.store(MAIN).writes).endsWith("incoming 7"));
-            assertThat(leader.ha.getStatus().getFollowers()).filteredOn(HaStatus.Follower::isInSync)
-                    .extracting(HaStatus.Follower::getLink).containsExactly(0);
+            assertThat(leader.ha.getStatus().getFollowerConnections()).filteredOn(HaStatus.FollowerConnection::isInSync)
+                    .extracting(HaStatus.FollowerConnection::getLane).containsExactly(0);
         } finally {
             stalled.countDown();
         }
@@ -815,11 +815,11 @@ class TestReplicationFixEngineHa {
         ReplicatingStore timed = a.ha.replicatingStore(sync(MAIN, true), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
         aLeadsBFollows();
 
-        timed.sessionMeters(timedMeters);
+        timed.onSessionMeters(timedMeters);
         timed.storeNextIncomingSeqNum(7);
         timed.awaitReplicated();
         ReplicatingStore untimed = a.ha.replicatingStore(sync(MAIN, false), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        untimed.sessionMeters(untimedMeters);
+        untimed.onSessionMeters(untimedMeters);
         untimed.storeNextIncomingSeqNum(8);
         untimed.awaitReplicated();
 
@@ -830,7 +830,7 @@ class TestReplicationFixEngineHa {
     }
 
     private static FixSessionSettings sync(FixSessionSettings settings, boolean syncAckLatencyEnabled) {
-        return settings.toBuilder().haSessionSettings(FixSessionSettings.HaSessionSettings.builder()
+        return settings.toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
                 .replicationMode(ReplicationMode.SYNC_APPLIED).syncAckLatencyEnabled(syncAckLatencyEnabled).build()).build();
     }
 
@@ -926,7 +926,7 @@ class TestReplicationFixEngineHa {
                 assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
                 assertThat(alert.getMessage()).startsWith("Follower b has not applied a write for");
             }));
-            assertThat(a.ha.getStatus().getFollowers()).singleElement().satisfies(follower -> {
+            assertThat(a.ha.getStatus().getFollowerConnections()).singleElement().satisfies(follower -> {
                 assertThat(follower.isConnected()).isTrue();
                 assertThat(follower.isInSync()).as("as of its last ack, which is why the lag is watched").isTrue();
             });

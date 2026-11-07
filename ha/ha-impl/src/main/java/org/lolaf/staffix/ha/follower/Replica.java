@@ -251,7 +251,7 @@ public final class Replica {
                     ? ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionStatus.NOT_REPLICATED)
                     : ReplicaSession.refused(fixSessionType, fixSessionId, SessionStatus.UNKNOWN_SESSION, leaderMode, leaderStorageIdentity);
         }
-        if (settings.getHaSessionSettings().getReplicationMode() != leaderMode) {
+        if (settings.getHighAvailability().getReplicationMode() != leaderMode) {
             return ReplicaSession.refused(fixSessionType, fixSessionId, SessionStatus.MODE_MISMATCH, leaderMode, leaderStorageIdentity);
         }
         if (leaderMode == ReplicationMode.NONE) {
@@ -322,13 +322,13 @@ public final class Replica {
     private boolean settingsHereNowAgree(ReplicaSession refused) {
         return findSettings(refused.getFixSessionType(), refused.getFixSessionId())
                 .filter(settings -> refused.getNotReplicatedStatus() == SessionStatus.UNKNOWN_SESSION
-                        || settings.getHaSessionSettings().getReplicationMode() == refused.getLeaderMode())
+                        || settings.getHighAvailability().getReplicationMode() == refused.getLeaderMode())
                 .isPresent();
     }
 
     private @Nullable ReplicationMode modeHere(FixSessionType fixSessionType, String fixSessionId) {
         return findSettings(fixSessionType, fixSessionId)
-                .map(settings -> settings.getHaSessionSettings().getReplicationMode())
+                .map(settings -> settings.getHighAvailability().getReplicationMode())
                 .orElse(null);
     }
 
@@ -449,7 +449,7 @@ public final class Replica {
      */
     public List<FixSessionSettings> jumpOutgoingSeqNums(long jump) {
         List<FixSessionSettings> takenOver = engine.getFixSessionsSettings().stream()
-                .filter(settings -> settings.getHaSessionSettings().getReplicationMode() != ReplicationMode.NONE)
+                .filter(settings -> settings.getHighAvailability().getReplicationMode() != ReplicationMode.NONE)
                 .collect(Collectors.toList());
         takenOver.forEach(settings -> takeOver(settings, jump));
         return takenOver;

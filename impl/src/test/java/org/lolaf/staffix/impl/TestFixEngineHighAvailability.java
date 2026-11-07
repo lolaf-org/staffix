@@ -128,7 +128,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     @Test
     void aStandbyEngineBuildsNoSessionUntilItLeads() {
         withStandbyHighAvailability();
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.ASYNC)).build());
         startFixAcceptor();
 
         fixInitiator.start();
@@ -148,7 +148,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     @Test
     void anEngineThatNoLongerLeadsDropsItsSessionsWithoutALogoutAndRunsThemAgainOnceItLeads() {
         withHighAvailability();
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.ASYNC)).build());
         logonClient();
 
         engine.deactivate();
@@ -169,7 +169,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     @Test
     void anEngineHandingLeadershipOverLogsItsSessionsOutAndClosesTheirStores() {
         withHighAvailability();
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.ASYNC)).build());
         logonClient();
 
         engine.deactivateWithLogout(Deadline.of(Duration.ofSeconds(5)));
@@ -333,7 +333,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
 
     @Test
     void aReplicatedSessionIsRefusedOnAnEngineWithoutHighAvailability() {
-        assertThatThrownBy(() -> setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build()))
+        assertThatThrownBy(() -> setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.ASYNC)).build()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("asks for replication mode ASYNC, but engine default has no high availability configured");
     }
@@ -342,11 +342,11 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     void aReplicatedSessionWritesThroughTheReplicatingStore() {
         withHighAvailability();
 
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.SYNC_APPLIED)).build());
         logonClient();
 
         verify(ha).start();
-        verify(ha).replicatingStore(argThat(settings -> settings.getHaSessionSettings().getReplicationMode() == ReplicationMode.SYNC_APPLIED),
+        verify(ha).replicatingStore(argThat(settings -> settings.getHighAvailability().getReplicationMode() == ReplicationMode.SYNC_APPLIED),
                 any(), any());
     }
 
@@ -365,7 +365,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
                 .build();
         withHighAvailability();
 
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED))
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.SYNC_APPLIED))
                 .fixSessionPluginsInstanceId(FixSessionsMonitoringManager.class, "monitoring").build());
         logonClient();
 
@@ -376,7 +376,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     void aSyncSessionReplicatesEachMessageAndWaitsBeforeWritingItThenStoresIt() {
         withHighAvailability();
 
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.SYNC_APPLIED)).build());
         logonClient();
 
         await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
@@ -387,7 +387,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     @Test
     void aSyncBatchReplicatesAllItsMessagesThenWaitsOnce() {
         withHighAvailability();
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.SYNC_APPLIED)).build());
         logonClient();
         FixSession fixSession = getFixSession(ConnectorType.INITIATOR);
         await().until(() -> stores.get(0).outgoingWrites.contains("outgoing 2"));
@@ -409,7 +409,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     void anAsyncSessionNeverWaitsForReplication() {
         withHighAvailability();
 
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.ASYNC)).build());
         logonClient();
 
         await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
@@ -420,7 +420,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
     @Test
     void theEngineLendsItsSessionsSettingsAndStoresToItsHighAvailability() {
         withHighAvailability();
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.ASYNC)).build());
 
         FixSessionSettings settings = engine.getFixSessionsSettings().stream()
                 .filter(s -> s.getFixSessionType() == FixSession.FixSessionType.INITIATOR)
@@ -444,7 +444,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
                         .build())
                 .build();
         withStandbyHighAvailability();
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.ASYNC)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.ASYNC)).build());
         AdminApi admin = (AdminApi) initiatorFixEngine;
         FixSessionSettings settings = engine.getFixSessionsSettings().get(0);
         ProbeScope sessionScope = FixSessionProbeScope.of(settings.getFixSessionId());
@@ -468,20 +468,20 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         logonClient();
 
         verify(ha, never()).replicatingStore(any(), any(), any());
-        verify(ha).notReplicated(argThat(settings -> settings.getFixSessionId().equals(fixInitiatorSession.getFixSessionId())));
+        verify(ha).onSessionNotReplicated(argThat(settings -> settings.getFixSessionId().equals(fixInitiatorSession.getFixSessionId())));
     }
 
     @Test
     void aReplicationTurnedOffThroughTheAdminApiReachesTheHighAvailabilityAsTheSessionRestarts() {
         withHighAvailability();
-        setupInitiatorSessionSettings(b -> b.haSessionSettings(replicated(ReplicationMode.SYNC_APPLIED)).build());
+        setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.SYNC_APPLIED)).build());
         logonClient();
         AdminApi admin = (AdminApi) initiatorFixEngine;
         FixSessionSettings sync = admin.getManagedFixSessionsSettings().get(0);
 
-        admin.updateFixSessionSettings(sync.getFixSessionId(), sync.toBuilder().haSessionSettings(replicated(ReplicationMode.NONE)).build());
+        admin.updateFixSessionSettings(sync.getFixSessionId(), sync.toBuilder().highAvailability(replicated(ReplicationMode.NONE)).build());
 
-        await().untilAsserted(() -> verify(ha).notReplicated(argThat(settings -> settings.getFixSessionId().equals(sync.getFixSessionId()))));
+        await().untilAsserted(() -> verify(ha).onSessionNotReplicated(argThat(settings -> settings.getFixSessionId().equals(sync.getFixSessionId()))));
         verify(ha).replicatingStore(any(), any(), any());
     }
 
@@ -526,7 +526,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         }
 
         @Override
-        public void sessionMeters(FixSessionsMonitoringContext meters) {
+        public void onSessionMeters(FixSessionsMonitoringContext meters) {
             sessionMeters.add(meters);
         }
 

@@ -32,6 +32,6 @@ public final class HaSessionsRoute extends JsonRoute {
 
     @Override
     Object body(List<String> path) {
-        return HaStatusRoute.ha(adminApi).getSessionsStatus().stream().map(HaSession::of).collect(Collectors.toList());
+        return HaStatusRoute.ha(adminApi).getSessionStatuses().stream().map(HaSession::of).collect(Collectors.toList());
     }
 }

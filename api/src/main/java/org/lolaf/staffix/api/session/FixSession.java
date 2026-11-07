@@ -16,6 +16,7 @@
 package org.lolaf.staffix.api.session;
 
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.alerting.Probes;
@@ -351,14 +352,9 @@ public interface FixSession {
     void logEvent(String event, Object... params);
 
     /**
-     * The probes watching this session, which application code adds and removes at runtime; see
-     * {@link org.lolaf.staffix.api.alerting.Probe}. They live as long as the session: one rebuilt after a settings
-     * change starts with none, which is why an application adds its probes in
-     * {@link org.lolaf.staffix.api.application.FixApplication#onSessionCreated}, the first callback where an alerting
-     * meter can read the session's monitoring. The session is active while {@link FixSessionStatus#LOGGED_IN}: a probe
-     * {@link org.lolaf.staffix.api.alerting.Probe#isOnlyWhileActive() only run while active} is suspended in every
-     * other status, {@link FixSessionStatus#LOGGED_OUT_INSIDE_SESSION_TIME} included, where the built-in
-     * {@code session-down} probe alerts instead.
+     * The probes watching this session. They live as long as the session, and a session rebuilt after a settings change
+     * starts with none, so add them in {@link org.lolaf.staffix.api.application.FixApplication#onSessionCreated}. The
+     * session is active only while {@link FixSessionStatus#LOGGED_IN}.
      */
     Probes getProbes();
 
@@ -368,6 +364,7 @@ public interface FixSession {
      * configured for both roles, so this type is required to disambiguate a session's settings.
      */
     @Getter
+    @RequiredArgsConstructor
     enum FixSessionType {
         INITIATOR((byte) 1),
         ACCEPTOR((byte) 0);
@@ -376,10 +373,6 @@ public interface FixSession {
          * Fixed rather than the ordinal, so a binary format carrying it survives a reordering.
          */
         private final byte code;
-
-        FixSessionType(byte code) {
-            this.code = code;
-        }
 
         /**
          * @throws IllegalStateException for a code no type has

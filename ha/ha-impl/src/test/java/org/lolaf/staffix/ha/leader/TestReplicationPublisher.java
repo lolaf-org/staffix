@@ -82,7 +82,7 @@ class TestReplicationPublisher {
         return ha.replicatingStore(FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.ACCEPTOR)
-                .haSessionSettings(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
                 .build(), mock(FixSessionMessagesStore.class), new RecordingProbes());
     }
 

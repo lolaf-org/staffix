@@ -213,7 +213,7 @@ public class FixSessionSettingsMapper {
             if (h.getReplicationMode() != null) hb.replicationMode(h.getReplicationMode());
             if (h.getReplicationAckTimeout() != null) hb.replicationAckTimeout(h.getReplicationAckTimeout());
             if (h.getSyncAckLatencyEnabled() != null) hb.syncAckLatencyEnabled(h.getSyncAckLatencyEnabled());
-            b.haSessionSettings(hb.build());
+            b.highAvailability(hb.build());
         }
         if (p.getSchedule() != null) {
             FixSessionSettings.SessionScheduleSettings.SessionScheduleSettingsBuilder ssb = FixSessionSettings.SessionScheduleSettings.builder();

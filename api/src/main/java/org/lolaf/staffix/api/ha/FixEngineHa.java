@@ -55,7 +55,7 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
      * {@link FixSessionSettings.HaSessionSettings.ReplicationMode#NONE NONE} is built, so one replicated until its
      * settings changed stops being. Once per build, never per message.
      */
-    void notReplicated(FixSessionSettings settings);
+    void onSessionNotReplicated(FixSessionSettings settings);
 
     /**
      * Called once by the engine, before {@link #start()}.
@@ -148,7 +148,7 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
          * Called by a {@code SYNC} session after {@link #replicateSent}, before the message goes out, from the
          * session's thread. Returns when the follower has every write replicated so far, when
          * {@link FixSessionSettings.HaSessionSettings#getReplicationAckTimeout()} runs out, or at once while no follower
-         * is in sync, so that a lost follower never stops trading.
+         * is in sync, so that a lost follower never stops the session sending.
          */
         void awaitReplicated();
 
@@ -157,7 +157,7 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
          * from then on: the session's plugins are created after its store. Not called for a session without
          * monitoring.
          */
-        void sessionMeters(FixSessionsMonitoringContext meters);
+        void onSessionMeters(FixSessionsMonitoringContext meters);
     }
 
     /**

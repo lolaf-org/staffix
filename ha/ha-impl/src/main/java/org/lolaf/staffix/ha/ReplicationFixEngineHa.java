@@ -146,7 +146,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
      * Its followers are told, and stop holding it: they would otherwise count a copy that no longer moves as in sync.
      */
     @Override
-    public void notReplicated(FixSessionSettings sessionSettings) {
+    public void onSessionNotReplicated(FixSessionSettings sessionSettings) {
         markCurrentPromotion(sessionSettings);
         ReplicatedSession session = sessions.find(sessionSettings.getFixSessionId(), sessionSettings.getFixSessionType());
         if (session == null || !session.isReplicated()) {
@@ -180,11 +180,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                 .nodeId(settings.getNodeId())
                 .pairName(pairName(currentElection))
                 .role(role)
-                .epoch(currentElection == null ? -1 : currentElection.getEpoch())
+                .epoch(followedEpoch)
                 .leaderId(currentElection == null ? null : currentElection.getLeaderId().orElse(null))
                 .leadershipValid(currentElection != null && currentElection.getRole() == Role.LEADER
                         && currentElection.isLeadershipValid())
-                .leaderElection(currentElection == null ? "" : currentElection.getClass().getSimpleName())
+                .leaderElectionType(currentElection == null ? "" : currentElection.getClass().getSimpleName())
                 .roleSince(roleSince)
                 .transferLeadershipSupported(currentElection != null && currentElection.isTransferLeadershipSupported())
                 .candidacySupported(currentElection != null && currentElection.isCandidacySupported())
@@ -193,7 +193,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                 .monitoringInstanceId(settings.getMonitoringInstanceId());
         if (role == Role.LEADER) {
             for (FollowerLink link : followers.all()) {
-                status.follower(link.status(sessions.count()));
+                status.followerConnection(link.status(sessions.count()));
             }
             status.droppedFollowers(stats.getSlowFollowers().notBackInSync());
         }
@@ -362,7 +362,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     }
 
     @Override
-    public List<HaSessionStatus> getSessionsStatus() {
+    public List<HaSessionStatus> getSessionStatuses() {
         EngineAccess currentEngine = engine;
         if (currentEngine == null) {
             return List.of();
@@ -370,7 +370,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         Role role = followedRole;
         List<HaSessionStatus> statuses = new ArrayList<>();
         currentEngine.forEachFixSessionSettings(sessionSettings -> {
-            if (!ReplicationMode.NONE.equals(sessionSettings.getHaSessionSettings().getReplicationMode())) {
+            if (!ReplicationMode.NONE.equals(sessionSettings.getHighAvailability().getReplicationMode())) {
                 statuses.add(sessionStatus(sessionSettings, role));
             }
         });
@@ -378,7 +378,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     }
 
     private HaSessionStatus sessionStatus(FixSessionSettings sessionSettings, Role role) {
-        HaSessionSettings haSettings = sessionSettings.getHaSessionSettings();
+        HaSessionSettings haSettings = sessionSettings.getHighAvailability();
         HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder()
                 .fixSessionId(sessionSettings.getFixSessionId())
                 .fixSessionType(sessionSettings.getFixSessionType())
@@ -410,7 +410,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         status.inSync(inSync)
                 .notReplicatedReason(inSync ? null : refusal)
-                .unprotected(session.isUnprotected())
+                .lastSendUnacknowledged(session.isUnprotected())
                 .unacknowledgedSends(session.getUnacknowledgedSends())
                 .lostWrites(session.getConfig().getStore().getLostWrites());
     }

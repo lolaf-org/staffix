@@ -589,15 +589,15 @@ class AdminApiEndpointsTest {
     void theHighAvailabilityAndItsSessionsAreRead() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
-                .leaderId("1").leadershipValid(true).leaderElection("PrimosLeaderElection")
+                .leaderId("1").leadershipValid(true).leaderElectionType("PrimosLeaderElection")
                 .roleSince(Instant.parse("2026-10-10T10:00:00Z")).switchoverMaxDuration(Duration.ofMinutes(1)).monitoringInstanceId("metrics")
-                .follower(HaStatus.Follower.builder().nodeId("2").link(1).address("/10.0.0.2:40000").connected(true).inSync(true)
+                .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
                         .unsentBytes(0).lagMillis(3).build())
-                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").link(1)
+                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1)
                         .droppedAt(Instant.parse("2026-10-10T10:05:00Z"))
                         .heldOffUntil(Instant.parse("2026-10-10T10:05:02Z")).build())
                 .build());
-        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
                 .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
                 .replicationAckTimeout(Duration.ZERO).inSync(true).nextIncomingSeqNum(-1).nextOutgoingSeqNum(-1).build()));
         when(adminApi.getHa()).thenReturn(Optional.of(ha));
@@ -606,9 +606,9 @@ class AdminApiEndpointsTest {
                 .isEqualTo("{\"nodeId\":\"1\",\"pairName\":\"gateway\",\"role\":\"LEADER\",\"epoch\":7,\"leaderId\":\"1\",\"leadershipValid\":true,"
                         + "\"leaderElection\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
                         + "\"transferLeadershipSupported\":false,\"candidacySupported\":false,\"candidate\":false,\"switchoverMaxDuration\":\"PT1M\",\"monitoringInstanceId\":\"metrics\","
-                        + "\"followers\":[{\"nodeId\":\"2\",\"link\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
+                        + "\"followers\":[{\"nodeId\":\"2\",\"lane\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
                         + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3}],"
-                        + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"link\":1,\"droppedAt\":\"2026-10-10T10:05:00Z\","
+                        + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"lane\":1,\"droppedAt\":\"2026-10-10T10:05:00Z\","
                         + "\"heldOffUntil\":\"2026-10-10T10:05:02Z\"}]}");
         assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
@@ -619,7 +619,7 @@ class AdminApiEndpointsTest {
     @Test
     void theHighAvailabilityActionsReachItsAdmin() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
-        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
                 .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
                 .replicationAckTimeout(Duration.ZERO).build()));
         when(adminApi.getHa()).thenReturn(Optional.of(ha));
@@ -642,7 +642,7 @@ class AdminApiEndpointsTest {
     @Test
     void aSessionListedButNotYetReplicatedCannotBeResynced() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
-        when(ha.getSessionsStatus()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
                 .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
                 .replicationAckTimeout(Duration.ZERO).build()));
         doThrow(new IllegalArgumentException("FIX session INITIATOR " + TRADING + " is not replicated"))

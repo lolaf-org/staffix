@@ -39,17 +39,17 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         HaStatus status = delegate.getStatus();
         HaStatus.Leader leader = status.getLeader();
         return new StatusImpl(status.getNodeId(), status.getPairName(), status.getRole().name(), status.getEpoch(), status.getLeaderId(),
-                status.isLeadershipValid(), status.getLeaderElection(),
+                status.isLeadershipValid(), status.getLeaderElectionType(),
                 status.getSwitchoverMaxDuration() == null ? null : status.getSwitchoverMaxDuration().toString(),
                 status.getRoleSince() == null ? null : status.getRoleSince().toString(),
                 status.isTransferLeadershipSupported(), status.isCandidacySupported(), status.isCandidate(),
-                status.getFollowers().stream()
-                        .map(follower -> new FollowerImpl(follower.getNodeId(), follower.getLink(), follower.getAddress(), follower.isConnected(),
+                status.getFollowerConnections().stream()
+                        .map(follower -> new FollowerImpl(follower.getNodeId(), follower.getLane(), follower.getAddress(), follower.isConnected(),
                                 follower.isInSync(), follower.isSnapshotInProgress(), follower.getUnsentBytes(),
                                 follower.getLagMillis()))
                         .collect(Collectors.toList()),
                 status.getDroppedFollowers().stream()
-                        .map(dropped -> new DroppedFollowerImpl(dropped.getNodeId(), dropped.getLink(),
+                        .map(dropped -> new DroppedFollowerImpl(dropped.getNodeId(), dropped.getLane(),
                                 dropped.getDroppedAt().toString(),
                                 dropped.getHeldOffUntil() == null ? null : dropped.getHeldOffUntil().toString()))
                         .collect(Collectors.toList()),
@@ -58,7 +58,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
 
     @Override
     public List<Session> getSessionsStatus() {
-        return delegate.getSessionsStatus().stream().map(FixHaMBeanImpl::session).collect(Collectors.toList());
+        return delegate.getSessionStatuses().stream().map(FixHaMBeanImpl::session).collect(Collectors.toList());
     }
 
     @Override
@@ -76,7 +76,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
      */
     @Override
     public void resyncSession(String fixSessionId, String fixSessionType) {
-        HaSessionStatus session = delegate.getSessionsStatus().stream()
+        HaSessionStatus session = delegate.getSessionStatuses().stream()
                 .filter(candidate -> candidate.getFixSessionId().toString().equals(fixSessionId)
                         && candidate.getFixSessionType().name().equals(fixSessionType))
                 .findFirst()
@@ -92,7 +92,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     private static Session session(HaSessionStatus status) {
         return new SessionImpl(status.getFixSessionId().toString(), status.getFixSessionType().name(),
                 status.getReplicationMode().name(), status.getReplicationAckTimeout().toString(), status.isInSync(),
-                status.getNotReplicatedReason(), status.isUnprotected(),
+                status.getNotReplicatedReason(), status.isLastSendUnacknowledged(),
                 status.getUnacknowledgedSends(), status.getNextIncomingSeqNum(), status.getNextOutgoingSeqNum(),
                 status.isHandedOver(), status.getPendingWrites(), status.getLostWrites());
     }

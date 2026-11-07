@@ -105,7 +105,7 @@ class TestSwitchover {
                 .fixApplicationFactoryInstanceId("app")
                 .fixApplicationInstanceId(applicationId)
                 .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
-                .haSessionSettings(HaSessionSettings.builder().replicationMode(mode).build())
+                .highAvailability(HaSessionSettings.builder().replicationMode(mode).build())
                 .build();
     }
 
@@ -431,11 +431,11 @@ class TestSwitchover {
         sharedStorage = true;
         switchoverTimeout = Duration.ofMillis(500);
         startPair(Pair.ACCEPTORS, ReplicationMode.SYNC_APPLIED);
-        await().untilAsserted(() -> assertThat(a.getSessionsStatus()).singleElement().satisfies(session -> {
+        await().untilAsserted(() -> assertThat(a.getSessionStatuses()).singleElement().satisfies(session -> {
             assertThat(session.isInSync()).isFalse();
             assertThat(session.getNotReplicatedReason()).isEqualTo("SHARED_STORAGE");
         }));
-        assertThat(b.getSessionsStatus()).singleElement()
+        assertThat(b.getSessionStatuses()).singleElement()
                 .satisfies(session -> assertThat(session.getNotReplicatedReason()).isEqualTo("SHARED_STORAGE"));
 
         assertThat(a.switchover()).isEqualTo(SwitchoverOutcome.NO_FOLLOWER_IN_SYNC);
@@ -497,7 +497,7 @@ class TestSwitchover {
         countGapsFromHere(counterparties[0]);
         countGapsFromHere(counterparties[1]);
         await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
-        assertThat(b.getSessionsStatus()).as("the session not replicated is not listed").hasSize(2);
+        assertThat(b.getSessionStatuses()).as("the session not replicated is not listed").hasSize(2);
         long[] expected = new long[modes.length];
         for (int i = 0; i < modes.length; i++) {
             expected[i] = counterpartyAdmin.getIncomingSeqNum(counterpartySessions[i].getFixSessionId());
