@@ -23,6 +23,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
+import lombok.Value;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.MetersContext;
@@ -49,9 +50,9 @@ class MicrometerMeters implements FixEngineMonitoringContext {
     private final MeterRegistry meterRegistry;
     private final MicrometerMonitoringManagerSettings settings;
     private final Tags contextTags;
-    private final Map<String, MicrometerTimerWrapper> timers = new ConcurrentHashMap<>();
-    private final Map<String, CounterWrapper> counters = new ConcurrentHashMap<>();
-    private final Map<String, RegisteredGauge> gauges = new ConcurrentHashMap<>();
+    private final Map<MeterKey, RegisteredTimer> timers = new ConcurrentHashMap<>();
+    private final Map<MeterKey, RegisteredCounter> counters = new ConcurrentHashMap<>();
+    private final Map<MeterKey, RegisteredGauge> gauges = new ConcurrentHashMap<>();
     private final Map<String, FixMeterDescriptor> descriptors = new ConcurrentHashMap<>();
     private final boolean custom;
 
@@ -81,15 +82,6 @@ class MicrometerMeters implements FixEngineMonitoringContext {
                 .register(meterRegistry);
     }
 
-    private static String meterKey(String id, Map<String, String> tags) {
-        if (tags.isEmpty()) {
-            return id;
-        }
-        StringBuilder tagsToString = new StringBuilder();
-        tags.forEach((k, v) -> tagsToString.append(k).append(v));
-        return id + "-" + tagsToString.toString().hashCode();
-    }
-
     private static FixMeterDescriptor withTagKeysOf(FixMeterDescriptor known, FixMeterDescriptor added) {
         Set<String> tagKeys = new LinkedHashSet<>(known.getTagKeys());
         if (!tagKeys.addAll(added.getTagKeys())) {
@@ -101,17 +93,17 @@ class MicrometerMeters implements FixEngineMonitoringContext {
     @Override
     public org.lolaf.staffix.api.monitoring.Timer getTimer(String id, String description, Map<String, String> tags) {
         MicrometerMonitoringManagerSettings.TimerSettings timerSettings = settings.getTimerSettings().getOrDefault(id, settings.getDefaultTimersSettings());
-        return timers.computeIfAbsent(meterKey(id, tags), key -> {
+        return timers.computeIfAbsent(MeterKey.of(id, tags), key -> {
             Timer raw = timer(id, description, meterRegistry, tags(tags), timerSettings);
             describe(FixMeterDescriptor.builder().name(id).type(FixMeterDescriptor.Type.TIMER).description(description)
                     .tagKeys(tags.keySet()).percentiles(timerSettings.isPublishPercentileHistogram()).custom(custom).build());
-            return new MicrometerTimerWrapper(raw);
+            return new RegisteredTimer(raw);
         });
     }
 
     @Override
     public org.lolaf.staffix.api.monitoring.Counter getCounter(String id, String description, Map<String, String> tags) {
-        return counters.computeIfAbsent(meterKey(id, tags), key -> {
+        return counters.computeIfAbsent(MeterKey.of(id, tags), key -> {
             Counter counter = Counter.builder(id)
                     .description(description)
                     .tags(tags(tags))
@@ -123,7 +115,7 @@ class MicrometerMeters implements FixEngineMonitoringContext {
 
     @Override
     public org.lolaf.staffix.api.monitoring.Counter getCounter(String id, String description, Map<String, String> tags, LongSupplier total) {
-        return counters.computeIfAbsent(meterKey(id, tags), key -> {
+        return counters.computeIfAbsent(MeterKey.of(id, tags), key -> {
             FunctionCounter counter = FunctionCounter.builder(id, total, supplier -> supplier.getAsLong())
                     .description(description)
                     .tags(tags(tags))
@@ -135,7 +127,7 @@ class MicrometerMeters implements FixEngineMonitoringContext {
 
     @Override
     public org.lolaf.staffix.api.monitoring.Gauge getGauge(String id, String description, Map<String, String> tags) {
-        return gauges.computeIfAbsent(meterKey(id, tags), key -> {
+        return gauges.computeIfAbsent(MeterKey.of(id, tags), key -> {
             PushedGauge gauge = new PushedGauge();
             gauge.meter = registerGauge(id, description, tags, gauge, PushedGauge::value);
             return gauge;
@@ -144,7 +136,7 @@ class MicrometerMeters implements FixEngineMonitoringContext {
 
     @Override
     public org.lolaf.staffix.api.monitoring.Gauge getGauge(String id, String description, Map<String, String> tags, DoubleSupplier value) {
-        return gauges.computeIfAbsent(meterKey(id, tags), key -> {
+        return gauges.computeIfAbsent(MeterKey.of(id, tags), key -> {
             PulledGauge gauge = new PulledGauge();
             gauge.meter = registerGauge(id, description, tags, value, DoubleSupplier::getAsDouble);
             return gauge;
@@ -197,12 +189,22 @@ class MicrometerMeters implements FixEngineMonitoringContext {
         descriptors.clear();
     }
 
-    private interface CounterWrapper extends org.lolaf.staffix.api.monitoring.Counter {
+    @Value
+    private static class MeterKey {
+        String id;
+        Map<String, String> tags;
+
+        static MeterKey of(String id, Map<String, String> tags) {
+            return new MeterKey(id, Map.copyOf(tags));
+        }
+    }
+
+    private interface RegisteredCounter extends org.lolaf.staffix.api.monitoring.Counter {
         Meter meter();
     }
 
     @RequiredArgsConstructor
-    private static final class PushedCounter implements CounterWrapper {
+    private static final class PushedCounter implements RegisteredCounter {
 
         private final Counter counter;
 
@@ -223,7 +225,7 @@ class MicrometerMeters implements FixEngineMonitoringContext {
     }
 
     @RequiredArgsConstructor
-    private static final class PulledCounter implements CounterWrapper {
+    private static final class PulledCounter implements RegisteredCounter {
 
         private final FunctionCounter counter;
         /**
@@ -288,7 +290,7 @@ class MicrometerMeters implements FixEngineMonitoringContext {
     }
 
     @RequiredArgsConstructor
-    private static final class MicrometerTimerWrapper implements org.lolaf.staffix.api.monitoring.Timer {
+    private static final class RegisteredTimer implements org.lolaf.staffix.api.monitoring.Timer {
 
         private final Timer timer;
         private long startTime;

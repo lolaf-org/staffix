@@ -436,6 +436,18 @@ class MicrometerMonitoringManagerTest {
     }
 
     @Test
+    void metersWhoseTagsReadTheSameRunTogetherAreDistinct() {
+        monitoringManager.start();
+        FixEngineMonitoringContext engine = monitoringManager.engineContext("engine-1");
+
+        engine.getCounter("split", "Split tags", Map.of("a", "bc")).increment();
+        engine.getCounter("split", "Split tags", Map.of("ab", "c")).increment(2);
+
+        assertThat(meterRegistry.find("split").tag("a", "bc").counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.find("split").tag("ab", "c").counter().count()).isEqualTo(2);
+    }
+
+    @Test
     void engineMetersAreRefusedBeforeStart() {
         assertThatThrownBy(() -> monitoringManager.engineContext("engine-1")).isInstanceOf(IllegalStateException.class);
     }
