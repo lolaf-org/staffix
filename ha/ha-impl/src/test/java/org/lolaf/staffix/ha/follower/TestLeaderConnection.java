@@ -16,134 +16,20 @@
 package org.lolaf.staffix.ha.follower;
 
 import org.junit.jupiter.api.Test;
-import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
-import org.lolaf.staffix.ha.wire.FrameHandler;
-import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.ha.wire.WireFormat;
-
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.function.ToIntBiFunction;
-import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-class TestLeaderConnection {
-
-    private static final long EPOCH = 7;
-    private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.INITIATOR);
-    private static final int FIRST = WireFormat.MORE_FRAGMENTS;
-    private static final int MIDDLE = WireFormat.MORE_FRAGMENTS | WireFormat.CONTINUED_FRAGMENT;
-    private static final int LAST = WireFormat.CONTINUED_FRAGMENT;
-    private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
-
-    private final IOSession ioSession = mock(IOSession.class);
-    private final RecordingHandler sent = new RecordingHandler();
-    private final RecordingEngine engine = new RecordingEngine().with(MAIN);
-    private final ReplicaSessions replicaSessions = new ReplicaSessions(engine);
-    private final LeaderConnection connection = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes, 0);
-
-    TestLeaderConnection() {
-        when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
-        doAnswer(invocation -> {
-            ByteBuffer frames = invocation.getArgument(0);
-            decode(frames.duplicate().flip(), sent);
-            return null;
-        }).when(ioSession).send(any(ByteBuffer.class), anyBoolean());
-    }
-
-    private static void decode(ByteBuffer frames, FrameHandler handler) {
-        FrameDecoder decoder = new FrameDecoder(1 << 20);
-        int index = frames.position();
-        int consumed;
-        while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, handler)) > 0) {
-            index += consumed;
-        }
-    }
-
-    /**
-     * Hands the connection the frames written by each encoder in one read, as the client does.
-     */
-    @SafeVarargs
-    private void read(ToIntBiFunction<ByteBuffer, Integer>... frames) {
-        connection.read(writeFrames(frames), new FrameDecoder(1 << 20));
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset) {
-        return welcome(epoch, resumeOffset, 1);
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset, int lanes) {
-        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, lanes);
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings) {
-        return session(key, settings, "leader-storage");
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings, String leaderStorageIdentity) {
-        return (out, index) -> FrameEncoder.session(out, index, EPOCH, key, settings.getFixSessionType(),
-                settings.getHighAvailability().getReplicationMode(), settings.getFixSessionId().toString(), leaderStorageIdentity);
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
-                                                              String message) {
-        return (out, index) -> FrameEncoder.storeEvent(out, index, epoch, offset, key, type, seq,
-                message == null ? null : ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> fragment(long offset, int key, long seq, String text, int flags) {
-        return (out, index) -> {
-            ByteBuffer message = ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));
-            int body = FrameEncoder.storeEventBody(out, index + WireFormat.STORE_EVENT_BODY_OFFSET, key,
-                    StoreEventType.STORE_MESSAGE, seq, message, 0, message.remaining(), (byte) flags);
-            return FrameEncoder.storeEventHeader(out, index, EPOCH, offset, body);
-        };
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> snapshotFragment(long seq, String text, int flags) {
-        return (out, index) -> {
-            ByteBuffer message = ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));
-            return FrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq, message, 0, message.remaining(), (byte) flags);
-        };
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> snapshotMessage(long seq, String message) {
-        return (out, index) -> FrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq,
-                ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
-    }
-
-    private void streaming() {
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
-        sent.frames.clear();
-    }
-
-    private void streamingSyncReceived() {
-        FixSessionSettings syncReceived = MAIN.toBuilder()
-                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
-                .build();
-        engine.replace(syncReceived);
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, syncReceived));
-        sent.frames.clear();
-    }
+class TestLeaderConnection extends LeaderConnectionHarness {
 
     @Test
     void theWelcomeGivesTheReplicaTheLeadersLaneCount() {
@@ -239,14 +125,6 @@ class TestLeaderConnection {
         assertThat(sent.frames).last().isEqualTo("ACK epoch=7 applied=-1 inSync=true pending=7");
     }
 
-    private LeaderConnection checkingHourly() {
-        return new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes, TimeUnit.HOURS.toNanos(1));
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> heartbeat() {
-        return (out, index) -> FrameEncoder.heartbeat(out, index, EPOCH, 0);
-    }
-
     @Test
     void aLeaderOfAnOlderEpochIsRefused() {
         read(welcome(EPOCH - 1, 0));
@@ -254,247 +132,6 @@ class TestLeaderConnection {
         assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 STALE_EPOCH");
         verify(ioSession).stop(any());
-    }
-
-    @Test
-    void aSessionConfiguredHereIsReplicatedIntoItsOwnStartedStoreOnceASnapshotFillsIt() {
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
-
-        assertThat(engine.store(MAIN).started).isTrue();
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED", "ACK epoch=7 applied=-1 inSync=false");
-    }
-
-    @Test
-    void aSessionConfiguredHereAfterItWasAnnouncedIsBoundAndCaughtUp() {
-        FixSessionSettings late = RecordingEngine.session("late", FixSessionType.INITIATOR);
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(3, late));
-        sent.frames.clear();
-
-        engine.with(late);
-        read(event(EPOCH, 0, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
-
-        assertThat(engine.store(late).started).isTrue();
-        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=3 SNAPSHOT_NEEDED");
-    }
-
-    @Test
-    void aSessionUnknownHereIsReportedAndNotReplicated() {
-        FixSessionSettings other = RecordingEngine.session("other", FixSessionType.INITIATOR);
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(3, other),
-                event(EPOCH, 0, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
-
-        assertThat(engine.stores).isEmpty();
-        assertThat(sent.frames).as("a session it should hold is missing, so it is not in sync")
-                .containsExactly("SESSION_ANSWER epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=false");
-    }
-
-    @Test
-    void aSessionWithAnotherReplicationModeHereIsRefusedUntilTheSettingsHereAgree() {
-        FixSessionSettings sync = MAIN.toBuilder()
-                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
-                .build();
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, sync));
-
-        assertThat(engine.store(MAIN)).as("no store opened").isNull();
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 MODE_MISMATCH", "ACK epoch=7 applied=-1 inSync=false");
-        sent.frames.clear();
-
-        engine.replace(sync);
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
-
-        assertThat(engine.store(sync).started).isTrue();
-        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
-    }
-
-    @Test
-    void aSessionWhoseStorageIsTheLeadersOwnIsRefusedNeitherStartedNorWrittenTo() {
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN, "follower-storage"),
-                event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
-
-        assertThat(engine.store(MAIN).started).isFalse();
-        assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=false");
-    }
-
-    @Test
-    void aSessionWhoseStorageIsTheLeadersOwnIsMovedAheadEvenAfterACleanShutdown() {
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN, "follower-storage"));
-
-        read(close(CloseReason.SHUTDOWN));
-        replicaSessions.jumpOutgoingSeqNums(1_000);
-
-        assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");
-    }
-
-    @Test
-    void aSessionWhoseStorageCannotBeIdentifiedIsRefused() {
-        engine.nextStorageIdentity = null;
-
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
-
-        assertThat(engine.store(MAIN).started).isFalse();
-        assertThat(sent.frames).first().isEqualTo("SESSION_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
-    }
-
-    @Test
-    void aSessionTheLeaderCannotIdentifyIsRefused() {
-        read(welcome(EPOCH, WireFormat.NO_RESUME), (out, index) -> FrameEncoder.session(out, index, EPOCH, 0,
-                MAIN.getFixSessionType(), ReplicationMode.ASYNC, MAIN.getFixSessionId().toString(), null));
-
-        assertThat(sent.frames).first().isEqualTo("SESSION_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
-    }
-
-    @Test
-    void aRefusedSessionIsLookedAtAgainOnTheNextConnection() {
-        engine.nextStorageIdentity = null;
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
-        engine.nextStorageIdentity = "follower-storage-back";
-
-        LeaderConnection next = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
-        sent.frames.clear();
-        decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), next);
-
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
-        assertThat(engine.store(MAIN).started).isTrue();
-    }
-
-    @Test
-    void storeEventsAreAppliedInOrderAndAcknowledgedOncePerRead() {
-        streaming();
-
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, MESSAGE),
-                event(EPOCH, 64, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 7, null),
-                event(EPOCH, 96, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null),
-                event(EPOCH, 128, 0, StoreEventType.RESET_SEQ_NUM, 0, null));
-
-        assertThat(engine.store(MAIN).writes).as("seqnums coalesced, written before the reset")
-                .containsExactly("message 5 " + MESSAGE, "incoming 3", "outgoing 7", "reset");
-        assertThat(replicaSessions.getLastAppliedEpoch(0)).isEqualTo(EPOCH);
-        assertThat(replicaSessions.getLastAppliedOffset(0)).isEqualTo(128);
-        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
-    }
-
-    @Test
-    void aStoreWriteFailingWithItsResourceDownClosesTheStreamWithoutApplyingOrAcknowledgingWhatFollowsIt() {
-        streaming();
-        engine.store(MAIN).messageWritesFail = true;
-        engine.store(MAIN).resourceDown = true;
-
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 4, null),
-                event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, MESSAGE),
-                event(EPOCH, 96, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
-
-        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
-        assertThat(engine.store(MAIN).writes).as("the seqnum before it still pending").isEmpty();
-        assertThat(replicaSessions.getLastAppliedOffset(0)).as("resumed before the read").isEqualTo(-1);
-        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
-    }
-
-    @Test
-    void aReadsMessagesGoToABatchingStoreAsOneBatchThenItsLastSeqnums() {
-        engine.batchingStores = true;
-        streaming();
-
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
-                event(EPOCH, 64, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null),
-                event(EPOCH, 96, 0, StoreEventType.STORE_MESSAGE, 6, "six"),
-                event(EPOCH, 160, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
-
-        assertThat(engine.store(MAIN).writes).containsExactly("batch 5 five, 6 six", "incoming 3", "outgoing 7");
-        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=160 inSync=false");
-    }
-
-    @Test
-    void anOutgoingSeqnumKeepsItsPlaceAmongTheMessagesOfARead() {
-        engine.batchingStores = true;
-        streaming();
-
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
-                event(EPOCH, 64, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 10, null));
-        read(event(EPOCH, 96, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 20, null),
-                event(EPOCH, 128, 0, StoreEventType.STORE_MESSAGE, 20, "twenty"));
-
-        assertThat(engine.store(MAIN).writes).containsExactly("batch 5 five", "outgoing 10", "batch 20 twenty", "outgoing 21");
-    }
-
-    @Test
-    void aFullBatchIsWrittenWithinTheRead() {
-        engine.batchingStores = true;
-        streaming();
-
-        read(IntStream.rangeClosed(1, 300)
-                .mapToObj(seq -> event(EPOCH, seq * 64L, 0, StoreEventType.STORE_MESSAGE, seq, "m"))
-                .toArray(ToIntBiFunction[]::new));
-
-        List<String> writes = engine.store(MAIN).writes;
-        assertThat(writes).hasSize(3);
-        assertThat(writes.get(0)).startsWith("batch 1 m, ").endsWith(", 256 m");
-        assertThat(writes.get(1)).startsWith("batch 257 m, ").endsWith(", 300 m");
-        assertThat(writes.get(2)).isEqualTo("outgoing 301");
-    }
-
-    @Test
-    void aBatchThatFailsLeavesTheReadReceivedButUnapplied() {
-        engine.batchingStores = true;
-        streamingSyncReceived();
-        engine.store(MAIN).messageWritesFail = true;
-        engine.store(MAIN).resourceDown = true;
-
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null),
-                event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, "five"));
-
-        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
-        assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(replicaSessions.getLastAppliedOffset(0)).isEqualTo(-1);
-        assertThat(sent.frames).hasSize(2).first().isEqualTo("RECEIVED epoch=7 received=32");
-        assertThat(sent.frames.get(1)).as("never acknowledged as applied").startsWith("CLOSE epoch=7 APPLY_FAILED");
-    }
-
-    private long lostWrites() {
-        HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder();
-        replicaSessions.describe(FixSessionType.INITIATOR, MAIN.getFixSessionId().toString(), status);
-        return status.build().getLostWrites();
-    }
-
-    @Test
-    void aStoreWriteFailingWithItsResourceUpCostsThatMessageAlone() {
-        streaming();
-        engine.store(MAIN).refusedSeqNum = 5;
-
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
-                event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 6, "six"));
-
-        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.STREAMING);
-        assertThat(engine.store(MAIN).writes).containsExactly("message 6 six");
-        assertThat(replicaSessions.getLastAppliedOffset(0)).isEqualTo(32);
-        assertThat(lostWrites()).isEqualTo(1);
-    }
-
-    @Test
-    void aBatchFailingWithItsResourceUpCostsTheMessageTheStoreRefusesAlone() {
-        engine.batchingStores = true;
-        streaming();
-        engine.store(MAIN).refusedSeqNum = 5;
-
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 4, "four"),
-                event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
-                event(EPOCH, 64, 0, StoreEventType.STORE_MESSAGE, 6, "six"));
-
-        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.STREAMING);
-        assertThat(engine.store(MAIN).writes).contains("message 4 four", "message 6 six");
-        assertThat(lostWrites()).isEqualTo(1);
-    }
-
-    @Test
-    void aSnapshotForgetsTheWritesLost() {
-        streaming();
-        engine.store(MAIN).refusedSeqNum = 5;
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"));
-        assertThat(lostWrites()).isEqualTo(1);
-
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13));
-
-        assertThat(lostWrites()).isZero();
     }
 
     @Test
@@ -648,16 +285,6 @@ class TestLeaderConnection {
         assertThat(replicaSessions.getLastAppliedOffset(0)).as("nothing left to resume from").isEqualTo(-1);
     }
 
-    private void complete() {
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
-        engine.store(MAIN).writes.clear();
-    }
-
-    private static ToIntBiFunction<ByteBuffer, Integer> close(CloseReason reason) {
-        return (out, index) -> FrameEncoder.close(out, index, EPOCH, reason, "test");
-    }
-
     @Test
     void aCleanShutdownHandsOverEveryCompleteSessionWithoutAJump() {
         streaming();
@@ -765,15 +392,5 @@ class TestLeaderConnection {
         replicaSessions.close(Deadline.unlimited());
 
         assertThat(engine.store(MAIN).started).isFalse();
-    }
-
-    @SafeVarargs
-    private static ByteBuffer writeFrames(ToIntBiFunction<ByteBuffer, Integer>... frames) {
-        ByteBuffer buffer = ByteBuffer.allocate(1 << 16);
-        int length = 0;
-        for (ToIntBiFunction<ByteBuffer, Integer> frame : frames) {
-            length += frame.applyAsInt(buffer, length);
-        }
-        return buffer.limit(length);
     }
 }

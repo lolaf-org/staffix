@@ -15,19 +15,15 @@
  */
 package org.lolaf.staffix.ha;
 
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
-import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
-import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -35,176 +31,22 @@ import org.lolaf.staffix.ha.follower.RecordingEngine;
 import org.lolaf.staffix.ha.follower.RecordingMeters;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.nio.ByteBuffer;
-import java.net.Socket;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.awaitility.Awaitility.await;
 
-/**
- * Two nodes, each an engine's high availability with an election the test decides, replicating over TCP, the follower
- * writing on its network threads or on a store writer thread.
- */
 @ParameterizedClass
 @ValueSource(booleans = {false, true})
-class TestReplicationFixEngineHa {
-
-    private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.ACCEPTOR);
-    private static final FixSessionSettings OTHER = RecordingEngine.session("other", FixSessionType.ACCEPTOR);
-
-    private final InetSocketAddress addressA = new InetSocketAddress("localhost", freePort());
-    private final InetSocketAddress addressB = new InetSocketAddress("localhost", freePort());
-    private final List<ReplicationFixEngineHa> started = new ArrayList<>();
-    /**
-     * One per lane, so a stalled lane holds back no other.
-     */
-    private final boolean storeWriterThreads;
-    private Node a;
-    private Node b;
+class TestReplicationFixEngineHa extends HaPairFixture {
 
     TestReplicationFixEngineHa(boolean storeWriterThreads) {
-        this.storeWriterThreads = storeWriterThreads;
-        a = new Node("a");
-        b = new Node("b");
-    }
-
-    private static int freePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    private static boolean listening(InetSocketAddress address) {
-        try (Socket socket = new Socket(address.getHostString(), address.getPort())) {
-            return true;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private final class Node {
-
-        final FakeLeaderElection election = new FakeLeaderElection();
-        final RecordingEngine engine;
-        final ReplicationFixEngineHa ha;
-        final RecordingProbes sessionProbes = new RecordingProbes();
-        final ReplicatingStore store;
-        ReplicatingStore other;
-
-        Node(String nodeId) {
-            this(nodeId, new RecordingEngine().with(MAIN));
-        }
-
-        Node(String nodeId, RecordingEngine engine) {
-            this(nodeId, engine, Duration.ofMillis(50));
-        }
-
-        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval) {
-            this(nodeId, engine, heartbeatInterval, 1);
-        }
-
-        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLanes) {
-            this(nodeId, engine, heartbeatInterval, replicationLanes, Duration.ofSeconds(2));
-        }
-
-        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLanes, Duration switchoverTimeout) {
-            this.engine = engine;
-            ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
-                    .nodeId(nodeId)
-                    .peer("a", addressA)
-                    .peer("b", addressB)
-                    .logCapacity(1 << 16)
-                    .replicationLanes(replicationLanes)
-                    .followerStoreWriterThreads(storeWriterThreads ? replicationLanes : 0)
-                    .heartbeatInterval(heartbeatInterval)
-                    .reconnectInterval(Duration.ofMillis(50))
-                    .switchoverTimeout(switchoverTimeout)
-                    .followerLagAlertThreshold(Duration.ofMillis(200))
-                    .leaderElection(FakeLeaderElection.Settings.builder().election(election).build())
-                    .monitoringInstanceId("monitoring")
-                    .alertsPublisherInstanceId("alerts")
-                    .build());
-            ha.bind(engine);
-            store = ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), sessionProbes);
-        }
-
-        /**
-         * Registers {@link #OTHER} after {@link #MAIN}, so with two lanes each has a lane of its own.
-         */
-        Node withOther() {
-            other = ha.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-            return this;
-        }
-
-        Node start() {
-            ha.start();
-            started.add(ha);
-            return this;
-        }
-    }
-
-    @AfterEach
-    void stop() {
-        started.forEach(ha -> ha.stop(Deadline.of(Duration.ofSeconds(2))));
-    }
-
-    /**
-     * Until b is in sync, a write is not streamed to it: the snapshot carries the store's state instead.
-     */
-    private void aLeadsBFollows() {
-        a.election.elect(Role.LEADER, 3, "a");
-        b.election.elect(Role.FOLLOWER, 3, "a");
-        a.start();
-        b.start();
-        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
-        await().until(() -> b.engine.store(MAIN) != null && b.ha.getReplicaSessions().isInSync());
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {0, 1, 3, 6})
-    void sendBuffersMustBeAPowerOfTwoOfAtLeastTwo(int sendBuffers) {
-        ReplicationHaSettings settings = ReplicationHaSettings.builder().sendBuffers(sendBuffers).build();
-
-        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("sendBuffers");
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"PT0S", "PT-1S"})
-    void theLogFullTimeoutMustBePositive(String logFullTimeout) {
-        ReplicationHaSettings settings = ReplicationHaSettings.builder().logFullTimeout(Duration.parse(logFullTimeout))
-                .build();
-
-        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("logFullTimeout");
-    }
-
-    @Test
-    void theSnapshotChunkBytesMustBePositive() {
-        ReplicationHaSettings settings = ReplicationHaSettings.builder().snapshotChunkBytes(0).build();
-
-        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("snapshotChunkBytes");
-    }
-
-    @Test
-    void followerStoreWriterThreadsMustNotBeNegative() {
-        ReplicationHaSettings settings = ReplicationHaSettings.builder().followerStoreWriterThreads(-1).build();
-
-        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("followerStoreWriterThreads");
+        super(storeWriterThreads);
     }
 
     @Test
@@ -213,14 +55,6 @@ class TestReplicationFixEngineHa {
 
         assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("replicationLanes");
-    }
-
-    @Test
-    void theSlowFollowerHoldOffMustNotBeNegative() {
-        ReplicationHaSettings settings = ReplicationHaSettings.builder().slowFollowerHoldOff(Duration.ofSeconds(-1)).build();
-
-        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("slowFollowerHoldOff");
     }
 
     @Test
@@ -269,237 +103,6 @@ class TestReplicationFixEngineHa {
         await().until(() -> b.engine.activity.contains("activate, stores open 0"));
         assertThat(b.engine.store(MAIN).writes).as("the last write reached b before the handover").contains("incoming 7")
                 .doesNotContain("outgoing 10001");
-    }
-
-    @Test
-    void aSwitchoverLogsTheSessionsOutAndTheFollowerTakesThemOverWithoutMovingThemAhead() {
-        aLeadsBFollows();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
-        a.store.storeNextIncomingSeqNum(7);
-        a.election.transfersWith(() -> {
-            a.election.elect(Role.FOLLOWER, 4, "b");
-            b.election.elect(Role.LEADER, 4, "b");
-        });
-
-        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
-
-        assertThat(a.engine.activity).contains("deactivate with logout");
-        await().until(() -> b.engine.activity.contains("activate, stores open 0"));
-        assertThat(b.engine.store(MAIN).writes).as("every write reached b before the transfer").contains("incoming 7")
-                .doesNotContain("outgoing 10001");
-        await().until(() -> a.ha.getStatus().getRole() == Role.FOLLOWER);
-    }
-
-    @Test
-    void aSwitchoverWhoseTransferNeverLandsResumesAndALaterFailoverStillMovesTheSessionsAhead() {
-        aLeadsBFollows();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
-        a.election.transfersWith(() -> {
-        });
-
-        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.NOT_TRANSFERRED);
-
-        assertThat(a.engine.activity).endsWith("deactivate with logout", "activate, stores open 0");
-        await().until(() -> listening(addressA));
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
-        a.election.elect(Role.FOLLOWER, 4, "b");
-        b.election.elect(Role.LEADER, 4, "b");
-        await().until(() -> b.engine.activity.contains("activate, stores open 0"));
-        assertThat(b.engine.store(MAIN).writes).as("b reconnected since the hand over, which no longer holds")
-                .endsWith("outgoing 10001");
-    }
-
-    @Test
-    void aSwitchoverWaitsForAFollowerInSyncAndChangesNothingWithoutOne() {
-        a.election.elect(Role.LEADER, 3, "a");
-        a.start();
-        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
-        a.election.transfersWith(() -> {
-        });
-
-        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.NO_FOLLOWER_IN_SYNC);
-        assertThat(a.engine.activity).containsExactly("activate, stores open 0");
-    }
-
-    private void bTakesOverOnTransfer() {
-        a.election.transfersWith(() -> {
-            a.election.elect(Role.FOLLOWER, 4, "b");
-            b.election.elect(Role.LEADER, 4, "b");
-        });
-    }
-
-    private void bHasLeftToStore(long pendingWrites) {
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
-        b.engine.store(MAIN).pendingWrites = pendingWrites;
-        await().until(() -> a.ha.getFollowers().getPendingWrites() == pendingWrites);
-    }
-
-    private void bStoresAllAfter(Duration delay) {
-        Thread storing = new Thread(() -> {
-            await().pollDelay(delay).until(() -> true);
-            b.engine.store(MAIN).pendingWrites = 0;
-        });
-        storing.setDaemon(true);
-        storing.start();
-    }
-
-    @Test
-    void aSwitchoverRefusesAFollowerWithTooMuchLeftToStoreAndChangesNothing() {
-        aLeadsBFollows();
-        bTakesOverOnTransfer();
-        bHasLeftToStore(1_001);
-
-        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.FOLLOWER_STORE_BEHIND);
-
-        assertThat(a.engine.activity).doesNotContain("deactivate with logout");
-        assertThat(a.ha.getStatus().getRole()).isEqualTo(Role.LEADER);
-    }
-
-    @Test
-    void aSwitchoverGoesAheadWithAsMuchLeftToStoreAsItAllows() {
-        aLeadsBFollows();
-        bTakesOverOnTransfer();
-        bHasLeftToStore(1_000);
-
-        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
-    }
-
-    @Test
-    void aSwitchoverWaitsForTheFollowerToStoreItsBacklog() {
-        aLeadsBFollows();
-        bTakesOverOnTransfer();
-        bHasLeftToStore(5_000);
-        bStoresAllAfter(Duration.ofMillis(300));
-
-        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
-
-        assertThat(a.engine.activity).contains("deactivate with logout");
-    }
-
-    @Test
-    void aBacklogStoredLateLeavesTheSwitchoverItsWholeTimeout() {
-        aLeadsBFollows();
-        a.election.transfersWith(() -> {
-            Thread landing = new Thread(() -> {
-                await().pollDelay(Duration.ofMillis(1_500)).until(() -> true);
-                a.election.elect(Role.FOLLOWER, 4, "b");
-                b.election.elect(Role.LEADER, 4, "b");
-            });
-            landing.setDaemon(true);
-            landing.start();
-        });
-        bHasLeftToStore(5_000);
-        // the follower reports once a second: seen a second in, leaving less than the landing takes
-        bStoresAllAfter(Duration.ofMillis(400));
-
-        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
-    }
-
-    @Test
-    void aLeaderWithdrawingFromElectionsSwitchesOverFirst() {
-        aLeadsBFollows();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
-        a.election.candidacySupported(true);
-        bTakesOverOnTransfer();
-
-        a.ha.setCandidate(false);
-
-        assertThat(a.engine.activity).contains("deactivate with logout");
-        assertThat(a.ha.getStatus().isCandidate()).isFalse();
-        await().until(() -> b.engine.activity.contains("activate, stores open 0"));
-        assertThat(b.engine.store(MAIN).writes).as("handed over, not failed over").doesNotContain("outgoing 10001");
-    }
-
-    @Test
-    void aLeaderThatCannotSwitchOverStaysACandidate() {
-        aLeadsBFollows();
-        a.election.candidacySupported(true);
-        bTakesOverOnTransfer();
-        bHasLeftToStore(1_001);
-
-        assertThatThrownBy(() -> a.ha.setCandidate(false)).isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("FOLLOWER_STORE_BEHIND");
-
-        assertThat(a.ha.getStatus().isCandidate()).isTrue();
-        assertThat(a.ha.getStatus().getRole()).isEqualTo(Role.LEADER);
-    }
-
-    @Test
-    void aFollowerWithdrawsFromElectionsWithoutASwitchover() {
-        aLeadsBFollows();
-        b.election.candidacySupported(true);
-        bTakesOverOnTransfer();
-
-        b.ha.setCandidate(false);
-
-        assertThat(b.ha.getStatus().isCandidate()).isFalse();
-        assertThat(a.engine.activity).doesNotContain("deactivate with logout");
-    }
-
-    private Node notWaitingToSwitchOver(String nodeId) {
-        return new Node(nodeId, new RecordingEngine().with(MAIN), Duration.ofMillis(50), 1, Duration.ZERO);
-    }
-
-    @Test
-    void aZeroSwitchoverTimeoutRefusesAFollowerNotReadyAtOnce() {
-        a = notWaitingToSwitchOver("a");
-        aLeadsBFollows();
-        bTakesOverOnTransfer();
-        bHasLeftToStore(1_001);
-        long start = System.nanoTime();
-
-        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.FOLLOWER_STORE_BEHIND);
-
-        assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(1));
-        assertThat(a.engine.activity).doesNotContain("deactivate with logout");
-    }
-
-    @Test
-    void aZeroSwitchoverTimeoutStillSwitchesOverToAFollowerReadyNow() {
-        a = notWaitingToSwitchOver("a");
-        aLeadsBFollows();
-        bTakesOverOnTransfer();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
-
-        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
-    }
-
-    @Test
-    void theStatusTellsWhichMonitoringPluginPublishesTheMeters() {
-        assertThat(a.ha.getStatus().getMonitoringInstanceId()).isEqualTo("monitoring");
-    }
-
-    @Test
-    void theStatusTellsTheLongestASwitchoverCanTake() {
-        assertThat(a.ha.getStatus().getSwitchoverMaxDuration()).as("waiting, then the switchover").isEqualTo(Duration.ofSeconds(4));
-        assertThat(notWaitingToSwitchOver("a").ha.getStatus().getSwitchoverMaxDuration()).as("the default hand over timeout")
-                .isEqualTo(Duration.ofSeconds(5));
-    }
-
-    @Test
-    void timeoutsMustBeWhatASwitchoverCanRunOn() {
-        assertThatThrownBy(() -> new ReplicationFixEngineHa(ReplicationHaSettings.builder().switchoverTimeout(Duration.ofSeconds(-1)).build()))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("switchoverTimeout");
-        assertThatThrownBy(() -> new ReplicationFixEngineHa(ReplicationHaSettings.builder().handOverTimeout(Duration.ZERO).build()))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("handOverTimeout");
-    }
-
-    @Test
-    void switchoverMaxPendingWritesMustNotBeNegative() {
-        ReplicationHaSettings settings = ReplicationHaSettings.builder().switchoverMaxPendingWrites(-1).build();
-
-        assertThatThrownBy(() -> new ReplicationFixEngineHa(settings)).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("switchoverMaxPendingWrites");
-    }
-
-    @Test
-    void onlyALeaderWithAnElectionThatCanTransferSwitchesOver() {
-        aLeadsBFollows();
-
-        assertThatThrownBy(() -> a.ha.switchover()).isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("cannot transfer leadership");
-        assertThatThrownBy(() -> b.ha.switchover()).isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Only the leader switches over; node b is FOLLOWER");
     }
 
     @Test
@@ -590,62 +193,6 @@ class TestReplicationFixEngineHa {
     }
 
     @Test
-    void theLeaderSeesItsFollowerInSyncAndTheFollowerItsLeader() {
-        aLeadsBFollows();
-
-        await().untilAsserted(() -> {
-            HaStatus leader = a.ha.getStatus();
-            assertThat(leader.getRole()).isEqualTo(Role.LEADER);
-            assertThat(leader.getEpoch()).isEqualTo(3);
-            assertThat(leader.isLeadershipValid()).isTrue();
-            assertThat(leader.getRoleSince()).isNotNull();
-            assertThat(leader.getLeader()).isNull();
-            assertThat(leader.getFollowerConnections()).singleElement().satisfies(follower -> {
-                assertThat(follower.getNodeId()).isEqualTo("b");
-                assertThat(follower.isConnected()).isTrue();
-                assertThat(follower.isInSync()).isTrue();
-                assertThat(follower.isSnapshotInProgress()).isFalse();
-                assertThat(follower.getUnsentBytes()).isZero();
-                assertThat(follower.getLagMillis()).isZero();
-            });
-        });
-        HaStatus follower = b.ha.getStatus();
-        assertThat(follower.getRole()).isEqualTo(Role.FOLLOWER);
-        assertThat(follower.isLeadershipValid()).isFalse();
-        assertThat(follower.getFollowerConnections()).isEmpty();
-        assertThat(follower.getLeader()).isNotNull();
-        assertThat(follower.getLeader().getLeaderId()).isEqualTo("a");
-        assertThat(follower.getLeader().isConnected()).isTrue();
-        assertThat(follower.getLeader().isInSync()).isTrue();
-    }
-
-    @Test
-    void eachNodeDescribesTheReplicatedSessionFromItsSide() {
-        aLeadsBFollows();
-
-        await().untilAsserted(() -> assertThat(a.ha.getSessionStatuses()).singleElement().satisfies(session -> {
-            assertThat(session.getFixSessionId()).isEqualTo(MAIN.getFixSessionId());
-            assertThat(session.isInSync()).isTrue();
-            assertThat(session.getNotReplicatedReason()).isNull();
-            assertThat(session.getNextOutgoingSeqNum()).isEqualTo(-1);
-        }));
-        HaSessionStatus replicated = b.ha.getSessionStatuses().get(0);
-        assertThat(replicated.isInSync()).isTrue();
-        assertThat(replicated.getNextIncomingSeqNum()).isEqualTo(1);
-        assertThat(replicated.getNextOutgoingSeqNum()).isEqualTo(1);
-        assertThat(replicated.isHandedOver()).isFalse();
-    }
-
-    @Test
-    void aNodeWhoseRoleIsUnknownDescribesItsSessionsWithoutReplication() {
-        a.start();
-
-        assertThat(a.ha.getStatus().getRole()).isEqualTo(Role.UNKNOWN);
-        assertThat(a.ha.getStatus().getRoleSince()).isNull();
-        assertThat(a.ha.getSessionStatuses()).singleElement().satisfies(session -> assertThat(session.isInSync()).isFalse());
-    }
-
-    @Test
     void aSessionBuiltWithoutReplicationIsDroppedByTheFollowerThenCaughtUpBySnapshotOnceReplicatedAgain() {
         aLeadsBFollows();
         RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);
@@ -730,7 +277,7 @@ class TestReplicationFixEngineHa {
         await().until(() -> leader.read("ha.follower.lag.pending") == 0);
     }
 
-    private Node linked(String nodeId, int replicationLanes) {
+    private Node node(String nodeId, int replicationLanes) {
         return new Node(nodeId, new RecordingEngine().with(MAIN).with(OTHER), Duration.ofMillis(50), replicationLanes).withOther();
     }
 
@@ -745,8 +292,8 @@ class TestReplicationFixEngineHa {
 
     @Test
     void aFollowerOverTwoLanesCountsOnceWithAStatusPerLane() {
-        Node leader = linked("a", 2);
-        Node follower = linked("b", 2);
+        Node leader = node("a", 2);
+        Node follower = node("b", 2);
 
         leads(leader, follower);
 
@@ -759,8 +306,8 @@ class TestReplicationFixEngineHa {
 
     @Test
     void theFollowerOpensAsManyLanesAsTheLeaderHasWhateverItsOwnSetting() {
-        Node leader = linked("a", 2);
-        Node follower = linked("b", 1);
+        Node leader = node("a", 2);
+        Node follower = node("b", 1);
 
         leads(leader, follower);
 
@@ -770,8 +317,8 @@ class TestReplicationFixEngineHa {
 
     @Test
     void aSnapshotStalledOnOneLaneDoesNotHoldBackTheSessionsOfAnother() {
-        Node leader = linked("a", 2);
-        Node follower = linked("b", 2);
+        Node leader = node("a", 2);
+        Node follower = node("b", 2);
         leads(leader, follower);
         CountDownLatch stalled = new CountDownLatch(1);
         follower.engine.store(OTHER).incomingWritesHeld = stalled;
@@ -792,8 +339,8 @@ class TestReplicationFixEngineHa {
 
     @Test
     void aLeaderStoppingCleanlyHandsOverTheSessionsOfEveryLane() {
-        Node leader = linked("a", 2);
-        Node follower = linked("b", 2);
+        Node leader = node("a", 2);
+        Node follower = node("b", 2);
         leads(leader, follower);
         leader.store.storeNextIncomingSeqNum(7);
         leader.other.storeNextIncomingSeqNum(8);
@@ -1026,17 +573,6 @@ class TestReplicationFixEngineHa {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
             assertThat(alert.getMessage()).isEqualTo("follower b refuses to replicate it: UNKNOWN_SESSION");
         }));
-    }
-
-    @Test
-    void thePairTakesItsNameFromTheSettingsAndElseFromTheElection() {
-        ReplicationFixEngineHa named = new ReplicationFixEngineHa(ReplicationHaSettings.builder().nodeId("a").pairName("gateway").build());
-        assertThat(named.getStatus().getPairName()).isEqualTo("gateway");
-
-        aLeadsBFollows();
-        assertThat(a.ha.getStatus().getPairName()).as("an election naming nothing").isNull();
-        a.election.pairName = "cluster";
-        assertThat(a.ha.getStatus().getPairName()).isEqualTo("cluster");
     }
 
     @Test
