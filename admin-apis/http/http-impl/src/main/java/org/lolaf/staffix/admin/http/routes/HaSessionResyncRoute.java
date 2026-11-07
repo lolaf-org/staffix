@@ -45,7 +45,7 @@ public final class HaSessionResyncRoute extends Route {
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
         String group = param(path, "group");
         String name = param(path, "name");
-        HaAdmin ha = HaStatusRoute.ha(adminApi);
+        HaAdmin ha = haAdmin(adminApi);
         List<HaSessionStatus> named = ha.getSessionStatuses().stream()
                 .filter(session -> session.getFixSessionId().getGroup().equals(group) && session.getFixSessionId().getName().equals(name))
                 .collect(Collectors.toList());

@@ -25,7 +25,7 @@ public interface FixHaMXBean {
 
     Status getStatus();
 
-    List<Session> getSessionsStatus();
+    List<Session> getSessionStatuses();
 
     /**
      * See {@link org.lolaf.staffix.api.ha.HaAdmin#setCandidate(boolean)}; not a setter, which JMX would show as a
@@ -71,11 +71,16 @@ public interface FixHaMXBean {
 
         boolean isLeadershipValid();
 
-        String getLeaderElection();
+        String getLeaderElectionType();
 
         String getSwitchoverMaxDuration();
 
         String getRoleSince();
+
+        /**
+         * Null when the node publishes no meters of its own.
+         */
+        String getMonitoringInstanceId();
 
         boolean isTransferLeadershipSupported();
 
@@ -83,18 +88,18 @@ public interface FixHaMXBean {
 
         boolean isCandidate();
 
-        List<Follower> getFollowers();
+        List<FollowerConnection> getFollowerConnections();
 
         List<DroppedFollower> getDroppedFollowers();
 
         Leader getLeader();
     }
 
-    interface Follower {
+    interface FollowerConnection {
 
         String getNodeId();
 
-        int getLink();
+        int getLane();
 
         String getAddress();
 
@@ -117,7 +122,7 @@ public interface FixHaMXBean {
 
         String getNodeId();
 
-        int getLink();
+        int getLane();
 
         String getDroppedAt();
 
@@ -152,7 +157,7 @@ public interface FixHaMXBean {
 
         String getNotReplicatedReason();
 
-        boolean isUnprotected();
+        boolean isLastSendUnacknowledged();
 
         long getUnacknowledgedSends();
 

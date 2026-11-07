@@ -150,7 +150,7 @@ leader memory only, whatever the old leader's store was.
 then goes out anyway, and the sends after it do not wait for that follower until it has caught up, so a hung follower
 costs one timeout, not one per message; the leader drops it after `followerStallTimeout`. With no follower in sync
 (not connected, catching up), a send does not wait at all. Either way the
-session is flagged unprotected and its `ha-replication` probe alerts, and waiting resumes once a follower is back in
+session is flagged `lastSendUnacknowledged` and its `ha-replication` probe alerts, and waiting resumes once a follower is back in
 sync. `syncAckLatencyEnabled: true` adds a timer of the wait to the session's own meters.
 
 **A follower that cannot keep up slows the writes, briefly, and is then dropped.** The leader keeps what a connected

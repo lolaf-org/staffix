@@ -15,10 +15,8 @@
  */
 package org.lolaf.staffix.admin.http.routes;
 
-import org.lolaf.staffix.admin.http.HttpProblemException;
 import org.lolaf.staffix.admin.http.dto.HaNodeStatus;
 import org.lolaf.staffix.api.admin.AdminApi;
-import org.lolaf.staffix.api.ha.HaAdmin;
 
 import java.util.List;
 
@@ -33,10 +31,6 @@ public final class HaStatusRoute extends JsonRoute {
 
     @Override
     Object body(List<String> path) {
-        return HaNodeStatus.of(ha(adminApi).getStatus());
-    }
-
-    static HaAdmin ha(AdminApi adminApi) {
-        return adminApi.getHa().orElseThrow(() -> new HttpProblemException(404, "This engine has no high availability"));
+        return HaNodeStatus.of(haAdmin(adminApi).getStatus());
     }
 }

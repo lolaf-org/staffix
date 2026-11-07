@@ -35,7 +35,7 @@ public final class HaResyncRoute extends Route {
     @Override
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
         log.info("Admin API: re-sync every replicated session");
-        HaStatusRoute.ha(adminApi).resync();
+        haAdmin(adminApi).resync();
         sendNoContent(exchange);
     }
 }

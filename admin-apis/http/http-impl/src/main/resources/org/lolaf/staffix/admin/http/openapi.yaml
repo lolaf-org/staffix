@@ -1181,8 +1181,8 @@ components:
           description: The probe's runbook; absent when it has none.
     HaNodeStatus:
       type: object
-      required: [nodeId, role, epoch, leadershipValid, leaderElection, transferLeadershipSupported, candidacySupported,
-        candidate, followers, droppedFollowers]
+      required: [nodeId, role, epoch, leadershipValid, leaderElectionType, transferLeadershipSupported, candidacySupported,
+        candidate, followerConnections, droppedFollowers]
       properties:
         nodeId:
           type: string
@@ -1202,7 +1202,7 @@ components:
         leadershipValid:
           type: boolean
           description: This node can still prove it leads; a leader that cannot stops its sessions.
-        leaderElection:
+        leaderElectionType:
           type: string
           description: The leader election's implementation.
         switchoverMaxDuration:
@@ -1225,11 +1225,11 @@ components:
         candidate:
           type: boolean
           description: This node stands for election.
-        followers:
+        followerConnections:
           type: array
           description: The connections of the followers to this node, one entry per follower and lane, while it leads.
           items:
-            $ref: '#/components/schemas/HaFollower'
+            $ref: '#/components/schemas/HaFollowerConnection'
         droppedFollowers:
           type: array
           description: While this node leads, the followers it dropped as too slow and not back in sync since.
@@ -1237,7 +1237,7 @@ components:
             $ref: '#/components/schemas/HaDroppedFollower'
         leader:
           $ref: '#/components/schemas/HaLeader'
-    HaFollower:
+    HaFollowerConnection:
       type: object
       required: [lane, address, connected, inSync, snapshotInProgress, unsentBytes, lagMillis]
       properties:
@@ -1304,7 +1304,7 @@ components:
           description: Holds every replicated session in full.
     HaSession:
       type: object
-      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, inSync, unprotected,
+      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, inSync, lastSendUnacknowledged,
                  unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver, pendingWrites, lostWrites]
       properties:
         group:
@@ -1326,7 +1326,7 @@ components:
         notReplicatedReason:
           type: string
           description: Why it is not replicated; absent when it is.
-        unprotected:
+        lastSendUnacknowledged:
           type: boolean
           description: A leader's SYNC session whose last send went out without the follower's ack.
         unacknowledgedSends:

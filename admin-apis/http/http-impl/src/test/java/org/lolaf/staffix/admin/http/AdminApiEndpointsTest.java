@@ -604,15 +604,15 @@ class AdminApiEndpointsTest {
 
         assertThat(call("GET", "/engines/alpha-engine/v1/ha", null).body())
                 .isEqualTo("{\"nodeId\":\"1\",\"pairName\":\"gateway\",\"role\":\"LEADER\",\"epoch\":7,\"leaderId\":\"1\",\"leadershipValid\":true,"
-                        + "\"leaderElection\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
+                        + "\"leaderElectionType\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
                         + "\"transferLeadershipSupported\":false,\"candidacySupported\":false,\"candidate\":false,\"switchoverMaxDuration\":\"PT1M\",\"monitoringInstanceId\":\"metrics\","
-                        + "\"followers\":[{\"nodeId\":\"2\",\"lane\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
+                        + "\"followerConnections\":[{\"nodeId\":\"2\",\"lane\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
                         + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3}],"
                         + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"lane\":1,\"droppedAt\":\"2026-10-10T10:05:00Z\","
                         + "\"heldOffUntil\":\"2026-10-10T10:05:02Z\"}]}");
         assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
-                        + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"unprotected\":false,"
+                        + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"lastSendUnacknowledged\":false,"
                         + "\"unacknowledgedSends\":0,\"nextIncomingSeqNum\":-1,\"nextOutgoingSeqNum\":-1,\"handedOver\":false,\"pendingWrites\":0,\"lostWrites\":0}]");
     }
 

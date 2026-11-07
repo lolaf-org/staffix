@@ -37,7 +37,7 @@ public class HaNodeStatus {
     long epoch;
     String leaderId;
     boolean leadershipValid;
-    String leaderElection;
+    String leaderElectionType;
     /**
      * Absent before the engine took a role.
      */
@@ -53,7 +53,7 @@ public class HaNodeStatus {
      * Absent when the node publishes no meters of its own.
      */
     String monitoringInstanceId;
-    List<HaStatus.FollowerConnection> followers;
+    List<HaStatus.FollowerConnection> followerConnections;
     List<HaStatus.DroppedFollower> droppedFollowers;
     HaStatus.Leader leader;
 

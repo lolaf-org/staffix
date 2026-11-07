@@ -37,27 +37,18 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     @Override
     public Status getStatus() {
         HaStatus status = delegate.getStatus();
-        HaStatus.Leader leader = status.getLeader();
-        return new StatusImpl(status.getNodeId(), status.getPairName(), status.getRole().name(), status.getEpoch(), status.getLeaderId(),
-                status.isLeadershipValid(), status.getLeaderElectionType(),
-                status.getSwitchoverMaxDuration() == null ? null : status.getSwitchoverMaxDuration().toString(),
-                status.getRoleSince() == null ? null : status.getRoleSince().toString(),
-                status.isTransferLeadershipSupported(), status.isCandidacySupported(), status.isCandidate(),
-                status.getFollowerConnections().stream()
-                        .map(follower -> new FollowerImpl(follower.getNodeId(), follower.getLane(), follower.getAddress(), follower.isConnected(),
-                                follower.isInSync(), follower.isSnapshotInProgress(), follower.getUnsentBytes(),
-                                follower.getLagMillis()))
-                        .collect(Collectors.toList()),
-                status.getDroppedFollowers().stream()
-                        .map(dropped -> new DroppedFollowerImpl(dropped.getNodeId(), dropped.getLane(),
-                                dropped.getDroppedAt().toString(),
-                                dropped.getHeldOffUntil() == null ? null : dropped.getHeldOffUntil().toString()))
-                        .collect(Collectors.toList()),
-                leader == null ? null : new LeaderImpl(leader.getLeaderId(), leader.getAddress(), leader.isConnected(), leader.isInSync()));
+        return new StatusImpl(status.getNodeId(), status.getPairName(), status.getRole().name(), status.getEpoch(),
+                status.getLeaderId(), status.isLeadershipValid(), status.getLeaderElectionType(),
+                toStringOrNull(status.getSwitchoverMaxDuration()), toStringOrNull(status.getRoleSince()),
+                status.getMonitoringInstanceId(), status.isTransferLeadershipSupported(), status.isCandidacySupported(),
+                status.isCandidate(),
+                status.getFollowerConnections().stream().map(FixHaMBeanImpl::followerConnection).collect(Collectors.toList()),
+                status.getDroppedFollowers().stream().map(FixHaMBeanImpl::droppedFollower).collect(Collectors.toList()),
+                status.getLeader() == null ? null : leader(status.getLeader()));
     }
 
     @Override
-    public List<Session> getSessionsStatus() {
+    public List<Session> getSessionStatuses() {
         return delegate.getSessionStatuses().stream().map(FixHaMBeanImpl::session).collect(Collectors.toList());
     }
 
@@ -89,6 +80,25 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         return delegate.switchover().name();
     }
 
+    private static FollowerConnection followerConnection(HaStatus.FollowerConnection connection) {
+        return new FollowerConnectionImpl(connection.getNodeId(), connection.getLane(), connection.getAddress(),
+                connection.isConnected(), connection.isInSync(), connection.isSnapshotInProgress(),
+                connection.getUnsentBytes(), connection.getLagMillis());
+    }
+
+    private static DroppedFollower droppedFollower(HaStatus.DroppedFollower dropped) {
+        return new DroppedFollowerImpl(dropped.getNodeId(), dropped.getLane(), dropped.getDroppedAt().toString(),
+                toStringOrNull(dropped.getHeldOffUntil()));
+    }
+
+    private static Leader leader(HaStatus.Leader leader) {
+        return new LeaderImpl(leader.getLeaderId(), leader.getAddress(), leader.isConnected(), leader.isInSync());
+    }
+
+    private static String toStringOrNull(Object value) {
+        return value == null ? null : value.toString();
+    }
+
     private static Session session(HaSessionStatus status) {
         return new SessionImpl(status.getFixSessionId().toString(), status.getFixSessionType().name(),
                 status.getReplicationMode().name(), status.getReplicationAckTimeout().toString(), status.isInSync(),
@@ -105,13 +115,14 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         long epoch;
         String leaderId;
         boolean leadershipValid;
-        String leaderElection;
+        String leaderElectionType;
         String switchoverMaxDuration;
         String roleSince;
+        String monitoringInstanceId;
         boolean transferLeadershipSupported;
         boolean candidacySupported;
         boolean candidate;
-        List<Follower> followers;
+        List<FollowerConnection> followerConnections;
         List<DroppedFollower> droppedFollowers;
         Leader leader;
     }
@@ -119,15 +130,15 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     @Value
     private static class DroppedFollowerImpl implements DroppedFollower {
         String nodeId;
-        int link;
+        int lane;
         String droppedAt;
         String heldOffUntil;
     }
 
     @Value
-    private static class FollowerImpl implements Follower {
+    private static class FollowerConnectionImpl implements FollowerConnection {
         String nodeId;
-        int link;
+        int lane;
         String address;
         boolean connected;
         boolean inSync;
@@ -152,7 +163,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         String replicationAckTimeout;
         boolean inSync;
         String notReplicatedReason;
-        boolean unprotected;
+        boolean lastSendUnacknowledged;
         long unacknowledgedSends;
         long nextIncomingSeqNum;
         long nextOutgoingSeqNum;

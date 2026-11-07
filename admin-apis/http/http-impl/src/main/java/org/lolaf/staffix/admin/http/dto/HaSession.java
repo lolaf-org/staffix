@@ -34,7 +34,7 @@ public class HaSession {
     Duration replicationAckTimeout;
     boolean inSync;
     String notReplicatedReason;
-    boolean unprotected;
+    boolean lastSendUnacknowledged;
     long unacknowledgedSends;
     long nextIncomingSeqNum;
     long nextOutgoingSeqNum;

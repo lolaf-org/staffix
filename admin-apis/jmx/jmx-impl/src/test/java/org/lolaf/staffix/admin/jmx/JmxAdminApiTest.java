@@ -280,7 +280,7 @@ class JmxAdminApiTest {
     void aLeadersFollowersAreReadable() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
-                .leaderId("1").leaderElectionType("PrimosLeaderElection").roleSince(SINCE)
+                .leaderId("1").leaderElectionType("PrimosLeaderElection").roleSince(SINCE).monitoringInstanceId("metrics")
                 .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
                         .unsentBytes(128).lagMillis(3).build())
                 .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1).droppedAt(SINCE).build())
@@ -291,15 +291,16 @@ class JmxAdminApiTest {
         FixHaMXBean.Status status = JMX.newMXBeanProxy(mBeanServer, haName(), FixHaMXBean.class).getStatus();
 
         assertThat(status.getPairName()).isEqualTo("gateway");
-        assertThat(status.getFollowers()).singleElement().satisfies(follower -> {
+        assertThat(status.getMonitoringInstanceId()).isEqualTo("metrics");
+        assertThat(status.getFollowerConnections()).singleElement().satisfies(follower -> {
             assertThat(follower.getNodeId()).isEqualTo("2");
-            assertThat(follower.getLink()).isEqualTo(1);
+            assertThat(follower.getLane()).isEqualTo(1);
             assertThat(follower.getUnsentBytes()).isEqualTo(128);
             assertThat(follower.getLagMillis()).isEqualTo(3);
         });
         assertThat(status.getDroppedFollowers()).singleElement().satisfies(dropped -> {
             assertThat(dropped.getNodeId()).isEqualTo("3");
-            assertThat(dropped.getLink()).isEqualTo(1);
+            assertThat(dropped.getLane()).isEqualTo(1);
             assertThat(dropped.getDroppedAt()).isEqualTo(SINCE.toString());
             assertThat(dropped.getHeldOffUntil()).as("may connect now").isNull();
         });
@@ -325,10 +326,10 @@ class JmxAdminApiTest {
         assertThat(status.getRole()).isEqualTo("FOLLOWER");
         assertThat(status.getEpoch()).isEqualTo(7);
         assertThat(status.getRoleSince()).isEqualTo("2026-10-10T10:00:00Z");
-        assertThat(status.getFollowers()).isEmpty();
+        assertThat(status.getFollowerConnections()).isEmpty();
         assertThat(status.getLeader().getAddress()).isEqualTo("/10.0.0.2:17101");
         assertThat(status.getLeader().isInSync()).isTrue();
-        assertThat(proxy.getSessionsStatus()).singleElement().satisfies(session -> {
+        assertThat(proxy.getSessionStatuses()).singleElement().satisfies(session -> {
             assertThat(session.getFixSessionId()).isEqualTo(ACCEPTOR_SESSION.toString());
             assertThat(session.getReplicationMode()).isEqualTo("SYNC_APPLIED");
             assertThat(session.getReplicationAckTimeout()).isEqualTo("PT0.2S");

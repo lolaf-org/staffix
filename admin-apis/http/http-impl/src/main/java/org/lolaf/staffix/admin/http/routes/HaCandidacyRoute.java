@@ -40,7 +40,7 @@ public final class HaCandidacyRoute extends Route {
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
         boolean candidate = mapper.readValue(exchange.getRequestBody(), CandidacyRequest.class).getCandidate();
         log.info("Admin API: {} elections", candidate ? "stand for" : "withdraw from");
-        HaStatusRoute.ha(adminApi).setCandidate(candidate);
+        haAdmin(adminApi).setCandidate(candidate);
         sendNoContent(exchange);
     }
 }

@@ -17,6 +17,9 @@ package org.lolaf.staffix.admin.http.routes;
 
 import com.sun.net.httpserver.HttpExchange;
 import lombok.Getter;
+import org.lolaf.staffix.admin.http.HttpProblemException;
+import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.ha.HaAdmin;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -80,6 +83,10 @@ public abstract class Route {
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(body);
         }
+    }
+
+    protected static HaAdmin haAdmin(AdminApi adminApi) {
+        return adminApi.getHa().orElseThrow(() -> new HttpProblemException(404, "This engine has no high availability"));
     }
 
     protected static void sendNoContent(HttpExchange exchange) throws IOException {

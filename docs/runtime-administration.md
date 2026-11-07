@@ -58,7 +58,7 @@ components) and runbook URL. Levels are strings, times ISO-8601. The session MBe
 as its high availability, are listed by the engine-level MBean's `ProbedComponents`, with `getComponentProbes`,
 `getComponentProbeStates` and `clearComponentAlert` taking the component's name.
 
-An engine with [high availability](high-availability.md) also registers `type=FixHa`: `Status` and `SessionsStatus`
+An engine with [high availability](high-availability.md) also registers `type=FixHa`: `Status` and `SessionStatuses`
 (the role, the epoch, the leader, what the election supports, each follower and replicated session), and the
 operations `switchover()` (answering its outcome), `updateCandidacy(boolean)` (maintenance mode), `resync()` and
 `resyncSession(String fixSessionId, String fixSessionType)`. An engine that does not lead refuses the session actions above, since

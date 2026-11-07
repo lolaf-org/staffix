@@ -44,7 +44,7 @@ public final class HaSwitchoverRoute extends Route {
     @Override
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
         log.info("Admin API: switch over");
-        SwitchoverOutcome outcome = HaStatusRoute.ha(adminApi).switchover();
+        SwitchoverOutcome outcome = haAdmin(adminApi).switchover();
         log.info("Admin API: switchover {}", outcome);
         send(exchange, 200, "application/json", mapper.writeValueAsBytes(Map.of("outcome", outcome)));
     }
