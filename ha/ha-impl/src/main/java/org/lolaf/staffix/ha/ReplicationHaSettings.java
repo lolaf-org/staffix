@@ -227,4 +227,53 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Builder.Default
     private final Duration slowFollowerHoldOff = Duration.ofSeconds(1);
+
+    /**
+     * @throws IllegalArgumentException for a setting out of its range
+     */
+    void validate() {
+        if (sendBuffers < 2 || Integer.bitCount(sendBuffers) != 1) {
+            throw new IllegalArgumentException("sendBuffers must be a power of two of at least 2, got " + sendBuffers);
+        }
+        if (followerStoreWriterThreads < 0) {
+            throw new IllegalArgumentException("followerStoreWriterThreads must not be negative, got "
+                    + followerStoreWriterThreads);
+        }
+        if (switchoverTimeout.isNegative()) {
+            throw new IllegalArgumentException("switchoverTimeout must not be negative, got " + switchoverTimeout);
+        }
+        if (handOverTimeout.isNegative() || handOverTimeout.isZero()) {
+            throw new IllegalArgumentException("handOverTimeout must be positive, got " + handOverTimeout);
+        }
+        if (switchoverMaxPendingWrites < 0) {
+            throw new IllegalArgumentException("switchoverMaxPendingWrites must not be negative, got "
+                    + switchoverMaxPendingWrites);
+        }
+        if (snapshotChunkBytes < 1) {
+            throw new IllegalArgumentException("snapshotChunkBytes must be positive, got " + snapshotChunkBytes);
+        }
+        if (logFullTimeout.isNegative() || logFullTimeout.isZero()) {
+            throw new IllegalArgumentException("logFullTimeout must be positive, got " + logFullTimeout);
+        }
+        if (slowFollowerHoldOff.isNegative()) {
+            throw new IllegalArgumentException("slowFollowerHoldOff must not be negative, got "
+                    + slowFollowerHoldOff);
+        }
+    }
+
+    /**
+     * How long a switchover has from its follower ready to lead to leadership leaving this node: its
+     * {@link #getSwitchoverTimeout() switchoverTimeout}, or the {@link #getHandOverTimeout() handOverTimeout} when
+     * that is zero.
+     */
+    Duration switchingTimeout() {
+        return switchoverTimeout.isZero() ? handOverTimeout : switchoverTimeout;
+    }
+
+    /**
+     * The longest a switchover takes: waiting for a follower ready to lead, then switching.
+     */
+    Duration switchoverMaxDuration() {
+        return switchoverTimeout.plus(switchingTimeout());
+    }
 }

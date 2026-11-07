@@ -210,6 +210,37 @@ class TestFollowers {
                 .isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
     }
 
+    @Test
+    void aFollowerIsInSyncOnlyOnceEveryLaneIs() {
+        ReplicationFixEngineHa twoLanes = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
+                .replicationLanes(2).build());
+        twoLanes.replicatingStore(syncSession("main"), mock(FixSessionMessagesStore.class), new RecordingProbes());
+        twoLanes.replicatingStore(syncSession("other"), mock(FixSessionMessagesStore.class), new RecordingProbes());
+        FollowerConnection laneOfMain = laneConnection(twoLanes, 0);
+        FollowerConnection laneOfOther = laneConnection(twoLanes, 1);
+        laneOfMain.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
+
+        assertThat(followers.isAnyFollowerInSync(2, 2)).as("other's lane still catching up").isFalse();
+
+        laneOfOther.onSessionAnswer(EPOCH, 1, SessionAnswer.REPLICATING);
+
+        assertThat(followers.isAnyFollowerInSync(2, 2)).isTrue();
+        assertThat(followers.countFollowers(2, FollowerConnection::isConnected)).isEqualTo(1);
+    }
+
+    private FollowerConnection laneConnection(ReplicationFixEngineHa twoLanes, int lane) {
+        IOSession ioSession = mock(IOSession.class);
+        when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
+        FollowerConnection connection = new FollowerConnection(ioSession, twoLanes.getReplicationLogs(), twoLanes.getSessions(),
+                () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
+                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
+        });
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, lane);
+        connection.fillBatch(ByteBuffer.allocate(1 << 16));
+        followers.add(connection);
+        return connection;
+    }
+
     private static FixSessionSettings syncSession(String name) {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))

@@ -39,8 +39,8 @@ class TestHaProbes {
     void aTimedOutSyncSendAlertsUntilNoneFollowsForTheExpiry() {
         assertThat(evaluator.evaluate()).isEmpty();
 
-        session.acknowledged(Followers.Ack.TIMED_OUT);
-        session.acknowledged(Followers.Ack.TIMED_OUT);
+        session.recordAck(Followers.Ack.TIMED_OUT);
+        session.recordAck(Followers.Ack.TIMED_OUT);
 
         assertThat(evaluator.evaluate()).hasValueSatisfying(alert -> {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
@@ -52,14 +52,14 @@ class TestHaProbes {
 
     @Test
     void aSendWithNoFollowerInSyncIsLeftToTheNodesProbe() {
-        session.acknowledged(Followers.Ack.NO_FOLLOWER_IN_SYNC);
+        session.recordAck(Followers.Ack.NO_FOLLOWER_IN_SYNC);
 
         assertThat(evaluator.evaluate()).isEmpty();
     }
 
     @Test
     void anEventTooLongForTheLogAlertsUntilTheExpiry() {
-        session.unreplicated();
+        session.recordUnreplicatedEvent();
 
         assertThat(evaluator.evaluate()).hasValueSatisfying(alert -> assertThat(alert.getMessage())
                 .isEqualTo("1 messages longer than half the replication log, missing on the follower"));

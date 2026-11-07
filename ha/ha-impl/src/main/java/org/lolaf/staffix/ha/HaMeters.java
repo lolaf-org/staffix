@@ -26,10 +26,7 @@ import org.lolaf.staffix.ha.follower.ReplicationClient;
 import org.lolaf.staffix.ha.leader.FollowerConnection;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
 
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.function.ToLongFunction;
@@ -59,6 +56,16 @@ class HaMeters {
     }
 
     static Timers register(FixEngineMonitoringContext meters, ReplicationFixEngineHa ha, ReplicationStats stats) {
+        registerRoleMeters(meters, ha);
+        registerLeaderMeters(meters, ha, stats);
+        registerFollowerMeters(meters, ha);
+        return new Timers(syncAckLatency(meters, "sync_received"), syncAckLatency(meters, "sync_applied"),
+                meters.getTimer(REPLICA_RECEIVED_WRITE_LATENCY, "How long this follower took to write a read's events to"
+                        + " its store after acknowledging them as received: the window in which a SYNC_RECEIVED send is"
+                        + " held in its memory only.", Map.of()));
+    }
+
+    private static void registerRoleMeters(FixEngineMonitoringContext meters, ReplicationFixEngineHa ha) {
         meters.getGauge("ha.role", "The role the engine acts on: 2 leader, 1 follower, 0 unknown.", Map.of(),
                 () -> role(ha.getRole()));
         meters.getGauge("ha.epoch", "The leader election's epoch, -1 when unknown.", Map.of(), () -> {
@@ -69,6 +76,10 @@ class HaMeters {
             LeaderElection election = ha.getElection();
             return election != null && election.getRole() == Role.LEADER && election.isLeadershipValid() ? 1 : 0;
         });
+    }
+
+    private static void registerLeaderMeters(FixEngineMonitoringContext meters, ReplicationFixEngineHa ha,
+                                             ReplicationStats stats) {
         meters.getCounter("ha.log.written", "Bytes of store events this node wrote to its replication log while leading:"
                 + " its rate is the replication's throughput.", Map.of(), () -> ha.getReplicationLogs().getBytesWritten());
         meters.getGauge("ha.followers.connected", "Followers streaming this leader's writes over every replication"
@@ -112,14 +123,13 @@ class HaMeters {
                 + " network, sendBuffers is too small.", Map.of(), stats::getSendWaits);
         meters.getCounter("ha.follower.send.buffers.allocated", "Send buffers allocated because the pool had none free."
                 + " Should always be 0: any other value is a bug.", Map.of(), stats::getSendBuffersAllocated);
+    }
+
+    private static void registerFollowerMeters(FixEngineMonitoringContext meters, ReplicationFixEngineHa ha) {
         meters.getGauge("ha.replica.connected", "1 while this follower streams its leader's writes.", Map.of(),
                 () -> following(ha, ReplicationClient::isConnected));
         meters.getGauge("ha.replica.in.sync", "1 while this follower holds every replicated session in full.", Map.of(),
                 () -> following(ha, ReplicationClient::isInSync));
-        return new Timers(syncAckLatency(meters, "sync_received"), syncAckLatency(meters, "sync_applied"),
-                meters.getTimer(REPLICA_RECEIVED_WRITE_LATENCY, "How long this follower took to write a read's events to"
-                        + " its store after acknowledging them as received: the window in which a SYNC_RECEIVED send is"
-                        + " held in its memory only.", Map.of()));
     }
 
     private static Timer syncAckLatency(FixEngineMonitoringContext meters, String mode) {
@@ -147,21 +157,8 @@ class HaMeters {
         return Map.of("follower", followerId, "lane", String.valueOf(lane));
     }
 
-    /**
-     * The followers whose every lane matches, a follower with one lane down or behind not being counted.
-     */
     private static long countFollowers(ReplicationFixEngineHa ha, Predicate<FollowerConnection> matching) {
-        if (ha.getRole() != Role.LEADER) {
-            return 0;
-        }
-        Map<String, Set<Integer>> matchingLanes = new HashMap<>();
-        for (FollowerConnection connection : ha.getFollowers().connections()) {
-            if (connection.getFollowerId() != null && matching.test(connection)) {
-                matchingLanes.computeIfAbsent(connection.getFollowerId(), id -> new HashSet<>()).add(connection.getLane());
-            }
-        }
-        int lanes = ha.getReplicationLogs().count();
-        return matchingLanes.values().stream().filter(matched -> matched.size() == lanes).count();
+        return ha.getRole() == Role.LEADER ? ha.getFollowers().countFollowers(ha.getReplicationLogs().count(), matching) : 0;
     }
 
     private static long sum(ReplicationFixEngineHa ha, ToLongFunction<ReplicatedSession> value) {

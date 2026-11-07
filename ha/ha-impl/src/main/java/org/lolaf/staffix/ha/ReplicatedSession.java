@@ -54,7 +54,10 @@ public final class ReplicatedSession {
      */
     private volatile long unreplicatedEvents;
     private volatile long lastUnreplicatedNanos;
-    private volatile boolean unprotected;
+    /**
+     * The last {@code SYNC} send went out without the follower's ack: a failover now may lose it.
+     */
+    private volatile boolean lastSendUnacknowledged;
 
     ReplicatedSession(int key, FixSessionId fixSessionId, FixSessionType fixSessionType, Config config) {
         this.key = key;
@@ -75,13 +78,14 @@ public final class ReplicatedSession {
     }
 
     /**
-     * From the session's thread only. Logs the change from protected to not and back, never each send.
+     * From the session's thread only, after each {@code SYNC} send. Logs the change from acknowledged to not and back,
+     * never each send.
      */
-    void acknowledged(Followers.Ack ack) {
-        boolean wasUnprotected = unprotected;
+    void recordAck(Followers.Ack ack) {
+        boolean wasUnacknowledged = lastSendUnacknowledged;
         if (ack == Followers.Ack.ACKED) {
-            if (wasUnprotected) {
-                unprotected = false;
+            if (wasUnacknowledged) {
+                lastSendUnacknowledged = false;
                 log.info("FIX session {} {} sends are acknowledged by the follower again", fixSessionType, fixSessionId);
             }
             return;
@@ -92,8 +96,8 @@ public final class ReplicatedSession {
         } else {
             noFollowerSends++;
         }
-        if (!wasUnprotected) {
-            unprotected = true;
+        if (!wasUnacknowledged) {
+            lastSendUnacknowledged = true;
             log.warn("FIX session {} {} sends without the follower's ack: {}", fixSessionType, fixSessionId, ack);
         }
     }
@@ -101,7 +105,7 @@ public final class ReplicatedSession {
     /**
      * From the session's thread only.
      */
-    void unreplicated() {
+    void recordUnreplicatedEvent() {
         lastUnreplicatedNanos = System.nanoTime();
         unreplicatedEvents++;
     }

@@ -264,7 +264,7 @@ class TestReplicatingFixSessionMessagesStore {
         store.awaitReplicated();
 
         assertThat(ha.getSessions().get(0).getUnacknowledgedSends()).isEqualTo(2);
-        assertThat(ha.getSessions().get(0).isUnprotected()).isTrue();
+        assertThat(ha.getSessions().get(0).isLastSendUnacknowledged()).isTrue();
     }
 
     @Test

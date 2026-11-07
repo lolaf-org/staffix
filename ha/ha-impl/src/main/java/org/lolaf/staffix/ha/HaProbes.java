@@ -65,11 +65,11 @@ class HaProbes {
      */
     static void register(Probes probes, ReplicationFixEngineHa ha) {
         replace(probes, FOLLOWERS, "While leading: the followers connected, in sync and applying the writes, without"
-                + " which a failover loses the sessions' latest writes.", followers(ha));
+                + " which a failover loses the sessions' latest writes.", followersEvaluator(ha));
         replace(probes, LEADER_CONNECTION, "While following: the connection to the leader and whether this node holds every"
-                + " replicated session in full, as a failover to it needs.", leaderConnection(ha));
+                + " replicated session in full, as a failover to it needs.", leaderConnectionEvaluator(ha));
         replace(probes, LEADERSHIP, "Whether this node knows its role: without one it neither runs the sessions nor"
-                + " replicates them.", leadership(ha));
+                + " replicates them.", leadershipEvaluator(ha));
     }
 
     private static void replace(Probes probes, String name, String description, ProbeEvaluator evaluator) {
@@ -87,7 +87,7 @@ class HaProbes {
                 .build();
     }
 
-    static ProbeEvaluator followers(ReplicationFixEngineHa ha) {
+    static ProbeEvaluator followersEvaluator(ReplicationFixEngineHa ha) {
         return () -> {
             if (ha.getRole() != Role.LEADER) {
                 return Optional.empty();
@@ -100,7 +100,7 @@ class HaProbes {
             for (FollowerConnection connection : ha.getFollowers().connections()) {
                 HaStatus.FollowerConnection follower = connection.getStatus(ha.getSessions().count());
                 anyConnected |= follower.isConnected();
-                String name = name(follower.getNodeId(), follower.getLane(), lanes);
+                String name = laneName(follower.getNodeId(), follower.getLane(), lanes);
                 if (follower.isConnected() && follower.getLagMillis() > thresholdMillis) {
                     stalled.add(name + " has not applied a write for " + follower.getLagMillis() + " ms");
                 } else if (follower.isConnected() && (!follower.isInSync() || follower.isSnapshotInProgress())) {
@@ -108,14 +108,9 @@ class HaProbes {
                             : " not in sync") + ", " + follower.getUnsentBytes() + " bytes unsent");
                 }
             }
-            List<HaStatus.DroppedFollower> droppedTooSlow = ha.getStats().getSlowFollowers().notBackInSync();
-            if (!droppedTooSlow.isEmpty()) {
-                return Optional.of(Alert.major("Follower " + droppedTooSlow.stream()
-                        .map(dropped -> name(dropped.getNodeId(), dropped.getLane(), lanes) + " dropped as too slow at " + dropped.getDroppedAt()
-                                + (dropped.getHeldOffUntil() == null ? "" : ", held off until " + dropped.getHeldOffUntil()))
-                        .collect(Collectors.joining("; ")) + ", a write having waited "
-                        + ha.getSettings().getLogFullTimeout().toMillis() + " ms for it, and not back in sync: a"
-                        + " failover now loses what it has not applied"));
+            Optional<Alert> droppedTooSlow = droppedTooSlowAlert(ha, lanes);
+            if (droppedTooSlow.isPresent()) {
+                return droppedTooSlow;
             }
             if (!anyConnected) {
                 return Optional.of(Alert.major("No follower connected for " + RAISE_DELAY.toSeconds()
@@ -129,11 +124,25 @@ class HaProbes {
         };
     }
 
-    private static String name(@Nullable String nodeId, int lane, int lanes) {
+    private static Optional<Alert> droppedTooSlowAlert(ReplicationFixEngineHa ha, int lanes) {
+        List<HaStatus.DroppedFollower> dropped = ha.getStats().getSlowFollowers().notBackInSync();
+        if (dropped.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(Alert.major("Follower " + dropped.stream()
+                .map(follower -> laneName(follower.getNodeId(), follower.getLane(), lanes) + " dropped as too slow at "
+                        + follower.getDroppedAt()
+                        + (follower.getHeldOffUntil() == null ? "" : ", held off until " + follower.getHeldOffUntil()))
+                .collect(Collectors.joining("; ")) + ", a write having waited "
+                + ha.getSettings().getLogFullTimeout().toMillis() + " ms for it, and not back in sync: a"
+                + " failover now loses what it has not applied"));
+    }
+
+    private static String laneName(@Nullable String nodeId, int lane, int lanes) {
         return lanes == 1 ? String.valueOf(nodeId) : nodeId + " lane " + lane;
     }
 
-    static ProbeEvaluator leaderConnection(ReplicationFixEngineHa ha) {
+    static ProbeEvaluator leaderConnectionEvaluator(ReplicationFixEngineHa ha) {
         return () -> {
             if (ha.getRole() != Role.FOLLOWER) {
                 return Optional.empty();
@@ -151,7 +160,7 @@ class HaProbes {
         };
     }
 
-    static ProbeEvaluator leadership(ReplicationFixEngineHa ha) {
+    static ProbeEvaluator leadershipEvaluator(ReplicationFixEngineHa ha) {
         return () -> {
             if (ha.getRole() != Role.UNKNOWN) {
                 return Optional.empty();
@@ -184,9 +193,9 @@ class HaProbes {
         public Optional<Alert> evaluate() {
             List<String> problems = new ArrayList<>();
             for (FollowerConnection connection : followers.connections()) {
-                SessionAnswer reported = connection.getSessionAnswer(session.getKey());
-                if (reported != null && reported.isRefusal()) {
-                    problems.add("follower " + connection.getFollowerId() + " refuses to replicate it: " + reported);
+                SessionAnswer answer = connection.getSessionAnswer(session.getKey());
+                if (answer != null && answer.isRefusal()) {
+                    problems.add("follower " + connection.getFollowerId() + " refuses to replicate it: " + answer);
                 }
             }
             long now = nanoClock.getAsLong();

@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 
 /**
  * The followers connected to the leader, and what a {@code SYNC} send waits on: their acks.
@@ -93,6 +94,72 @@ public final class Followers {
 
     public List<FollowerConnection> connections() {
         return connectionList;
+    }
+
+    /**
+     * Whether a follower holds every replicated session: each of its lanes streaming and in sync, one lane in sync
+     * not being enough. Any thread.
+     *
+     * @param sessionCount the sessions the leader replicates
+     */
+    public boolean isAnyFollowerInSync(int sessionCount, int lanes) {
+        return countFollowers(lanes, connection -> connection.isLaneInSync(sessionCount)) > 0;
+    }
+
+    /**
+     * The followers every lane of which has a connection matching, a follower with one lane down or behind not
+     * counted. Any thread.
+     */
+    public int countFollowers(int lanes, Predicate<FollowerConnection> matching) {
+        FollowerConnection[] current = connections;
+        int count = 0;
+        for (int i = 0; i < current.length; i++) {
+            String followerId = current[i].getFollowerId();
+            if (followerId != null && isFirstOf(current, i, followerId) && matchesEveryLane(current, followerId, lanes, matching)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static boolean isFirstOf(FollowerConnection[] connections, int index, String followerId) {
+        for (int i = 0; i < index; i++) {
+            if (followerId.equals(connections[i].getFollowerId())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean matchesEveryLane(FollowerConnection[] connections, String followerId, int lanes,
+                                            Predicate<FollowerConnection> matching) {
+        for (int lane = 0; lane < lanes; lane++) {
+            if (!matchesLane(connections, followerId, lane, matching)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean matchesLane(FollowerConnection[] connections, String followerId, int lane,
+                                       Predicate<FollowerConnection> matching) {
+        for (FollowerConnection connection : connections) {
+            if (connection.getLane() == lane && followerId.equals(connection.getFollowerId()) && matching.test(connection)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * What the followers' stores have yet to store, as of their last acks, over every lane.
+     */
+    public long getPendingWrites() {
+        long pendingWrites = 0;
+        for (FollowerConnection connection : connections) {
+            pendingWrites += connection.getFollowerPendingWrites();
+        }
+        return pendingWrites;
     }
 
     /**

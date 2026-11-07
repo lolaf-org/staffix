@@ -331,7 +331,7 @@ class TestReplicationFixEngineHa {
     private void bHasLeftToStore(long pendingWrites) {
         await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
         b.engine.store(MAIN).pendingWrites = pendingWrites;
-        await().until(() -> a.ha.getFollowerPendingWrites() == pendingWrites);
+        await().until(() -> a.ha.getFollowers().getPendingWrites() == pendingWrites);
     }
 
     private void bStoresAllAfter(Duration delay) {
@@ -915,14 +915,14 @@ class TestReplicationFixEngineHa {
     @Test
     void aLeaderAlertsOnAConnectedFollowerThatStoppedApplyingItsWrites() {
         aLeadsBFollows();
-        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
+        await().until(() -> HaProbes.followersEvaluator(a.ha).evaluate().isEmpty());
         CountDownLatch stalled = new CountDownLatch(1);
         b.engine.store(MAIN).incomingWritesHeld = stalled;
 
         try {
             a.store.storeNextIncomingSeqNum(7);
 
-            await().untilAsserted(() -> assertThat(HaProbes.followers(a.ha).evaluate()).hasValueSatisfying(alert -> {
+            await().untilAsserted(() -> assertThat(HaProbes.followersEvaluator(a.ha).evaluate()).hasValueSatisfying(alert -> {
                 assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
                 assertThat(alert.getMessage()).startsWith("Follower b has not applied a write for");
             }));
@@ -933,13 +933,13 @@ class TestReplicationFixEngineHa {
         } finally {
             stalled.countDown();
         }
-        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
+        await().until(() -> HaProbes.followersEvaluator(a.ha).evaluate().isEmpty());
     }
 
     @Test
     void aLeaderDropsAFollowerItsWritesWaitedTooLongForAndReportsItUntilItIsBackInSync() {
         aLeadsBFollows();
-        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
+        await().until(() -> HaProbes.followersEvaluator(a.ha).evaluate().isEmpty());
         CountDownLatch stalled = new CountDownLatch(1);
         b.engine.store(MAIN).incomingWritesHeld = stalled;
 
@@ -953,7 +953,7 @@ class TestReplicationFixEngineHa {
 
             assertThat(a.ha.getStatus().getDroppedFollowers()).singleElement()
                     .extracting(HaStatus.DroppedFollower::getNodeId).isEqualTo("b");
-            assertThat(HaProbes.followers(a.ha).evaluate()).hasValueSatisfying(alert -> {
+            assertThat(HaProbes.followersEvaluator(a.ha).evaluate()).hasValueSatisfying(alert -> {
                 assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
                 assertThat(alert.getMessage()).startsWith("Follower b dropped as too slow at");
             });
@@ -961,7 +961,7 @@ class TestReplicationFixEngineHa {
             stalled.countDown();
         }
         await().atMost(Duration.ofSeconds(30)).until(() -> a.ha.getStatus().getDroppedFollowers().isEmpty());
-        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
+        await().until(() -> HaProbes.followersEvaluator(a.ha).evaluate().isEmpty());
     }
 
     @Test
@@ -970,19 +970,19 @@ class TestReplicationFixEngineHa {
         a.start();
         await().until(() -> a.engine.activity.contains("activate, stores open 0"));
 
-        assertThat(HaProbes.followers(a.ha).evaluate()).hasValueSatisfying(alert -> {
+        assertThat(HaProbes.followersEvaluator(a.ha).evaluate()).hasValueSatisfying(alert -> {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
             assertThat(alert.getMessage()).startsWith("No follower connected");
         });
-        assertThat(HaProbes.leaderConnection(a.ha).evaluate()).as("a follower's probe").isEmpty();
-        assertThat(HaProbes.leadership(a.ha).evaluate()).isEmpty();
+        assertThat(HaProbes.leaderConnectionEvaluator(a.ha).evaluate()).as("a follower's probe").isEmpty();
+        assertThat(HaProbes.leadershipEvaluator(a.ha).evaluate()).isEmpty();
 
         b.election.elect(Role.FOLLOWER, 3, "a");
         b.start();
 
-        await().until(() -> HaProbes.followers(a.ha).evaluate().isEmpty());
-        await().until(() -> HaProbes.leaderConnection(b.ha).evaluate().isEmpty());
-        assertThat(HaProbes.followers(b.ha).evaluate()).as("a leader's probe").isEmpty();
+        await().until(() -> HaProbes.followersEvaluator(a.ha).evaluate().isEmpty());
+        await().until(() -> HaProbes.leaderConnectionEvaluator(b.ha).evaluate().isEmpty());
+        assertThat(HaProbes.followersEvaluator(b.ha).evaluate()).as("a leader's probe").isEmpty();
     }
 
     @Test
@@ -991,7 +991,7 @@ class TestReplicationFixEngineHa {
         b.start();
         await().until(() -> b.ha.getRole() == Role.FOLLOWER);
 
-        assertThat(HaProbes.leaderConnection(b.ha).evaluate()).hasValueSatisfying(alert -> {
+        assertThat(HaProbes.leaderConnectionEvaluator(b.ha).evaluate()).hasValueSatisfying(alert -> {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
             assertThat(alert.getMessage()).startsWith("Not connected to the leader");
         });
@@ -1001,16 +1001,16 @@ class TestReplicationFixEngineHa {
     void aNodeWithoutRoleOrUnableToProveItLeadsAlertsCritical() {
         a.start();
 
-        assertThat(HaProbes.leadership(a.ha).evaluate()).hasValueSatisfying(alert -> {
+        assertThat(HaProbes.leadershipEvaluator(a.ha).evaluate()).hasValueSatisfying(alert -> {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.CRITICAL);
             assertThat(alert.getMessage()).startsWith("No role");
         });
 
         a.election.elect(Role.LEADER, 3, "a");
-        await().until(() -> HaProbes.leadership(a.ha).evaluate().isEmpty());
+        await().until(() -> HaProbes.leadershipEvaluator(a.ha).evaluate().isEmpty());
         a.election.leadershipValid(false);
 
-        await().untilAsserted(() -> assertThat(HaProbes.leadership(a.ha).evaluate()).hasValueSatisfying(alert ->
+        await().untilAsserted(() -> assertThat(HaProbes.leadershipEvaluator(a.ha).evaluate()).hasValueSatisfying(alert ->
                 assertThat(alert.getMessage()).startsWith("Elected leader but unable to prove it")));
     }
 

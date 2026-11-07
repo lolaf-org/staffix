@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
@@ -111,7 +112,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
                 engineTimer.record(waitedNanos, TimeUnit.NANOSECONDS);
                 sessionSyncAckLatency.record(waitedNanos, TimeUnit.NANOSECONDS);
             }
-            session.acknowledged(ack);
+            session.recordAck(ack);
         }
     }
 
@@ -235,13 +236,13 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      * follower never gets that message, and a resend of it after a failover is gap filled; the session's next event
      * brings the follower's seqnums back in line.
      */
-    private void append(StoreEventType eventType, long sequenceNumber, ByteBuffer message) {
+    private void append(StoreEventType eventType, long sequenceNumber, @Nullable ByteBuffer message) {
         try {
             lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber,
                     message), logFullWait);
             followers.wakeSenders();
         } catch (IllegalArgumentException e) {
-            session.unreplicated();
+            session.recordUnreplicatedEvent();
             log.error("FIX session {} {} {} {} not replicated, its follower will not have it: {}. Raise logCapacity to "
                             + "replicate messages this long", session.getFixSessionType(), session.getFixSessionId(), eventType,
                     sequenceNumber, e.getMessage());
