@@ -56,7 +56,7 @@ import static org.lolaf.staffix.impl.FixAcceptorImpl.*;
  * session outlives the connection and resumes on the sequence numbers the store kept.
  */
 @Slf4j
-public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> implements FixInitiator, FixSessionAdminControl,
+public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> implements FixInitiator, FixSessionAdminControl, RunsWhileLeading,
         FixSessionsSettingsStore.Listener {
 
     private final FixInitiatorBuilder fixInitiatorBuilder;
@@ -267,10 +267,8 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         }
     }
 
-    /**
-     * The engine leads: builds and connects the session of an initiator started meanwhile.
-     */
-    void activate() {
+    @Override
+    public void activate() {
         synchronized (lifecycleLock) {
             if (startedUnderLock && !targetRunning) {
                 log.info("Engine leads, starting initiator for FIX session {}", fixSessionSettings.getFixSessionId());
@@ -279,29 +277,20 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         }
     }
 
-    /**
-     * The engine no longer leads: drops the session without a Logout and closes its store, keeping the initiator
-     * started for the next {@link #activate()}.
-     */
-    void deactivate() {
+    @Override
+    public void deactivate(Deadline deadline, boolean logout) {
         synchronized (lifecycleLock) {
             if (targetRunning) {
-                log.info("Engine no longer leads, dropping FIX session {}", fixSessionSettings.getFixSessionId());
-                stopTarget("Fix engine no longer leads", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), false);
+                log.info("Engine {} FIX session {}", logout ? "hands leadership over, logging out"
+                        : "no longer leads, dropping", fixSessionSettings.getFixSessionId());
+                stopTarget(logout ? "FIX engine hands leadership over" : "FIX engine no longer leads", deadline, logout);
             }
         }
     }
 
-    /**
-     * {@link #deactivate()} for an engine handing leadership over: the session is logged out first.
-     */
-    void deactivateWithLogout(Deadline deadline) {
-        synchronized (lifecycleLock) {
-            if (targetRunning) {
-                log.info("Engine hands leadership over, logging out FIX session {}", fixSessionSettings.getFixSessionId());
-                stopTarget("Fix engine hands leadership over", deadline, true);
-            }
-        }
+    @Override
+    public Deadline dropDeadline() {
+        return Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay());
     }
 
     private void startInitiatorResources() {

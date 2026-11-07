@@ -80,7 +80,7 @@ import java.util.stream.Stream;
  */
 @Slf4j
 @SuppressWarnings("java:S3077")
-public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> implements FixAcceptor, FixSessionAdminControl, FixSessionsSettingsStore.Listener {
+public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> implements FixAcceptor, FixSessionAdminControl, RunsWhileLeading, FixSessionsSettingsStore.Listener {
 
     // short window to let a best-effort rejection reply (Logout) flush before the connection is torn down
     private static final Duration REJECTION_REPLY_FLUSH_DELAY = Duration.ofSeconds(1);
@@ -208,10 +208,8 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         }
     }
 
-    /**
-     * The engine leads: builds the sessions and binds, for an acceptor started meanwhile.
-     */
-    void activate() {
+    @Override
+    public void activate() {
         synchronized (lifecycleLock) {
             if (startedUnderLock && !running) {
                 log.info("Engine leads, starting FIX server {}", fixAcceptorBuilder.getInstanceId());
@@ -220,31 +218,21 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         }
     }
 
-    /**
-     * The engine no longer leads: drops every session without a Logout, closes their stores and unbinds, keeping the
-     * acceptor started for the next {@link #activate()}.
-     */
-    void deactivate() {
+    @Override
+    public void deactivate(Deadline deadline, boolean logout) {
         synchronized (lifecycleLock) {
             if (running) {
-                log.info("Engine no longer leads, dropping the sessions of FIX server {}", fixAcceptorBuilder.getInstanceId());
-                stopAcceptor(Deadline.of(fixAcceptorBuilder.getShutdownMaxDelay()), false);
+                log.info("Engine {} the sessions of FIX server {}", logout ? "hands leadership over, logging out"
+                        : "no longer leads, dropping", fixAcceptorBuilder.getInstanceId());
+                stopAcceptor(deadline, logout);
                 listSessionsWithoutBuilding();
             }
         }
     }
 
-    /**
-     * {@link #deactivate()} for an engine handing leadership over: every session is logged out first.
-     */
-    void deactivateWithLogout(Deadline deadline) {
-        synchronized (lifecycleLock) {
-            if (running) {
-                log.info("Engine hands leadership over, logging out the sessions of FIX server {}", fixAcceptorBuilder.getInstanceId());
-                stopAcceptor(deadline, true);
-                listSessionsWithoutBuilding();
-            }
-        }
+    @Override
+    public Deadline dropDeadline() {
+        return Deadline.of(fixAcceptorBuilder.getShutdownMaxDelay());
     }
 
     /**
@@ -417,7 +405,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                         if (logout) {
                             fixSession.stopProtocol("FIX server stop", sessionStopDeadline);
                         } else {
-                            fixSession.dropProtocol("Fix engine no longer leads", sessionStopDeadline);
+                            fixSession.dropProtocol("FIX engine no longer leads", sessionStopDeadline);
                         }
                     } finally {
                         countDownLatch.countDown();

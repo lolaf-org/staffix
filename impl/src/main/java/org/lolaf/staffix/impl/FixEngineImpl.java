@@ -80,7 +80,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     /**
      * The engine contexts handed to the engine's components, whose meters {@link #getEngineMeters()} lists.
      */
-    private final List<FixEngineMonitoringContext> engineMonitoringContexts = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<FixEngineMonitoringContext> engineMonitoringContexts = new CopyOnWriteArrayList<>();
     private final Map<String, ProbesImpl> componentProbes = new ConcurrentHashMap<>();
     private final List<FixApplicationFactory> fixApplicationFactories;
     @Getter
@@ -900,9 +900,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                     .orElseThrow(() -> new IllegalArgumentException("Engine " + getInstanceId()
                             + " has no engine monitoring manager " + monitoringInstanceId))
                     .engineContext(getInstanceId());
-            if (!engineMonitoringContexts.contains(context)) {
-                engineMonitoringContexts.add(context);
-            }
+            engineMonitoringContexts.addIfAbsent(context);
             return context;
         }
 
@@ -918,22 +916,24 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         @Override
         public synchronized void activate() {
             active = true;
-            initiators.values().forEach(FixInitiatorImpl::activate);
-            acceptors.values().forEach(FixAcceptorImpl::activate);
+            forEachRunningWhileLeading(RunsWhileLeading::activate);
         }
 
         @Override
         public synchronized void deactivate() {
             active = false;
-            initiators.values().forEach(FixInitiatorImpl::deactivate);
-            acceptors.values().forEach(FixAcceptorImpl::deactivate);
+            forEachRunningWhileLeading(endpoint -> endpoint.deactivate(endpoint.dropDeadline(), false));
         }
 
         @Override
         public synchronized void deactivateWithLogout(Deadline deadline) {
             active = false;
-            initiators.values().forEach(initiator -> initiator.deactivateWithLogout(deadline));
-            acceptors.values().forEach(acceptor -> acceptor.deactivateWithLogout(deadline));
+            forEachRunningWhileLeading(endpoint -> endpoint.deactivate(deadline, true));
+        }
+
+        private void forEachRunningWhileLeading(Consumer<RunsWhileLeading> action) {
+            initiators.values().forEach(action);
+            acceptors.values().forEach(action);
         }
     }
 }
