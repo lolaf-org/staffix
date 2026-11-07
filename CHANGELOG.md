@@ -52,7 +52,7 @@ could mean.
   implements `FileLogLineFormat`, set in Java or named by `line-format-bean`.
 - **An evaluator can forget what it measured when its session logs back in**, by overriding
   `ProbeEvaluator.reset()`. The evaluators and alerting meters staffix provides already do.
-- **The admin API, HTTP and JMX, shows whether a probe runs only while logged in** (`onlyWhileLoggedIn`), and
+- **The admin API, HTTP and JMX, shows whether a probe runs only while logged in** (`onlyWhileActive`), and
   whether it is currently waiting for a logon (`suspended`).
 - **A message store that writes in batches can store a batch and the sequence numbers in one call**, with
   `BatchingFixSessionMessagesStore.storeSentFixMessagesAndSeqNums`. The JDBC store does it in one transaction, so a
@@ -85,7 +85,7 @@ could mean.
   ongoing alerts are cleared, and at logon they start afresh, so a probe on the order flow no longer alerts all
   night, or the moment the session is back. An application that removed its probes on logout and added them again
   on logon can add them once. For a probe that must keep running while logged out, such as one watching a disk or a
-  queue, build it with `onlyWhileLoggedIn(false)`. The built-in probes are unchanged.
+  queue, build it with `onlyWhileActive(false)`. The built-in probes are unchanged.
 - **`ProbeState.getLastEvaluation()` returns an `Optional<Instant>`**, empty for a probe whose session logged out
   before it was ever evaluated: such a probe now shows as suspended in the admin API instead of not at all. In the
   HTTP and JMX admin APIs, `lastEvaluation` is absent in that case.
