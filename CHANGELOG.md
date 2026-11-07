@@ -57,7 +57,8 @@ could mean.
 - **A message store that writes in batches can store a batch and the sequence numbers in one call**, with
   `BatchingFixSessionMessagesStore.storeSentFixMessagesAndSeqNums`. The JDBC store does it in one transaction, so a
   follower on a database commits once per read from the leader instead of up to three times, and acknowledges `SYNC`
-  messages sooner. A store of your own needs no change: by default the method makes the separate calls.
+  messages sooner. The async store writes its batches the same way, so over the JDBC store each batch commits once.
+  A store of your own needs no change: by default the method makes the separate calls.
 
 - **Messages larger than 8 KB are received**, up to 1 MB by default. Raise the limit with
   `IOSettings.maxReadBufferSize` on the acceptor or initiator builder, or `io-settings.max-read-buffer-size` with

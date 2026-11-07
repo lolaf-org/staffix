@@ -43,7 +43,7 @@ final class JdbcStorageIdentity {
     private final DataSource dataSource;
     private final String tablePrefix;
     private final @Nullable String configured;
-    private volatile Optional<String> identity = Optional.empty();
+    private volatile @Nullable String identity;
 
     JdbcStorageIdentity(JdbcMessageStoreSettings settings) {
         this.dataSource = settings.getDataSource();
@@ -55,21 +55,21 @@ final class JdbcStorageIdentity {
         if (configured != null) {
             return Optional.of(configured);
         }
-        if (identity.isEmpty()) {
+        if (identity == null) {
             identity = read();
         }
-        return identity;
+        return Optional.ofNullable(identity);
     }
 
-    private Optional<String> read() {
+    private @Nullable String read() {
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metaData = connection.getMetaData();
             String serverId = serverId(connection, metaData.getDatabaseProductName());
             String database = serverId == null ? metaData.getURL() : metaData.getDatabaseProductName() + " " + serverId;
-            return Optional.of("jdbc:" + sha256(String.join("|", database, connection.getCatalog(), connection.getSchema(), tablePrefix)));
+            return "jdbc:" + sha256(String.join("|", database, connection.getCatalog(), connection.getSchema(), tablePrefix));
         } catch (SQLException | RuntimeException e) {
             log.warn("Cannot read the storage identity of the JDBC store", e);
-            return Optional.empty();
+            return null;
         }
     }
 

@@ -37,7 +37,7 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
     private final BiPredicate<MessageType, ByteBuffer> messageFilter;
     private final boolean enabledMessageStoring;
     private final StoredMessage[] storedMessages;
-    private final Optional<String> storageIdentity = Optional.of("memory:" + UUID.randomUUID());
+    private final String storageIdentity = "memory:" + UUID.randomUUID();
 
     public MemoryFixSessionMessagesStore(MemoryMessageStoreSettings settings) {
         allocator = settings.isUseDirectMemory() ? ByteBuffer::allocateDirect : ByteBuffer::allocate;
@@ -55,7 +55,7 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
 
     @Override
     public Optional<String> getStorageIdentity() {
-        return storageIdentity;
+        return Optional.of(storageIdentity);
     }
 
     @Override

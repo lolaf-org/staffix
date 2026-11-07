@@ -68,9 +68,27 @@ class TestAsyncMessagesStore {
     BiPredicate<MessageType, ByteBuffer> messageFilter;
 
     private static FixMessagesStore.BatchingFixSessionMessagesStore getBatchingFixSessionMessagesStoreMock() {
-        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
+        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = batchingMock();
         when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenReturn(true);
         return batchingFixSessionMessagesStore;
+    }
+
+    /**
+     * Runs the default combined write, which a mock would otherwise skip, so the tests see the calls it makes.
+     */
+    private static FixMessagesStore.BatchingFixSessionMessagesStore batchingMock() {
+        FixMessagesStore.BatchingFixSessionMessagesStore store = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
+        callRealCombinedWrite(store);
+        return store;
+    }
+
+    private static void resetBatchingMock(FixMessagesStore.BatchingFixSessionMessagesStore store) {
+        reset(store);
+        callRealCombinedWrite(store);
+    }
+
+    private static void callRealCombinedWrite(FixMessagesStore.BatchingFixSessionMessagesStore store) {
+        doCallRealMethod().when(store).storeSentFixMessagesAndSeqNums(any(), anyInt(), anyLong(), anyLong());
     }
 
     @BeforeEach
@@ -222,7 +240,7 @@ class TestAsyncMessagesStore {
 
     @Test
     void testFailedBatchReplayIsRetried() {
-        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
+        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = batchingMock();
         FlappingResource resource = new FlappingResource();
         when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> resource.available.get());
         doAnswer(i -> resource.write()).when(batchingFixSessionMessagesStore).storeSentFixMessages(any(), anyInt());
@@ -296,7 +314,7 @@ class TestAsyncMessagesStore {
     void aBatchFailedWithTheResourceDownOutlivesAStop() {
         List<Long> stored = new CopyOnWriteArrayList<>();
         AtomicBoolean available = new AtomicBoolean(true);
-        FixMessagesStore.BatchingFixSessionMessagesStore batching = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
+        FixMessagesStore.BatchingFixSessionMessagesStore batching = batchingMock();
         when(batching.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> available.get());
         doAnswer(i -> {
             if (!available.get()) {
@@ -609,7 +627,7 @@ class TestAsyncMessagesStore {
 
         assertBatchingMessageProcessed(1, 2, 1, batchingFixSessionMessagesStore, testMessage);
 
-        reset(batchingFixSessionMessagesStore);
+        resetBatchingMock(batchingFixSessionMessagesStore);
         when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenReturn(false);
         Mockito.doThrow(new IllegalStateException("test exception")).when(batchingFixSessionMessagesStore).storeSentFixMessages(any(), anyInt());
 
@@ -657,7 +675,7 @@ class TestAsyncMessagesStore {
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore).storeNextOutgoingSeqNum(2L));
         assertBatchingMessageProcessed(1, 10, 1, batchingFixSessionMessagesStore, testMessage);
 
-        Mockito.reset(batchingFixSessionMessagesStore);
+        resetBatchingMock(batchingFixSessionMessagesStore);
         when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenReturn(true);
 
         asyncMessageStore.storeNextOutgoingSeqNum(2L);
@@ -782,13 +800,13 @@ class TestAsyncMessagesStore {
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore).resetSequenceNumbers());
         assertBatchingMessageProcessed(1, 10, 1, batchingFixSessionMessagesStore, testMessage);
 
-        reset(batchingFixSessionMessagesStore);
+        resetBatchingMock(batchingFixSessionMessagesStore);
         for (int i = 0; i < 5; i++) {
             asyncMessageStore.storeMessageSent(i, testMessage);
         }
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore).storeSentFixMessages(any(), eq(5)));
 
-        reset(batchingFixSessionMessagesStore);
+        resetBatchingMock(batchingFixSessionMessagesStore);
         for (int i = 0; i < 14; i++) {
             asyncMessageStore.storeMessageSent(i, testMessage);
         }

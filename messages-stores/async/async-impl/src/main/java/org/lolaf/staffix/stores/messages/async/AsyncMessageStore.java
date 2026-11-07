@@ -53,6 +53,12 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
     private final AtomicLong processedEvents;
     private final AtomicLong lostWrites;
     private volatile boolean retryingFailedWrite;
+    /**
+     * The batch {@link #collectBatch} gathered, kept in fields so a write allocates nothing; the reader thread only.
+     */
+    private int batchMessageCount;
+    private long batchIncomingSeqNum;
+    private long batchOutgoingSeqNum;
     private Exception lastWriteFailure;
 
     AsyncMessageStore(FixMessagesStore.FixSessionMessagesStore wrappedStore, FixSessionId fixSessionId,
@@ -231,44 +237,10 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
 
     private boolean writeEvents(AsyncStoreEvent[] asyncStoreEvents) {
         try {
-            int batchSize = 0;
-            int eventsCount = 0;
-            long storeOutgoingSeqNum = -1;
-            long storeIncomingSeqNum = -1;
-            for (AsyncStoreEvent e : asyncStoreEvents) {
-                if (e == null) {
-                    break;
-                }
-                batchSize++;
-                switch (e.getStoreEvent()) {
-                    case STORE_MESSAGE:
-                        batchedSentFixMessages[eventsCount++] = e;
-                        storeOutgoingSeqNum = e.getSequenceNumber() + 1;
-                        break;
-                    case RESET_SEQ_NUM:
-                        // the reset wipes what came before it: written after, it would collide with the next messages
-                        eventsCount = 0;
-                        storeOutgoingSeqNum = -1;
-                        storeIncomingSeqNum = -1;
-                        wrappedStore.resetSequenceNumbers();
-                        lostWrites.set(0);
-                        break;
-                    case STORE_INCOMING_SEQ_NUM:
-                        storeIncomingSeqNum = e.getSequenceNumber();
-                        break;
-                    case STORE_OUTGOING_SEQ_NUM:
-                        storeOutgoingSeqNum = e.getSequenceNumber();
-                        break;
-                }
-            }
-            if (eventsCount > 0) {
-                batchingWrappedStore.storeSentFixMessages(batchedSentFixMessages, eventsCount);
-            }
-            if (storeOutgoingSeqNum != -1) {
-                batchingWrappedStore.storeNextOutgoingSeqNum(storeOutgoingSeqNum);
-            }
-            if (storeIncomingSeqNum != -1) {
-                batchingWrappedStore.storeNextIncomingSeqNum(storeIncomingSeqNum);
+            int batchSize = collectBatch(asyncStoreEvents);
+            if (batchMessageCount > 0 || batchIncomingSeqNum >= 0 || batchOutgoingSeqNum >= 0) {
+                batchingWrappedStore.storeSentFixMessagesAndSeqNums(batchedSentFixMessages, batchMessageCount,
+                        batchIncomingSeqNum, batchOutgoingSeqNum);
             }
             processedEvents.addAndGet(batchSize);
             return true;
@@ -276,6 +248,45 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
             lastWriteFailure = ex;
             return false;
         }
+    }
+
+    /**
+     * Gathers the events into one write, the last seqnum of each kind winning; a reset is written at once, wiping
+     * what came before it, which written after would collide with the next messages.
+     *
+     * @return the events taken
+     */
+    private int collectBatch(AsyncStoreEvent[] asyncStoreEvents) {
+        int batchSize = 0;
+        batchMessageCount = 0;
+        batchIncomingSeqNum = -1;
+        batchOutgoingSeqNum = -1;
+        for (AsyncStoreEvent e : asyncStoreEvents) {
+            if (e == null) {
+                break;
+            }
+            batchSize++;
+            switch (e.getStoreEvent()) {
+                case STORE_MESSAGE:
+                    batchedSentFixMessages[batchMessageCount++] = e;
+                    batchOutgoingSeqNum = e.getSequenceNumber() + 1;
+                    break;
+                case RESET_SEQ_NUM:
+                    batchMessageCount = 0;
+                    batchIncomingSeqNum = -1;
+                    batchOutgoingSeqNum = -1;
+                    wrappedStore.resetSequenceNumbers();
+                    lostWrites.set(0);
+                    break;
+                case STORE_INCOMING_SEQ_NUM:
+                    batchIncomingSeqNum = e.getSequenceNumber();
+                    break;
+                case STORE_OUTGOING_SEQ_NUM:
+                    batchOutgoingSeqNum = e.getSequenceNumber();
+                    break;
+            }
+        }
+        return batchSize;
     }
 
     @Override

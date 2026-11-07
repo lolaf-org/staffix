@@ -438,7 +438,7 @@ class FileFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     }
 
     private int blocksCount(int messageSize) {
-        return (int) Math.ceil((messageSize + RECORD_OVERHEAD) / (double) blockSize);
+        return (messageSize + RECORD_OVERHEAD + blockSize - 1) / blockSize;
     }
 
     private MappedByteBuffer mapSessionFile(File sessionFile, int size) {

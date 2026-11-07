@@ -378,8 +378,8 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         }
         boolean seqNumsChange = nextIncomingSeqNum >= 0 || nextOutgoingSeqNum >= 0;
         if (sentFixMessageCount == 0 || !seqNumsChange) {
-            // autocommitted: an explicit transaction would cost a round trip for its COMMIT
-            storeInOneStatement(sentFixMessages, sentFixMessageCount, nextIncomingSeqNum, nextOutgoingSeqNum);
+            // an explicit transaction would cost a round trip for its COMMIT
+            storeAutocommitted(sentFixMessages, sentFixMessageCount, nextIncomingSeqNum, nextOutgoingSeqNum);
             return;
         }
         List<CachedInputStream> cachedInputStreams = cachedInputStreams(sentFixMessageCount);
@@ -404,7 +404,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         }
     }
 
-    private void storeInOneStatement(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+    private void storeAutocommitted(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
                                      long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         if (sentFixMessageCount > 0) {
             storeSentFixMessages(sentFixMessages, sentFixMessageCount);
