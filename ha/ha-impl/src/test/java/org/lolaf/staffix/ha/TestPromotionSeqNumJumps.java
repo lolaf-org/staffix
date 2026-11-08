@@ -21,6 +21,8 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.ha.follower.RecordingEngine;
 import org.lolaf.staffix.ha.follower.RecordingEngine.RecordingStore;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class TestPromotionSeqNumJumps {
@@ -39,7 +41,7 @@ class TestPromotionSeqNumJumps {
 
     @Test
     void aSessionStartedAfterThePromotionIsMovedAheadOnce() {
-        jumps.promoted();
+        jumps.promoted(List.of(LATE));
 
         jumps.jumpOnStart(LATE, store);
         jumps.jumpOnStart(LATE, store);
@@ -49,7 +51,7 @@ class TestPromotionSeqNumJumps {
 
     @Test
     void aSessionThatJumpedWithTheOthersIsNotMovedAheadAgain() {
-        jumps.promoted();
+        jumps.promoted(List.of(LATE));
         jumps.jumped(LATE);
 
         jumps.jumpOnStart(LATE, store);
@@ -59,21 +61,20 @@ class TestPromotionSeqNumJumps {
 
     @Test
     void aNewPromotionMovesTheSessionAheadAgain() {
-        jumps.promoted();
+        jumps.promoted(List.of(LATE));
         jumps.jumpOnStart(LATE, store);
         jumps.demoted();
         jumps.jumpOnStart(LATE, store);
 
-        jumps.promoted();
+        jumps.promoted(List.of(LATE));
         jumps.jumpOnStart(LATE, store);
 
         assertThat(store.writes).containsExactly("outgoing 101", "outgoing 101");
     }
 
     @Test
-    void aSessionAddedWhileLeadingStartsAtItsFirstSeqNum() {
-        jumps.promoted();
-        jumps.addedWhileLeading(LATE);
+    void aSessionCreatedUnderThisLeadershipStartsAtItsFirstSeqNum() {
+        jumps.promoted(List.of());
 
         jumps.jumpOnStart(LATE, store);
         jumps.jumpOnStart(LATE, store);
@@ -82,15 +83,14 @@ class TestPromotionSeqNumJumps {
     }
 
     @Test
-    void aSessionAddedWhileLeadingOverAStoreAlreadyUsedIsMovedAhead() {
+    void aSessionNotConfiguredAtThePromotionOverAStoreAlreadyUsedIsMovedAhead() {
         RecordingStore used = new RecordingStore() {
             @Override
             public long getOutgoingSeqNum() {
                 return 50;
             }
         };
-        jumps.promoted();
-        jumps.addedWhileLeading(LATE);
+        jumps.promoted(List.of());
 
         jumps.jumpOnStart(LATE, used);
 
@@ -98,22 +98,12 @@ class TestPromotionSeqNumJumps {
     }
 
     @Test
-    void aSessionAddedWhileNotLeadingIsMovedAheadWhenItStartsAfterThePromotion() {
-        jumps.addedWhileLeading(LATE);
-        jumps.promoted();
-
+    void aSessionCreatedUnderAnEarlierLeadershipIsMovedAheadAtTheNext() {
+        jumps.promoted(List.of());
         jumps.jumpOnStart(LATE, store);
-
-        assertThat(store.writes).containsExactly("outgoing 101");
-    }
-
-    @Test
-    void aSessionAddedUnderAnEarlierLeadershipIsMovedAhead() {
-        jumps.promoted();
-        jumps.addedWhileLeading(LATE);
         jumps.demoted();
-        jumps.promoted();
 
+        jumps.promoted(List.of(LATE));
         jumps.jumpOnStart(LATE, store);
 
         assertThat(store.writes).containsExactly("outgoing 101");
@@ -122,7 +112,7 @@ class TestPromotionSeqNumJumps {
     @Test
     void aSessionMarkedWhileNotLeadingStillJumpsAtTheNextPromotion() {
         jumps.jumped(LATE);
-        jumps.promoted();
+        jumps.promoted(List.of(LATE));
 
         jumps.jumpOnStart(LATE, store);
 

@@ -35,6 +35,7 @@ import org.lolaf.staffix.ha.follower.RecordingProbes;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 
@@ -129,10 +130,13 @@ class TestReplicationFixEngineHa extends HaPairFixture {
      */
     @Test
     void aSessionStartedAfterThePromotionIsMovedAheadOncePerLeadership() {
+        FixSessionSettings late = RecordingEngine.session("late", FixSessionType.ACCEPTOR);
+        FixSessionsSettingsStore configured = settingsStore("files", Optional.empty());
+        when(configured.getSettings()).thenReturn(List.of(late));
+        a.engine.settingsStores.add(configured);
         a.election.elect(Role.LEADER, 3, "a");
         a.start();
         await().until(() -> a.engine.activity.contains("activate, stores open 0"));
-        FixSessionSettings late = RecordingEngine.session("late", FixSessionType.ACCEPTOR);
         RecordingEngine.RecordingStore lateStore = new RecordingEngine.RecordingStore();
 
         a.ha.replicatingStore(late, lateStore, new RecordingProbes()).start();

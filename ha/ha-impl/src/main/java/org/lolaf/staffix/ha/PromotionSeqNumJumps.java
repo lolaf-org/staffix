@@ -19,9 +19,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Moves ahead the outgoing seqnum of a session that starts while this node leads, unless it already jumped for this
@@ -38,7 +40,10 @@ final class PromotionSeqNumJumps {
      * The promotion each session last jumped for, by type and id.
      */
     private final Map<String, Long> jumpedFor = new ConcurrentHashMap<>();
-    private final Set<String> addedWhileLeading = ConcurrentHashMap.newKeySet();
+    /**
+     * A session outside these was created under this leadership: the old leader never ran it.
+     */
+    private volatile Set<String> configuredAtPromotion = Set.of();
     /**
      * 0 while this node does not lead.
      */
@@ -55,22 +60,13 @@ final class PromotionSeqNumJumps {
     /**
      * Role thread only.
      */
-    void promoted() {
+    void promoted(Collection<FixSessionSettings> configured) {
+        configuredAtPromotion = configured.stream().map(PromotionSeqNumJumps::sessionKey).collect(Collectors.toUnmodifiableSet());
         currentPromotion = ++promotions;
     }
 
     void demoted() {
         currentPromotion = 0;
-        addedWhileLeading.clear();
-    }
-
-    /**
-     * The old leader never ran a session created here, so one whose store is still at its first seqnum needs no jump.
-     */
-    void addedWhileLeading(FixSessionSettings sessionSettings) {
-        if (currentPromotion != 0) {
-            addedWhileLeading.add(sessionKey(sessionSettings));
-        }
     }
 
     /**
@@ -96,7 +92,7 @@ final class PromotionSeqNumJumps {
             return;
         }
         long next = store.getOutgoingSeqNum();
-        if (addedWhileLeading.remove(sessionKey(sessionSettings)) && next == FIRST_SEQ_NUM) {
+        if (next == FIRST_SEQ_NUM && !configuredAtPromotion.contains(sessionKey(sessionSettings))) {
             return;
         }
         store.storeNextOutgoingSeqNum(next + jump);

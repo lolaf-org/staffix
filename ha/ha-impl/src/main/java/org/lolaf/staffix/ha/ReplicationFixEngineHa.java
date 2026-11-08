@@ -365,7 +365,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             if (!replicaSessions.isInSync()) {
                 log.warn("Node {} leads at epoch {} with sessions its follower copy did not hold in full", settings.getNodeId(), electionEpoch);
             }
-            promotionJumps.promoted();
+            promotionJumps.promoted(sessionsInSettingsStores());
             replicaSessions.jumpOutgoingSeqNums(settings.getPromotionOutgoingSeqNumJump()).forEach(promotionJumps::jumped);
         }
         replicaSessions.close(deadline);
@@ -512,6 +512,14 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
     }
 
+    private List<FixSessionSettings> sessionsInSettingsStores() {
+        List<FixSessionSettings> configured = new ArrayList<>();
+        for (FixSessionsSettingsStore store : engine.getFixSessionsSettingsStores()) {
+            configured.addAll(store.getSettings());
+        }
+        return configured;
+    }
+
     private void listenTo(FixSessionsSettingsStore store) {
         SettingsListener listener = new SettingsListener(store.getInstanceId());
         store.register(listener);
@@ -525,7 +533,6 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
         @Override
         public void onAddedSession(FixSessionSettings settings) {
-            promotionJumps.addedWhileLeading(settings);
             sessions.getSettingsDigests().onAdded(store, settings);
             settingsChanged();
         }
