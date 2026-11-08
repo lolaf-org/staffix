@@ -121,7 +121,7 @@ public class FrameEncoder {
         byte[] value = utf8(digest.getValue());
         byte[] identity = utf8(digest.getStoreIdentity());
         byte[] document = utf8(digest.getDocument());
-        int length = header(out, index, FrameType.SESSION_SETTINGS_DIGEST, 0, epoch,
+        int length = header(out, index, FrameType.SESSION_SETTINGS_DIGEST, digest.isRemoved() ? WireFormat.FLAG_SESSION_REMOVED : 0, epoch,
                 store.length + id.length + value.length + identity.length + document.length);
         int p = index + HEADER_BYTES;
         out.putInt(p, generation);

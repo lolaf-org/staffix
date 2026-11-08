@@ -48,7 +48,7 @@ final class SessionSettingsApplier {
     private final EngineAccess engine;
 
     void apply(List<Digest> leaders) {
-        leaders.stream().filter(digest -> !digest.getDocument().isEmpty())
+        leaders.stream().filter(digest -> digest.isRemoved() || !digest.getDocument().isEmpty())
                 .collect(Collectors.groupingBy(Digest::getStore))
                 .forEach(this::applyStore);
     }
@@ -68,8 +68,26 @@ final class SessionSettingsApplier {
         SessionSettingsDigests.of(List.of(store)).forEach(digest -> own.put(key(digest), digest.getValue()));
         FixSessionSettingsDocumentCodec codec = new FixSessionSettingsDocumentCodec(JSON, store.getConfigValueResolvers());
         codec.refreshResolvers();
-        leaders.stream().filter(digest -> !digest.getValue().equals(own.get(key(digest))))
+        leaders.stream().filter(Digest::isRemoved).forEach(digest -> remove(store, digest));
+        leaders.stream().filter(digest -> !digest.isRemoved() && !digest.getValue().equals(own.get(key(digest))))
                 .forEach(digest -> applySession(storeId, digest, codec));
+    }
+
+    private static void remove(FixSessionsSettingsStore store, Digest digest) {
+        try {
+            synchronized (store) {
+                store.getSettings().stream()
+                        .filter(settings -> settings.getFixSessionType() == digest.getFixSessionType()
+                                && settings.getFixSessionId().toString().equals(digest.getFixSessionId()))
+                        .findFirst()
+                        .ifPresent(settings -> {
+                            store.remove(settings);
+                            log.info("Removed FIX session {} from store {}, as the leader did", digest.getFixSessionId(), store.getInstanceId());
+                        });
+            }
+        } catch (RuntimeException e) {
+            log.error("Cannot remove FIX session {} from store {}", digest.getFixSessionId(), store.getInstanceId(), e);
+        }
     }
 
     private void reloadShared(String storeId) {

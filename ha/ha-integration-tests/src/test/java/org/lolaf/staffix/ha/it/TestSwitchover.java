@@ -335,6 +335,74 @@ class TestSwitchover {
     }
 
     @org.junit.jupiter.api.Test
+    void aSessionRemovedOnTheLeaderIsRemovedFromTheFollowerAndDoesNotComeBackAtAFailover() {
+        fileSettingsStores = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        FixSessionSettings added = addedAndReplicated();
+
+        leaderSettings().remove(leaderSettings().find(added.getFixSessionId(), added.getFixSessionType()).orElseThrow());
+
+        await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isEmpty());
+        assertThat(new File(settingsDirectory("b"), added.getFixSessionId().forFileName(".yaml"))).doesNotExist();
+        awaitNoSettingsDifference();
+        ballot.elect("b");
+        await().until(() -> b.getStatus().getRole() == org.lolaf.staffix.api.ha.LeaderElection.Role.LEADER);
+        await().during(Duration.ofMillis(300)).until(() -> ((AdminApi) follower).getManagedFixSessionsSettings().stream()
+                .noneMatch(settings -> settings.getFixSessionId().equals(added.getFixSessionId())));
+    }
+
+    @org.junit.jupiter.api.Test
+    void aSessionRemovedWhileTheFollowerWasDownIsRemovedWhenItReturns() {
+        fileSettingsStores = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        FixSessionSettings added = addedAndReplicated();
+        follower.stop(Deadline.of(Duration.ofSeconds(5)));
+
+        leaderSettings().remove(leaderSettings().find(added.getFixSessionId(), added.getFixSessionType()).orElseThrow());
+        follower = startFollower.get();
+
+        await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isEmpty());
+        awaitNoSettingsDifference();
+    }
+
+    @org.junit.jupiter.api.Test
+    void aSessionOnlyTheFollowerHasIsKeptAndReported() {
+        fileSettingsStores = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        awaitNoSettingsDifference();
+        FixSessionSettings onlyHere = addedSession(followerSettings().getSettings().iterator().next());
+
+        followerSettings().add(onlyHere);
+
+        await().untilAsserted(() -> assertThat(b.getStatus().getSessionSettingsDifferences()).singleElement()
+                .satisfies(difference -> assertThat(difference.getKind()).isEqualTo(HaStatus.SessionSettingsDifference.Kind.EXTRA_HERE)));
+        await().during(Duration.ofMillis(300)).until(() -> followerSettings().find(onlyHere.getFixSessionId(), onlyHere.getFixSessionType()).isPresent());
+    }
+
+    @org.junit.jupiter.api.Test
+    void aSessionRemovedThenAddedAgainStaysOnTheFollower() {
+        fileSettingsStores = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        FixSessionSettings added = addedAndReplicated();
+
+        leaderSettings().remove(leaderSettings().find(added.getFixSessionId(), added.getFixSessionType()).orElseThrow());
+        await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isEmpty());
+        leaderSettings().add(added);
+
+        await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isPresent());
+        await().during(Duration.ofMillis(300)).until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isPresent());
+        awaitNoSettingsDifference();
+    }
+
+    private FixSessionSettings addedAndReplicated() {
+        FixSessionSettings added = addedSession(leaderSettings().getSettings().iterator().next());
+        leaderSettings().add(added);
+        await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isPresent());
+        awaitNoSettingsDifference();
+        return added;
+    }
+
+    @org.junit.jupiter.api.Test
     void withSessionSettingsNotReplicatedADifferenceIsOnlyReported() {
         fileSettingsStores = true;
         sessionSettingsReplicated = false;

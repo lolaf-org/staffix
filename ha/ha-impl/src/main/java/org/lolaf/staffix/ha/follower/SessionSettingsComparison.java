@@ -104,6 +104,9 @@ public final class SessionSettingsComparison {
         SessionSettingsDigests.of(engine.getFixSessionsSettingsStores()).forEach(digest -> own.put(key(digest), digest.getValue()));
         List<SessionSettingsDifference> found = new ArrayList<>();
         leaders.forEach((key, digest) -> {
+            if (digest.isRemoved()) {
+                return;
+            }
             String here = own.get(key);
             if (here == null) {
                 found.add(difference(key, SessionSettingsDifference.Kind.MISSING_HERE));
@@ -111,7 +114,7 @@ public final class SessionSettingsComparison {
                 found.add(difference(key, SessionSettingsDifference.Kind.DIFFERENT));
             }
         });
-        own.keySet().stream().filter(key -> !leaders.containsKey(key))
+        own.keySet().stream().filter(key -> !leaders.containsKey(key) || leaders.get(key).isRemoved())
                 .forEach(key -> found.add(difference(key, SessionSettingsDifference.Kind.EXTRA_HERE)));
         differences = List.copyOf(found);
     }

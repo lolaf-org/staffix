@@ -91,6 +91,11 @@ public class WireFormat {
     public static final int FLAG_IN_SYNC = 0x01;
 
     /**
+     * {@link FrameType#SESSION_SETTINGS_DIGEST}: the session was removed from the leader's store.
+     */
+    public static final int FLAG_SESSION_REMOVED = 0x01;
+
+    /**
      * Initial read buffer of a connection, holding many small frames per read. Betty grows it for a larger frame, up
      * to the connection's frame limit, so a connection pays for its largest frame only once it receives one.
      */

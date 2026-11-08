@@ -109,7 +109,7 @@ public class FrameDecoder {
                 handler.onHeartbeat(epoch, in.getLong(p));
                 break;
             case SESSION_SETTINGS_DIGEST:
-                decodeSessionSettingsDigest(in, p, epoch, variableBytes, handler);
+                decodeSessionSettingsDigest(in, p, flags, epoch, variableBytes, handler);
                 break;
             case SESSION_SETTINGS_DIGESTS_COMPLETE:
                 handler.onSessionSettingsDigestsComplete(epoch, in.getInt(p), in.getInt(p + 4));
@@ -145,7 +145,7 @@ public class FrameDecoder {
                 new String(bytes(in, p + 10, idLength), StandardCharsets.UTF_8), identity);
     }
 
-    private static void decodeSessionSettingsDigest(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+    private static void decodeSessionSettingsDigest(ByteBuffer in, int p, int flags, long epoch, int variableBytes, FrameHandler handler) {
         int storeLength = unsignedShort(in, p + 6);
         int idLength = unsignedShort(in, p + 8);
         int digestLength = unsignedShort(in, p + 10);
@@ -159,7 +159,8 @@ public class FrameDecoder {
         String identity = new String(bytes(in, variable += digestLength, identityLength), StandardCharsets.UTF_8);
         String document = new String(bytes(in, variable + identityLength, documentLength), StandardCharsets.UTF_8);
         handler.onSessionSettingsDigest(epoch, in.getInt(p),
-                new SessionSettingsDigests.Digest(store, fixSessionType(in.get(p + 4)), id, digest, identity, document));
+                new SessionSettingsDigests.Digest(store, fixSessionType(in.get(p + 4)), id, digest, identity, document,
+                        (flags & WireFormat.FLAG_SESSION_REMOVED) != 0));
     }
 
     private static void decodeSessionAnswer(ByteBuffer in, int p, long epoch, FrameHandler handler) {

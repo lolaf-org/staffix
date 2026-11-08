@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha;
 
+import lombok.RequiredArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -39,6 +40,7 @@ import org.lolaf.staffix.ha.leader.SlowFollowers;
 import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
 
+import java.util.ArrayList;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
@@ -72,7 +74,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final PromotionSeqNumJumps promotionJumps;
     private final HaStatusReport statusReport = new HaStatusReport(this);
     private final Switchover switchover = new Switchover(this);
-    private final FixSessionsSettingsStore.Listener settingsListener;
+    /**
+     * What unregisters each settings store's listener.
+     */
+    private final List<Runnable> settingsListeners;
     private volatile ReplicationStats stats;
     private volatile EngineAccess engine;
     private volatile ReplicaSessions replicaSessions;
@@ -97,7 +102,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         this.sessions = new ReplicatedSessions();
         this.followers = new Followers();
         this.promotionJumps = new PromotionSeqNumJumps(settings.getPromotionOutgoingSeqNumJump());
-        this.settingsListener = new SettingsListener();
+        this.settingsListeners = new ArrayList<>();
     }
 
     @Override
@@ -127,6 +132,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     @Override
     public void onSessionNotReplicated(FixSessionSettings sessionSettings) {
         promotionJumps.jumped(sessionSettings);
+        stopReplicating(sessionSettings);
+    }
+
+    private void stopReplicating(FixSessionSettings sessionSettings) {
         ReplicatedSession session = sessions.find(sessionSettings.getFixSessionId(), sessionSettings.getFixSessionType());
         if (session == null || !session.isReplicated()) {
             return;
@@ -234,7 +243,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                     + " have no address for this node, " + settings.getNodeId());
         }
         requireReplicableSettingsStores();
-        engine.getFixSessionsSettingsStores().forEach(store -> store.register(settingsListener));
+        engine.getFixSessionsSettingsStores().forEach(this::listenTo);
         settingsChanged();
         election = settings.getLeaderElection().instance();
         if (settings.getMonitoringInstanceId() != null) {
@@ -266,7 +275,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     @Override
     protected void stopMe(Deadline stopDeadline) {
-        engine.getFixSessionsSettingsStores().forEach(store -> store.unregister(settingsListener));
+        settingsListeners.forEach(Runnable::run);
+        settingsListeners.clear();
         roleThread.shutdownNow();
         try {
             if (!roleThread.awaitTermination(Math.max(1, stopDeadline.getRemainingTime().toMillis()), TimeUnit.MILLISECONDS)) {
@@ -494,15 +504,27 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
     }
 
+    private void listenTo(FixSessionsSettingsStore store) {
+        SettingsListener listener = new SettingsListener(store.getInstanceId());
+        store.register(listener);
+        settingsListeners.add(() -> store.unregister(listener));
+    }
+
+    @RequiredArgsConstructor
     private final class SettingsListener implements FixSessionsSettingsStore.Listener {
+
+        private final String store;
 
         @Override
         public void onAddedSession(FixSessionSettings settings) {
+            sessions.getSettingsDigests().onAdded(store, settings);
             settingsChanged();
         }
 
         @Override
         public void onRemovedSession(FixSessionSettings settings) {
+            sessions.getSettingsDigests().onRemoved(store, settings);
+            stopReplicating(settings);
             settingsChanged();
         }
 
