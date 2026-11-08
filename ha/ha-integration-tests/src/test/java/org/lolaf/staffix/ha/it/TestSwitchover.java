@@ -15,6 +15,20 @@
  */
 package org.lolaf.staffix.ha.it;
 
+import java.util.Optional;
+import java.sql.Statement;
+import java.sql.SQLException;
+import java.sql.ResultSet;
+import java.sql.Connection;
+import javax.sql.DataSource;
+import org.lolaf.staffix.api.session.ConfigValueResolver;
+import org.lolaf.staffix.api.session.ConfigValuePlaceholder;
+import org.lolaf.staffix.stores.sessions.jdbc.JdbcSessionsSettingsStoreSettings;
+import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import lombok.RequiredArgsConstructor;
+import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.HikariConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -79,6 +93,8 @@ class TestSwitchover {
     private static final FixSessionId ACCEPTOR_ID = FixSessionId.of("ha", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR");
     private static final FixSessionId INITIATOR_ID = FixSessionId.of("ha", FixRegularVersion.VERSION_44, "INITIATOR", "ACCEPTOR");
     private static final long JUMP = 10_000;
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"))
+            .withDatabaseName("staffix-test").withUsername("test").withPassword("test");
 
     private final List<Runnable> stops = new ArrayList<>();
     private final SharedLeaderElection.Ballot ballot = new SharedLeaderElection.Ballot("a");
@@ -94,6 +110,9 @@ class TestSwitchover {
     private boolean fileSettingsStores;
     private boolean sharedSettingsDirectory;
     private boolean sessionSettingsReplicated = true;
+    private SettingsStorage settingsStorage;
+    private Map<String, Duration> timeoutPerNode;
+    private HikariDataSource settingsDataSource;
     private Duration switchoverTimeout = Duration.ofSeconds(30);
     private Duration followerStallTimeout = Duration.ofSeconds(10);
     private HoldableStore followerStore;
@@ -211,6 +230,7 @@ class TestSwitchover {
             followerApplication = echo;
         }
         FixEngine engine = start(engine(nodeId, echo, settings[0], storeOf(nodeId))
+                .instanceId(engineIdOf(nodeId))
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(settingsStoreOf(nodeId, settings))
                 .highAvailability(ReplicationHaSettings.builder()
@@ -236,13 +256,30 @@ class TestSwitchover {
         return engine;
     }
 
+    private String engineIdOf(String nodeId) {
+        return settingsStorage == SettingsStorage.JDBC_SAME_ENGINE_ID ? "same-engine" : nodeId;
+    }
+
     private FixSessionsSettingsStoreSettings settingsStoreOf(String nodeId, FixSessionSettings... settings) {
+        if (settingsStorage == SettingsStorage.JDBC_ROWS_PER_NODE || settingsStorage == SettingsStorage.JDBC_SHARED_ROWS
+                || settingsStorage == SettingsStorage.JDBC_SAME_ENGINE_ID) {
+            return seeded(engineIdOf(nodeId), JdbcSessionsSettingsStoreSettings.builder().dataSource(settingsDataSource())
+                    .engineIdOverride(settingsStorage == SettingsStorage.JDBC_SHARED_ROWS ? "pair" : null).build(), settings);
+        }
         if (!fileSettingsStores) {
             return MemorySessionsSettingsStoreSettings.builder().fixSessionSettings(List.of(settings)).build();
         }
-        FileSessionsSettingsStoreSettings fileStore = FileSessionsSettingsStoreSettings.builder()
-                .fixSessionSettingsDirectory(settingsDirectory(nodeId)).build();
-        FixSessionsSettingsStore seeding = fileStore.instance();
+        FileSessionsSettingsStoreSettings.FileSessionsSettingsStoreSettingsBuilder fileStore = FileSessionsSettingsStoreSettings.builder()
+                .fixSessionSettingsDirectory(settingsDirectory(nodeId));
+        if (timeoutPerNode != null) {
+            fileStore.configValueResolver(new NodeValues(timeoutPerNode.get(nodeId).toString()));
+        }
+        return seeded(nodeId, fileStore.build(), settings);
+    }
+
+    private FixSessionsSettingsStoreSettings seeded(String nodeId, FixSessionsSettingsStoreSettings storeSettings, FixSessionSettings... settings) {
+        FixSessionsSettingsStore seeding = storeSettings.instance();
+        seeding.bind(nodeId);
         seeding.start();
         for (FixSessionSettings session : settings) {
             if (seeding.find(session.getFixSessionId(), session.getFixSessionType()).isEmpty()) {
@@ -250,7 +287,192 @@ class TestSwitchover {
             }
         }
         seeding.stop(Deadline.of(Duration.ofSeconds(5)));
-        return fileStore;
+        return storeSettings;
+    }
+
+    private DataSource settingsDataSource() {
+        if (settingsDataSource == null) {
+            if (!POSTGRES.isRunning()) {
+                POSTGRES.start();
+            }
+            HikariConfig config = new HikariConfig();
+            config.setJdbcUrl(POSTGRES.getJdbcUrl());
+            config.setUsername(POSTGRES.getUsername());
+            config.setPassword(POSTGRES.getPassword());
+            config.setMaximumPoolSize(4);
+            settingsDataSource = new HikariDataSource(config);
+            execute("drop table if exists fix_sessions_settings");
+            execute("create table fix_sessions_settings (engine_id varchar(255) not null, store_instance_id varchar(255) not null,"
+                    + " qualified_name varchar(255) not null, session_type varchar(16) not null, settings text not null,"
+                    + " updated_at timestamp(6) with time zone not null, version bigint not null,"
+                    + " primary key (engine_id, store_instance_id, qualified_name))");
+        }
+        return settingsDataSource;
+    }
+
+    private void execute(String sql) {
+        try (Connection connection = settingsDataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute(sql);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private long rows(String where) throws SQLException {
+        try (Connection connection = settingsDataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("select count(*) from fix_sessions_settings where " + where)) {
+            result.next();
+            return result.getLong(1);
+        }
+    }
+
+    private void useStorage(SettingsStorage storage) {
+        settingsStorage = storage;
+        fileSettingsStores = storage == SettingsStorage.FILES_PER_NODE || storage == SettingsStorage.SHARED_DIRECTORY;
+        sharedSettingsDirectory = storage == SettingsStorage.SHARED_DIRECTORY;
+    }
+
+    private boolean followerHolds(FixSessionSettings settings) {
+        return followerSettings().find(settings.getFixSessionId(), settings.getFixSessionType()).isPresent();
+    }
+
+    private boolean followerRuns(FixSessionSettings settings) {
+        return ((AdminApi) follower).getManagedFixSessionsSettings().stream()
+                .anyMatch(managed -> managed.getFixSessionId().equals(settings.getFixSessionId()));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(SettingsStorage.class)
+    void aSessionAddedChangedAndRemovedOnTheLeaderReachesTheFollower(SettingsStorage storage) {
+        useStorage(storage);
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        awaitNoSettingsDifference();
+        FixSessionSettings added = addedSession(leaderSettings().getSettings().iterator().next());
+
+        leaderSettings().add(added);
+        await().until(() -> followerHolds(added));
+        awaitNoSettingsDifference();
+
+        leaderSettings().update(added.toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(77)).build());
+        await().untilAsserted(() -> assertThat(followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).orElseThrow()
+                .getLogInOrOutResponseTimeout()).isEqualTo(Duration.ofSeconds(77)));
+        awaitNoSettingsDifference();
+
+        leaderSettings().remove(leaderSettings().find(added.getFixSessionId(), added.getFixSessionType()).orElseThrow());
+        await().until(() -> !followerHolds(added));
+        awaitNoSettingsDifference();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(SettingsStorage.class)
+    void changesMadeWhileTheFollowerWasDownReachItWhenItReturns(SettingsStorage storage) {
+        useStorage(storage);
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        FixSessionSettings removed = addedAndReplicated();
+        FixSessionSettings added = removed.toBuilder().fixSessionId(FixSessionId.of("later", FixRegularVersion.VERSION_44, "LATER", "CLIENT")).build();
+        follower.stop(Deadline.of(Duration.ofSeconds(5)));
+
+        leaderSettings().remove(leaderSettings().find(removed.getFixSessionId(), removed.getFixSessionType()).orElseThrow());
+        leaderSettings().add(added);
+        follower = startFollower.get();
+
+        await().until(() -> followerHolds(added) && !followerHolds(removed));
+        awaitNoSettingsDifference();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(SettingsStorage.class)
+    void aFailoverRunsTheSessionsAddedAndNotThoseRemoved(SettingsStorage storage) {
+        useStorage(storage);
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        FixSessionSettings removed = addedAndReplicated();
+        leaderSettings().remove(leaderSettings().find(removed.getFixSessionId(), removed.getFixSessionType()).orElseThrow());
+        await().until(() -> !followerHolds(removed));
+        FixSessionSettings added = removed.toBuilder().fixSessionId(FixSessionId.of("later", FixRegularVersion.VERSION_44, "LATER", "CLIENT")).build();
+        leaderSettings().add(added);
+        await().until(() -> followerHolds(added));
+
+        ballot.elect("b");
+
+        await().until(() -> b.getStatus().getRole() == org.lolaf.staffix.api.ha.LeaderElection.Role.LEADER);
+        await().until(() -> ((AdminApi) follower).getManagedFixSessions().stream()
+                .anyMatch(session -> session.getFixSessionId().equals(added.getFixSessionId())));
+        assertThat(followerRuns(removed)).isFalse();
+    }
+
+    @org.junit.jupiter.api.Test
+    void anInitiatorSessionRemovedOnTheLeaderIsRemovedFromTheFollower() {
+        useStorage(SettingsStorage.FILES_PER_NODE);
+        startPair(Pair.INITIATORS, ReplicationMode.ASYNC);
+        awaitNoSettingsDifference();
+        FixSessionSettings settings = leaderSettings().getSettings().iterator().next();
+
+        leaderSettings().remove(settings);
+
+        await().until(() -> !followerHolds(settings));
+        awaitNoSettingsDifference();
+    }
+
+    @org.junit.jupiter.api.Test
+    void aTableWithoutTheOverrideKeepsARowPerNode() throws SQLException {
+        useStorage(SettingsStorage.JDBC_ROWS_PER_NODE);
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        addedAndReplicated();
+
+        assertThat(rows("engine_id = 'a'")).isEqualTo(2);
+        assertThat(rows("engine_id = 'b'")).isEqualTo(2);
+    }
+
+    @org.junit.jupiter.api.Test
+    void aFollowerSharingTheLeadersRowsDoesNotWriteThem() throws SQLException {
+        useStorage(SettingsStorage.JDBC_SHARED_ROWS);
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        FixSessionSettings added = addedAndReplicated();
+        leaderSettings().update(added.toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(77)).build());
+        await().untilAsserted(() -> assertThat(followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).orElseThrow()
+                .getLogInOrOutResponseTimeout()).isEqualTo(Duration.ofSeconds(77)));
+
+        await().during(Duration.ofMillis(300)).until(() -> rows("qualified_name like '%added%' and version = 2") == 1);
+        assertThat(rows("engine_id <> 'pair'")).isZero();
+    }
+
+    @org.junit.jupiter.api.Test
+    void aPlaceholderResolvingDifferentlyOnEachNodeReadsAsTheSameAndKeepsEachNodesValue() throws IOException {
+        useStorage(SettingsStorage.FILES_PER_NODE);
+        timeoutPerNode = Map.of("a", Duration.ofSeconds(45), "b", Duration.ofSeconds(50));
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        FixSessionSettings added = addedSession(leaderSettings().getSettings().iterator().next()).toBuilder()
+                .logInOrOutResponseTimeout(Duration.ofSeconds(45))
+                .placeholders(Map.of("/logInOrOutResponseTimeout", "${node:timeout}"))
+                .build();
+
+        leaderSettings().add(added);
+
+        await().until(() -> followerHolds(added));
+        assertThat(followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).orElseThrow().getLogInOrOutResponseTimeout())
+                .isEqualTo(Duration.ofSeconds(50));
+        assertThat(settingsFile("b", added)).contains("${node:timeout}").doesNotContain("PT50S").doesNotContain("PT45S");
+        awaitNoSettingsDifference();
+    }
+
+    enum SettingsStorage {
+        FILES_PER_NODE, SHARED_DIRECTORY, JDBC_ROWS_PER_NODE, JDBC_SHARED_ROWS, JDBC_SAME_ENGINE_ID
+    }
+
+    @RequiredArgsConstructor
+    private static final class NodeValues implements ConfigValueResolver {
+
+        private final String value;
+
+        @Override
+        public Optional<String> resolve(ConfigValuePlaceholder placeholder) {
+            return Optional.of(value);
+        }
+
+        @Override
+        public Optional<String> sourceName() {
+            return Optional.of("node");
+        }
     }
 
     private File settingsDirectory(String nodeId) {
@@ -470,6 +692,9 @@ class TestSwitchover {
     @AfterEach
     void stop() {
         stops.forEach(Runnable::run);
+        if (settingsDataSource != null) {
+            settingsDataSource.close();
+        }
     }
 
     @ParameterizedTest(name = "{0} {1}")

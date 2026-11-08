@@ -59,6 +59,30 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-sessions-settings-store-jdbc-impl</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>${hikaricp.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-sessions-settings-store-file-impl</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
