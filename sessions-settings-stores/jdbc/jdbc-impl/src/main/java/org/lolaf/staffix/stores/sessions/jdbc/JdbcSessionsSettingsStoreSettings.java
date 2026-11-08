@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.ConfigValueResolver;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
 
@@ -51,6 +52,13 @@ public class JdbcSessionsSettingsStoreSettings implements FixSessionsSettingsSto
      */
     @Builder.Default
     private final String tablePrefix = "";
+
+    /**
+     * Used for the rows' {@code engine_id} instead of the engine's instance id, so the two nodes of a high availability
+     * pair read the same rows while keeping their own ids. The same value on both, the pair's name for example; never on
+     * unrelated engines, which would then share their sessions.
+     */
+    private final @Nullable String engineIdOverride;
 
     /**
      * Resolvers for the {@code ${...}} placeholders in a row, asked in the order given. Empty falls back to system

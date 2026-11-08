@@ -244,6 +244,11 @@ session's `group.name`, so several engines, and several stores of one engine, ca
 its own sessions. **Give each engine and each store a fixed instance id**: started under another id, they find none of
 their sessions.
 
+`engineIdOverride` replaces the engine's instance id in that key, so the two nodes of a
+[high availability](high-availability.md) pair read the same rows while keeping their own ids: give both the same value,
+the pair's name for example, and never give it to unrelated engines, which would share their sessions. Without it, two
+nodes on one table each have their own rows.
+
 A value in a row may be a `${...}` placeholder, as in a session file: resolved when the row is read, by the store's
 `configValueResolvers` (system properties then environment variables by default; in Spring Boot, as for the file store,
 with `config-value-resolver-beans`). The row keeps the expression and never the value it resolved to, and changing a

@@ -237,6 +237,39 @@ abstract class AbstractJdbcFixSessionsSettingsStoreTest {
     }
 
     @Test
+    void twoEnginesWithTheSameOverrideReadTheSameRows() {
+        JdbcFixSessionsSettingsStore first = newStoreOverriding("engine-a", "pair");
+        JdbcFixSessionsSettingsStore second = newStoreOverriding("engine-b", "pair");
+        first.start();
+        second.start();
+        FixSessionSettings settings = session("shared");
+
+        first.add(settings);
+
+        assertThat(second.load()).containsExactly(settings);
+        assertThat(newStore("engine-a").load()).as("an engine without the override keeps its own rows").isEmpty();
+    }
+
+    @Test
+    void theOverrideIsPartOfTheStorageIdentity() {
+        assertThat(newStoreOverriding("engine-a", "pair").getStorageIdentity()).isPresent()
+                .isEqualTo(newStoreOverriding("engine-b", "pair").getStorageIdentity())
+                .isNotEqualTo(newStoreOverriding("engine-a", "other").getStorageIdentity())
+                .isNotEqualTo(newStore("engine-a").getStorageIdentity());
+    }
+
+    private JdbcFixSessionsSettingsStore newStoreOverriding(String engineId, String engineIdOverride) {
+        JdbcFixSessionsSettingsStore store = (JdbcFixSessionsSettingsStore) new JdbcFixSessionsSettingsStore.JdbcStoreFactoryImpl()
+                .newInstance(JdbcSessionsSettingsStoreSettings.builder()
+                        .instanceId(STORE)
+                        .dataSource(dataSource)
+                        .engineIdOverride(engineIdOverride)
+                        .build());
+        store.bind(engineId);
+        return store;
+    }
+
+    @Test
     void theStorageIdentityTellsEnginesAndStoresApart() {
         assertThat(newStore(ENGINE).getStorageIdentity()).isPresent().isEqualTo(newStore(ENGINE).getStorageIdentity())
                 .isNotEqualTo(newStore("engine-b").getStorageIdentity())

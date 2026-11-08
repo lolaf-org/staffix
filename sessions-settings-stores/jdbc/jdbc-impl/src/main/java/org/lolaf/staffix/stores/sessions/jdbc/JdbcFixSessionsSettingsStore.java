@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Getter;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.*;
 import org.lolaf.staffix.api.stores.JdbcStorageIdentity;
@@ -56,6 +57,7 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     private final Map<FixSessionId, Long> versions = new ConcurrentHashMap<>();
     private JdbcStorageIdentity storageIdentity;
     private final FixSessionSettingsDocumentCodec codec;
+    private final @Nullable String engineIdOverride;
     /**
      * What the last {@link #load()} read: the engine applies it back through add and update, which must then adopt
      * the row rather than write it, or the version check would refuse a change that came from the table itself. An
@@ -72,6 +74,7 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
                     + "hold letters, digits and underscores: '" + settings.getTablePrefix() + "'");
         }
         this.instanceId = settings.getInstanceId();
+        this.engineIdOverride = settings.getEngineIdOverride();
         this.dataSource = Objects.requireNonNull(settings.getDataSource(), "dataSource");
         this.codec = new FixSessionSettingsDocumentCodec(mapper, settings.getConfigValueResolvers());
         this.tableName = settings.getTablePrefix().isEmpty()
@@ -144,7 +147,12 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     @Override
     public void bind(String engineId) {
         super.bind(engineId);
-        storageIdentity = new JdbcStorageIdentity(dataSource, tableName + "|" + instanceId + "|" + engineId, null);
+        storageIdentity = new JdbcStorageIdentity(dataSource, tableName + "|" + instanceId + "|" + getEngineId(), null);
+    }
+
+    @Override
+    protected String getEngineId() {
+        return engineIdOverride != null ? engineIdOverride : super.getEngineId();
     }
 
     @Override

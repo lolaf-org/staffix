@@ -64,6 +64,9 @@ public class JdbcSessionsSettingsStoreContributor implements FixSessionsSettings
         if (ip.getTablePrefix() != null) {
             builder.tablePrefix(ip.getTablePrefix());
         }
+        if (ip.getEngineIdOverride() != null) {
+            builder.engineIdOverride(ip.getEngineIdOverride());
+        }
         return builder.build();
     }
 }

@@ -36,6 +36,11 @@ public class JdbcStoreInstanceProps {
      */
     private String tablePrefix;
     /**
+     * Used for the rows' engine_id instead of the engine's instance id, the same on the two nodes of a high availability
+     * pair so they read the same rows. Never on unrelated engines.
+     */
+    private String engineIdOverride;
+    /**
      * Bean names of extra ConfigValueResolver beans for the ${...} placeholders in a row, asked after the system
      * property and environment resolvers and before Spring's own Environment.
      */

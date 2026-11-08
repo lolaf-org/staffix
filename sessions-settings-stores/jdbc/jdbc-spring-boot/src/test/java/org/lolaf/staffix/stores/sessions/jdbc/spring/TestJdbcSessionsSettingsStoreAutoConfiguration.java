@@ -51,6 +51,14 @@ class TestJdbcSessionsSettingsStoreAutoConfiguration {
     }
 
     @Test
+    void bindsTheEngineIdOverride() {
+        runner.withPropertyValues("staffix.sessions-settings-stores-jdbc.instances.MAIN.data-source-bean=dataSource",
+                        "staffix.sessions-settings-stores-jdbc.instances.MAIN.engine-id-override=pair")
+                .run(context -> assertThat(contribute(context.getBean(JdbcSessionsSettingsStoreContributor.class)).getEngineIdOverride())
+                        .isEqualTo("pair"));
+    }
+
+    @Test
     void requiresTheDataSourceBean() {
         runner.withPropertyValues("staffix.sessions-settings-stores-jdbc.instances.MAIN.table-prefix=desk")
                 .run(context -> assertThatThrownBy(() -> contribute(context.getBean(JdbcSessionsSettingsStoreContributor.class)))
