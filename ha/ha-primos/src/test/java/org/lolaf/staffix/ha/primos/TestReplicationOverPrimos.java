@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
@@ -86,6 +87,11 @@ class TestReplicationOverPrimos {
 
         @Override
         public List<FixSessionSettings> getFixSessionsSettings() {
+            return List.of();
+        }
+
+        @Override
+        public List<FixSessionsSettingsStore> getFixSessionsSettingsStores() {
             return List.of();
         }
 

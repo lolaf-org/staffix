@@ -34,6 +34,7 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
@@ -268,6 +269,11 @@ class TestReplicationAllocation {
             @Override
             public List<FixSessionSettings> getFixSessionsSettings() {
                 return List.of(settings);
+            }
+
+            @Override
+            public List<FixSessionsSettingsStore> getFixSessionsSettingsStores() {
+                return List.of();
             }
 
             @Override

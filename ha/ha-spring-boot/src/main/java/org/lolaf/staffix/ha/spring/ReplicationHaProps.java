@@ -21,7 +21,9 @@ import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -111,6 +113,17 @@ public class ReplicationHaProps {
      * Set it, to the lane count typically, with a durable follower store or {@code SYNC_RECEIVED} sessions.
      */
     private Integer followerStoreWriterThreads;
+
+    /**
+     * False stops the leader changing the follower's session settings stores: they are only compared. Unset replicates.
+     */
+    private Boolean sessionSettingsReplicated;
+
+    /**
+     * Instance ids of the session settings stores the leader replicates to the follower; empty replicates every store
+     * that can be. The others are only compared. Change a replicated store through the leader only.
+     */
+    private List<String> replicatedSettingsStores = new ArrayList<>();
 
     /**
      * How a follower's store writer thread waits for what to write; unset keeps backing off. {@code busy-spin} writes at

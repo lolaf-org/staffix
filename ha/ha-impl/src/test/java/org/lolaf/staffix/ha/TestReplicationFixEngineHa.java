@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.ha.follower.RecordingEngine;
 import org.lolaf.staffix.ha.follower.RecordingMeters;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
@@ -34,10 +35,13 @@ import org.lolaf.staffix.ha.follower.RecordingProbes;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.awaitility.Awaitility.await;
 
@@ -595,6 +599,49 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         unknown.bind(new RecordingEngine());
 
         assertThatThrownBy(unknown::start).hasMessageContaining("No monitoring manager elsewhere");
+    }
+
+    @Test
+    void namingASettingsStoreTheEngineDoesNotHaveIsRefused() {
+        assertThatThrownBy(naming("absent", new RecordingEngine())::start)
+                .hasMessageContaining("absent").hasMessageContaining("not a session settings store");
+    }
+
+    @Test
+    void namingASettingsStoreWithoutAStorageIdentityIsRefused() {
+        RecordingEngine engine = new RecordingEngine();
+        engine.settingsStores.add(settingsStore("memory", Optional.empty()));
+
+        assertThatThrownBy(naming("memory", engine)::start)
+                .hasMessageContaining("memory").hasMessageContaining("cannot be replicated");
+    }
+
+    @Test
+    void aSettingsStoreWithAStorageIdentityCanBeNamed() {
+        RecordingEngine engine = new RecordingEngine();
+        engine.settingsStores.add(settingsStore("files", Optional.of("file:1")));
+        ReplicationFixEngineHa ha = naming("files", engine);
+
+        ha.start();
+
+        assertThat(ha.isStarted()).isTrue();
+        ha.stop(Deadline.of(Duration.ofSeconds(2)));
+    }
+
+    private ReplicationFixEngineHa naming(String settingsStore, RecordingEngine engine) {
+        ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
+                .nodeId("a").peer("a", addressA).replicatedSettingsStore(settingsStore)
+                .leaderElection(FakeLeaderElection.Settings.builder().election(new FakeLeaderElection()).build())
+                .build());
+        ha.bind(engine);
+        return ha;
+    }
+
+    private static FixSessionsSettingsStore settingsStore(String instanceId, Optional<String> storageIdentity) {
+        FixSessionsSettingsStore store = mock(FixSessionsSettingsStore.class);
+        when(store.getInstanceId()).thenReturn(instanceId);
+        when(store.getStorageIdentity()).thenReturn(storageIdentity);
+        return store;
     }
 
     @Test

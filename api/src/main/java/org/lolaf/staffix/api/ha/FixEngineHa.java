@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
 
@@ -72,6 +73,11 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
          * The settings of every session the engine manages now.
          */
         List<FixSessionSettings> getFixSessionsSettings();
+
+        /**
+         * Every session settings store of the engine, started.
+         */
+        List<FixSessionsSettingsStore> getFixSessionsSettingsStores();
 
         /**
          * Visits what {@link #getFixSessionsSettings()} lists without copying it. Sessions cannot be added or changed

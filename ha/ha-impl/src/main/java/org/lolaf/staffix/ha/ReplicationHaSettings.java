@@ -30,6 +30,7 @@ import org.lolaf.staffix.api.ha.LeaderElectionSettings;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -94,6 +95,20 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Singular
     private final Map<String, InetSocketAddress> peers;
+
+    /**
+     * False stops the leader changing the follower's session settings stores: they are only compared.
+     */
+    @Builder.Default
+    private final boolean sessionSettingsReplicated = true;
+
+    /**
+     * Instance ids of the session settings stores the leader replicates to the follower; empty replicates every store
+     * that can be, those with a storage identity. The others are only compared. Change a replicated store through the
+     * leader only.
+     */
+    @Singular
+    private final List<String> replicatedSettingsStores;
 
     /**
      * How long a follower waits between two attempts to connect to its leader.

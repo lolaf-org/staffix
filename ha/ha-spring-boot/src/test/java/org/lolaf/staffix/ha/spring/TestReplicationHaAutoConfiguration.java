@@ -97,12 +97,16 @@ class TestReplicationHaAutoConfiguration {
                         "staffix.ha-replication.sync-ack-idle-strategy=busy-spin",
                         "staffix.ha-replication.select-strategy=busy-spin",
                         "staffix.ha-replication.follower-store-writer-idle-strategy=busy-spin",
-                        "staffix.ha-replication.follower-store-writer-threads=2")
+                        "staffix.ha-replication.follower-store-writer-threads=2",
+                        "staffix.ha-replication.replicated-settings-stores=files,rows",
+                        "staffix.ha-replication.session-settings-replicated=false")
                 .run(context -> {
                     ReplicationHaSettings settings = contribute(context.getBean(ReplicationHaContributor.class));
 
                     assertThat(settings.getFollowerStoreWriterIdleStrategy().get()).isInstanceOf(BusySpinIdleStrategy.class);
                     assertThat(settings.getFollowerStoreWriterThreads()).isEqualTo(2);
+                    assertThat(settings.getReplicatedSettingsStores()).containsExactly("files", "rows");
+                    assertThat(settings.isSessionSettingsReplicated()).isFalse();
                     assertThat(settings.getSenderIdleStrategy().get()).isInstanceOf(BusySpinIdleStrategy.class);
                     assertThat(settings.getSyncAckIdleStrategy().get()).isInstanceOf(BusySpinIdleStrategy.class);
                     assertThat(settings.getSelectStrategy().get()).isInstanceOf(IdleStrategySelectStrategy.class);

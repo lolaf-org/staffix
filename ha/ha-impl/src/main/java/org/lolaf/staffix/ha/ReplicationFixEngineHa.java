@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.follower.ReplicaSessions;
@@ -227,6 +228,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             throw new IllegalStateException("Replication high availability peers " + settings.getPeers().keySet()
                     + " have no address for this node, " + settings.getNodeId());
         }
+        requireReplicableSettingsStores();
         election = settings.getLeaderElection().instance();
         if (settings.getMonitoringInstanceId() != null) {
             HaMeters.Timers timers = HaMeters.register(engine.monitoring(settings.getMonitoringInstanceId()), this, stats);
@@ -343,6 +345,20 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         startServer(electionEpoch);
         engine.activate();
         roleChanged(Role.LEADER, electionEpoch, null);
+    }
+
+    private void requireReplicableSettingsStores() {
+        for (String instanceId : settings.getReplicatedSettingsStores()) {
+            FixSessionsSettingsStore store = engine.getFixSessionsSettingsStores().stream()
+                    .filter(candidate -> candidate.getInstanceId().equals(instanceId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("replicatedSettingsStores names " + instanceId
+                            + ", which is not a session settings store of this engine"));
+            if (store.getStorageIdentity().isEmpty()) {
+                throw new IllegalStateException("replicatedSettingsStores names " + instanceId + ", which cannot be replicated:"
+                        + " it cannot tell whether it shares its storage with the other node, or holds its sessions in memory only");
+            }
+        }
     }
 
     void startServer(long electionEpoch) {

@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
@@ -54,6 +55,12 @@ public final class RecordingEngine implements EngineAccess {
      * Activations and deactivations, each with the number of stores open at the time.
      */
     public final List<String> activity = new CopyOnWriteArrayList<>();
+    public final List<FixSessionsSettingsStore> settingsStores = new CopyOnWriteArrayList<>();
+
+    @Override
+    public List<FixSessionsSettingsStore> getFixSessionsSettingsStores() {
+        return settingsStores;
+    }
 
     public static FixSessionSettings session(String name, FixSessionType type) {
         return FixSessionSettings.builder()

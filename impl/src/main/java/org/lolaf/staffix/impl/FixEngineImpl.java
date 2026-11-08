@@ -877,6 +877,11 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         }
 
         @Override
+        public List<FixSessionsSettingsStore> getFixSessionsSettingsStores() {
+            return fixSessionsSettingsStores;
+        }
+
+        @Override
         public void forEachFixSessionSettings(Consumer<FixSessionSettings> action) {
             for (FixSessionAdminControl control : sessionAdminControls) {
                 control.forEachManagedFixSessionSettings(action);
