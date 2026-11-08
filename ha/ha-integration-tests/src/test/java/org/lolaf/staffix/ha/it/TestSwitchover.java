@@ -34,6 +34,9 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
@@ -44,15 +47,20 @@ import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.stores.messages.file.FileMessageStoreSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessagesStore;
+import org.lolaf.staffix.stores.sessions.file.FileSessionsSettingsStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.TestPorts;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -82,6 +90,9 @@ class TestSwitchover {
     private FixSessionId counterpartySession;
     private boolean sharedStorage;
     private boolean followerMissesTheSession;
+    private boolean fileSettingsStores;
+    private boolean sharedSettingsDirectory;
+    private boolean sessionSettingsReplicated = true;
     private Duration switchoverTimeout = Duration.ofSeconds(30);
     private Duration followerStallTimeout = Duration.ofSeconds(10);
     private HoldableStore followerStore;
@@ -200,8 +211,9 @@ class TestSwitchover {
         }
         FixEngine engine = start(engine(nodeId, echo, settings[0], storeOf(nodeId))
                 .clearFixSessionsSettingsStores()
-                .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSettings(List.of(settings)).build())
+                .fixSessionsSettingsStore(settingsStoreOf(nodeId, settings))
                 .highAvailability(ReplicationHaSettings.builder()
+                        .sessionSettingsReplicated(sessionSettingsReplicated)
                         .nodeId(nodeId)
                         .peer("a", replicationA)
                         .peer("b", replicationB)
@@ -221,6 +233,137 @@ class TestSwitchover {
             b = ha;
         }
         return engine;
+    }
+
+    private FixSessionsSettingsStoreSettings settingsStoreOf(String nodeId, FixSessionSettings... settings) {
+        if (!fileSettingsStores) {
+            return MemorySessionsSettingsStoreSettings.builder().fixSessionSettings(List.of(settings)).build();
+        }
+        FileSessionsSettingsStoreSettings fileStore = FileSessionsSettingsStoreSettings.builder()
+                .fixSessionSettingsDirectory(settingsDirectory(nodeId)).build();
+        FixSessionsSettingsStore seeding = fileStore.instance();
+        seeding.start();
+        for (FixSessionSettings session : settings) {
+            if (seeding.find(session.getFixSessionId(), session.getFixSessionType()).isEmpty()) {
+                seeding.add(session);
+            }
+        }
+        seeding.stop(Deadline.of(Duration.ofSeconds(5)));
+        return fileStore;
+    }
+
+    private File settingsDirectory(String nodeId) {
+        return storageDirectory.resolve(sharedSettingsDirectory ? "settings" : "settings-" + nodeId).toFile();
+    }
+
+    private static FixSessionSettings addedSession(FixSessionSettings settings) {
+        return settings.toBuilder().fixSessionId(FixSessionId.of("added", FixRegularVersion.VERSION_44, "ADDED", "CLIENT")).build();
+    }
+
+    private FixSessionsSettingsStore leaderSettings() {
+        return leader.getFixSessionsSettingsStores().get(0);
+    }
+
+    private FixSessionsSettingsStore followerSettings() {
+        return follower.getFixSessionsSettingsStores().get(0);
+    }
+
+    private void awaitNoSettingsDifference() {
+        await().untilAsserted(() -> assertThat(b.getStatus().getSessionSettingsDifferences()).isEmpty());
+    }
+
+    private String settingsFile(String nodeId, FixSessionSettings settings) throws IOException {
+        return Files.readString(new File(settingsDirectory(nodeId), settings.getFixSessionId().forFileName(".yaml")).toPath());
+    }
+
+    @org.junit.jupiter.api.Test
+    void aSessionAddedAndChangedOnTheLeaderReachesTheFollower() {
+        fileSettingsStores = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        awaitNoSettingsDifference();
+        FixSessionSettings added = addedSession(leaderSettings().getSettings().iterator().next());
+
+        leaderSettings().add(added);
+
+        await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isPresent());
+        FixSessionSettings changed = added.toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(77)).build();
+        leaderSettings().update(changed);
+
+        await().untilAsserted(() -> assertThat(followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).orElseThrow()
+                .getLogInOrOutResponseTimeout()).isEqualTo(Duration.ofSeconds(77)));
+        awaitNoSettingsDifference();
+        await().untilAsserted(() -> assertThat(a.getSessionStatuses()).hasSize(2).allMatch(HaSessionStatus::isInSync));
+    }
+
+    @org.junit.jupiter.api.Test
+    void aSessionAddedWhileTheFollowerWasDownReachesItWhenItReturns() {
+        fileSettingsStores = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        FixSessionSettings added = addedSession(leaderSettings().getSettings().iterator().next());
+        follower.stop(Deadline.of(Duration.ofSeconds(5)));
+
+        leaderSettings().add(added);
+        follower = startFollower.get();
+
+        await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isPresent());
+        awaitNoSettingsDifference();
+    }
+
+    @org.junit.jupiter.api.Test
+    void aPlaceholderReachesTheFollowerAsAnExpressionAndNeverAsItsValue() throws IOException {
+        String property = "staffix.test.ha.settings.timeout";
+        String expression = "${sysprop:" + property + "}";
+        System.setProperty(property, "PT45S");
+        try {
+            fileSettingsStores = true;
+            startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+            FixSessionSettings added = addedSession(leaderSettings().getSettings().iterator().next()).toBuilder()
+                    .logInOrOutResponseTimeout(Duration.ofSeconds(45))
+                    .placeholders(Map.of("/logInOrOutResponseTimeout", expression))
+                    .build();
+
+            leaderSettings().add(added);
+
+            await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isPresent());
+            assertThat(settingsFile("b", added)).contains(expression).doesNotContain("PT45S");
+            assertThat(followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).orElseThrow().getLogInOrOutResponseTimeout())
+                    .isEqualTo(Duration.ofSeconds(45));
+            awaitNoSettingsDifference();
+        } finally {
+            System.clearProperty(property);
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void withSessionSettingsNotReplicatedADifferenceIsOnlyReported() {
+        fileSettingsStores = true;
+        sessionSettingsReplicated = false;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        FixSessionSettings added = addedSession(leaderSettings().getSettings().iterator().next());
+
+        leaderSettings().add(added);
+
+        await().untilAsserted(() -> assertThat(b.getStatus().getSessionSettingsDifferences()).singleElement()
+                .satisfies(difference -> assertThat(difference.getKind()).isEqualTo(HaStatus.SessionSettingsDifference.Kind.MISSING_HERE)));
+        assertThat(followerSettings().find(added.getFixSessionId(), added.getFixSessionType())).isEmpty();
+    }
+
+    @org.junit.jupiter.api.Test
+    void aFollowerSharingTheLeadersSettingsDirectoryPicksUpAChangeWithoutWritingIt() throws IOException {
+        fileSettingsStores = true;
+        sharedSettingsDirectory = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        awaitNoSettingsDifference();
+        FixSessionSettings added = addedSession(leaderSettings().getSettings().iterator().next());
+
+        leaderSettings().add(added);
+
+        await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isPresent());
+        awaitNoSettingsDifference();
+        File file = new File(settingsDirectory("a"), added.getFixSessionId().forFileName(".yaml"));
+        long writtenByTheLeaderAt = file.lastModified();
+        assertThat(settingsFile("a", added)).contains("ADDED");
+        await().during(Duration.ofMillis(300)).until(() -> file.lastModified() == writtenByTheLeaderAt);
     }
 
     private FixMessagesStoreSettings storeOf(String nodeId) {

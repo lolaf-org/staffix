@@ -476,7 +476,8 @@ public final class FollowerConnection implements FrameHandler {
         List<SessionSettingsDigests.Digest> digests = published.getDigests();
         for (; nextDigest < digests.size(); nextDigest++) {
             SessionSettingsDigests.Digest digest = digests.get(nextDigest);
-            if (dst.limit() - filled < FrameEncoder.bytesWith(FrameType.SESSION_SETTINGS_DIGEST, digest.getStore(), digest.getFixSessionId(), digest.getValue())) {
+            if (dst.limit() - filled < FrameEncoder.bytesWith(FrameType.SESSION_SETTINGS_DIGEST, digest.getStore(), digest.getFixSessionId(),
+                    digest.getValue(), digest.getStoreIdentity(), digest.getDocument())) {
                 return filled - index;
             }
             filled += FrameEncoder.sessionSettingsDigest(dst, filled, currentEpoch, sendingDigestsGeneration, digest);

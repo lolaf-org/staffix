@@ -16,7 +16,7 @@
 package org.lolaf.staffix.ha.follower;
 
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.Value;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
@@ -29,19 +29,30 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * How this node's session settings differ from the leader's, as of the leader's last digests and this node's stores now.
  */
-@RequiredArgsConstructor
 public final class SessionSettingsComparison {
 
     private final EngineAccess engine;
-    private final Map<DigestKey, String> receiving = new HashMap<>();
+    private final SessionSettingsApplier applier;
+    private final Map<DigestKey, Digest> receiving = new HashMap<>();
     private int receivingGeneration;
-    private @Nullable Map<DigestKey, String> leaders;
+    private @Nullable Map<DigestKey, Digest> leaders;
+    /**
+     * Where the leader's documents are applied: a store write must not hold up the lane's network thread.
+     */
+    @Setter
+    private Consumer<Runnable> applyExecutor = Runnable::run;
     @Getter
     private volatile List<SessionSettingsDifference> differences = List.of();
+
+    SessionSettingsComparison(EngineAccess engine) {
+        this.engine = engine;
+        this.applier = new SessionSettingsApplier(engine);
+    }
 
     private static DigestKey key(Digest digest) {
         return new DigestKey(digest.getStore(), digest.getFixSessionType(), digest.getFixSessionId());
@@ -57,7 +68,7 @@ public final class SessionSettingsComparison {
             receivingGeneration = generation;
             receiving.clear();
         }
-        receiving.put(key(digest), digest.getValue());
+        receiving.put(key(digest), digest);
     }
 
     synchronized void onDigestsComplete(int generation, int count) {
@@ -68,7 +79,18 @@ public final class SessionSettingsComparison {
         if (receiving.size() == count) {
             leaders = new HashMap<>(receiving);
             compare();
+            List<Digest> received = List.copyOf(receiving.values());
+            applyExecutor.accept(() -> applyIfStillFollowing(received));
         }
+    }
+
+    private void applyIfStillFollowing(List<Digest> received) {
+        synchronized (this) {
+            if (leaders == null) {
+                return;
+            }
+        }
+        applier.apply(received);
     }
 
     /**
@@ -81,11 +103,11 @@ public final class SessionSettingsComparison {
         Map<DigestKey, String> own = new HashMap<>();
         SessionSettingsDigests.of(engine.getFixSessionsSettingsStores()).forEach(digest -> own.put(key(digest), digest.getValue()));
         List<SessionSettingsDifference> found = new ArrayList<>();
-        leaders.forEach((key, value) -> {
+        leaders.forEach((key, digest) -> {
             String here = own.get(key);
             if (here == null) {
                 found.add(difference(key, SessionSettingsDifference.Kind.MISSING_HERE));
-            } else if (!here.equals(value)) {
+            } else if (!here.equals(digest.getValue())) {
                 found.add(difference(key, SessionSettingsDifference.Kind.DIFFERENT));
             }
         });

@@ -119,7 +119,10 @@ public class FrameEncoder {
         byte[] store = utf8(digest.getStore());
         byte[] id = utf8(digest.getFixSessionId());
         byte[] value = utf8(digest.getValue());
-        int length = header(out, index, FrameType.SESSION_SETTINGS_DIGEST, 0, epoch, store.length + id.length + value.length);
+        byte[] identity = utf8(digest.getStoreIdentity());
+        byte[] document = utf8(digest.getDocument());
+        int length = header(out, index, FrameType.SESSION_SETTINGS_DIGEST, 0, epoch,
+                store.length + id.length + value.length + identity.length + document.length);
         int p = index + HEADER_BYTES;
         out.putInt(p, generation);
         out.put(p + 4, digest.getFixSessionType().getCode());
@@ -127,9 +130,14 @@ public class FrameEncoder {
         out.putShort(p + 6, (short) store.length);
         out.putShort(p + 8, (short) id.length);
         out.putShort(p + 10, (short) value.length);
-        putBytes(out, p + 12, store);
-        putBytes(out, p + 12 + store.length, id);
-        putBytes(out, p + 12 + store.length + id.length, value);
+        out.putShort(p + 12, (short) identity.length);
+        out.putShort(p + 14, (short) document.length);
+        int variable = p + 16;
+        putBytes(out, variable, store);
+        putBytes(out, variable += store.length, id);
+        putBytes(out, variable += id.length, value);
+        putBytes(out, variable += value.length, identity);
+        putBytes(out, variable + identity.length, document);
         return length;
     }
 

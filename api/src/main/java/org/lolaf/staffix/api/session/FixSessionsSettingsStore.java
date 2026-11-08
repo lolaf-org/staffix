@@ -105,6 +105,14 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
     boolean isPersistent();
 
     /**
+     * What resolves the placeholders of this store's sessions, so settings it did not read itself can be resolved alike.
+     * Empty means the {@linkplain ConfigValueResolverChain#defaultChain() default chain}.
+     */
+    default List<ConfigValueResolver> getConfigValueResolvers() {
+        return List.of();
+    }
+
+    /**
      * Tells apart the data this store reads: two stores with equal identities see the same sessions, so a change made
      * through one is already in the other.
      *

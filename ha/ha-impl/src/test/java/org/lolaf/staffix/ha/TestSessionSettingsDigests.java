@@ -73,7 +73,7 @@ class TestSessionSettingsDigests {
         SessionSettingsDigests digests = new SessionSettingsDigests();
 
         assertThat(digests.getPublished().getGeneration()).isZero();
-        digests.publish(List.of());
+        digests.publish(List.of(), store -> true);
         assertThat(digests.getPublished().getGeneration()).isEqualTo(1);
     }
 }

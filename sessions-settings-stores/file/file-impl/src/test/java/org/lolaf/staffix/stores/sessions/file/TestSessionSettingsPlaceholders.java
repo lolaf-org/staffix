@@ -384,6 +384,20 @@ class TestSessionSettingsPlaceholders {
     }
 
     @Test
+    void anUpdateWritesBackToTheFileTheSessionWasReadFrom() throws IOException {
+        writeSession("PLAIN", "PT30S");
+        FileFixSessionsSettingsStore store = store(List.of());
+        store.start();
+        FixSessionSettings held = store.getSettings().iterator().next();
+
+        store.update(held.toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(31)).build());
+
+        assertThat(new File(tempDir, "session1.yaml")).content().contains("PT31S");
+        assertThat(new File(tempDir, held.getFixSessionId().forFileName(".yaml"))).doesNotExist();
+        assertThat(store(List.of()).load()).hasSize(1);
+    }
+
+    @Test
     void aDirectoryIsItsStorageIdentityAndAUriListHasNone() throws IOException {
         writeSession("PLAIN", "PT30S");
         FileFixSessionsSettingsStore store = store(List.of());
@@ -426,7 +440,8 @@ class TestSessionSettingsPlaceholders {
     }
 
     private String writtenFile(FixSessionSettings settings) throws IOException {
-        File file = new File(tempDir, settings.getFixSessionId().forFileName(".yaml"));
+        File named = new File(tempDir, settings.getFixSessionId().forFileName(".yaml"));
+        File file = named.exists() ? named : new File(tempDir, "session1.yaml");
         return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
     }
 

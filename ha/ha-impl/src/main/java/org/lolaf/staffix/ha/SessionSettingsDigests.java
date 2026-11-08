@@ -17,9 +17,11 @@ package org.lolaf.staffix.ha;
 
 import lombok.Getter;
 import lombok.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
+import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentCodec;
 
 import java.nio.charset.StandardCharsets;
@@ -28,12 +30,14 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * The leader's session settings as digests, for its follower to compare with its own. Taken on each session's document
  * with its placeholders unresolved, so two nodes resolving one differently agree.
  */
 @Getter
+@Slf4j
 public final class SessionSettingsDigests {
 
     /**
@@ -44,14 +48,28 @@ public final class SessionSettingsDigests {
     private volatile Published published = new Published(0, List.of());
 
     public static List<Digest> of(List<FixSessionsSettingsStore> stores) {
+        return of(stores, store -> false);
+    }
+
+    private static List<Digest> of(List<FixSessionsSettingsStore> stores, Predicate<FixSessionsSettingsStore> replicated) {
         List<Digest> digests = new ArrayList<>();
         for (FixSessionsSettingsStore store : stores) {
+            String identity = replicated.test(store) ? store.getStorageIdentity().orElse("") : "";
             for (FixSessionSettings settings : store.getSettings()) {
+                String json = FixSessionSettingsDocumentCodec.toCanonicalUnresolvedJson(settings);
                 digests.add(new Digest(store.getInstanceId(), settings.getFixSessionType(), settings.getFixSessionId().toString(),
-                        sha256(FixSessionSettingsDocumentCodec.toCanonicalUnresolvedJson(settings))));
+                        sha256(json), identity, identity.isEmpty() ? "" : sendable(settings, json)));
             }
         }
         return digests;
+    }
+
+    private static String sendable(FixSessionSettings settings, String json) {
+        if (json.getBytes(StandardCharsets.UTF_8).length <= WireFormat.MAX_STRING_BYTES) {
+            return json;
+        }
+        log.warn("The settings of FIX session {} are too long to replicate, they are only compared", settings.getFixSessionId());
+        return "";
     }
 
     private static String sha256(String text) {
@@ -64,9 +82,11 @@ public final class SessionSettingsDigests {
 
     /**
      * Each call is a new generation, sent to the followers even if nothing differs.
+     *
+     * @param replicated the stores whose documents go with their digests; the others are only compared
      */
-    synchronized void publish(List<FixSessionsSettingsStore> stores) {
-        published = new Published(published.getGeneration() + 1, of(stores));
+    synchronized void publish(List<FixSessionsSettingsStore> stores, Predicate<FixSessionsSettingsStore> replicated) {
+        published = new Published(published.getGeneration() + 1, of(stores, replicated));
     }
 
     @Value
@@ -75,6 +95,14 @@ public final class SessionSettingsDigests {
         FixSessionType fixSessionType;
         String fixSessionId;
         String value;
+        /**
+         * Empty unless {@link #document} is sent.
+         */
+        String storeIdentity;
+        /**
+         * The session's document with its placeholders as expressions; empty for a store only compared.
+         */
+        String document;
     }
 
     @Value

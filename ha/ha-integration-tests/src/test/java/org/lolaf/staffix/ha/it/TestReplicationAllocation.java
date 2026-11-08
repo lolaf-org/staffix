@@ -277,6 +277,16 @@ class TestReplicationAllocation {
             }
 
             @Override
+            public void applySessionSettings(String storeInstanceId, FixSessionSettings settings) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public void reloadSessionSettings(String storeInstanceId) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
             public Clock getClock() {
                 return new TestingClock();
             }

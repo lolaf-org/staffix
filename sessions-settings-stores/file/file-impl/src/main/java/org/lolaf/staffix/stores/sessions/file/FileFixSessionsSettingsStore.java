@@ -38,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -59,12 +60,15 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     private final String instanceId;
     private final File directory;
     private final List<URI> uris;
-    /**
-     * A directory-backed store writes; a URI-backed one has nowhere to write to.
-     */
     private final boolean savable;
     private final ObjectMapper mapper;
     private final FixSessionSettingsDocumentCodec codec;
+    @Getter
+    private final List<ConfigValueResolver> configValueResolvers;
+    /**
+     * The file each session was read from, named as the operator chose: writing elsewhere would leave two files for it.
+     */
+    private final Map<FixSessionId, File> files;
 
     private volatile String storageIdentity;
 
@@ -82,7 +86,9 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         }
         this.savable = directory != null;
         this.mapper = newMapper();
-        this.codec = new FixSessionSettingsDocumentCodec(mapper, settings.getConfigValueResolvers());
+        this.files = new ConcurrentHashMap<>();
+        this.configValueResolvers = settings.getConfigValueResolvers();
+        this.codec = new FixSessionSettingsDocumentCodec(mapper, configValueResolvers);
     }
 
     // Package-private so tests exercise the exact same mapper configuration (module registrations, strict
@@ -153,7 +159,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         File[] files = directory.listFiles((dir, name) -> name.endsWith(FILE_EXTENSION) && !name.equals(DEFAULT_FILE_NAME));
         List<SettingsSource> sources = files == null ? Collections.emptyList()
                 : Arrays.stream(files)
-                .map(file -> new SettingsSource(file.getPath(), () -> readRetaining(file)))
+                .map(file -> new SettingsSource(file.getPath(), () -> readRetaining(file), file))
                 .collect(Collectors.toList());
         return load(sources, readDefaults());
     }
@@ -165,7 +171,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     private Set<FixSessionSettings> loadFromUris() {
         List<SettingsSource> sources = uris.stream()
                 .filter(uri -> !isDefaults(uri))
-                .map(uri -> new SettingsSource(uri.toString(), () -> readRetaining(uri)))
+                .map(uri -> new SettingsSource(uri.toString(), () -> readRetaining(uri), null))
                 .collect(Collectors.toList());
         return load(sources, readUriDefaults());
     }
@@ -184,6 +190,9 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         if (clash != null) {
             throw new IllegalStateException("FIX session " + settings.getFixSessionId()
                     + " is defined by two sources: " + clash + " and " + source.getName());
+        }
+        if (source.getFile() != null) {
+            files.put(settings.getFixSessionId(), source.getFile());
         }
         log.info("Loaded FixSessionSettings {} from {}", settings.getFixSessionId(), source.getName());
         return settings;
@@ -253,7 +262,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     }
 
     private File fileFor(FixSessionSettings settings) {
-        return new File(directory, settings.getFixSessionId().forFileName(FILE_EXTENSION));
+        return files.getOrDefault(settings.getFixSessionId(), new File(directory, settings.getFixSessionId().forFileName(FILE_EXTENSION)));
     }
 
     @Override
@@ -271,6 +280,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         if (file.exists() && !file.delete()) {
             throw new IllegalStateException("Unable to delete FIX session settings file " + file);
         }
+        files.remove(settings.getFixSessionId());
     }
 
     /**
@@ -310,6 +320,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     private static final class SettingsSource {
         private final String name;
         private final Supplier<ReadDocument> read;
+        private final File file;
     }
 
     public static class FileStoreFactoryImpl implements FixSessionsSettingsStoreSettings.FixSessionsStoreFactory<FileSessionsSettingsStoreSettings> {

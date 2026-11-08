@@ -882,6 +882,31 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         }
 
         @Override
+        public void applySessionSettings(String storeInstanceId, FixSessionSettings settings) {
+            FixSessionsSettingsStore store = store(storeInstanceId);
+            validate(settings);
+            requireResolvableComponents(settings);
+            synchronized (store) {
+                Optional<FixSessionSettings> current = store.find(settings.getFixSessionId(), settings.getFixSessionType());
+                if (current.isEmpty()) {
+                    requireUnusedName(settings.getFixSessionId(), null);
+                    store.add(settings);
+                } else if (settings.getPlaceholders().keySet().containsAll(current.get().getPlaceholders().keySet())) {
+                    store.update(settings);
+                } else {
+                    // an update keeps the expression of a placeholder it does not mention, here one the leader dropped
+                    store.remove(current.get());
+                    store.add(settings);
+                }
+            }
+        }
+
+        @Override
+        public void reloadSessionSettings(String storeInstanceId) {
+            reloadFixSessionsSettingsStore(storeInstanceId);
+        }
+
+        @Override
         public void forEachFixSessionSettings(Consumer<FixSessionSettings> action) {
             for (FixSessionAdminControl control : sessionAdminControls) {
                 control.forEachManagedFixSessionSettings(action);

@@ -149,12 +149,17 @@ public class FrameDecoder {
         int storeLength = unsignedShort(in, p + 6);
         int idLength = unsignedShort(in, p + 8);
         int digestLength = unsignedShort(in, p + 10);
-        checkVariableBytes(FrameType.SESSION_SETTINGS_DIGEST, storeLength + idLength + digestLength, variableBytes);
-        handler.onSessionSettingsDigest(epoch, in.getInt(p), new SessionSettingsDigests.Digest(
-                new String(bytes(in, p + 12, storeLength), StandardCharsets.UTF_8),
-                fixSessionType(in.get(p + 4)),
-                new String(bytes(in, p + 12 + storeLength, idLength), StandardCharsets.UTF_8),
-                new String(bytes(in, p + 12 + storeLength + idLength, digestLength), StandardCharsets.UTF_8)));
+        int identityLength = unsignedShort(in, p + 12);
+        int documentLength = unsignedShort(in, p + 14);
+        checkVariableBytes(FrameType.SESSION_SETTINGS_DIGEST, storeLength + idLength + digestLength + identityLength + documentLength, variableBytes);
+        int variable = p + 16;
+        String store = new String(bytes(in, variable, storeLength), StandardCharsets.UTF_8);
+        String id = new String(bytes(in, variable += storeLength, idLength), StandardCharsets.UTF_8);
+        String digest = new String(bytes(in, variable += idLength, digestLength), StandardCharsets.UTF_8);
+        String identity = new String(bytes(in, variable += digestLength, identityLength), StandardCharsets.UTF_8);
+        String document = new String(bytes(in, variable + identityLength, documentLength), StandardCharsets.UTF_8);
+        handler.onSessionSettingsDigest(epoch, in.getInt(p),
+                new SessionSettingsDigests.Digest(store, fixSessionType(in.get(p + 4)), id, digest, identity, document));
     }
 
     private static void decodeSessionAnswer(ByteBuffer in, int p, long epoch, FrameHandler handler) {

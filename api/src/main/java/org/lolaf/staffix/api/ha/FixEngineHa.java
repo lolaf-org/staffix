@@ -80,6 +80,18 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
         List<FixSessionsSettingsStore> getFixSessionsSettingsStores();
 
         /**
+         * Adds the session to the store, or makes it the given settings, placeholders included.
+         *
+         * @throws IllegalArgumentException if the engine refuses the settings, as it would an admin change
+         */
+        void applySessionSettings(String storeInstanceId, FixSessionSettings settings);
+
+        /**
+         * Applies what the store's backing source now holds.
+         */
+        void reloadSessionSettings(String storeInstanceId);
+
+        /**
          * Visits what {@link #getFixSessionsSettings()} lists without copying it. Sessions cannot be added or changed
          * while {@code action} runs, so it must be short.
          */

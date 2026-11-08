@@ -78,6 +78,16 @@ final class PostProcessingSessionsSettingsStore implements FixSessionsSettingsSt
     }
 
     @Override
+    public Optional<String> getStorageIdentity() {
+        return delegate.getStorageIdentity();
+    }
+
+    @Override
+    public List<ConfigValueResolver> getConfigValueResolvers() {
+        return delegate.getConfigValueResolvers();
+    }
+
+    @Override
     public boolean isPersistent() {
         return delegate.isPersistent();
     }

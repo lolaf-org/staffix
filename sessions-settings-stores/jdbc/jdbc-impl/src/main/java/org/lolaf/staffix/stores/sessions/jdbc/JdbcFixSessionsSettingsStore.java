@@ -57,6 +57,8 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     private final Map<FixSessionId, Long> versions = new ConcurrentHashMap<>();
     private JdbcStorageIdentity storageIdentity;
     private final FixSessionSettingsDocumentCodec codec;
+    @Getter
+    private final List<ConfigValueResolver> configValueResolvers;
     private final @Nullable String engineIdOverride;
     /**
      * What the last {@link #load()} read: the engine applies it back through add and update, which must then adopt
@@ -76,7 +78,8 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         this.instanceId = settings.getInstanceId();
         this.engineIdOverride = settings.getEngineIdOverride();
         this.dataSource = Objects.requireNonNull(settings.getDataSource(), "dataSource");
-        this.codec = new FixSessionSettingsDocumentCodec(mapper, settings.getConfigValueResolvers());
+        this.configValueResolvers = settings.getConfigValueResolvers();
+        this.codec = new FixSessionSettingsDocumentCodec(mapper, configValueResolvers);
         this.tableName = settings.getTablePrefix().isEmpty()
                 ? "fix_sessions_settings"
                 : settings.getTablePrefix() + "_fix_sessions_settings";

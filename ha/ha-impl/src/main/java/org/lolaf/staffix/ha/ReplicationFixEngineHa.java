@@ -140,6 +140,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     public void bind(EngineAccess engine) {
         this.engine = engine;
         this.replicaSessions = new ReplicaSessions(engine);
+        replicaSessions.getSettingsComparison().setApplyExecutor(this::onRoleThread);
         replicaSessions.setReceivedWriteLatency(receivedWriteLatency);
         this.stats = new ReplicationStats(new SlowFollowers(settings.getSlowFollowerHoldOff(), engine.getClock()));
     }
@@ -356,7 +357,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     }
 
     private void settingsChanged() {
-        sessions.getSettingsDigests().publish(engine.getFixSessionsSettingsStores());
+        sessions.getSettingsDigests().publish(engine.getFixSessionsSettingsStores(), this::isReplicated);
         replicaSessions.getSettingsComparison().compare();
     }
 
@@ -477,6 +478,19 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         @Override
         public FixEngineHa newInstance(ReplicationHaSettings settings) {
             return new ReplicationFixEngineHa(settings);
+        }
+    }
+
+    private boolean isReplicated(FixSessionsSettingsStore store) {
+        return settings.isSessionSettingsReplicated() && store.getStorageIdentity().isPresent()
+                && (settings.getReplicatedSettingsStores().isEmpty() || settings.getReplicatedSettingsStores().contains(store.getInstanceId()));
+    }
+
+    private void onRoleThread(Runnable task) {
+        try {
+            roleThread.execute(task);
+        } catch (RejectedExecutionException e) {
+            log.debug("Stopped before applying the leader's session settings");
         }
     }
 

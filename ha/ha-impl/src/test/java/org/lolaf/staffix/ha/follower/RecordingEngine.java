@@ -62,6 +62,16 @@ public final class RecordingEngine implements EngineAccess {
         return settingsStores;
     }
 
+    @Override
+    public void applySessionSettings(String storeInstanceId, FixSessionSettings settings) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void reloadSessionSettings(String storeInstanceId) {
+        throw new UnsupportedOperationException();
+    }
+
     public static FixSessionSettings session(String name, FixSessionType type) {
         return FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
