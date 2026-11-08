@@ -1182,7 +1182,7 @@ components:
     HaNodeStatus:
       type: object
       required: [nodeId, role, epoch, leadershipValid, leaderElectionType, transferLeadershipSupported, candidacySupported,
-        candidate, followerConnections, droppedFollowers]
+        candidate, followerConnections, droppedFollowers, sessionSettingsDifferences]
       properties:
         nodeId:
           type: string
@@ -1235,6 +1235,11 @@ components:
           description: While this node leads, the followers it dropped as too slow and not back in sync since.
           items:
             $ref: '#/components/schemas/HaDroppedFollower'
+        sessionSettingsDifferences:
+          type: array
+          description: While this node follows, how its session settings differ from the leader's.
+          items:
+            $ref: '#/components/schemas/HaSessionSettingsDifference'
         leader:
           $ref: '#/components/schemas/HaLeader'
     HaFollowerConnection:
@@ -1270,6 +1275,21 @@ components:
           description: >-
             How long the follower has been behind a write it has not applied yet, 0 when caught up. It grows while the
             follower is stalled, which inSync, as of its last ack, does not show.
+    HaSessionSettingsDifference:
+      type: object
+      required: [store, fixSessionType, fixSessionId, kind]
+      properties:
+        store:
+          type: string
+          description: The instance id of the session settings store.
+        fixSessionType:
+          type: string
+          enum: [INITIATOR, ACCEPTOR]
+        fixSessionId:
+          type: string
+        kind:
+          type: string
+          enum: [MISSING_HERE, EXTRA_HERE, DIFFERENT]
     HaDroppedFollower:
       type: object
       description: >-

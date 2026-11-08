@@ -19,6 +19,7 @@ import lombok.Builder;
 import lombok.Singular;
 import lombok.Value;
 import org.jspecify.annotations.NullMarked;
+import org.lolaf.staffix.api.session.FixSession;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 
@@ -93,6 +94,11 @@ public class HaStatus {
     @Singular
     List<DroppedFollower> droppedFollowers;
     /**
+     * While this node follows: how its session settings differ from the leader's, as a failover runs its own.
+     */
+    @Singular
+    List<SessionSettingsDifference> sessionSettingsDifferences;
+    /**
      * This node's leader, over all its lanes, while it follows one.
      */
     @Nullable Leader leader;
@@ -156,6 +162,23 @@ public class HaStatus {
          * connect.
          */
         @Nullable Instant heldOffUntil;
+    }
+
+    /**
+     * A session whose settings are not the same on this node and on the leader.
+     */
+    @Value
+    @Builder
+    public static class SessionSettingsDifference {
+
+        String store;
+        FixSession.FixSessionType fixSessionType;
+        String fixSessionId;
+        Kind kind;
+
+        public enum Kind {
+            MISSING_HERE, EXTRA_HERE, DIFFERENT
+        }
     }
 
     /**

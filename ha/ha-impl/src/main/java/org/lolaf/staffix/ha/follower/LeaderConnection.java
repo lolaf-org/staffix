@@ -23,6 +23,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
@@ -180,6 +181,20 @@ public final class LeaderConnection implements FrameHandler {
             return;
         }
         sendSessionAnswer(sessionKey, replicaSessions.bind(sessionKey, fixSessionType, fixSessionId, replicationMode, storageIdentity));
+    }
+
+    @Override
+    public void onSessionSettingsDigest(long epoch, int generation, SessionSettingsDigests.Digest digest) {
+        if (acceptsFrame(epoch)) {
+            replicaSessions.getSettingsComparison().onDigest(generation, digest);
+        }
+    }
+
+    @Override
+    public void onSessionSettingsDigestsComplete(long epoch, int generation, int digestCount) {
+        if (acceptsFrame(epoch)) {
+            replicaSessions.getSettingsComparison().onDigestsComplete(generation, digestCount);
+        }
     }
 
     private void sendSessionAnswer(int sessionKey, SessionAnswer answer) {

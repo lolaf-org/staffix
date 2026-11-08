@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.wire;
 
+import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -60,6 +61,17 @@ public interface FrameHandler {
     default void onSession(long epoch, int sessionKey, FixSessionType fixSessionType, ReplicationMode replicationMode,
                    String fixSessionId, @Nullable String storageIdentity) {
         throw unexpected(FrameType.SESSION);
+    }
+
+    /**
+     * One session's settings digest, of the generation's list ended by {@link #onSessionSettingsDigestsComplete}.
+     */
+    default void onSessionSettingsDigest(long epoch, int generation, SessionSettingsDigests.Digest digest) {
+        throw unexpected(FrameType.SESSION_SETTINGS_DIGEST);
+    }
+
+    default void onSessionSettingsDigestsComplete(long epoch, int generation, int digestCount) {
+        throw unexpected(FrameType.SESSION_SETTINGS_DIGESTS_COMPLETE);
     }
 
     /**

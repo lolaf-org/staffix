@@ -596,6 +596,9 @@ class AdminApiEndpointsTest {
                 .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1)
                         .droppedAt(Instant.parse("2026-10-10T10:05:00Z"))
                         .heldOffUntil(Instant.parse("2026-10-10T10:05:02Z")).build())
+                .sessionSettingsDifference(HaStatus.SessionSettingsDifference.builder().store("files")
+                        .fixSessionType(FixSession.FixSessionType.ACCEPTOR).fixSessionId("s")
+                        .kind(HaStatus.SessionSettingsDifference.Kind.DIFFERENT).build())
                 .build());
         when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
                 .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
@@ -609,7 +612,8 @@ class AdminApiEndpointsTest {
                         + "\"followerConnections\":[{\"nodeId\":\"2\",\"lane\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
                         + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3}],"
                         + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"lane\":1,\"droppedAt\":\"2026-10-10T10:05:00Z\","
-                        + "\"heldOffUntil\":\"2026-10-10T10:05:02Z\"}]}");
+                        + "\"heldOffUntil\":\"2026-10-10T10:05:02Z\"}],"
+                        + "\"sessionSettingsDifferences\":[{\"store\":\"files\",\"fixSessionType\":\"ACCEPTOR\",\"fixSessionId\":\"s\",\"kind\":\"DIFFERENT\"}]}");
         assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
                         + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"lastSendUnacknowledged\":false,"

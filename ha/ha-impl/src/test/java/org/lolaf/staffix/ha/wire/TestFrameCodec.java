@@ -60,6 +60,20 @@ class TestFrameCodec {
     }
 
     @Test
+    void sessionSettingsDigestAndItsEnd() {
+        ByteBuffer buffer = buffer(false);
+        int digest = FrameEncoder.sessionSettingsDigest(buffer, 0, 7, 2,
+                new org.lolaf.staffix.ha.SessionSettingsDigests.Digest("files", FixSessionType.ACCEPTOR, "s", "abc"));
+        int end = FrameEncoder.sessionSettingsDigestsComplete(buffer, digest, 7, 2, 1);
+
+        decodeWhole(buffer, 0, digest);
+        decodeWhole(buffer, digest, end);
+
+        assertThat(handler.frames).containsExactly("SESSION_SETTINGS_DIGEST epoch=7 generation=2 store=files ACCEPTOR id=s value=abc",
+                "SESSION_SETTINGS_DIGESTS_COMPLETE epoch=7 generation=2 count=1");
+    }
+
+    @Test
     void welcome() {
         ByteBuffer buffer = buffer(false);
         int length = FrameEncoder.welcome(buffer, 0, 7, "node-a", WireFormat.NO_RESUME, 4);

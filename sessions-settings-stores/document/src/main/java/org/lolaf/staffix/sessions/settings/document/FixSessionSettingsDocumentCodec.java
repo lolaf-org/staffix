@@ -34,6 +34,8 @@ import java.util.Optional;
  */
 public final class FixSessionSettingsDocumentCodec {
 
+    private static final ObjectMapper JSON = FixSessionSettingsDocumentMapper.configure(new ObjectMapper());
+
     private final ObjectMapper mapper;
     private final ConfigValueResolverChain resolvers;
 
@@ -44,6 +46,14 @@ public final class FixSessionSettingsDocumentCodec {
     public FixSessionSettingsDocumentCodec(ObjectMapper mapper, List<ConfigValueResolver> resolvers) {
         this.mapper = mapper;
         this.resolvers = ConfigValueResolverChain.of(resolvers);
+    }
+
+    /**
+     * @return the settings' document with its placeholders as expressions, equal on two nodes resolving them differently
+     */
+    public static String toCanonicalUnresolvedJson(FixSessionSettings settings) {
+        JsonNode resolved = JSON.valueToTree(ToFixSessionSettingsDocumentTransformer.toDocument(settings));
+        return FixSessionSettingsDocumentMapper.toCanonicalJson(FixSessionSettingsPlaceholders.overlay(resolved, settings.getPlaceholders()));
     }
 
     /**

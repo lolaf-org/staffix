@@ -58,6 +58,8 @@ public final class ReplicaSessions {
     private final SessionBinder binder;
     private final LanePositions positions = new LanePositions();
     private volatile ReplicaSession[] sessionsByKey = new ReplicaSession[16];
+    @Getter
+    private final SessionSettingsComparison settingsComparison;
     /**
      * Times a read's store write after its events were acknowledged as received.
      */
@@ -67,6 +69,7 @@ public final class ReplicaSessions {
 
     public ReplicaSessions(EngineAccess engine) {
         this.engine = engine;
+        this.settingsComparison = new SessionSettingsComparison(engine);
         this.binder = new SessionBinder(engine);
     }
 

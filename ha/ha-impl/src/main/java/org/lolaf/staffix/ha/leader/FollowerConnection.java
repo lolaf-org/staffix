@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
+import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
 import org.lolaf.staffix.ha.wire.*;
@@ -33,6 +34,7 @@ import org.lolaf.staffix.ha.wire.*;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -129,6 +131,12 @@ public final class FollowerConnection implements FrameHandler {
      * The next session key to announce, every key below it announced; sender thread only.
      */
     private int nextToAnnounce;
+    /**
+     * The last generation of session settings digests sent whole, and how far the one being sent has gone; sender thread only.
+     */
+    private int sentDigestsGeneration;
+    private int sendingDigestsGeneration;
+    private int nextDigest;
     private long lastSendNanos;
     private long lastSentEventOffset = -1;
     /**
@@ -390,6 +398,7 @@ public final class FollowerConnection implements FrameHandler {
     int fillBatch(ByteBuffer dst) {
         lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getEventOffset(), appliedOffset);
         int filled = announceSessions(dst);
+        filled += fillSessionSettingsDigests(dst, filled);
         long currentEpoch = nodeEpoch.getAsLong();
         filledEventOffset = -1;
         while (state == State.STREAMING && dst.limit() - filled >= WireFormat.STORE_EVENT_BODY_OFFSET) {
@@ -448,6 +457,36 @@ public final class FollowerConnection implements FrameHandler {
             reannouncements.poll();
         }
         return filled;
+    }
+
+    /**
+     * On lane 0 only, as they concern the node and not a lane's sessions. Resumes on the next fill when they do not all fit.
+     */
+    private int fillSessionSettingsDigests(ByteBuffer dst, int index) {
+        SessionSettingsDigests.Published published = sessions.getSettingsDigests().getPublished();
+        if (lane != 0 || published.getGeneration() == sentDigestsGeneration) {
+            return 0;
+        }
+        if (published.getGeneration() != sendingDigestsGeneration) {
+            sendingDigestsGeneration = published.getGeneration();
+            nextDigest = 0;
+        }
+        long currentEpoch = nodeEpoch.getAsLong();
+        int filled = index;
+        List<SessionSettingsDigests.Digest> digests = published.getDigests();
+        for (; nextDigest < digests.size(); nextDigest++) {
+            SessionSettingsDigests.Digest digest = digests.get(nextDigest);
+            if (dst.limit() - filled < FrameEncoder.bytesWith(FrameType.SESSION_SETTINGS_DIGEST, digest.getStore(), digest.getFixSessionId(), digest.getValue())) {
+                return filled - index;
+            }
+            filled += FrameEncoder.sessionSettingsDigest(dst, filled, currentEpoch, sendingDigestsGeneration, digest);
+        }
+        if (dst.limit() - filled < FrameEncoder.fixedBytes(FrameType.SESSION_SETTINGS_DIGESTS_COMPLETE)) {
+            return filled - index;
+        }
+        filled += FrameEncoder.sessionSettingsDigestsComplete(dst, filled, currentEpoch, sendingDigestsGeneration, digests.size());
+        sentDigestsGeneration = sendingDigestsGeneration;
+        return filled - index;
     }
 
     /**

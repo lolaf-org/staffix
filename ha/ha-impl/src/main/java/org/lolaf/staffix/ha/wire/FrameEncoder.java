@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.wire;
 
+import org.lolaf.staffix.ha.SessionSettingsDigests;
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
@@ -111,6 +112,31 @@ public class FrameEncoder {
         out.putShort(p + 8, (short) identity.length);
         putBytes(out, p + 10, id);
         putBytes(out, p + 10 + id.length, identity);
+        return length;
+    }
+
+    public static int sessionSettingsDigest(ByteBuffer out, int index, long epoch, int generation, SessionSettingsDigests.Digest digest) {
+        byte[] store = utf8(digest.getStore());
+        byte[] id = utf8(digest.getFixSessionId());
+        byte[] value = utf8(digest.getValue());
+        int length = header(out, index, FrameType.SESSION_SETTINGS_DIGEST, 0, epoch, store.length + id.length + value.length);
+        int p = index + HEADER_BYTES;
+        out.putInt(p, generation);
+        out.put(p + 4, digest.getFixSessionType().getCode());
+        out.put(p + 5, (byte) 0);
+        out.putShort(p + 6, (short) store.length);
+        out.putShort(p + 8, (short) id.length);
+        out.putShort(p + 10, (short) value.length);
+        putBytes(out, p + 12, store);
+        putBytes(out, p + 12 + store.length, id);
+        putBytes(out, p + 12 + store.length + id.length, value);
+        return length;
+    }
+
+    public static int sessionSettingsDigestsComplete(ByteBuffer out, int index, long epoch, int generation, int digestCount) {
+        int length = header(out, index, FrameType.SESSION_SETTINGS_DIGESTS_COMPLETE, 0, epoch, 0);
+        out.putInt(index + HEADER_BYTES, generation);
+        out.putInt(index + HEADER_BYTES + 4, digestCount);
         return length;
     }
 

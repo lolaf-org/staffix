@@ -48,6 +48,7 @@ class HaProbes {
     static final String FOLLOWERS = "ha-followers";
     static final String LEADER_CONNECTION = "ha-leader-connection";
     static final String LEADERSHIP = "ha-leadership";
+    static final String SESSION_SETTINGS = "ha-session-settings";
     static final String REPLICATION = "ha-replication";
 
     /**
@@ -70,6 +71,8 @@ class HaProbes {
                 + " replicated session in full, as a failover to it needs.", leaderConnectionEvaluator(ha));
         replace(probes, LEADERSHIP, "Whether this node knows its role: without one it neither runs the sessions nor"
                 + " replicates them.", leadershipEvaluator(ha));
+        replace(probes, SESSION_SETTINGS, "While following: whether this node's session settings are the leader's, as a failover"
+                + " runs the sessions from this node's own.", sessionSettingsEvaluator(ha));
     }
 
     private static void replace(Probes probes, String name, String description, ProbeEvaluator evaluator) {
@@ -157,6 +160,18 @@ class HaProbes {
             }
             return client.isInSync() ? Optional.empty()
                     : Optional.of(Alert.warning("Connected to the leader, but not holding every replicated session in full"));
+        };
+    }
+
+    static ProbeEvaluator sessionSettingsEvaluator(ReplicationFixEngineHa ha) {
+        return () -> {
+            List<HaStatus.SessionSettingsDifference> differences = ha.getReplicaSessions().getSettingsComparison().getDifferences();
+            if (differences.isEmpty()) {
+                return Optional.empty();
+            }
+            HaStatus.SessionSettingsDifference first = differences.get(0);
+            return Optional.of(Alert.warning(differences.size() + " session(s) differ from the leader's settings, first "
+                    + first.getFixSessionId() + " in store " + first.getStore() + ": " + first.getKind()));
         };
     }
 

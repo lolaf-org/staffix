@@ -336,7 +336,7 @@ storage that cannot be identified is refused too, rather than risk it.
   `SYNC` sends that went out unacknowledged, snapshots, followers dropped as too slow, and the acknowledgement round
   trip per follower and lane; see
   [Monitoring](monitoring.md).
-- **Probes**: the node's (`ha-followers`, `ha-leader-connection`, `ha-leadership`) and each replicated session's
+- **Probes**: the node's (`ha-followers`, `ha-leader-connection`, `ha-leadership`, `ha-session-settings`) and each replicated session's
   (`ha-replication`); see [Alerting](alerting.md).
 - **Status**: `GET v1/ha` and `GET v1/ha/sessions` say who leads, whether the follower holds each session and how far
   behind it is, which followers were dropped as too slow and are not back in sync, and, on the follower, whether a

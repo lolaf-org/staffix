@@ -69,6 +69,9 @@ final class HaStatusReport {
         if (role == Role.FOLLOWER && client != null) {
             status.leader(client.getStatus());
         }
+        if (role == Role.FOLLOWER) {
+            status.sessionSettingsDifferences(ha.getReplicaSessions().getSettingsComparison().getDifferences());
+        }
         return status.build();
     }
 

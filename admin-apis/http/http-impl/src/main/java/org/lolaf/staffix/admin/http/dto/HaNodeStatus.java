@@ -55,12 +55,13 @@ public class HaNodeStatus {
     String monitoringInstanceId;
     List<HaStatus.FollowerConnection> followerConnections;
     List<HaStatus.DroppedFollower> droppedFollowers;
+    List<HaStatus.SessionSettingsDifference> sessionSettingsDifferences;
     HaStatus.Leader leader;
 
     public static HaNodeStatus of(HaStatus status) {
         return new HaNodeStatus(status.getNodeId(), status.getPairName(), status.getRole(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElectionType(),
                 status.getRoleSince(), status.isTransferLeadershipSupported(), status.isCandidacySupported(),
-                status.isCandidate(), status.getSwitchoverMaxDuration(), status.getMonitoringInstanceId(), status.getFollowerConnections(), status.getDroppedFollowers(), status.getLeader());
+                status.isCandidate(), status.getSwitchoverMaxDuration(), status.getMonitoringInstanceId(), status.getFollowerConnections(), status.getDroppedFollowers(), status.getSessionSettingsDifferences(), status.getLeader());
     }
 }

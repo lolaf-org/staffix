@@ -28,6 +28,7 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.ha.HaAdmin;
+import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
@@ -441,6 +442,30 @@ class TestSwitchover {
             assertThat(session.isInSync()).isTrue();
             assertThat(session.getNotReplicatedReason()).isNull();
         }));
+    }
+
+    @org.junit.jupiter.api.Test
+    void theFollowerReportsWhereItsSessionSettingsDifferFromTheLeadersAndStopsOnceTheyAgree() {
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        await().untilAsserted(() -> assertThat(b.getStatus().getSessionSettingsDifferences()).isEmpty());
+        FixSessionSettings settings = follower.getFixSessionsSettingsStores().get(0).getSettings().iterator().next();
+        FixSessionSettings changed = settings.toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(77)).build();
+
+        follower.getFixSessionsSettingsStores().get(0).update(changed);
+
+        await().untilAsserted(() -> assertThat(b.getStatus().getSessionSettingsDifferences()).singleElement()
+                .satisfies(difference -> assertThat(difference.getKind()).isEqualTo(HaStatus.SessionSettingsDifference.Kind.DIFFERENT)));
+
+        leader.getFixSessionsSettingsStores().get(0).update(changed.toBuilder().restartLiveSessionOnUpdate(false).build());
+        follower.getFixSessionsSettingsStores().get(0).update(changed.toBuilder().restartLiveSessionOnUpdate(false).build());
+
+        await().untilAsserted(() -> assertThat(b.getStatus().getSessionSettingsDifferences()).isEmpty());
+
+        FixSessionSettings extra = settings.toBuilder().fixSessionId(FixSessionId.of("extra", FixRegularVersion.VERSION_44, "EXTRA", "CLIENT")).build();
+        leader.getFixSessionsSettingsStores().get(0).add(extra);
+
+        await().untilAsserted(() -> assertThat(b.getStatus().getSessionSettingsDifferences()).singleElement()
+                .satisfies(difference -> assertThat(difference.getKind()).isEqualTo(HaStatus.SessionSettingsDifference.Kind.MISSING_HERE)));
     }
 
     /**

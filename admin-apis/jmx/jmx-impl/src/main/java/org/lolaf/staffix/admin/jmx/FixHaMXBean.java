@@ -92,6 +92,8 @@ public interface FixHaMXBean {
 
         List<DroppedFollower> getDroppedFollowers();
 
+        List<SessionSettingsDifference> getSessionSettingsDifferences();
+
         Leader getLeader();
     }
 
@@ -127,6 +129,20 @@ public interface FixHaMXBean {
         String getDroppedAt();
 
         String getHeldOffUntil();
+    }
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaStatus.SessionSettingsDifference}.
+     */
+    interface SessionSettingsDifference {
+
+        String getStore();
+
+        String getFixSessionType();
+
+        String getFixSessionId();
+
+        String getKind();
     }
 
     interface Leader {

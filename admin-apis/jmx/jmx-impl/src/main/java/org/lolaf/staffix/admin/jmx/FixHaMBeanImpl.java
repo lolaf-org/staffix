@@ -44,6 +44,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
                 status.isCandidate(),
                 status.getFollowerConnections().stream().map(FixHaMBeanImpl::followerConnection).collect(Collectors.toList()),
                 status.getDroppedFollowers().stream().map(FixHaMBeanImpl::droppedFollower).collect(Collectors.toList()),
+                status.getSessionSettingsDifferences().stream().map(FixHaMBeanImpl::sessionSettingsDifference).collect(Collectors.toList()),
                 status.getLeader() == null ? null : leader(status.getLeader()));
     }
 
@@ -91,6 +92,11 @@ public class FixHaMBeanImpl implements FixHaMXBean {
                 toStringOrNull(dropped.getHeldOffUntil()));
     }
 
+    private static SessionSettingsDifference sessionSettingsDifference(HaStatus.SessionSettingsDifference difference) {
+        return new SessionSettingsDifferenceImpl(difference.getStore(), difference.getFixSessionType().name(),
+                difference.getFixSessionId(), difference.getKind().name());
+    }
+
     private static Leader leader(HaStatus.Leader leader) {
         return new LeaderImpl(leader.getLeaderId(), leader.getAddress(), leader.isConnected(), leader.isInSync());
     }
@@ -124,7 +130,16 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         boolean candidate;
         List<FollowerConnection> followerConnections;
         List<DroppedFollower> droppedFollowers;
+        List<SessionSettingsDifference> sessionSettingsDifferences;
         Leader leader;
+    }
+
+    @Value
+    private static class SessionSettingsDifferenceImpl implements SessionSettingsDifference {
+        String store;
+        String fixSessionType;
+        String fixSessionId;
+        String kind;
     }
 
     @Value

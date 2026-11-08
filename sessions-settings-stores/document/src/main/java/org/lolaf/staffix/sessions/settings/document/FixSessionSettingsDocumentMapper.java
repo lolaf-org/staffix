@@ -17,9 +17,11 @@ package org.lolaf.staffix.sessions.settings.document;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
@@ -34,6 +36,21 @@ import java.net.InetAddress;
  */
 @UtilityClass
 public class FixSessionSettingsDocumentMapper {
+
+    private static final ObjectMapper CANONICAL = configure(new ObjectMapper()).enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+
+    /**
+     * Through maps, as a {@link JsonNode} keeps its keys in the order they were read whatever the mapper's features.
+     *
+     * @return the document as JSON with sorted keys, equal for two documents differing only by their formatting
+     */
+    public static String toCanonicalJson(JsonNode document) {
+        try {
+            return CANONICAL.writeValueAsString(CANONICAL.treeToValue(document, Object.class));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Unable to write a FIX session settings document", e);
+        }
+    }
 
     /**
      * @param mapper a mapper of the format to read and write, e.g. one built on a YAML factory

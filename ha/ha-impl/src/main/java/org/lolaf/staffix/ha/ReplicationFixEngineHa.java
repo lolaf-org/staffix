@@ -27,19 +27,24 @@ import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.follower.ReplicaSessions;
 import org.lolaf.staffix.ha.follower.ReplicationClient;
-import org.lolaf.staffix.ha.leader.*;
+import org.lolaf.staffix.ha.leader.Followers;
+import org.lolaf.staffix.ha.leader.ReplicationServer;
+import org.lolaf.staffix.ha.leader.ReplicationStats;
+import org.lolaf.staffix.ha.leader.SlowFollowers;
 import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.*;
 
 /**
@@ -67,15 +72,13 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final PromotionSeqNumJumps promotionJumps;
     private final HaStatusReport statusReport = new HaStatusReport(this);
     private final Switchover switchover = new Switchover(this);
+    private final FixSessionsSettingsStore.Listener settingsListener;
     private volatile ReplicationStats stats;
     private volatile EngineAccess engine;
     private volatile ReplicaSessions replicaSessions;
     private volatile LeaderElection election;
     private volatile ScheduledExecutorService roleThread;
     private @Nullable ScheduledFuture<?> leaseCheck;
-    /**
-     * The role this engine acts on, which trails the election's while it changes over.
-     */
     private volatile Role role = Role.UNKNOWN;
     /**
      * The election epoch {@link #role} was taken at, -1 while unknown. Written before {@code role}, so a reader of
@@ -94,6 +97,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         this.sessions = new ReplicatedSessions();
         this.followers = new Followers();
         this.promotionJumps = new PromotionSeqNumJumps(settings.getPromotionOutgoingSeqNumJump());
+        this.settingsListener = new SettingsListener();
     }
 
     @Override
@@ -229,6 +233,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                     + " have no address for this node, " + settings.getNodeId());
         }
         requireReplicableSettingsStores();
+        engine.getFixSessionsSettingsStores().forEach(store -> store.register(settingsListener));
+        settingsChanged();
         election = settings.getLeaderElection().instance();
         if (settings.getMonitoringInstanceId() != null) {
             HaMeters.Timers timers = HaMeters.register(engine.monitoring(settings.getMonitoringInstanceId()), this, stats);
@@ -259,6 +265,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     @Override
     protected void stopMe(Deadline stopDeadline) {
+        engine.getFixSessionsSettingsStores().forEach(store -> store.unregister(settingsListener));
         roleThread.shutdownNow();
         try {
             if (!roleThread.awaitTermination(Math.max(1, stopDeadline.getRemainingTime().toMillis()), TimeUnit.MILLISECONDS)) {
@@ -328,6 +335,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (role == Role.LEADER && roleEpoch == electionEpoch) {
             return;
         }
+        replicaSessions.getSettingsComparison().clear();
         Deadline deadline = Deadline.of(ROLE_CHANGE_DEADLINE);
         if (role == Role.LEADER) {
             engine.deactivate();
@@ -345,6 +353,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         startServer(electionEpoch);
         engine.activate();
         roleChanged(Role.LEADER, electionEpoch, null);
+    }
+
+    private void settingsChanged() {
+        sessions.getSettingsDigests().publish(engine.getFixSessionsSettingsStores());
+        replicaSessions.getSettingsComparison().compare();
     }
 
     private void requireReplicableSettingsStores() {
@@ -464,6 +477,24 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         @Override
         public FixEngineHa newInstance(ReplicationHaSettings settings) {
             return new ReplicationFixEngineHa(settings);
+        }
+    }
+
+    private final class SettingsListener implements FixSessionsSettingsStore.Listener {
+
+        @Override
+        public void onAddedSession(FixSessionSettings settings) {
+            settingsChanged();
+        }
+
+        @Override
+        public void onRemovedSession(FixSessionSettings settings) {
+            settingsChanged();
+        }
+
+        @Override
+        public void onUpdatedSession(FixSessionSettings oldSettings, FixSessionSettings newSettings) {
+            settingsChanged();
         }
     }
 }

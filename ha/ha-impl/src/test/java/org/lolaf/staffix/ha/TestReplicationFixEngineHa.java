@@ -451,7 +451,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         a.start();
 
         assertThat(a.engine.probes.list()).extracting(Probe::getName)
-                .containsExactlyInAnyOrder(HaProbes.FOLLOWERS, HaProbes.LEADER_CONNECTION, HaProbes.LEADERSHIP);
+                .containsExactlyInAnyOrder(HaProbes.FOLLOWERS, HaProbes.LEADER_CONNECTION, HaProbes.LEADERSHIP, HaProbes.SESSION_SETTINGS);
         assertThat(a.engine.probes.active.getAsBoolean()).isTrue();
         assertThat(a.sessionProbes.list()).extracting(Probe::getName).containsExactly(HaProbes.REPLICATION);
 
@@ -460,7 +460,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
         assertThat(a.engine.probes.active.getAsBoolean()).isFalse();
         a.start();
-        assertThat(a.engine.probes.list()).as("replaced on restart").hasSize(3);
+        assertThat(a.engine.probes.list()).as("replaced on restart").hasSize(4);
     }
 
     @Test

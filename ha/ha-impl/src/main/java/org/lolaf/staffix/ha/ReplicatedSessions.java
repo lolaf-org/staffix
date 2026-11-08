@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha;
 
+import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -33,6 +34,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * restarts that rebuild a session. Keys are dense from 0, in the order sessions were first registered.
  */
 public final class ReplicatedSessions {
+
+    /**
+     * Carried here as every connection already has the sessions it announces.
+     */
+    @Getter
+    private final SessionSettingsDigests settingsDigests = new SessionSettingsDigests();
 
     /**
      * By type first, as one id may be configured as an initiator and as an acceptor: two sessions.
