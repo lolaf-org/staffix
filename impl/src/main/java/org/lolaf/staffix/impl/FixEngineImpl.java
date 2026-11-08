@@ -393,30 +393,35 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     public void reloadFixSessionsSettingsStore(String instanceId) {
         FixSessionsSettingsStore store = store(instanceId);
         synchronized (store) {
-            // load() reads the backing source without mutating the store; we reconcile the difference here, keyed by
-            // FixSessionId, so that the store's add/remove/update fire the listener callbacks the sessions react to.
-            Set<FixSessionSettings> loaded = store.load();
-            loaded.forEach(this::validate);
-            requireUniqueNames(Stream.concat(fixSessionsSettingsStores.stream()
-                    .filter(other -> other != store)
-                    .flatMap(other -> other.getSettings().stream()), loaded.stream()));
-            loaded.forEach(settings -> requireNotABackupTarget(settings.getFixSessionId().getQualifiedName()));
-            Map<FixSessionId, FixSessionSettings> currentBySessionId = store.getSettings().stream()
-                    .collect(Collectors.toMap(FixSessionSettings::getFixSessionId, s -> s));
-            Set<FixSessionId> loadedSessionIds = new HashSet<>();
-            for (FixSessionSettings loadedSettings : loaded) {
-                loadedSessionIds.add(loadedSettings.getFixSessionId());
-                FixSessionSettings current = currentBySessionId.get(loadedSettings.getFixSessionId());
-                if (current == null) {
-                    store.add(loadedSettings);
-                } else if (!current.equals(loadedSettings)) {
-                    store.update(loadedSettings);
-                }
-            }
-            currentBySessionId.values().stream()
-                    .filter(current -> !loadedSessionIds.contains(current.getFixSessionId()))
-                    .forEach(store::remove);
+            reconcile(store, store.load());
         }
+    }
+
+    /**
+     * Makes the store's managed settings those wanted, through add, remove and update so that the listeners the
+     * sessions react with are notified.
+     */
+    private void reconcile(FixSessionsSettingsStore store, Set<FixSessionSettings> wanted) {
+        wanted.forEach(this::validate);
+        requireUniqueNames(Stream.concat(fixSessionsSettingsStores.stream()
+                .filter(other -> other != store)
+                .flatMap(other -> other.getSettings().stream()), wanted.stream()));
+        wanted.forEach(settings -> requireNotABackupTarget(settings.getFixSessionId().getQualifiedName()));
+        Map<FixSessionId, FixSessionSettings> currentBySessionId = store.getSettings().stream()
+                .collect(Collectors.toMap(FixSessionSettings::getFixSessionId, s -> s));
+        Set<FixSessionId> wantedSessionIds = new HashSet<>();
+        for (FixSessionSettings wantedSettings : wanted) {
+            wantedSessionIds.add(wantedSettings.getFixSessionId());
+            FixSessionSettings current = currentBySessionId.get(wantedSettings.getFixSessionId());
+            if (current == null) {
+                store.add(wantedSettings);
+            } else if (!current.equals(wantedSettings)) {
+                store.update(wantedSettings);
+            }
+        }
+        currentBySessionId.values().stream()
+                .filter(current -> !wantedSessionIds.contains(current.getFixSessionId()))
+                .forEach(store::remove);
     }
 
     @Override
