@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file;
+package org.lolaf.staffix.sessions.settings.document;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -38,7 +38,7 @@ import java.util.Iterator;
  * not read as an edit.
  */
 @UtilityClass
-final class YamlPlaceholderRestorer {
+final class DocumentPlaceholderRestorer {
 
     /**
      * @param raw      the file as it was read, placeholders intact
@@ -95,10 +95,10 @@ final class YamlPlaceholderRestorer {
     private static void requireUnchanged(JsonNode raw, JsonNode resolved, JsonNode written, String file,
                                          String path) {
         if (!resolved.asText().equals(written.asText())) {
+            // neither value is named: a placeholder may hold a secret, and this message reaches logs and admin clients
             throw new IllegalStateException("Refusing to write " + file + ": " + path + " is configured as "
-                    + raw.textValue() + ", which resolved to '" + resolved.asText() + "', but the value to"
-                    + " write is '" + written.asText() + "'. A value backed by a placeholder is owned by"
-                    + " its source and cannot be changed through the store.");
+                    + raw.textValue() + " and the value to write differs from what it resolved to. A value backed by a"
+                    + " placeholder is owned by its source and cannot be changed through the store.");
         }
     }
 

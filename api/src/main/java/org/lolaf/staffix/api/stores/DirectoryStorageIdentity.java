@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.messages.file;
+package org.lolaf.staffix.api.stores;
 
 import lombok.experimental.UtilityClass;
 
@@ -29,15 +29,15 @@ import java.util.UUID;
  * share for instance, read the same one.
  */
 @UtilityClass
-class DirectoryIdentity {
+public class DirectoryStorageIdentity {
 
-    static final String FILE_NAME = "staffix-storage-identity";
+    public static final String FILE_NAME = "staffix-storage-identity";
 
     /**
      * Creates the file the first time. It is written aside then linked in place, which fails if it exists, so two
      * engines starting together agree on one id and neither reads it half written.
      */
-    static String of(Path directory) throws IOException {
+    public static String of(Path directory) throws IOException {
         Path file = directory.resolve(FILE_NAME);
         if (!Files.exists(file)) {
             Path written = Files.createTempFile(directory, FILE_NAME, ".tmp");

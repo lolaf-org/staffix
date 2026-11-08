@@ -60,6 +60,14 @@ public class FixSessionSettings {
     @NonNull
     private FixSessionId fixSessionId;
     /**
+     * The {@code ${...}} expressions these resolved settings came from, by JSON pointer into the settings document, so
+     * a store can persist the expression and never the value it resolved to. Not part of equality: two nodes
+     * resolving differently compare by value, and settings built by hand have none.
+     */
+    @Builder.Default
+    @EqualsAndHashCode.Exclude
+    private Map<String, String> placeholders = Map.of();
+    /**
      * Whether these settings describe an initiator or an acceptor session. Required: the same {@link FixSessionId} may
      * be configured for both roles, so this distinguishes them (e.g. in {@link FixSessionsSettingsStore#find}).
      */

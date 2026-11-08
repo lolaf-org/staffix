@@ -37,7 +37,9 @@ import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
+import java.util.Map;
 import java.util.TimeZone;
+import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,6 +49,10 @@ abstract class AbstractJdbcFixSessionsSettingsStoreTest {
 
     private static final String ENGINE = "engine-a";
     private static final String STORE = "test";
+
+    private static final String PLACEHOLDER_PROPERTY = "staffix.test.jdbc.settings.timeout";
+    private static final String EXPRESSION = "${sysprop:" + PLACEHOLDER_PROPERTY + "}";
+    private static final String TIMEOUT_POINTER = "/logInOrOutResponseTimeout";
 
     private HikariDataSource dataSource;
 
@@ -76,6 +82,7 @@ abstract class AbstractJdbcFixSessionsSettingsStoreTest {
 
     @AfterEach
     void closeDataSource() {
+        System.clearProperty(PLACEHOLDER_PROPERTY);
         dataSource.close();
     }
 
@@ -104,6 +111,136 @@ abstract class AbstractJdbcFixSessionsSettingsStoreTest {
         JdbcFixSessionsSettingsStore store = newStore(ENGINE);
         store.start();
         return store;
+    }
+
+    @Test
+    void aRowHoldingAPlaceholderLoadsResolvedAndCarriesItsExpression() throws SQLException {
+        System.setProperty(PLACEHOLDER_PROPERTY, "PT45S");
+        startedStore().add(session("placeholder"));
+        setRowTimeout(EXPRESSION);
+
+        assertThat(startedStore().getSettings()).singleElement().satisfies(settings -> {
+            assertThat(settings.getLogInOrOutResponseTimeout()).isEqualTo(Duration.ofSeconds(45));
+            assertThat(settings.getPlaceholders()).containsEntry(TIMEOUT_POINTER, EXPRESSION);
+        });
+    }
+
+    @Test
+    void aRowsPlaceholderThatNothingResolvesFailsTheLoadNamingIt() throws SQLException {
+        startedStore().add(session("placeholder"));
+        setRowTimeout(EXPRESSION);
+
+        assertThatThrownBy(this::startedStore).hasMessageContaining(PLACEHOLDER_PROPERTY);
+    }
+
+    @Test
+    void settingsArrivingWithAPlaceholderStoreTheExpressionAndNeverTheValue() throws SQLException {
+        System.setProperty(PLACEHOLDER_PROPERTY, "PT45S");
+        JdbcFixSessionsSettingsStore store = startedStore();
+
+        store.add(withPlaceholder(session("placeholder", Duration.ofSeconds(45))));
+
+        assertThat(rowJson()).contains(EXPRESSION).doesNotContain("PT45S");
+        assertThat(store.getSettings()).singleElement()
+                .satisfies(settings -> assertThat(settings.getPlaceholders()).containsEntry(TIMEOUT_POINTER, EXPRESSION));
+        System.setProperty(PLACEHOLDER_PROPERTY, "PT50S");
+        assertThat(startedStore().getSettings()).singleElement()
+                .satisfies(settings -> assertThat(settings.getLogInOrOutResponseTimeout()).isEqualTo(Duration.ofSeconds(50)));
+    }
+
+    @Test
+    void anUpdateWithoutPlaceholdersKeepsTheExpressionWhileItsValueIsUnchanged() throws SQLException {
+        System.setProperty(PLACEHOLDER_PROPERTY, "PT45S");
+        JdbcFixSessionsSettingsStore store = startedStore();
+        store.add(withPlaceholder(session("placeholder", Duration.ofSeconds(45))));
+
+        store.update(session("placeholder", Duration.ofSeconds(45)).toBuilder().disconnectOnRemove(false).build());
+
+        assertThat(rowJson()).contains(EXPRESSION).doesNotContain("PT45S");
+    }
+
+    @Test
+    void changingTheValueOfAPlaceholderIsRefusedAndLeavesTheRowAsItWas() throws SQLException {
+        System.setProperty(PLACEHOLDER_PROPERTY, "PT45S");
+        JdbcFixSessionsSettingsStore store = startedStore();
+        store.add(withPlaceholder(session("placeholder", Duration.ofSeconds(45))));
+        String before = rowJson();
+
+        assertThatThrownBy(() -> store.update(session("placeholder", Duration.ofSeconds(99))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cannot be changed through the store")
+                .hasMessageNotContaining("PT45S")
+                .hasMessageNotContaining("PT1M39S");
+
+        assertThat(rowJson()).isEqualTo(before);
+        assertThat(store.getSettings()).singleElement()
+                .satisfies(settings -> assertThat(settings.getLogInOrOutResponseTimeout()).isEqualTo(Duration.ofSeconds(45)));
+    }
+
+    @Test
+    void anUpdateBringingANewExpressionReplacesTheOneHeld() throws SQLException {
+        System.setProperty(PLACEHOLDER_PROPERTY, "PT45S");
+        JdbcFixSessionsSettingsStore store = startedStore();
+        store.add(withPlaceholder(session("placeholder", Duration.ofSeconds(45))));
+        String other = "${sysprop:" + PLACEHOLDER_PROPERTY + ":PT45S}";
+
+        store.update(session("placeholder", Duration.ofSeconds(45)).toBuilder().placeholders(Map.of(TIMEOUT_POINTER, other)).build());
+
+        assertThat(rowJson()).contains(other);
+    }
+
+    @Test
+    void aReloadPicksUpAnExpressionRewrittenForTheSameValue() throws SQLException {
+        System.setProperty(PLACEHOLDER_PROPERTY, "PT45S");
+        JdbcFixSessionsSettingsStore store = startedStore();
+        store.add(withPlaceholder(session("placeholder", Duration.ofSeconds(45))));
+        String rewritten = "${sysprop:" + PLACEHOLDER_PROPERTY + ":PT45S}";
+        setRowTimeout(rewritten);
+
+        store.load();
+
+        assertThat(store.getSettings()).singleElement()
+                .satisfies(settings -> assertThat(settings.getPlaceholders()).containsEntry(TIMEOUT_POINTER, rewritten));
+    }
+
+    @Test
+    void aSessionWithoutPlaceholdersStoresItsValues() throws SQLException {
+        JdbcFixSessionsSettingsStore store = startedStore();
+
+        store.add(session("plain", Duration.ofSeconds(45)));
+
+        assertThat(rowJson()).contains("PT45S");
+        assertThat(store.load()).singleElement().satisfies(row -> assertThat(row.getPlaceholders()).isEmpty());
+    }
+
+    private static FixSessionSettings withPlaceholder(FixSessionSettings settings) {
+        return settings.toBuilder().placeholders(Map.of(TIMEOUT_POINTER, EXPRESSION)).build();
+    }
+
+    private String rowJson() throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT settings FROM fix_sessions_settings")) {
+            resultSet.next();
+            return resultSet.getString(1);
+        }
+    }
+
+    private void setRowTimeout(String timeout) throws SQLException {
+        String json = rowJson().replaceFirst("\"logInOrOutResponseTimeout\":\"[^\"]*\"",
+                Matcher.quoteReplacement("\"logInOrOutResponseTimeout\":\"" + timeout + "\""));
+        try (Connection connection = dataSource.getConnection();
+             var update = connection.prepareStatement("UPDATE fix_sessions_settings SET settings = ?")) {
+            update.setString(1, json);
+            update.executeUpdate();
+        }
+    }
+
+    @Test
+    void theStorageIdentityTellsEnginesAndStoresApart() {
+        assertThat(newStore(ENGINE).getStorageIdentity()).isPresent().isEqualTo(newStore(ENGINE).getStorageIdentity())
+                .isNotEqualTo(newStore("engine-b").getStorageIdentity())
+                .isNotEqualTo(newStore(ENGINE, "other").getStorageIdentity());
     }
 
     private static FixSessionSettings session(String name) {

@@ -20,6 +20,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.stores.DirectoryStorageIdentity;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
@@ -63,7 +64,7 @@ public class FileMessagesStore extends Startable.SimpleStartable<FixMessagesStor
             throw new IllegalArgumentException("Cannot create directory " + directory.getPath());
         }
         try {
-            storageIdentity = DirectoryIdentity.of(directory.toPath());
+            storageIdentity = DirectoryStorageIdentity.of(directory.toPath());
         } catch (IOException e) {
             throw new StartStopException("Cannot read the storage identity of " + directory.getPath(), e);
         }

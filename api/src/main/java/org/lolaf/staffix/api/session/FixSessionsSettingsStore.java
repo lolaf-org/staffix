@@ -15,10 +15,12 @@
  */
 package org.lolaf.staffix.api.session;
 
+import lombok.Value;
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Holds the {@link FixSessionSettings} the engine manages and acts as the bridge between an external configuration
@@ -103,6 +105,16 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
     boolean isPersistent();
 
     /**
+     * Tells apart the data this store reads: two stores with equal identities see the same sessions, so a change made
+     * through one is already in the other.
+     *
+     * @return empty when the store cannot tell
+     */
+    default Optional<String> getStorageIdentity() {
+        return Optional.empty();
+    }
+
+    /**
      * Called by the engine once, right after building the store and before {@link #start()}: a store several engines
      * share, such as a database, keeps each engine's sessions apart by it.
      *
@@ -166,6 +178,7 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
     abstract class AbstractFixSessionSettingsStore extends Startable.SimpleStartable<FixSessionsSettingsStore> implements FixSessionsSettingsStore {
 
         private final Set<Listener> listeners = new HashSet<>();
+        private final Map<HeldKey, FixSessionSettings> held = new ConcurrentHashMap<>();
         private String engineId;
 
         @Override
@@ -196,54 +209,97 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
             return listeners;
         }
 
-        /**
-         * Adds the given settings to the subclass storage. Invoked by {@link #add(FixSessionSettings)} before
-         * listeners are notified.
-         *
-         * @param settings the settings to add
-         */
-        public abstract void onAdd(FixSessionSettings settings);
+        @Override
+        public final Collection<FixSessionSettings> getSettings() {
+            return Collections.unmodifiableCollection(held.values());
+        }
 
         @Override
-        public void add(FixSessionSettings settings) {
-            onAdd(settings);
-            for (Listener l : List.copyOf(listeners)) {
-                l.onAddedSession(settings);
-            }
+        public final Optional<FixSessionSettings> find(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
+            return Optional.ofNullable(held.get(new HeldKey(fixSessionId, fixSessionType)));
         }
 
         /**
-         * Removes the given settings from the subclass storage. Invoked by {@link #remove(FixSessionSettings)} before
-         * listeners are notified.
-         *
-         * @param settings the settings to remove
+         * Adds to the managed settings without touching the backing source or notifying anyone, for what the store
+         * finds at start.
          */
-        public abstract void onRemove(FixSessionSettings settings);
+        protected final void hold(FixSessionSettings settings) {
+            held.put(HeldKey.of(settings), settings);
+        }
+
+        /**
+         * Persists new settings, where applicable.
+         *
+         * @return the settings to manage, which listeners are given
+         */
+        protected abstract FixSessionSettings onAdd(FixSessionSettings settings);
+
+        /**
+         * Deletes settings from the backing source, where applicable.
+         */
+        protected abstract void onRemove(FixSessionSettings settings);
+
+        /**
+         * Persists the replacement of the managed entry with the same id and type, where applicable.
+         *
+         * @return the settings to manage, which listeners are given
+         */
+        protected abstract FixSessionSettings onUpdate(FixSessionSettings settings);
+
+        /**
+         * Reads the backing source, without changing the managed settings or notifying anyone.
+         */
+        protected abstract Set<FixSessionSettings> onLoad();
+
+        @Override
+        public void add(FixSessionSettings settings) {
+            FixSessionSettings added = onAdd(settings);
+            hold(added);
+            for (Listener l : List.copyOf(listeners)) {
+                l.onAddedSession(added);
+            }
+        }
 
         @Override
         public void remove(FixSessionSettings settings) {
-            onRemove(settings);
+            if (settings.equals(held.get(HeldKey.of(settings)))) {
+                onRemove(settings);
+                held.remove(HeldKey.of(settings));
+            }
             for (Listener l : List.copyOf(listeners)) {
                 l.onRemovedSession(settings);
             }
         }
-
-        /**
-         * Replaces, in the subclass storage, the entry sharing the given settings' {@link FixSessionId}. Invoked by
-         * {@link #update(FixSessionSettings)} before listeners are notified.
-         *
-         * @param settings the new value, whose {@link FixSessionId} identifies the entry to replace
-         */
-        public abstract void onUpdate(FixSessionSettings settings);
 
         @Override
         public void update(FixSessionSettings settings) {
             FixSessionSettings oldSettings = find(settings.getFixSessionId(), settings.getFixSessionType())
                     .orElseThrow(() -> new IllegalArgumentException(
                             "Cannot update unknown FIX session settings " + settings.getFixSessionId()));
-            onUpdate(settings);
+            FixSessionSettings updated = onUpdate(settings);
+            hold(updated);
             for (Listener l : List.copyOf(listeners)) {
-                l.onUpdatedSession(oldSettings, settings);
+                l.onUpdatedSession(oldSettings, updated);
+            }
+        }
+
+        /**
+         * Equal settings are not reconciled, so what equality leaves out, their placeholders, is picked up here.
+         */
+        @Override
+        public Set<FixSessionSettings> load() {
+            Set<FixSessionSettings> loaded = onLoad();
+            loaded.forEach(settings -> held.computeIfPresent(HeldKey.of(settings), (key, current) -> current.equals(settings) ? settings : current));
+            return loaded;
+        }
+
+        @Value
+        private static class HeldKey {
+            FixSessionId fixSessionId;
+            FixSession.FixSessionType fixSessionType;
+
+            static HeldKey of(FixSessionSettings settings) {
+                return new HeldKey(settings.getFixSessionId(), settings.getFixSessionType());
             }
         }
 

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file;
+package org.lolaf.staffix.sessions.settings.document;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -26,19 +26,18 @@ import java.util.Iterator;
 import java.util.Map;
 
 /**
- * Replaces the placeholders in a parsed session file, before it is bound to
+ * Replaces the placeholders in a parsed session document, before it is bound to
  * {@link FixSessionSettingsDocument}.
  *
  * <p>On the tree rather than on the bound object, so a placeholder works in a field of any type: a
  * resolved {@code "PT30S"} or {@code "8080"} is still a string when Jackson binds it, and Jackson coerces
- * it to the field's type as it would any scalar. Only a quoted YAML scalar can hold one, so only textual
- * nodes are visited.
+ * it to the field's type as it would any scalar. Only a string can hold one, so only textual nodes are visited.
  *
  * <p>The tree it is given is left untouched - the caller keeps it to restore the placeholders when the
  * file is written back.
  */
 @UtilityClass
-final class YamlPlaceholderResolver {
+final class DocumentPlaceholderResolver {
 
     /**
      * @param raw   the file as parsed, which is not modified

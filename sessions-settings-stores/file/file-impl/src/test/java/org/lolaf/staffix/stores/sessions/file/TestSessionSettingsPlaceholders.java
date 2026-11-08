@@ -28,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -166,14 +167,17 @@ class TestSessionSettingsPlaceholders {
         writeSession("SENDER", "${sysprop:" + PROPERTY + "}");
 
         FileFixSessionsSettingsStore store = store(List.of());
-        FixSessionSettings loaded = store.load().iterator().next();
+        store.start();
+        FixSessionSettings loaded = store.getSettings().iterator().next();
 
-        assertThatThrownBy(() -> store.add(loaded.toBuilder()
+        assertThatThrownBy(() -> store.update(loaded.toBuilder()
                 .logInOrOutResponseTimeout(Duration.ofSeconds(99))
                 .build()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("logInOrOutResponseTimeout")
-                .hasMessageContaining("cannot be changed through the store");
+                .hasMessageContaining("cannot be changed through the store")
+                .hasMessageNotContaining("PT45S")
+                .hasMessageNotContaining("PT1M39S");
     }
 
     @Test
@@ -246,11 +250,10 @@ class TestSessionSettingsPlaceholders {
     }
 
     /**
-     * The defaults file is resolved but never retained, so its placeholder does not follow a merged value
-     * into a session file. {@code default.yaml} is only ever read, so it has nothing to round-trip.
+     * A resolved value must not reach the disk, even one a session inherits.
      */
     @Test
-    void doesNotLeakADefaultsPlaceholderIntoASessionFile() throws IOException {
+    void keepsADefaultsPlaceholderInASessionFile() throws IOException {
         System.setProperty(PROPERTY, "PT45S");
         writeDefaults("schemaVersion: 1\nlogInOrOutResponseTimeout: \"${sysprop:" + PROPERTY + "}\"\n");
         writeSessionWithoutTimeout("SENDER");
@@ -259,8 +262,7 @@ class TestSessionSettingsPlaceholders {
         FixSessionSettings loaded = store.load().iterator().next();
         store.add(loaded);
 
-        // PT45S rather than a value Jackson would normalise, e.g. PT77S written back as PT1M17S.
-        assertThat(writtenFile(loaded)).contains("PT45S").doesNotContain("${");
+        assertThat(writtenFile(loaded)).contains("${sysprop:" + PROPERTY + "}").doesNotContain("PT45S");
     }
 
     /**
@@ -291,8 +293,9 @@ class TestSessionSettingsPlaceholders {
         writeSessionWith("allowedAddresses:\n  - \"${sysprop:" + PROPERTY + "}\"\n  - \"10.0.0.2\"\n");
 
         FileFixSessionsSettingsStore store = store(List.of());
-        FixSessionSettings loaded = store.load().iterator().next();
-        store.add(loaded.toBuilder()
+        store.start();
+        FixSessionSettings loaded = store.getSettings().iterator().next();
+        store.update(loaded.toBuilder()
                 .allowedAddresses(List.of(loaded.getAllowedAddresses().get(0)))
                 .build());
 
@@ -322,6 +325,77 @@ class TestSessionSettingsPlaceholders {
         writeSession("literal-${not.a.property}", "PT30S");
 
         assertThatThrownBy(this::load).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void settingsCarryTheExpressionsTheyCameFrom() throws IOException {
+        System.setProperty(PROPERTY, "PT45S");
+        writeSession("PLAIN", "${sysprop:" + PROPERTY + "}");
+
+        assertThat(load()).singleElement().satisfies(s -> assertThat(s.getPlaceholders())
+                .containsOnlyKeys("/logInOrOutResponseTimeout")
+                .containsValue("${sysprop:" + PROPERTY + "}"));
+    }
+
+    @Test
+    void settingsArrivingWithPlaceholdersWriteTheExpressionAndNeverTheValue() throws IOException {
+        System.setProperty(PROPERTY, "PT45S");
+        writeSession("PLAIN", "${sysprop:" + PROPERTY + "}");
+        FixSessionSettings fromAnotherStore = load().iterator().next();
+        File otherDirectory = new File(tempDir, "other");
+        FileFixSessionsSettingsStore other = new FileFixSessionsSettingsStore.FileStoreFactoryImpl()
+                .newInstance(FileSessionsSettingsStoreSettings.builder().instanceId("test").fixSessionSettingsDirectory(otherDirectory).build());
+        other.start();
+
+        other.add(fromAnotherStore);
+
+        String written = new String(Files.readAllBytes(new File(otherDirectory, fromAnotherStore.getFixSessionId().forFileName(".yaml")).toPath()), StandardCharsets.UTF_8);
+        assertThat(written).contains("${sysprop:" + PROPERTY + "}").doesNotContain("PT45S");
+        assertThat(other.find(fromAnotherStore.getFixSessionId(), fromAnotherStore.getFixSessionType()).orElseThrow().getPlaceholders())
+                .isEqualTo(fromAnotherStore.getPlaceholders());
+    }
+
+    @Test
+    void anUpdateBringingANewExpressionReplacesTheOneHeld() throws IOException {
+        System.setProperty(PROPERTY, "PT45S");
+        writeSession("PLAIN", "${sysprop:" + PROPERTY + "}");
+        FileFixSessionsSettingsStore store = store(List.of());
+        store.start();
+        FixSessionSettings held = store.getSettings().iterator().next();
+        String other = "${sysprop:" + PROPERTY + ":PT45S}";
+
+        store.update(held.toBuilder().placeholders(Map.of("/logInOrOutResponseTimeout", other)).build());
+
+        assertThat(writtenFile(held)).contains(other);
+    }
+
+    @Test
+    void aReloadPicksUpAnExpressionRewrittenForTheSameValue() throws IOException {
+        System.setProperty(PROPERTY, "PT45S");
+        writeSession("PLAIN", "${sysprop:" + PROPERTY + "}");
+        FileFixSessionsSettingsStore store = store(List.of());
+        store.start();
+        String rewritten = "${sysprop:" + PROPERTY + ":PT45S}";
+        writeSession("PLAIN", rewritten);
+
+        store.load();
+
+        assertThat(store.getSettings()).singleElement().satisfies(s -> assertThat(s.getPlaceholders()).containsValue(rewritten));
+    }
+
+    @Test
+    void aDirectoryIsItsStorageIdentityAndAUriListHasNone() throws IOException {
+        writeSession("PLAIN", "PT30S");
+        FileFixSessionsSettingsStore store = store(List.of());
+        FileFixSessionsSettingsStore same = store(List.of());
+        store.start();
+        same.start();
+        FileFixSessionsSettingsStore uris = new FileFixSessionsSettingsStore.FileStoreFactoryImpl().newInstance(FileSessionsSettingsStoreSettings.builder()
+                .instanceId("test").fixSessionSettingsUris(List.of(new File(tempDir, "session1.yaml").toURI())).build());
+        uris.start();
+
+        assertThat(store.getStorageIdentity()).isPresent().isEqualTo(same.getStorageIdentity());
+        assertThat(uris.getStorageIdentity()).isEmpty();
     }
 
     private void writeSessionWith(String extraYaml) throws IOException {

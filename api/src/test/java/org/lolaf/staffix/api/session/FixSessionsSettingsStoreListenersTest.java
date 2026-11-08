@@ -19,9 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -150,34 +148,19 @@ class FixSessionsSettingsStoreListenersTest {
 
     private static class InMemoryStore extends FixSessionsSettingsStore.AbstractFixSessionSettingsStore {
 
-        private final List<FixSessionSettings> stored = new ArrayList<>();
-
         @Override
-        public void onAdd(FixSessionSettings settings) {
-            stored.add(settings);
+        protected FixSessionSettings onAdd(FixSessionSettings settings) {
+            return settings;
         }
 
         @Override
-        public void onRemove(FixSessionSettings settings) {
-            stored.remove(settings);
+        protected void onRemove(FixSessionSettings settings) {
+            // nothing but the managed settings
         }
 
         @Override
-        public void onUpdate(FixSessionSettings settings) {
-            stored.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
-            stored.add(settings);
-        }
-
-        @Override
-        public Collection<FixSessionSettings> getSettings() {
-            return List.copyOf(stored);
-        }
-
-        @Override
-        public Optional<FixSessionSettings> find(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
-            return stored.stream()
-                    .filter(s -> s.getFixSessionId().equals(fixSessionId) && s.getFixSessionType() == fixSessionType)
-                    .findFirst();
+        protected FixSessionSettings onUpdate(FixSessionSettings settings) {
+            return settings;
         }
 
         @Override
@@ -186,8 +169,8 @@ class FixSessionsSettingsStoreListenersTest {
         }
 
         @Override
-        public java.util.Set<FixSessionSettings> load() {
-            return new java.util.HashSet<>(stored);
+        protected java.util.Set<FixSessionSettings> onLoad() {
+            return new java.util.HashSet<>(getSettings());
         }
 
         @Override

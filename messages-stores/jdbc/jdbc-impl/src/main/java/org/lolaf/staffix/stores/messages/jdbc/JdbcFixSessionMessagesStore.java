@@ -25,6 +25,7 @@ import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
+import org.lolaf.staffix.api.stores.JdbcStorageIdentity;
 
 import javax.sql.DataSource;
 import java.io.InputStream;
@@ -83,7 +84,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private volatile boolean resetPending;
 
     JdbcFixSessionMessagesStore(JdbcMessageStoreSettings settings, FixSessionId fixSessionId, ScheduledExecutorService scheduledExecutorService) {
-        this(settings, fixSessionId, scheduledExecutorService, new JdbcStorageIdentity(settings));
+        this(settings, fixSessionId, scheduledExecutorService, new JdbcStorageIdentity(settings.getDataSource(), settings.getTablePrefix(), settings.getStorageIdentity()));
     }
 
     JdbcFixSessionMessagesStore(JdbcMessageStoreSettings settings, FixSessionId fixSessionId, ScheduledExecutorService scheduledExecutorService,

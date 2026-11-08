@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
+import org.lolaf.staffix.api.stores.JdbcStorageIdentity;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,7 +55,7 @@ public class JdbcMessagesStore extends Startable.SimpleStartable<FixMessagesStor
         }
         this.settings = settings;
         this.sessionStores = new ConcurrentHashMap<>();
-        this.storageIdentity = new JdbcStorageIdentity(settings);
+        this.storageIdentity = new JdbcStorageIdentity(settings.getDataSource(), settings.getTablePrefix(), settings.getStorageIdentity());
     }
 
     @Override

@@ -23,12 +23,10 @@ import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.*;
-import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocument;
+import org.lolaf.staffix.api.stores.JdbcStorageIdentity;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentCodec;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentCodec.WrittenDocument;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentMapper;
-import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentUpgrader;
-import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentValidator;
-import org.lolaf.staffix.sessions.settings.document.FromFixSessionSettingsDocumentTransformer;
-import org.lolaf.staffix.sessions.settings.document.ToFixSessionSettingsDocumentTransformer;
 
 import javax.sql.DataSource;
 import java.sql.*;
@@ -55,8 +53,9 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     private final DataSource dataSource;
     private final String tableName;
     private final ObjectMapper mapper = FixSessionSettingsDocumentMapper.configure(new ObjectMapper());
-    private final Set<FixSessionSettings> fixSessionSettings = ConcurrentHashMap.newKeySet();
     private final Map<FixSessionId, Long> versions = new ConcurrentHashMap<>();
+    private JdbcStorageIdentity storageIdentity;
+    private final FixSessionSettingsDocumentCodec codec;
     /**
      * What the last {@link #load()} read: the engine applies it back through add and update, which must then adopt
      * the row rather than write it, or the version check would refuse a change that came from the table itself. An
@@ -74,27 +73,16 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         }
         this.instanceId = settings.getInstanceId();
         this.dataSource = Objects.requireNonNull(settings.getDataSource(), "dataSource");
+        this.codec = new FixSessionSettingsDocumentCodec(mapper, settings.getConfigValueResolvers());
         this.tableName = settings.getTablePrefix().isEmpty()
                 ? "fix_sessions_settings"
                 : settings.getTablePrefix() + "_fix_sessions_settings";
     }
 
     @Override
-    public Collection<FixSessionSettings> getSettings() {
-        return fixSessionSettings;
-    }
-
-    @Override
-    public Optional<FixSessionSettings> find(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
-        return fixSessionSettings.stream()
-                .filter(s -> s.getFixSessionId().equals(fixSessionId) && s.getFixSessionType() == fixSessionType)
-                .findFirst();
-    }
-
-    @Override
     protected void startMe() throws StartStopException {
         for (Row row : readRows().values()) {
-            fixSessionSettings.add(row.getSettings());
+            hold(row.getSettings());
             versions.put(row.getSettings().getFixSessionId(), row.getVersion());
         }
     }
@@ -105,10 +93,14 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     }
 
     @Override
-    public Set<FixSessionSettings> load() {
+    protected Set<FixSessionSettings> onLoad() {
         Map<FixSessionId, Row> rows = readRows();
         lastLoaded.clear();
         lastLoaded.putAll(rows);
+        // an equal row is not reconciled, so its newer version would fail the next write
+        rows.values().forEach(row -> find(row.getSettings().getFixSessionId(), row.getSettings().getFixSessionType())
+                .filter(row.getSettings()::equals)
+                .ifPresent(held -> versions.put(held.getFixSessionId(), row.getVersion())));
         Set<FixSessionSettings> loaded = new HashSet<>();
         rows.values().forEach(row -> loaded.add(row.getSettings()));
         return loaded;
@@ -120,32 +112,44 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     }
 
     @Override
-    public void onAdd(FixSessionSettings settings) {
-        if (!adoptLoaded(settings)) {
-            insert(settings);
+    protected FixSessionSettings onAdd(FixSessionSettings settings) {
+        if (adoptLoaded(settings)) {
+            return settings;
         }
-        fixSessionSettings.add(settings);
+        WrittenDocument written = write(settings);
+        insert(settings, written.getTree());
+        return written.getSettings();
     }
 
     @Override
-    public void onUpdate(FixSessionSettings settings) {
-        if (!adoptLoaded(settings)) {
-            update(settings, versionOf(settings.getFixSessionId()));
+    protected FixSessionSettings onUpdate(FixSessionSettings settings) {
+        if (adoptLoaded(settings)) {
+            return settings;
         }
-        fixSessionSettings.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
-        fixSessionSettings.add(settings);
+        WrittenDocument written = write(settings);
+        update(settings, written.getTree(), versionOf(settings.getFixSessionId()));
+        return written.getSettings();
     }
 
     /**
      * Deletes whatever version the row is at: removing a session is not a change another writer's could be lost to.
      */
     @Override
-    public void onRemove(FixSessionSettings settings) {
+    protected void onRemove(FixSessionSettings settings) {
         lastLoaded.remove(settings.getFixSessionId());
-        if (fixSessionSettings.remove(settings)) {
-            delete(settings.getFixSessionId());
-            versions.remove(settings.getFixSessionId());
-        }
+        delete(settings.getFixSessionId());
+        versions.remove(settings.getFixSessionId());
+    }
+
+    @Override
+    public void bind(String engineId) {
+        super.bind(engineId);
+        storageIdentity = new JdbcStorageIdentity(dataSource, tableName + "|" + instanceId + "|" + engineId, null);
+    }
+
+    @Override
+    public Optional<String> getStorageIdentity() {
+        return storageIdentity.get();
     }
 
     private boolean adoptLoaded(FixSessionSettings settings) {
@@ -166,6 +170,7 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     }
 
     private Map<FixSessionId, Row> readRows() {
+        codec.refreshResolvers();
         String sql = "SELECT qualified_name, session_type, settings, version FROM " + tableName
                 + " WHERE engine_id = ? AND store_instance_id = ?";
         Map<FixSessionId, Row> rows = new HashMap<>();
@@ -189,9 +194,7 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     private Row toRow(ResultSet resultSet) throws SQLException {
         String qualifiedName = resultSet.getString("qualified_name");
         String source = tableName + " row " + getEngineId() + "/" + instanceId + "/" + qualifiedName;
-        FixSessionSettingsDocument document = read(resultSet.getString("settings"), source);
-        FixSessionSettingsDocumentValidator.validate(document, source);
-        FixSessionSettings settings = FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(document);
+        FixSessionSettings settings = codec.toSettings(codec.read(parse(resultSet.getString("settings"), source), source), Optional.empty(), source);
         String sessionType = resultSet.getString("session_type");
         if (!settings.getFixSessionId().getQualifiedName().equals(qualifiedName)
                 || !settings.getFixSessionType().name().equals(sessionType)) {
@@ -202,26 +205,27 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         return new Row(settings, resultSet.getLong("version"));
     }
 
-    private FixSessionSettingsDocument read(String json, String source) {
+    private JsonNode parse(String json, String source) {
         try {
-            JsonNode document = FixSessionSettingsDocumentUpgrader.upgrade(mapper.readValue(json, JsonNode.class), source);
-            return mapper.treeToValue(document, FixSessionSettingsDocument.class);
+            return mapper.readValue(json, JsonNode.class);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Unable to read the FIX session settings of " + source, e);
         }
     }
 
-    private String write(FixSessionSettings settings) {
-        FixSessionSettingsDocument document = ToFixSessionSettingsDocumentTransformer.toDocument(settings);
-        FixSessionSettingsDocumentValidator.validate(document, settings.getFixSessionId().toString());
+    private WrittenDocument write(FixSessionSettings settings) {
+        return codec.write(settings, find(settings.getFixSessionId(), settings.getFixSessionType()), settings.getFixSessionId().toString());
+    }
+
+    private String json(FixSessionSettings settings, JsonNode tree) {
         try {
-            return mapper.writeValueAsString(document);
+            return mapper.writeValueAsString(tree);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Unable to write the FIX session settings of " + settings.getFixSessionId(), e);
         }
     }
 
-    private void insert(FixSessionSettings settings) {
+    private void insert(FixSessionSettings settings, JsonNode tree) {
         String sql = "INSERT INTO " + tableName
                 + " (engine_id, store_instance_id, qualified_name, session_type, settings, version, updated_at)"
                 + " VALUES (?, ?, ?, ?, ?, 1, ?)";
@@ -231,7 +235,7 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
             insert.setString(2, instanceId);
             insert.setString(3, settings.getFixSessionId().getQualifiedName());
             insert.setString(4, settings.getFixSessionType().name());
-            insert.setString(5, write(settings));
+            insert.setString(5, json(settings, tree));
             insert.setTimestamp(6, Timestamp.from(Instant.now()));
             insert.executeUpdate();
         } catch (SQLException e) {
@@ -240,13 +244,13 @@ public class JdbcFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         versions.put(settings.getFixSessionId(), 1L);
     }
 
-    private void update(FixSessionSettings settings, long version) {
+    private void update(FixSessionSettings settings, JsonNode tree, long version) {
         String sql = "UPDATE " + tableName + " SET session_type = ?, settings = ?, version = ?, updated_at = ?"
                 + " WHERE engine_id = ? AND store_instance_id = ? AND qualified_name = ? AND version = ?";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement update = connection.prepareStatement(sql)) {
             update.setString(1, settings.getFixSessionType().name());
-            update.setString(2, write(settings));
+            update.setString(2, json(settings, tree));
             update.setLong(3, version + 1);
             update.setTimestamp(4, Timestamp.from(Instant.now()));
             update.setString(5, getEngineId());

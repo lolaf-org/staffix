@@ -21,6 +21,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -34,7 +35,7 @@ public class JdbcSessionsSettingsStoreAutoConfiguration {
 
     @Bean
     public JdbcSessionsSettingsStoreContributor staffixJdbcSessionsSettingsStoreContributor(
-            JdbcSessionsSettingsStoreProps props, ApplicationContext ctx) {
-        return new JdbcSessionsSettingsStoreContributor(props, ctx);
+            JdbcSessionsSettingsStoreProps props, ApplicationContext ctx, Environment environment) {
+        return new JdbcSessionsSettingsStoreContributor(props, ctx, environment);
     }
 }

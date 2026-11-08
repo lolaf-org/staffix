@@ -17,8 +17,10 @@ package org.lolaf.staffix.stores.sessions.jdbc.spring;
 
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
 import org.lolaf.staffix.spring.boot.spi.FixSessionsSettingsStoreSettingsContributor;
+import org.lolaf.staffix.spring.boot.spi.SpringConfigValueResolvers;
 import org.lolaf.staffix.stores.sessions.jdbc.JdbcSessionsSettingsStoreSettings;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.env.Environment;
 
 import javax.sql.DataSource;
 import java.util.Map;
@@ -33,10 +35,12 @@ public class JdbcSessionsSettingsStoreContributor implements FixSessionsSettings
 
     private final JdbcSessionsSettingsStoreProps props;
     private final ApplicationContext ctx;
+    private final Environment environment;
 
-    public JdbcSessionsSettingsStoreContributor(JdbcSessionsSettingsStoreProps props, ApplicationContext ctx) {
+    public JdbcSessionsSettingsStoreContributor(JdbcSessionsSettingsStoreProps props, ApplicationContext ctx, Environment environment) {
         this.props = props;
         this.ctx = ctx;
+        this.environment = environment;
     }
 
     @Override
@@ -55,7 +59,8 @@ public class JdbcSessionsSettingsStoreContributor implements FixSessionsSettings
         }
         JdbcSessionsSettingsStoreSettings.JdbcSessionsSettingsStoreSettingsBuilder builder = JdbcSessionsSettingsStoreSettings.builder()
                 .instanceId(mapKey)
-                .dataSource(ctx.getBean(ip.getDataSourceBean(), DataSource.class));
+                .dataSource(ctx.getBean(ip.getDataSourceBean(), DataSource.class))
+                .configValueResolvers(SpringConfigValueResolvers.of(ctx, environment, ip.getConfigValueResolverBeans()));
         if (ip.getTablePrefix() != null) {
             builder.tablePrefix(ip.getTablePrefix());
         }

@@ -30,33 +30,18 @@ public class MemoryFixSessionsSettingsStore extends FixSessionsSettingsStore.Abs
 
     @Getter
     private final String instanceId;
-    private final List<FixSessionSettings> fixSessionSettings;
     private final BiFunction<FixSessionSettings,
             FixSessionSettings.FixSessionSettingsBuilder<?, ?>,
             FixSessionSettings.FixSessionSettingsBuilder<?, ?>> defaults;
 
     protected MemoryFixSessionsSettingsStore(MemorySessionsSettingsStoreSettings settings) {
         this.defaults = settings.getDefaultFixSessionSettings();
-        this.fixSessionSettings = settings.getFixSessionSettings().stream()
-                .map(this::withDefaults)
-                .collect(Collectors.toList());
+        settings.getFixSessionSettings().stream().map(this::withDefaults).forEach(this::hold);
         this.instanceId = settings.getInstanceId();
     }
 
     private FixSessionSettings withDefaults(FixSessionSettings s) {
         return defaults.apply(s, s.toBuilder()).build();
-    }
-
-    @Override
-    public Collection<FixSessionSettings> getSettings() {
-        return fixSessionSettings;
-    }
-
-    @Override
-    public Optional<FixSessionSettings> find(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
-        return fixSessionSettings.stream()
-                .filter(s -> s.getFixSessionId().equals(fixSessionId) && s.getFixSessionType().equals(fixSessionType))
-                .findFirst();
     }
 
     @Override
@@ -70,9 +55,9 @@ public class MemoryFixSessionsSettingsStore extends FixSessionsSettingsStore.Abs
     }
 
     @Override
-    public Set<FixSessionSettings> load() {
+    protected Set<FixSessionSettings> onLoad() {
         // in-memory settings have no external backing source to re-read; the currently held settings are returned
-        return new HashSet<>(fixSessionSettings);
+        return new HashSet<>(getSettings());
     }
 
     @Override
@@ -81,19 +66,18 @@ public class MemoryFixSessionsSettingsStore extends FixSessionsSettingsStore.Abs
     }
 
     @Override
-    public void onAdd(FixSessionSettings settings) {
-        fixSessionSettings.add(withDefaults(settings));
+    protected FixSessionSettings onAdd(FixSessionSettings settings) {
+        return withDefaults(settings);
     }
 
     @Override
-    public void onRemove(FixSessionSettings settings) {
-        fixSessionSettings.remove(settings);
+    protected void onRemove(FixSessionSettings settings) {
+        // nothing but the managed settings
     }
 
     @Override
-    public void onUpdate(FixSessionSettings settings) {
-        fixSessionSettings.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
-        fixSessionSettings.add(withDefaults(settings));
+    protected FixSessionSettings onUpdate(FixSessionSettings settings) {
+        return withDefaults(settings);
     }
 
     public static class MemoryStoreFactoryImpl implements FixSessionsSettingsStoreSettings.FixSessionsStoreFactory<MemorySessionsSettingsStoreSettings> {

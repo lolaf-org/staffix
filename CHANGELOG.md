@@ -18,6 +18,9 @@ could mean.
 
 ### Added
 
+- **The JDBC session settings store accepts `${...}` placeholders**, as the file store does: resolved when a row is read,
+  with `configValueResolvers` (in Spring Boot, `config-value-resolver-beans`). The row keeps the expression and never
+  the value it resolved to, and changing a value backed by a placeholder through the store is refused.
 - **High availability.** Two engines run the same sessions: one leads and runs them, the other is a follower that
   receives every write to their stores and takes them over when the leader fails. Each session chooses, with
   `highAvailability.replicationMode`, `NONE`, `ASYNC` (nothing waits, unless the follower falls a whole replication
@@ -70,6 +73,14 @@ could mean.
 
 ### Changed
 
+- **Custom session settings stores extending `AbstractFixSessionSettingsStore` manage only their storage.** The base
+  class now holds the sessions: remove `getSettings()` and `find()`, rename `load()` to `onLoad()`, make `onAdd` and
+  `onUpdate` return the settings to manage, and call `hold(settings)` at start for what the store finds.
+- **A placeholder in `default.yaml` stays a placeholder when a session is written back**, where the session's file used
+  to receive the value it resolved to. Refusing to change a value backed by a placeholder no longer names the value in
+  the error.
+- **In a JDBC session settings row, a value that looks like `${...}` is now a placeholder**, and fails the load if
+  nothing resolves it.
 - **`IdleStrategySelectStrategy` now takes a `Supplier<IdleStrategy>`**, from betty 0.9.4, so that each IO thread
   gets its own idle strategy. Replace `new IdleStrategySelectStrategy(new BackoffIdleStrategy())` with
   `new IdleStrategySelectStrategy(BackoffIdleStrategy::new)`, and `BusySpinIdleStrategy.getInstance()` with
@@ -130,6 +141,8 @@ could mean.
 
 ### Fixed
 
+- **Updating a session whose id exists as both an acceptor and an initiator no longer drops the other one** from the
+  session settings store.
 - A message larger than 8 KB stalled the session without any error, and over TLS one larger than about 16 KB ended it
   with an `IllegalStateException`.
 - An initiator could log on with its SenderCompID and TargetCompID swapped, and be refused as an unknown session,

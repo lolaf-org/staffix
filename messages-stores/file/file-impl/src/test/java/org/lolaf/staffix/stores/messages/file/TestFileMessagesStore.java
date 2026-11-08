@@ -18,6 +18,7 @@ package org.lolaf.staffix.stores.messages.file;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.stores.DirectoryStorageIdentity;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.stores.messages.testkit.AbstractMessagesStoreTest;
@@ -58,7 +59,7 @@ class TestFileMessagesStore extends AbstractMessagesStoreTest {
         assertThat(messagesStore.getStore(sessionId, probes).getStorageIdentity())
                 .hasValueSatisfying(id -> assertThat(id).startsWith("file:"))
                 .isEqualTo(messagesStore.getStore(other, probes).getStorageIdentity());
-        assertThat(new File(storeFile, DirectoryIdentity.FILE_NAME)).exists();
+        assertThat(new File(storeFile, DirectoryStorageIdentity.FILE_NAME)).exists();
     }
 
     @Test

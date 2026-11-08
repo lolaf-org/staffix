@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.messages.jdbc;
+package org.lolaf.staffix.api.stores;
 
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -32,26 +32,30 @@ import java.util.Optional;
 
 /**
  * Identifies the tables a JDBC store writes to, without a table of its own: the database server's own id where it
- * can be read, else the connection URL, then the catalog, the schema and the table prefix. The server's id wins
+ * can be read, else the connection URL, then the catalog, the schema and the scope. The server's id wins
  * because two nodes may reach one database through different host names. Hashed, as a URL may hold credentials.
  *
  * <p>Read once, on first use; a failure is not kept, so the next call tries again.
  */
 @Slf4j
-final class JdbcStorageIdentity {
+public final class JdbcStorageIdentity {
 
     private final DataSource dataSource;
-    private final String tablePrefix;
+    private final String scope;
     private final @Nullable String configured;
     private volatile @Nullable String identity;
 
-    JdbcStorageIdentity(JdbcMessageStoreSettings settings) {
-        this.dataSource = settings.getDataSource();
-        this.tablePrefix = settings.getTablePrefix();
-        this.configured = settings.getStorageIdentity();
+    /**
+     * @param scope      what tells apart two sets of data in one database, such as the table prefix
+     * @param configured used as it is when not null, for databases that are not told apart, such as cloned servers
+     */
+    public JdbcStorageIdentity(DataSource dataSource, String scope, @Nullable String configured) {
+        this.dataSource = dataSource;
+        this.scope = scope;
+        this.configured = configured;
     }
 
-    Optional<String> get() {
+    public Optional<String> get() {
         if (configured != null) {
             return Optional.of(configured);
         }
@@ -66,7 +70,7 @@ final class JdbcStorageIdentity {
             DatabaseMetaData metaData = connection.getMetaData();
             String serverId = serverId(connection, metaData.getDatabaseProductName());
             String database = serverId == null ? metaData.getURL() : metaData.getDatabaseProductName() + " " + serverId;
-            return "jdbc:" + sha256(String.join("|", database, connection.getCatalog(), connection.getSchema(), tablePrefix));
+            return "jdbc:" + sha256(String.join("|", database, connection.getCatalog(), connection.getSchema(), scope));
         } catch (SQLException | RuntimeException e) {
             log.warn("Cannot read the storage identity of the JDBC store", e);
             return null;

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.stores.sessions.file.spring;
+package org.lolaf.staffix.spring.boot.spi;
 
 import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.api.session.ConfigValuePlaceholder;
@@ -23,12 +23,11 @@ import org.springframework.core.env.Environment;
 import java.util.Optional;
 
 /**
- * Resolves a session file's placeholders against Spring's {@link Environment}, so a YAML session file
- * reads from the same sources as {@code application.properties} - profiles, config server, mounted
+ * Resolves the placeholders of a session settings store against Spring's {@link Environment}, so its documents
+ * read from the same sources as {@code application.properties} - profiles, config server, mounted
  * secrets and the rest.
  *
- * <p>Session files need this because they are read by the store's own parser and never pass through
- * Spring; sessions declared in Spring properties are resolved by Spring itself and need nothing.
+ * <p>A store needs this because it reads its documents itself and they never pass through Spring; sessions declared in Spring properties are resolved by Spring itself and need nothing.
  *
  * <p>Unnamed, so it is offered every placeholder, which is why it goes <strong>last</strong> in the
  * chain: the environment already holds system properties and environment variables, so ahead of the

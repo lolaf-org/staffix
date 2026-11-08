@@ -244,6 +244,12 @@ session's `group.name`, so several engines, and several stores of one engine, ca
 its own sessions. **Give each engine and each store a fixed instance id**: started under another id, they find none of
 their sessions.
 
+A value in a row may be a `${...}` placeholder, as in a session file: resolved when the row is read, by the store's
+`configValueResolvers` (system properties then environment variables by default; in Spring Boot, as for the file store,
+with `config-value-resolver-beans`). The row keeps the expression and never the value it resolved to, and changing a
+value backed by a placeholder through the store is refused. Nothing escapes an opening brace, so a value that merely
+looks like a placeholder is treated as one.
+
 **Create the table with the DDL plugin**, which writes the script for your database:
 
 ```xml
@@ -308,42 +314,43 @@ public class DbSessionsSettingsStoreSettings implements FixSessionsSettingsStore
 }
 ```
 
-**2. The store**, extending `FixSessionsSettingsStore.AbstractFixSessionSettingsStore`. The base class notifies the
-engine of every `add`, `remove` and `update`, so you only manage your storage:
+**2. The store**, extending `FixSessionsSettingsStore.AbstractFixSessionSettingsStore`. The base class holds the
+sessions and notifies the engine of every `add`, `remove` and `update`, so you only manage your storage:
 
 ```java
 public class DbSessionsSettingsStore extends FixSessionsSettingsStore.AbstractFixSessionSettingsStore {
 
-    private final Set<FixSessionSettings> settings = ConcurrentHashMap.newKeySet();
-    // …
-
     @Override
     protected void startMe() {
-        settings.addAll(load());
+        onLoad().forEach(this::hold);
     }
 
     @Override
-    public Set<FixSessionSettings> load() {
+    protected Set<FixSessionSettings> onLoad() {
         return readAllSessionsFromTheDatabase();
     }
 
     @Override
-    public void onAdd(FixSessionSettings added) {
+    protected FixSessionSettings onAdd(FixSessionSettings added) {
         insertIntoTheDatabase(added);
-        settings.add(added);
+        return added;
     }
-    // getSettings, find, onRemove, onUpdate, stopMe, getInstanceId
+    // onRemove, onUpdate, stopMe, getInstanceId, isPersistent
 }
 ```
 
 | method | contract |
 |--------|----------|
-| `startMe()` | fill what `getSettings()` returns: acceptors and initiators read it as soon as the store has started |
+| `startMe()` | `hold` the sessions found: acceptors and initiators read them as soon as the store has started |
 | `getEngineId()` | the instance id of the engine the store serves, known from before `startMe()`: a backing source several engines share keeps their sessions apart by it |
-| `getSettings()` | the sessions the store currently manages |
-| `find(id, type)` | match on the `FixSessionId` **and** the `FixSessionType`, since one id may exist on both sides |
-| `load()` | read the backing source and return what is there, **without** changing `getSettings()` or notifying anyone: on a reload, the engine compares the result with `getSettings()` and applies the difference through `add`, `remove` and `update` |
-| `onAdd`, `onRemove`, `onUpdate` | change the managed sessions, and the backing source if the store writes to it; `onUpdate` replaces the entry with the same `FixSessionId` |
+| `onLoad()` | read the backing source and return what is there: on a reload, the engine compares the result with `getSettings()` and applies the difference through `add`, `remove` and `update` |
+| `onAdd`, `onUpdate` | write to the backing source if the store does, and return the settings to manage; `onUpdate` replaces the entry with the same `FixSessionId` and type |
+| `onRemove` | delete from the backing source if the store writes to it |
+
+A store persisting the session document (JSON or YAML) can use `FixSessionSettingsDocumentCodec`, from
+`staffix-sessions-settings-document`, around its storage. It reads a document into settings, resolving `${...}`
+placeholders, and writes settings back with the expressions, so what a placeholder resolved to never reaches the
+storage.
 
 **3. A factory**, usually nested in the store, and a `ServiceLoader` declaration for it in
 `src/main/resources/META-INF/services/org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings$FixSessionsStoreFactory`:

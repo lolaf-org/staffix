@@ -24,13 +24,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.*;
-import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocument;
+import org.lolaf.staffix.api.stores.DirectoryStorageIdentity;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentCodec;
+import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentCodec.ReadDocument;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentMapper;
-import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentUpgrader;
-import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentValidator;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsJsonSchema;
-import org.lolaf.staffix.sessions.settings.document.FromFixSessionSettingsDocumentTransformer;
-import org.lolaf.staffix.sessions.settings.document.ToFixSessionSettingsDocumentTransformer;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,7 +38,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -67,18 +64,11 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
      */
     private final boolean savable;
     private final ObjectMapper mapper;
-    private final ConfigValueResolverChain configValueResolvers;
+    private final FixSessionSettingsDocumentCodec codec;
 
-    /**
-     * Per session, the file as read and the same tree resolved, kept so a write can put the placeholders
-     * back. Only a session's own file is retained: {@code default.yaml} is never written, and folding its
-     * trees in here would restore its placeholders into every session file.
-     */
-    private final Map<FixSessionId, RetainedYaml> retainedYaml = new ConcurrentHashMap<>();
-    private final Set<FixSessionSettings> fixSessionSettings;
+    private volatile String storageIdentity;
 
     protected FileFixSessionsSettingsStore(FileSessionsSettingsStoreSettings settings) {
-        this.fixSessionSettings = new HashSet<>();
         this.instanceId = settings.getInstanceId();
         this.directory = settings.getFixSessionSettingsDirectory();
         this.uris = settings.getFixSessionSettingsUris();
@@ -92,9 +82,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         }
         this.savable = directory != null;
         this.mapper = newMapper();
-        this.configValueResolvers = settings.getConfigValueResolvers().isEmpty()
-                ? ConfigValueResolverChain.defaultChain()
-                : new ConfigValueResolverChain(settings.getConfigValueResolvers());
+        this.codec = new FixSessionSettingsDocumentCodec(mapper, settings.getConfigValueResolvers());
     }
 
     // Package-private so tests exercise the exact same mapper configuration (module registrations, strict
@@ -110,24 +98,13 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     }
 
     @Override
-    public Collection<FixSessionSettings> getSettings() {
-        return fixSessionSettings;
-    }
-
-    @Override
-    public Optional<FixSessionSettings> find(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
-        return fixSessionSettings.stream()
-                .filter(s -> s.getFixSessionId().equals(fixSessionId) && s.getFixSessionType() == fixSessionType)
-                .findFirst();
-    }
-
-    @Override
     protected void startMe() throws StartStopException {
         if (savable) {
             ensureDirectory();
             writeSchemaFile();
+            storageIdentity = readStorageIdentity();
         }
-        fixSessionSettings.addAll(loadFromSources());
+        loadFromSources().forEach(this::hold);
     }
 
     @Override
@@ -140,8 +117,22 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
      * when present, and returns the result without touching the in-memory settings.
      */
     @Override
-    public Set<FixSessionSettings> load() {
+    protected Set<FixSessionSettings> onLoad() {
         return loadFromSources();
+    }
+
+    @Override
+    public Optional<String> getStorageIdentity() {
+        return Optional.ofNullable(storageIdentity);
+    }
+
+    private String readStorageIdentity() {
+        try {
+            return DirectoryStorageIdentity.of(directory.toPath());
+        } catch (IOException e) {
+            log.warn("Cannot read the storage identity of FIX session settings directory {}", directory, e);
+            return null;
+        }
     }
 
     /**
@@ -153,7 +144,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     }
 
     private Set<FixSessionSettings> loadFromSources() {
-        configValueResolvers.refresh();
+        codec.refreshResolvers();
         return savable ? loadFromDirectory() : loadFromUris();
     }
 
@@ -179,78 +170,54 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
         return load(sources, readUriDefaults());
     }
 
-    private Set<FixSessionSettings> load(List<SettingsSource> sources, FixSessionSettingsDocument defaults) {
+    private Set<FixSessionSettings> load(List<SettingsSource> sources, ReadDocument defaults) {
         Map<FixSessionId, String> seen = new HashMap<>();
         return sources.stream()
                 .map(source -> load(source, defaults, seen))
                 .collect(Collectors.toSet());
     }
 
-    private FixSessionSettings load(SettingsSource source, FixSessionSettingsDocument defaults,
+    private FixSessionSettings load(SettingsSource source, ReadDocument defaults,
                                     Map<FixSessionId, String> seen) {
-        RetainedYaml retained = source.getRead().get();
-        FixSessionSettings settings = bind(retained, defaults, source.getName());
+        FixSessionSettings settings = codec.toSettings(source.getRead().get(), Optional.ofNullable(defaults), source.getName());
         String clash = seen.putIfAbsent(settings.getFixSessionId(), source.getName());
         if (clash != null) {
             throw new IllegalStateException("FIX session " + settings.getFixSessionId()
                     + " is defined by two sources: " + clash + " and " + source.getName());
         }
-        // Only a writable store needs the trees: they exist to put placeholders back on write, and a
-        // URI-backed store never writes.
-        if (savable) {
-            retainedYaml.put(settings.getFixSessionId(), retained);
-        }
         log.info("Loaded FixSessionSettings {} from {}", settings.getFixSessionId(), source.getName());
         return settings;
     }
 
-    private FixSessionSettingsDocument readUriDefaults() {
+    private ReadDocument readUriDefaults() {
         List<URI> found = uris.stream().filter(FileFixSessionsSettingsStore::isDefaults)
                 .collect(Collectors.toList());
         if (found.size() > 1) {
             throw new IllegalStateException("Only one " + DEFAULT_FILE_NAME
                     + " may be given as a FIX session settings source, but these were: " + found);
         }
-        return found.isEmpty() ? null : readRetaining(found.get(0)).getSettings();
+        return found.isEmpty() ? null : readRetaining(found.get(0));
     }
 
-    private FixSessionSettings bind(RetainedYaml retained, FixSessionSettingsDocument defaults, String source) {
-        FixSessionSettingsDocument yaml = FromFixSessionSettingsDocumentTransformer.mergeWithDefault(defaults, retained.getSettings());
-        FixSessionSettingsDocumentValidator.validate(yaml, source);
-        return FromFixSessionSettingsDocumentTransformer.toFixSessionSettings(yaml);
-    }
-
-    private FixSessionSettingsDocument readDefaults() {
+    private ReadDocument readDefaults() {
         File defaultFile = new File(directory, DEFAULT_FILE_NAME);
-        return defaultFile.isFile() ? read(defaultFile) : null;
+        return defaultFile.isFile() ? readRetaining(defaultFile) : null;
     }
 
-    private FixSessionSettingsDocument read(File file) {
-        return readRetaining(file).getSettings();
-    }
-
-    private RetainedYaml readRetaining(File file) {
+    private ReadDocument readRetaining(File file) {
         try {
-            return readRetaining(mapper.readValue(file, JsonNode.class), file.getPath());
+            return codec.read(mapper.readValue(file, JsonNode.class), file.getPath());
         } catch (IOException e) {
             throw new IllegalStateException("Unable to read FIX session settings file " + file, e);
         }
     }
 
-    private RetainedYaml readRetaining(URI uri) {
+    private ReadDocument readRetaining(URI uri) {
         try (InputStream in = uri.toURL().openStream()) {
-            return readRetaining(mapper.readValue(in, JsonNode.class), uri.toString());
+            return codec.read(mapper.readValue(in, JsonNode.class), uri.toString());
         } catch (IOException | IllegalArgumentException e) {
             throw new IllegalStateException("Unable to read FIX session settings from " + uri, e);
         }
-    }
-
-    // Through the tree rather than straight to the type, so a ${...} placeholder can stand in a field of
-    // any type; readValue keeps FAIL_ON_TRAILING_TOKENS, which readTree would not.
-    private RetainedYaml readRetaining(JsonNode read, String source) throws IOException {
-        JsonNode raw = FixSessionSettingsDocumentUpgrader.upgrade(read, source);
-        JsonNode resolved = YamlPlaceholderResolver.resolve(raw, configValueResolvers, source);
-        return new RetainedYaml(raw, resolved, mapper.treeToValue(resolved, FixSessionSettingsDocument.class));
     }
 
     private void ensureDirectory() {
@@ -290,24 +257,19 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     }
 
     @Override
-    public void onAdd(FixSessionSettings settings) {
-        if (!fixSessionSettings.contains(settings)) {
-            writeToDisk(settings);
-            fixSessionSettings.add(settings);
-        }
+    protected FixSessionSettings onAdd(FixSessionSettings settings) {
+        return getSettings().contains(settings) ? settings : writeToDisk(settings);
     }
 
     @Override
-    public void onRemove(FixSessionSettings settings) {
-        if (fixSessionSettings.remove(settings)) {
-            if (!savable) {
-                log.info("FIX session settings {} came from a URI and cannot be deleted", settings.getFixSessionId());
-                return;
-            }
-            File file = fileFor(settings);
-            if (file.exists() && !file.delete()) {
-                throw new IllegalStateException("Unable to delete FIX session settings file " + file);
-            }
+    protected void onRemove(FixSessionSettings settings) {
+        if (!savable) {
+            log.info("FIX session settings {} came from a URI and cannot be deleted", settings.getFixSessionId());
+            return;
+        }
+        File file = fileFor(settings);
+        if (file.exists() && !file.delete()) {
+            throw new IllegalStateException("Unable to delete FIX session settings file " + file);
         }
     }
 
@@ -315,33 +277,29 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
      * Written first: a write the file refuses, such as a change to a placeholder's value, leaves the store as it was.
      */
     @Override
-    public void onUpdate(FixSessionSettings settings) {
-        writeToDisk(settings);
-        fixSessionSettings.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
-        fixSessionSettings.add(settings);
+    protected FixSessionSettings onUpdate(FixSessionSettings settings) {
+        return writeToDisk(settings);
     }
 
-    private void writeToDisk(FixSessionSettings settings) {
+    /**
+     * @return the settings with the placeholders the file now holds
+     */
+    private FixSessionSettings writeToDisk(FixSessionSettings settings) {
         if (!savable) {
             log.info("FIX session settings {} came from a URI and are not written back", settings.getFixSessionId());
-            return;
+            return settings;
         }
         ensureDirectory();
         File file = fileFor(settings);
-        FixSessionSettingsDocument yaml = ToFixSessionSettingsDocumentTransformer.toDocument(settings);
-        FixSessionSettingsDocumentValidator.validate(yaml, file.getPath());
+        FixSessionSettingsDocumentCodec.WrittenDocument written = codec.write(settings,
+                find(settings.getFixSessionId(), settings.getFixSessionType()), file.getPath());
         try {
-            JsonNode written = mapper.valueToTree(yaml);
-            RetainedYaml retained = retainedYaml.get(settings.getFixSessionId());
-            if (retained != null) {
-                YamlPlaceholderRestorer.restore(retained.getRaw(), retained.getResolved(), written,
-                        file.getPath());
-            }
-            String content = SCHEMA_HEADER + mapper.writeValueAsString(written);
+            String content = SCHEMA_HEADER + mapper.writeValueAsString(written.getTree());
             Files.write(file.toPath(), content.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new IllegalStateException("Unable to write FIX session settings file " + file, e);
         }
+        return written.getSettings();
     }
 
     /**
@@ -351,15 +309,7 @@ public class FileFixSessionsSettingsStore extends FixSessionsSettingsStore.Abstr
     @RequiredArgsConstructor
     private static final class SettingsSource {
         private final String name;
-        private final Supplier<RetainedYaml> read;
-    }
-
-    @Getter
-    @RequiredArgsConstructor
-    private static final class RetainedYaml {
-        private final JsonNode raw;
-        private final JsonNode resolved;
-        private final FixSessionSettingsDocument settings;
+        private final Supplier<ReadDocument> read;
     }
 
     public static class FileStoreFactoryImpl implements FixSessionsSettingsStoreSettings.FixSessionsStoreFactory<FileSessionsSettingsStoreSettings> {

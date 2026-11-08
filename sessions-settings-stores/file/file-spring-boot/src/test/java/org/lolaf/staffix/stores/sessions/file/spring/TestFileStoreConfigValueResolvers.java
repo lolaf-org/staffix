@@ -16,6 +16,7 @@
 package org.lolaf.staffix.stores.sessions.file.spring;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.spring.boot.spi.EnvironmentConfigValueResolver;
 import org.lolaf.staffix.api.session.ConfigValueResolver;
 import org.lolaf.staffix.api.session.ConfigValueResolverChain;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;

@@ -15,16 +15,15 @@
  */
 package org.lolaf.staffix.stores.sessions.file.spring;
 
-import org.lolaf.staffix.api.session.ConfigValueResolver;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
 import org.lolaf.staffix.spring.boot.spi.FixSessionsSettingsStoreSettingsContributor;
+import org.lolaf.staffix.spring.boot.spi.SpringConfigValueResolvers;
 import org.lolaf.staffix.stores.sessions.file.FileSessionsSettingsStoreSettings;
 
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.Environment;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -45,16 +44,6 @@ public class FileSessionsSettingsStoreContributor implements FixSessionsSettings
         this.environment = environment;
     }
 
-    private List<ConfigValueResolver> configValueResolvers(FileStoreInstanceProps ip) {
-        List<ConfigValueResolver> resolvers = new ArrayList<>();
-        resolvers.add(ConfigValueResolver.SystemPropertyConfigValueResolver.getInstance());
-        resolvers.add(ConfigValueResolver.EnvironmentVariableConfigValueResolver.getInstance());
-        ip.getConfigValueResolverBeans()
-                .forEach(bean -> resolvers.add(ctx.getBean(bean, ConfigValueResolver.class)));
-        resolvers.add(new EnvironmentConfigValueResolver(environment));
-        return resolvers;
-    }
-
     @Override
     public void contribute(Map<String, FixSessionsSettingsStoreSettings> registry) {
         props.getInstances().forEach((mapKey, ip) -> {
@@ -67,7 +56,7 @@ public class FileSessionsSettingsStoreContributor implements FixSessionsSettings
                     .instanceId(mapKey)
                     .fixSessionSettingsDirectory(hasDirectory ? new File(ip.getDirectory()) : null)
                     .fixSessionSettingsUris(ip.getUris())
-                    .configValueResolvers(configValueResolvers(ip))
+                    .configValueResolvers(SpringConfigValueResolvers.of(ctx, environment, ip.getConfigValueResolverBeans()))
                     .build();
             if (registry.putIfAbsent(mapKey, settings) != null) {
                 throw new IllegalStateException("staffix.sessions-settings-stores-file.instances." + mapKey

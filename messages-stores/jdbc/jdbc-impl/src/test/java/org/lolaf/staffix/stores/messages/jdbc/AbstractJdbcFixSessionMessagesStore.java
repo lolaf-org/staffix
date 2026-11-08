@@ -22,6 +22,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
+import org.lolaf.staffix.api.stores.JdbcStorageIdentity;
 import org.lolaf.staffix.stores.messages.testkit.AbstractFixSessionMessagesStoreTest;
 
 import javax.sql.DataSource;
@@ -71,7 +72,7 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
     }
 
     static JdbcStorageIdentity identity(DataSource source, String tablePrefix) {
-        return new JdbcStorageIdentity(JdbcMessageStoreSettings.builder().dataSource(source).tablePrefix(tablePrefix).build());
+        return new JdbcStorageIdentity(source, tablePrefix, null);
     }
 
     @Test
@@ -89,8 +90,7 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
 
     @Test
     void aConfiguredStorageIdentityWinsOverTheDatabases() {
-        JdbcStorageIdentity configured = new JdbcStorageIdentity(JdbcMessageStoreSettings.builder()
-                .dataSource(dataSource).storageIdentity("shared-db").build());
+        JdbcStorageIdentity configured = new JdbcStorageIdentity(dataSource, "", "shared-db");
 
         assertThat(configured.get()).contains("shared-db");
     }
