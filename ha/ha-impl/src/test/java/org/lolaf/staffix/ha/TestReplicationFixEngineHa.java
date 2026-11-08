@@ -645,6 +645,25 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     }
 
     @Test
+    void aReplicatedSettingsStoreIsChangedOnlyWhereTheNodeLeads() {
+        FixSessionsSettingsStore replicated = settingsStore("files", Optional.of("file:1"));
+        a.start();
+
+        assertThatThrownBy(() -> a.ha.requireSettingsStoreWritable(replicated))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("files").hasMessageContaining("leads");
+
+        aLeadsBFollows();
+        a.ha.requireSettingsStoreWritable(replicated);
+    }
+
+    @Test
+    void aSettingsStoreOnlyComparedCanBeChangedAnywhere() {
+        a.start();
+
+        a.ha.requireSettingsStoreWritable(settingsStore("memory", Optional.empty()));
+    }
+
+    @Test
     void anEngineWithoutLeaderElectionIsRefused() {
         ReplicationFixEngineHa withoutElection = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
                 .nodeId("a").peer("a", addressA).build());

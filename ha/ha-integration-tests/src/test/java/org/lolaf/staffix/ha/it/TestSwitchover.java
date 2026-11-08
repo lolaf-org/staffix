@@ -66,6 +66,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -400,6 +401,19 @@ class TestSwitchover {
         await().until(() -> followerSettings().find(added.getFixSessionId(), added.getFixSessionType()).isPresent());
         awaitNoSettingsDifference();
         return added;
+    }
+
+    @org.junit.jupiter.api.Test
+    void aReplicatedSettingsStoreCannotBeChangedOnTheFollower() {
+        fileSettingsStores = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        await().until(() -> b.getStatus().getRole() == org.lolaf.staffix.api.ha.LeaderElection.Role.FOLLOWER);
+        FixSessionSettings settings = followerSettings().getSettings().iterator().next();
+
+        assertThatThrownBy(() -> ((AdminApi) follower).removeFixSessionSettings(settings.getFixSessionId(), settings.getFixSessionType()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("change it on the engine that leads");
+
+        assertThat(followerSettings().find(settings.getFixSessionId(), settings.getFixSessionType())).isPresent();
     }
 
     @org.junit.jupiter.api.Test

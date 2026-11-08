@@ -76,6 +76,7 @@ import static org.mockito.ArgumentMatchers.notNull;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -282,6 +283,28 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
 
     private FixSessionsSettingsStore initiatorStore() {
         return initiatorFixEngine.getFixSessionsSettingsStores().get(0);
+    }
+
+    @Test
+    void anAdminChangeToASettingsStoreAsksTheHighAvailabilityButItsOwnChangesDoNot() {
+        standbyAcceptorStarted();
+        FixSessionSettings settings = acceptorSettings();
+        AdminApi admin = (AdminApi) acceptorFixEngine;
+        String storeId = acceptorStore().getInstanceId();
+        doThrow(new IllegalStateException("not here")).when(ha).requireSettingsStoreWritable(any());
+        FixSessionSettings added = settings.toBuilder().fixSessionId(ADDED_SESSION).build();
+
+        List<ThrowingCallable> refused = List.of(
+                () -> admin.addFixSessionSettings(storeId, added),
+                () -> admin.updateFixSessionSettings(settings.getFixSessionId(), settings),
+                () -> admin.removeFixSessionSettings(settings.getFixSessionId(), settings.getFixSessionType()),
+                () -> admin.reloadFixSessionsSettingsStore(storeId));
+        refused.forEach(change -> assertThatThrownBy(change).hasMessage("not here"));
+        assertThat(acceptorStore().getSettings()).containsExactly(settings);
+
+        engine.applySessionSettings(storeId, added);
+        engine.reloadSessionSettings(storeId);
+        assertThat(acceptorStore().find(added.getFixSessionId(), added.getFixSessionType())).isPresent();
     }
 
     @Test

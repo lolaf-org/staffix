@@ -135,6 +135,14 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         stopReplicating(sessionSettings);
     }
 
+    @Override
+    public void requireSettingsStoreWritable(FixSessionsSettingsStore store) {
+        if (role != Role.LEADER && isReplicated(store)) {
+            throw new IllegalStateException("Node " + settings.getNodeId() + " does not lead and session settings store "
+                    + store.getInstanceId() + " is replicated from the leader: change it on the engine that leads");
+        }
+    }
+
     private void stopReplicating(FixSessionSettings sessionSettings) {
         ReplicatedSession session = sessions.find(sessionSettings.getFixSessionId(), sessionSettings.getFixSessionType());
         if (session == null || !session.isReplicated()) {

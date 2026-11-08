@@ -391,6 +391,11 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     public void reloadFixSessionsSettingsStore(String instanceId) {
+        fixEngineHa.requireSettingsStoreWritable(store(instanceId));
+        reloadStore(instanceId);
+    }
+
+    private void reloadStore(String instanceId) {
         FixSessionsSettingsStore store = store(instanceId);
         synchronized (store) {
             reconcile(store, store.load());
@@ -437,6 +442,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Override
     public void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings) {
         FixSessionsSettingsStore store = store(storeInstanceId);
+        fixEngineHa.requireSettingsStoreWritable(store);
         validate(settings);
         requireResolvableComponents(settings);
         synchronized (store) {
@@ -453,6 +459,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                     + fixSessionId + " cannot become " + settings.getFixSessionId());
         }
         FixSessionsSettingsStore store = storeHolding(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));
+        fixEngineHa.requireSettingsStoreWritable(store);
         validate(settings);
         requireResolvableComponents(settings);
         synchronized (store) {
@@ -472,6 +479,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     public void removeFixSessionSettings(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
         FixSessionsSettingsStore store = storeHolding(fixSessionId, fixSessionType)
                 .orElseThrow(() -> noStoreHolds(fixSessionId, fixSessionType));
+        fixEngineHa.requireSettingsStoreWritable(store);
         synchronized (store) {
             store.find(fixSessionId, fixSessionType).ifPresent(store::remove);
         }
@@ -903,7 +911,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
         @Override
         public void reloadSessionSettings(String storeInstanceId) {
-            reloadFixSessionsSettingsStore(storeInstanceId);
+            reloadStore(storeInstanceId);
         }
 
         @Override

@@ -59,6 +59,16 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
     void onSessionNotReplicated(FixSessionSettings settings);
 
     /**
+     * Called before an admin change to a session settings store: a replicated store is changed through the leader only,
+     * or the leader's next list would overwrite the change.
+     *
+     * @throws IllegalStateException if this node may not change the store
+     */
+    default void requireSettingsStoreWritable(FixSessionsSettingsStore store) {
+        // writable unless the implementation replicates it
+    }
+
+    /**
      * Called once by the engine, before {@link #start()}.
      */
     void bind(EngineAccess engine);
