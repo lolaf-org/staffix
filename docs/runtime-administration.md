@@ -62,7 +62,8 @@ An engine with [high availability](high-availability.md) also registers `type=Fi
 (the role, the epoch, the leader, what the election supports, each follower and replicated session), and the
 operations `switchover()` (answering its outcome), `updateCandidacy(boolean)` (maintenance mode), `resync()` and
 `resyncSession(String fixSessionId, String fixSessionType)`. An engine that does not lead refuses the session actions above, since
-running one there would put the session up on both nodes.
+running one there would put the session up on both nodes. Changes to a replicated settings store are refused there too:
+make them on the leader, which [passes them to the follower](high-availability.md#session-settings-on-both-nodes).
 
 The engine-level MBean names a session by its full `toString()` form, `alpha.trading:VERSION_44:SENDER->TARGET`, in
 both `getInitiatorsTargets()` and `switchInitiatorSession(String)`: a session name is unique only within its group.
@@ -148,6 +149,10 @@ state: read `status` again to see it.
 
 A session switching config while an operation on it runs answers 409: retry. The read-only token is answered 403 for
 anything but a `GET`.
+
+With [high availability](high-availability.md#session-settings-on-both-nodes), a change to a replicated settings store is
+made on the leader (409 on a follower) and reaches the follower without the call waiting for it; on a follower,
+`GET ha` lists what still differs in `sessionSettingsDifferences`.
 
 An error answers with its status and an `application/problem+json` body, `{"status": 409, "detail": "..."}`.
 The API is described by an OpenAPI 3.1 document at `GET /openapi.yaml`, served without a token.

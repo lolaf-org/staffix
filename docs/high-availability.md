@@ -78,9 +78,8 @@ highAvailability:
   replicationAckTimeout: PT1S   # SYNC modes only: how long a send waits for the follower, zero for ever
 ```
 
-**Configure the same sessions, with the same settings, on both nodes.** Each node reads its own settings, and a node
-that becomes leader runs the sessions it has. A follower whose `replicationMode` for a session differs from the
-leader's refuses to replicate it, logs an error and makes the leader raise the `ha-replication` alert, until both agree.
+**The leader keeps the follower's session settings in line with its own**, see
+[Session settings on both nodes](#session-settings-on-both-nodes). A node that becomes leader runs the sessions it has.
 
 The other settings of `ReplicationHaSettings`, with their defaults:
 
@@ -298,10 +297,40 @@ a leader whose heartbeats go unanswered for longer than the difference drops its
 a sequence number jump once contact is back. Keep the primos timings the same on all three nodes, and put the witness
 where neither node's network failure takes it down too.
 
+## Session settings on both nodes
+
+The leader sends its session settings to the follower over the replication link, so a session added, changed or removed
+at runtime reaches both nodes. It works out of the box, with a store per node (a directory or a database each) as with
+one both nodes share. Give the stores the same instance id on both nodes, and change them **on the leader**: on a
+follower the admin API and JMX refuse to add, update, remove or reload a replicated store (HTTP 409). This guards the
+admin API only: code calling a store directly on a follower is not stopped.
+
+- **What is replicated:** every store that can name its storage, such as the directory and JDBC stores.
+  `replicatedSettingsStores` restricts it to the stores you list, and `sessionSettingsReplicated=false` turns it off.
+  Memory stores and stores read from URIs are only compared.
+- **A follower sharing the leader's storage only reads it.** It reloads after each change and never writes. Two nodes on
+  one JDBC table each have their own rows unless they are given the same `engineIdOverride`, see
+  [the JDBC store](session-settings-stores.md).
+- **A session is deleted from a follower only when it was removed on the leader.** A session only the follower has is
+  kept and reported, so a leader started empty or on the wrong directory deletes nothing. A removal made while the
+  follower is away is sent when it returns, unless the leader restarted meanwhile: the session then stays on the
+  follower and is reported.
+- **Placeholders travel as expressions.** The follower resolves a `${...}` with its own store's resolvers, so a resolved
+  value does not cross the link or reach the follower's disk, and two nodes may rightly resolve one to different values
+  without it counting as a difference.
+- **The change does not wait for the follower.** It is complete once the leader's store has it. A change the leader
+  had not sent when it failed is lost: the new leader's settings win when the old one returns.
+
+A settings difference does not stop replication, since it should not remove protection: the follower lists it in the
+status as `sessionSettingsDifferences` (`MISSING_HERE`, `EXTRA_HERE` or `DIFFERENT`) and its `ha-session-settings` probe
+raises a `WARNING`, as a failover would run that node's own settings. One exception: a follower whose `replicationMode`
+for a session differs from the leader's refuses to replicate that session, logs an error and makes the leader raise the
+`ha-replication` alert, until both agree.
+
 ## Each node needs its own storage
 
-Replication gives each node its own copy of every session, so the two nodes must not share a store: the same
-database tables or the same directory. Replicating into the leader's own storage would rewrite its data, so the follower
+Replication gives each node its own copy of every session, so the two nodes must not share a message store (session
+settings stores may): the same database tables or the same directory. Replicating into the leader's own storage would rewrite its data, so the follower
 detects it, logs an error and refuses the session, and the leader's `ha-replication` probe alerts until it is fixed:
 the session is not in sync, and a switchover answers `NO_FOLLOWER_IN_SYNC`. Give each node its own schema or table
 prefix, or its own directory. A highly available database is fine underneath, with one copy per node.

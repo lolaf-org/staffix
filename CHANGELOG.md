@@ -37,6 +37,12 @@ could mean.
   engines sharing one database or directory are detected and not replicated into. Modules `staffix-ha-impl`,
   `staffix-ha-primos`, `staffix-ha-spring-boot` and `staffix-ha-primos-spring-boot`; see [High availability](docs/high-availability.md),
   including what it does not do.
+- **Session settings reach both nodes of a high availability pair.** A session added, changed or removed on the leader
+  reaches the follower, with a store per node or one both share, and `${...}` placeholders stay expressions. It is on by
+  default: `sessionSettingsReplicated` turns it off and `replicatedSettingsStores` restricts it. Changes through the
+  admin API are refused on a follower, and settings that differ are shown in the status and raise a warning. A custom
+  session settings store takes part by implementing `getStorageIdentity`; otherwise it is only compared. The JDBC
+  store's `engineIdOverride` lets the two nodes read the same rows.
 - **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
   switchover, maintenance mode and a re-sync of the follower; it publishes `ha.*` meters and alerts when the follower
   is missing, out of sync, behind, or dropped for being too slow.

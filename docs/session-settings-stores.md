@@ -352,6 +352,10 @@ public class DbSessionsSettingsStore extends FixSessionsSettingsStore.AbstractFi
 | `onAdd`, `onUpdate` | write to the backing source if the store does, and return the settings to manage; `onUpdate` replaces the entry with the same `FixSessionId` and type |
 | `onRemove` | delete from the backing source if the store writes to it |
 
+To have a store [replicated between the two nodes of a high availability pair](high-availability.md#session-settings-on-both-nodes),
+override `getStorageIdentity` to name its storage, equal on two nodes only when they read the same data. Without it the
+store is only compared. A store resolving `${...}` placeholders also overrides `getConfigValueResolvers`.
+
 A store persisting the session document (JSON or YAML) can use `FixSessionSettingsDocumentCodec`, from
 `staffix-sessions-settings-document`, around its storage. It reads a document into settings, resolving `${...}`
 placeholders, and writes settings back with the expressions, so what a placeholder resolved to never reaches the
