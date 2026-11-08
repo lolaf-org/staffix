@@ -67,17 +67,15 @@ final class SessionBinder {
 
     private ReplicaSession newSession(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
                                       @Nullable String leaderStorageIdentity) {
+        if (leaderMode == ReplicationMode.NONE) {
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.NOT_REPLICATED);
+        }
         FixSessionSettings settings = findSettings(fixSessionType, fixSessionId).orElse(null);
         if (settings == null) {
-            return leaderMode == ReplicationMode.NONE
-                    ? ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.NOT_REPLICATED)
-                    : ReplicaSession.refused(fixSessionType, fixSessionId, SessionAnswer.UNKNOWN_SESSION, leaderMode, leaderStorageIdentity);
+            return ReplicaSession.refused(fixSessionType, fixSessionId, SessionAnswer.UNKNOWN_SESSION, leaderMode, leaderStorageIdentity);
         }
         if (settings.getHighAvailability().getReplicationMode() != leaderMode) {
             return ReplicaSession.refused(fixSessionType, fixSessionId, SessionAnswer.MODE_MISMATCH, leaderMode, leaderStorageIdentity);
-        }
-        if (leaderMode == ReplicationMode.NONE) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.NOT_REPLICATED);
         }
         FixSessionMessagesStore store = engine.openStore(settings);
         String storageIdentity = store.getStorageIdentity().orElse(null);

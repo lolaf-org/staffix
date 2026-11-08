@@ -71,6 +71,55 @@ class TestPromotionSeqNumJumps {
     }
 
     @Test
+    void aSessionAddedWhileLeadingStartsAtItsFirstSeqNum() {
+        jumps.promoted();
+        jumps.addedWhileLeading(LATE);
+
+        jumps.jumpOnStart(LATE, store);
+        jumps.jumpOnStart(LATE, store);
+
+        assertThat(store.writes).isEmpty();
+    }
+
+    @Test
+    void aSessionAddedWhileLeadingOverAStoreAlreadyUsedIsMovedAhead() {
+        RecordingStore used = new RecordingStore() {
+            @Override
+            public long getOutgoingSeqNum() {
+                return 50;
+            }
+        };
+        jumps.promoted();
+        jumps.addedWhileLeading(LATE);
+
+        jumps.jumpOnStart(LATE, used);
+
+        assertThat(used.writes).containsExactly("outgoing 150");
+    }
+
+    @Test
+    void aSessionAddedWhileNotLeadingIsMovedAheadWhenItStartsAfterThePromotion() {
+        jumps.addedWhileLeading(LATE);
+        jumps.promoted();
+
+        jumps.jumpOnStart(LATE, store);
+
+        assertThat(store.writes).containsExactly("outgoing 101");
+    }
+
+    @Test
+    void aSessionAddedUnderAnEarlierLeadershipIsMovedAhead() {
+        jumps.promoted();
+        jumps.addedWhileLeading(LATE);
+        jumps.demoted();
+        jumps.promoted();
+
+        jumps.jumpOnStart(LATE, store);
+
+        assertThat(store.writes).containsExactly("outgoing 101");
+    }
+
+    @Test
     void aSessionMarkedWhileNotLeadingStillJumpsAtTheNextPromotion() {
         jumps.jumped(LATE);
         jumps.promoted();

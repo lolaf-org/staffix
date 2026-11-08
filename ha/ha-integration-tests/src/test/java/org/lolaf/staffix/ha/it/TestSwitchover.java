@@ -617,6 +617,18 @@ class TestSwitchover {
         awaitNoSettingsDifference();
     }
 
+    @org.junit.jupiter.api.Test
+    void aSessionAddedOnTheLeaderStartsAtItsFirstSequenceNumber() {
+        fileSettingsStores = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        await().until(() -> b.getStatus().getRole() == org.lolaf.staffix.api.ha.LeaderElection.Role.FOLLOWER);
+
+        FixSessionSettings added = addedAndReplicated();
+
+        await().ignoreExceptions().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(10))
+                .until(() -> ((AdminApi) leader).getOutgoingSeqNum(added.getFixSessionId()) == 1);
+    }
+
     private FixSessionSettings addedAndReplicated() {
         FixSessionSettings added = addedSession(leaderSettings().getSettings().iterator().next());
         leaderSettings().add(added);

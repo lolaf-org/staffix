@@ -525,6 +525,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
         @Override
         public void onAddedSession(FixSessionSettings settings) {
+            promotionJumps.addedWhileLeading(settings);
             sessions.getSettingsDigests().onAdded(store, settings);
             settingsChanged();
         }

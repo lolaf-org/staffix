@@ -218,6 +218,19 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     }
 
     @Test
+    void aSessionTheLeaderStopsReplicatingIsDroppedBeforeTheFollowerSettingsCatchUpWithoutARefusal() {
+        aLeadsBFollows();
+        await().until(() -> b.ha.getSessionStatuses().get(0).isInSync());
+        RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);
+
+        a.ha.onSessionNotReplicated(MAIN);
+
+        await().until(() -> !replicaStore.isStarted());
+        assertThat(b.ha.getSessionStatuses().get(0).getNotReplicatedReason()).isNotEqualTo("MODE_MISMATCH");
+        assertThat(a.ha.getSessionStatuses().get(0).getNotReplicatedReason()).isNotEqualTo("MODE_MISMATCH");
+    }
+
+    @Test
     void aReplicationModeChangedOnTheLeaderAloneIsRefusedByTheFollower() {
         aLeadsBFollows();
         await().until(() -> b.ha.getSessionStatuses().get(0).isInSync());

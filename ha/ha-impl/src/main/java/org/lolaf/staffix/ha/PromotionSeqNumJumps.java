@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -30,11 +31,14 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 final class PromotionSeqNumJumps {
 
+    private static final long FIRST_SEQ_NUM = 1;
+
     private final long jump;
     /**
      * The promotion each session last jumped for, by type and id.
      */
     private final Map<String, Long> jumpedFor = new ConcurrentHashMap<>();
+    private final Set<String> addedWhileLeading = ConcurrentHashMap.newKeySet();
     /**
      * 0 while this node does not lead.
      */
@@ -57,6 +61,16 @@ final class PromotionSeqNumJumps {
 
     void demoted() {
         currentPromotion = 0;
+        addedWhileLeading.clear();
+    }
+
+    /**
+     * The old leader never ran a session created here, so one whose store is still at its first seqnum needs no jump.
+     */
+    void addedWhileLeading(FixSessionSettings sessionSettings) {
+        if (currentPromotion != 0) {
+            addedWhileLeading.add(sessionKey(sessionSettings));
+        }
     }
 
     /**
@@ -82,6 +96,9 @@ final class PromotionSeqNumJumps {
             return;
         }
         long next = store.getOutgoingSeqNum();
+        if (addedWhileLeading.remove(sessionKey(sessionSettings)) && next == FIRST_SEQ_NUM) {
+            return;
+        }
         store.storeNextOutgoingSeqNum(next + jump);
         log.warn("FIX session {} {} started after this node took the lead: outgoing sequence number moved from {} to {}",
                 sessionSettings.getFixSessionType(), sessionSettings.getFixSessionId(), next, next + jump);

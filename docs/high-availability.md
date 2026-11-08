@@ -323,8 +323,8 @@ admin API only: code calling a store directly on a follower is not stopped.
 
 A settings difference does not stop replication, since it should not remove protection: the follower lists it in the
 status as `sessionSettingsDifferences` (`MISSING_HERE`, `EXTRA_HERE` or `DIFFERENT`) and its `ha-session-settings` probe
-raises a `WARNING`, as a failover would run that node's own settings. One exception: a follower whose `replicationMode`
-for a session differs from the leader's refuses to replicate that session, logs an error and makes the leader raise the
+raises a `WARNING`, as a failover would run that node's own settings. One exception: a follower asked to replicate a
+session in a `replicationMode` other than its own refuses that session, logs an error and makes the leader raise the
 `ha-replication` alert, until both agree.
 
 ## Each node needs its own storage

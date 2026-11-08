@@ -91,10 +91,11 @@ class TestReplicaSessions {
     }
 
     @Test
-    void aSessionReplicatedHereButNotByTheLeaderIsRefused() {
+    void aSessionTheLeaderDoesNotReplicateIsNotRefusedThoughItStillHasAModeHere() {
         assertThat(replicaSessions.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.NONE,
-                "leader-storage")).isEqualTo(SessionAnswer.MODE_MISMATCH);
+                "leader-storage")).isEqualTo(SessionAnswer.NOT_REPLICATED);
         assertThat(engine.store(REPLICATED)).isNull();
+        assertThat(replicaSessions.isInSync()).isTrue();
     }
 
     @Test
