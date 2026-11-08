@@ -66,14 +66,14 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     private final List<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final Object lifecycleLock;
     private final BooleanSupplier engineActive;
-    private FixSessionSettings mainSettings;
+    private volatile FixSessionSettings mainSettings;
     private FixInitiatorTarget activeFixInitiatorTarget;
     private FixInitiatorTargets fixInitiatorTargets;
-    private FixSessionSettings fixSessionSettings;
+    private volatile FixSessionSettings fixSessionSettings;
     private ScheduledExecutorService scheduledExecutorService;
     private FixSessionImpl fixSession;
     private Client ioClient;
-    private boolean targetRunning;
+    private volatile boolean targetRunning;
     /**
      * Between a successful {@code startMe} and {@code stopMe}, under the lifecycle lock: {@link #isStarted()} turns
      * true only after {@code startMe} returns, too late for what runs under the lock in between.
@@ -270,7 +270,7 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     @Override
     public void activate() {
         synchronized (lifecycleLock) {
-            if (startedUnderLock && !targetRunning) {
+            if (startedUnderLock && !targetRunning && mainSettings != null) {
                 log.info("Engine leads, starting initiator for FIX session {}", fixSessionSettings.getFixSessionId());
                 startTarget();
             }
@@ -440,6 +440,10 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         ioClient = null;
     }
 
+    private boolean hasManagedSettings() {
+        return mainSettings != null || targetRunning;
+    }
+
     private boolean isMain(FixSessionSettings settings) {
         return settings.getFixSessionType() == FixSession.FixSessionType.INITIATOR
                 && fixInitiatorBuilder.getMainTarget().getFixSessionId().equals(settings.getFixSessionId());
@@ -553,12 +557,14 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
 
     @Override
     public List<FixSessionSettings> getManagedFixSessionsSettings() {
-        return List.of(fixSessionSettings);
+        return hasManagedSettings() ? List.of(fixSessionSettings) : List.of();
     }
 
     @Override
     public void forEachManagedFixSessionSettings(Consumer<FixSessionSettings> action) {
-        action.accept(fixSessionSettings);
+        if (hasManagedSettings()) {
+            action.accept(fixSessionSettings);
+        }
     }
 
     @Override

@@ -64,11 +64,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
-import java.util.function.BooleanSupplier;
-import java.util.function.Function;
-import java.util.function.Consumer;
-import java.util.function.Predicate;
+import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -105,6 +101,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private final Map<IOSession, ScheduledFuture<?>> logonTimeouts;
     private final Object lifecycleLock = new Object();
     private final BooleanSupplier engineActive;
+    private final FixSessionsSettingsStore.Listener managedSettingsTracker;
     private volatile FixSessionImpl[] connectedSessionsArray;
     private volatile FixAcceptorSessions fixAcceptorSessions;
     private ScheduledExecutorService scheduledExecutorService;
@@ -126,6 +123,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                     BooleanSupplier engineActive) {
         this.engineActive = engineActive;
         this.configuredSessionsSettings = Collections.synchronizedSet(new HashSet<>());
+        this.managedSettingsTracker = new ManagedSettingsTracker();
         this.connectedSessions = Collections.synchronizedSet(new HashSet<>());
         this.connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
         this.configuredSessions = new ConcurrentHashMap<>();
@@ -237,10 +235,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     /**
      * Lists the settings of this acceptor's sessions without building any, for an engine not leading whose high availability
-     * replicates them before the acceptor runs one. Read once, so a settings store changed meanwhile is seen when the
-     * engine leads.
+     * replicates them before the acceptor runs one. Followed afterwards, as a session the leader refused to replicate
+     * for want of settings here must be bound once they appear.
      */
     private void listSessionsWithoutBuilding() {
+        fixSessionsSettingsStores.forEach(store -> store.register(managedSettingsTracker));
         synchronized (configuredSessionsSettings) {
             configuredSessionsSettings.clear();
             fixSessionsSettingsStores.forEach(store -> store.getSettings().stream()
@@ -250,6 +249,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     }
 
     private void startAcceptor() {
+        fixSessionsSettingsStores.forEach(store -> store.unregister(managedSettingsTracker));
         if (fixAcceptorBuilder.getScheduledExecutorService() == null) {
             scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "Staffix-server-scheduler-" + fixAcceptorBuilder.getInstanceId());
@@ -352,6 +352,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         synchronized (lifecycleLock) {
             startedUnderLock = false;
+            fixSessionsSettingsStores.forEach(store -> store.unregister(managedSettingsTracker));
             if (running) {
                 stopAcceptor(stopDeadline, true);
             }
@@ -807,6 +808,29 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         private void addIfProvided(StringBuilder sb, String value) {
             if (value != null) {
                 sb.append(":").append(value);
+            }
+        }
+    }
+
+    private class ManagedSettingsTracker implements FixSessionsSettingsStore.Listener {
+
+        @Override
+        public void onAddedSession(FixSessionSettings settings) {
+            if (isAcceptorSession(settings)) {
+                configuredSessionsSettings.add(settings);
+            }
+        }
+
+        @Override
+        public void onRemovedSession(FixSessionSettings settings) {
+            configuredSessionsSettings.remove(settings);
+        }
+
+        @Override
+        public void onUpdatedSession(FixSessionSettings oldSettings, FixSessionSettings newSettings) {
+            synchronized (configuredSessionsSettings) {
+                onRemovedSession(oldSettings);
+                onAddedSession(newSettings);
             }
         }
     }

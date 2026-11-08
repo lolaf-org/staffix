@@ -80,6 +80,7 @@ class TestSwitchover {
     private AdminApi counterpartyEngine;
     private FixSessionId counterpartySession;
     private boolean sharedStorage;
+    private boolean followerMissesTheSession;
     private Duration switchoverTimeout = Duration.ofSeconds(30);
     private Duration followerStallTimeout = Duration.ofSeconds(10);
     private HoldableStore followerStore;
@@ -151,6 +152,9 @@ class TestSwitchover {
             engineA.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixA).build()).start();
             startFollower = () -> {
                 FixEngine engineB = haEngine("b", sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, mode), replicationA, replicationB);
+                if (followerMissesTheSession) {
+                    engineB.getFixSessionsSettingsStores().get(0).remove(sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, mode));
+                }
                 engineB.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fixB).build()).start();
                 return engineB;
             };
@@ -420,6 +424,23 @@ class TestSwitchover {
                 .isEqualTo(1);
         assertThat(counterpartyIncomingSeqNum()).as("b's Logout, a's Logon and ten answers").isEqualTo(expected + 12);
         assertThat(a.getStatus().getRole()).isEqualTo(org.lolaf.staffix.api.ha.LeaderElection.Role.LEADER);
+    }
+
+    @org.junit.jupiter.api.Test
+    void aSessionAddedToTheFollowersSettingsStoreIsReplicatedWithoutARestart() {
+        followerMissesTheSession = true;
+        startPair(Pair.ACCEPTORS, ReplicationMode.ASYNC);
+        await().untilAsserted(() -> assertThat(a.getSessionStatuses()).singleElement().satisfies(session -> {
+            assertThat(session.isInSync()).isFalse();
+            assertThat(session.getNotReplicatedReason()).isEqualTo("UNKNOWN_SESSION");
+        }));
+
+        follower.getFixSessionsSettingsStores().get(0).add(sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, ReplicationMode.ASYNC));
+
+        await().untilAsserted(() -> assertThat(a.getSessionStatuses()).singleElement().satisfies(session -> {
+            assertThat(session.isInSync()).isTrue();
+            assertThat(session.getNotReplicatedReason()).isNull();
+        }));
     }
 
     /**

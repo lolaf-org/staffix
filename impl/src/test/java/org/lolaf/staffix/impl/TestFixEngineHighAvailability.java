@@ -40,6 +40,8 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
+import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.session.plugins.FixSessionPlugin;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
@@ -81,6 +83,8 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 
 class TestFixEngineHighAvailability extends AbstractFixTests {
+
+    private static final FixSessionId ADDED_SESSION = FixSessionId.of("added", FixRegularVersion.VERSION_44, "ADDED", "CLIENT");
 
     private final FixEngineHa ha = mock(FixEngineHa.class);
     private final List<RecordingReplicatingStore> stores = new CopyOnWriteArrayList<>();
@@ -196,6 +200,88 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         engine.deactivate();
         assertThat(engine.getFixSessionsSettings()).as("still listed once the engine stood down")
                 .extracting(FixSessionSettings::getFixSessionType).contains(FixSession.FixSessionType.ACCEPTOR);
+    }
+
+    @Test
+    void aStandbyAcceptorFollowsTheChangesOfItsSettingsStore() {
+        standbyAcceptorStarted();
+        FixSessionSettings settings = acceptorSettings();
+        FixSessionSettings added = settings.toBuilder().fixSessionId(ADDED_SESSION).build();
+        FixSessionSettings updated = added.toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(11)).build();
+
+        acceptorStore().add(added);
+        assertThat(engine.getFixSessionsSettings()).contains(added);
+
+        acceptorStore().update(updated);
+        assertThat(engine.getFixSessionsSettings()).contains(updated).doesNotContain(added);
+
+        acceptorStore().remove(updated);
+        assertThat(engine.getFixSessionsSettings()).containsExactly(settings);
+        assertThat(listening(fixAcceptorBuilder.getBindAddress())).isFalse();
+    }
+
+    @Test
+    void aSessionAddedToAStandbyAcceptorRunsOnceItLeadsAndAOneRemovedDoesNot() {
+        standbyAcceptorStarted();
+        FixSessionSettings settings = acceptorSettings();
+        FixSessionSettings added = settings.toBuilder().fixSessionId(ADDED_SESSION).build();
+        acceptorStore().add(added);
+        acceptorStore().remove(settings);
+
+        engine.activate();
+
+        assertThat(fixAcceptor.getSessions()).extracting(FixSession::getFixSessionId).containsExactly(added.getFixSessionId());
+        assertThat(engine.getFixSessionsSettings()).containsExactly(added);
+    }
+
+    @Test
+    void aStoreChangeIsFollowedAfterStandingDown() {
+        standbyAcceptorStarted();
+        FixSessionSettings settings = acceptorSettings();
+        engine.activate();
+        engine.deactivate();
+
+        acceptorStore().remove(settings);
+
+        assertThat(engine.getFixSessionsSettings()).isEmpty();
+    }
+
+    @Test
+    void anInitiatorSessionRemovedOnAStandbyIsNotListedAndDoesNotRunOnceItLeads() {
+        withStandbyHighAvailability();
+        setupInitiatorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);
+        fixInitiator.start();
+        FixSessionSettings settings = initiatorStore().getSettings().iterator().next();
+
+        initiatorStore().remove(settings);
+        assertThat(engine.getFixSessionsSettings()).isEmpty();
+
+        engine.activate();
+        assertThat(fixInitiator.getSession()).isNull();
+
+        initiatorStore().add(settings);
+        assertThat(engine.getFixSessionsSettings()).containsExactly(settings);
+    }
+
+    private void standbyAcceptorStarted() {
+        acceptorFixEngineBuilder = acceptorFixEngineBuilder.toBuilder()
+                .highAvailability(TestingHaSettings.builder().mock(ha).build())
+                .build();
+        withStandbyHighAvailability();
+        setupAcceptorSessionSettings(FixSessionSettings.FixSessionSettingsBuilder::build);
+        fixAcceptor.start();
+    }
+
+    private FixSessionSettings acceptorSettings() {
+        return acceptorStore().getSettings().iterator().next();
+    }
+
+    private FixSessionsSettingsStore acceptorStore() {
+        return acceptorFixEngine.getFixSessionsSettingsStores().get(0);
+    }
+
+    private FixSessionsSettingsStore initiatorStore() {
+        return initiatorFixEngine.getFixSessionsSettingsStores().get(0);
     }
 
     @Test
