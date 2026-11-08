@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.Startable;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
  * Holds the {@link FixSessionSettings} the engine manages and acts as the bridge between an external configuration
@@ -185,7 +186,7 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
      */
     abstract class AbstractFixSessionSettingsStore extends Startable.SimpleStartable<FixSessionsSettingsStore> implements FixSessionsSettingsStore {
 
-        private final Set<Listener> listeners = new HashSet<>();
+        private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
         private final Map<HeldKey, FixSessionSettings> held = new ConcurrentHashMap<>();
         private String engineId;
 
@@ -263,7 +264,7 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
         public void add(FixSessionSettings settings) {
             FixSessionSettings added = onAdd(settings);
             hold(added);
-            for (Listener l : List.copyOf(listeners)) {
+            for (Listener l : listeners) {
                 l.onAddedSession(added);
             }
         }
@@ -274,7 +275,7 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
                 onRemove(settings);
                 held.remove(HeldKey.of(settings));
             }
-            for (Listener l : List.copyOf(listeners)) {
+            for (Listener l : listeners) {
                 l.onRemovedSession(settings);
             }
         }
@@ -286,7 +287,7 @@ public interface FixSessionsSettingsStore extends InstanceIdSupplier, Startable<
                             "Cannot update unknown FIX session settings " + settings.getFixSessionId()));
             FixSessionSettings updated = onUpdate(settings);
             hold(updated);
-            for (Listener l : List.copyOf(listeners)) {
+            for (Listener l : listeners) {
                 l.onUpdatedSession(oldSettings, updated);
             }
         }

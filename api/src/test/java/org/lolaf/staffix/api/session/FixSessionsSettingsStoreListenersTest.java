@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -88,6 +89,53 @@ class FixSessionsSettingsStoreListenersTest {
         assertThat(restarting.updatedSessions).hasSize(1);
         assertThat(behindIt.updatedSessions).as("the listener behind the one that restarted itself").hasSize(1);
         assertThat(store.getListeners()).contains(restarting, behindIt);
+    }
+
+    @Test
+    void listenersAreNotifiedInTheOrderTheyRegistered() {
+        InMemoryStore store = new InMemoryStore();
+        FixSessionSettings removed = settings("SENDER", "TARGET");
+        store.add(removed);
+        List<Integer> notified = new ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            int position = i;
+            store.register(new RecordingListener(store, false) {
+                @Override
+                public void onRemovedSession(FixSessionSettings settings) {
+                    notified.add(position);
+                }
+            });
+        }
+
+        store.remove(removed);
+
+        assertThat(notified).isSorted().hasSize(50);
+    }
+
+    @Test
+    void aListenerRegisteringOnAnotherThreadDoesNotBreakANotification() throws InterruptedException {
+        InMemoryStore store = new InMemoryStore();
+        FixSessionSettings added = settings("SENDER", "TARGET");
+        for (int i = 0; i < 20; i++) {
+            store.register(new RecordingListener(store, false));
+        }
+        AtomicBoolean stop = new AtomicBoolean();
+        Thread registering = new Thread(() -> {
+            while (!stop.get()) {
+                RecordingListener listener = new RecordingListener(store, false);
+                store.register(listener);
+                store.unregister(listener);
+            }
+        });
+        registering.start();
+        try {
+            for (int i = 0; i < 20_000; i++) {
+                store.add(added);
+            }
+        } finally {
+            stop.set(true);
+            registering.join();
+        }
     }
 
     private static class RecordingListener implements FixSessionsSettingsStore.Listener {
