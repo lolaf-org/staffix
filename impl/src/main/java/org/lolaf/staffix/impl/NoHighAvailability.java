@@ -71,7 +71,7 @@ final class NoHighAvailability implements FixEngineHa {
     }
 
     @Override
-    public void setCandidate(boolean candidate) {
+    public void setElectable(boolean electable) {
         throw noHighAvailability();
     }
 

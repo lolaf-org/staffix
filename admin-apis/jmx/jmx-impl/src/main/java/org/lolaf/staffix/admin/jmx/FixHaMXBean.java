@@ -28,10 +28,10 @@ public interface FixHaMXBean {
     List<Session> getSessionStatuses();
 
     /**
-     * See {@link org.lolaf.staffix.api.ha.HaAdmin#setCandidate(boolean)}; not a setter, which JMX would show as a
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#setElectable(boolean)}; not a setter, which JMX would show as a
      * write-only attribute rather than an operation.
      */
-    void updateCandidacy(boolean candidate);
+    void updateElectable(boolean electable);
 
     /**
      * See {@link org.lolaf.staffix.api.ha.HaAdmin#resync()}.
@@ -84,9 +84,9 @@ public interface FixHaMXBean {
 
         boolean isTransferLeadershipSupported();
 
-        boolean isCandidacySupported();
+        boolean isElectableSupported();
 
-        boolean isCandidate();
+        boolean isElectable();
 
         List<FollowerConnection> getFollowerConnections();
 

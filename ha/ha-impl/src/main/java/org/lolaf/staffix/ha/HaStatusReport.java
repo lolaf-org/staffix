@@ -54,8 +54,8 @@ final class HaStatusReport {
                 .leaderElectionType(election == null ? "" : election.getClass().getSimpleName())
                 .roleSince(ha.getRoleSince())
                 .transferLeadershipSupported(election != null && election.isTransferLeadershipSupported())
-                .candidacySupported(election != null && election.isCandidacySupported())
-                .candidate(election == null || election.isCandidate())
+                .electableSupported(election != null && election.isElectableSupported())
+                .electable(election == null || election.isElectable())
                 .switchoverMaxDuration(settings.switchoverMaxDuration())
                 .monitoringInstanceId(settings.getMonitoringInstanceId());
         if (role == Role.LEADER) {

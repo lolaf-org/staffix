@@ -163,40 +163,40 @@ class TestSwitchover extends HaPairFixture {
     void aLeaderWithdrawingFromElectionsSwitchesOverFirst() {
         aLeadsBFollows();
         await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
-        a.election.candidacySupported(true);
+        a.election.electableSupported(true);
         bTakesOverOnTransfer();
 
-        a.ha.setCandidate(false);
+        a.ha.setElectable(false);
 
         assertThat(a.engine.activity).contains("deactivate with logout");
-        assertThat(a.ha.getStatus().isCandidate()).isFalse();
+        assertThat(a.ha.getStatus().isElectable()).isFalse();
         await().until(() -> b.engine.activity.contains("activate, stores open 0"));
         assertThat(b.engine.store(MAIN).writes).as("handed over, not failed over").doesNotContain("outgoing 10001");
     }
 
     @Test
-    void aLeaderThatCannotSwitchOverStaysACandidate() {
+    void aLeaderThatCannotSwitchOverStaysElectable() {
         aLeadsBFollows();
-        a.election.candidacySupported(true);
+        a.election.electableSupported(true);
         bTakesOverOnTransfer();
         bHasLeftToStore(1_001);
 
-        assertThatThrownBy(() -> a.ha.setCandidate(false)).isInstanceOf(IllegalStateException.class)
+        assertThatThrownBy(() -> a.ha.setElectable(false)).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("FOLLOWER_STORE_BEHIND");
 
-        assertThat(a.ha.getStatus().isCandidate()).isTrue();
+        assertThat(a.ha.getStatus().isElectable()).isTrue();
         assertThat(a.ha.getStatus().getRole()).isEqualTo(Role.LEADER);
     }
 
     @Test
     void aFollowerWithdrawsFromElectionsWithoutASwitchover() {
         aLeadsBFollows();
-        b.election.candidacySupported(true);
+        b.election.electableSupported(true);
         bTakesOverOnTransfer();
 
-        b.ha.setCandidate(false);
+        b.ha.setElectable(false);
 
-        assertThat(b.ha.getStatus().isCandidate()).isFalse();
+        assertThat(b.ha.getStatus().isElectable()).isFalse();
         assertThat(a.engine.activity).doesNotContain("deactivate with logout");
     }
 

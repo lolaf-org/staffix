@@ -608,7 +608,7 @@ class AdminApiEndpointsTest {
         assertThat(call("GET", "/engines/alpha-engine/v1/ha", null).body())
                 .isEqualTo("{\"nodeId\":\"1\",\"pairName\":\"gateway\",\"role\":\"LEADER\",\"epoch\":7,\"leaderId\":\"1\",\"leadershipValid\":true,"
                         + "\"leaderElectionType\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
-                        + "\"transferLeadershipSupported\":false,\"candidacySupported\":false,\"candidate\":false,\"switchoverMaxDuration\":\"PT1M\",\"monitoringInstanceId\":\"metrics\","
+                        + "\"transferLeadershipSupported\":false,\"electableSupported\":false,\"electable\":false,\"switchoverMaxDuration\":\"PT1M\",\"monitoringInstanceId\":\"metrics\","
                         + "\"followerConnections\":[{\"nodeId\":\"2\",\"lane\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
                         + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3}],"
                         + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"lane\":1,\"droppedAt\":\"2026-10-10T10:05:00Z\","
@@ -628,7 +628,7 @@ class AdminApiEndpointsTest {
                 .replicationAckTimeout(Duration.ZERO).build()));
         when(adminApi.getHa()).thenReturn(Optional.of(ha));
 
-        assertThat(call("POST", "/engines/alpha-engine/v1/ha/candidacy", "{\"candidate\":false}").statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/electable", "{\"electable\":false}").statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/ha/resync", null).statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/trading/resync", null).statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/drop-copy/resync", null).statusCode()).isEqualTo(404);
@@ -638,7 +638,7 @@ class AdminApiEndpointsTest {
         assertThat(switchover.statusCode()).isEqualTo(200);
         assertThat(switchover.body()).isEqualTo("{\"outcome\":\"NOT_TRANSFERRED\"}");
 
-        verify(ha).setCandidate(false);
+        verify(ha).setElectable(false);
         verify(ha).resync();
         verify(ha).resync(TRADING, FixSession.FixSessionType.INITIATOR);
     }

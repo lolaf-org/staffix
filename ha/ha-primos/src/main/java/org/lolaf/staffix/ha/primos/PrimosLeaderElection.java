@@ -16,11 +16,7 @@
 package org.lolaf.staffix.ha.primos;
 
 import lombok.extern.slf4j.Slf4j;
-import org.lolaf.primos.Leader;
-import org.lolaf.primos.PrimosListener;
-import org.lolaf.primos.PrimosNode;
-import org.lolaf.primos.PrimosNodeBuilder;
-import org.lolaf.primos.RoleAndTerm;
+import org.lolaf.primos.*;
 import org.lolaf.primos.store.FileStateStore;
 import org.lolaf.primos.transport.UdpTransport;
 import org.lolaf.ringos.Deadline;
@@ -141,19 +137,19 @@ public final class PrimosLeaderElection implements LeaderElection {
     }
 
     @Override
-    public boolean isCandidacySupported() {
+    public boolean isElectableSupported() {
         return leadershipControl;
     }
 
     @Override
-    public void setCandidate(boolean candidate) {
-        requireLeadershipControl("decline candidacy");
-        node.setCandidate(candidate);
+    public boolean isElectable() {
+        return node.isElectable();
     }
 
     @Override
-    public boolean isCandidate() {
-        return node.isCandidate();
+    public void setElectable(boolean electable) {
+        requireLeadershipControl("decline election");
+        node.setElectable(electable);
     }
 
     private void requireLeadershipControl(String action) {
@@ -197,6 +193,27 @@ public final class PrimosLeaderElection implements LeaderElection {
 
     public static class PrimosLeaderElectionFactory implements LeaderElectionFactory<PrimosLeaderElectionSettings> {
 
+        private static PrimosNode ownedNode(PrimosLeaderElectionSettings settings) {
+            byte[] secret = settings.getClusterSecret();
+            if (secret == null) {
+                log.warn("primos cluster {} runs without a clusterSecret: its datagrams are neither signed nor checked",
+                        settings.getCluster().applicationName());
+            }
+            PrimosNodeBuilder builder = PrimosNode.builder()
+                    .clusterConfig(settings.getCluster())
+                    .store(() -> new FileStateStore(settings.getStateDirectory()))
+                    .transport(UdpTransport.builder()
+                            .bindAddress(settings.getBindAddress())
+                            .peers(settings.getCluster().allPeers())
+                            .clusterName(settings.getCluster().applicationName())
+                            // learning a peer's address from its traffic is safe only when it cannot be forged
+                            .addressLearning(secret != null));
+            if (secret != null) {
+                builder.clusterSecret(secret);
+            }
+            return builder.build();
+        }
+
         @Override
         public Class<PrimosLeaderElectionSettings> getSettingsClass() {
             return PrimosLeaderElectionSettings.class;
@@ -221,27 +238,6 @@ public final class PrimosLeaderElection implements LeaderElection {
                         + "term and vote across restarts, and a bindAddress");
             }
             return new PrimosLeaderElection(ownedNode(settings), true, true, settings.getFencingMargin());
-        }
-
-        private static PrimosNode ownedNode(PrimosLeaderElectionSettings settings) {
-            byte[] secret = settings.getClusterSecret();
-            if (secret == null) {
-                log.warn("primos cluster {} runs without a clusterSecret: its datagrams are neither signed nor checked",
-                        settings.getCluster().applicationName());
-            }
-            PrimosNodeBuilder builder = PrimosNode.builder()
-                    .clusterConfig(settings.getCluster())
-                    .store(() -> new FileStateStore(settings.getStateDirectory()))
-                    .transport(UdpTransport.builder()
-                            .bindAddress(settings.getBindAddress())
-                            .peers(settings.getCluster().allPeers())
-                            .clusterName(settings.getCluster().applicationName())
-                            // learning a peer's address from its traffic is safe only when it cannot be forged
-                            .addressLearning(secret != null));
-            if (secret != null) {
-                builder.clusterSecret(secret);
-            }
-            return builder.build();
         }
     }
 }

@@ -405,18 +405,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-  /v1/ha/candidacy:
+  /v1/ha/electable:
     post:
       summary: Takes this node out of elections for maintenance, or puts it back
       description: A node out of elections keeps voting but never leads. Refused when the leader election cannot,
-        as candidacySupported in the high availability's status tells.
-      operationId: setHaCandidacy
+        as electableSupported in the high availability's status tells.
+      operationId: setHaElectable
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CandidacyRequest'
+              $ref: '#/components/schemas/ElectableRequest'
       responses:
         '204':
           $ref: '#/components/responses/Done'
@@ -1181,8 +1181,8 @@ components:
           description: The probe's runbook; absent when it has none.
     HaNodeStatus:
       type: object
-      required: [nodeId, role, epoch, leadershipValid, leaderElectionType, transferLeadershipSupported, candidacySupported,
-        candidate, followerConnections, droppedFollowers, sessionSettingsDifferences]
+      required: [nodeId, role, epoch, leadershipValid, leaderElectionType, transferLeadershipSupported, electableSupported,
+        electable, followerConnections, droppedFollowers, sessionSettingsDifferences]
       properties:
         nodeId:
           type: string
@@ -1219,10 +1219,10 @@ components:
         transferLeadershipSupported:
           type: boolean
           description: The leader election can hand leadership over, for a planned switchover.
-        candidacySupported:
+        electableSupported:
           type: boolean
           description: The leader election lets this node decline to stand, for maintenance.
-        candidate:
+        electable:
           type: boolean
           description: This node stands for election.
         followerConnections:
@@ -1486,11 +1486,11 @@ components:
           enum: [TRANSFERRED, NO_FOLLOWER_IN_SYNC, FOLLOWER_STORE_BEHIND, NOT_HANDED_OVER, NOT_TRANSFERRED]
           description: TRANSFERRED, this node now follows; NO_FOLLOWER_IN_SYNC and FOLLOWER_STORE_BEHIND, nothing was changed; NOT_HANDED_OVER
             and NOT_TRANSFERRED, this node leads its sessions again.
-    CandidacyRequest:
+    ElectableRequest:
       type: object
-      required: [candidate]
+      required: [electable]
       properties:
-        candidate:
+        electable:
           type: boolean
           description: False takes the node out of elections, true puts it back.
     ActivateRequest:

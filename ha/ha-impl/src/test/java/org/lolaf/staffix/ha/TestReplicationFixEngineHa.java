@@ -435,16 +435,16 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     @Test
     void aNodeWithdrawsFromElectionsOnlyThroughAnElectionThatCan() {
         a.start();
-        assertThat(a.ha.getStatus().isCandidacySupported()).isFalse();
-        assertThatThrownBy(() -> a.ha.setCandidate(false)).isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("FakeLeaderElection cannot decline candidacy");
+        assertThat(a.ha.getStatus().isElectableSupported()).isFalse();
+        assertThatThrownBy(() -> a.ha.setElectable(false)).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("FakeLeaderElection cannot decline election");
 
-        a.election.candidacySupported(true);
-        a.ha.setCandidate(false);
+        a.election.electableSupported(true);
+        a.ha.setElectable(false);
 
         HaStatus status = a.ha.getStatus();
-        assertThat(status.isCandidacySupported()).isTrue();
-        assertThat(status.isCandidate()).isFalse();
+        assertThat(status.isElectableSupported()).isTrue();
+        assertThat(status.isElectable()).isFalse();
         assertThat(status.isTransferLeadershipSupported()).isFalse();
     }
 

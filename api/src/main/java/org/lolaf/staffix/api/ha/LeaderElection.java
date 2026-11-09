@@ -88,25 +88,25 @@ public interface LeaderElection extends Startable<LeaderElection> {
         throw new UnsupportedOperationException(getClass().getName() + " cannot transfer leadership");
     }
 
-    default boolean isCandidacySupported() {
+    default boolean isElectableSupported() {
         return false;
     }
 
     /**
-     * Whether this node stands for election. A non-candidate keeps voting but never leads, for maintenance or while it
-     * is not fit to take over.
-     *
-     * @throws UnsupportedOperationException unless {@link #isCandidacySupported()}
+     * Always true unless {@link #isElectableSupported()}.
      */
-    default void setCandidate(boolean candidate) {
-        throw new UnsupportedOperationException(getClass().getName() + " cannot decline candidacy");
+    default boolean isElectable() {
+        return true;
     }
 
     /**
-     * Always true unless {@link #isCandidacySupported()}.
+     * Whether this node stands for election. A node that is not electable keeps voting but never leads, for
+     * maintenance or while it is not fit to take over.
+     *
+     * @throws UnsupportedOperationException unless {@link #isElectableSupported()}
      */
-    default boolean isCandidate() {
-        return true;
+    default void setElectable(boolean electable) {
+        throw new UnsupportedOperationException(getClass().getName() + " cannot decline election");
     }
 
     enum Role {

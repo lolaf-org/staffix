@@ -69,11 +69,11 @@ public class HaStatus {
     /**
      * Whether the leader election lets this node decline to stand, for maintenance.
      */
-    boolean candidacySupported;
+    boolean electableSupported;
     /**
      * Whether this node stands for election.
      */
-    boolean candidate;
+    boolean electable;
     /**
      * The longest a switchover can take, from waiting for a follower ready to lead to leadership leaving this node. Null
      * without high availability.

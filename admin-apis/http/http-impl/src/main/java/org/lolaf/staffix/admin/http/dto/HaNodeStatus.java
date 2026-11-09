@@ -43,8 +43,8 @@ public class HaNodeStatus {
      */
     Instant roleSince;
     boolean transferLeadershipSupported;
-    boolean candidacySupported;
-    boolean candidate;
+    boolean electableSupported;
+    boolean electable;
     /**
      * Absent without high availability.
      */
@@ -61,7 +61,7 @@ public class HaNodeStatus {
     public static HaNodeStatus of(HaStatus status) {
         return new HaNodeStatus(status.getNodeId(), status.getPairName(), status.getRole(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElectionType(),
-                status.getRoleSince(), status.isTransferLeadershipSupported(), status.isCandidacySupported(),
-                status.isCandidate(), status.getSwitchoverMaxDuration(), status.getMonitoringInstanceId(), status.getFollowerConnections(), status.getDroppedFollowers(), status.getSessionSettingsDifferences(), status.getLeader());
+                status.getRoleSince(), status.isTransferLeadershipSupported(), status.isElectableSupported(),
+                status.isElectable(), status.getSwitchoverMaxDuration(), status.getMonitoringInstanceId(), status.getFollowerConnections(), status.getDroppedFollowers(), status.getSessionSettingsDifferences(), status.getLeader());
     }
 }

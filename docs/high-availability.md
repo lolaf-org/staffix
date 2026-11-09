@@ -271,9 +271,9 @@ The high availability has its own admin entry point, `AdminApi.getHa()`, also ov
   all of it before it can lead: see `switchoverMaxPendingWrites`. The answer names the outcome: `TRANSFERRED`;
   `NO_FOLLOWER_IN_SYNC` or `FOLLOWER_STORE_BEHIND`, nothing was changed; `NOT_HANDED_OVER` or `NOT_TRANSFERRED`, this node
   leads its sessions again.
-- **Maintenance mode** (`POST v1/ha/candidacy`, `{"candidate": false}`) takes a node out of elections: it still votes,
+- **Maintenance mode** (`POST v1/ha/electable`, `{"electable": false}`) takes a node out of elections: it still votes,
   but will not lead. A leader withdrawing switches over first, so its sessions move as cleanly as in a switchover;
-  when that does not succeed the call fails, and the node stays a candidate and keeps leading.
+  when that does not succeed the call fails, and the node stays electable and keeps leading.
 - **Re-sync** (`POST v1/ha/resync`, or one session with `POST v1/ha/sessions/{group}/{name}/resync`) sends the follower
   a fresh copy of each replicated session. Until it holds a session again, that session's `SYNC` sends do not wait
   for it.

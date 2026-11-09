@@ -41,8 +41,8 @@ public final class FakeLeaderElection implements LeaderElection {
     private volatile boolean leadershipValid = true;
     private volatile long leaseEndNanos = Long.MAX_VALUE;
     private volatile boolean started;
-    private volatile boolean candidacySupported;
-    private volatile boolean candidate = true;
+    private volatile boolean electableSupported;
+    private volatile boolean electable = true;
     private volatile @Nullable Runnable transfer;
 
     /**
@@ -53,8 +53,8 @@ public final class FakeLeaderElection implements LeaderElection {
         this.transfer = transfer;
     }
 
-    public void candidacySupported(boolean candidacySupported) {
-        this.candidacySupported = candidacySupported;
+    public void electableSupported(boolean electableSupported) {
+        this.electableSupported = electableSupported;
     }
 
     public void elect(Role role, long epoch, String leaderId) {
@@ -119,18 +119,18 @@ public final class FakeLeaderElection implements LeaderElection {
     }
 
     @Override
-    public boolean isCandidacySupported() {
-        return candidacySupported;
+    public boolean isElectableSupported() {
+        return electableSupported;
     }
 
     @Override
-    public boolean isCandidate() {
-        return candidate;
+    public boolean isElectable() {
+        return electable;
     }
 
     @Override
-    public void setCandidate(boolean candidate) {
-        this.candidate = candidate;
+    public void setElectable(boolean electable) {
+        this.electable = electable;
     }
 
     @Override

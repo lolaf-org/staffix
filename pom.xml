@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" child.project.url.inherit.append.path="false">
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+         child.project.url.inherit.append.path="false">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.lolaf.staffix</groupId>
@@ -39,7 +41,8 @@
         </developer>
     </developers>
 
-    <scm child.scm.connection.inherit.append.path="false" child.scm.developerConnection.inherit.append.path="false" child.scm.url.inherit.append.path="false">
+    <scm child.scm.connection.inherit.append.path="false" child.scm.developerConnection.inherit.append.path="false"
+         child.scm.url.inherit.append.path="false">
         <connection>scm:git:https://github.com/lolaf-org/staffix.git</connection>
         <!-- HTTPS rather than the conventional ssh: the credential that pushes a release is a token,
              and a token is an HTTPS credential. -->
@@ -85,7 +88,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Filled by the JaCoCo agent; empty so that surefire's @{argLine} still resolves with -Djacoco.skip. -->
-        <argLine />
+        <argLine/>
         <sonar.coverage.jacoco.xmlReportPaths>
             ${maven.multiModuleProjectDirectory}/coverage-report/target/site/jacoco-aggregate/jacoco.xml
         </sonar.coverage.jacoco.xmlReportPaths>
@@ -93,7 +96,7 @@
         <project.build.outputTimestamp>2026-10-14T19:04:26Z</project.build.outputTimestamp>
         <maven.compiler.release>11</maven.compiler.release>
 
-        <ringos.version>0.9.2-SNAPSHOT</ringos.version>
+        <ringos.version>0.9.2</ringos.version>
         <betty.version>0.9.4-SNAPSHOT</betty.version>
         <primos.version>0.1.0-SNAPSHOT</primos.version>
         <maven-plugin-api.version>3.10.0</maven-plugin-api.version>
@@ -134,7 +137,7 @@
         <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
         <maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
         <!-- Appended to what maven-release-plugin passes to its forked builds -->
-        <release.extraArguments />
+        <release.extraArguments/>
         <lombok-maven-plugin.version>1.18.20.0</lombok-maven-plugin.version>
         <automatic.module.name>org.lolaf.staffix.MODULE.NAME.NOT.SET</automatic.module.name>
         <delombok.skip>false</delombok.skip>

@@ -207,10 +207,10 @@ class TestPrimosLeaderElection {
         await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).isPresent());
         LeaderElection old = leader(cluster).get();
 
-        old.setCandidate(false);
+        old.setElectable(false);
 
         await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).filter(next -> next != old).isPresent());
-        assertThat(old.isCandidate()).isFalse();
+        assertThat(old.isElectable()).isFalse();
     }
 
     @Test
@@ -227,15 +227,15 @@ class TestPrimosLeaderElection {
         LeaderElection controlling = PrimosLeaderElectionSettings.builder().node(node).leadershipControl(true).build().instance();
 
         assertThat(listening.isTransferLeadershipSupported()).isFalse();
-        assertThat(listening.isCandidacySupported()).isFalse();
+        assertThat(listening.isElectableSupported()).isFalse();
         assertThatThrownBy(listening::transferLeadership).isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("unless leadershipControl allows it");
-        assertThatThrownBy(() -> listening.setCandidate(false)).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> listening.setElectable(false)).isInstanceOf(UnsupportedOperationException.class);
 
-        assertThat(controlling.isCandidacySupported()).isTrue();
-        controlling.setCandidate(false);
-        assertThat(node.isCandidate()).isFalse();
-        assertThat(listening.isCandidate()).as("reads the node, whoever may change it").isFalse();
+        assertThat(controlling.isElectableSupported()).isTrue();
+        controlling.setElectable(false);
+        assertThat(node.isElectable()).isFalse();
+        assertThat(listening.isElectable()).as("reads the node, whoever may change it").isFalse();
     }
 
     @Test

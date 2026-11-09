@@ -35,12 +35,12 @@ public interface HaAdmin {
 
     /**
      * Takes this node out of elections for maintenance, or back in; a leader first {@link #switchover() switches over}
-     * when its election can transfer leadership, so its sessions move cleanly; see {@link LeaderElection#setCandidate(boolean)}.
+     * when its election can transfer leadership, so its sessions move cleanly; see {@link LeaderElection#setElectable(boolean)}.
      *
-     * @throws IllegalStateException when that switchover fails, this node staying a candidate, or when the leader
-     *                               election cannot, as {@link HaStatus#isCandidacySupported()} tells
+     * @throws IllegalStateException when that switchover fails, this node staying electable, or when the leader
+     *                               election cannot, as {@link HaStatus#isElectableSupported()} tells
      */
-    void setCandidate(boolean candidate);
+    void setElectable(boolean electable);
 
     /**
      * Replaces every follower's copy of every replicated session with a fresh one. Until a follower holds it again,

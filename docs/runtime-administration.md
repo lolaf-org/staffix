@@ -60,7 +60,7 @@ as its high availability, are listed by the engine-level MBean's `ProbedComponen
 
 An engine with [high availability](high-availability.md) also registers `type=FixHa`: `Status` and `SessionStatuses`
 (the role, the epoch, the leader, what the election supports, each follower and replicated session), and the
-operations `switchover()` (answering its outcome), `updateCandidacy(boolean)` (maintenance mode), `resync()` and
+operations `switchover()` (answering its outcome), `updateElectable(boolean)` (maintenance mode), `resync()` and
 `resyncSession(String fixSessionId, String fixSessionType)`. An engine that does not lead refuses the session actions above, since
 running one there would put the session up on both nodes. Changes to a replicated settings store are refused there too:
 make them on the leader, which [passes them to the follower](high-availability.md#session-settings-on-both-nodes).
@@ -139,7 +139,7 @@ state: read `status` again to see it.
 | `GET engine/meters` | the meters of the engine's own components, such as its high availability, tagged with the engine alone |
 | `GET ha`, `GET ha/sessions` | the engine's [high availability](high-availability.md): role, epoch, leader, what its election supports, each follower (connected, in sync, unsent bytes, lag) or the connection to the leader; and per replicated session, its mode, whether a follower holds it, and on a follower whether it would be taken over cleanly now. 404 on an engine without |
 | `POST ha/switchover` | hands leadership to the follower: logs the sessions out, hands every write over, transfers; answers `{"outcome": "TRANSFERRED"}`, or `NO_FOLLOWER_IN_SYNC`, `FOLLOWER_STORE_BEHIND` (nothing changed), `NOT_HANDED_OVER`, `NOT_TRANSFERRED` (this node leads again) |
-| `POST ha/candidacy` | `{"candidate": false}` takes the node out of elections for maintenance, `true` puts it back; a leader switches over first; 409 when the election cannot, or that switchover does not succeed |
+| `POST ha/electable` | `{"electable": false}` takes the node out of elections for maintenance, `true` puts it back; a leader switches over first; 409 when the election cannot, or that switchover does not succeed |
 | `POST ha/resync`, `POST ha/sessions/{group}/{name}/resync` | sends the follower a fresh copy of every replicated session, or of one, named as `ha/sessions` lists it; leader only (409 otherwise) |
 | `GET session-components` | what a session's settings can name: application factories with their application ids, message stores, messages loggers, session plugins with the plugin types (full class names) they serve |
 | `GET session-settings-stores`, `POST session-settings-stores/{id}/reload` | each store says whether a change made through the API survives a restart (`persistent`) |

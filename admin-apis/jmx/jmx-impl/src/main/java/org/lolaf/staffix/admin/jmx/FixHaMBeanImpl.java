@@ -40,8 +40,8 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         return new StatusImpl(status.getNodeId(), status.getPairName(), status.getRole().name(), status.getEpoch(),
                 status.getLeaderId(), status.isLeadershipValid(), status.getLeaderElectionType(),
                 toStringOrNull(status.getSwitchoverMaxDuration()), toStringOrNull(status.getRoleSince()),
-                status.getMonitoringInstanceId(), status.isTransferLeadershipSupported(), status.isCandidacySupported(),
-                status.isCandidate(),
+                status.getMonitoringInstanceId(), status.isTransferLeadershipSupported(), status.isElectableSupported(),
+                status.isElectable(),
                 status.getFollowerConnections().stream().map(FixHaMBeanImpl::followerConnection).collect(Collectors.toList()),
                 status.getDroppedFollowers().stream().map(FixHaMBeanImpl::droppedFollower).collect(Collectors.toList()),
                 status.getSessionSettingsDifferences().stream().map(FixHaMBeanImpl::sessionSettingsDifference).collect(Collectors.toList()),
@@ -54,8 +54,8 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     }
 
     @Override
-    public void updateCandidacy(boolean candidate) {
-        delegate.setCandidate(candidate);
+    public void updateElectable(boolean electable) {
+        delegate.setElectable(electable);
     }
 
     @Override
@@ -126,8 +126,8 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         String roleSince;
         String monitoringInstanceId;
         boolean transferLeadershipSupported;
-        boolean candidacySupported;
-        boolean candidate;
+        boolean electableSupported;
+        boolean electable;
         List<FollowerConnection> followerConnections;
         List<DroppedFollower> droppedFollowers;
         List<SessionSettingsDifference> sessionSettingsDifferences;

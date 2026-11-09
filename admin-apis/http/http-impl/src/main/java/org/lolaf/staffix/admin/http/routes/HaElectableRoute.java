@@ -18,29 +18,29 @@ package org.lolaf.staffix.admin.http.routes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import lombok.extern.slf4j.Slf4j;
-import org.lolaf.staffix.admin.http.dto.CandidacyRequest;
+import org.lolaf.staffix.admin.http.dto.ElectableRequest;
 import org.lolaf.staffix.api.admin.AdminApi;
 
 import java.io.IOException;
 import java.util.List;
 
 @Slf4j
-public final class HaCandidacyRoute extends Route {
+public final class HaElectableRoute extends Route {
 
     private final AdminApi adminApi;
     private final ObjectMapper mapper;
 
-    public HaCandidacyRoute(AdminApi adminApi, ObjectMapper mapper) {
-        super("POST", "v1/ha/candidacy");
+    public HaElectableRoute(AdminApi adminApi, ObjectMapper mapper) {
+        super("POST", "v1/ha/electable");
         this.adminApi = adminApi;
         this.mapper = mapper;
     }
 
     @Override
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
-        boolean candidate = mapper.readValue(exchange.getRequestBody(), CandidacyRequest.class).getCandidate();
-        log.info("Admin API: {} elections", candidate ? "stand for" : "withdraw from");
-        haAdmin(adminApi).setCandidate(candidate);
+        boolean electable = mapper.readValue(exchange.getRequestBody(), ElectableRequest.class).getElectable();
+        log.info("Admin API: {} elections", electable ? "stand for" : "withdraw from");
+        haAdmin(adminApi).setElectable(electable);
         sendNoContent(exchange);
     }
 }

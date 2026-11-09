@@ -347,7 +347,7 @@ class JmxAdminApiTest {
     void theHighAvailabilityActionsReachItsAdmin() throws Exception {
         HaAdmin ha = mock(HaAdmin.class);
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
-                .leaderElectionType("PrimosLeaderElection").candidacySupported(true).candidate(true).build());
+                .leaderElectionType("PrimosLeaderElection").electableSupported(true).electable(true).build());
         when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC_APPLIED)
                 .replicationAckTimeout(Duration.ZERO).build()));
@@ -355,18 +355,18 @@ class JmxAdminApiTest {
         exporter.export(adminApi);
         FixHaMXBean proxy = JMX.newMXBeanProxy(mBeanServer, haName(), FixHaMXBean.class);
 
-        assertThat(proxy.getStatus().isCandidacySupported()).isTrue();
-        proxy.updateCandidacy(false);
+        assertThat(proxy.getStatus().isElectableSupported()).isTrue();
+        proxy.updateElectable(false);
         proxy.resync();
         proxy.resyncSession(ACCEPTOR_SESSION.toString(), "ACCEPTOR");
         when(ha.switchover()).thenReturn(SwitchoverOutcome.TRANSFERRED);
         assertThat(proxy.switchover()).isEqualTo("TRANSFERRED");
 
-        verify(ha).setCandidate(false);
+        verify(ha).setElectable(false);
         verify(ha).resync();
         verify(ha).resync(ACCEPTOR_SESSION, FixSession.FixSessionType.ACCEPTOR);
         assertThat(mBeanServer.getMBeanInfo(haName()).getOperations()).extracting(MBeanOperationInfo::getName)
-                .contains("updateCandidacy", "resync", "resyncSession", "switchover");
+                .contains("updateElectable", "resync", "resyncSession", "switchover");
     }
 
     private ObjectName haName() throws Exception {

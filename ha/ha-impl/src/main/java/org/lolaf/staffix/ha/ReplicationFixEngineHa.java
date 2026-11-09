@@ -168,21 +168,21 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     }
 
     @Override
-    public void setCandidate(boolean candidate) {
+    public void setElectable(boolean electable) {
         LeaderElection currentElection = election;
-        if (currentElection == null || !currentElection.isCandidacySupported()) {
+        if (currentElection == null || !currentElection.isElectableSupported()) {
             throw new IllegalStateException("The leader election "
-                    + (currentElection == null ? "has not started" : currentElection.getClass().getSimpleName() + " cannot decline candidacy"));
+                    + (currentElection == null ? "has not started" : currentElection.getClass().getSimpleName() + " cannot decline election"));
         }
-        if (!candidate && Role.LEADER.equals(currentElection.getRole()) && currentElection.isTransferLeadershipSupported()) {
+        if (!electable && Role.LEADER.equals(currentElection.getRole()) && currentElection.isTransferLeadershipSupported()) {
             SwitchoverOutcome outcome = switchover();
             if (!SwitchoverOutcome.TRANSFERRED.equals(outcome)) {
-                throw new IllegalStateException("Node " + settings.getNodeId() + " stays a candidate: its switchover ended "
+                throw new IllegalStateException("Node " + settings.getNodeId() + " stays electable: its switchover ended "
                         + outcome);
             }
         }
-        log.info("Node {} {} elections", settings.getNodeId(), candidate ? "stands for" : "withdraws from");
-        currentElection.setCandidate(candidate);
+        log.info("Node {} {} elections", settings.getNodeId(), electable ? "stands for" : "withdraws from");
+        currentElection.setElectable(electable);
     }
 
     @Override

@@ -21,15 +21,15 @@ import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
 /**
- * Body of {@code POST v1/ha/candidacy}.
+ * Body of {@code POST v1/ha/electable}.
  */
 @Value
 @Builder
 @Jacksonized
-public class CandidacyRequest {
+public class ElectableRequest {
     /**
      * False takes the node out of elections for maintenance, true puts it back.
      */
     @NonNull
-    Boolean candidate;
+    Boolean electable;
 }
