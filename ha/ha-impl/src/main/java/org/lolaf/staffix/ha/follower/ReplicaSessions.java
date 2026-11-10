@@ -74,6 +74,9 @@ public final class ReplicaSessions {
     }
 
     private static void jumpOutgoingSeqNum(FixSessionSettings settings, FixSessionMessagesStore store, long jump) {
+        if (jump == 0) {
+            return;
+        }
         long outgoingSeqNum = store.getOutgoingSeqNum();
         store.storeNextOutgoingSeqNum(outgoingSeqNum + jump);
         log.warn("FIX session {} {} outgoing sequence number moved from {} to {}, past what the old leader may have sent "

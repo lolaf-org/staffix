@@ -130,6 +130,7 @@ class TestReplicationAllocation {
                 .peer("b", b)
                 .heartbeatInterval(Duration.ofMillis(100))
                 .reconnectInterval(Duration.ofMillis(50))
+                .promotionOutgoingSeqNumJump(0)
                 .leaderElection(StaticLeaderElection.Settings.builder().role(role).leaderId("a").build());
     }
 

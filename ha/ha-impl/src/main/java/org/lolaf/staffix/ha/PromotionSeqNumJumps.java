@@ -84,7 +84,7 @@ final class PromotionSeqNumJumps {
      */
     void jumpOnStart(FixSessionSettings sessionSettings, FixSessionMessagesStore store) {
         long current = currentPromotion;
-        if (current == 0) {
+        if (current == 0 || jump == 0) {
             return;
         }
         Long previous = jumpedFor.put(sessionKey(sessionSettings), current);
