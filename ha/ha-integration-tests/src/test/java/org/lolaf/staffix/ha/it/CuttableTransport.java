@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.it;
 
 import lombok.RequiredArgsConstructor;
+import org.lolaf.primos.SendDropReason;
 import org.lolaf.primos.transport.DatagramHandler;
 import org.lolaf.primos.transport.Transport;
 
@@ -39,20 +40,16 @@ final class CuttableTransport implements Transport {
     }
 
     @Override
-    public void send(int peerId, ByteBuffer datagram) {
+    public SendDropReason send(int peerId, ByteBuffer datagram) {
         if (!cut) {
-            transport.send(peerId, datagram);
+            return transport.send(peerId, datagram);
         }
+        return SendDropReason.TRANSPORT_CLOSED;
     }
 
     @Override
     public int poll(long timeoutNanos, DatagramHandler handler) {
         return transport.poll(timeoutNanos, cut ? DROPPED : handler);
-    }
-
-    @Override
-    public long sendsDropped() {
-        return transport.sendsDropped();
     }
 
     @Override

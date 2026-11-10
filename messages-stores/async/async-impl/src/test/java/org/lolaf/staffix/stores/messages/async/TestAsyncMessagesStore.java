@@ -15,6 +15,8 @@
  */
 package org.lolaf.staffix.stores.messages.async;
 
+import com.github.valfirst.slf4jtest.TestLogger;
+import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,11 +33,9 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.mockito.Mockito;
+import org.slf4j.event.Level;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -58,6 +58,7 @@ class TestAsyncMessagesStore {
     private static final String TEST_MESSAGE_STORE_DESCRIPTION = "test message store description";
 
     private final Probes probes = mock(Probes.class);
+    private final TestLogger storeLog = TestLoggerFactory.getTestLogger(AsyncMessageStore.class);
 
     AsyncMessagesStore asyncMessagesStore;
     AsyncMessageStore asyncMessageStore;
@@ -93,6 +94,7 @@ class TestAsyncMessagesStore {
 
     @BeforeEach
     void setup() {
+        storeLog.clearAll();
         testMessage = ByteBuffer.wrap("test".getBytes());
         fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "sender", "target");
         messageStore = mock(FixMessagesStore.FixSessionMessagesStore.class);
@@ -423,18 +425,6 @@ class TestAsyncMessagesStore {
         asyncMessageStore.start();
     }
 
-    private static String loggedWhile(Runnable action) {
-        PrintStream err = System.err;
-        ByteArrayOutputStream logged = new ByteArrayOutputStream();
-        System.setErr(new PrintStream(logged, true, StandardCharsets.UTF_8));
-        try {
-            action.run();
-        } finally {
-            System.setErr(err);
-        }
-        return logged.toString(StandardCharsets.UTF_8);
-    }
-
     @Test
     void aMessageTheStoreAlreadyHoldsIsNotLost() {
         List<Long> stored = new CopyOnWriteArrayList<>();
@@ -453,14 +443,15 @@ class TestAsyncMessagesStore {
     void aMessageTheStoreAlreadyHoldsIsNoErrorAndCarriesNoStackTrace() {
         storeRefusingMessage2ItHolds(new CopyOnWriteArrayList<>());
 
-        String logged = loggedWhile(() -> {
-            for (long seqNum = 1; seqNum <= 3; seqNum++) {
-                asyncMessageStore.storeMessageSent(seqNum, testMessage);
-            }
-            await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
-        });
+        for (long seqNum = 1; seqNum <= 3; seqNum++) {
+            asyncMessageStore.storeMessageSent(seqNum, testMessage);
+        }
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
 
-        assertThat(logged).contains("already stored").doesNotContain("ERROR").doesNotContain("\tat ");
+        assertThat(storeLog.getAllLoggingEvents())
+                .anySatisfy(e -> assertThat(e.getFormattedMessage()).contains("already stored"))
+                .noneMatch(e -> e.getLevel() == Level.ERROR)
+                .allMatch(e -> e.getThrowable().isEmpty());
     }
 
     @Test
@@ -472,12 +463,12 @@ class TestAsyncMessagesStore {
         recreateStore(10);
         asyncMessageStore.start();
 
-        String logged = loggedWhile(() -> {
-            asyncMessageStore.storeMessageSent(1, testMessage);
-            await().untilAsserted(() -> assertThat(asyncMessageStore.getLostWrites()).isEqualTo(1));
-        });
+        asyncMessageStore.storeMessageSent(1, testMessage);
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getLostWrites()).isEqualTo(1));
 
-        assertThat(logged).contains("ERROR").contains("test exception").contains("\tat ");
+        assertThat(storeLog.getAllLoggingEvents()).filteredOn(e -> e.getLevel() == Level.ERROR)
+                .extracting(e -> e.getThrowable().map(Throwable::getMessage).orElse(null))
+                .contains("test exception");
     }
 
     @Test

@@ -35,6 +35,13 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
             <version>${spring-boot.version}</version>
         </dependency>
+        <!-- spring-boot-actuator's classes carry @JsonInclude, which javac warns about when it cannot resolve it -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>${jackson-annotations.version}</version>
+            <scope>provided</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.lolaf.staffix</groupId>

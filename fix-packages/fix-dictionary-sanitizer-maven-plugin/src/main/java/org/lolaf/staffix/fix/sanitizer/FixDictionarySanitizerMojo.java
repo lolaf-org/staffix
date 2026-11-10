@@ -34,11 +34,7 @@ import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
@@ -48,7 +44,7 @@ import java.util.Set;
  * Maven plugin that sanitizes FIX XML files by removing field definitions
  * that are not referenced in any message, component, or group.
  */
-@Mojo(name = "sanitize", defaultPhase = LifecyclePhase.PROCESS_RESOURCES)
+@Mojo(name = "sanitize", defaultPhase = LifecyclePhase.PROCESS_RESOURCES, threadSafe = true)
 public class FixDictionarySanitizerMojo extends AbstractMojo {
 
     /**
@@ -105,24 +101,24 @@ public class FixDictionarySanitizerMojo extends AbstractMojo {
             // Collect all referenced component names and remove unreferenced components first
             Set<String> referencedComponents = collectReferencedComponents(doc);
             int removedComponents = removeUnreferencedComponents(doc, referencedComponents);
-            getLog().info("Removed " + removedComponents + " unreferenced component definitions");
+            getLog().debug("Removed " + removedComponents + " unreferenced component definitions");
 
             // Collect all referenced field names (after component cleanup)
             Set<String> referencedFields = collectReferencedFields(doc);
-            getLog().info("Found " + referencedFields.size() + " referenced fields");
+            getLog().debug("Found " + referencedFields.size() + " referenced fields");
             if (keepFields != null && !keepFields.isEmpty()) {
                 referencedFields.addAll(keepFields);
-                getLog().info("Keeping " + keepFields.size() + " further fields asked for by keepFields");
+                getLog().debug("Keeping " + keepFields.size() + " further fields asked for by keepFields");
             }
 
             // Remove unreferenced fields from the <fields> section
             int removedCount = removeUnreferencedFields(doc, referencedFields);
-            getLog().info("Removed " + removedCount + " unreferenced field definitions");
+            getLog().debug("Removed " + removedCount + " unreferenced field definitions");
 
             if (sanitizeMsgTypeField) {
                 // Sanitize MsgType value enums to only keep values matching defined messages
                 int removedValues = sanitizeMsgTypeValues(doc);
-                getLog().info("Removed " + removedValues + " unreferenced MsgType values");
+                getLog().debug("Removed " + removedValues + " unreferenced MsgType values");
             }
 
             // Write the sanitized XML to output file

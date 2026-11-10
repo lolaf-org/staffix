@@ -17,11 +17,12 @@ package org.lolaf.staffix.generator;
 
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
-import org.apache.maven.plugins.annotations.*;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.shared.utils.io.FileUtils;
 import org.lolaf.staffix.api.utils.ResourceLocation;
-
 
 import java.io.File;
 import java.io.InputStream;
@@ -30,7 +31,7 @@ import java.io.InputStream;
 /**
  * The Maven goal that runs {@link CodeGenerator} over a dictionary.
  */
-@Mojo(name = "code-generator", defaultPhase = LifecyclePhase.GENERATE_SOURCES)
+@Mojo(name = "code-generator", defaultPhase = LifecyclePhase.GENERATE_SOURCES, threadSafe = true)
 public class CodeGeneratorMojo extends AbstractMojo {
 
     /**
@@ -66,7 +67,7 @@ public class CodeGeneratorMojo extends AbstractMojo {
     @Parameter(property = "testSources", defaultValue = "false")
     private boolean testSources;
 
-    @Component
+    @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
 
     public void execute() throws MojoExecutionException {

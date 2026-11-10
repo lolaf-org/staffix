@@ -45,7 +45,7 @@ import java.util.TreeMap;
  * mvn org.lolaf.staffix:staffix-fix-orchestra-dictionary-generator-maven-plugin:versions
  * </pre>
  */
-@Mojo(name = "versions", requiresProject = false)
+@Mojo(name = "versions", requiresProject = false, threadSafe = true)
 public class VersionsMojo extends AbstractMojo {
 
     /**

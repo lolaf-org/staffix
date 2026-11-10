@@ -28,7 +28,6 @@
     <properties>
         <maven.deploy.skip>true</maven.deploy.skip>
         <maven.javadoc.skip>true</maven.javadoc.skip>
-        <delombok.skip>true</delombok.skip>
         <javadoc.delomboked.sources>${project.basedir}/src/main/java</javadoc.delomboked.sources>
     </properties>
 

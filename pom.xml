@@ -113,6 +113,7 @@
         <spring-boot.version>4.1.2</spring-boot.version>
         <!-- not 3.x due to java 11 support -->
         <jackson.version>2.22.4</jackson.version>
+        <jackson-annotations.version>2.22</jackson-annotations.version>
 
         <jspecify.version>1.0.1</jspecify.version>
         <slf4j.version>2.0.17</slf4j.version>
@@ -141,8 +142,11 @@
         <lombok-maven-plugin.version>1.18.20.0</lombok-maven-plugin.version>
         <automatic.module.name>org.lolaf.staffix.MODULE.NAME.NOT.SET</automatic.module.name>
         <delombok.skip>false</delombok.skip>
+        <delombok.phase>process-classes</delombok.phase>
         <javadoc.delomboked.sources>${project.build.directory}/delombok</javadoc.delomboked.sources>
         <javadoc.sourcepath>${javadoc.delomboked.sources}</javadoc.sourcepath>
+
+        <staffix.tests.log.messages>false</staffix.tests.log.messages>
     </properties>
 
     <dependencyManagement>
@@ -333,6 +337,9 @@
                             -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
                             -Xshare:off
                         </argLine>
+                        <systemPropertyVariables>
+                            <staffix.tests.log.messages>${staffix.tests.log.messages}</staffix.tests.log.messages>
+                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
             </plugins>
@@ -357,7 +364,7 @@
                 <executions>
                     <execution>
                         <id>delombok-for-javadoc</id>
-                        <phase>process-classes</phase>
+                        <phase>${delombok.phase}</phase>
                         <goals>
                             <goal>delombok</goal>
                         </goals>
@@ -476,6 +483,43 @@
     </build>
 
     <profiles>
+        <!-- unbound rather than skipped: the plugin warns on every skip, and on an empty source directory -->
+        <profile>
+            <id>no-main-sources</id>
+            <activation>
+                <file>
+                    <missing>${basedir}/src/main/java</missing>
+                </file>
+            </activation>
+            <properties>
+                <delombok.phase>none</delombok.phase>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- compiler 3.16.0 warns when the test classpath holds a missing main output directory -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>${maven-antrun-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>create-empty-main-output</id>
+                                <phase>process-classes</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target xmlns:if="ant:if">
+                                        <available file="${project.basedir}/src/test/java" property="has.tests"/>
+                                        <mkdir if:set="has.tests" dir="${project.build.outputDirectory}"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <!-- in the reactor so a refactoring that breaks one fails CI, and so a release rewrites their versions;
              the release plugin's arguments turn it off in its builds, so they are never deployed -->
         <profile>

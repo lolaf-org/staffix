@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>org.lolaf.staffix</groupId>
@@ -116,25 +117,17 @@
                             <goal>code-generator</goal>
                         </goals>
                         <configuration>
-                            <dictionaryFile>src/test/resources/dictionaries/FIX44-without-business-message-reject.xml</dictionaryFile>
+                            <dictionaryFile>src/test/resources/dictionaries/FIX44-without-business-message-reject.xml
+                            </dictionaryFile>
                             <dictionaryId>without-business-message-reject</dictionaryId>
                             <packageName>org.lolaf.staffix.impl.fix44.withoutbmr</packageName>
-                            <sourcesOutputDirectory>${project.build.directory}/generated-test-sources/fix</sourcesOutputDirectory>
+                            <sourcesOutputDirectory>${project.build.directory}/generated-test-sources/fix
+                            </sourcesOutputDirectory>
                             <resourcesOutputDirectory>${project.build.testOutputDirectory}</resourcesOutputDirectory>
                             <testSources>true</testSources>
                         </configuration>
                     </execution>
                 </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>${maven-surefire-plugin.version}</version>
-                <configuration>
-                    <systemProperties>
-                        <staffix.tests.log.messages>false</staffix.tests.log.messages>
-                    </systemProperties>
-                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

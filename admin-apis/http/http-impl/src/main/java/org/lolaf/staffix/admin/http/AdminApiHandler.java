@@ -50,7 +50,6 @@ public class AdminApiHandler implements HttpHandler {
 
     private final byte[] fullAuthorization;
     private final byte[] readOnlyAuthorization;
-    private final ObjectMapper mapper;
     @Getter
     private final ProbesDocuments probesDocuments;
     private final JsonResponseBuffer json;
@@ -59,7 +58,7 @@ public class AdminApiHandler implements HttpHandler {
     AdminApiHandler(AdminApi adminApi, String apiToken, String readOnlyApiToken) {
         this.fullAuthorization = bearer(apiToken);
         this.readOnlyAuthorization = readOnlyApiToken == null ? null : bearer(readOnlyApiToken);
-        this.mapper = newObjectMapper();
+        ObjectMapper mapper = newObjectMapper();
         this.probesDocuments = new ProbesDocuments(adminApi, mapper);
         this.json = new JsonResponseBuffer(mapper);
         this.routes = routes(adminApi, mapper, probesDocuments, json);
