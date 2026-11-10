@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.leader;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.betty.api.Server;
 import org.lolaf.betty.api.ServerBuilder;
@@ -47,6 +48,7 @@ import java.util.function.Supplier;
  * The leader's replication server: accepts its follower, and streams the log to it through a {@link FollowerConnection}.
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class ReplicationServer {
 
     /**
@@ -57,6 +59,7 @@ public final class ReplicationServer {
     private final InetSocketAddress bindAddress;
     private final ReplicationLogs logs;
     private final ReplicatedSessions sessions;
+    private final Followers followers;
     private final LongSupplier nodeEpoch;
     private final String leaderId;
     private final Duration heartbeatInterval;
@@ -65,28 +68,9 @@ public final class ReplicationServer {
     private final int snapshotChunkBytes;
     private final Supplier<IdleStrategy> senderIdleStrategy;
     private final SelectStrategy selectStrategy;
-    private final Followers followers;
     private final ReplicationStats stats;
     private IOWorkersGroup ioWorkers;
     private Server server;
-
-    public ReplicationServer(InetSocketAddress bindAddress, ReplicationLogs logs, ReplicatedSessions sessions, Followers followers,
-                                LongSupplier nodeEpoch, String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
-                                int snapshotChunkBytes, Supplier<IdleStrategy> senderIdleStrategy, SelectStrategy selectStrategy, ReplicationStats stats) {
-        this.sendBuffers = sendBuffers;
-        this.snapshotChunkBytes = snapshotChunkBytes;
-        this.senderIdleStrategy = senderIdleStrategy;
-        this.selectStrategy = selectStrategy;
-        this.stats = stats;
-        this.followers = followers;
-        this.bindAddress = bindAddress;
-        this.logs = logs;
-        this.sessions = sessions;
-        this.nodeEpoch = nodeEpoch;
-        this.leaderId = leaderId;
-        this.heartbeatInterval = heartbeatInterval;
-        this.stallTimeout = stallTimeout;
-    }
 
     private static void launchSender(Runnable loop) {
         Thread thread = new Thread(loop, "staffix-ha-sender");
