@@ -199,19 +199,20 @@ class TestReplicationAllocation {
                 .build()).start();
         ReplicationFixEngineHa follower = mode == ReplicationMode.NONE ? null
                 : follower(acceptorSettings, leaderReplication, followerReplication);
+        if (follower != null) {
+            await().until(() -> follower.getReplicaSessions().isInSync()
+                    && follower.getReplicaSessions().getStore(FixSession.FixSessionType.ACCEPTOR, ACCEPTOR_ID.toString()) != null);
+        }
 
         Pinger initiator = new Pinger();
         start(engine("initiator", initiator, sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, ReplicationMode.NONE))
                 .build().instance())
                 .newInitiator(FixInitiatorBuilder.builder()
+                        .connectionRetry(Duration.ofMillis(100))
                         .mainTarget(FixInitiatorTarget.builder().fixSessionId(INITIATOR_ID)
                                 .connectAddress(new InetSocketAddress("localhost", fixPort)).build())
                         .build()).start();
         await().until(() -> initiator.session != null);
-        if (follower != null) {
-            await().until(() -> follower.getReplicaSessions().isInSync()
-                    && follower.getReplicaSessions().getStore(FixSession.FixSessionType.ACCEPTOR, ACCEPTOR_ID.toString()) != null);
-        }
 
         initiator.roundTrips(WARM_UP);
         long before = THREADS.getThreadAllocatedBytes(acceptor.sessionThread.getId());
