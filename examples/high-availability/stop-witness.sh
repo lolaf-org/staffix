@@ -16,4 +16,16 @@
 #
 
 . "$(dirname "$0")/common.sh"
-stop witness "$1"
+if ! witness_running; then
+  echo "witness is not running" >&2
+  exit
+fi
+if [ "$1" = "-9" ]; then
+  docker kill "$WITNESS_CONTAINER" > /dev/null
+else
+  docker stop "$WITNESS_CONTAINER" > /dev/null
+fi
+while witness_running; do
+  sleep 0.2
+done
+echo "witness stopped"

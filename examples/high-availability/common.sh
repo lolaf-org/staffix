@@ -14,8 +14,8 @@
 # limitations under the License.
 #
 
-# Sourced by the start and stop scripts: each process runs in the background from the shaded jar, its output in
-# target/logs/<name>.log and its pid in target/run/<name>.pid.
+# Sourced by the start and stop scripts: each node and the counterparty runs in the background from the shaded jar,
+# its output in target/logs/<name>.log and its pid in target/run/<name>.pid. The witness runs in a container.
 
 cd "$(dirname "$0")"
 
@@ -24,6 +24,9 @@ if [ -n "$JAVA_HOME" ]; then
 else
   JAVA_CMD="java"
 fi
+
+WITNESS_IMAGE=ghcr.io/lolaf-org/primos-witness:0.9.0
+WITNESS_CONTAINER=staffix-ha-witness
 
 JVM_FLAGS="-XX:+UnlockDiagnosticVMOptions \
 -XX:+DebugNonSafepoints \
@@ -101,4 +104,8 @@ node_with_role() {
 
 running() {
   [ -f "target/run/$1.pid" ] && kill -0 "$(cat "target/run/$1.pid")" 2>/dev/null
+}
+
+witness_running() {
+  docker container inspect "$WITNESS_CONTAINER" > /dev/null 2>&1
 }

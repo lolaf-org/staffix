@@ -52,11 +52,6 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.lolaf.primos</groupId>
-            <artifactId>primos-witness-cli</artifactId>
-            <version>${primos.version}</version>
-        </dependency>
-        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
             <version>${slf4j.version}</version>

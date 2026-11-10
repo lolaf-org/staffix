@@ -46,8 +46,8 @@ gives the primos settings.
 - **Election artifacts**: plain Java, `staffix-ha-primos` beside the component's `java.artifact`; Spring Boot,
   `staffix-ha-primos-spring-boot` and the primos starter beside its `spring.artifact`, at the project's staffix
   version. Take the primos version from the staffix version's root pom (`primos.version`).
-- **Three voters**: the two nodes and a witness, on a third machine, run from `primos-witness-cli`. It never leads; it
-  gives the node left after a loss its majority. Losing any two of the three stops the sessions.
+- **Three voters**: the two nodes and a witness, on a third machine, run from the `ghcr.io/lolaf-org/primos-witness`
+  Docker image. It never leads; it gives the node left after a loss its majority. Losing any two of the three stops the sessions.
 - **Per node, from environment variables**: `nodeId`, the primos node id, its durable `stateDirectory`, its own
   storage. The `peers`, the cluster secret, the sessions and their settings are the same on both nodes.
 - **A session is replicated only if it asks**: `highAvailability.replicationMode` in a session file,

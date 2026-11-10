@@ -6,13 +6,13 @@ kill and restart them by hand:
 
 | process            | what it is                                                                                                                                                                      | listens on                                                  |
 |--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------|
-| `witness`          | the primos witness: the third voter, which never leads, so either node alone still has a majority                                                                               | UDP 7420                                                    |
+| `witness`          | the primos witness: the third voter, which never leads, so either node alone still has a majority; the `ghcr.io/lolaf-org/primos-witness` Docker image                         | UDP 7420                                                    |
 | `node-1`, `node-2` | the same engine twice ([`HaNode`](src/main/java/org/lolaf/staffix/examples/ha/HaNode.java)): an `ASYNC` replicated acceptor session answering each Email, primos run by staffix | FIX 7111 / 7112, replication 17101 / 17102, UDP 7421 / 7422 |
 | `counterparty`     | an initiator given both nodes' addresses ([`Counterparty`](src/main/java/org/lolaf/staffix/examples/ha/Counterparty.java)), sending an Email every second                       | none                                                        |
 
-All on `127.0.0.1`. Each node keeps its message store and its primos term and vote under `target/node-<id>`, the
-witness its votes under `target/witness`, so a restarted process carries on where it stopped; `mvn clean` starts the
-pair afresh.
+All on `127.0.0.1`; the witness needs Docker. Each node keeps its message store and its primos term and vote under
+`target/node-<id>`, the witness its votes under `target/witness`, so a restarted process carries on where it stopped;
+`mvn clean` starts the pair afresh.
 
 ## Running it
 
@@ -27,8 +27,9 @@ until ./status.sh | grep -q "node 1: LEADER"; do sleep 1; done
 tail -f target/logs/*.log
 ```
 
-Each script starts its process in the background, logging to `target/logs/<name>.log`. Node 1 starts alone with the
-witness, so it wins the first election, a few seconds after it starts; node 2 then joins as its follower.
+Each script starts its process in the background, logging to `target/logs/<name>.log`; the witness runs in a container
+named `staffix-ha-witness`, configured from [`witness/`](witness). Node 1 starts alone with the witness, so it wins the
+first election, a few seconds after it starts; node 2 then joins as its follower.
 `./status.sh` tells which node leads:
 
 ```

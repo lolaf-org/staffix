@@ -16,5 +16,20 @@
 #
 
 . "$(dirname "$0")/common.sh"
+if witness_running; then
+  echo "witness is already running, container $WITNESS_CONTAINER" >&2
+  exit 1
+fi
 chmod go-rwx witness/witness.properties witness/applications/*.properties
-start witness org.lolaf.primos.witness.cli.WitnessMain --config witness
+mkdir -p target/logs target/witness
+# --user: the votes in target/witness belong to whoever runs the example, so mvn clean can remove them.
+nohup docker run --rm --name "$WITNESS_CONTAINER" \
+  --user "$(id -u):$(id -g)" \
+  -p 127.0.0.1:7420:7420/udp \
+  -v "$PWD/target/witness:/var/lib/primos-witness" \
+  -v "$PWD/witness:/etc/primos-witness:ro" \
+  --read-only --tmpfs /tmp \
+  --memory 512m \
+  --stop-timeout 30 \
+  "$WITNESS_IMAGE" >> target/logs/witness.log 2>&1 &
+echo "witness started, container $WITNESS_CONTAINER, logging to target/logs/witness.log"
