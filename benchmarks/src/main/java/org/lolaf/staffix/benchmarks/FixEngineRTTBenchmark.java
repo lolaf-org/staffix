@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 @Measurement(iterations = 3)
 @Fork(value = 1, jvmArgsPrepend = {
         "--enable-native-access=ALL-UNNAMED",
-        "-XX:-RestrictContended", "-XX:ContendedPaddingWidth=64",
+        "-XX:-RestrictContended", "-XX:ContendedPaddingWidth=64", "-XX:AutoBoxCacheMax=65536",
         "--add-opens", "java.base/jdk.internal.ref=ALL-UNNAMED",
         "--add-opens", "java.base/jdk.internal.misc=ALL-UNNAMED",
         "--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED",

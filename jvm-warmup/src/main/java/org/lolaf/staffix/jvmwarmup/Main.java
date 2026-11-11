@@ -22,7 +22,7 @@ import java.time.Duration;
 
 /**
  * Standalone runner — useful for ad-hoc warmup runs and the module smoke test.
- * -XX:-RestrictContended -XX:ContendedPaddingWidth=64 --enable-native-access=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED
+ * -XX:-RestrictContended -XX:ContendedPaddingWidth=64 -XX:AutoBoxCacheMax=65536 --enable-native-access=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED
  */
 @Slf4j
 @UtilityClass

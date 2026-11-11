@@ -25,6 +25,7 @@ $JAVA_CMD -cp target/staffix-examples.jar \
 -XX:+DebugNonSafepoints \
 -XX:-RestrictContended \
 -XX:ContendedPaddingWidth=64 \
+-XX:AutoBoxCacheMax=65536 \
 --enable-native-access=ALL-UNNAMED \
 --add-opens java.base/jdk.internal.ref=ALL-UNNAMED \
 --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \

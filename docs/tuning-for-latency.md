@@ -17,10 +17,16 @@ to allocating. Staffix logs a warning at startup for the ones it can detect.
 -XX:-RestrictContended
 -XX:ContendedPaddingWidth=64
 --add-opens java.base/jdk.internal.misc=ALL-UNNAMED
+-XX:AutoBoxCacheMax=65536
 ```
 
 The first three make `@Contended` actually pad. The `--add-opens` enables the thread-local serdes described below;
 without it they still work, but allocate a fresh object per field and say so once at startup.
+
+`-XX:AutoBoxCacheMax` is for the JDK's own epoll selector: it looks each ready socket up by its file descriptor boxed
+as an `Integer`, which allocates once the descriptor is above 127, so on every message read in any process holding
+more than about 128 files and sockets. The flag widens the `Integer` cache so those boxes come from it instead. Set it
+to the process's descriptor limit (`ulimit -n`); the cache costs about 1 MB of heap at 65536.
 
 ---
 

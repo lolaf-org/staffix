@@ -222,6 +222,7 @@ already passes:
 -XX:+DebugNonSafepoints \
 -XX:-RestrictContended \
 -XX:ContendedPaddingWidth=64 \
+-XX:AutoBoxCacheMax=65536 \
 --enable-native-access=ALL-UNNAMED \
 --add-opens java.base/jdk.internal.ref=ALL-UNNAMED \
 --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \
@@ -236,6 +237,7 @@ already passes:
 | `-XX:+DebugNonSafepoints`                 | makes the JIT keep debug info away from safepoints, so a sampling profiler (`-pe`) attributes samples to the frames that really ran rather than to the nearest safepoint |
 | `-XX:-RestrictContended`                  | lets `@Contended` apply outside the JDK's own classes; without it the annotation is silently ignored on the ringos and Staffix structures                                |
 | `-XX:ContendedPaddingWidth=64`            | sizes that padding to one cache line, which is what keeps those structures off each other's lines                                                                        |
+| `-XX:AutoBoxCacheMax=65536`               | widens the `Integer` cache past the process's file descriptors, so the JDK selector stops allocating an `Integer` per ready socket once descriptors pass 127              |
 | `--enable-native-access=ALL-UNNAMED`      | allows the native/`Unsafe` access the memory-access layer performs, instead of warning about it                                                                          |
 | `--add-opens java.base/jdk.internal.ref`  | direct-`ByteBuffer` cleaner access, used by the JDK 11–14 memory-access provider                                                                                         |
 | `--add-opens java.base/jdk.internal.misc` | `jdk.internal.misc.Unsafe`, behind the zero-allocation thread-local serdes; without it they still work, but allocate a fresh `String` per field and warn once at startup |
