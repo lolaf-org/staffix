@@ -361,7 +361,9 @@ class TestFixEngineSessionsSettingsWrites {
                     assertThat(active.getProbeState().getProbeName()).isEqualTo("queue");
                 }));
         assertThat(adminApi.getProbeStates(FixSessionProbeScope.of(alpha.getFixSessionId()))).extracting(ProbeState::getProbeName).contains("queue");
-        assertThat(transitions).extracting(ProbeState::getProbeName).containsExactly("queue");
+        // the evaluator marks the probe in alert before it notifies the listeners
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(transitions).extracting(ProbeState::getProbeName)
+                .containsExactly("queue"));
         assertThatThrownBy(() -> adminApi.getProbeStates(FixSessionProbeScope.of(session("beta", "BETA").getFixSessionId())))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> adminApi.clearAlert(ProbeId.of(FixSessionProbeScope.of(alpha.getFixSessionId()), "unknown")))
