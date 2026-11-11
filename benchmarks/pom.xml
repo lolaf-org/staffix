@@ -251,8 +251,8 @@
             <plugin>
                 <groupId>org.quickfixj</groupId>
                 <artifactId>quickfixj-codegenerator</artifactId>
-                <version>3.0.3</version>
-                <!-- do not change 3.0.3 requires a recent version of maven -->
+                <version>3.0.4</version>
+                <!-- do not change 3.0.4 requires a recent version of maven -->
                 <dependencies>
                     <!-- Maven 3.9 stops providing it to plugins, and the generator needs it once outputDirectory is set -->
                     <dependency>
