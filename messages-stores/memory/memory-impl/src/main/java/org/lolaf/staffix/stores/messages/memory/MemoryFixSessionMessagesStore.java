@@ -137,6 +137,10 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
      */
     private static final class StoredMessage {
 
+        // A slot sized to exactly its message is outgrown as soon as MsgSeqNum(34) gains a digit, which makes every
+        // later message one byte longer: each slot then reallocates on its next write, the whole ring in turn, on the
+        // session's write path. 16 bytes leave room for MsgSeqNum(34) and BodyLength(9) to grow for a session's life.
+        private static final int GROWTH_HEADROOM = 16;
         private static final VarHandle VERSION;
 
         static {
@@ -163,7 +167,7 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
             this.seqNum = seqNum;
             this.length = message.remaining();
             if (this.message == null || this.message.capacity() < length) {
-                this.message = allocator.apply(length);
+                this.message = allocator.apply(length + GROWTH_HEADROOM);
             }
             this.message.clear().put(message).flip();
             VERSION.setRelease(this, writing + 1);

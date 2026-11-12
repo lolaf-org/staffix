@@ -206,22 +206,32 @@ class HaProbes {
 
         @Override
         public Optional<Alert> evaluate() {
-            List<String> problems = new ArrayList<>();
-            for (FollowerConnection connection : followers.connections()) {
+            List<String> problems = null;
+            List<FollowerConnection> connections = followers.connections();
+            for (int i = 0; i < connections.size(); i++) {
+                FollowerConnection connection = connections.get(i);
                 SessionAnswer answer = connection.getSessionAnswer(session.getKey());
                 if (answer != null && answer.isRefusal()) {
-                    problems.add("follower " + connection.getFollowerId() + " refuses to replicate it: " + answer);
+                    problems = add(problems,
+                            "follower " + connection.getFollowerId() + " refuses to replicate it: " + answer);
                 }
             }
             long now = nanoClock.getAsLong();
             if (session.getTimedOutSends() > 0 && now - session.getLastTimedOutNanos() < expiryNanos) {
-                problems.add(session.getTimedOutSends() + " SYNC sends went out without the follower's ack in time");
+                problems = add(problems,
+                        session.getTimedOutSends() + " SYNC sends went out without the follower's ack in time");
             }
             if (session.getUnreplicatedEvents() > 0 && now - session.getLastUnreplicatedNanos() < expiryNanos) {
-                problems.add(session.getUnreplicatedEvents() + " messages longer than half the replication log, missing"
-                        + " on the follower");
+                problems = add(problems, session.getUnreplicatedEvents()
+                        + " messages longer than half the replication log, missing on the follower");
             }
-            return problems.isEmpty() ? Optional.empty() : Optional.of(Alert.major(String.join("; ", problems)));
+            return problems == null ? Optional.empty() : Optional.of(Alert.major(String.join("; ", problems)));
+        }
+
+        private static List<String> add(@Nullable List<String> problems, String problem) {
+            List<String> added = problems == null ? new ArrayList<>(2) : problems;
+            added.add(problem);
+            return added;
         }
     }
 }

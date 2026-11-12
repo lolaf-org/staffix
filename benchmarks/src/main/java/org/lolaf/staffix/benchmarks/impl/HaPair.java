@@ -303,6 +303,10 @@ public class HaPair {
                 .fixSessionsPlugin(MicrometerMonitoringManagerSettings.builder()
                         .instanceId(MONITORING)
                         .meterRegistrySupplier(() -> meters)
+                        // local percentiles go through an auto-resizing HdrHistogram, allocating on the session thread
+                        .defaultTimersSettings(MicrometerMonitoringManagerSettings.TimerSettings.builder()
+                                .histogramsPercentiles(List.of())
+                                .build())
                         .readLatencyEnabled(false)
                         .writeLatencyEnabled(false)
                         .decodingLatencyEnabled(false)
