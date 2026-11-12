@@ -69,7 +69,7 @@ public class StaffixEngine extends AbstractBenchmark {
     AcceptorApplication acceptorApplication;
 
     private static FixSessionId getInitiatorFixSessionId() {
-        return FixSessionId.of("test", FixRegularVersion.VERSION_44, "SENDER44_TEST", "TARGET44_TEST");
+        return FixSessionId.of(INITIATOR, FixRegularVersion.VERSION_44, "SENDER44_TEST", "TARGET44_TEST");
     }
 
     private IOWorkersGroup getIOWorkersGroup(FixEngineSettings fixEngineSettings) {
@@ -139,7 +139,7 @@ public class StaffixEngine extends AbstractBenchmark {
 
     private FixSessionSettings getAcceptorFixSessionSettings() {
         return FixSessionSettings.builder()
-                .fixSessionId(FixSessionId.of("test", FixRegularVersion.VERSION_44, "TARGET44_TEST", "SENDER44_TEST"))
+                .fixSessionId(FixSessionId.of(ACCEPTOR, FixRegularVersion.VERSION_44, "TARGET44_TEST", "SENDER44_TEST"))
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                 .resetSeqNumOnLogon(false)
                 .fixApplicationFactoryInstanceId(ACCEPTOR)
