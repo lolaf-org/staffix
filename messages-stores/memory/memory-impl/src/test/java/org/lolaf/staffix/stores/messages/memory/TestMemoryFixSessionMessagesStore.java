@@ -23,6 +23,7 @@ import org.lolaf.staffix.stores.messages.testkit.AbstractAllocationFreeFixSessio
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.function.BiPredicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -147,5 +148,34 @@ class TestMemoryFixSessionMessagesStore extends AbstractAllocationFreeFixSession
         for (int i = 1; i <= 4; i++) {
             assertMessage(messages, i - 1, "test-event-longer-message" + i);
         }
+    }
+
+    @Test
+    void aRangeFoundAfterTheSlotsWrapIsInAscendingOrder() {
+        setupDisabledStore(4);
+        messageStore.start();
+        for (int seqNum = 1; seqNum <= 6; seqNum++) {
+            messageStore.storeMessageSent(seqNum, ByteBuffer.wrap(("message" + seqNum).getBytes()));
+        }
+
+        assertThat(seqNums(messageStore.find(3, 6))).containsExactly(3L, 4L, 5L, 6L);
+        assertThat(seqNums(messageStore.find(1, 6))).containsExactly(3L, 4L, 5L, 6L);
+        assertThat(seqNums(messageStore.find(1, Long.MAX_VALUE))).containsExactly(3L, 4L, 5L, 6L);
+    }
+
+    @Test
+    void aSequenceNumberMovedAheadLeavesOnlyTheMessagesStillStored() {
+        setupDisabledStore(4);
+        messageStore.start();
+        for (long seqNum : new long[]{1, 2, 7, 8}) {
+            messageStore.storeMessageSent(seqNum, ByteBuffer.wrap(("message" + seqNum).getBytes()));
+        }
+
+        assertThat(seqNums(messageStore.find(2, 5))).containsExactly(2L);
+        assertThat(seqNums(messageStore.find(1, 8))).containsExactly(1L, 2L, 7L, 8L);
+    }
+
+    private static List<Long> seqNums(List<FixMessagesStore.FixSessionMessagesStore.StoreMessage> messages) {
+        return messages.stream().map(FixMessagesStore.FixSessionMessagesStore.StoreMessage::getSeqNum).collect(Collectors.toList());
     }
 }

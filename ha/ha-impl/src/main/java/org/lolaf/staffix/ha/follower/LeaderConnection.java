@@ -62,8 +62,6 @@ public final class LeaderConnection implements FrameHandler {
     /**
      * Fits an {@link AnswerSender.ThroughNetworkThread} frame, at three bytes a character.
      */
-    private static final int MAX_CLOSE_TEXT = 1024;
-
     private final IOSession ioSession;
     private final ReplicaSessions replicaSessions;
     /**
@@ -395,7 +393,7 @@ public final class LeaderConnection implements FrameHandler {
         }
         log.warn("Closing the replication stream from leader {}: {} {}", leaderId, reason, text);
         state = State.CLOSED;
-        String shortText = text.length() > MAX_CLOSE_TEXT ? text.substring(0, MAX_CLOSE_TEXT) : text;
+        String shortText = FrameEncoder.closeText(text);
         ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.CLOSE, shortText));
         answers.send(frame, FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, shortText));
         ioSession.stop(Deadline.of(CLOSE_FLUSH));

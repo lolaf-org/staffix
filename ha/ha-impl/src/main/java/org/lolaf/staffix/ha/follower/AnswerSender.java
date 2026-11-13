@@ -72,6 +72,10 @@ interface AnswerSender {
 
         @Override
         public ByteBuffer claim(int bytes) {
+            if (bytes > answer.capacity()) {
+                throw new IllegalArgumentException("An answer of " + bytes + " bytes is longer than the "
+                        + answer.capacity() + " a store writer thread can queue");
+            }
             return answer.clear();
         }
 

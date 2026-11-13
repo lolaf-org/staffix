@@ -622,6 +622,17 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     }
 
     @Test
+    void aCloseTextTooLongForTheWireIsCut() {
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
+
+        assertThat(connection.close(CloseReason.PROTOCOL_ERROR, "é".repeat(40_000))).isTrue();
+
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("CLOSE")).singleElement().asString()
+                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR " + "é".repeat(1024));
+        verify(ioSession).stop(any(Deadline.class));
+    }
+
+    @Test
     void aFollowerClosedForAnotherReasonIsNotDroppedAsTooSlowToo() {
         replicated("main").storeNextIncomingSeqNum(5);
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);

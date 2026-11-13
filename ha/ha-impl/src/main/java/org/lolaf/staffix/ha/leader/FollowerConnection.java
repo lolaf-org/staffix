@@ -663,8 +663,9 @@ public final class FollowerConnection implements FrameHandler {
             stats.droppedTooSlow(followerId, lane);
         }
         // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
-        ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, text));
-        int length = FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, text);
+        String shortText = FrameEncoder.closeText(text);
+        ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, shortText));
+        int length = FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, shortText);
         ioSession.send(BatchBuffers.written(frame, length), false);
         ioSession.stop(Deadline.of(CLOSE_FLUSH));
         return true;

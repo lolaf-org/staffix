@@ -41,6 +41,7 @@ import static org.lolaf.staffix.ha.wire.WireFormat.HEADER_BYTES;
 @UtilityClass
 public class FrameEncoder {
 
+    private static final int MAX_CLOSE_TEXT = 1024;
     /**
      * Plain access only, which tolerates any alignment.
      */
@@ -249,6 +250,13 @@ public class FrameEncoder {
         int length = header(out, index, FrameType.HEARTBEAT, 0, epoch, 0);
         out.putLong(index + HEADER_BYTES, logTailOffset);
         return length;
+    }
+
+    /**
+     * The text cut short enough for a CLOSE: it may hold an exception's message, of any length.
+     */
+    public static String closeText(String text) {
+        return text.length() > MAX_CLOSE_TEXT ? text.substring(0, MAX_CLOSE_TEXT) : text;
     }
 
     public static int close(ByteBuffer out, int index, long epoch, CloseReason reason, String text) {

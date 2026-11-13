@@ -105,7 +105,7 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
         if (!enabledMessageStoring) {
             return;
         }
-        storedMessages[(int) Math.floorMod(outgoingSeqNum, (long) storedMessages.length)].store(outgoingSeqNum, message, allocator);
+        slotOf(outgoingSeqNum).store(outgoingSeqNum, message, allocator);
     }
 
     @Override
@@ -113,20 +113,42 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
         if (!enabledMessageStoring) {
             return;
         }
-        // collected before being handed over, the contract being ascending MsgSeqNum(34): the slots wrap around, and a
-        // sequence number moved ahead leaves older messages in the slots it skipped
-        List<StoreMessage> messages = new ArrayList<>(32);
-        for (StoredMessage stored : storedMessages) {
-            StoreMessage copy = stored.copyIfIn(startSequenceNumber, stopSequenceNumber);
-            if (copy != null) {
-                messages.add(copy);
-            }
-        }
-        messages.sort(Comparator.comparingLong(StoreMessage::getSeqNum));
+        List<StoreMessage> messages = stopSequenceNumber - startSequenceNumber < storedMessages.length
+                ? copyBySlot(startSequenceNumber, stopSequenceNumber)
+                : copyByScan(startSequenceNumber, stopSequenceNumber);
         for (StoreMessage message : messages) {
             if (!consumer.onMessage(message.getSeqNum(), message.getMessage())) {
                 return;
             }
+        }
+    }
+
+    private StoredMessage slotOf(long seqNum) {
+        return storedMessages[(int) Math.floorMod(seqNum, (long) storedMessages.length)];
+    }
+
+    private List<StoreMessage> copyBySlot(long startSequenceNumber, long stopSequenceNumber) {
+        List<StoreMessage> messages = new ArrayList<>(32);
+        for (long offset = 0; offset <= stopSequenceNumber - startSequenceNumber; offset++) {
+            long seqNum = startSequenceNumber + offset;
+            addIfNotNull(messages, slotOf(seqNum).copyIfIn(seqNum, seqNum));
+        }
+        return messages;
+    }
+
+    private List<StoreMessage> copyByScan(long startSequenceNumber, long stopSequenceNumber) {
+        List<StoreMessage> messages = new ArrayList<>(32);
+        for (StoredMessage stored : storedMessages) {
+            addIfNotNull(messages, stored.copyIfIn(startSequenceNumber, stopSequenceNumber));
+        }
+        // the slots wrap around, and a sequence number moved ahead leaves older messages in the slots it skipped
+        messages.sort(Comparator.comparingLong(StoreMessage::getSeqNum));
+        return messages;
+    }
+
+    private static void addIfNotNull(List<StoreMessage> messages, StoreMessage message) {
+        if (message != null) {
+            messages.add(message);
         }
     }
 
