@@ -59,11 +59,12 @@ final class Switchover {
         // a follower reconnecting to this node, which still leads, would start a stream and forget it was handed over
         ha.stopServer(deadline);
         boolean transferring = election.transferLeadership();
-        if (!transferring || !deadline.waitAsLongAs(() -> election.getRole() == Role.LEADER)) {
-            if (election.getRole() == Role.LEADER) {
-                resumeLeading(transferring ? "leadership did not move in time" : "the leader election did not transfer leadership");
-                return SwitchoverOutcome.NOT_TRANSFERRED;
-            }
+        if (transferring) {
+            deadline.waitAsLongAs(() -> election.getRole() == Role.LEADER);
+        }
+        if (election.getRole() == Role.LEADER) {
+            resumeLeading(transferring ? "leadership did not move in time" : "the leader election did not transfer leadership");
+            return SwitchoverOutcome.NOT_TRANSFERRED;
         }
         log.info("Node {} handed leadership over", settings.getNodeId());
         return SwitchoverOutcome.TRANSFERRED;

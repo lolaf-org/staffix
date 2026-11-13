@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.ha;
 
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +28,7 @@ import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentCo
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
@@ -37,20 +36,19 @@ import java.util.function.Predicate;
  * The leader's session settings as digests, for its follower to compare with its own. Taken on each session's document
  * with its placeholders unresolved, so two nodes resolving one differently agree.
  */
-@Getter
 @Slf4j
 public final class SessionSettingsDigests {
 
     /**
      * Generation 0 until a first {@link #publish}: nothing to send.
      */
+    @Getter
     private volatile Published published = new Published(0, List.of());
     /**
      * Sessions removed from a store and not added again, so a follower away at the time still removes them. In memory:
      * a leader restarted since has forgotten them, and the follower then only reports the session.
      */
-    @Getter(AccessLevel.NONE)
-    private final Map<StoredSession, Boolean> removals = new ConcurrentHashMap<>();
+    private final Set<StoredSession> removals = ConcurrentHashMap.newKeySet();
 
     public static List<Digest> of(List<FixSessionsSettingsStore> stores) {
         return of(stores, store -> false);
@@ -83,11 +81,11 @@ public final class SessionSettingsDigests {
      * @param replicated the stores whose documents go with their digests; the others are only compared
      */
     synchronized void publish(List<FixSessionsSettingsStore> stores, Predicate<FixSessionsSettingsStore> replicated) {
-        List<Digest> digests = new ArrayList<>(of(stores, replicated));
+        List<Digest> digests = of(stores, replicated);
         for (FixSessionsSettingsStore store : stores) {
             if (replicated.test(store)) {
                 String identity = store.getStorageIdentity().orElse("");
-                removals.keySet().stream().filter(removal -> removal.getStore().equals(store.getInstanceId()))
+                removals.stream().filter(removal -> removal.getStore().equals(store.getInstanceId()))
                         .forEach(removal -> digests.add(new Digest(removal.getStore(), removal.getSession().getFixSessionType(),
                                 removal.getSession().getFixSessionId(), "", identity, "", true)));
             }
@@ -96,7 +94,7 @@ public final class SessionSettingsDigests {
     }
 
     void onRemoved(String store, FixSessionSettings settings) {
-        removals.put(removal(store, settings), true);
+        removals.add(removal(store, settings));
     }
 
     void onAdded(String store, FixSessionSettings settings) {
