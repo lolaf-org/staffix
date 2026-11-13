@@ -50,7 +50,7 @@ final class HaStatusReport {
                 .role(role)
                 .epoch(ha.getRoleEpoch())
                 .leaderId(election == null ? null : election.getLeaderId().orElse(null))
-                .leadershipValid(election != null && election.getRole() == Role.LEADER && election.isLeadershipValid())
+                .leadershipValid(ha.isLeadershipValid())
                 .leaderElectionType(election == null ? "" : election.getClass().getSimpleName())
                 .roleSince(ha.getRoleSince())
                 .transferLeadershipSupported(election != null && election.isTransferLeadershipSupported())

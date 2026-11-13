@@ -25,6 +25,7 @@ import org.lolaf.staffix.api.alerting.ProbeDefinition;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
 import org.lolaf.staffix.api.alerting.ProbeScope;
+import org.lolaf.staffix.api.utils.Sha256;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

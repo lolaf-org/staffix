@@ -13,22 +13,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.admin.http;
+package org.lolaf.staffix.api.utils;
+
+import lombok.experimental.UtilityClass;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-final class Sha256 {
+@UtilityClass
+public class Sha256 {
 
-    private Sha256() {
-    }
-
-    static String hex(byte[] bytes) {
+    /**
+     * @return 64 lowercase hex digits
+     */
+    public static String hex(byte[] bytes) {
         try {
             return String.format("%064x", new BigInteger(1, MessageDigest.getInstance("SHA-256").digest(bytes)));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is required of every JVM", e);
         }
+    }
+
+    /**
+     * Of the text's UTF-8 bytes.
+     */
+    public static String hex(String text) {
+        return hex(text.getBytes(StandardCharsets.UTF_8));
     }
 }

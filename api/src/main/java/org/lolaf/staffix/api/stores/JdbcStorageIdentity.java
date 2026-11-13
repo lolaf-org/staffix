@@ -17,11 +17,9 @@ package org.lolaf.staffix.api.stores;
 
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.lolaf.staffix.api.utils.Sha256;
 
 import javax.sql.DataSource;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
@@ -70,7 +68,7 @@ public final class JdbcStorageIdentity {
             DatabaseMetaData metaData = connection.getMetaData();
             String serverId = serverId(connection, metaData.getDatabaseProductName());
             String database = serverId == null ? metaData.getURL() : metaData.getDatabaseProductName() + " " + serverId;
-            return "jdbc:" + sha256(String.join("|", database, connection.getCatalog(), connection.getSchema(), scope));
+            return "jdbc:" + Sha256.hex(String.join("|", database, connection.getCatalog(), connection.getSchema(), scope));
         } catch (SQLException | RuntimeException e) {
             log.warn("Cannot read the storage identity of the JDBC store", e);
             return null;
@@ -110,18 +108,5 @@ public final class JdbcStorageIdentity {
             return "SELECT dbid FROM v$database";
         }
         return null;
-    }
-
-    private static String sha256(String text) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 }

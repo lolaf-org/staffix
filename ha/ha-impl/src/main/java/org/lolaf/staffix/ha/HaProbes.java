@@ -180,8 +180,7 @@ class HaProbes {
             if (ha.getRole() != Role.UNKNOWN) {
                 return Optional.empty();
             }
-            LeaderElection election = ha.getElection();
-            boolean leadsUnproven = election != null && election.getRole() == Role.LEADER && !election.isLeadershipValid();
+            boolean leadsUnproven = ha.isElectedLeader() && !ha.isLeadershipValid();
             return Optional.of(Alert.critical((leadsUnproven ? "Elected leader but unable to prove it" : "No role")
                     + " for " + RAISE_DELAY.toSeconds() + " s: the sessions run nowhere unless the other node leads"));
         };

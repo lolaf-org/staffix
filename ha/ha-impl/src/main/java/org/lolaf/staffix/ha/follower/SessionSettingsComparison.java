@@ -17,13 +17,12 @@ package org.lolaf.staffix.ha.follower;
 
 import lombok.Getter;
 import lombok.Setter;
-import lombok.Value;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.ha.HaStatus.SessionSettingsDifference;
-import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
+import org.lolaf.staffix.ha.SessionSettingsDigests.StoredSession;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,9 +37,9 @@ public final class SessionSettingsComparison {
 
     private final EngineAccess engine;
     private final SessionSettingsApplier applier;
-    private final Map<DigestKey, Digest> receiving = new HashMap<>();
+    private final Map<StoredSession, Digest> receiving = new HashMap<>();
     private int receivingGeneration;
-    private @Nullable Map<DigestKey, Digest> leaders;
+    private @Nullable Map<StoredSession, Digest> leaders;
     /**
      * Where the leader's documents are applied: a store write must not hold up the lane's network thread.
      */
@@ -54,33 +53,33 @@ public final class SessionSettingsComparison {
         this.applier = new SessionSettingsApplier(engine);
     }
 
-    private static DigestKey key(Digest digest) {
-        return new DigestKey(digest.getStore(), digest.getFixSessionType(), digest.getFixSessionId());
-    }
-
-    private static SessionSettingsDifference difference(DigestKey key, SessionSettingsDifference.Kind kind) {
-        return SessionSettingsDifference.builder().store(key.store).fixSessionType(key.fixSessionType).fixSessionId(key.fixSessionId)
-                .kind(kind).build();
+    private static SessionSettingsDifference difference(StoredSession key, SessionSettingsDifference.Kind kind) {
+        return SessionSettingsDifference.builder().store(key.getStore()).fixSessionType(key.getSession().getFixSessionType())
+                .fixSessionId(key.getSession().getFixSessionId()).kind(kind).build();
     }
 
     synchronized void onDigest(int generation, Digest digest) {
-        if (generation != receivingGeneration) {
-            receivingGeneration = generation;
-            receiving.clear();
-        }
-        receiving.put(key(digest), digest);
+        receive(generation);
+        receiving.put(digest.storedSession(), digest);
     }
 
     synchronized void onDigestsComplete(int generation, int count) {
-        if (generation != receivingGeneration) {
-            receivingGeneration = generation;
-            receiving.clear();
-        }
+        receive(generation);
         if (receiving.size() == count) {
             leaders = new HashMap<>(receiving);
             compare();
             List<Digest> received = List.copyOf(receiving.values());
             applyExecutor.accept(() -> applyIfStillFollowing(received));
+        }
+    }
+
+    /**
+     * A new generation drops what was received of the one before, which the leader replaced before sending it whole.
+     */
+    private void receive(int generation) {
+        if (generation != receivingGeneration) {
+            receivingGeneration = generation;
+            receiving.clear();
         }
     }
 
@@ -100,8 +99,8 @@ public final class SessionSettingsComparison {
         if (leaders == null) {
             return;
         }
-        Map<DigestKey, String> own = new HashMap<>();
-        SessionSettingsDigests.of(engine.getFixSessionsSettingsStores()).forEach(digest -> own.put(key(digest), digest.getValue()));
+        Map<StoredSession, String> own = new HashMap<>();
+        SessionSettingsDigests.of(engine.getFixSessionsSettingsStores()).forEach(digest -> own.put(digest.storedSession(), digest.getValue()));
         List<SessionSettingsDifference> found = new ArrayList<>();
         leaders.forEach((key, digest) -> {
             if (digest.isRemoved()) {
@@ -125,12 +124,5 @@ public final class SessionSettingsComparison {
     public synchronized void clear() {
         leaders = null;
         differences = List.of();
-    }
-
-    @Value
-    private static class DigestKey {
-        String store;
-        FixSessionType fixSessionType;
-        String fixSessionId;
     }
 }

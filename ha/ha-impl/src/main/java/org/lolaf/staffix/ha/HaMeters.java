@@ -72,10 +72,8 @@ class HaMeters {
             LeaderElection election = ha.getElection();
             return election == null ? -1 : election.getEpoch();
         });
-        meters.getGauge("ha.leadership.valid", "1 while this node leads and can prove it, 0 otherwise.", Map.of(), () -> {
-            LeaderElection election = ha.getElection();
-            return election != null && election.getRole() == Role.LEADER && election.isLeadershipValid() ? 1 : 0;
-        });
+        meters.getGauge("ha.leadership.valid", "1 while this node leads and can prove it, 0 otherwise.", Map.of(),
+                () -> ha.isLeadershipValid() ? 1 : 0);
     }
 
     private static void registerLeaderMeters(FixEngineMonitoringContext meters, ReplicationFixEngineHa ha,

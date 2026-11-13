@@ -29,6 +29,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.PromotionSeqNumJumps;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 
 import java.nio.ByteBuffer;
@@ -36,6 +37,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.ObjIntConsumer;
+import java.util.function.Predicate;
+import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -71,16 +74,6 @@ public final class ReplicaSessions {
         this.engine = engine;
         this.settingsComparison = new SessionSettingsComparison(engine);
         this.binder = new SessionBinder(engine);
-    }
-
-    private static void jumpOutgoingSeqNum(FixSessionSettings settings, FixSessionMessagesStore store, long jump) {
-        if (jump == 0) {
-            return;
-        }
-        long outgoingSeqNum = store.getOutgoingSeqNum();
-        store.storeNextOutgoingSeqNum(outgoingSeqNum + jump);
-        log.warn("FIX session {} {} outgoing sequence number moved from {} to {}, past what the old leader may have sent "
-                + "unreplicated", settings.getFixSessionType(), settings.getFixSessionId(), outgoingSeqNum, outgoingSeqNum + jump);
     }
 
     public int getLanes() {
@@ -148,19 +141,16 @@ public final class ReplicaSessions {
     }
 
     /**
-     * {@link #isInSync()} for the sessions of one lane.
+     * {@link #isInSync()} for the sessions of one lane. Allocates nothing.
      */
     boolean isLaneInSync(int lane) {
-        ReplicaSession[] sessions = sessionsByKey;
-        int lanes = positions.count();
-        for (int key = lane; key < sessions.length; key += lanes) {
-            if (sessions[key] != null && sessions[key].isOutOfSync()) {
-                return false;
-            }
-        }
-        return true;
+        return !anyOf(lane, ReplicaSession::isOutOfSync);
     }
 
+    /**
+     * The lane's thread calls these on every read: given a method reference, which captures nothing, they allocate
+     * nothing.
+     */
     private void forEachOf(int lane, Consumer<ReplicaSession> action) {
         ReplicaSession[] sessions = sessionsByKey;
         int lanes = positions.count();
@@ -169,6 +159,29 @@ public final class ReplicaSessions {
                 action.accept(sessions[key]);
             }
         }
+    }
+
+    private boolean anyOf(int lane, Predicate<ReplicaSession> matching) {
+        ReplicaSession[] sessions = sessionsByKey;
+        int lanes = positions.count();
+        for (int key = lane; key < sessions.length; key += lanes) {
+            if (sessions[key] != null && matching.test(sessions[key])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private long sumOf(int lane, ToLongFunction<ReplicaSession> value) {
+        ReplicaSession[] sessions = sessionsByKey;
+        int lanes = positions.count();
+        long sum = 0;
+        for (int key = lane; key < sessions.length; key += lanes) {
+            if (sessions[key] != null) {
+                sum += value.applyAsLong(sessions[key]);
+            }
+        }
+        return sum;
     }
 
     /**
@@ -222,16 +235,7 @@ public final class ReplicaSessions {
      * What the stores of the lane's sessions have accepted and not stored yet. Allocates nothing.
      */
     long getPendingWrites(int lane) {
-        ReplicaSession[] sessions = sessionsByKey;
-        int lanes = positions.count();
-        long pendingWrites = 0;
-        for (int key = lane; key < sessions.length; key += lanes) {
-            ReplicaSession session = sessions[key];
-            if (session != null) {
-                pendingWrites += session.getPendingWrites();
-            }
-        }
-        return pendingWrites;
+        return sumOf(lane, ReplicaSession::getPendingWrites);
     }
 
     /**
@@ -258,14 +262,7 @@ public final class ReplicaSessions {
     }
 
     boolean hasSessionsToBindAgain(int lane) {
-        ReplicaSession[] sessions = sessionsByKey;
-        int lanes = positions.count();
-        for (int key = lane; key < sessions.length; key += lanes) {
-            if (sessions[key] != null && sessions[key].isRefusedUntilSettingsChange()) {
-                return true;
-            }
-        }
-        return false;
+        return anyOf(lane, ReplicaSession::isRefusedUntilSettingsChange);
     }
 
 
@@ -386,11 +383,11 @@ public final class ReplicaSessions {
             log.info("FIX session {} {} taken over where the old leader cleanly left it", settings.getFixSessionType(),
                     settings.getFixSessionId());
         } else if (session != null && session.isReplicated()) {
-            jumpOutgoingSeqNum(settings, session.getStore(), jump);
+            PromotionSeqNumJumps.jumpOutgoingSeqNum(settings, session.getStore(), jump);
         } else {
             FixSessionMessagesStore store = engine.openStore(settings).start();
             try {
-                jumpOutgoingSeqNum(settings, store, jump);
+                PromotionSeqNumJumps.jumpOutgoingSeqNum(settings, store, jump);
             } finally {
                 store.stop(Deadline.unlimited());
             }

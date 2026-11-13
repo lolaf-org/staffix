@@ -228,6 +228,21 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
     }
 
+    /**
+     * As the election says now, whatever role this node acts on. Any thread.
+     */
+    boolean isElectedLeader() {
+        LeaderElection current = election;
+        return current != null && current.getRole() == Role.LEADER;
+    }
+
+    /**
+     * Elected leader and able to prove it, as the election says now. Any thread.
+     */
+    boolean isLeadershipValid() {
+        return isElectedLeader() && election.isLeadershipValid();
+    }
+
     private void requireLeadingToResync() {
         if (role != Role.LEADER) {
             throw new IllegalStateException("Only the leader re-syncs its followers; node " + settings.getNodeId() + " is "

@@ -22,14 +22,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
+import org.lolaf.staffix.api.utils.Sha256;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentCodec;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -52,7 +50,7 @@ public final class SessionSettingsDigests {
      * a leader restarted since has forgotten them, and the follower then only reports the session.
      */
     @Getter(AccessLevel.NONE)
-    private final Map<Removal, Boolean> removals = new ConcurrentHashMap<>();
+    private final Map<StoredSession, Boolean> removals = new ConcurrentHashMap<>();
 
     public static List<Digest> of(List<FixSessionsSettingsStore> stores) {
         return of(stores, store -> false);
@@ -65,7 +63,7 @@ public final class SessionSettingsDigests {
             for (FixSessionSettings settings : store.getSettings()) {
                 String json = FixSessionSettingsDocumentCodec.toCanonicalUnresolvedJson(settings);
                 digests.add(new Digest(store.getInstanceId(), settings.getFixSessionType(), settings.getFixSessionId().toString(),
-                        sha256(json), identity, identity.isEmpty() ? "" : sendable(settings, json), false));
+                        Sha256.hex(json), identity, identity.isEmpty() ? "" : sendable(settings, json), false));
             }
         }
         return digests;
@@ -79,14 +77,6 @@ public final class SessionSettingsDigests {
         return "";
     }
 
-    private static String sha256(String text) {
-        try {
-            return Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
     /**
      * Each call is a new generation, sent to the followers even if nothing differs.
      *
@@ -97,8 +87,9 @@ public final class SessionSettingsDigests {
         for (FixSessionsSettingsStore store : stores) {
             if (replicated.test(store)) {
                 String identity = store.getStorageIdentity().orElse("");
-                removals.keySet().stream().filter(removal -> removal.store.equals(store.getInstanceId()))
-                        .forEach(removal -> digests.add(new Digest(removal.store, removal.fixSessionType, removal.fixSessionId, "", identity, "", true)));
+                removals.keySet().stream().filter(removal -> removal.getStore().equals(store.getInstanceId()))
+                        .forEach(removal -> digests.add(new Digest(removal.getStore(), removal.getSession().getFixSessionType(),
+                                removal.getSession().getFixSessionId(), "", identity, "", true)));
             }
         }
         published = new Published(published.getGeneration() + 1, digests);
@@ -112,8 +103,8 @@ public final class SessionSettingsDigests {
         removals.remove(removal(store, settings));
     }
 
-    private static Removal removal(String store, FixSessionSettings settings) {
-        return new Removal(store, settings.getFixSessionType(), settings.getFixSessionId().toString());
+    private static StoredSession removal(String store, FixSessionSettings settings) {
+        return new StoredSession(store, TypedSessionId.of(settings));
     }
 
     @Value
@@ -134,13 +125,23 @@ public final class SessionSettingsDigests {
          * The leader removed the session: this says so and carries no digest.
          */
         boolean removed;
+
+        public TypedSessionId session() {
+            return new TypedSessionId(fixSessionType, fixSessionId);
+        }
+
+        public StoredSession storedSession() {
+            return new StoredSession(store, session());
+        }
     }
 
+    /**
+     * A session of one settings store, by the store's instance id.
+     */
     @Value
-    private static class Removal {
+    public static class StoredSession {
         String store;
-        FixSessionType fixSessionType;
-        String fixSessionId;
+        TypedSessionId session;
     }
 
     @Value

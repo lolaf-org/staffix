@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
+import org.lolaf.staffix.ha.TypedSessionId;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentCodec;
 import org.lolaf.staffix.sessions.settings.document.FixSessionSettingsDocumentMapper;
@@ -64,12 +65,12 @@ final class SessionSettingsApplier {
             reloadShared(storeId);
             return;
         }
-        Map<String, String> own = new HashMap<>();
-        SessionSettingsDigests.of(List.of(store)).forEach(digest -> own.put(key(digest), digest.getValue()));
+        Map<TypedSessionId, String> own = new HashMap<>();
+        SessionSettingsDigests.of(List.of(store)).forEach(digest -> own.put(digest.session(), digest.getValue()));
         FixSessionSettingsDocumentCodec codec = new FixSessionSettingsDocumentCodec(JSON, store.getConfigValueResolvers());
         codec.refreshResolvers();
         leaders.stream().filter(Digest::isRemoved).forEach(digest -> remove(store, digest));
-        leaders.stream().filter(digest -> !digest.isRemoved() && !digest.getValue().equals(own.get(key(digest))))
+        leaders.stream().filter(digest -> !digest.isRemoved() && !digest.getValue().equals(own.get(digest.session())))
                 .forEach(digest -> applySession(storeId, digest, codec));
     }
 
@@ -108,9 +109,5 @@ final class SessionSettingsApplier {
         } catch (IOException | RuntimeException e) {
             log.error("Cannot apply the leader's settings of FIX session {} to store {}", digest.getFixSessionId(), storeId, e);
         }
-    }
-
-    private static String key(Digest digest) {
-        return digest.getFixSessionType() + " " + digest.getFixSessionId();
     }
 }

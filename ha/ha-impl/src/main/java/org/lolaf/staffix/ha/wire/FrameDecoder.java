@@ -139,10 +139,10 @@ public class FrameDecoder {
         int identityLength = unsignedShort(in, p + 8);
         checkVariableBytes(FrameType.SESSION, idLength + identityLength, variableBytes);
         String identity = (flags & WireFormat.FLAG_STORAGE_IDENTITY) != 0
-                ? new String(bytes(in, p + 10 + idLength, identityLength), StandardCharsets.UTF_8)
+                ? utf8Str(in, p + 10 + idLength, identityLength)
                 : null;
         handler.onSession(epoch, in.getInt(p), fixSessionType(in.get(p + 4)), replicationMode(in.get(p + 5)),
-                new String(bytes(in, p + 10, idLength), StandardCharsets.UTF_8), identity);
+                utf8Str(in, p + 10, idLength), identity);
     }
 
     private static void decodeSessionSettingsDigest(ByteBuffer in, int p, int flags, long epoch, int variableBytes, FrameHandler handler) {
@@ -153,11 +153,11 @@ public class FrameDecoder {
         int documentLength = unsignedShort(in, p + 14);
         checkVariableBytes(FrameType.SESSION_SETTINGS_DIGEST, storeLength + idLength + digestLength + identityLength + documentLength, variableBytes);
         int variable = p + 16;
-        String store = new String(bytes(in, variable, storeLength), StandardCharsets.UTF_8);
-        String id = new String(bytes(in, variable += storeLength, idLength), StandardCharsets.UTF_8);
-        String digest = new String(bytes(in, variable += idLength, digestLength), StandardCharsets.UTF_8);
-        String identity = new String(bytes(in, variable += digestLength, identityLength), StandardCharsets.UTF_8);
-        String document = new String(bytes(in, variable + identityLength, documentLength), StandardCharsets.UTF_8);
+        String store = utf8Str(in, variable, storeLength);
+        String id = utf8Str(in, variable += storeLength, idLength);
+        String digest = utf8Str(in, variable += idLength, digestLength);
+        String identity = utf8Str(in, variable += digestLength, identityLength);
+        String document = utf8Str(in, variable + identityLength, documentLength);
         handler.onSessionSettingsDigest(epoch, in.getInt(p),
                 new SessionSettingsDigests.Digest(store, fixSessionType(in.get(p + 4)), id, digest, identity, document,
                         (flags & WireFormat.FLAG_SESSION_REMOVED) != 0));
@@ -228,15 +228,15 @@ public class FrameDecoder {
 
     private static String string(ByteBuffer in, int index, int length, int variableBytes, FrameType type) {
         checkVariableBytes(type, length, variableBytes);
-        return new String(bytes(in, index, length), StandardCharsets.UTF_8);
+        return utf8Str(in, index, length);
     }
 
-    private static byte[] bytes(ByteBuffer in, int index, int length) {
+    private static String utf8Str(ByteBuffer in, int index, int length) {
         byte[] bytes = new byte[length];
         for (int i = 0; i < length; i++) {
             bytes[i] = in.get(index + i);
         }
-        return bytes;
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     private static int unsignedShort(ByteBuffer in, int index) {

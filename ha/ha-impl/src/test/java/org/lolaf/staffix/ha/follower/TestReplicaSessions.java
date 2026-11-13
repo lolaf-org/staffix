@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 
 import java.nio.ByteBuffer;
@@ -146,5 +147,36 @@ class TestReplicaSessions {
 
         assertThat(engine.store(REPLICATED).writes).containsExactly("outgoing 1001");
         assertThat(engine.store(SHARED).writes).containsExactly("outgoing 1001");
+    }
+
+    /**
+     * What the network thread asks of a lane on every read, before acknowledging it. Both sessions replicated: a
+     * session not replicated has the {@link NoStore}, whose inherited default methods Mockito instruments once another
+     * test mocks the store interface, and its check then allocates.
+     */
+    @Test
+    void endingAReadAllocatesNothing() {
+        replicaSessions.bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage");
+        replicaSessions.bind(1, SHARED.getFixSessionType(), SHARED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage");
+        for (int key = 0; key < 2; key++) {
+            replicaSessions.snapshotBegin(0, key, 1, 1);
+            replicaSessions.snapshotEnd(0, key, 0, 1, 1);
+        }
+        assertThat(endRead()).as("in sync, nothing to bind again, nothing pending").isEqualTo(1);
+
+        long before = AllocatedBytes.ofCurrentThread();
+        long inSyncReads = 0;
+        for (int i = 0; i < 100_000; i++) {
+            inSyncReads += endRead();
+        }
+
+        assertThat(AllocatedBytes.ofCurrentThread() - before).as("less than a byte per read").isLessThan(100_000);
+        assertThat(inSyncReads).isEqualTo(100_000);
+    }
+
+    private long endRead() {
+        replicaSessions.writeApplied(0);
+        boolean idle = replicaSessions.isLaneInSync(0) && !replicaSessions.hasSessionsToBindAgain(0);
+        return idle ? 1 + replicaSessions.getPendingWrites(0) : 0;
     }
 }

@@ -175,8 +175,8 @@ public final class ReplicationClient {
         private final FrameDecoder decoder = new FrameDecoder(maxFrameBytes);
         private final IOWorkersGroup ioWorkers;
         private final Client client;
-        private volatile @Nullable LeaderConnection connection;
         private final @Nullable LaneWriteQueue writeQueue;
+        private volatile @Nullable LeaderConnection connection;
 
         LaneClient(int lane) {
             this.lane = lane;
@@ -215,20 +215,18 @@ public final class ReplicationClient {
 
         @Override
         public void onConnected(IOSession session) {
-            if (writeQueue == null) {
-                LeaderConnection connected = new LeaderConnection(session, replicaSessions, nodeEpoch, nodeId, lane,
-                        ReplicationClient.this::lanesAnnounced);
-                session.setAttachment(connected);
-                connection = connected;
-                connected.hello();
-                return;
-            }
+            boolean writtenByStoreWriter = writeQueue != null;
+            AnswerSender answers = writtenByStoreWriter ?
+                    new AnswerSender.ThroughNetworkThread(session) : new AnswerSender.OnNetworkThread(session);
             LeaderConnection connected = new LeaderConnection(session, replicaSessions, nodeEpoch, nodeId, lane,
-                    ReplicationClient.this::lanesAnnounced, LeaderConnection.CHECK_INTERVAL_NANOS,
-                    new AnswerSender.ThroughNetworkThread(session), true);
+                    ReplicationClient.this::lanesAnnounced, LeaderConnection.CHECK_INTERVAL_NANOS, answers, writtenByStoreWriter);
             session.setAttachment(connected);
             connection = connected;
-            writeQueue.connected(connected);
+            if (writtenByStoreWriter) {
+                writeQueue.connected(connected);
+            } else {
+                connected.hello();
+            }
         }
 
         @Override

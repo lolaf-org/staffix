@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  * hold a seqnum the old leader sent unreplicated.
  */
 @Slf4j
-final class PromotionSeqNumJumps {
+public final class PromotionSeqNumJumps {
 
     private static final long FIRST_SEQ_NUM = 1;
 
@@ -39,11 +39,11 @@ final class PromotionSeqNumJumps {
     /**
      * The promotion each session last jumped for, by type and id.
      */
-    private final Map<String, Long> jumpedFor = new ConcurrentHashMap<>();
+    private final Map<TypedSessionId, Long> jumpedFor = new ConcurrentHashMap<>();
     /**
      * A session outside these was created under this leadership: the old leader never ran it.
      */
-    private volatile Set<String> configuredAtPromotion = Set.of();
+    private volatile Set<TypedSessionId> configuredAtPromotion = Set.of();
     /**
      * 0 while this node does not lead.
      */
@@ -61,7 +61,7 @@ final class PromotionSeqNumJumps {
      * Role thread only.
      */
     void promoted(Collection<FixSessionSettings> configured) {
-        configuredAtPromotion = configured.stream().map(PromotionSeqNumJumps::sessionKey).collect(Collectors.toUnmodifiableSet());
+        configuredAtPromotion = configured.stream().map(TypedSessionId::of).collect(Collectors.toUnmodifiableSet());
         currentPromotion = ++promotions;
     }
 
@@ -75,7 +75,7 @@ final class PromotionSeqNumJumps {
     void jumped(FixSessionSettings sessionSettings) {
         long current = currentPromotion;
         if (current != 0) {
-            jumpedFor.put(sessionKey(sessionSettings), current);
+            jumpedFor.put(TypedSessionId.of(sessionSettings), current);
         }
     }
 
@@ -87,20 +87,27 @@ final class PromotionSeqNumJumps {
         if (current == 0 || jump == 0) {
             return;
         }
-        Long previous = jumpedFor.put(sessionKey(sessionSettings), current);
+        TypedSessionId session = TypedSessionId.of(sessionSettings);
+        Long previous = jumpedFor.put(session, current);
         if (previous != null && previous == current) {
             return;
         }
-        long next = store.getOutgoingSeqNum();
-        if (next == FIRST_SEQ_NUM && !configuredAtPromotion.contains(sessionKey(sessionSettings))) {
+        if (store.getOutgoingSeqNum() == FIRST_SEQ_NUM && !configuredAtPromotion.contains(session)) {
             return;
         }
-        store.storeNextOutgoingSeqNum(next + jump);
-        log.warn("FIX session {} {} started after this node took the lead: outgoing sequence number moved from {} to {}",
-                sessionSettings.getFixSessionType(), sessionSettings.getFixSessionId(), next, next + jump);
+        jumpOutgoingSeqNum(sessionSettings, store, jump);
     }
 
-    private static String sessionKey(FixSessionSettings sessionSettings) {
-        return sessionSettings.getFixSessionType() + " " + sessionSettings.getFixSessionId();
+    /**
+     * Moves the session's outgoing seqnum past what the previous leader may have sent unreplicated; 0 moves nothing.
+     */
+    public static void jumpOutgoingSeqNum(FixSessionSettings settings, FixSessionMessagesStore store, long jump) {
+        if (jump == 0) {
+            return;
+        }
+        long outgoingSeqNum = store.getOutgoingSeqNum();
+        store.storeNextOutgoingSeqNum(outgoingSeqNum + jump);
+        log.warn("FIX session {} {} outgoing sequence number moved from {} to {}, past what the previous leader may have "
+                + "sent unreplicated", settings.getFixSessionType(), settings.getFixSessionId(), outgoingSeqNum, outgoingSeqNum + jump);
     }
 }
