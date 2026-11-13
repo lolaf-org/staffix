@@ -28,6 +28,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BusySpinIdleStrategy;
 import org.lolaf.staffix.api.FixAcceptorBuilder;
 import org.lolaf.staffix.api.FixEngine;
+import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.FixInitiatorBuilder;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
@@ -50,7 +51,6 @@ import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySe
 import org.lolaf.staffix.benchmarks.fix44.encoders.QuoteRequestEncoder;
 import org.lolaf.staffix.benchmarks.fix44.msg.MessageTypes;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
-import org.lolaf.staffix.monitoring.micrometer.MicrometerMonitoringManagerSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.openjdk.jmh.annotations.Level;
@@ -83,48 +83,54 @@ import static org.lolaf.staffix.benchmarks.impl.HaPair.session;
  * A highly available pair answering {@link #sessions} counterparty sessions in an open loop: one generator thread
  * sends QuoteRequests round-robin over the sessions at {@link #rate} a second, whatever the answers, and each Quote's
  * latency is taken from the time its request was due, so a stalled engine shows as latency rather than as a lower
- * rate. Each iteration logs the latency percentiles and the replication's meters over that iteration.
+ * rate. Each iteration logs the latency percentiles, and with {@link #monitoring} the replication's meters over that
+ * iteration.
  */
 @Slf4j
 @State(Scope.Benchmark)
 public class HaLoad {
 
     private static final String APPLICATION = "app";
-    private static final String MONITORING = "metrics";
     private static final long HIGHEST_LATENCY_NANOS = TimeUnit.SECONDS.toNanos(60);
 
-    @Param({"1", "4", "16"})
-    int sessions;
+    @Param({"SESSIONS_1", "SESSIONS_4", "SESSIONS_16"})
+    HaParams.Sessions sessions;
     /**
      * QuoteRequests a second, over every session.
      */
-    @Param({"10000", "50000", "100000", "200000"})
-    int rate;
+    @Param({"RATE_10000_PER_S", "RATE_50000_PER_S", "RATE_100000_PER_S", "RATE_200000_PER_S"})
+    HaParams.Rate rate;
     @Param({"ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED"})
     ReplicationMode mode;
-    @Param({"MEMORY"})
-    FollowerStorage.Kind followerStore;
-    @Param({"1"})
-    int leaderIoThreads;
+    @Param({"FOLLOWER_MEMORY"})
+    HaParams.FollowerStore followerStore;
+    @Param({"LEADER_IO_THREADS_1"})
+    HaParams.LeaderIoThreads leaderIoThreads;
     /**
      * The counterparty's IO threads, shared by its sessions, so that many sessions do not mean many spinning threads.
      */
-    @Param({"2"})
-    int counterpartyIoThreads;
+    @Param({"COUNTERPARTY_IO_THREADS_2"})
+    HaParams.CounterpartyIoThreads counterpartyIoThreads;
     @Param({"BACKOFF"})
     HaPair.ReplicationWaiting replicationWaiting;
-    @Param({"5"})
-    int seconds;
+    @Param({"SENDING_5_S"})
+    HaParams.SendingTime sendingTime;
     /**
      * The sessions split over this many replication lanes, session {@code n} on lane {@code n} modulo the count.
      */
-    @Param({"1"})
-    int replicationLanes;
+    @Param({"REPLICATION_LANES_1"})
+    HaParams.ReplicationLanes replicationLanes;
     /**
-     * Off, a FILE store writes to the page cache only, as every file store did before {@code syncWrites} forced.
+     * With page cache writes, a FILE store writes to the page cache only, as every file store did before
+     * {@code syncWrites} forced.
      */
-    @Param({"true"})
-    boolean fileSyncWrites;
+    @Param({"FILE_SYNC_WRITES"})
+    HaParams.FileWrites fileWrites;
+    /**
+     * Off by default, so the meters cost the hot paths nothing; on, each iteration logs the replication's meters.
+     */
+    @Param({"NO_MONITORING"})
+    HaParams.Monitoring monitoring;
 
     private final List<Runnable> stops = new ArrayList<>();
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
@@ -140,20 +146,20 @@ public class HaLoad {
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
-        followerStorage = new FollowerStorage(followerStore, fileSyncWrites);
+        followerStorage = new FollowerStorage(followerStore.getKind(), fileWrites.isSync());
         haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB)
                 .newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
-                        .ioWorkersGroup(busySpinning(leaderIoThreads)).build()).start();
+                        .ioWorkersGroup(busySpinning(leaderIoThreads.getCount())).build()).start();
         FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB);
         // a follower knows the sessions its connectors register, and binds nothing until it leads
         followerEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", freePort())).build()).start();
         HaAdmin follower = ((AdminApi) followerEngine).getHa().orElseThrow();
 
-        loadSessions = new LoadSession[sessions];
+        loadSessions = new LoadSession[sessions.getCount()];
         SimpleApplicationFactorySettings.SimpleApplicationFactorySettingsBuilder applications =
                 SimpleApplicationFactorySettings.builder().instanceId(APPLICATION);
         MemorySessionsSettingsStoreSettings.MemorySessionsSettingsStoreSettingsBuilder initiators = MemorySessionsSettingsStoreSettings.builder();
-        for (int i = 0; i < sessions; i++) {
+        for (int i = 0; i < sessions.getCount(); i++) {
             loadSessions[i] = new LoadSession();
             applications.application(name(i), loadSessions[i]);
             initiators.fixSessionSetting(session(initiatorId(name(i)), FixSession.FixSessionType.INITIATOR, name(i), ReplicationMode.NONE));
@@ -162,8 +168,8 @@ public class HaLoad {
                 .fixApplicationFactory(applications.build())
                 .fixSessionsSettingsStore(initiators.build())
                 .build().instance());
-        IOWorkersGroup counterpartyIo = busySpinning(counterpartyIoThreads);
-        for (int i = 0; i < sessions; i++) {
+        IOWorkersGroup counterpartyIo = busySpinning(counterpartyIoThreads.getCount());
+        for (int i = 0; i < sessions.getCount(); i++) {
             counterparty.newInitiator(FixInitiatorBuilder.builder().instanceId(name(i)).ioWorkersGroup(counterpartyIo)
                     .mainTarget(FixInitiatorTarget.builder().fixSessionId(initiatorId(name(i)))
                             .connectAddress(new InetSocketAddress("localhost", fixPort)).build())
@@ -183,7 +189,8 @@ public class HaLoad {
             return leader != null && leader.isInSync();
         });
         log.info("HA load ready: {} sessions at {} msg/s, {} replication, {} follower store, replication waiting {}, leader IO threads {}, replication lanes {}",
-                sessions, rate, mode, followerStore, replicationWaiting, leaderIoThreads, replicationLanes);
+                sessions.getCount(), rate.getPerSecond(), mode, followerStore.getKind(), replicationWaiting,
+                leaderIoThreads.getCount(), replicationLanes.getCount());
     }
 
     @Setup(Level.Iteration)
@@ -199,23 +206,23 @@ public class HaLoad {
     }
 
     /**
-     * Sends at {@link #rate} for {@link #seconds}, each request due at its own time from the start.
+     * Sends at {@link #rate} for {@link #sendingTime}, each request due at its own time from the start.
      *
      * @return the requests sent
      */
     public long run() {
-        long durationNanos = TimeUnit.SECONDS.toNanos(seconds);
+        long durationNanos = TimeUnit.SECONDS.toNanos(sendingTime.getSeconds());
         long start = System.nanoTime();
         long sent = 0;
         while (true) {
-            long due = start + sent * 1_000_000_000L / rate;
+            long due = start + sent * 1_000_000_000L / rate.getPerSecond();
             if (due - start >= durationNanos) {
                 break;
             }
             while (System.nanoTime() < due) {
                 Thread.onSpinWait();
             }
-            loadSessions[(int) (sent % sessions)].send(due);
+            loadSessions[(int) (sent % sessions.getCount())].send(due);
             sent++;
         }
         iterationNanos = System.nanoTime() - start;
@@ -234,7 +241,7 @@ public class HaLoad {
             latency.add(loadSession.latency);
         }
         log.info("HA load {} sessions, {} msg/s asked, {} achieved, {} unanswered; latency µs p50 {} p90 {} p99 {} p99.9 {} max {}",
-                sessions, rate, sentThisIteration * 1_000_000_000L / iterationNanos, unanswered(),
+                sessions.getCount(), rate.getPerSecond(), sentThisIteration * 1_000_000_000L / iterationNanos, unanswered(),
                 micros(latency.getValueAtPercentile(50)), micros(latency.getValueAtPercentile(90)),
                 micros(latency.getValueAtPercentile(99)), micros(latency.getValueAtPercentile(99.9)), micros(latency.getMaxValue()));
         logReplicationMeters();
@@ -306,30 +313,25 @@ public class HaLoad {
     private FixEngine haEngine(String nodeId, Role role, FixMessagesStoreSettings store, InetSocketAddress replicationA,
                                InetSocketAddress replicationB) {
         MemorySessionsSettingsStoreSettings.MemorySessionsSettingsStoreSettingsBuilder acceptors = MemorySessionsSettingsStoreSettings.builder();
-        for (int i = 0; i < sessions; i++) {
+        for (int i = 0; i < sessions.getCount(); i++) {
             acceptors.fixSessionSetting(session(acceptorId(name(i)), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode));
         }
-        return start(engine(nodeId, store)
+        FixEngineBuilder.FixEngineBuilderBuilder<?, ?> engine = engine(nodeId, store)
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder().instanceId(APPLICATION)
                         .application(APPLICATION, new StaffixEngine.AcceptorApplication()).build())
                 .fixSessionsSettingsStore(acceptors.build())
-                .fixSessionsPlugin(MicrometerMonitoringManagerSettings.builder()
-                        .instanceId(MONITORING)
-                        .meterRegistrySupplier(() -> meters)
-                        .readLatencyEnabled(false)
-                        .writeLatencyEnabled(false)
-                        .decodingLatencyEnabled(false)
-                        .encodingLatencyEnabled(false)
-                        .build())
                 .highAvailability(replicationWaiting(ReplicationHaSettings.builder(), replicationWaiting)
                         .nodeId(nodeId)
-                        .replicationLanes(replicationLanes)
+                        .replicationLanes(replicationLanes.getCount())
                         .peer("a", replicationA)
                         .peer("b", replicationB)
-                        .monitoringInstanceId(nodeId.equals("a") ? MONITORING : null)
+                        .monitoringInstanceId(monitoring.isEnabled() && nodeId.equals("a") ? HaPair.MONITORING_INSTANCE_ID : null)
                         .leaderElection(StaticLeaderElection.Settings.builder().role(role).leaderId("a").build())
-                        .build())
-                .build().instance());
+                        .build());
+        if (monitoring.isEnabled()) {
+            engine.fixSessionsPlugin(HaPair.monitoringSettings(meters));
+        }
+        return start(engine.build().instance());
     }
 
     private FixEngine start(FixEngine engine) {

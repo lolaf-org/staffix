@@ -17,6 +17,7 @@ package org.lolaf.staffix.benchmarks.impl;
 
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Meter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -84,22 +85,22 @@ import java.util.stream.Stream;
 public class HaPair {
 
     private static final String APPLICATION = "app";
-    private static final String MONITORING = "metrics";
+    static final String MONITORING_INSTANCE_ID = "metrics";
 
     @Param({"NONE", "ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED"})
     ReplicationMode mode;
-    @Param({"MEMORY", "FILE"})
-    FollowerStorage.Kind followerStore;
+    @Param({"FOLLOWER_MEMORY", "FOLLOWER_FILE"})
+    HaParams.FollowerStore followerStore;
     /**
      * The leader's own store: memory keeps the last 1 024 messages, a file every one, so its snapshots fill whole chunks.
      */
-    @Param({"MEMORY"})
-    FollowerStorage.Kind leaderStore;
+    @Param({"LEADER_MEMORY"})
+    HaParams.LeaderStore leaderStore;
     /**
      * A second session of the pair trading continuously beside the measured one, sharing its replication stream.
      */
-    @Param({"false", "true"})
-    boolean busySession;
+    @Param({"NO_BUSY_SESSION", "BUSY_SESSION"})
+    HaParams.BusySession busySession;
     /**
      * How the replication's threads wait: {@link ReplicationWaiting#BACKOFF}, the default, unless asked for; the
      * levels spinning cost a core each, so they are run on their own, for {@code SYNC} alone.
@@ -109,29 +110,36 @@ public class HaPair {
     /**
      * The leader's acceptor IO threads: with one, a {@code SYNC} wait on one session's thread holds the other's reads.
      */
-    @Param({"1"})
-    int leaderIoThreads;
+    @Param({"LEADER_IO_THREADS_1"})
+    HaParams.LeaderIoThreads leaderIoThreads;
     /**
      * The busy session resynced again as soon as its last snapshot ended, so the measured session trades beside a
      * snapshot in progress almost all the time.
      */
-    @Param({"false"})
-    boolean busyResync;
+    @Param({"NO_BUSY_RESYNC"})
+    HaParams.BusyResync busyResync;
     /**
      * The sessions split over this many replication lanes, session {@code n} on lane {@code n} modulo the count.
      */
-    @Param({"1"})
-    int replicationLanes;
+    @Param({"REPLICATION_LANES_1"})
+    HaParams.ReplicationLanes replicationLanes;
     /**
-     * Off, a FILE store writes to the page cache only, as every file store did before {@code syncWrites} forced.
+     * With page cache writes, a FILE store writes to the page cache only, as every file store did before
+     * {@code syncWrites} forced.
      */
-    @Param({"true"})
-    boolean fileSyncWrites;
+    @Param({"FILE_SYNC_WRITES"})
+    HaParams.FileWrites fileWrites;
     /**
      * Zero, the follower's network thread writes its stores; otherwise a pool of writer threads does.
      */
-    @Param({"0"})
-    int followerStoreWriterThreads;
+    @Param({"FOLLOWER_STORE_WRITER_THREADS_0"})
+    HaParams.FollowerStoreWriterThreads followerStoreWriterThreads;
+    /**
+     * Off by default, so the meters' allocations stay out of {@code gc.alloc.rate.norm}; on, the trial logs the
+     * replication's ack timers.
+     */
+    @Param({"NO_MONITORING"})
+    HaParams.Monitoring monitoring;
 
     /**
      * Which of the replication's threads busy spin, each one more core.
@@ -167,14 +175,14 @@ public class HaPair {
 
     @Setup(Level.Trial)
     public void setup() throws IOException {
-        followerStorage = new FollowerStorage(followerStore, fileSyncWrites);
-        leaderStorage = new FollowerStorage(leaderStore, fileSyncWrites);
+        followerStorage = new FollowerStorage(followerStore.getKind(), fileWrites.isSync());
+        leaderStorage = new FollowerStorage(leaderStore.getKind(), fileWrites.isSync());
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
         FixEngine leaderEngine = haEngine("a", Role.LEADER, leaderStorage.settings(), replicationA, replicationB);
         leaderEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
-                        .ioWorkersGroup(busySpinning(leaderIoThreads)).build()).start();
+                        .ioWorkersGroup(busySpinning(leaderIoThreads.getCount())).build()).start();
         FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB);
         // a follower knows the sessions its connectors register, and binds nothing until it leads
         followerEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", freePort())).build()).start();
@@ -190,19 +198,19 @@ public class HaPair {
                         .fixSessionSetting(session(initiatorId("BUSY"), FixSession.FixSessionType.INITIATOR, "busy", ReplicationMode.NONE))
                         .build());
         FixEngine counterpartyFixEngine = start(counterpartyEngine.build().instance());
-        for (String name : busySession ? List.of("MEASURED", "BUSY") : List.of("MEASURED")) {
+        for (String name : busySession.isEnabled() ? List.of("MEASURED", "BUSY") : List.of("MEASURED")) {
             counterpartyFixEngine.newInitiator(FixInitiatorBuilder.builder().instanceId(name).ioWorkersGroup(busySpinning(1))
                     .mainTarget(FixInitiatorTarget.builder().fixSessionId(initiatorId(name))
                             .connectAddress(new InetSocketAddress("localhost", fixPort)).build())
                     .build()).start();
         }
 
-        await("logon", () -> counterparty.connected.get() && (!busySession || busyCounterparty.connected.get()));
+        await("logon", () -> counterparty.connected.get() && (!busySession.isEnabled() || busyCounterparty.connected.get()));
         await("follower in sync", () -> {
             HaStatus.Leader leader = follower.getStatus().getLeader();
             return leader != null && leader.isInSync();
         });
-        if (busySession) {
+        if (busySession.isEnabled()) {
             trading = true;
             busyTrader = new Thread(() -> {
                 while (trading) {
@@ -210,7 +218,7 @@ public class HaPair {
                 }
             }, "busy-session-trader");
             busyTrader.start();
-            if (busyResync) {
+            if (busyResync.isEnabled()) {
                 HaAdmin leader = ((AdminApi) leaderEngine).getHa().orElseThrow();
                 resyncer = new Thread(() -> {
                     while (trading) {
@@ -293,35 +301,43 @@ public class HaPair {
     private FixEngine haEngine(String nodeId, Role role, FixMessagesStoreSettings store, InetSocketAddress replicationA,
                                InetSocketAddress replicationB) {
         StaffixEngine.AcceptorApplication application = new StaffixEngine.AcceptorApplication();
-        return start(engine(nodeId, store)
+        FixEngineBuilder.FixEngineBuilderBuilder<?, ?> engine = engine(nodeId, store)
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder().instanceId(APPLICATION)
                         .application(APPLICATION, application).build())
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
                         .fixSessionSetting(session(acceptorId("MEASURED"), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode))
                         .fixSessionSetting(session(acceptorId("BUSY"), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode))
                         .build())
-                .fixSessionsPlugin(MicrometerMonitoringManagerSettings.builder()
-                        .instanceId(MONITORING)
-                        .meterRegistrySupplier(() -> meters)
-                        // local percentiles go through an auto-resizing HdrHistogram, allocating on the session thread
-                        .defaultTimersSettings(MicrometerMonitoringManagerSettings.TimerSettings.builder()
-                                .histogramsPercentiles(List.of())
-                                .build())
-                        .readLatencyEnabled(false)
-                        .writeLatencyEnabled(false)
-                        .decodingLatencyEnabled(false)
-                        .encodingLatencyEnabled(false)
-                        .build())
                 .highAvailability(replicationWaiting(ReplicationHaSettings.builder(), replicationWaiting)
                         .nodeId(nodeId)
-                        .replicationLanes(replicationLanes)
-                        .followerStoreWriterThreads(followerStoreWriterThreads)
+                        .replicationLanes(replicationLanes.getCount())
+                        .followerStoreWriterThreads(followerStoreWriterThreads.getCount())
                         .peer("a", replicationA)
                         .peer("b", replicationB)
-                        .monitoringInstanceId(nodeId.equals("a") ? MONITORING : null)
+                        .monitoringInstanceId(monitoring.isEnabled() && nodeId.equals("a") ? MONITORING_INSTANCE_ID : null)
                         .leaderElection(StaticLeaderElection.Settings.builder().role(role).leaderId("a").build())
+                        .build());
+        if (monitoring.isEnabled()) {
+            engine.fixSessionsPlugin(monitoringSettings(meters));
+        }
+        return start(engine.build().instance());
+    }
+
+    /**
+     * Without local percentiles, which go through an auto-resizing HdrHistogram that allocates on the recording thread.
+     */
+    static MicrometerMonitoringManagerSettings monitoringSettings(MeterRegistry meters) {
+        return MicrometerMonitoringManagerSettings.builder()
+                .instanceId(MONITORING_INSTANCE_ID)
+                .meterRegistrySupplier(() -> meters)
+                .defaultTimersSettings(MicrometerMonitoringManagerSettings.TimerSettings.builder()
+                        .histogramsPercentiles(List.of())
                         .build())
-                .build().instance());
+                .readLatencyEnabled(false)
+                .writeLatencyEnabled(false)
+                .decodingLatencyEnabled(false)
+                .encodingLatencyEnabled(false)
+                .build();
     }
 
     static ReplicationHaSettings.ReplicationHaSettingsBuilder<?, ?> replicationWaiting(
