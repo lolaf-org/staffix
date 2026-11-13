@@ -65,7 +65,7 @@ final class ReplicaSession {
      */
     @Getter
     @Setter(AccessLevel.PACKAGE)
-    private volatile @Nullable ReplicationMode leaderMode;
+    private volatile ReplicationMode leaderMode;
     private final LostWrites lostWrites;
     private volatile boolean inSync;
     @Getter
@@ -82,10 +82,11 @@ final class ReplicaSession {
      */
     private @Nullable ByteBuffer assembledMessage;
 
-    private ReplicaSession(FixSessionType fixSessionType, String fixSessionId, boolean replicated,
-                           FixSessionMessagesStore store, SessionAnswer notReplicatedAnswer) {
+    private ReplicaSession(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
+                           boolean replicated, FixSessionMessagesStore store, SessionAnswer notReplicatedAnswer) {
         this.fixSessionType = fixSessionType;
         this.fixSessionId = fixSessionId;
+        this.leaderMode = leaderMode;
         this.replicated = replicated;
         this.store = store;
         this.notReplicatedAnswer = notReplicatedAnswer;
@@ -95,18 +96,19 @@ final class ReplicaSession {
                 : new OneByOneStoreWrites(store, lostWrites);
     }
 
-    static ReplicaSession replicated(FixSessionType fixSessionType, String fixSessionId, FixSessionMessagesStore store) {
-        return new ReplicaSession(fixSessionType, fixSessionId, true, store, SessionAnswer.SNAPSHOT_NEEDED);
+    static ReplicaSession replicated(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
+                                     FixSessionMessagesStore store) {
+        return new ReplicaSession(fixSessionType, fixSessionId, leaderMode, true, store, SessionAnswer.SNAPSHOT_NEEDED);
     }
 
-    static ReplicaSession notReplicated(FixSessionType fixSessionType, String fixSessionId, SessionAnswer answer) {
-        return new ReplicaSession(fixSessionType, fixSessionId, false, NoStore.INSTANCE, answer);
+    static ReplicaSession notReplicated(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
+                                        SessionAnswer answer) {
+        return new ReplicaSession(fixSessionType, fixSessionId, leaderMode, false, NoStore.INSTANCE, answer);
     }
 
-    static ReplicaSession refused(FixSessionType fixSessionType, String fixSessionId, SessionAnswer refusal,
-                                  ReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
-        ReplicaSession session = notReplicated(fixSessionType, fixSessionId, refusal);
-        session.leaderMode = leaderMode;
+    static ReplicaSession refused(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
+                                  SessionAnswer refusal, @Nullable String leaderStorageIdentity) {
+        ReplicaSession session = notReplicated(fixSessionType, fixSessionId, leaderMode, refusal);
         session.leaderStorageIdentity = leaderStorageIdentity;
         return session;
     }

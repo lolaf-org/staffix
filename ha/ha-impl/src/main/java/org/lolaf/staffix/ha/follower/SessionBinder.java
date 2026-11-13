@@ -41,9 +41,26 @@ final class SessionBinder {
      */
     ReplicaSession open(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
                         @Nullable String leaderStorageIdentity) {
-        ReplicaSession session = newSession(fixSessionType, fixSessionId, leaderMode, leaderStorageIdentity);
-        session.setLeaderMode(leaderMode);
-        return session;
+        if (leaderMode == ReplicationMode.NONE) {
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, leaderMode, SessionAnswer.NOT_REPLICATED);
+        }
+        FixSessionSettings settings = findSettings(fixSessionType, fixSessionId).orElse(null);
+        if (settings == null) {
+            return ReplicaSession.refused(fixSessionType, fixSessionId, leaderMode, SessionAnswer.UNKNOWN_SESSION, leaderStorageIdentity);
+        }
+        if (settings.getHighAvailability().getReplicationMode() != leaderMode) {
+            return ReplicaSession.refused(fixSessionType, fixSessionId, leaderMode, SessionAnswer.MODE_MISMATCH, leaderStorageIdentity);
+        }
+        FixSessionMessagesStore store = engine.openStore(settings);
+        String storageIdentity = store.getStorageIdentity().orElse(null);
+        if (storageIdentity == null || leaderStorageIdentity == null) {
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, leaderMode, SessionAnswer.UNKNOWN_STORAGE);
+        }
+        if (storageIdentity.equals(leaderStorageIdentity)) {
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, leaderMode, SessionAnswer.SHARED_STORAGE);
+        }
+        store.start();
+        return ReplicaSession.replicated(fixSessionType, fixSessionId, leaderMode, store);
     }
 
     /**
@@ -63,30 +80,6 @@ final class SessionBinder {
         return findSettings(fixSessionType, fixSessionId)
                 .map(settings -> settings.getHighAvailability().getReplicationMode())
                 .orElse(null);
-    }
-
-    private ReplicaSession newSession(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
-                                      @Nullable String leaderStorageIdentity) {
-        if (leaderMode == ReplicationMode.NONE) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.NOT_REPLICATED);
-        }
-        FixSessionSettings settings = findSettings(fixSessionType, fixSessionId).orElse(null);
-        if (settings == null) {
-            return ReplicaSession.refused(fixSessionType, fixSessionId, SessionAnswer.UNKNOWN_SESSION, leaderMode, leaderStorageIdentity);
-        }
-        if (settings.getHighAvailability().getReplicationMode() != leaderMode) {
-            return ReplicaSession.refused(fixSessionType, fixSessionId, SessionAnswer.MODE_MISMATCH, leaderMode, leaderStorageIdentity);
-        }
-        FixSessionMessagesStore store = engine.openStore(settings);
-        String storageIdentity = store.getStorageIdentity().orElse(null);
-        if (storageIdentity == null || leaderStorageIdentity == null) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.UNKNOWN_STORAGE);
-        }
-        if (storageIdentity.equals(leaderStorageIdentity)) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, SessionAnswer.SHARED_STORAGE);
-        }
-        store.start();
-        return ReplicaSession.replicated(fixSessionType, fixSessionId, store);
     }
 
     private Optional<FixSessionSettings> findSettings(FixSessionType fixSessionType, String fixSessionId) {

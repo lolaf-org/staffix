@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha.follower;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 
@@ -38,7 +39,7 @@ class TestReplicaSession {
         FixSessionMessagesStore store = mock(FixSessionMessagesStore.class);
         when(store.getPendingWrites()).thenReturn(7L);
 
-        assertThat(pendingWritesOf(ReplicaSession.replicated(FixSessionType.ACCEPTOR, "alpha", store))).isEqualTo(7);
+        assertThat(pendingWritesOf(ReplicaSession.replicated(FixSessionType.ACCEPTOR, "alpha", ReplicationMode.ASYNC, store))).isEqualTo(7);
     }
 
     @Test
@@ -47,14 +48,14 @@ class TestReplicaSession {
         when(store.getLostWrites()).thenReturn(4L);
         HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder();
 
-        ReplicaSession.replicated(FixSessionType.ACCEPTOR, "alpha", store).describe(status);
+        ReplicaSession.replicated(FixSessionType.ACCEPTOR, "alpha", ReplicationMode.ASYNC, store).describe(status);
 
         assertThat(status.build().getLostWrites()).isEqualTo(4);
     }
 
     @Test
     void aSessionNotReplicatedHasNoPendingWrites() {
-        ReplicaSession session = ReplicaSession.notReplicated(FixSessionType.ACCEPTOR, "alpha", SessionAnswer.NOT_REPLICATED);
+        ReplicaSession session = ReplicaSession.notReplicated(FixSessionType.ACCEPTOR, "alpha", ReplicationMode.NONE, SessionAnswer.NOT_REPLICATED);
 
         assertThat(pendingWritesOf(session)).isZero();
     }

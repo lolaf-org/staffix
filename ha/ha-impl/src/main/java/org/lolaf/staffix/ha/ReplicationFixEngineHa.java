@@ -59,14 +59,17 @@ import java.util.concurrent.*;
  * anything else.
  */
 @Slf4j
-@Getter
 public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineHa> implements FixEngineHa {
 
     private static final Duration ROLE_CHANGE_DEADLINE = Duration.ofSeconds(10);
 
+    @Getter
     private final ReplicationHaSettings settings;
+    @Getter
     private final ReplicationLogs replicationLogs;
+    @Getter
     private final ReplicatedSessions sessions;
+    @Getter
     private final Followers followers;
     private final LateTimer syncReceivedAckLatency = new LateTimer();
     private final LateTimer syncAppliedAckLatency = new LateTimer();
@@ -78,21 +81,30 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
      * What unregisters each settings store's listener.
      */
     private final List<Runnable> settingsListeners;
+    @Getter
     private volatile ReplicationStats stats;
+    @Getter
     private volatile EngineAccess engine;
+    @Getter
     private volatile ReplicaSessions replicaSessions;
+    @Getter
     private volatile LeaderElection election;
     private volatile ScheduledExecutorService roleThread;
     private @Nullable ScheduledFuture<?> leaseCheck;
+    @Getter
     private volatile Role role = Role.UNKNOWN;
     /**
      * The election epoch {@link #role} was taken at, -1 while unknown. Written before {@code role}, so a reader of
      * {@code role} sees it.
      */
+    @Getter
     private long roleEpoch = -1;
     private @Nullable InetSocketAddress followedLeader;
+    @Getter
     private volatile @Nullable Instant roleSince;
+    @Getter
     private volatile @Nullable ReplicationServer server;
+    @Getter
     private volatile @Nullable ReplicationClient client;
 
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
