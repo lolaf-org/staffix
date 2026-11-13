@@ -44,6 +44,26 @@ class TestReplicationHaSettings {
                 .hasMessageContaining("logFullTimeout");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"PT0S", "PT-1S"})
+    void theHeartbeatIntervalMustBePositive(String heartbeatInterval) {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().heartbeatInterval(Duration.parse(heartbeatInterval))
+                .build();
+
+        assertThatThrownBy(settings::validate).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("heartbeatInterval");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PT0S", "PT-1S"})
+    void theReconnectIntervalMustBePositive(String reconnectInterval) {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().reconnectInterval(Duration.parse(reconnectInterval))
+                .build();
+
+        assertThatThrownBy(settings::validate).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("reconnectInterval");
+    }
+
     @Test
     void theSnapshotChunkBytesMustBePositive() {
         ReplicationHaSettings settings = ReplicationHaSettings.builder().snapshotChunkBytes(0).build();

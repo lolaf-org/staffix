@@ -201,6 +201,16 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     }
 
     @Test
+    void aHeartbeatIntervalShorterThanAMillisecondStillFollowsTheElection() {
+        Node leader = new Node("a", new RecordingEngine().with(MAIN), Duration.ofNanos(500_000));
+        leader.election.elect(Role.LEADER, 3, "a");
+
+        leader.start();
+
+        await().until(() -> leader.engine.activity.contains("activate, stores open 0"));
+    }
+
+    @Test
     void aSessionBuiltWithoutReplicationIsDroppedByTheFollowerThenCaughtUpBySnapshotOnceReplicatedAgain() {
         aLeadsBFollows();
         RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);

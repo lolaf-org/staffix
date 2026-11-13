@@ -44,9 +44,7 @@ import java.util.function.Predicate;
 public final class SessionSettingsDigests {
 
     /**
-     * -- GETTER --
-     *  Generation 0 until a first
-     * : nothing to send.
+     * Generation 0 until a first {@link #publish}: nothing to send.
      */
     private volatile Published published = new Published(0, List.of());
     /**

@@ -248,6 +248,12 @@ public class ReplicationHaSettings extends HaSettings {
      * @throws IllegalArgumentException for a setting out of its range
      */
     void validate() {
+        if (heartbeatInterval.isNegative() || heartbeatInterval.isZero()) {
+            throw new IllegalArgumentException("heartbeatInterval must be positive, got " + heartbeatInterval);
+        }
+        if (reconnectInterval.isNegative() || reconnectInterval.isZero()) {
+            throw new IllegalArgumentException("reconnectInterval must be positive, got " + reconnectInterval);
+        }
         if (sendBuffers < 2 || Integer.bitCount(sendBuffers) != 1) {
             throw new IllegalArgumentException("sendBuffers must be a power of two of at least 2, got " + sendBuffers);
         }

@@ -152,12 +152,15 @@ public final class Followers {
     }
 
     /**
-     * What the followers' stores have yet to store, as of their last acks, over every lane.
+     * What the followers' stores have yet to store, as of their last acks, over every lane. A closed connection is
+     * left out: it stays listed until its CLOSE is flushed, possibly beside its follower's new one.
      */
     public long getPendingWrites() {
         long pendingWrites = 0;
         for (FollowerConnection connection : connections) {
-            pendingWrites += connection.getFollowerPendingWrites();
+            if (connection.isConnected()) {
+                pendingWrites += connection.getFollowerPendingWrites();
+            }
         }
         return pendingWrites;
     }

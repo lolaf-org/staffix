@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
+import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -34,6 +35,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -464,6 +466,28 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("CLOSE"));
     }
 
+    /**
+     * Betty reports the disconnection only once the follower's side is closed: until then, a reader left open would
+     * hold the writes back for the log full timeout.
+     */
+    @Test
+    void aFollowerClosingTheStreamHoldsNoWriteBack() {
+        ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1024)
+                .logFullTimeout(Duration.ofSeconds(30)).build());
+        connection = connection();
+        FixSessionMessagesStore store = replicated("main");
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0);
+
+        connection.onClose(EPOCH, CloseReason.SHUTDOWN, "the follower stops");
+
+        assertThat(CompletableFuture.runAsync(() -> {
+            for (int seq = 1; seq < 200; seq++) {
+                store.storeNextIncomingSeqNum(seq);
+            }
+        })).succeedsWithin(Duration.ofSeconds(5));
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
+    }
+
     @Test
     void aBatchTakesEventsUntilTheNextDoesNotFitWhichStartsTheNextBatch() {
         FixSessionMessagesStore store = replicated("main");
@@ -577,6 +601,52 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("CLOSE"));
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
         verify(ioSession).stop(any(Deadline.class));
+    }
+
+    /**
+     * The IO, sender, session and role threads may all close a connection: the first close is the one the follower
+     * and the logs are told.
+     */
+    @Test
+    void aConnectionClosesOnceWhicheverThreadsCloseIt() {
+        replicated("main").storeNextIncomingSeqNum(5);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
+        fill();
+
+        assertThat(connection.close(CloseReason.STALLED, "no ack")).isTrue();
+        assertThat(connection.close(CloseReason.PROTOCOL_ERROR, "a bad frame")).isFalse();
+
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("CLOSE")).singleElement().asString()
+                .startsWith("CLOSE epoch=7 STALLED");
+        verify(ioSession).stop(any(Deadline.class));
+    }
+
+    @Test
+    void aFollowerClosedForAnotherReasonIsNotDroppedAsTooSlowToo() {
+        replicated("main").storeNextIncomingSeqNum(5);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
+        connection.close(CloseReason.PROTOCOL_ERROR, "a bad frame");
+
+        connection.close(CloseReason.TOO_SLOW, "a write waited the log full timeout for it");
+
+        assertThat(stats.getDroppedTooSlow()).isZero();
+        assertThat(stats.getSlowFollowers().notBackInSync()).isEmpty();
+    }
+
+    /**
+     * A handover tells the follower only on a connection still open: one gone meanwhile has its follower take over
+     * with its seqnums moved ahead, and the switchover must not report a clean handover.
+     */
+    @Test
+    void aShutdownOnAConnectionAlreadyGoneTellsNobody() {
+        replicated("main").storeNextIncomingSeqNum(5);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
+        fill();
+        connection.disconnected();
+
+        assertThat(connection.close(CloseReason.SHUTDOWN, "the leader stopped cleanly")).isFalse();
+
+        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("CLOSE"));
     }
 
     @Test

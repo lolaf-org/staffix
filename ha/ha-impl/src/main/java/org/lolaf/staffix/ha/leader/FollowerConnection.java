@@ -39,6 +39,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
@@ -55,6 +56,8 @@ import java.util.function.LongSupplier;
 public final class FollowerConnection implements FrameHandler {
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
+    private static final AtomicReferenceFieldUpdater<FollowerConnection, State> STATE =
+            AtomicReferenceFieldUpdater.newUpdater(FollowerConnection.class, State.class, "state");
     private final IOSession ioSession;
     private final String address;
     private final ReplicationLogs logs;
@@ -214,7 +217,10 @@ public final class FollowerConnection implements FrameHandler {
         receivedOffset = lastAppliedOffset;
         ackLatency = new AckLatencySampler(stats.ackLatency(nodeId, lane));
         lag = new LagSampler(stats.lag(nodeId, lane));
-        state = State.STREAMING;
+        // a writer may have dropped the reader already
+        if (!STATE.compareAndSet(this, State.AWAITING_HELLO, State.STREAMING)) {
+            return;
+        }
         log.info("Follower {} connected lane {} of {} at epoch {}, {}", nodeId, lane, logs.count(), currentEpoch,
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
         ByteBuffer welcome = ioSession.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
@@ -385,7 +391,7 @@ public final class FollowerConnection implements FrameHandler {
     @Override
     public void onClose(long epoch, CloseReason reason, String text) {
         log.info("Follower {} closed the replication stream: {} {}", followerId, reason, text);
-        state = State.CLOSED;
+        markClosed();
     }
 
     /**
@@ -635,20 +641,24 @@ public final class FollowerConnection implements FrameHandler {
             ioSession.stop(Deadline.immediate());
             return false;
         }
-        close(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent");
-        return true;
+        return close(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent");
     }
 
     /**
-     * Sends a CLOSE and disconnects, the connection flushing it first.
+     * Sends a CLOSE and disconnects, the connection flushing it first. Any thread; only the first close of the
+     * connection does it.
+     *
+     * @return false when the connection was already closed, and nothing sent
      */
-    void close(CloseReason reason, String text) {
+    boolean close(CloseReason reason, String text) {
+        if (!markClosed()) {
+            return false;
+        }
         if (reason == CloseReason.SHUTDOWN || reason == CloseReason.RETRY_LATER) {
             log.info("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, text);
         } else {
             log.warn("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, text);
         }
-        markClosed();
         if (reason == CloseReason.TOO_SLOW) {
             stats.droppedTooSlow(followerId, lane);
         }
@@ -657,6 +667,7 @@ public final class FollowerConnection implements FrameHandler {
         int length = FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, text);
         ioSession.send(BatchBuffers.written(frame, length), false);
         ioSession.stop(Deadline.of(CLOSE_FLUSH));
+        return true;
     }
 
     /**
@@ -667,17 +678,25 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     private void droppedAsTooSlow() {
-        if (state == State.STREAMING) {
-            close(CloseReason.TOO_SLOW, "a write waited the log full timeout for it");
-        }
+        close(CloseReason.TOO_SLOW, "a write waited the log full timeout for it");
     }
 
-    private void markClosed() {
-        state = State.CLOSED;
+    /**
+     * @return false when another thread closed the connection first
+     */
+    private boolean markClosed() {
+        State current;
+        do {
+            current = state;
+            if (current == State.CLOSED) {
+                return false;
+            }
+        } while (!STATE.compareAndSet(this, current, State.CLOSED));
         ReplicationLog.Reader opened = reader;
         if (opened != null) {
             opened.close();
         }
+        return true;
     }
 
     public enum State {

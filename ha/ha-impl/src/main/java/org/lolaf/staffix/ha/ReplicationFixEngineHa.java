@@ -277,8 +277,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         });
         election.start();
         roleThread.execute(this::followElection);
-        long checkMillis = settings.getHeartbeatInterval().toMillis();
-        roleThread.scheduleWithFixedDelay(this::followElection, checkMillis, checkMillis, TimeUnit.MILLISECONDS);
+        long checkNanos = settings.getHeartbeatInterval().toNanos();
+        roleThread.scheduleWithFixedDelay(this::followElection, checkNanos, checkNanos, TimeUnit.NANOSECONDS);
     }
 
     @Override

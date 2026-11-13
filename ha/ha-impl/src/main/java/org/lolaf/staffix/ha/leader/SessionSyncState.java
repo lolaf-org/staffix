@@ -16,8 +16,8 @@
 package org.lolaf.staffix.ha.leader;
 
 /**
- * Where a session stands on one follower, as the leader knows it. A session whose storage the follower shares is in
- * sync: what the leader stored is already there.
+ * Where a session stands on one follower, as the leader knows it. A session the follower refuses, its storage shared
+ * with the leader's included, is {@link #NOT_REPLICATED}.
  */
 public enum SessionSyncState {
     ANNOUNCED,

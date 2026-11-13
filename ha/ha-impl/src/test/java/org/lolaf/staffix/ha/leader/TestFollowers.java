@@ -183,6 +183,23 @@ class TestFollowers {
         assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
     }
 
+    /**
+     * A closed connection stays listed until betty reports it gone, after its CLOSE flush: a reconnection meanwhile
+     * would count the follower's writes twice.
+     */
+    @Test
+    void theWritesPendingOnAFollowerAreCountedOnlyOnItsConnectionStreaming() {
+        FollowerConnection closed = inSyncFollower(offset);
+        closed.onAck(EPOCH, offset, true, 600);
+        FollowerConnection reconnected = inSyncFollower(offset);
+        reconnected.onAck(EPOCH, offset, true, 500);
+
+        closed.disconnected();
+
+        assertThat(followers.connections()).contains(closed);
+        assertThat(followers.getPendingWrites()).isEqualTo(500);
+    }
+
     @Test
     void aSyncSendWaitsOnlyForTheLaneCarryingItsSession() {
         ReplicationFixEngineHa twoLanes = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
