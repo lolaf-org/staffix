@@ -763,12 +763,6 @@ public class FixSessionImpl implements FixSession {
             logEvent("Failed message processing: %s", ex.getMessage());
             message.clear();
             disconnect();
-            return;
-        }
-        if (resendRecovery.isOutOfSequenceMessagesReplayRequested()) {
-            // a resend completed while parsing this read: the messages held back on top of the gap it closed can now
-            // be processed, and the parser above is done with its buffer
-            resendRecovery.replayOutOfSequenceMessages();
         }
     }
 

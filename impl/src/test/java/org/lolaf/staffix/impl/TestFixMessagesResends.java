@@ -43,6 +43,7 @@ import org.lolaf.staffix.tests.TestingLogger;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -55,6 +56,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.IntConsumer;
+import java.util.function.ToIntFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -1780,5 +1782,69 @@ class TestFixMessagesResends extends AbstractFixTests {
                 .onTestRequestResponse(any(FixSession.class), eq("initiator-after-resync"), any(UTCTime.class)));
         await().untilAsserted(() -> verify(fixAcceptorApplication)
                 .onTestRequestResponse(any(FixSession.class), eq("acceptor-after-resync"), any(UTCTime.class)));
+    }
+
+    /**
+     * The messages held over a gap are replayed as soon as the message closing it is decoded, before the parser reads
+     * on. A message split across two reads used to lose its decoder to the replay in between, and fail with a
+     * NullPointerException. The gap fill and the start of the split message go in one write, so one read holds both.
+     */
+    @Test
+    void aMessageSplitAcrossTwoReadsSurvivesTheReplayOfAMessageOfItsType() throws Exception {
+        assertTheHeldMessageIsReplayedBeforeTheNextOne(next -> indexAfter(next, CoreFields.FIELD_SEPARATOR + "34=4" + CoreFields.FIELD_SEPARATOR));
+    }
+
+    /**
+     * A message read along with the one closing the gap comes after the held ones in the numbering. Replayed only
+     * once the whole read was parsed, they left it out of sequence, and its MsgSeqNum(34) asked for again.
+     */
+    @Test
+    void aMessageInTheReadClosingTheGapIsProcessedAfterTheHeldOnes() throws Exception {
+        assertTheHeldMessageIsReplayedBeforeTheNextOne(next -> next.length);
+    }
+
+    private void assertTheHeldMessageIsReplayedBeforeTheNextOne(ToIntFunction<byte[]> nextBytesInTheGapFillRead) throws Exception {
+        startFixAcceptor();
+
+        FixSessionId initiator = getInitiatorFixSessionSettings().build().getFixSessionId();
+        try (RawFixSocketClient.Session peer = RawFixSocketClient.connect(acceptorPort, initiator.getFixVersion(),
+                initiator.getSenderCompID().getValue(), initiator.getTargetCompID().getValue(), Duration.ofSeconds(10))) {
+            peer.send(peer.message(MessageTypes.Logon, 1).set(EncryptMethod.get(), "0").set(HeartBtInt.get(), "5"));
+            peer.readMessageOfType(MessageTypes.Logon, Duration.ofSeconds(10));
+
+            // NextNumIn is 2, so an Email at 3 is held over a gap at 2
+            peer.send(email(peer, 3, "held"));
+            peer.readMessageOfType(MessageTypes.ResendRequest, Duration.ofSeconds(10));
+
+            byte[] next = email(peer, 4, "next").build();
+            int inTheGapFillRead = nextBytesInTheGapFillRead.applyAsInt(next);
+            byte[] gapFill = peer.message(MessageTypes.SequenceReset, 2).set(GapFillFlag.get(), "Y").set(NewSeqNo.get(), "3").build();
+            byte[] gapFillRead = Arrays.copyOf(gapFill, gapFill.length + inTheGapFillRead);
+            System.arraycopy(next, 0, gapFillRead, gapFill.length, inTheGapFillRead);
+            peer.send(gapFillRead);
+            assertMessageReceived(decodedAcceptorMessages, Subject.get(), "held");
+
+            peer.send(Arrays.copyOfRange(next, inTheGapFillRead, next.length));
+
+            assertMessageReceived(decodedAcceptorMessages, Subject.get(), "next");
+            await().untilAsserted(() -> assertThat(acceptorMessagesStore.getIncomingSeqNum()).isEqualTo(5L));
+            List<String> sent = getLogger(ConnectorType.ACCEPTOR).getOutgoingMessages();
+            assertThat(sent).as("only the gap at 2 was asked for")
+                    .filteredOn(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, MessageTypes.ResendRequest.code()))
+                    .hasSize(1);
+            assertThat(sent).as("the acceptor rejected nothing")
+                    .noneMatch(message -> FixMessageFields.hasFieldWithValue(message, CoreFields.MESSAGE_TYPE, MessageTypes.Reject.code()));
+        }
+    }
+
+    private static RawFixSocketClient.Session.Message email(RawFixSocketClient.Session peer, long seqNum, String subject) {
+        return peer.message(MessageTypes.Email, seqNum)
+                .set(EmailType.get(), "0").set(Subject.get(), subject).set(NoLinesOfText.get(), "1").set(Text.get(), "body");
+    }
+
+    private static int indexAfter(byte[] message, String part) {
+        int index = new String(message, StandardCharsets.US_ASCII).indexOf(part);
+        assertThat(index).as("%s in the message", part).isNotNegative();
+        return index + part.length();
     }
 }

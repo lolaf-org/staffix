@@ -232,9 +232,9 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
     }
 
     /**
-     * A parser of its own for replaying a message held on top of a gap, so that feeding one back cannot disturb the
-     * state the session's own parser keeps for the network read in progress - a message split across two TCP reads
-     * lives in there. Built on first use: a session that never loses a message never allocates it.
+     * A parser of its own for replaying a message held on top of a gap: the replay runs between two messages of a
+     * network read, which the session's own parser is still in the middle of. Built on first use: a session that never
+     * loses a message never allocates it.
      */
     private FixMessageParser outOfSequenceMessagesParser() {
         if (outOfSequenceMessagesParser == null) {

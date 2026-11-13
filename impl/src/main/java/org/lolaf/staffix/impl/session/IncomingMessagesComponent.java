@@ -44,6 +44,7 @@ class IncomingMessagesComponent implements FixSessionLayerComponent, FixMessageP
     private final FixSessionStateComponent fixSessionStateComponent;
     private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
     private final RetransmissionComponent retransmission;
+    private final ResendRecovery resendRecovery;
     private final MessageRejectsComponent messageRejects;
     private PluginsComponent plugins;
 
@@ -60,6 +61,11 @@ class IncomingMessagesComponent implements FixSessionLayerComponent, FixMessageP
     @Override
     public void onMessageDecodingEnd(MessageType messageType, int payloadSize, long localReceiveTimeInNanos, UTCTime localReceiveTime) {
         plugins.onMessageReceived(messageType, payloadSize, localReceiveTimeInNanos, localReceiveTime);
+        if (resendRecovery.isOutOfSequenceMessagesReplayRequested()) {
+            // before the parser starts the next message of the read: the held messages come first in the numbering,
+            // and they are decoded with the same decoders, which only here hold no message
+            resendRecovery.replayOutOfSequenceMessages();
+        }
     }
 
     @Override
@@ -85,7 +91,7 @@ class IncomingMessagesComponent implements FixSessionLayerComponent, FixMessageP
         }
 
         // check first if we have a pending resend request, onDecoded() may clear the state of the pending request
-        boolean pendingResendRequest = retransmission.getResendRecovery().hasPendingResendRequest();
+        boolean pendingResendRequest = resendRecovery.hasPendingResendRequest();
         fixMessageDecoder.onDecoded(fixSession, possibleDuplicate, possResend);
         plugins.onMessageDecodingFinished(messageType, localReceiveTimeInNanos, localReceiveTime);
 
@@ -103,7 +109,7 @@ class IncomingMessagesComponent implements FixSessionLayerComponent, FixMessageP
         if (pendingResendRequest && !sequenceManagedByDecoder) {
             // an ordinary message of the range settles its own MsgSeqNum(34) and nothing else; the decoders that
             // settle more than that say so themselves, which is why they are excluded here
-            retransmission.getResendRecovery().onSequenceNumbersSettledUpTo(incomingSeqNum);
+            resendRecovery.onSequenceNumbersSettledUpTo(incomingSeqNum);
         }
     }
 
@@ -198,8 +204,8 @@ class IncomingMessagesComponent implements FixSessionLayerComponent, FixMessageP
         // a ResendRequest is answered on arrival too, by its own decoder and for its own reason: holding it
         // back would deadlock two peers that each reconnect with a gap. Only its MsgSeqNum is left owed.
         boolean answeredOnArrival = logon || CoreMessageType.RESEND_REQUEST.matches(messageType);
-        retransmission.getResendRecovery().queueOutOfSequenceMessage(answeredOnArrival, receivedSeqNum, wrongSeqNumException.getRawMessage());
-        if (!logon && !retransmission.getResendRecovery().hasPendingResendRequest()) {
+        resendRecovery.queueOutOfSequenceMessage(answeredOnArrival, receivedSeqNum, wrongSeqNumException.getRawMessage());
+        if (!logon && !resendRecovery.hasPendingResendRequest()) {
             retransmission.requestRetransmission(wrongSeqNumException.getExpectedMsgSeqNum(), receivedSeqNum - 1, "MsgSeqNum too high");
         }
     }
@@ -240,7 +246,7 @@ class IncomingMessagesComponent implements FixSessionLayerComponent, FixMessageP
      */
     private boolean isOverrunGapFillOfOurOwnOpenEndedRequest(MessageType messageType) {
         return CoreMessageType.SEQUENCE_REQUEST.matches(messageType)
-                && retransmission.getResendRecovery().isAnsweringOwnOpenEndedRequest();
+                && resendRecovery.isAnsweringOwnOpenEndedRequest();
     }
 
     /**

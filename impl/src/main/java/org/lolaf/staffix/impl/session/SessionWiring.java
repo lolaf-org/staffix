@@ -132,7 +132,7 @@ final class SessionWiring {
                 messagesLogger, heldOutgoingMessages, logonLogout);
         MessageRejectsComponent messageRejects = new MessageRejectsComponent(fixSession, adminMessagesCodec, messagesStore, clock);
         IncomingMessagesComponent incomingMessages = new IncomingMessagesComponent(fixSession, components, state, messagesStore,
-                retransmission, messageRejects);
+                retransmission, retransmission.getResendRecovery(), messageRejects);
         // after the component that answers it: the parser reports what it decoded straight to the sequence rules
         this.messageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, messagesLogger,
                 settings.getValidationSettings(), clock, incomingMessages);
