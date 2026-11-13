@@ -101,6 +101,18 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     }
 
     @Test
+    void aNewConnectionAsksTheStoresForItsFirstAck() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
+        engine.store(MAIN).pendingWrites = 7;
+        sent.frames.clear();
+        LeaderConnection checkingHourly = checkingHourly();
+
+        checkingHourly.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN), heartbeat()), new FrameDecoder(1 << 20));
+
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("ACK")).first().asString().endsWith("pending=7");
+    }
+
+    @Test
     void theStoresAreAskedAtMostOnceACheckInterval() {
         LeaderConnection checkingHourly = checkingHourly();
         checkingHourly.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), new FrameDecoder(1 << 20));

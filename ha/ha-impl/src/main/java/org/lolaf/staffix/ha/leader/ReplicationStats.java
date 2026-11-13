@@ -34,8 +34,8 @@ public final class ReplicationStats {
     private final AtomicLong snapshotMessages = new AtomicLong();
     private final AtomicLong sendWaits = new AtomicLong();
     private final AtomicLong sendBuffersAllocated = new AtomicLong();
-    private BiFunction<String, Integer, Timer> ackLatencyTimers = (followerId, lane) -> Timer.VoidTimer.getInstance();
-    private BiFunction<String, Integer, Timer> lagTimers = (followerId, lane) -> Timer.VoidTimer.getInstance();
+    private volatile BiFunction<String, Integer, Timer> ackLatencyTimers = (followerId, lane) -> Timer.VoidTimer.getInstance();
+    private volatile BiFunction<String, Integer, Timer> lagTimers = (followerId, lane) -> Timer.VoidTimer.getInstance();
 
     public ReplicationStats(SlowFollowers slowFollowers) {
         this.slowFollowers = slowFollowers;

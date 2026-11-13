@@ -89,7 +89,8 @@ public final class LeaderConnection implements FrameHandler {
     private final ObjIntConsumer<SessionAnswer> sendBoundAnswer = (answer, sessionKey) -> sendSessionAnswer(sessionKey, answer);
     private long rebindCheckedNanos;
     private long pendingWrites;
-    private long pendingWritesReadNanos = System.nanoTime() - Long.MAX_VALUE / 2;
+    private boolean pendingWritesRead;
+    private long pendingWritesReadNanos;
     private boolean ackedInSync;
 
     /**
@@ -316,7 +317,8 @@ public final class LeaderConnection implements FrameHandler {
      */
     private long pendingWrites(boolean inSync) {
         long now = System.nanoTime();
-        if (inSync != ackedInSync || now - pendingWritesReadNanos >= checkIntervalNanos) {
+        if (!pendingWritesRead || inSync != ackedInSync || now - pendingWritesReadNanos >= checkIntervalNanos) {
+            pendingWritesRead = true;
             ackedInSync = inSync;
             pendingWritesReadNanos = now;
             pendingWrites = replicaSessions.getPendingWrites(lane);

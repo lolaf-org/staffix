@@ -495,7 +495,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
      */
     private static final class LateTimer implements Timer {
 
-        private Timer target = Timer.VoidTimer.getInstance();
+        private volatile Timer target = Timer.VoidTimer.getInstance();
 
         @Override
         public void start() {
