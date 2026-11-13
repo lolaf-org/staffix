@@ -566,7 +566,7 @@ public final class FollowerConnection implements FrameHandler {
                 break;
             }
             if (batches.hasNoRoom()) {
-                if (snapshots.isInProgress() || reader.getOffset() != replicationLog.getTailOffset()) {
+                if (isSnapshotInProgress() || reader.getOffset() != replicationLog.getTailOffset()) {
                     batches.countSendWait();
                 }
                 senderIdle.idle();
@@ -574,8 +574,8 @@ public final class FollowerConnection implements FrameHandler {
             }
             startPendingSnapshot();
             boolean sent = sendLiveBatch();
-            if (snapshots.isInProgress() && state == State.STREAMING) {
-                snapshots.sendChunk();
+            if (isSnapshotInProgress() && state == State.STREAMING) {
+                sendSnapshotChunk();
                 sent = true;
             }
             if (sent) {

@@ -41,7 +41,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
     @Test
     void aWelcomeOnALaneTheLeaderDoesNotHaveClosesTheStream() {
-        LeaderConnection second = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 1, replicaSessions::setLanes);
+        LeaderConnection second = newConnection(1);
 
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME, 1)), second);
 
@@ -59,7 +59,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
     @Test
     void eachLaneResumesFromTheLastEventItApplied() {
-        LeaderConnection second = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 1, replicaSessions::setLanes);
+        LeaderConnection second = newConnection(1);
         read(welcome(EPOCH, WireFormat.NO_RESUME, 2));
         second.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME, 2), session(1, MAIN),
                 event(EPOCH, 96, 1, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null)), new FrameDecoder(1 << 20));
@@ -140,7 +140,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
         RecordingEngine.RecordingStore store = engine.store(MAIN);
 
-        LeaderConnection next = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
+        LeaderConnection next = newConnection(0);
         sent.frames.clear();
         next.hello();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), next);
@@ -257,7 +257,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         complete();
         read(fragment(0, 0, 5, "8=FIX.4.4", FIRST));
 
-        LeaderConnection resumed = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
+        LeaderConnection resumed = newConnection(0);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, 0), session(0, MAIN)), resumed);
 
@@ -273,12 +273,12 @@ class TestLeaderConnection extends LeaderConnectionHarness {
                 (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
-        LeaderConnection resumed = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
+        LeaderConnection resumed = newConnection(0);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), resumed);
         assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 REPLICATING");
 
-        LeaderConnection notResumed = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
+        LeaderConnection notResumed = newConnection(0);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), notResumed);
         assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
@@ -323,7 +323,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         complete();
         read(close(CloseReason.SHUTDOWN));
 
-        decode(writeFrames(welcome(EPOCH, 48)), new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes));
+        decode(writeFrames(welcome(EPOCH, 48)), newConnection(0));
         replicaSessions.jumpOutgoingSeqNums(1_000);
 
         assertThat(engine.store(MAIN).writes).containsExactly("outgoing 1001");

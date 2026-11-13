@@ -26,7 +26,6 @@ import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.ss.SelectStrategy;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
@@ -64,16 +63,8 @@ public final class ReplicationClient {
     private boolean stopped;
 
     /**
-     * @param maxFrameBytes the largest frame the leader sends, see
-     *                      {@link org.lolaf.staffix.ha.log.ReplicationLog#getMaxEventFrameBytes()}
-     */
-    public ReplicationClient(InetSocketAddress leaderAddress, ReplicaSessions replicaSessions, LongSupplier nodeEpoch,
-                             String nodeId, int maxFrameBytes, Duration connectionRetry, SelectStrategy selectStrategy) {
-        this(leaderAddress, replicaSessions, nodeEpoch, nodeId, maxFrameBytes, connectionRetry, selectStrategy, 0,
-                BackoffIdleStrategy::new);
-    }
-
-    /**
+     * @param maxFrameBytes      the largest frame the leader sends, see
+     *                           {@link org.lolaf.staffix.ha.log.ReplicationLog#getMaxEventFrameBytes()}
      * @param storeWriterThreads threads writing what the lanes read into the stores, 0 to write on the lanes' network
      *                           threads
      */

@@ -122,7 +122,7 @@ class TestSessionBinder extends LeaderConnectionHarness {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
         engine.nextStorageIdentity = "follower-storage-back";
 
-        LeaderConnection next = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes);
+        LeaderConnection next = newConnection(0);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), next);
 

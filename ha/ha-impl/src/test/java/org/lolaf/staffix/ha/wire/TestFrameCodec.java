@@ -156,11 +156,11 @@ class TestFrameCodec {
     void storeEventCarriesTheMessageAndLeavesItsBufferAlone(boolean direct) {
         ByteBuffer buffer = buffer(direct);
         ByteBuffer message = message();
-        int length = FrameEncoder.storeEvent(buffer, 100, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message);
+        int length = TestingFrameEncoder.storeEvent(buffer, 100, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message);
 
         decodeWhole(buffer, 100, length);
 
-        assertThat(length).isEqualTo(FrameEncoder.storeEventBytes(MESSAGE.length));
+        assertThat(length).isEqualTo(TestingFrameEncoder.storeEventBytes(MESSAGE.length));
         assertThat(message.position()).isZero();
         assertThat(buffer.position()).isZero();
         assertThat(handler.frames).containsExactly("STORE_EVENT epoch=7 offset=4096 key=3 STORE_MESSAGE seq=42 message="
@@ -170,7 +170,7 @@ class TestFrameCodec {
     @Test
     void storeEventWithoutAMessage() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 18, null);
+        int length = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 18, null);
 
         decodeWhole(buffer, 0, length);
 
@@ -181,7 +181,7 @@ class TestFrameCodec {
     void snapshot() {
         ByteBuffer buffer = buffer(false);
         int begin = FrameEncoder.snapshotBegin(buffer, 0, 7, 3, 8192, 19, 43);
-        int message = FrameEncoder.snapshotMessage(buffer, begin, 7, 3, 42, message());
+        int message = TestingFrameEncoder.snapshotMessage(buffer, begin, 7, 3, 42, message());
         int end = FrameEncoder.snapshotEnd(buffer, begin + message, 7, 3, 1, 20, 44);
 
         decodeWhole(buffer, 0, begin);
@@ -290,7 +290,7 @@ class TestFrameCodec {
     @Test
     void aMessageLengthDisagreeingWithTheFrameLengthIsRefused() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
+        int length = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
         buffer.putInt(WireFormat.HEADER_BYTES + 24, MESSAGE.length + 1);
 
         assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))
@@ -300,7 +300,7 @@ class TestFrameCodec {
     @Test
     void anUnknownStoreEventTypeIsRefused() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.RESET_SEQ_NUM, 0, null);
+        int length = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.RESET_SEQ_NUM, 0, null);
         buffer.put(WireFormat.HEADER_BYTES + 12, (byte) 9);
 
         assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))
@@ -333,7 +333,7 @@ class TestFrameCodec {
     }
 
     private void encodeAndDecodeFrequentFrames(ByteBuffer buffer, ByteBuffer message, CountingHandler counting, long i) {
-        int event = FrameEncoder.storeEvent(buffer, 0, 7, i, 3, StoreEventType.STORE_MESSAGE, i, message);
+        int event = TestingFrameEncoder.storeEvent(buffer, 0, 7, i, 3, StoreEventType.STORE_MESSAGE, i, message);
         int ack = FrameEncoder.ack(buffer, event, 7, i, true, 0);
         int heartbeat = FrameEncoder.heartbeat(buffer, event + ack, 7, i);
         int decoded = 0;

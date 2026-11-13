@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
+import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameHandler;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -56,7 +57,7 @@ abstract class LeaderConnectionHarness {
     final RecordingHandler sent = new RecordingHandler();
     final RecordingEngine engine = new RecordingEngine().with(MAIN);
     final ReplicaSessions replicaSessions = new ReplicaSessions(engine);
-    final LeaderConnection connection = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes, 0);
+    final LeaderConnection connection = newConnection(0, 0);
 
     LeaderConnectionHarness() {
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
@@ -103,7 +104,7 @@ abstract class LeaderConnectionHarness {
 
     static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
                                                               String message) {
-        return (out, index) -> FrameEncoder.storeEvent(out, index, epoch, offset, key, type, seq,
+        return (out, index) -> TestingFrameEncoder.storeEvent(out, index, epoch, offset, key, type, seq,
                 message == null ? null : ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
     }
 
@@ -124,7 +125,7 @@ abstract class LeaderConnectionHarness {
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> snapshotMessage(long seq, String message) {
-        return (out, index) -> FrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq,
+        return (out, index) -> TestingFrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq,
                 ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
     }
 
@@ -143,7 +144,16 @@ abstract class LeaderConnectionHarness {
     }
 
     LeaderConnection checkingHourly() {
-        return new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", 0, replicaSessions::setLanes, TimeUnit.HOURS.toNanos(1));
+        return newConnection(0, TimeUnit.HOURS.toNanos(1));
+    }
+
+    LeaderConnection newConnection(int lane) {
+        return newConnection(lane, LeaderConnection.CHECK_INTERVAL_NANOS);
+    }
+
+    private LeaderConnection newConnection(int lane, long checkIntervalNanos) {
+        return new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", lane, replicaSessions::setLanes,
+                checkIntervalNanos, new AnswerSender.OnNetworkThread(ioSession), false);
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> heartbeat() {

@@ -29,14 +29,13 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 
 import static org.lolaf.staffix.ha.wire.WireFormat.HEADER_BYTES;
-import static org.lolaf.staffix.ha.wire.WireFormat.STORE_EVENT_BODY_OFFSET;
 
 /**
  * Writes frames at an absolute index of a caller-owned buffer, leaving its position and limit alone: several threads
  * can then encode into disjoint ranges of one shared buffer, as the replication log needs. Each method returns the
  * frame's length; the buffer must have room for it, which the {@code ...Bytes} methods size.
  *
- * <p>{@link #storeEvent}, {@link #ack} and {@link #heartbeat} allocate nothing; the frames carrying strings encode
+ * <p>{@link #storeEventBody}, {@link #ack} and {@link #heartbeat} allocate nothing; the frames carrying strings encode
  * them, and are sent only when a connection or a session starts.
  */
 @UtilityClass
@@ -46,10 +45,6 @@ public class FrameEncoder {
      * Plain access only, which tolerates any alignment.
      */
     private static final VarHandle LONG = MethodHandles.byteBufferViewVarHandle(long[].class, ByteOrder.nativeOrder());
-
-    public static int storeEventBytes(int messageLength) {
-        return HEADER_BYTES + FrameType.STORE_EVENT.getFixedPayloadBytes() + messageLength;
-    }
 
     public static int snapshotMessageBytes(int messageLength) {
         return HEADER_BYTES + FrameType.SNAPSHOT_MESSAGE.getFixedPayloadBytes() + messageLength;
@@ -157,15 +152,6 @@ public class FrameEncoder {
     }
 
     /**
-     * @param message the bytes from its position to its limit, left untouched; null for an event carrying none
-     */
-    public static int storeEvent(ByteBuffer out, int index, long epoch, long logOffset, int sessionKey,
-                                 StoreEventType eventType, long sequenceNumber, @Nullable ByteBuffer message) {
-        int bodyLength = storeEventBody(out, index + STORE_EVENT_BODY_OFFSET, sessionKey, eventType, sequenceNumber, message);
-        return storeEventHeader(out, index, epoch, logOffset, bodyLength);
-    }
-
-    /**
      * The length of a {@link #storeEventBody} carrying {@code messageLength} bytes of message.
      */
     public static int storeEventBodyBytes(int messageLength) {
@@ -176,20 +162,11 @@ public class FrameEncoder {
      * Writes a {@link FrameType#STORE_EVENT} without its header and log offset, which the replication log holds
      * until a sender adds them with {@link #storeEventHeader}: the offset is the log's position for the event, known
      * only once it is written. The body goes {@link WireFormat#STORE_EVENT_BODY_OFFSET} bytes into the frame.
+     * It carries {@code length} bytes of {@code message} from {@code messageIndex}, a fragment of it when
+     * {@code fragmentFlags} says so; see {@link WireFormat#MORE_FRAGMENTS}.
      *
-     * @param message the bytes from its position to its limit, left untouched; null for an event carrying none
+     * @param message null for an event carrying none
      * @return the body's length
-     */
-    public static int storeEventBody(ByteBuffer out, int index, int sessionKey, StoreEventType eventType,
-                                     long sequenceNumber, @Nullable ByteBuffer message) {
-        return message == null
-                ? storeEventBody(out, index, sessionKey, eventType, sequenceNumber, null, 0, 0, (byte) 0)
-                : storeEventBody(out, index, sessionKey, eventType, sequenceNumber, message, message.position(), message.remaining(), (byte) 0);
-    }
-
-    /**
-     * {@code length} bytes of {@code message} from {@code messageIndex}, a fragment of it when {@code fragmentFlags}
-     * says so; see {@link WireFormat#MORE_FRAGMENTS}.
      */
     public static int storeEventBody(ByteBuffer out, int index, int sessionKey, StoreEventType eventType, long sequenceNumber,
                                      @Nullable ByteBuffer message, int messageIndex, int length, byte fragmentFlags) {
@@ -227,14 +204,6 @@ public class FrameEncoder {
         out.putLong(p + 16, nextIncomingSeqNum);
         out.putLong(p + 24, nextOutgoingSeqNum);
         return length;
-    }
-
-    /**
-     * @param message the bytes from its position to its limit, left untouched
-     */
-    public static int snapshotMessage(ByteBuffer out, int index, long epoch, int sessionKey, long sequenceNumber,
-                                      ByteBuffer message) {
-        return snapshotMessage(out, index, epoch, sessionKey, sequenceNumber, message, message.position(), message.remaining(), (byte) 0);
     }
 
     /**

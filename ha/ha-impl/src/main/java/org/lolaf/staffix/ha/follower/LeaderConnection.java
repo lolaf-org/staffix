@@ -95,19 +95,7 @@ public final class LeaderConnection implements FrameHandler {
     private boolean ackedInSync;
 
     /**
-     * @param lanesAnnounced told the leader's lane count from its WELCOME, before the stream starts
-     */
-    LeaderConnection(IOSession ioSession, ReplicaSessions replicaSessions, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced) {
-        this(ioSession, replicaSessions, nodeEpoch, nodeId, lane, lanesAnnounced, CHECK_INTERVAL_NANOS);
-    }
-
-    LeaderConnection(IOSession ioSession, ReplicaSessions replicaSessions, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
-               long checkIntervalNanos) {
-        this(ioSession, replicaSessions, nodeEpoch, nodeId, lane, lanesAnnounced, checkIntervalNanos, new AnswerSender.OnNetworkThread(ioSession),
-                false);
-    }
-
-    /**
+     * @param lanesAnnounced               told the leader's lane count from its WELCOME, before the stream starts
      * @param answers                      how this lane's answers to the leader reach the connection
      * @param receivedAckedByNetworkThread the network thread acknowledges events as received as it reads them, a store
      *                                     writer thread writing them

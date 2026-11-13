@@ -24,7 +24,7 @@ import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.CloseReason;
-import org.lolaf.staffix.ha.wire.FrameEncoder;
+import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.ha.wire.WireFormatException;
@@ -499,7 +499,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
             store.storeNextIncomingSeqNum(seq);
         }
 
-        fill(3 * FrameEncoder.storeEventBytes(0) - 1);
+        fill(3 * TestingFrameEncoder.storeEventBytes(0) - 1);
 
         assertThat(sent.frames).hasSize(2);
         assertThat(sent.frames.get(0)).contains("seq=2");
