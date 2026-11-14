@@ -24,6 +24,18 @@ mv "jmh-result-IdGenerationBenchmark-${DATE}.json" results
 taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc FixMessageParserBenchmark
 mv jmh-result.json "jmh-result-FixMessageParserBenchmark-${DATE}.json"
 mv "jmh-result-FixMessageParserBenchmark-${DATE}.json" results
+taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc NoOpMessagesStoreBenchmark
+mv jmh-result.json "jmh-result-NoOpMessagesStoreBenchmark-${DATE}.json"
+mv "jmh-result-NoOpMessagesStoreBenchmark-${DATE}.json" results
+taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc MemoryMessagesStoreBenchmark
+mv jmh-result.json "jmh-result-MemoryMessagesStoreBenchmark-${DATE}.json"
+mv "jmh-result-MemoryMessagesStoreBenchmark-${DATE}.json" results
+taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc FileMessagesStoreBenchmark
+mv jmh-result.json "jmh-result-FileMessagesStoreBenchmark-${DATE}.json"
+mv "jmh-result-FileMessagesStoreBenchmark-${DATE}.json" results
+taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc AsyncMessagesStoreBenchmark
+mv jmh-result.json "jmh-result-AsyncMessagesStoreBenchmark-${DATE}.json"
+mv "jmh-result-AsyncMessagesStoreBenchmark-${DATE}.json" results
 taskset -c "$RTT_CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc FixEngineRTTBenchmark
 mv jmh-result.json "jmh-result-FixEngineRTTBenchmark-${DATE}.json"
 mv "jmh-result-FixEngineRTTBenchmark-${DATE}.json" results

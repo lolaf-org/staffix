@@ -95,6 +95,74 @@ What they show is the shape of the argument this documentation makes: decoding a
 writing into a buffer you already own beats handing back a new array. Numbers per value width, per direction and per
 JDK are in the result files rather than quoted here, because that is exactly the kind of figure that goes stale.
 
+### Message stores
+
+The round trips above run on the in-memory store. A session stores every message it sends, so the store's cost is part
+of every outgoing message. Four benchmarks time that call the same way for every store: one message at a time, at a
+steady rate, as a session makes it. They share
+[`AbstractMessagesStoreBenchmark`](../benchmarks/src/main/java/org/lolaf/staffix/benchmarks/stores/AbstractMessagesStoreBenchmark.java),
+so each store differs from the others only in what it does with the message. One of them,
+[`NoOpMessagesStoreBenchmark`](../benchmarks/src/main/java/org/lolaf/staffix/benchmarks/stores/NoOpMessagesStoreBenchmark.java),
+times a store that does nothing. That is the cost of the measurement itself, and its typical call is subtracted
+from every figure below.
+
+Every cell uses the same unit: the typical call of the file store without sync, the cheapest store whose messages
+outlive the process. Every store is called once per message, as a session calls it. Batching is a setting of the async
+store only: it is how the async store hands the messages it queued to the store behind it.
+
+| store                                  | typical call (p50) | p99            | p99.9           |
+|----------------------------------------|--------------------|----------------|-----------------|
+| in memory                              | below 1×           | about 5×       | about 10×       |
+| file, no sync, on tmpfs or on disk     | 1×                 | about 6×       | about 12×       |
+| file, synced, on tmpfs                 | about 7×           | about 17×      | about 45×       |
+| async, queue on tmpfs, batching        | about 3×           | about 60×      | about 150×      |
+| async, queue on tmpfs, no batching     | about 7×           | about 60×      | about 130×      |
+| async, queue on disk, batching         | about 3×           | about 15×      | about 1,000×    |
+| async, queue on disk, no batching      | about 7×           | about 15×      | about 1,000×    |
+| file, synced, on disk                  | about 30,000×      | about 60,000×  | about 120,000×  |
+
+What it shows:
+
+- **At a typical call, memory, the unsynced file store and the async store sit within one order of magnitude of each
+  other**, and a synced write to disk sits four orders above them all. That gap is the choice that matters. Their
+  slowest calls spread wider, over two orders of magnitude, and that is where they differ most.
+- **The in-memory store's typical call is lost in the harness's own noise.**
+- **An unsynced file store costs the same on disk as on tmpfs**: the write lands in the page cache, and the kernel
+  writes it back later. The messages survive the process crashing, not the machine losing power.
+- **A synced write to disk waits for the drive to flush.** The store flushes twice per message, once for the message
+  and once for the header, so a single flush would halve the cost without changing its order of magnitude.
+- **Syncing on tmpfs protects nothing**, since tmpfs is memory and does not survive a reboot. Leave `syncWrites` off
+  there.
+- **The async store costs a few times the unsynced file store at a typical call**, and one to two orders of magnitude
+  more at the slowest, whatever it wraps, because the session only pays for the queue append. In front of an unsynced
+  file store it is a slowdown. **In front of a synced disk store it is thousands of times faster** on the session
+  thread, but the message is only on disk once the background write has happened.
+- **The async store's slowest calls are page faults.** The queue only appends, so it keeps writing to pages the process
+  has not touched yet, and the kernel has to provide each one. On tmpfs about one call in twelve faults, which makes
+  the p99. On disk far fewer calls fault, but each costs far more because the file system allocates blocks, which
+  makes the p99.9. The file store escapes this because it reuses a fixed-size file: once it has filled it, it writes
+  only to pages already in memory. Given a file too large to fill during the run, it shows the same tail on disk.
+  Chronicle's pretoucher, which faults pages in ahead of the writer, is an Enterprise feature and does nothing in the
+  open-source build.
+- **Behind a slow store, the async store needs batching.** Writing one message at a time, a synced disk store drains
+  far fewer messages per second than the benchmark sends, and the queue grows without bound. With batching it keeps up,
+  and the session thread's typical call costs about half as much; its slowest calls do not change.
+- **Where the queue lives changes the slowest calls and what survives.** A typical call costs the same on both. A
+  queue on tmpfs has the worse p99 and a queue on disk the far worse p99.9. A queue on tmpfs survives the process
+  crashing but not a reboot; one on disk also survives a reboot, but not a power loss.
+- **The queue is never synced per write.** Chronicle's `syncMode`, which `builderConfigurer` can set, only syncs a
+  piece of the queue file when Chronicle stops using it. So a queue on disk is as durable as the unsynced file store,
+  whatever its settings.
+
+<sub>JMH sample mode at 20,000 messages per second, 300-byte messages, pacing outside the timed call; disk is ext4 on
+NVMe, tmpfs is `/dev/shm`. The async store is measured in front of a store that drops every write, so its rows show the
+queue alone. Ratios are rounded: between two runs on the same
+machine every figure moved by up to 2×, but the stores kept their order. Raw results:
+[`NoOp`](../benchmarks/results/jmh-result-NoOpMessagesStoreBenchmark-2026-11-14.json),
+[`Memory`](../benchmarks/results/jmh-result-MemoryMessagesStoreBenchmark-2026-11-14.json),
+[`File`](../benchmarks/results/jmh-result-FileMessagesStoreBenchmark-2026-11-14.json),
+[`Async`](../benchmarks/results/jmh-result-AsyncMessagesStoreBenchmark-2026-11-14.json).</sub>
+
 
 ## How the latency is achieved
 
@@ -177,7 +245,7 @@ store and keeps queueing through an outage instead of pushing the failure back o
 available where throughput matters more than per-operation latency.
 
 The point is the shape of the guarantee: wrapping a JDBC store in the async decorator means a slow database costs you
-queue depth, not round-trip time.
+queue depth, not round-trip time. [Message stores](#message-stores) measures both sides of that trade.
 
 **And none of it counts until the code is compiled.** Every rule above describes compiled code; a JVM started on
 Saturday and idle until Monday serves the open interpreted, which is the one moment you cannot afford it. The
