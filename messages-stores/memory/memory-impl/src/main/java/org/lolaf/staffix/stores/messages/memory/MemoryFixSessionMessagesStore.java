@@ -53,6 +53,12 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
         }
     }
 
+    private static void addIfNotNull(List<StoreMessage> messages, StoreMessage message) {
+        if (message != null) {
+            messages.add(message);
+        }
+    }
+
     @Override
     public Optional<String> getStorageIdentity() {
         return Optional.of(storageIdentity);
@@ -102,10 +108,9 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
     @Override
     public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
         outgoingSequenceNumber.set(outgoingSeqNum + 1);
-        if (!enabledMessageStoring) {
-            return;
+        if (enabledMessageStoring) {
+            slotOf(outgoingSeqNum).store(outgoingSeqNum, message, allocator);
         }
-        slotOf(outgoingSeqNum).store(outgoingSeqNum, message, allocator);
     }
 
     @Override
@@ -144,12 +149,6 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
         // the slots wrap around, and a sequence number moved ahead leaves older messages in the slots it skipped
         messages.sort(Comparator.comparingLong(StoreMessage::getSeqNum));
         return messages;
-    }
-
-    private static void addIfNotNull(List<StoreMessage> messages, StoreMessage message) {
-        if (message != null) {
-            messages.add(message);
-        }
     }
 
     /**

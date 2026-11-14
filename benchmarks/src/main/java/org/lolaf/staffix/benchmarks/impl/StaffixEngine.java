@@ -91,7 +91,7 @@ public class StaffixEngine extends AbstractBenchmark {
     }
 
     @Override
-    void fixEngineSetup(FixEngineSettings fixEngineSettings) throws Exception {
+    void fixEngineSetup(FixEngineSettings fixEngineSettings) {
         acceptorApplication = new AcceptorApplication();
         initiatorApplication = new InitiatorApplication();
         engine = FixEngineBuilder.builder()
