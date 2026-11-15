@@ -23,6 +23,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
@@ -34,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
@@ -43,6 +45,7 @@ import static org.awaitility.Awaitility.await;
 
 class TestAsyncStoreThreads {
 
+    private static final String READER_THREADS = "Staffix-async-queue-reader-";
     private static final String PRETOUCH_THREAD = "Staffix-async-queue-pretoucher-test";
 
     FixSessionId fixSessionId;
@@ -52,7 +55,7 @@ class TestAsyncStoreThreads {
     AsyncEventSerde<TestAsyncEvent> asyncEventSerde;
 
     private static java.util.List<String> readerThreadsStillAlive() {
-        return threadsStillAlive("Staffix-async-queue-reader-");
+        return threadsStillAlive(READER_THREADS);
     }
 
     private static java.util.List<String> threadsStillAlive(String namePrefix) {
@@ -154,6 +157,50 @@ class TestAsyncStoreThreads {
 
         assertThat(readerThreadsStillAlive()).isNotEmpty();
         assertThat(threadsStillAlive(PRETOUCH_THREAD)).isEmpty();
+    }
+
+    /**
+     * An interrupt landing while a tailer maps a new chunk would close the file channel the writer shares.
+     */
+    @Test
+    void stopDoesNotInterruptAReaderThread() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        asyncStoreThreads.start();
+        AtomicBoolean consuming = new AtomicBoolean();
+        AtomicBoolean interrupted = new AtomicBoolean();
+        asyncStoreThreads.register(persistentQueue, event -> {
+            consuming.set(true);
+            long end = System.nanoTime() + Duration.ofMillis(200).toNanos();
+            while (System.nanoTime() < end) {
+                if (Thread.currentThread().isInterrupted()) {
+                    interrupted.set(true);
+                }
+            }
+        }, asyncEventSerde);
+        persistentQueue.offer(asyncEventSerde, new TestAsyncEvent(null, "test"));
+        await().atMost(Duration.ofSeconds(5)).untilTrue(consuming);
+
+        asyncStoreThreads.stop(Deadline.of(Duration.ofSeconds(5)));
+
+        assertThat(readerThreadsStillAlive()).isEmpty();
+        assertThat(interrupted).isFalse();
+    }
+
+    @Test
+    void stopWakesAReaderThreadParkedForLong() {
+        long tenSeconds = TimeUnit.SECONDS.toNanos(10);
+        asyncStoreThreads = asyncStoreThreads(asyncStoreSettings.toBuilder()
+                .readerThreadsIdleStrategy(() -> new BackoffIdleStrategy(0, 0, tenSeconds, tenSeconds))
+                .build());
+        asyncStoreThreads.start();
+        await().atMost(Duration.ofSeconds(5)).until(() -> Thread.getAllStackTraces().keySet().stream()
+                .anyMatch(t -> t.getName().startsWith(READER_THREADS) && t.getState() == Thread.State.TIMED_WAITING));
+
+        long stopStart = System.nanoTime();
+        asyncStoreThreads.stop(Deadline.of(Duration.ofSeconds(30)));
+
+        assertThat(Duration.ofNanos(System.nanoTime() - stopStart)).isLessThan(Duration.ofSeconds(5));
+        assertThat(readerThreadsStillAlive()).isEmpty();
     }
 
     @Test

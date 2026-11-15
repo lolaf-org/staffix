@@ -26,6 +26,7 @@ import java.util.*;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.function.ToLongFunction;
 
@@ -229,7 +230,9 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
                 return;
             }
             try {
-                thread.interrupt();
+                // not an interrupt: it would close the queue file's channel, shared with the writer, if it lands while
+                // the tailer maps a new chunk; unpark ends the idle strategy's park instead
+                LockSupport.unpark(thread);
                 // Thread.join(0) waits forever, an immediate or already expired deadline must not do that
                 thread.join(Math.max(stopDeadline.getRemainingTime().toMillis(), 1));
                 if (thread.isAlive()) {
