@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.FixInitiatorBuilder;
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Probes;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -149,6 +150,15 @@ public interface FixMessagesLogger extends InstanceIdSupplier, Startable<FixMess
      * shares between them, a file, a buffer pool, a queue, is its own to protect.
      */
     interface Logger extends Startable<Logger>, EventsLogger {
+
+        /**
+         * Called each time the session starts, with the session's meters, which are tagged with the session and only
+         * exist from then on: the session's plugins are created after its logger. A wrapper passes it on to what it
+         * wraps. Not called for a session without monitoring.
+         */
+        default void onSessionMeters(FixSessionsMonitoringContext meters) {
+            // no meters by default
+        }
 
         /**
          * Indicates if the underlying resource to store the logs is currently available or not, this method should not throw an exception under any circumstances

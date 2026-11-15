@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.ProbeEvaluator;
 import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
@@ -81,6 +82,11 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
         this.lostWritesProbe = Probe.builder().name(LOST_WRITES_PROBE_NAME).description("Messages not stored")
                 .evaluator(new LostWritesEvaluator()).onlyWhileActive(false).build();
         this.findsInProgress = new AtomicInteger();
+    }
+
+    @Override
+    public void onSessionMeters(FixSessionsMonitoringContext meters) {
+        fixSessionMessagesStore.onSessionMeters(meters);
     }
 
     @Override

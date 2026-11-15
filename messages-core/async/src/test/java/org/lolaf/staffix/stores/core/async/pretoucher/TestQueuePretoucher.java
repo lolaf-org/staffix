@@ -45,6 +45,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.UnaryOperator;
@@ -92,7 +93,7 @@ class TestQueuePretoucher {
                         .wireType(WireType.FIELDLESS_BINARY)
                         .storeFileListener(holdersCounter))
                 .build();
-        pretoucher = new QueuePretoucher(queue, Duration.ZERO, AHEAD_BYTES);
+        pretoucher = new QueuePretoucher(queue, Duration.ZERO, AHEAD_BYTES, new AtomicLong());
     }
 
     private void close() {
@@ -195,7 +196,7 @@ class TestQueuePretoucher {
     @Test
     void theDistanceGrowsFromTheMinimumWithTheWriteRate() {
         pretoucher.close();
-        pretoucher = new QueuePretoucher(queue, Duration.ofSeconds(1), 4096);
+        pretoucher = new QueuePretoucher(queue, Duration.ofSeconds(1), 4096, new AtomicLong());
         try (ExcerptAppender appender = queue.createAppender()) {
             appender.writeText(PADDING);
             pretoucher.pretouch();

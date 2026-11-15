@@ -85,15 +85,17 @@ half the queue file's chunk size, 32 MB by default; to go further, raise `blockS
 **What it costs:** one thread waking every millisecond, and memory provided ahead of when the queue needs it. Touching
 a page never changes a byte of it, so it is safe while the writer fills the same page.
 
-**When to raise `pretouchAheadTime`.** When a queue stops it logs how many pages its writer reached before the
-pretouch thread did:
+**When to raise `pretouchAheadTime`.** A session with [monitoring](monitoring.md#the-async-store-and-loggers-meters)
+counts the pages its writer reached before the pretouch thread, each a page fault on the session thread:
+`async.store.pretouch.missed.pages` for the store and `async.logger.pretouch.missed.pages` for the logger. Without
+monitoring, each queue logs its run's count when it stops:
 
 ```
 Persistent queue for FIX session ... is stopped with 0 unprocessed elements and 0 pages the writer reached before the pretoucher
 ```
 
-A count that keeps growing between runs means the pretouch thread falls behind. It is held up from time to time for
-much longer than its interval, and `pretouchAheadTime` has to outlast those pauses: raise it.
+A count that keeps rising means the pretouch thread falls behind. It is held up from time to time for much longer
+than its interval, and `pretouchAheadTime` has to outlast those pauses: raise it.
 
 **At very high rates.** The thread touches at most 256 KB per queue each time it wakes, so at the default interval one
 queue can be kept ahead up to about 256 MB per second, 250,000 messages of 1 KB. Past that, shorten `pretouchInterval`.

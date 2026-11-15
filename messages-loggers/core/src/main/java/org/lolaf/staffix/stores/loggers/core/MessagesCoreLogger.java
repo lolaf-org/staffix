@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.logging.LogObfuscator;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -132,6 +133,11 @@ public abstract class MessagesCoreLogger extends Startable.SimpleStartable<FixMe
         @Override
         public boolean isStarted() {
             return wrappedLogger.isStarted();
+        }
+
+        @Override
+        public void onSessionMeters(FixSessionsMonitoringContext meters) {
+            wrappedLogger.onSessionMeters(meters);
         }
 
         @Override

@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
@@ -27,6 +28,7 @@ import org.lolaf.staffix.stores.core.async.*;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -34,6 +36,8 @@ import java.util.function.Consumer;
 
 @Slf4j
 class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSessionMessagesStore> implements FixMessagesStore.FixSessionMessagesStore {
+
+    static final String PRETOUCH_MISSED_PAGES = "async.store.pretouch.missed.pages";
 
     private final FixMessagesStore.FixSessionMessagesStore wrappedStore;
     private final FixMessagesStore.BatchingFixSessionMessagesStore batchingWrappedStore;
@@ -203,6 +207,14 @@ class AsyncMessageStore extends Startable.SimpleStartable<FixMessagesStore.FixSe
         if (isStarted() && hasInactiveUnderlyingResourceWatchDog()) {
             startUnderlyingResourceWatchdog();
         }
+    }
+
+    @Override
+    public void onSessionMeters(FixSessionsMonitoringContext meters) {
+        wrappedStore.onSessionMeters(meters);
+        meters.getCounter(PRETOUCH_MISSED_PAGES, "Pages of the async store's queue its writer reached before the pretouch"
+                + " thread, each a page fault on the session thread: a steady rise means pretouchAheadTime is too short.",
+                Map.of(), messagesQueue::pretouchMissedPages);
     }
 
     @Override

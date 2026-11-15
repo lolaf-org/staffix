@@ -26,18 +26,21 @@ import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probes;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.slf4j.event.Level;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -46,6 +49,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -140,6 +144,18 @@ class TestAsyncMessagesStore {
     void addsItsProbesToTheSession() {
         verify(probes).add(argThat(probe -> probe.getName().equals("async-store-queue")));
         verify(probes).add(argThat(probe -> probe.getName().equals("async-store-resource")));
+    }
+
+    @Test
+    void registersItsMissedPagesCounterAndPassesTheMetersOn() {
+        FixSessionsMonitoringContext meters = mock(FixSessionsMonitoringContext.class);
+        ArgumentCaptor<LongSupplier> missedPages = ArgumentCaptor.forClass(LongSupplier.class);
+
+        asyncMessageStore.onSessionMeters(meters);
+
+        verify(meters).getCounter(eq("async.store.pretouch.missed.pages"), anyString(), eq(Map.of()), missedPages.capture());
+        assertThat(missedPages.getValue().getAsLong()).isZero();
+        verify(messageStore).onSessionMeters(meters);
     }
 
     @Test

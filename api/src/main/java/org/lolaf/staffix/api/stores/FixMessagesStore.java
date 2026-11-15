@@ -20,6 +20,7 @@ import lombok.Value;
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Probes;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 
@@ -137,6 +138,14 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
      */
     interface FixSessionMessagesStore extends Startable<FixSessionMessagesStore> {
 
+        /**
+         * Called each time the session starts, with the session's meters, which are tagged with the session and only
+         * exist from then on: the session's plugins are created after its store. A wrapper passes it on to what it
+         * wraps. Not called for a session without monitoring.
+         */
+        default void onSessionMeters(FixSessionsMonitoringContext meters) {
+            // no meters by default
+        }
 
         /**
          * Indicates if the underlying resource to store the messages is currently available or not,

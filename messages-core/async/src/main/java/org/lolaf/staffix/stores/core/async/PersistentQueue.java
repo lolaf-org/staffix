@@ -66,6 +66,7 @@ public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
      * released-but-not-yet-deletable cycle leaves it untouched. Visible for testing.
      */
     private final AtomicLong pendingDeletionSweeps;
+    private final AtomicLong pretouchMissedPages;
     private SingleChronicleQueue queue;
     /**
      * Named, so its position outlives the process: it only ever moves past what was confirmed, so a crash reads again
@@ -84,6 +85,7 @@ public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
     private volatile StoreFilesCleaner pendingDeletions;
     @SuppressWarnings("java:S3077")
     private volatile QueuePretoucher pretoucher;
+    private long pretouchMissedPagesAtStart;
 
     public PersistentQueue(FixSessionId fixSessionId) {
         this.offers = new AtomicLong();
@@ -93,6 +95,7 @@ public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
         this.lastPolledCycle = new AtomicInteger();
         this.generation = new AtomicInteger();
         this.pendingDeletionSweeps = new AtomicLong();
+        this.pretouchMissedPages = new AtomicLong();
     }
 
     public void start(AsyncStoreSettings asyncStoreSettings, String type) {
@@ -120,8 +123,9 @@ public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
                 .rollCycle(asyncStoreSettings.getRollCycleProvider().apply(fixSessionId));
         asyncStoreSettings.getBuilderConfigurer().accept(fixSessionId, builder);
         queue = builder.build();
+        pretouchMissedPagesAtStart = pretouchMissedPages.get();
         pretoucher = new QueuePretoucher(queue, asyncStoreSettings.getPretouchAheadTime(),
-                asyncStoreSettings.getPretouchMinAheadBytes());
+                asyncStoreSettings.getPretouchMinAheadBytes(), pretouchMissedPages);
         confirmedTailer = queue.createTailer(name);
         confirmedTailer.singleThreadedCheckDisabled(true);
         tailer = queue.createTailer();
@@ -164,7 +168,6 @@ public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
         }
         started.set(false);
         unconfirmedPolls = 0;
-        long pretouchMissedPages = pretoucher.missedPages();
         pretoucher.close();
         pretoucher = null;
         tailer.close();
@@ -174,7 +177,7 @@ public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
         queue.close();
         queue = null;
         log.info("Persistent queue for FIX session {} is stopped with {} unprocessed elements and {} pages the writer reached before the pretoucher",
-                fixSessionId, getSize(), pretouchMissedPages);
+                fixSessionId, getSize(), pretouchMissedPages.get() - pretouchMissedPagesAtStart);
     }
 
     public long pollsCount() {
@@ -217,11 +220,11 @@ public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
     }
 
     /**
-     * See {@link QueuePretoucher#missedPages()}; counted from the last start.
+     * Pages the writer reached before the pretouch thread, each a page fault on the writer's thread, since this queue
+     * was created: it never goes down, a restart included. The stop log line gives the run's own share.
      */
     public long pretouchMissedPages() {
-        QueuePretoucher localPretoucher = pretoucher;
-        return localPretoucher == null ? 0 : localPretoucher.missedPages();
+        return pretouchMissedPages.get();
     }
 
     public boolean poll(AsyncEventSerde<T> asyncEventSerde, T target) {

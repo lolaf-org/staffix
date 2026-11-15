@@ -122,6 +122,14 @@ apply to, and all but the timers are read at export, so they cost the session th
 A session with `highAvailability.syncAckLatencyEnabled` also gets `ha.session.sync.ack.latency` in its own meters,
 the same wait as `ha.sync.ack.latency` for that session alone.
 
+### The async store and logger's meters
+
+A session behind an [async store or logger](async-queue-tuning.md) gets a counter in its own meters, read at export:
+
+| meter | what it says |
+|---|---|
+| `async.store.pretouch.missed.pages`, `async.logger.pretouch.missed.pages` | pages of the queue the session thread reached before the pretouch thread, each a page fault it paid for; rising steadily means `pretouchAheadTime` is too short |
+
 ---
 
 ## Tracing

@@ -206,9 +206,10 @@ final class SessionWiring {
         codecs.setupApplicationDecoders(decoders);
         PluginsComponent plugins = components.get(PluginsComponent.class);
         plugins.setup(runtimeDependencies, codecs.getIncomingMessageTypes(), codecs.getOutgoingMessageTypes());
-        if (messagesStore instanceof ReplicatingStore) {
-            plugins.getPluginContext(FixSessionsMonitoringContext.class).ifPresent(((ReplicatingStore) messagesStore)::onSessionMeters);
-        }
+        plugins.getPluginContext(FixSessionsMonitoringContext.class).ifPresent(meters -> {
+            messagesStore.onSessionMeters(meters);
+            messagesLogger.onSessionMeters(meters);
+        });
         components.register(new ApplicationNotifierComponent(fixApplication, fixSession, fieldsRegistry, messageTypeRegistry, decoders));
     }
 

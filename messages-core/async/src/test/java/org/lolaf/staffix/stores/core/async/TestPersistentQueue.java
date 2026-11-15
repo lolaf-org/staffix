@@ -15,6 +15,9 @@
  */
 package org.lolaf.staffix.stores.core.async;
 
+import com.github.valfirst.slf4jtest.LoggingEvent;
+import com.github.valfirst.slf4jtest.TestLogger;
+import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import lombok.AllArgsConstructor;
 import net.openhft.chronicle.core.io.BackgroundResourceReleaser;
 import net.openhft.chronicle.queue.rollcycles.TestRollCycles;
@@ -448,6 +451,42 @@ class TestPersistentQueue {
             pretouching.set(false);
             pretoucher.join();
         }
+    }
+
+    /**
+     * A run's misses add to the previous runs', so a counter read from it never goes down, while the stop log line
+     * keeps reporting the run's own.
+     */
+    @Test
+    void pretouchMissedPagesAddUpAcrossRestarts() {
+        TestLogger log = TestLoggerFactory.getTestLogger(PersistentQueue.class);
+        persistentQueue.start(asyncStoreSettings, "test");
+        long firstRun = writePastThePretoucher();
+        persistentQueue.stop();
+        assertThat(persistentQueue.pretouchMissedPages()).isEqualTo(firstRun);
+
+        persistentQueue.start(asyncStoreSettings, "test");
+        long secondRun = writePastThePretoucher();
+        log.clear();
+        persistentQueue.stop();
+
+        assertThat(firstRun).isPositive();
+        assertThat(secondRun).isPositive();
+        assertThat(persistentQueue.pretouchMissedPages()).isEqualTo(firstRun + secondRun);
+        assertThat(log.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
+                .anyMatch(message -> message.endsWith(" and " + secondRun + " pages the writer reached before the pretoucher"));
+    }
+
+    private long writePastThePretoucher() {
+        long missedBefore = persistentQueue.pretouchMissedPages();
+        offer("first");
+        persistentQueue.pretouch();
+        String padding = "x".repeat(1000);
+        for (int i = 0; i < 2000; i++) {
+            offer(padding);
+        }
+        persistentQueue.pretouch();
+        return persistentQueue.pretouchMissedPages() - missedBefore;
     }
 
     @AllArgsConstructor

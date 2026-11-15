@@ -47,27 +47,22 @@ public final class QueuePretoucher implements AutoCloseable {
     private boolean closed;
 
     /**
-     * An {@code aheadTime} of zero keeps the distance at {@code minAheadBytes}.
+     * An {@code aheadTime} of zero keeps the distance at {@code minAheadBytes}. {@code missedPages} counts the pages the
+     * writer reached first, taking their fault, but not those it fills right after a roll; the caller owns it, so a
+     * count can span several pretouchers.
      */
-    public QueuePretoucher(SingleChronicleQueue queue, Duration aheadTime, long minAheadBytes) {
-        this(queue, aheadTime, minAheadBytes, OS.pageSize());
+    public QueuePretoucher(SingleChronicleQueue queue, Duration aheadTime, long minAheadBytes, AtomicLong missedPages) {
+        this(queue, aheadTime, minAheadBytes, missedPages, OS.pageSize());
     }
 
-    QueuePretoucher(SingleChronicleQueue queue, Duration aheadTime, long minAheadBytes, int pageSize) {
+    QueuePretoucher(SingleChronicleQueue queue, Duration aheadTime, long minAheadBytes, AtomicLong missedPages,
+                    int pageSize) {
         this.queue = queue;
         this.aheadNanos = aheadTime.toNanos();
         this.minAheadBytes = minAheadBytes;
         this.pageSize = pageSize;
-        this.missedPages = new AtomicLong();
+        this.missedPages = missedPages;
         this.writeRate = new WriteRate();
-    }
-
-    /**
-     * Pages the writer reached before the pretoucher, so it took their fault; the ones it fills right after a roll are
-     * not counted. A steady count means the time ahead falls short of the pretouch thread's stalls.
-     */
-    public long missedPages() {
-        return missedPages.get();
     }
 
     /**

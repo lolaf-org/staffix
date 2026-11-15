@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -30,10 +31,12 @@ import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesLoggerSettings;
+import org.mockito.ArgumentCaptor;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -42,6 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -160,6 +164,18 @@ class TestAsyncMessagesLogger {
     void addsItsProbesToTheSession() {
         verify(probes).add(argThat(probe -> probe.getName().equals("async-logger-queue")));
         verify(probes).add(argThat(probe -> probe.getName().equals("async-logger-resource")));
+    }
+
+    @Test
+    void registersItsMissedPagesCounterAndPassesTheMetersOn() {
+        FixSessionsMonitoringContext meters = mock(FixSessionsMonitoringContext.class);
+        ArgumentCaptor<LongSupplier> missedPages = ArgumentCaptor.forClass(LongSupplier.class);
+
+        asyncLogger.onSessionMeters(meters);
+
+        verify(meters).getCounter(eq("async.logger.pretouch.missed.pages"), anyString(), eq(Map.of()), missedPages.capture());
+        assertThat(missedPages.getValue().getAsLong()).isZero();
+        verify(logger).onSessionMeters(meters);
     }
 
     @Test
