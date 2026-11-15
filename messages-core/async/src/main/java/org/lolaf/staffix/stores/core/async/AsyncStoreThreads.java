@@ -162,7 +162,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             this.asyncEventInstanceProvider = asyncEventInstanceProvider;
             this.idleStrategy = idleStrategy;
             this.threadFactory = threadFactory;
-            this.threadName = "Staffix-async-store-reader-" + instanceId + "-" + instance;
+            this.threadName = "Staffix-async-queue-reader-" + instanceId + "-" + instance;
             this.threadOperationsCounter = new AtomicLong();
         }
 

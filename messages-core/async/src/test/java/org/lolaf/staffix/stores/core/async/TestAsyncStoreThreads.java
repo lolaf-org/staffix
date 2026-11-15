@@ -52,7 +52,7 @@ class TestAsyncStoreThreads {
     AsyncEventSerde<TestAsyncEvent> asyncEventSerde;
 
     private static java.util.List<String> readerThreadsStillAlive() {
-        return threadsStillAlive("Staffix-async-store-reader-");
+        return threadsStillAlive("Staffix-async-queue-reader-");
     }
 
     private static java.util.List<String> threadsStillAlive(String namePrefix) {
