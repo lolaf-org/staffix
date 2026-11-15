@@ -16,6 +16,8 @@
 package org.lolaf.staffix.stores.core.async;
 
 import lombok.AllArgsConstructor;
+import net.openhft.chronicle.core.io.BackgroundResourceReleaser;
+import net.openhft.chronicle.queue.rollcycles.TestRollCycles;
 import net.openhft.chronicle.wire.DocumentContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,8 +26,16 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
+import java.io.File;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -144,6 +154,48 @@ class TestAsyncStoreThreads {
 
         assertThat(readerThreadsStillAlive()).isNotEmpty();
         assertThat(threadsStillAlive(PRETOUCH_THREAD)).isEmpty();
+    }
+
+    @Test
+    void writingAndConsumingGoOnAcrossRollsWhilePretouched() {
+        File chronicleDir = new File("./target/chronicle-" + System.nanoTime());
+        File queueDir = new File(chronicleDir, "test-" + fixSessionId.forFileName(""));
+        asyncStoreSettings = asyncStoreSettings.toBuilder()
+                .asyncQueueDirectory(chronicleDir.getPath())
+                .rollCycleProvider(sid -> TestRollCycles.TEST_SECONDLY)
+                .build();
+        asyncStoreThreads = asyncStoreThreads(asyncStoreSettings);
+        persistentQueue.start(asyncStoreSettings, "test");
+        asyncStoreThreads.start();
+        List<String> consumed = Collections.synchronizedList(new ArrayList<>());
+        asyncStoreThreads.register(persistentQueue, event -> consumed.add(event.testString), asyncEventSerde);
+        await().untilAsserted(() -> assertThat(threadsStillAlive(PRETOUCH_THREAD)).hasSize(1));
+
+        List<String> offered = new ArrayList<>();
+        Set<String> cycleFiles = new HashSet<>();
+        long giveUpAt = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (cycleFiles.size() < 4 && System.nanoTime() < giveUpAt) {
+            String value = "event-" + offered.size();
+            persistentQueue.offer(asyncEventSerde, new TestAsyncEvent(null, value));
+            offered.add(value);
+            if (offered.size() % 100 == 0) {
+                cycleFiles.addAll(List.of(cycleFiles(queueDir)));
+            }
+            LockSupport.parkNanos(20_000);
+        }
+
+        assertThat(cycleFiles).as("cycle files written").hasSizeGreaterThanOrEqualTo(4);
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(consumed).hasSameSizeAs(offered));
+        assertThat(consumed).containsExactlyElementsOf(offered);
+        assertThat(persistentQueue.isEmpty()).isTrue();
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            BackgroundResourceReleaser.releasePendingResources();
+            assertThat(cycleFiles(queueDir)).as("cycle files left once all is consumed").hasSize(1);
+        });
+    }
+
+    private static String[] cycleFiles(File queueDir) {
+        return queueDir.list((dir, name) -> name.endsWith(".cq4"));
     }
 
     @AllArgsConstructor
