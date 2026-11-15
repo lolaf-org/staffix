@@ -15,8 +15,13 @@
  */
 package org.lolaf.staffix.stores.loggers.async.spring;
 
+import net.openhft.chronicle.queue.RollCycles;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
+import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
+import org.lolaf.staffix.stores.loggers.async.AsyncMessagesLoggerSettings;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -28,6 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 class TestAsyncMessagesLoggerAutoConfiguration {
+
+    private static final FixSessionId FIX_SESSION_ID = FixSessionId.of("test", FixRegularVersion.VERSION_44, "sender", "target");
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(AsyncMessagesLoggerAutoConfiguration.class));
@@ -56,6 +63,58 @@ class TestAsyncMessagesLoggerAutoConfiguration {
                     assertThat(settings.getResourceCheckInterval()).isEqualTo(FixMessagesLoggerSettings.DEFAULT_RESOURCE_CHECK_INTERVAL);
                     assertThat(settings.getAlertClearDelay()).isEqualTo(FixMessagesLoggerSettings.DEFAULT_ALERT_CLEAR_DELAY);
                 });
+    }
+
+    @Test
+    void bindsTheQueueTuning() {
+        runner.withPropertyValues("staffix.messages-loggers-async.instances.LOGS.wraps=LOGS",
+                        "staffix.messages-loggers-async.instances.LOGS.async-queue-directory=target/async-logger",
+                        "staffix.messages-loggers-async.instances.LOGS.events-batching=50",
+                        "staffix.messages-loggers-async.instances.LOGS.batching-flush-interval=20ms",
+                        "staffix.messages-loggers-async.instances.LOGS.reader-threads-count=3",
+                        "staffix.messages-loggers-async.instances.LOGS.reader-thread-max-events-processing-per-store=64",
+                        "staffix.messages-loggers-async.instances.LOGS.roll-cycle=five-minutely",
+                        "staffix.messages-loggers-async.instances.LOGS.pretouch-interval=0",
+                        "staffix.messages-loggers-async.instances.LOGS.pretouch-ahead-time=80ms",
+                        "staffix.messages-loggers-async.instances.LOGS.pretouch-min-ahead-bytes=4194304")
+                .run(context -> {
+                    AsyncStoreSettings settings = asyncStoreSettings(context.getBean(AsyncMessagesLoggerContributor.class));
+
+                    assertThat(settings.getEventsBatching()).isEqualTo(50);
+                    assertThat(settings.getBatchingFlushInterval()).isEqualTo(Duration.ofMillis(20));
+                    assertThat(settings.getReaderThreadsCount()).isEqualTo(3);
+                    assertThat(settings.getReaderThreadMaxEventsProcessingPerStore()).isEqualTo(64);
+                    assertThat(settings.getRollCycleProvider().apply(FIX_SESSION_ID)).isEqualTo(RollCycles.FIVE_MINUTELY);
+                    assertThat(settings.getPretouchInterval()).isZero();
+                    assertThat(settings.getPretouchAheadTime()).isEqualTo(Duration.ofMillis(80));
+                    assertThat(settings.getPretouchMinAheadBytes()).isEqualTo(4L << 20);
+                });
+    }
+
+    @Test
+    void defaultsTheQueueTuning() {
+        runner.withPropertyValues("staffix.messages-loggers-async.instances.LOGS.wraps=LOGS",
+                        "staffix.messages-loggers-async.instances.LOGS.async-queue-directory=target/async-logger")
+                .run(context -> {
+                    AsyncStoreSettings settings = asyncStoreSettings(context.getBean(AsyncMessagesLoggerContributor.class));
+                    AsyncStoreSettings defaults = AsyncStoreSettings.builder().build();
+
+                    assertThat(settings.getAsyncQueueDirectory()).isEqualTo("target/async-logger");
+                    assertThat(settings.getEventsBatching()).isEqualTo(defaults.getEventsBatching());
+                    assertThat(settings.getBatchingFlushInterval()).isEqualTo(defaults.getBatchingFlushInterval());
+                    assertThat(settings.getReaderThreadsCount()).isEqualTo(defaults.getReaderThreadsCount());
+                    assertThat(settings.getReaderThreadMaxEventsProcessingPerStore())
+                            .isEqualTo(defaults.getReaderThreadMaxEventsProcessingPerStore());
+                    assertThat(settings.getRollCycleProvider().apply(FIX_SESSION_ID))
+                            .isEqualTo(defaults.getRollCycleProvider().apply(FIX_SESSION_ID));
+                    assertThat(settings.getPretouchInterval()).isEqualTo(defaults.getPretouchInterval());
+                    assertThat(settings.getPretouchAheadTime()).isEqualTo(defaults.getPretouchAheadTime());
+                    assertThat(settings.getPretouchMinAheadBytes()).isEqualTo(defaults.getPretouchMinAheadBytes());
+                });
+    }
+
+    private static AsyncStoreSettings asyncStoreSettings(AsyncMessagesLoggerContributor contributor) {
+        return ((AsyncMessagesLoggerSettings) contribute(contributor)).getAsyncStoreSettings();
     }
 
     private static FixMessagesLoggerSettings contribute(AsyncMessagesLoggerContributor contributor) {

@@ -16,6 +16,7 @@
 package org.lolaf.staffix.stores.loggers.async.spring;
 
 import lombok.Data;
+import net.openhft.chronicle.queue.RollCycles;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
 
 import java.time.Duration;
@@ -36,6 +37,44 @@ public class AsyncLoggerEntryProps {
      * Directory holding the on-disk queues that buffer each session's writes.
      */
     private String asyncQueueDirectory;
+    /**
+     * Maximum events the wrapped logger gets per call, through its batching API. Zero, the default, hands over one
+     * event at a time.
+     */
+    private Integer eventsBatching;
+    /**
+     * With batching, how long events wait for a full batch before they are handed over anyway. 100 ms by default.
+     */
+    private Duration batchingFlushInterval;
+    /**
+     * Threads reading the queues into the wrapped logger, each queue read by one of them. 1 by default.
+     */
+    private Integer readerThreadsCount;
+    /**
+     * Without batching, the most events a reader thread hands over from one queue before moving to the next. 1024 by
+     * default.
+     */
+    private Integer readerThreadMaxEventsProcessingPerStore;
+    /**
+     * How often each queue starts a new file, for example five-minutely; a file is deleted once it is read past. On
+     * tmpfs it bounds the memory a queue holds. Fast-hourly by default.
+     */
+    private RollCycles rollCycle;
+    /**
+     * How often a thread touches the pages ahead of each queue's writer, so that a write takes no page fault. Zero
+     * turns pretouching off. 1 ms by default.
+     */
+    private Duration pretouchInterval;
+    /**
+     * How far ahead of each queue's writer pages are touched, as the time the writer takes to fill them at its recent
+     * rate. Raise it when a queue's stop log line reports pages the writer reached first. 40 ms by default.
+     */
+    private Duration pretouchAheadTime;
+    /**
+     * The least distance ahead of each queue's writer, in bytes, which covers a burst after an idle spell. 1 MB by
+     * default.
+     */
+    private Long pretouchMinAheadBytes;
     /**
      * How often the wrapped logger is checked after it has failed, to see whether it is back.
      */

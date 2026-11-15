@@ -148,8 +148,24 @@ The other settings of `AsyncStoreSettings`, beyond the two tables above:
 | `threadFactory`               | `FastThreadLocalThread::new`                                          | creates the reader and pretouch threads                                                |
 | `queueSizeThresholdsSettings` | warning at 250, major at 1,000, critical at 5,000, checked every 10 s | the queue depths at which the probe raises its alert                                   |
 
-**In Spring Boot**, only `async-queue-directory` is exposed among these: the other settings, the pretouch ones
-included, are set through `AsyncStoreSettings.builder()` in Java.
+**In Spring Boot**, each async store or logger instance takes these settings as properties, in kebab case:
+`async-queue-directory`, `events-batching`, `batching-flush-interval`, `reader-threads-count`,
+`reader-thread-max-events-processing-per-store`, `pretouch-interval`, `pretouch-ahead-time`,
+`pretouch-min-ahead-bytes`, and `roll-cycle`, a `RollCycles` name applied to every session:
+
+```yaml
+staffix:
+  messages-stores-async:
+    instances:
+      MAIN:
+        wraps: MAIN
+        async-queue-directory: /var/lib/my-app/queues
+        roll-cycle: five-minutely
+        events-batching: 100
+```
+
+`builderConfigurer`, `threadFactory`, `readerThreadsIdleStrategy` and `queueSizeThresholdsSettings` are set in Java
+only, through `AsyncStoreSettings.builder()`.
 
 ---
 
