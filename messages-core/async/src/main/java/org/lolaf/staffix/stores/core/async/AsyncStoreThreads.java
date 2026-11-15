@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.stores.core.async.pretoucher.PretouchThread;
 
 import java.time.Duration;
 import java.util.*;
@@ -35,6 +36,7 @@ import java.util.function.ToLongFunction;
 public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleStartable<AsyncStoreThreads<T>> {
 
     private final AsyncStoreThread<T>[] asyncStoreThreads;
+    private final PretouchThread pretouchThread;
     private final AsyncStoreSettings asyncStoreSettings;
     private int nextRegisterIndex;
 
@@ -49,6 +51,8 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             asyncStoreThreads[i] = new AsyncStoreThread<>(instanceId, i, asyncStoreSettings.getReaderThreadsIdleStrategy().get(),
                     asyncStoreSettings.getReaderThreadMaxEventsProcessingPerStore(), asyncEventInstanceProvider, asyncStoreSettings.getThreadFactory());
         }
+        this.pretouchThread = new PretouchThread(instanceId, asyncStoreSettings.getThreadFactory(),
+                asyncStoreSettings.getPretouchInterval());
     }
 
     @Override
@@ -56,6 +60,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
             asyncStoreThread.start();
         }
+        pretouchThread.start();
     }
 
     @Override
@@ -63,6 +68,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
             asyncStoreThread.stop(stopDeadline);
         }
+        pretouchThread.stop(stopDeadline);
     }
 
     /**
@@ -77,6 +83,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             nextRegisterIndex = 0;
         }
         asyncStoreThreads[nextRegisterIndex++].registerBatching(asyncStoreSettings, messagesQueue, eventsConsumer, asyncEventSerde, eventClass);
+        pretouchThread.add(eventsConsumer, messagesQueue);
     }
 
     /**
@@ -84,7 +91,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
      * at least a second): the caller must then expect a late call into it.
      */
     public boolean unregisterBatching(Consumer<T[]> eventsConsumer, Deadline deadline) {
-        return removeAndAwait(t -> t.unRegisterBatching(eventsConsumer), deadline);
+        return removeAndAwait(eventsConsumer, t -> t.unRegisterBatching(eventsConsumer), deadline);
     }
 
     /**
@@ -98,6 +105,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             nextRegisterIndex = 0;
         }
         asyncStoreThreads[nextRegisterIndex++].register(messagesQueue, eventsConsumer, asyncEventSerde);
+        pretouchThread.add(eventsConsumer, messagesQueue);
     }
 
     /**
@@ -105,13 +113,14 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
      * at least a second): the caller must then expect a late call into it.
      */
     public boolean unregister(Consumer<T> eventsConsumer, Deadline deadline) {
-        return removeAndAwait(t -> t.unRegister(eventsConsumer), deadline);
+        return removeAndAwait(eventsConsumer, t -> t.unRegister(eventsConsumer), deadline);
     }
 
-    private boolean removeAndAwait(ToLongFunction<AsyncStoreThread<T>> unRegister, Deadline deadline) {
+    private boolean removeAndAwait(Object eventsConsumer, ToLongFunction<AsyncStoreThread<T>> unRegister, Deadline deadline) {
         AsyncStoreThread<T> owner = null;
         long operationsCountAtRemoval = NOT_REGISTERED;
         synchronized (this) {
+            pretouchThread.remove(eventsConsumer);
             for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
                 operationsCountAtRemoval = unRegister.applyAsLong(asyncStoreThread);
                 if (operationsCountAtRemoval != NOT_REGISTERED) {

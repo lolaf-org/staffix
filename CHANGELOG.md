@@ -76,6 +76,14 @@ could mean.
   in `getLostWrites()` and in `lostWrites` in `GET v1/ha/sessions`, and raises the `messages-lost` alert, which stays
   until an operator clears it, which also takes them out of the count. A follower's store failing a write while its storage is up no longer stops replication
   for the other sessions.
+- **The async store and logger keep page faults off the session thread.** A thread of their own prepares the memory
+  of each queue ahead of where the next messages go, so the slowest calls to store or log a message are an order of
+  magnitude faster: on tmpfs at the p99, on disk at the p99.9. It is on by default and follows each session's write
+  rate. `AsyncStoreSettings.pretouchAheadTime` sets how far ahead it works (40 ms of writes) and
+  `pretouchMinAheadBytes` the least it prepares (1 MB); `pretouchInterval(Duration.ZERO)` turns it off. A queue on a
+  tmpfs mounted with huge pages is faster still. A queue on tmpfs whose huge pages do not match the setting, none
+  while preparing ahead or some while not, logs a warning at startup. See
+  [Tuning the async queue](docs/async-queue-tuning.md).
 
 ### Changed
 

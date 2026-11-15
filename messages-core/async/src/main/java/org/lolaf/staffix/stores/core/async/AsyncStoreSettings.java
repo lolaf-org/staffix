@@ -103,6 +103,31 @@ public class AsyncStoreSettings {
     private int readerThreadMaxEventsProcessingPerStore = 1024;
 
     /**
+     * How often a thread of its own touches the pages ahead of each queue's writer, so that an append does not take a
+     * page fault. {@link Duration#ZERO} turns pretouching off and saves the thread; appends then fault on every new
+     * page.
+     */
+    @Builder.Default
+    private Duration pretouchInterval = Duration.ofMillis(1);
+
+    /**
+     * How far ahead of each queue's writer the pages are touched, as the time the writer takes to reach them at its
+     * recent rate. It must outlast the pretouch thread's longest stall, which can be far longer than
+     * {@link #pretouchInterval}: raise it if a queue's stop log line reports pages the writer reached first.
+     * {@link Duration#ZERO} keeps the distance at {@link #pretouchMinAheadBytes}.
+     */
+    @Builder.Default
+    private Duration pretouchAheadTime = Duration.ofMillis(40);
+
+    /**
+     * The least distance ahead of each queue's writer, which covers a burst from idle before the measured rate catches
+     * up. The distance is capped at half the queue file's chunk size, since past a chunk the writer has not reached
+     * yet the touched pages could be unmapped before it gets there.
+     */
+    @Builder.Default
+    private long pretouchMinAheadBytes = 1 << 20;
+
+    /**
      * The depths at which the queue's probe raises and clears its alert; see {@link QueueSizeEvaluator}.
      */
     @Builder.Default

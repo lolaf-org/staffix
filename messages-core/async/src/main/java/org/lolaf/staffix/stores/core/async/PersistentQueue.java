@@ -26,6 +26,9 @@ import net.openhft.chronicle.queue.impl.single.ThreadLocalAppender;
 import net.openhft.chronicle.wire.DocumentContext;
 import net.openhft.chronicle.wire.WireType;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.stores.core.async.pretoucher.Pretouchable;
+import org.lolaf.staffix.stores.core.async.pretoucher.QueueMountCheck;
+import org.lolaf.staffix.stores.core.async.pretoucher.QueuePretoucher;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,7 +46,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * message path, not to make it optional - an event already queued must still be written after a crash.
  */
 @Slf4j
-public class PersistentQueue<T extends AsyncEvent> {
+public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
 
     private final AtomicLong offers;
     private final AtomicLong polls;
@@ -79,6 +82,8 @@ public class PersistentQueue<T extends AsyncEvent> {
      */
     @SuppressWarnings("java:S3077")
     private volatile StoreFilesCleaner pendingDeletions;
+    @SuppressWarnings("java:S3077")
+    private volatile QueuePretoucher pretoucher;
 
     public PersistentQueue(FixSessionId fixSessionId) {
         this.offers = new AtomicLong();
@@ -103,6 +108,7 @@ public class PersistentQueue<T extends AsyncEvent> {
                 throw new IllegalStateException("Unable to create directory " + queueDir);
             }
         }
+        QueueMountCheck.INSTANCE.check(new File(queueDir).toPath(), asyncStoreSettings.getPretouchInterval().toNanos() > 0);
 
         String name = type + "-" + fixSessionId.forFileName("");
         // bump the generation first, so that a cleaner of the previous generation can no longer publish itself here
@@ -114,6 +120,8 @@ public class PersistentQueue<T extends AsyncEvent> {
                 .rollCycle(asyncStoreSettings.getRollCycleProvider().apply(fixSessionId));
         asyncStoreSettings.getBuilderConfigurer().accept(fixSessionId, builder);
         queue = builder.build();
+        pretoucher = new QueuePretoucher(queue, asyncStoreSettings.getPretouchAheadTime(),
+                asyncStoreSettings.getPretouchMinAheadBytes());
         confirmedTailer = queue.createTailer(name);
         confirmedTailer.singleThreadedCheckDisabled(true);
         tailer = queue.createTailer();
@@ -156,13 +164,17 @@ public class PersistentQueue<T extends AsyncEvent> {
         }
         started.set(false);
         unconfirmedPolls = 0;
+        long pretouchMissedPages = pretoucher.missedPages();
+        pretoucher.close();
+        pretoucher = null;
         tailer.close();
         tailer = null;
         confirmedTailer.close();
         confirmedTailer = null;
         queue.close();
         queue = null;
-        log.info("Persistent queue for FIX session {} is stopped with {} unprocessed elements", fixSessionId, getSize());
+        log.info("Persistent queue for FIX session {} is stopped with {} unprocessed elements and {} pages the writer reached before the pretoucher",
+                fixSessionId, getSize(), pretouchMissedPages);
     }
 
     public long pollsCount() {
@@ -191,6 +203,25 @@ public class PersistentQueue<T extends AsyncEvent> {
             asyncEventSerde.serialize(dc, toSerialize);
         }
         offers.getAndIncrement();
+    }
+
+    /**
+     * Takes the page faults of the next appends off {@link #offer}.
+     */
+    @Override
+    public void pretouch() {
+        QueuePretoucher localPretoucher = pretoucher;
+        if (localPretoucher != null) {
+            localPretoucher.pretouch();
+        }
+    }
+
+    /**
+     * See {@link QueuePretoucher#missedPages()}; counted from the last start.
+     */
+    public long pretouchMissedPages() {
+        QueuePretoucher localPretoucher = pretoucher;
+        return localPretoucher == null ? 0 : localPretoucher.missedPages();
     }
 
     public boolean poll(AsyncEventSerde<T> asyncEventSerde, T target) {

@@ -23,6 +23,7 @@ import org.openjdk.jmh.annotations.Param;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 
 /**
  * The async store in front of a store dropping every write, so that only the queue is measured, not the store behind
@@ -30,21 +31,29 @@ import java.nio.file.Path;
  */
 public class AsyncMessagesStoreBenchmark extends AbstractMessagesStoreBenchmark {
 
-    @Param({"SHM", "DISK"})
+    @Param({"SHM", "HUGE_SHM", "DISK"})
     FileSystem queueFileSystem;
     /**
      * 0 hands the wrapped store one message at a time.
      */
     @Param({"0", "100"})
     int eventsBatching;
+    /**
+     * False turns off the pretouch thread, which the default settings run.
+     */
+    @Param({"true", "false"})
+    boolean pretouch;
 
     @Override
     protected FixMessagesStore newStore() {
+        AsyncStoreSettings.AsyncStoreSettingsBuilder<?, ?> asyncStoreSettings = AsyncStoreSettings.builder()
+                .asyncQueueDirectory(queueDirectory().toString())
+                .eventsBatching(eventsBatching);
+        if (!pretouch) {
+            asyncStoreSettings.pretouchInterval(Duration.ZERO);
+        }
         return new AsyncMessagesStore.AsyncMessagesStoreFactoryImpl().newInstance(AsyncMessagesStoreSettings.builder()
-                .asyncStoreSettings(AsyncStoreSettings.builder()
-                        .asyncQueueDirectory(queueDirectory().toString())
-                        .eventsBatching(eventsBatching)
-                        .build())
+                .asyncStoreSettings(asyncStoreSettings.build())
                 .wrappedFixMessagesStoreSettings(NoOpMessagesStore.Settings.INSTANCE)
                 .build());
     }

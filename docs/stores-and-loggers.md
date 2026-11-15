@@ -206,7 +206,8 @@ AsyncMessagesStoreSettings.builder()
 ```
 
 Chronicle's queue is off-heap and memory-mapped, so the handover allocates nothing, and queued work survives a
-process crash rather than dying with the buffer that held it.
+process crash rather than dying with the buffer that held it. Where to put the queue, batching, the reader threads
+and pretouching are in [Tuning the async queue](async-queue-tuning.md).
 
 | setting                                      | default    | what it is for                                                                 |
 |----------------------------------------------|------------|--------------------------------------------------------------------------------|

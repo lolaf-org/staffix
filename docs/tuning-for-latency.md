@@ -135,7 +135,8 @@ Sessions also expose a pool via `newEncodersPool()` for the paths where a single
 ## 8. Keep persistence and logging off the message path
 
 A store or logger that does I/O inline puts that I/O inside your round trip. Wrap it in the async decorator, which
-hands the work to a Chronicle Queue and returns. See [Stores and loggers](stores-and-loggers.md).
+hands the work to a Chronicle Queue and returns. See [Stores and loggers](stores-and-loggers.md), and [Tuning the
+async queue](async-queue-tuning.md) for where to put that queue and how to keep its appends fast.
 
 The benchmark numbers in [Performance](performance.md) were produced with an in-memory store and logging off, so they measure the
 protocol path alone. Turning on a real store is what the async wrapper exists to keep out of the round trip.

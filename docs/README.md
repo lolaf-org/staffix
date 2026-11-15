@@ -15,6 +15,7 @@ one command and is the shortest path to a working session. Then come back here.
 | [Decoding in depth](decoding-messages-advanced.md) | Why decoding works this way, what a header field costs, and what do I use when typed bindings are not enough? |
 | [FIX versions and dictionaries](fix-versions-and-dictionaries.md) | Which package do I depend on, how do I run several FIX versions at once, and how do I generate one from a counterparty's dictionary? |
 | [Stores and loggers](stores-and-loggers.md) | Where do my messages get persisted and logged, and how do I keep that off the latency path? |
+| [Tuning the async queue](async-queue-tuning.md) | Where do I put the async store's and logger's queue, should it use huge pages, and what do the pretouch, batching and reader settings change? |
 | [Tuning for latency](tuning-for-latency.md) | What do I actually change to get the numbers in [Performance](performance.md), and what does each one cost? |
 | [Efficient identifier usage](efficient-identifiers-usage.md) | How do I mint and decode ids without allocating, and do I want a UUID or a Snowflake? |
 | [Monitoring](monitoring.md) | How do I get metrics, traces and dashboards without putting them on the message path? |

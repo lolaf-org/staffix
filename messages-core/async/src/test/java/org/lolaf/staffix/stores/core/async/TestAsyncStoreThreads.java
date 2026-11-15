@@ -33,6 +33,8 @@ import static org.awaitility.Awaitility.await;
 
 class TestAsyncStoreThreads {
 
+    private static final String PRETOUCH_THREAD = "Staffix-async-queue-pretoucher-test";
+
     FixSessionId fixSessionId;
     AsyncStoreThreads<TestAsyncEvent> asyncStoreThreads;
     AsyncStoreSettings asyncStoreSettings;
@@ -40,11 +42,24 @@ class TestAsyncStoreThreads {
     AsyncEventSerde<TestAsyncEvent> asyncEventSerde;
 
     private static java.util.List<String> readerThreadsStillAlive() {
+        return threadsStillAlive("Staffix-async-store-reader-");
+    }
+
+    private static java.util.List<String> threadsStillAlive(String namePrefix) {
         return Thread.getAllStackTraces().keySet().stream()
                 .filter(Thread::isAlive)
                 .map(Thread::getName)
-                .filter(name -> name.startsWith("Staffix-async-store-reader-"))
+                .filter(name -> name.startsWith(namePrefix))
                 .collect(java.util.stream.Collectors.toList());
+    }
+
+    private AsyncStoreThreads<TestAsyncEvent> asyncStoreThreads(AsyncStoreSettings settings) {
+        return new AsyncStoreThreads<>(settings, "test", new AsyncEventInstanceProvider<>() {
+            @Override
+            public TestAsyncEvent instanciateAsyncEvent(Consumer<TestAsyncEvent> releaseCallback) {
+                return new TestAsyncEvent(releaseCallback, null);
+            }
+        });
     }
 
     @BeforeEach
@@ -57,12 +72,7 @@ class TestAsyncStoreThreads {
 
         persistentQueue = new PersistentQueue<>(fixSessionId);
 
-        asyncStoreThreads = new AsyncStoreThreads<>(asyncStoreSettings, "test", new AsyncEventInstanceProvider<>() {
-            @Override
-            public TestAsyncEvent instanciateAsyncEvent(Consumer<TestAsyncEvent> releaseCallback) {
-                return new TestAsyncEvent(releaseCallback, null);
-            }
-        });
+        asyncStoreThreads = asyncStoreThreads(asyncStoreSettings);
         asyncEventSerde = new AsyncEventSerde<>() {
             @Override
             public void deserialize(DocumentContext documentContext, TestAsyncEvent deserializeTarget) {
@@ -114,6 +124,26 @@ class TestAsyncStoreThreads {
         await().untilAsserted(() -> assertThat(readerThreadsStillAlive())
                 .as("reader threads left running after stop")
                 .isEmpty());
+        await().untilAsserted(() -> assertThat(threadsStillAlive(PRETOUCH_THREAD))
+                .as("pretouch thread left running after stop")
+                .isEmpty());
+    }
+
+    @Test
+    void aPretouchThreadRunsByDefault() {
+        asyncStoreThreads.start();
+
+        await().untilAsserted(() -> assertThat(threadsStillAlive(PRETOUCH_THREAD)).hasSize(1));
+    }
+
+    @Test
+    void aZeroPretouchIntervalStartsNoPretouchThread() {
+        asyncStoreThreads = asyncStoreThreads(asyncStoreSettings.toBuilder().pretouchInterval(Duration.ZERO).build());
+
+        asyncStoreThreads.start();
+
+        assertThat(readerThreadsStillAlive()).isNotEmpty();
+        assertThat(threadsStillAlive(PRETOUCH_THREAD)).isEmpty();
     }
 
     @AllArgsConstructor

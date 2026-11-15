@@ -110,22 +110,24 @@ Every cell uses the same unit: the typical call of the file store without sync, 
 outlive the process. Every store is called once per message, as a session calls it. Batching is a setting of the async
 store only: it is how the async store hands the messages it queued to the store behind it.
 
-| store                                  | typical call (p50) | p99            | p99.9           |
-|----------------------------------------|--------------------|----------------|-----------------|
-| in memory                              | below 1×           | about 5×       | about 10×       |
-| file, no sync, on tmpfs or on disk     | 1×                 | about 6×       | about 12×       |
-| file, synced, on tmpfs                 | about 7×           | about 17×      | about 45×       |
-| async, queue on tmpfs, batching        | about 3×           | about 60×      | about 150×      |
-| async, queue on tmpfs, no batching     | about 7×           | about 60×      | about 130×      |
-| async, queue on disk, batching         | about 3×           | about 15×      | about 1,000×    |
-| async, queue on disk, no batching      | about 7×           | about 15×      | about 1,000×    |
-| file, synced, on disk                  | about 30,000×      | about 60,000×  | about 120,000×  |
+| store                                              | typical call (p50) | p99           | p99.9          |
+|----------------------------------------------------|--------------------|---------------|----------------|
+| in memory                                          | below 1×           | about 4×      | about 7×       |
+| file, no sync, on tmpfs or on disk                 | 1×                 | about 5×      | about 10×      |
+| file, synced, on tmpfs                             | about 6×           | about 13×     | about 35×      |
+| async, queue on tmpfs with huge pages, batching    | about 3×           | about 8×      | about 25×      |
+| async, queue on tmpfs with huge pages, no batching | about 7×           | about 10×     | about 30×      |
+| async, queue on disk, batching                     | about 3×           | about 9×      | about 40×      |
+| async, queue on disk, no batching                  | about 6×           | about 11×     | about 45×      |
+| async, queue on tmpfs, batching                    | about 3×           | about 9×      | about 75×      |
+| async, queue on tmpfs, no batching                 | about 4×           | about 9×      | about 75×      |
+| file, synced, on disk                              | about 30,000×      | about 50,000× | about 110,000× |
 
 What it shows:
 
 - **At a typical call, memory, the unsynced file store and the async store sit within one order of magnitude of each
   other**, and a synced write to disk sits four orders above them all. That gap is the choice that matters. Their
-  slowest calls spread wider, over two orders of magnitude, and that is where they differ most.
+  slowest calls spread a little wider, about one order of magnitude, and that is where they differ most.
 - **The in-memory store's typical call is lost in the harness's own noise.**
 - **An unsynced file store costs the same on disk as on tmpfs**: the write lands in the page cache, and the kernel
   writes it back later. The messages survive the process crashing, not the machine losing power.
@@ -133,35 +135,38 @@ What it shows:
   and once for the header, so a single flush would halve the cost without changing its order of magnitude.
 - **Syncing on tmpfs protects nothing**, since tmpfs is memory and does not survive a reboot. Leave `syncWrites` off
   there.
-- **The async store costs a few times the unsynced file store at a typical call**, and one to two orders of magnitude
-  more at the slowest, whatever it wraps, because the session only pays for the queue append. In front of an unsynced
+- **The async store costs a few times the unsynced file store at a typical call**, about twice at the p99 and three
+  to eight times at the p99.9, whatever it wraps, because the session only pays for the queue append. In front of an unsynced
   file store it is a slowdown. **In front of a synced disk store it is thousands of times faster** on the session
   thread, but the message is only on disk once the background write has happened.
-- **The async store's slowest calls are page faults.** The queue only appends, so it keeps writing to pages the process
-  has not touched yet, and the kernel has to provide each one. On tmpfs about one call in twelve faults, which makes
-  the p99. On disk far fewer calls fault, but each costs far more because the file system allocates blocks, which
-  makes the p99.9. The file store escapes this because it reuses a fixed-size file: once it has filled it, it writes
-  only to pages already in memory. Given a file too large to fill during the run, it shows the same tail on disk.
-  Chronicle's pretoucher, which faults pages in ahead of the writer, is an Enterprise feature and does nothing in the
-  open-source build.
+- **The async store's slowest calls would be page faults, and pretouching takes them off the session thread.** The
+  queue only appends, so it keeps writing to pages the process has not touched yet, and the kernel has to provide each
+  one: on tmpfs about one call in twelve, on disk fewer but each at the price of a block allocation. A thread of the
+  async store's own touches the pages ahead of the writer, on by default, which is what takes its p99 on tmpfs and its
+  p99.9 on disk down by an order of magnitude or more (Chronicle's own pretoucher is an Enterprise feature). The file
+  store escapes this because it reuses a fixed-size file: once it has filled it, it writes only to pages already in
+  memory. Given a file too large to fill during the run, it shows the same tail on disk.
 - **Behind a slow store, the async store needs batching.** Writing one message at a time, a synced disk store drains
   far fewer messages per second than the benchmark sends, and the queue grows without bound. With batching it keeps up,
   and the session thread's typical call costs about half as much; its slowest calls do not change.
-- **Where the queue lives changes the slowest calls and what survives.** A typical call costs the same on both. A
-  queue on tmpfs has the worse p99 and a queue on disk the far worse p99.9. A queue on tmpfs survives the process
-  crashing but not a reboot; one on disk also survives a reboot, but not a power loss.
+- **Where the queue lives changes the slowest calls and what survives.** A typical call costs about the same
+  everywhere. The p99.9 is lowest on a tmpfs with huge pages, then on disk, then on a plain tmpfs. A queue on tmpfs
+  survives the process crashing but not a reboot; one on disk also survives a reboot, but not a power loss. What each
+  setting does, how to mount a tmpfs with huge pages and what pretouching costs: [Tuning the async
+  queue](async-queue-tuning.md).
 - **The queue is never synced per write.** Chronicle's `syncMode`, which `builderConfigurer` can set, only syncs a
   piece of the queue file when Chronicle stops using it. So a queue on disk is as durable as the unsynced file store,
   whatever its settings.
 
 <sub>JMH sample mode at 20,000 messages per second, 300-byte messages, pacing outside the timed call; disk is ext4 on
-NVMe, tmpfs is `/dev/shm`. The async store is measured in front of a store that drops every write, so its rows show the
-queue alone. Ratios are rounded: between two runs on the same
-machine every figure moved by up to 2×, but the stores kept their order. Raw results:
-[`NoOp`](../benchmarks/results/jmh-result-NoOpMessagesStoreBenchmark-2026-11-14.json),
-[`Memory`](../benchmarks/results/jmh-result-MemoryMessagesStoreBenchmark-2026-11-14.json),
-[`File`](../benchmarks/results/jmh-result-FileMessagesStoreBenchmark-2026-11-14.json),
-[`Async`](../benchmarks/results/jmh-result-AsyncMessagesStoreBenchmark-2026-11-14.json).</sub>
+NVMe, tmpfs is `/dev/shm`, tmpfs with huge pages a tmpfs mounted with `huge=within_size`. The async store is measured
+in front of a store that drops every write, so its rows show the queue alone, with pretouching at its defaults; its
+rows without pretouching are in [Tuning the async queue](async-queue-tuning.md#measured). Ratios are rounded: between
+two runs on the same machine every figure moved by up to 2×, but the stores kept their order. Raw results:
+[`NoOp`](../benchmarks/results/jmh-result-NoOpMessagesStoreBenchmark-2026-11-15.json),
+[`Memory`](../benchmarks/results/jmh-result-MemoryMessagesStoreBenchmark-2026-11-15.json),
+[`File`](../benchmarks/results/jmh-result-FileMessagesStoreBenchmark-2026-11-15.json),
+[`Async`](../benchmarks/results/jmh-result-AsyncMessagesStoreBenchmark-2026-11-15.json).</sub>
 
 
 ## How the latency is achieved

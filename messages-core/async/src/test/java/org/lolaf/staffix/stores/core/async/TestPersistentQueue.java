@@ -29,9 +29,11 @@ import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 class TestPersistentQueue {
 
@@ -400,6 +402,52 @@ class TestPersistentQueue {
         persistentQueue.confirmPolled();
         BackgroundResourceReleaser.releasePendingResources();
         assertThat(queueFiles(fixSessionDir)).hasSize(1);
+    }
+
+    /**
+     * The pretoucher holds the last cycle and is closed and recreated by each stop and start: neither may fail while
+     * it runs, nor keep a polled file from being deleted.
+     */
+    @Test
+    void restartsAndDeletesPolledFilesWhilePretouched() throws InterruptedException {
+        File chronicleDir = new File("./target/chronicle-" + System.nanoTime());
+        File fixSessionDir = new File(chronicleDir, "test-" + fixSessionId.forFileName(""));
+        asyncStoreSettings = AsyncStoreSettings.builder()
+                .asyncQueueDirectory(chronicleDir.getPath())
+                .rollCycleProvider(sid -> TestRollCycles.TEST_SECONDLY)
+                .build();
+        persistentQueue.start(asyncStoreSettings, "test");
+        AtomicBoolean pretouching = new AtomicBoolean(true);
+        Thread pretoucher = new Thread(() -> {
+            while (pretouching.get()) {
+                persistentQueue.pretouch();
+            }
+        });
+        pretoucher.start();
+
+        List<String> polled = new ArrayList<>();
+        try {
+            for (int i = 0; i < 3; i++) {
+                offer("test-" + i);
+                persistentQueue.stop();
+                persistentQueue.start(asyncStoreSettings, "test");
+                polled.addAll(pollAll());
+                persistentQueue.confirmPolled();
+                LockSupport.parkNanos(Duration.ofMillis(1100).toNanos());
+            }
+            offer("test-3");
+            polled.addAll(pollAll());
+            persistentQueue.confirmPolled();
+
+            assertThat(polled).containsExactly("test-0", "test-1", "test-2", "test-3");
+            await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                BackgroundResourceReleaser.releasePendingResources();
+                assertThat(queueFiles(fixSessionDir)).hasSize(1);
+            });
+        } finally {
+            pretouching.set(false);
+            pretoucher.join();
+        }
     }
 
     @AllArgsConstructor

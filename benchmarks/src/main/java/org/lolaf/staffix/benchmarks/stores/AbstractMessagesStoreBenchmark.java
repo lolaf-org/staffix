@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.benchmarks.stores;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.alerting.Probe;
@@ -26,6 +27,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.openjdk.jmh.annotations.*;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,13 +62,45 @@ import java.util.stream.Stream;
 @State(Scope.Benchmark)
 public abstract class AbstractMessagesStoreBenchmark {
 
+    private static final String HUGE_PAGES_MOUNT_POINT = "/tmp/staffix-huge";
+
+    @RequiredArgsConstructor
     public enum FileSystem {
-        SHM,
-        DISK;
+        SHM(Paths.get("/dev/shm", "staffix-messages-store-benchmark")),
+        /**
+         * A tmpfs with huge pages, which only root can mount: the benchmark fails with the command to run when it is
+         * not mounted, rather than measure a tmpfs without huge pages.
+         */
+        HUGE_SHM(Paths.get(HUGE_PAGES_MOUNT_POINT, "staffix-messages-store-benchmark")) {
+            @Override
+            Path directory(String name) {
+                requireHugePagesMount();
+                return super.directory(name);
+            }
+        },
+        DISK(Paths.get("target", "messages-store-benchmark").toAbsolutePath());
+
+        private final Path root;
 
         Path directory(String name) {
-            return this == SHM ? Paths.get("/dev/shm", "staffix-messages-store-benchmark", name)
-                    : Paths.get("target", "messages-store-benchmark", name).toAbsolutePath();
+            return root.resolve(name);
+        }
+    }
+
+    private static void requireHugePagesMount() {
+        boolean mounted;
+        try (Stream<String> mounts = Files.lines(Paths.get("/proc/self/mounts"))) {
+            mounted = mounts.map(mount -> mount.split(" "))
+                    .anyMatch(fields -> fields[1].equals(HUGE_PAGES_MOUNT_POINT) && fields[2].equals("tmpfs")
+                            && Arrays.stream(fields[3].split(","))
+                            .anyMatch(option -> option.equals("huge=within_size") || option.equals("huge=always")));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        if (!mounted) {
+            throw new IllegalStateException(HUGE_PAGES_MOUNT_POINT + " is not a tmpfs with huge pages, mount it with: "
+                    + "mkdir -p " + HUGE_PAGES_MOUNT_POINT + " && sudo mount -t tmpfs -o huge=within_size,size=4g,uid=$(id -u) tmpfs "
+                    + HUGE_PAGES_MOUNT_POINT);
         }
     }
 
