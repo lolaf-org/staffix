@@ -85,6 +85,10 @@ half the queue file's chunk size, 32 MB by default; to go further, raise `blockS
 **What it costs:** one thread waking every millisecond, and memory provided ahead of when the queue needs it. Touching
 a page never changes a byte of it, so it is safe while the writer fills the same page.
 
+**A busy disk undoes it.** When other processes write heavily to the same disk, the kernel writes the touched pages
+back early and protects them again, so the session thread faults on them anyway, at times more often than without
+pretouching. A queue whose latency matters belongs on tmpfs, or on a disk nothing else writes much to.
+
 **When to raise `pretouchAheadTime`.** A session with [monitoring](monitoring.md#the-async-store-and-loggers-meters)
 counts the pages its writer reached before the pretouch thread, each a page fault on the session thread:
 `async.store.pretouch.missed.pages` for the store and `async.logger.pretouch.missed.pages` for the logger. Without

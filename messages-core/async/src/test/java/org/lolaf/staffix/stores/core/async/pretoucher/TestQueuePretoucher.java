@@ -16,6 +16,7 @@
 package org.lolaf.staffix.stores.core.async.pretoucher;
 
 import net.openhft.chronicle.core.io.BackgroundResourceReleaser;
+import net.openhft.chronicle.core.io.IOTools;
 import net.openhft.chronicle.queue.ChronicleQueue;
 import net.openhft.chronicle.queue.ExcerptAppender;
 import net.openhft.chronicle.queue.ExcerptTailer;
@@ -66,6 +67,7 @@ class TestQueuePretoucher {
     final Map<Integer, AtomicInteger> cycleHolders = new ConcurrentHashMap<>();
     SingleChronicleQueue queue;
     QueuePretoucher pretoucher;
+    File tmpfsDirectory;
 
     @BeforeEach
     void setup() {
@@ -75,9 +77,16 @@ class TestQueuePretoucher {
     @AfterEach
     void shutdown() {
         close();
+        if (tmpfsDirectory != null) {
+            IOTools.deleteDirWithFiles(tmpfsDirectory);
+        }
     }
 
     private void open(UnaryOperator<SingleChronicleQueueBuilder> configurer) {
+        open(new File("./target/pretouch-" + System.nanoTime()), configurer);
+    }
+
+    private void open(File directory, UnaryOperator<SingleChronicleQueueBuilder> configurer) {
         StoreFileListener holdersCounter = new StoreFileListener() {
             @Override
             public void onAcquired(int cycle, File file) {
@@ -89,7 +98,7 @@ class TestQueuePretoucher {
                 cycleHolders.computeIfAbsent(cycle, c -> new AtomicInteger()).decrementAndGet();
             }
         };
-        queue = configurer.apply(ChronicleQueue.singleBuilder(new File("./target/pretouch-" + System.nanoTime()))
+        queue = configurer.apply(ChronicleQueue.singleBuilder(directory)
                         .wireType(WireType.FIELDLESS_BINARY)
                         .storeFileListener(holdersCounter))
                 .build();
@@ -261,14 +270,15 @@ class TestQueuePretoucher {
     }
 
     /**
-     * Counted on the writer's own thread, through the real pretouch thread. Without it, how often an append faults
-     * depends on the file system, so a baseline too low to tell the difference skips the test.
+     * Counted on the writer's own thread, through the real pretouch thread. On tmpfs: on disk, writeback under
+     * concurrent writes write-protects the touched pages again, and the writer faults on them anyway.
      */
     @Test
     @EnabledOnOs(OS.LINUX)
     void theWriterTakesAlmostNoPageFault() throws Exception {
+        assumeThat(Path.of("/dev/shm")).isDirectory();
+        tmpfsDirectory = new File("/dev/shm/staffix-pretouch-" + System.nanoTime());
         long withoutPretouching = writerMinorFaults(false);
-        assumeThat(withoutPretouching).as("minor faults without pretouching").isGreaterThanOrEqualTo(100);
 
         long withPretouching = writerMinorFaults(true);
 
@@ -277,7 +287,7 @@ class TestQueuePretoucher {
 
     private long writerMinorFaults(boolean pretouching) throws Exception {
         close();
-        open(UnaryOperator.identity());
+        open(new File(tmpfsDirectory, String.valueOf(System.nanoTime())), UnaryOperator.identity());
         PretouchThread pretouchThread = new PretouchThread("test", Executors.defaultThreadFactory(),
                 Duration.ofMillis(1));
         pretouchThread.add(this, pretoucher::pretouch);
