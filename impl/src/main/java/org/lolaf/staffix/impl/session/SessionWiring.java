@@ -29,6 +29,7 @@ import org.lolaf.staffix.api.logging.VoidMessageLogger;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -84,7 +85,8 @@ final class SessionWiring {
     final SessionMessageExecutors messageExecutors;
     final ExecutorService disconnectedSessionsExecutor;
 
-    SessionWiring(FixSessionImpl fixSession, String fixInstanceId, FixSessionSettings settings, ProbesImpl probes,
+    SessionWiring(FixSessionImpl fixSession, String fixInstanceId, FixSessionSettings settings,
+                  FixSessionDesiredState desiredState, ProbesImpl probes,
                   FixSessionRuntimeDependencies runtimeDependencies, ScheduledExecutorService scheduler,
                   IOSettings ioSettings, MessageExecutorsRuntime messageExecutorsRuntime, Clock providedClock) {
         this.fixSessionId = settings.getFixSessionId();
@@ -104,7 +106,7 @@ final class SessionWiring {
         FixSessionScheduleManager scheduleManager = new FixSessionScheduleManager(settings, clock);
         FixSessionStateComponent state = new FixSessionStateComponent(
                 settings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR),
-                settings.getDesiredSessionState(), scheduleManager);
+                desiredState, scheduleManager);
         this.components = new FixSessionLayerComponents();
         GuardedFixSessionMessagesStore guardedStore = new GuardedFixSessionMessagesStore(
                 runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes), fixSessionId,

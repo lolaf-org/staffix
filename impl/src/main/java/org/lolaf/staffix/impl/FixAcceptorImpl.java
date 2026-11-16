@@ -42,6 +42,7 @@ import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
@@ -270,7 +271,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                     .filter(FixAcceptorImpl::isAcceptorSession)
                     .collect(Collectors.toList());
             configuredSessionsSettings.addAll(settings);
-            settings.forEach(this::setupNewFixSession);
+            settings.forEach(s -> setupNewFixSession(s, s.getDesiredSessionState()));
             store.register(this);
         });
         refreshFixAcceptorSessions();
@@ -339,9 +340,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         return fixAcceptorBuilder.getScheduledExecutorService() != null ? fixAcceptorBuilder.getScheduledExecutorService() : scheduledExecutorService;
     }
 
-    private void setupNewFixSession(FixSessionSettings settings) {
+    private void setupNewFixSession(FixSessionSettings settings, FixSessionDesiredState desiredState) {
         FixSessionRuntimeDependencies runtimeDependencies = fixRuntimeDependenciesSupplier.apply(settings);
-        FixSessionImpl fixSessionImpl = new FixSessionImpl(fixAcceptorBuilder.getInstanceId(), settings,
+        FixSessionImpl fixSessionImpl = new FixSessionImpl(fixAcceptorBuilder.getInstanceId(), settings, desiredState,
                 runtimeDependencies, getScheduler(), fixAcceptorBuilder.getIoSettings(), messageExecutorsRuntime, fixAcceptorBuilder.getClock());
         fixSessionImpl.start(runtimeDependencies);
         configuredSessions.put(settings.getFixSessionId(), fixSessionImpl);
@@ -475,13 +476,17 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public void onAddedSession(FixSessionSettings settings) {
+        addSession(settings, settings.getDesiredSessionState());
+    }
+
+    private void addSession(FixSessionSettings settings, FixSessionDesiredState desiredState) {
         // Same filter as the initial load: a store adding an initiator session at runtime is not this acceptor's.
         if (isAcceptorSession(settings)) {
             // Kept in step with onRemovedSession, which takes the settings back out: without this a session added
             // after start up was managed but absent from getConfiguredSessionsSettings().
             configuredSessionsSettings.add(settings);
             refreshFixAcceptorSessions();
-            setupNewFixSession(settings);
+            setupNewFixSession(settings, desiredState);
         }
     }
 
@@ -508,7 +513,8 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 || !runningSession.isConnected();
         if (restart) {
             stopManaging(oldSettings, true);
-            onAddedSession(newSettings);
+            addSession(newSettings, runningSession == null ? newSettings.getDesiredSessionState()
+                    : runningSession.desiredStateAfterUpdateTo(newSettings));
             return;
         }
         // the running session keeps the settings it was created with; the new ones are managed and are what the next

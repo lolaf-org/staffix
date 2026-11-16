@@ -29,6 +29,7 @@ import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi.ResetFixSessionMode;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
@@ -209,17 +210,17 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             fixSessionsObserver.onInitiatorTargetsChanged();
             fixSessionSettings = settingsOf(target);
             if (running) {
-                startSwitchedTarget();
+                startTargetOrStop(fixSessionSettings.getDesiredSessionState(), "after a switch");
             }
         }
     }
 
-    private void startSwitchedTarget() {
+    private void startTargetOrStop(FixSessionDesiredState desiredState, String cause) {
         try {
-            startTarget();
+            startTarget(desiredState);
         } catch (RuntimeException failure) {
-            log.warn("Initiator '{}' failed to start FIX session {} after a switch, stopping it", fixInitiatorBuilder.getInstanceId(),
-                    fixSessionSettings.getFixSessionId());
+            log.warn("Initiator '{}' failed to start FIX session {} {}, stopping it", fixInitiatorBuilder.getInstanceId(),
+                    fixSessionSettings.getFixSessionId(), cause);
             stop(Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
             throw failure;
         }
@@ -307,8 +308,12 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     }
 
     private void startTarget() {
+        startTarget(fixSessionSettings.getDesiredSessionState());
+    }
+
+    private void startTarget(FixSessionDesiredState desiredState) {
         FixSessionRuntimeDependencies runtimeDependencies = fixSessionRuntimeDependencies.apply(fixSessionSettings);
-        fixSession = new FixSessionImpl(fixInitiatorBuilder.getInstanceId(), fixSessionSettings,
+        fixSession = new FixSessionImpl(fixInitiatorBuilder.getInstanceId(), fixSessionSettings, desiredState,
                 runtimeDependencies, getScheduler(), fixInitiatorBuilder.getIoSettings(), messageExecutorsRuntime, fixInitiatorBuilder.getClock());
         boolean registered = false;
         try {
@@ -487,14 +492,15 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             }
             mainSettings = newSettings;
             fixSessionSettings = settingsOf(activeFixInitiatorTarget);
-            boolean live = startedUnderLock && fixSession != null && fixSession.isConnected();
-            if (live && oldSettings.isRestartLiveSessionOnUpdate()) {
-                log.info("FIX session {} settings updated, restarting the live session {}", newSettings.getFixSessionId(),
+            boolean live = targetRunning && fixSession.isConnected();
+            if (targetRunning && (!live || oldSettings.isRestartLiveSessionOnUpdate())) {
+                log.info("FIX session {} settings updated, restarting the session {}", newSettings.getFixSessionId(),
                         activeFixInitiatorTarget.getFixSessionId());
-                stop(Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
-                start();
+                FixSessionDesiredState desiredState = fixSession.desiredStateAfterUpdateTo(fixSessionSettings);
+                stopTarget("FIX session settings updated", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), live);
+                startTargetOrStop(desiredState, "after a settings update");
             }
-            // otherwise the new settings are held and the next connection is built from them
+            // otherwise the new settings are held until the target is next built
         }
     }
 

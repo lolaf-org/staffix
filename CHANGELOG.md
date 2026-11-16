@@ -155,6 +155,10 @@ could mean.
 
 ### Fixed
 
+- **Settings updated while an initiator session is disconnected now take effect**: the next logon used to keep the
+  old ones until the initiator was restarted.
+- **A session logged out from the admin API stays logged out when its settings are updated**, and one logged on stays
+  logged on, unless the update changes `desiredSessionState` itself. An acceptor used to accept the next logon.
 - **Updating a session whose id exists as both an acceptor and an initiator no longer drops the other one** from the
   session settings store.
 - A message larger than 8 KB stalled the session without any error, and over TLS one larger than about 16 KB ended it

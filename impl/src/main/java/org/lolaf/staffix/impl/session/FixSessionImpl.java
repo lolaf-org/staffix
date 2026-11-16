@@ -126,8 +126,13 @@ public class FixSessionImpl implements FixSession {
     @Setter
     private Subject authenticatedSubject;
 
+    /**
+     * @param desiredState the state the session starts in, the settings' own unless it replaces a session an operator
+     *                     logged on or out, see {@link #desiredStateAfterUpdateTo}
+     */
     public FixSessionImpl(String fixInstanceId,
                           FixSessionSettings fixSessionSettings,
+                          FixSessionDesiredState desiredState,
                           FixSessionRuntimeDependencies fixSessionRuntimeDependencies,
                           ScheduledExecutorService scheduledExecutorService,
                           IOSettings ioSettings,
@@ -136,7 +141,7 @@ public class FixSessionImpl implements FixSession {
         this.fixSessionSettings = fixSessionSettings;
         this.fixSessionRegistry = fixSessionRuntimeDependencies.getFixSessionRegistry();
         this.probes = new ProbesImpl(FixSessionProbeScope.of(fixSessionSettings.getFixSessionId()));
-        this.wiring = new SessionWiring(this, fixInstanceId, fixSessionSettings, probes, fixSessionRuntimeDependencies,
+        this.wiring = new SessionWiring(this, fixInstanceId, fixSessionSettings, desiredState, probes, fixSessionRuntimeDependencies,
                 scheduledExecutorService, ioSettings, messageExecutorsRuntime, providedClock);
         SessionDownEvaluator.probe(this, fixSessionSettings.getSessionDownAlertDelay()).ifPresent(probes::add);
         this.alertsPublisher = fixSessionRuntimeDependencies.getFixAlertsPublisher();
@@ -199,6 +204,15 @@ public class FixSessionImpl implements FixSession {
     @Override
     public FixSessionDesiredState getDesiredState() {
         return fixSessionState.getDesiredState();
+    }
+
+    /**
+     * The state a session rebuilt on {@code newSettings} starts in: an operator's logon or logout outlives the rebuild,
+     * unless the update changes the desired state itself.
+     */
+    public FixSessionDesiredState desiredStateAfterUpdateTo(FixSessionSettings newSettings) {
+        FixSessionDesiredState updated = newSettings.getDesiredSessionState();
+        return updated.equals(fixSessionSettings.getDesiredSessionState()) ? getDesiredState() : updated;
     }
 
     @Override

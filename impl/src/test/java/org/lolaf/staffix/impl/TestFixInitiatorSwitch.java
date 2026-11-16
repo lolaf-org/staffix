@@ -348,8 +348,8 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
 
     @Test
     void aSwitchWhoseTargetCannotBeResolvedStopsTheInitiator() {
-        logonMainTarget();
         initiatorStore().update(mainSettings().toBuilder().restartLiveSessionOnUpdate(false).build());
+        logonMainTarget();
         initiatorStore().update(mainSettings().toBuilder().fixMessageStoreInstanceId("no-such-store").build());
 
         assertThatThrownBy(() -> fixInitiator.switchTo(BACKUP_INITIATOR)).hasMessageContaining("no-such-store");
