@@ -722,8 +722,10 @@ class TestAsyncMessagesStore {
         asyncMessageStore.resetSequenceNumbers();
         asyncMessageStore.storeMessageSent(1L, testMessage);
 
-        await().untilAsserted(() -> assertThat(writes).contains("message 1"));
-        assertThat(writes.subList(writes.indexOf("reset") + 1, writes.size())).containsExactly("message 1", "outgoing 2");
+        await().untilAsserted(() -> {
+            List<String> written = List.copyOf(writes);
+            assertThat(written.subList(written.indexOf("reset") + 1, written.size())).containsExactly("message 1", "outgoing 2");
+        });
     }
 
     @Test
