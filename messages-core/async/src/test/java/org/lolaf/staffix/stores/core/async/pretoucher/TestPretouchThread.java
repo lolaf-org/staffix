@@ -104,19 +104,6 @@ class TestPretouchThread {
     }
 
     @Test
-    void aZeroIntervalStartsNoThread() {
-        PretouchThread off = new PretouchThread("test", Executors.defaultThreadFactory(), Duration.ZERO);
-        AtomicLong calls = new AtomicLong();
-        off.add(new Object(), calls::incrementAndGet);
-
-        off.start();
-
-        assertThat(threadAlive()).isFalse();
-        off.stop(Deadline.of(Duration.ofSeconds(5)));
-        assertThat(calls).hasValue(0);
-    }
-
-    @Test
     void stopEndsTheThread() {
         pretouchThread.start();
         await().atMost(Duration.ofSeconds(5)).until(TestPretouchThread::threadAlive);

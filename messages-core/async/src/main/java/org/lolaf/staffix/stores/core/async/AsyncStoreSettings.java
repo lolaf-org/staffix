@@ -113,7 +113,8 @@ public class AsyncStoreSettings {
     /**
      * How far ahead of each queue's writer the pages are touched, as the time the writer takes to reach them at its
      * recent rate. It must outlast the pretouch thread's longest stall, which can be far longer than
-     * {@link #pretouchInterval}: raise it if a queue's stop log line reports pages the writer reached first.
+     * {@link #pretouchInterval}: raise it if a session's {@code async.store.pretouch.missed.pages} or
+     * {@code async.logger.pretouch.missed.pages} counter keeps rising.
      * {@link Duration#ZERO} keeps the distance at {@link #pretouchMinAheadBytes}.
      */
     @Builder.Default
@@ -126,6 +127,10 @@ public class AsyncStoreSettings {
      */
     @Builder.Default
     private long pretouchMinAheadBytes = 1 << 20;
+
+    public boolean isPretouching() {
+        return pretouchInterval.toNanos() > 0;
+    }
 
     /**
      * The depths at which the queue's probe raises and clears its alert; see {@link QueueSizeEvaluator}.

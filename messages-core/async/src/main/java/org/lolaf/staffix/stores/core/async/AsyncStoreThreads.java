@@ -20,13 +20,13 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.stores.core.async.pretoucher.PretouchThread;
+import org.lolaf.staffix.stores.core.async.thread.StoppableThread;
 
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.function.ToLongFunction;
 
@@ -61,7 +61,9 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
             asyncStoreThread.start();
         }
-        pretouchThread.start();
+        if (asyncStoreSettings.isPretouching()) {
+            pretouchThread.start();
+        }
     }
 
     @Override
@@ -140,21 +142,17 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
 
         private final Map<Consumer<T>, Registration<T>> registrations;
         private final Map<Consumer<T[]>, BatchingRegistration<T>> batchingRegistrations;
-        private final AtomicBoolean running;
         private final int maxEventsProcessingPerStore;
         private final AsyncEventInstanceProvider<T> asyncEventInstanceProvider;
         private final AtomicLong threadOperationsCounter;
         private final IdleStrategy idleStrategy;
-        private final ThreadFactory threadFactory;
-        private final String threadName;
+        private final StoppableThread thread;
         private volatile Registration<T>[] registrationsArray;
         private volatile BatchingRegistration<T>[] batchingRegistrationsArray;
-        private volatile Thread thread;
 
         public AsyncStoreThread(String instanceId, int instance, IdleStrategy idleStrategy,
                                 int maxEventsProcessingPerStore, AsyncEventInstanceProvider<T> asyncEventInstanceProvider,
                                 ThreadFactory threadFactory) {
-            this.running = new AtomicBoolean();
             this.registrations = new HashMap<>();
             this.batchingRegistrations = new HashMap<>();
             this.batchingRegistrationsArray = new BatchingRegistration[0];
@@ -162,8 +160,8 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             this.maxEventsProcessingPerStore = maxEventsProcessingPerStore;
             this.asyncEventInstanceProvider = asyncEventInstanceProvider;
             this.idleStrategy = idleStrategy;
-            this.threadFactory = threadFactory;
-            this.threadName = "Staffix-async-queue-reader-" + instanceId + "-" + instance;
+            this.thread = new StoppableThread("Staffix-async-queue-reader-" + instanceId + "-" + instance, threadFactory,
+                    this);
             this.threadOperationsCounter = new AtomicLong();
         }
 
@@ -187,7 +185,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         }
 
         boolean awaitNextOperation(long operationsCountAtRemoval, Deadline deadline) {
-            Thread readerThread = thread;
+            Thread readerThread = thread.getThread();
             // the reader thread unregisters itself when its consumer starts a watchdog: its counter cannot tick until it
             // returns, and the inactive flag already keeps it off the queue once it does
             if (readerThread == null || readerThread == Thread.currentThread() || !readerThread.isAlive()) {
@@ -217,38 +215,17 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         }
 
         void start() {
-            if (running.compareAndSet(false, true)) {
-                thread = threadFactory.newThread(this);
-                thread.setName(threadName);
-                thread.setUncaughtExceptionHandler((t, e) -> log.error("Uncaught exception occurred in thread {}", t, e));
-                thread.start();
-            }
+            thread.start();
         }
 
         void stop(Deadline stopDeadline) {
-            if (!running.compareAndSet(true, false)) {
-                return;
-            }
-            try {
-                // not an interrupt: it would close the queue file's channel, shared with the writer, if it lands while
-                // the tailer maps a new chunk; unpark ends the idle strategy's park instead
-                LockSupport.unpark(thread);
-                // Thread.join(0) waits forever, an immediate or already expired deadline must not do that
-                thread.join(Math.max(stopDeadline.getRemainingTime().toMillis(), 1));
-                if (thread.isAlive()) {
-                    log.warn("Unable to stop thread {} within given deadline {}", thread.getName(), stopDeadline);
-                }
-                thread = null;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            thread.stop(stopDeadline);
         }
 
         @Override
         public void run() {
-            // running is set by start(), see why there
             idleStrategy.assignToThread(Thread.currentThread());
-            while (running.get()) {
+            while (thread.isRunning()) {
                 int readOperations = 0;
                 long now = System.currentTimeMillis();
                 Registration<T>[] localRegistrationsArray = registrationsArray;

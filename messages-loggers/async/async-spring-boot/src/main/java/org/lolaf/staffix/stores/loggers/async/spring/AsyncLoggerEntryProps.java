@@ -67,7 +67,7 @@ public class AsyncLoggerEntryProps {
     private Duration pretouchInterval;
     /**
      * How far ahead of each queue's writer pages are touched, as the time the writer takes to fill them at its recent
-     * rate. Raise it when a queue's stop log line reports pages the writer reached first. 40 ms by default.
+     * rate. Raise it when a session's {@code async.logger.pretouch.missed.pages} counter keeps rising. 40 ms by default.
      */
     private Duration pretouchAheadTime;
     /**

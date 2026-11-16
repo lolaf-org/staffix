@@ -111,7 +111,7 @@ public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
                 throw new IllegalStateException("Unable to create directory " + queueDir);
             }
         }
-        QueueMountCheck.INSTANCE.check(new File(queueDir).toPath(), asyncStoreSettings.getPretouchInterval().toNanos() > 0);
+        QueueMountCheck.INSTANCE.check(new File(queueDir).toPath(), asyncStoreSettings.isPretouching());
 
         String name = type + "-" + fixSessionId.forFileName("");
         // bump the generation first, so that a cleaner of the previous generation can no longer publish itself here

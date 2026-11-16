@@ -17,6 +17,7 @@ package org.lolaf.staffix.stores.core.async.pretoucher;
 
 import lombok.extern.slf4j.Slf4j;
 import net.openhft.chronicle.bytes.MappedBytes;
+import net.openhft.chronicle.bytes.MappedFile;
 import net.openhft.chronicle.core.OS;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueStore;
@@ -41,7 +42,6 @@ public final class QueuePretoucher implements AutoCloseable {
     private final AtomicLong missedPages;
     private final WriteRate writeRate;
     private SingleChronicleQueueStore store;
-    private MappedBytes storeBytes;
     private PageToucher pageToucher;
     private boolean failing;
     private boolean closed;
@@ -111,19 +111,26 @@ public final class QueuePretoucher implements AutoCloseable {
         }
         releaseStore();
         store = lastStore;
-        storeBytes = lastStore.bytes();
-        pageToucher = new PageToucher(storeBytes.mappedFile(), pageSize, missedPages);
+        pageToucher = new PageToucher(mappedFileOf(lastStore), pageSize, missedPages);
         writeRate.restartAt(lastStore.writePosition(), System.nanoTime());
+    }
+
+    /**
+     * The store keeps its file mapped while it is held, so the bytes asked for it are not.
+     */
+    private static MappedFile mappedFileOf(SingleChronicleQueueStore store) {
+        MappedBytes bytes = store.bytes();
+        try {
+            return bytes.mappedFile();
+        } finally {
+            bytes.releaseLast();
+        }
     }
 
     private void releaseStore() {
         if (pageToucher != null) {
             pageToucher.close();
             pageToucher = null;
-        }
-        if (storeBytes != null) {
-            storeBytes.releaseLast();
-            storeBytes = null;
         }
         if (store != null) {
             queue.closeStore(store);

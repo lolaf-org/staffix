@@ -73,8 +73,7 @@ public final class QueueMountCheck {
         }
         String hugeOption = tmpfs.get().option("huge").orElse("never");
         String shmemEnabled = systemFiles.read(SHMEM_ENABLED).flatMap(QueueMountCheck::selectedValue).orElse("never");
-        boolean hugePages = shmemEnabled.equals("force")
-                || !shmemEnabled.equals("deny") && (hugeOption.equals("within_size") || hugeOption.equals("always"));
+        boolean hugePages = hasHugePages(hugeOption, shmemEnabled);
         if (pretouching && !hugePages) {
             log.warn("Async queue directory {} is on tmpfs {} without huge pages (huge={}, {} is {}), so appends take TLB "
                             + "misses huge pages would avoid: mount it with huge=within_size{}",
@@ -86,6 +85,20 @@ public final class QueueMountCheck {
                             + "zero, or use a tmpfs without huge pages",
                     directory, tmpfs.get().getMountPoint(), hugeOption, SHMEM_ENABLED, shmemEnabled);
         }
+    }
+
+    /**
+     * {@code shmem_enabled} overrides the mount when it is {@code force} or {@code deny}. {@code huge=advise} counts as
+     * none, since Chronicle never calls {@code madvise}.
+     */
+    private static boolean hasHugePages(String hugeOption, String shmemEnabled) {
+        if (shmemEnabled.equals("force")) {
+            return true;
+        }
+        if (shmemEnabled.equals("deny")) {
+            return false;
+        }
+        return hugeOption.equals("within_size") || hugeOption.equals("always");
     }
 
     private static Path realPath(Path directory) {

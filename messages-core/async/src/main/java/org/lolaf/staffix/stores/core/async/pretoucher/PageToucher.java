@@ -34,7 +34,8 @@ import java.util.concurrent.atomic.AtomicLong;
 final class PageToucher implements ReferenceOwner, AutoCloseable {
 
     /**
-     * Bounds a call, so that a stop waiting for it is not held up; the pretoucher still outruns any writer.
+     * Bounds a call, so that a stop waiting for it is not held up; it also caps the write rate a queue can be kept ahead
+     * of at this many pages per pretouch interval.
      */
     static final int MAX_PAGES_PER_CALL = 64;
 
@@ -57,10 +58,7 @@ final class PageToucher implements ReferenceOwner, AutoCloseable {
     int touchAhead(long position, long aheadBytes) throws IOException {
         long end = position + Math.min(aheadBytes, mappedFile.chunkSize() / 2);
         long firstPageAhead = pageAfter(position);
-        // zero before the first call on this file, when the writer cannot have overtaken anything yet
-        if (firstUntouchedPage > 0 && firstPageAhead > firstUntouchedPage) {
-            missedPages.addAndGet((firstPageAhead - firstUntouchedPage) / pageSize);
-        }
+        countPagesTheWriterPassed(firstPageAhead);
         long page = Math.max(firstUntouchedPage, firstPageAhead);
         int touched = 0;
         for (; page < end && touched < MAX_PAGES_PER_CALL; page += pageSize, touched++) {
@@ -79,6 +77,13 @@ final class PageToucher implements ReferenceOwner, AutoCloseable {
     @Override
     public void close() {
         releaseChunk();
+    }
+
+    private void countPagesTheWriterPassed(long firstPageAhead) {
+        boolean touchedBefore = firstUntouchedPage > 0;
+        if (touchedBefore && firstPageAhead > firstUntouchedPage) {
+            missedPages.addAndGet((firstPageAhead - firstUntouchedPage) / pageSize);
+        }
     }
 
     private long pageAfter(long position) {
