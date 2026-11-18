@@ -134,6 +134,19 @@ class JmxAdminApiTest {
     }
 
     @Test
+    void aSessionBeanTellsWhetherASettingsUpdateIsPending() throws Exception {
+        FixSession session = session(INITIATOR_SESSION, true);
+        when(session.hasPendingSettingsUpdate()).thenReturn(true);
+        adminApi.managed.add(session);
+        exporter.export(adminApi);
+        adminApi.lifecycleListener.onSessionRegistered(session);
+
+        FixSessionMXBean proxy = JMX.newMXBeanProxy(mBeanServer, sessionName("init1", "Initiator"), FixSessionMXBean.class);
+
+        assertThat(proxy.isPendingSettingsUpdate()).isTrue();
+    }
+
+    @Test
     void sessionMBeanOperationsRouteToTheBoundSession() throws Exception {
         exporter.export(adminApi);
         adminApi.lifecycleListener.onSessionRegistered(session(INITIATOR_SESSION, true));
@@ -172,6 +185,17 @@ class JmxAdminApiTest {
             assertThat(targets.getActiveFixSessionId()).isEqualTo(INITIATOR_SESSION.toString());
             assertThat(targets.getFixSessionIds()).containsExactly(INITIATOR_SESSION.toString(), BACKUP_SESSION.toString());
         });
+    }
+
+    @Test
+    void aReloadPassesOnWhetherToRestartLiveSessions() throws Exception {
+        exporter.export(adminApi);
+        FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
+
+        proxy.reloadFixSessionsSettingsStore("main-store", false);
+        proxy.reloadFixSessionsSettingsStore("main-store", true);
+
+        assertThat(adminApi.reloads).containsExactly("main-store, restart=false", "main-store, restart=true");
     }
 
     @Test
@@ -409,6 +433,7 @@ class JmxAdminApiTest {
         private final List<ProbeScope> componentScopes = new ArrayList<>();
         private final List<ScopedProbeState> activeAlerts = new ArrayList<>();
         private final List<String> clearedAlerts = new ArrayList<>();
+        private final List<String> reloads = new ArrayList<>();
         private HaAdmin ha;
         private SessionLifecycleListener lifecycleListener;
 
@@ -468,8 +493,8 @@ class JmxAdminApiTest {
         }
 
         @Override
-        public void reloadFixSessionsSettingsStore(String instanceId) {
-            // nothing to do
+        public void reloadFixSessionsSettingsStore(String instanceId, boolean restartLiveSessions) {
+            reloads.add(instanceId + ", restart=" + restartLiveSessions);
         }
 
         @Override
@@ -488,7 +513,7 @@ class JmxAdminApiTest {
         }
 
         @Override
-        public void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings) {
+        public void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings, boolean restartLiveSession) {
             throw new UnsupportedOperationException();
         }
 

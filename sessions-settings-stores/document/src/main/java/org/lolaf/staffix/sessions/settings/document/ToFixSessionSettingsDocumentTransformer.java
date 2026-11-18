@@ -95,8 +95,6 @@ public class ToFixSessionSettingsDocumentTransformer {
         mergeSessionScheduleSettings(settings, builder);
         mergeIfNeeded(settings::isMessageEncodersDirectByteBuffers, builder::messageEncodersDirectByteBuffers);
         mergeIfNeeded(settings::isPooledMessageEncodersDirectByteBuffers, builder::pooledMessageEncodersDirectByteBuffers);
-        mergeIfNeeded(settings::isDisconnectOnRemove, builder::disconnectOnRemove);
-        mergeIfNeeded(settings::isRestartLiveSessionOnUpdate, builder::restartLiveSessionOnUpdate);
 
         return builder.build();
     }

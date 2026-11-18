@@ -111,6 +111,7 @@ public class EngineStatus {
                 .selectedConfig(fixSessionId.getName())
                 .desiredState(session.getDesiredState())
                 .status(session.getStatus())
+                .pendingSettingsUpdate(session.hasPendingSettingsUpdate())
                 .incomingSeqNum(adminApi.getIncomingSeqNum(fixSessionId))
                 .outgoingSeqNum(adminApi.getOutgoingSeqNum(fixSessionId))
                 .probesVersion(probesVersions.apply(scope))

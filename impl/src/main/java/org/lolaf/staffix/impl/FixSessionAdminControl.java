@@ -71,6 +71,12 @@ interface FixSessionAdminControl {
     void addManagedFixSessions(List<FixSession> sessions);
 
     /**
+     * Restarts the session these settings belong to on the settings an update held back while it was live; does
+     * nothing if none are pending.
+     */
+    void applyPendingSettings(FixSessionSettings settings);
+
+    /**
      * @return {@code true} if this control runs initiator sessions, {@code false} if it runs acceptor sessions
      */
     boolean isInitiator();

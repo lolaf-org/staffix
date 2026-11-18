@@ -134,7 +134,7 @@ class EngineStatusTest {
         JsonNode trading = status().get("sessions").get(0);
 
         assertThat(trading.toString()).isEqualTo("{\"group\":\"alpha\",\"name\":\"trading\",\"selectedConfig\":\"trading-drp\","
-                + "\"desiredState\":\"LOGGED_IN\",\"status\":\"LOGGED_IN\",\"incomingSeqNum\":12,\"outgoingSeqNum\":34,"
+                + "\"desiredState\":\"LOGGED_IN\",\"status\":\"LOGGED_IN\",\"pendingSettingsUpdate\":false,\"incomingSeqNum\":12,\"outgoingSeqNum\":34,"
                 + "\"probesVersion\":\"p-trading-drp\"}");
         assertThat(status().get("sessionsVersion").asText()).isEqualTo("v1");
         assertThat(status().get("alertsVersion").asLong()).isEqualTo(7);

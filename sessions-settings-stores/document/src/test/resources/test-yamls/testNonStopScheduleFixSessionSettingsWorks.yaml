@@ -85,5 +85,3 @@ sessionScheduleSettings:
     - dayOfWeek: "WEDNESDAY"
 messageEncodersDirectByteBuffers: true
 pooledMessageEncodersDirectByteBuffers: true
-disconnectOnRemove: true
-restartLiveSessionOnUpdate: true

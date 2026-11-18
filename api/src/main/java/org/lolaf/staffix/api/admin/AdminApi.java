@@ -185,12 +185,14 @@ public interface AdminApi extends InstanceIdSupplier {
      * Reloads the {@link org.lolaf.staffix.api.session.FixSessionsSettingsStore} with the given instance id by
      * calling {@link org.lolaf.staffix.api.session.FixSessionsSettingsStore#load()} and reconciling the result
      * against the currently managed settings, keyed by {@link org.lolaf.staffix.api.session.FixSessionId}: added,
-     * removed and updated sessions are applied through the store's add/remove/update so listeners are notified.
+     * updated and removed sessions are applied as {@link #addFixSessionSettings}, {@link #updateFixSessionSettings}
+     * and {@link #removeFixSessionSettings} apply them, so a removed session stops.
      *
-     * @param instanceId the instance id of the store to reload
+     * @param instanceId          the instance id of the store to reload
+     * @param restartLiveSessions whether the live sessions it updates restart now, rather than at their next connection
      * @throws IllegalArgumentException if no store with the given instance id is configured
      */
-    void reloadFixSessionsSettingsStore(String instanceId);
+    void reloadFixSessionsSettingsStore(String instanceId, boolean restartLiveSessions);
 
     /**
      * @throws IllegalArgumentException if no store with the given instance id is configured
@@ -214,20 +216,21 @@ public interface AdminApi extends InstanceIdSupplier {
     void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings);
 
     /**
-     * Replaces a session's settings in the store holding them. The live session restarts on them unless its
-     * {@link FixSessionSettings#isRestartLiveSessionOnUpdate()} is off.
+     * Replaces a session's settings in the store holding them. A disconnected session is rebuilt on them at once; a
+     * live one keeps running on its old settings until it next connects, so a change does not interrupt it.
      *
-     * @param fixSessionId the session's id now, which the new settings may change (CompIDs, FIX version, name) for an
-     *                     acceptor's session; an initiator's is set by its targets
+     * @param fixSessionId       the session's id now, which the new settings may change (CompIDs, FIX version, name)
+     *                           for an acceptor's session; an initiator's is set by its targets
+     * @param restartLiveSession restart a live session on the new settings now, which logs it out
      * @throws IllegalArgumentException if no store holds the session, the settings are invalid, change its type or an
-     *                                  initiator session's id
+     *                                  initiator session's id, or change an acceptor session's id without a restart,
+     *                                  which a new id implies
      * @throws IllegalStateException    if the new group and name belong to another session
      */
-    void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings);
+    void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings, boolean restartLiveSession);
 
     /**
-     * Removes a session from the store holding it. The live session is disconnected unless its
-     * {@link FixSessionSettings#isDisconnectOnRemove()} is off.
+     * Removes a session from the store holding it, which stops it: a live session is logged out and disconnected.
      *
      * @throws IllegalArgumentException if no store holds the session
      */

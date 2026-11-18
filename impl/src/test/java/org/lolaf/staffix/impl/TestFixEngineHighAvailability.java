@@ -296,9 +296,9 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
 
         List<ThrowingCallable> refused = List.of(
                 () -> admin.addFixSessionSettings(storeId, added),
-                () -> admin.updateFixSessionSettings(settings.getFixSessionId(), settings),
+                () -> admin.updateFixSessionSettings(settings.getFixSessionId(), settings, true),
                 () -> admin.removeFixSessionSettings(settings.getFixSessionId(), settings.getFixSessionType()),
-                () -> admin.reloadFixSessionsSettingsStore(storeId));
+                () -> admin.reloadFixSessionsSettingsStore(storeId, true));
         refused.forEach(change -> assertThatThrownBy(change).hasMessage("not here"));
         assertThat(acceptorStore().getSettings()).containsExactly(settings);
 
@@ -588,7 +588,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         AdminApi admin = (AdminApi) initiatorFixEngine;
         FixSessionSettings sync = admin.getManagedFixSessionsSettings().get(0);
 
-        admin.updateFixSessionSettings(sync.getFixSessionId(), sync.toBuilder().highAvailability(replicated(ReplicationMode.NONE)).build());
+        admin.updateFixSessionSettings(sync.getFixSessionId(), sync.toBuilder().highAvailability(replicated(ReplicationMode.NONE)).build(), true);
 
         await().untilAsserted(() -> verify(ha).onSessionNotReplicated(argThat(settings -> settings.getFixSessionId().equals(sync.getFixSessionId()))));
         verify(ha).replicatingStore(any(), any(), any());

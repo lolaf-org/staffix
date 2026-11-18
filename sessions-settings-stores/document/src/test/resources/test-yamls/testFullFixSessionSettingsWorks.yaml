@@ -88,5 +88,3 @@ sessionScheduleSettings:
   nonStopSchedules: [ ]
 messageEncodersDirectByteBuffers: true
 pooledMessageEncodersDirectByteBuffers: true
-disconnectOnRemove: true
-restartLiveSessionOnUpdate: true

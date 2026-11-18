@@ -373,7 +373,9 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                         .build())
                 .ioWorkersGroup(ioWorkerGroup)
                 .ioStatsProvider(getIoStatsProvider(hasConfiguredPluginsWithTimeMeasurementRequired))
-                .ioEventsListener(new IOEventsListenerImpl(fixSession)).build().newInstance();
+                .ioEventsListener(new IOEventsListenerImpl(fixSession,
+                        () -> getScheduler().execute(this::applyPendingSettingsBeforeDialling)))
+                .build().newInstance();
     }
 
     private IOStats.IOStatsProvider getIoStatsProvider(boolean monitoringEnabled) {
@@ -461,6 +463,11 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             if (isMain(settings)) {
                 mainSettings = settings;
                 fixSessionSettings = settingsOf(activeFixInitiatorTarget);
+                if (targetRunning) {
+                    fixSession.markPendingSettingsUpdate();
+                } else if (startedUnderLock && engineActive.getAsBoolean()) {
+                    startTargetOrStop(fixSessionSettings.getDesiredSessionState(), "after its settings were added back");
+                }
             }
         }
     }
@@ -472,17 +479,16 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                 return;
             }
             mainSettings = null;
-            if (settings.isDisconnectOnRemove() && startedUnderLock && fixSession != null) {
-                log.info("FIX session {} settings removed from the store, disconnecting {}", settings.getFixSessionId(),
+            if (targetRunning) {
+                log.info("FIX session {} settings removed from the store, stopping {}", settings.getFixSessionId(),
                         activeFixInitiatorTarget.getFixSessionId());
-                stop(Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
+                stopTarget("FIX session settings removed", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), true);
             }
         }
     }
 
     /**
-     * The policy comes from {@code oldSettings} - the ones the session is running under - see
-     * {@link FixSessionSettings#isRestartLiveSessionOnUpdate()}.
+     * A live session keeps running on its settings until it next dials, or until {@link #applyPendingSettings}.
      */
     @Override
     public void onUpdatedSession(FixSessionSettings oldSettings, FixSessionSettings newSettings) {
@@ -492,15 +498,45 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             }
             mainSettings = newSettings;
             fixSessionSettings = settingsOf(activeFixInitiatorTarget);
-            boolean live = targetRunning && fixSession.isConnected();
-            if (targetRunning && (!live || oldSettings.isRestartLiveSessionOnUpdate())) {
-                log.info("FIX session {} settings updated, restarting the session {}", newSettings.getFixSessionId(),
-                        activeFixInitiatorTarget.getFixSessionId());
-                FixSessionDesiredState desiredState = fixSession.desiredStateAfterUpdateTo(fixSessionSettings);
-                stopTarget("FIX session settings updated", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), live);
-                startTargetOrStop(desiredState, "after a settings update");
+            if (!targetRunning) {
+                return;
             }
-            // otherwise the new settings are held until the target is next built
+            if (fixSession.isConnected()) {
+                fixSession.markPendingSettingsUpdate();
+            } else {
+                rebuildTarget("Rebuilt on updated settings");
+            }
+        }
+    }
+
+    private void rebuildTarget(String event) {
+        FixSessionDesiredState desiredState = fixSession.desiredStateAfterUpdateTo(fixSessionSettings);
+        stopTarget("FIX session settings updated", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()),
+                fixSession.isConnected());
+        startTargetOrStop(desiredState, "after a settings update");
+        fixSession.logEvent(event);
+    }
+
+    @Override
+    public void applyPendingSettings(FixSessionSettings settings) {
+        synchronized (lifecycleLock) {
+            if (isMain(settings) && targetRunning && fixSession.hasPendingSettingsUpdate()) {
+                rebuildTarget("Restarted by the admin API on its pending settings");
+            }
+        }
+    }
+
+    private void applyPendingSettingsBeforeDialling() {
+        synchronized (lifecycleLock) {
+            if (!targetRunning || fixSession.isConnected() || !fixSession.hasPendingSettingsUpdate()) {
+                return;
+            }
+            try {
+                rebuildTarget("Rebuilt on its pending settings");
+            } catch (RuntimeException failure) {
+                log.error("Initiator '{}' failed to apply the pending settings of FIX session {}",
+                        fixInitiatorBuilder.getInstanceId(), fixSessionSettings.getFixSessionId(), failure);
+            }
         }
     }
 
@@ -604,10 +640,12 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     private static class IOEventsListenerImpl implements IOEventsListener {
 
         private final FixSessionImpl fixSession;
+        private final Runnable applyPendingSettings;
         private List<Certificate> remotePeerCertificates;
 
-        public IOEventsListenerImpl(FixSessionImpl fixSession) {
+        public IOEventsListenerImpl(FixSessionImpl fixSession, Runnable applyPendingSettings) {
             this.fixSession = fixSession;
+            this.applyPendingSettings = applyPendingSettings;
         }
 
         @Override
@@ -624,6 +662,10 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
 
         @Override
         public boolean isReadyToConnect(InetSocketAddress remoteAddress) {
+            if (fixSession.hasPendingSettingsUpdate()) {
+                applyPendingSettings.run();
+                return false;
+            }
             return fixSession.isReadyToConnect();
         }
 

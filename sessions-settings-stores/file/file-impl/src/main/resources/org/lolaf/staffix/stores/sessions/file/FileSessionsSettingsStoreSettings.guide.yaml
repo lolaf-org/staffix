@@ -25,5 +25,5 @@ failures:
       The value comes from a placeholder, so its source owns it: change the environment instead.
 behaviour:
   - >-
-    A reload restarts changed sessions and disconnects removed ones, unless they set restartLiveSessionOnUpdate and
-    disconnectOnRemove to false.
+    A reload stops the sessions whose file went. A live session whose file changed keeps its old settings until it next
+    connects, unless the reload is asked to restart it.

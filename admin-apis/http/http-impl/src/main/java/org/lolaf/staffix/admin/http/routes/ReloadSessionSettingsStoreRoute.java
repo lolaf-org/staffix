@@ -34,9 +34,10 @@ public final class ReloadSessionSettingsStoreRoute extends Route {
 
     @Override
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
+        boolean restart = requiredBooleanQueryParameter(exchange, "restart");
         String storeId = param(path, "storeId");
-        log.info("Admin API: reload session settings store {}", storeId);
-        adminApi.reloadFixSessionsSettingsStore(storeId);
+        log.info("Admin API: reload session settings store {}, restart={}", storeId, restart);
+        adminApi.reloadFixSessionsSettingsStore(storeId, restart);
         sendNoContent(exchange);
     }
 }

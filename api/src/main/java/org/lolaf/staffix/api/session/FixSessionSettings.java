@@ -293,23 +293,6 @@ public class FixSessionSettings {
     private HaSessionSettings highAvailability = HaSessionSettings.builder().build();
 
     /**
-     * Whether removing these settings from their {@link FixSessionsSettingsStore} disconnects the live session. On
-     * by default. Off makes the removal a configuration change only: the session keeps running until it drops on its
-     * own, which is what a venue asking you to stop reconnecting after the trading day needs.
-     */
-    @Builder.Default
-    private boolean disconnectOnRemove = true;
-
-    /**
-     * Whether updating these settings in their {@link FixSessionsSettingsStore} restarts the live session, so the
-     * change takes effect now. On by default, since an update that never reaches the running session is the worse
-     * surprise. Off, the new settings apply the next time the session connects. Read from the settings the session is
-     * running under, not the new ones.
-     */
-    @Builder.Default
-    private boolean restartLiveSessionOnUpdate = true;
-
-    /**
      * Whether the session's own encoders encode into direct byte buffers.
      */
     @Builder.Default
@@ -395,8 +378,8 @@ public class FixSessionSettings {
 
         /**
          * Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the
-         * session is next built, as {@code restartLiveSessionOnUpdate} decides: turned on, the follower catches up
-         * by snapshot; turned off, it stops holding the session.
+         * session is next built: turned on, the follower catches up by snapshot; turned off, it stops holding the
+         * session.
          */
         @Builder.Default
         ReplicationMode replicationMode = ReplicationMode.NONE;

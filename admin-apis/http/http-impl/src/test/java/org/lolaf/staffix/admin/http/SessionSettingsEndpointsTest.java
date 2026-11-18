@@ -44,6 +44,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -157,10 +158,10 @@ class SessionSettingsEndpointsTest {
         ObjectNode settings = (ObjectNode) settingsOf("drop-copy");
         settings.put("desiredSessionState", "LOGGED_OUT");
 
-        assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings.toString()).statusCode()).isEqualTo(204);
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings?restart=true", settings.toString()).statusCode()).isEqualTo(204);
 
         ArgumentCaptor<FixSessionSettings> updated = ArgumentCaptor.forClass(FixSessionSettings.class);
-        verify(adminApi).updateFixSessionSettings(eq(DROP_COPY), updated.capture());
+        verify(adminApi).updateFixSessionSettings(eq(DROP_COPY), updated.capture(), eq(true));
         assertThat(updated.getValue().getDesiredSessionState()).isEqualTo(FixSessionDesiredState.LOGGED_OUT);
         assertThat(updated.getValue().getFixApplicationSessionSettings()).containsEntry(PASSWORD, "hunter2");
     }
@@ -169,15 +170,24 @@ class SessionSettingsEndpointsTest {
     void anInvalidDocumentIsABadRequest() throws Exception {
         ObjectNode settings = (ObjectNode) settingsOf("drop-copy");
 
-        assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings.deepCopy().put("unknown", 1).toString()).statusCode())
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings?restart=true", settings.deepCopy().put("unknown", 1).toString()).statusCode())
                 .isEqualTo(400);
-        assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings.deepCopy().put("schemaVersion", 2).toString()).statusCode())
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings?restart=true", settings.deepCopy().put("schemaVersion", 2).toString()).statusCode())
                 .isEqualTo(400);
-        assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings.deepCopy().without("schemaVersion").toString()).statusCode())
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings?restart=true", settings.deepCopy().without("schemaVersion").toString()).statusCode())
                 .isEqualTo(400);
         settings.remove("fixSessionId");
-        assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings.toString()).statusCode()).isEqualTo(400);
-        verify(adminApi, never()).updateFixSessionSettings(any(), any());
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings?restart=true", settings.toString()).statusCode()).isEqualTo(400);
+        verify(adminApi, never()).updateFixSessionSettings(any(), any(), anyBoolean());
+    }
+
+    @Test
+    void anUpdatePassesOnWhetherToRestartTheLiveSession() throws Exception {
+        String settings = settingsOf("drop-copy").toString();
+
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings?restart=false", settings).statusCode()).isEqualTo(204);
+
+        verify(adminApi).updateFixSessionSettings(eq(DROP_COPY), any(), eq(false));
     }
 
     @Test
@@ -185,6 +195,25 @@ class SessionSettingsEndpointsTest {
         assertThat(call("DELETE", "sessions/alpha/drop-copy/settings", null).statusCode()).isEqualTo(204);
 
         verify(adminApi).removeFixSessionSettings(DROP_COPY, FixSessionType.ACCEPTOR);
+    }
+
+    @Test
+    void aStoreReloadPassesOnWhetherToRestartLiveSessions() throws Exception {
+        assertThat(call("POST", "session-settings-stores/main-store/reload?restart=false", null).statusCode()).isEqualTo(204);
+
+        verify(adminApi).reloadFixSessionsSettingsStore("main-store", false);
+    }
+
+    @Test
+    void whetherToRestartALiveSessionMustBeStated() throws Exception {
+        String settings = settingsOf("drop-copy").toString();
+
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings", settings).statusCode()).isEqualTo(400);
+        assertThat(call("PUT", "sessions/alpha/drop-copy/settings?restart=yes", settings).statusCode()).isEqualTo(400);
+        assertThat(call("POST", "session-settings-stores/main-store/reload?other=true", null).statusCode()).isEqualTo(400);
+
+        verify(adminApi, never()).updateFixSessionSettings(any(), any(), anyBoolean());
+        verify(adminApi, never()).reloadFixSessionsSettingsStore(any(), anyBoolean());
     }
 
     @Test

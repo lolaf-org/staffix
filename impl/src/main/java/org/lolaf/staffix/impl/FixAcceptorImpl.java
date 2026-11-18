@@ -92,6 +92,15 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
      */
     private final Set<FixSessionSettings> configuredSessionsSettings;
     private final Map<FixSessionId, FixSessionImpl> configuredSessions;
+    /**
+     * Settings updated while their session was live and kept off it: the session is rebuilt on them when its peer
+     * next logs on.
+     */
+    private final Map<FixSessionId, FixSessionSettings> pendingSettings;
+    /**
+     * Held while a session is replaced, so a store change and a logon applying pending settings cannot interleave.
+     */
+    private final Object sessionsLock = new Object();
     private final Map<Class<?>, String> encodersPoolIdsForBroadCasting;
     private final MessageExecutorsRuntime messageExecutorsRuntime;
     private final FixAcceptorBuilder fixAcceptorBuilder;
@@ -128,6 +137,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         this.connectedSessions = Collections.synchronizedSet(new HashSet<>());
         this.connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
         this.configuredSessions = new ConcurrentHashMap<>();
+        this.pendingSettings = new ConcurrentHashMap<>();
         this.encodersPoolIdsForBroadCasting = new IdentityHashMap<>();
         this.fixAcceptorBuilder = fixAcceptorBuilder;
         this.fixRuntimeDependenciesSupplier = fixRuntimeDependenciesSupplier;
@@ -381,6 +391,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
         }
         configuredSessions.clear();
+        pendingSettings.clear();
         configuredSessionsSettings.clear();
         refreshFixAcceptorSessions();
         log.info("FIX server {} is stopped", fixAcceptorBuilder.getInstanceId());
@@ -476,7 +487,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public void onAddedSession(FixSessionSettings settings) {
-        addSession(settings, settings.getDesiredSessionState());
+        synchronized (sessionsLock) {
+            addSession(settings, settings.getDesiredSessionState());
+        }
     }
 
     private void addSession(FixSessionSettings settings, FixSessionDesiredState desiredState) {
@@ -492,49 +505,85 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public void onRemovedSession(FixSessionSettings settings) {
-
-        stopManaging(settings, settings.isDisconnectOnRemove());
+        synchronized (sessionsLock) {
+            stopManaging(settings);
+        }
     }
 
     /**
-     * Whether the settings replacing the current ones can be applied without touching the running session.
-     * <p>
-     * The policy comes from {@code oldSettings} - the ones the session is running under - because it describes how
-     * that session may be treated, and that session is the one a restart would disturb. See
-     * {@link FixSessionSettings#isRestartLiveSessionOnUpdate()}.
+     * A live session keeps running on its settings until its peer next logs on, or until {@link #applyPendingSettings}.
      */
     @Override
     public void onUpdatedSession(FixSessionSettings oldSettings, FixSessionSettings newSettings) {
         if (!isAcceptorSession(oldSettings) && !isAcceptorSession(newSettings)) {
             return;
         }
-        FixSessionImpl runningSession = configuredSessions.get(oldSettings.getFixSessionId());
-        boolean restart = oldSettings.isRestartLiveSessionOnUpdate() || runningSession == null
-                || !runningSession.isConnected();
-        if (restart) {
-            stopManaging(oldSettings, true);
-            addSession(newSettings, runningSession == null ? newSettings.getDesiredSessionState()
-                    : runningSession.desiredStateAfterUpdateTo(newSettings));
-            return;
+        synchronized (sessionsLock) {
+            FixSessionImpl oldSession = configuredSessions.get(oldSettings.getFixSessionId());
+            if (oldSession == null || !oldSession.isConnected()) {
+                stopManaging(oldSettings);
+                addSession(newSettings, oldSession == null ? newSettings.getDesiredSessionState()
+                        : oldSession.desiredStateAfterUpdateTo(newSettings));
+                FixSessionImpl rebuilt = configuredSessions.get(newSettings.getFixSessionId());
+                if (oldSession != null && rebuilt != null) {
+                    rebuilt.logEvent("Rebuilt on updated settings");
+                }
+                return;
+            }
+            pendingSettings.put(newSettings.getFixSessionId(), newSettings);
+            oldSession.markPendingSettingsUpdate();
+            synchronized (configuredSessionsSettings) {
+                configuredSessionsSettings.remove(oldSettings);
+                configuredSessionsSettings.add(newSettings);
+            }
+            refreshFixAcceptorSessions();
         }
-        // the running session keeps the settings it was created with; the new ones are managed and are what the next
-        // session created for this id will be built from
-        synchronized (configuredSessionsSettings) {
-            configuredSessionsSettings.remove(oldSettings);
-            configuredSessionsSettings.add(newSettings);
-        }
-        refreshFixAcceptorSessions();
     }
 
-    /**
-     * Takes the settings out of the managed collection and, when asked to, takes the live session down with them.
-     * Leaving the session up means the engine no longer manages it: it runs until it drops on its own.
-     */
-    private void stopManaging(FixSessionSettings settings, boolean disconnect) {
+    @Override
+    public void applyPendingSettings(FixSessionSettings settings) {
+        if (!isAcceptorSession(settings)) {
+            return;
+        }
+        synchronized (sessionsLock) {
+            FixSessionImpl session = configuredSessions.get(settings.getFixSessionId());
+            if (session != null && session.hasPendingSettingsUpdate()) {
+                replaceOnPendingSettings(session, "Restarted by the admin API on its pending settings");
+            }
+        }
+    }
+
+    private FixSessionImpl withPendingSettingsApplied(FixSessionImpl session) {
+        if (!session.hasPendingSettingsUpdate()) {
+            return session;
+        }
+        synchronized (sessionsLock) {
+            FixSessionImpl current = configuredSessions.get(session.getFixSessionId());
+            if (current == null) {
+                return session;
+            }
+            if (current.isConnected() || !current.hasPendingSettingsUpdate()) {
+                return current;
+            }
+            return replaceOnPendingSettings(current, "Rebuilt on its pending settings");
+        }
+    }
+
+    private FixSessionImpl replaceOnPendingSettings(FixSessionImpl session, String event) {
+        FixSessionSettings pending = pendingSettings.get(session.getFixSessionId());
+        stopManaging(pending);
+        addSession(pending, session.desiredStateAfterUpdateTo(pending));
+        FixSessionImpl rebuilt = configuredSessions.get(session.getFixSessionId());
+        rebuilt.logEvent(event);
+        return rebuilt;
+    }
+
+    private void stopManaging(FixSessionSettings settings) {
         configuredSessionsSettings.remove(settings);
         refreshFixAcceptorSessions();
+        pendingSettings.remove(settings.getFixSessionId());
         FixSessionImpl fixSession = configuredSessions.remove(settings.getFixSessionId());
-        if (fixSession != null && disconnect) {
+        if (fixSession != null) {
             fixSession.onSessionRemoved();
             fixSessionsObserver.onSessionUnregistered(fixSession);
         }
@@ -1041,6 +1090,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             if (Arrays.stream(connectedSessionsArray).anyMatch(s -> s.getFixSessionId().equals(matchedFixSessionId))) {
                 throw new MultipleLogonException();
             }
+            match = withPendingSettingsApplied(match);
             checkIPAndCertificatesWhiteList(session, match.getFixSessionSettings());
             return match;
         }

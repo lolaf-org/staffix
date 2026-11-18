@@ -105,8 +105,6 @@ public class FixSessionSettingsDocument {
     private SessionScheduleSettings sessionScheduleSettings;
     private Boolean messageEncodersDirectByteBuffers;
     private Boolean pooledMessageEncodersDirectByteBuffers;
-    private Boolean disconnectOnRemove;
-    private Boolean restartLiveSessionOnUpdate;
 
 
     @Data

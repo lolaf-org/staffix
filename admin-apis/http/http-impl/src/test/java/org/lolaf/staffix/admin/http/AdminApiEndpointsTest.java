@@ -169,6 +169,16 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void statusTellsWhetherASessionHasASettingsUpdatePending() throws Exception {
+        FixSession trading = adminApi.getManagedFixSessions().get(0);
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"pendingSettingsUpdate\":false");
+
+        when(trading.hasPendingSettingsUpdate()).thenReturn(true);
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"pendingSettingsUpdate\":true");
+    }
+
+    @Test
     void sessionsAreServedWithTheVersionStatusReportsAsTheirETag() throws Exception {
         HttpResponse<String> sessions = call("GET", "/engines/alpha-engine/v1/sessions", null);
 

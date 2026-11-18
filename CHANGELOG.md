@@ -84,6 +84,10 @@ could mean.
   tmpfs mounted with huge pages is faster still. A queue on tmpfs whose huge pages do not match the setting, none
   while preparing ahead or some while not, logs a warning at startup. See
   [Tuning the async queue](docs/async-queue-tuning.md).
+- **A session tells when an update of its settings is waiting for its next connection**:
+  `FixSession.hasPendingSettingsUpdate()`, `pendingSettingsUpdate` in the HTTP admin API's `GET status`, and the
+  `PendingSettingsUpdate` attribute of the session's JMX bean. The session's log records when an update is held,
+  and when the session restarts on it.
 
 ### Changed
 
@@ -148,10 +152,23 @@ could mean.
 - **The JDBC messages store prunes large tables more cheaply**: it no longer counts a session's rows on every check,
   and deletes the old ones 10 000 at a time, so the first prune of a big table is no longer one long transaction
   holding locks on every row it removes. What `maxMessagesPerSession` keeps is unchanged.
+- **Updating a connected session's settings no longer restarts it unless you ask.** It keeps running on its old
+  settings and takes the new ones when it next connects: a reconnection, its session time window reopening, or a
+  logout and logon. To apply them at once, pass `true` to the new argument of `AdminApi.updateFixSessionSettings` or
+  `reloadFixSessionsSettingsStore` (and of the JMX reload). Over HTTP, `PUT sessions/{group}/{name}/settings` and
+  `POST session-settings-stores/{id}/reload` now require `restart=true` or `restart=false`. A disconnected session
+  still takes new settings at once, and changing an acceptor session's CompIDs, FIX version or name requires a
+  restart. Calling `update` on a session settings store directly never restarts a session.
+- **Removing a session's settings always stops the session**, logging it out if it is connected. For an initiator this
+  stops its session only, and adding the settings back starts it again, where the whole initiator used to stop and
+  stay stopped.
 
 ### Removed
 
 - **`FixSessionId.invert()`**.
+- **The session settings `restartLiveSessionOnUpdate` and `disconnectOnRemove`**, in Java, in settings files and in
+  Spring Boot properties: the admin call making a change now decides whether it restarts the session. A settings file
+  that still sets either of them fails to load; delete those lines.
 
 ### Fixed
 
@@ -202,6 +219,11 @@ could mean.
   lost them, with nothing in the log. They now stay in the queue on disk and are stored once it is back. After a crash,
   what was being written is written again, which the store ignores if it already holds it. A message the store keeps
   refusing while its storage is up now costs that message alone, not its whole batch.
+- **A settings update that did not restart a connected session now takes effect when the session next connects.** The
+  session used to keep its old settings across reconnections, its session time window reopening, and an operator's
+  logout and logon, until it was restarted some other way.
+- The HTTP admin API's OpenAPI document described each session in `GET status` with `loggedIn`, `connected` and
+  `withinSessionTime`, which are not sent, and without its `status`.
 
 ## [0.9.1] - 2026-10-14
 

@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
 import org.lolaf.staffix.api.alerting.ProbeId;
 import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionProbeScope;
 
@@ -79,6 +80,13 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
     @Override
     public void sendFixMessage(String fixMessage, char separator, boolean possDupFlag) {
         delegate.sendFixMessage(fixSessionId, fixMessage, separator, possDupFlag);
+    }
+
+    @Override
+    public boolean isPendingSettingsUpdate() {
+        return delegate.getManagedFixSessions().stream()
+                .filter(session -> session.getFixSessionId().equals(fixSessionId))
+                .anyMatch(FixSession::hasPendingSettingsUpdate);
     }
 
     @Override

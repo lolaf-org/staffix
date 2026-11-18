@@ -216,7 +216,7 @@ class TestFixEngineSessionsSettingsWrites {
         adminApi.addFixSessionSettings(STORE_ID, alpha);
 
         assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(),
-                alpha.toBuilder().fixApplicationInstanceId("orders").build()))
+                alpha.toBuilder().fixApplicationInstanceId("orders").build(), true))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(store.getSettings()).containsExactly(alpha);
     }
@@ -232,7 +232,7 @@ class TestFixEngineSessionsSettingsWrites {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("speaks FIX.4.4");
         adminApi.addFixSessionSettings(STORE_ID, alpha);
-        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(), alpha42))
+        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(), alpha42, true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("speaks FIX.4.4");
         assertThat(store.getSettings()).containsExactly(alpha);
@@ -266,7 +266,7 @@ class TestFixEngineSessionsSettingsWrites {
         adminApi.addFixSessionSettings(STORE_ID, alpha);
         FixSessionSettings loggedIn = alpha.toBuilder().desiredSessionState(FixSessionDesiredState.LOGGED_IN).build();
 
-        adminApi.updateFixSessionSettings(alpha.getFixSessionId(), loggedIn);
+        adminApi.updateFixSessionSettings(alpha.getFixSessionId(), loggedIn, false);
 
         assertThat(store.getSettings()).containsExactly(loggedIn);
     }
@@ -277,11 +277,22 @@ class TestFixEngineSessionsSettingsWrites {
         adminApi.addFixSessionSettings(STORE_ID, alpha);
         FixSessionSettings retargeted = session("alpha", "ALPHA2");
 
-        adminApi.updateFixSessionSettings(alpha.getFixSessionId(), retargeted);
+        adminApi.updateFixSessionSettings(alpha.getFixSessionId(), retargeted, true);
 
         assertThat(store.getSettings()).containsExactly(retargeted);
         assertThat(adminApi.getIncomingSeqNum(retargeted.getFixSessionId())).isPositive();
         assertThatThrownBy(() -> adminApi.getIncomingSeqNum(alpha.getFixSessionId())).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void anUpdateChangingTheCompIdsWithoutARestartIsRefused() {
+        FixSessionSettings alpha = session("alpha", "ALPHA");
+        adminApi.addFixSessionSettings(STORE_ID, alpha);
+
+        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(), session("alpha", "ALPHA2"), false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ask for the restart");
+        assertThat(store.getSettings()).containsExactly(alpha);
     }
 
     @Test
@@ -290,7 +301,7 @@ class TestFixEngineSessionsSettingsWrites {
         adminApi.addFixSessionSettings(STORE_ID, alpha);
         adminApi.addFixSessionSettings(STORE_ID, session("beta", "BETA"));
 
-        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(), session("beta", "ALPHA")))
+        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(), session("beta", "ALPHA"), true))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(store.getSettings()).contains(alpha);
     }
@@ -406,7 +417,7 @@ class TestFixEngineSessionsSettingsWrites {
 
         assertThatThrownBy(() -> adminApi.updateFixSessionSettings(initiator.getFixSessionId(), initiator.toBuilder()
                 .fixSessionId(FixSessionId.of("alpha", FixRegularVersion.VERSION_44, "SENDER", "ALPHA2"))
-                .build()))
+                .build(), true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("set by the initiator's targets");
     }
@@ -415,7 +426,7 @@ class TestFixEngineSessionsSettingsWrites {
     void writesToASessionNoStoreHoldsAreRefused() {
         FixSessionSettings alpha = session("alpha", "ALPHA");
 
-        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(), alpha))
+        assertThatThrownBy(() -> adminApi.updateFixSessionSettings(alpha.getFixSessionId(), alpha, true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No store holds");
         assertThatThrownBy(() -> adminApi.removeFixSessionSettings(alpha.getFixSessionId(), FixSession.FixSessionType.ACCEPTOR))

@@ -118,6 +118,7 @@ public class FixSessionImpl implements FixSession {
     private final FixAlertsPublisher alertsPublisher;
     @SuppressWarnings("java:S3077")
     private volatile Thread offlineOwnerThread;
+    private volatile boolean pendingSettingsUpdate;
     @Getter
     private Collection<Certificate> remoteCertificates;
     private IOSession ioSession;
@@ -609,6 +610,19 @@ public class FixSessionImpl implements FixSession {
     @Override
     public boolean isLoggedIn() {
         return fixSessionState.isLoggedIn();
+    }
+
+    @Override
+    public boolean hasPendingSettingsUpdate() {
+        return pendingSettingsUpdate;
+    }
+
+    /**
+     * Its settings were updated while it was connected: they apply when a new session replaces it.
+     */
+    public void markPendingSettingsUpdate() {
+        pendingSettingsUpdate = true;
+        logEvent("Settings updated, applying them when it next connects");
     }
 
     public boolean isLogonReceived() {

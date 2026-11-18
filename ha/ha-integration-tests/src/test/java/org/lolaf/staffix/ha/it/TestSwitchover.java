@@ -918,8 +918,7 @@ class TestSwitchover {
         await().untilAsserted(() -> assertThat(b.getStatus().getSessionSettingsDifferences()).singleElement()
                 .satisfies(difference -> assertThat(difference.getKind()).isEqualTo(HaStatus.SessionSettingsDifference.Kind.DIFFERENT)));
 
-        leader.getFixSessionsSettingsStores().get(0).update(changed.toBuilder().restartLiveSessionOnUpdate(false).build());
-        follower.getFixSessionsSettingsStores().get(0).update(changed.toBuilder().restartLiveSessionOnUpdate(false).build());
+        leader.getFixSessionsSettingsStores().get(0).update(changed);
 
         await().untilAsserted(() -> assertThat(b.getStatus().getSessionSettingsDifferences()).isEmpty());
 

@@ -494,7 +494,11 @@ paths:
           $ref: '#/components/responses/Conflict'
   /v1/session-settings-stores/{storeId}/reload:
     post:
-      summary: Reloads a session settings store, starting, stopping or restarting the sessions it changed
+      summary: Reloads a session settings store and applies what changed to its sessions
+      description: >
+        A session whose settings were added starts, and one whose settings went is stopped. A session whose settings
+        changed is treated as by an update: rebuilt on them at once when disconnected, kept running on its old ones
+        until it next connects when live, unless restart asks for it now.
       operationId: reloadSessionSettingsStore
       parameters:
         - name: storeId
@@ -502,6 +506,7 @@ paths:
           required: true
           schema:
             type: string
+        - $ref: '#/components/parameters/restart'
       responses:
         '204':
           description: Reloaded.
@@ -602,13 +607,16 @@ paths:
     put:
       summary: Replaces the session's settings in the store holding them
       description: >
-        The live session restarts on them unless restartLiveSessionOnUpdate is off. A masked application setting keeps
-        the value the session has. An acceptor session's id (CompIDs, FIX version, name) may change; an initiator's is
-        set by its targets.
+        A disconnected session is rebuilt on the new settings at once. A live one keeps running on its old settings
+        until it next connects (a reconnection, its session time window reopening, an operator's logout and logon),
+        unless restart asks for it now. A masked application setting keeps the value the session has. An acceptor
+        session's id (CompIDs, FIX version, name) may change, which replaces the session and so needs restart=true; an
+        initiator's is set by its targets.
       operationId: updateSessionSettings
       parameters:
         - $ref: '#/components/parameters/group'
         - $ref: '#/components/parameters/name'
+        - $ref: '#/components/parameters/restart'
       requestBody:
         required: true
         content:
@@ -629,8 +637,8 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
     delete:
-      summary: Removes the session from the store holding it
-      description: The live session is disconnected unless disconnectOnRemove is off.
+      summary: Removes the session from the store holding it, which stops it
+      description: A live session is logged out and disconnected.
       operationId: removeSession
       parameters:
         - $ref: '#/components/parameters/group'
@@ -830,6 +838,16 @@ components:
       description: The session's name, its main config's for an initiator, as in sessions.
       schema:
         type: string
+    restart:
+      name: restart
+      in: query
+      required: true
+      description: >
+        true restarts a live session whose settings changed on them now: it is logged out and reconnects on them.
+        false leaves it running, and it picks them up when it next connects. Required, so that no change interrupts a
+        session unasked.
+      schema:
+        type: boolean
   responses:
     Done:
       description: Done.
@@ -983,7 +1001,7 @@ components:
           $ref: '#/components/schemas/AlertLevel'
     SessionStatus:
       type: object
-      required: [group, name, selectedConfig, loggedIn, connected, withinSessionTime, desiredState, incomingSeqNum,
+      required: [group, name, selectedConfig, desiredState, status, pendingSettingsUpdate, incomingSeqNum,
                  outgoingSeqNum]
       properties:
         group:
@@ -994,16 +1012,21 @@ components:
         selectedConfig:
           type: string
           description: The config running now.
-        loggedIn:
-          type: boolean
-        connected:
-          type: boolean
-        withinSessionTime:
-          type: boolean
         desiredState:
           type: string
           description: LOGGED_OUT when an operator logged the session out.
-          enum: [LOGGED_IN, LOGGED_OUT, CONNECTED, DISCONNECTED]
+          enum: [LOGGED_IN, LOGGED_OUT]
+        status:
+          type: string
+          description: >
+            Where the session stands for an operator: tells an incident (logged out inside its session time) from a
+            planned pause (outside it) or an operator's logout.
+          enum: [LOGGED_IN, LOGGED_OUT_INSIDE_SESSION_TIME, LOGGED_OUT_OUTSIDE_SESSION_TIME, LOGGED_OUT_BY_OPERATOR]
+        pendingSettingsUpdate:
+          type: boolean
+          description: >
+            The session's settings were updated while it was live, without a restart, and it still runs on the old
+            ones. They apply when it next connects, or when an update with restart=true restarts it.
         incomingSeqNum:
           type: integer
           format: int64

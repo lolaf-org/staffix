@@ -292,10 +292,11 @@ naming the `DataSource` bean (required) and an optional `.table-prefix`.
 
 Every store accepts `add`, `update` and `remove` while the engine runs, and the engine's acceptors and initiators react
 to them. `reloadFixSessionsSettingsStore(instanceId)` re-reads a store and applies the difference the same way, which
-is how an edited YAML file or table row reaches a running engine. A changed session may be restarted and a removed one
-disconnected: [Runtime administration](runtime-administration.md#reloading-settings) covers the reload, and
-[Configuring a session](configuring-sessions.md#when-settings-change-under-a-running-session) the settings that decide
-how each session takes it.
+is how an edited YAML file or table row reaches a running engine. A live session whose settings changed keeps the old
+ones until it next connects, unless the reload asks for a restart, and a session whose settings went is stopped:
+[Runtime administration](runtime-administration.md#reloading-settings) covers the reload, and
+[Configuring a session](configuring-sessions.md#when-settings-change-under-a-running-session) how a session takes a
+change.
 
 ---
 

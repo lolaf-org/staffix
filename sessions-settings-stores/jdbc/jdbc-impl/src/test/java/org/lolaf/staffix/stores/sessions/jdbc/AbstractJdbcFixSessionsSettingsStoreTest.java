@@ -154,7 +154,7 @@ abstract class AbstractJdbcFixSessionsSettingsStoreTest {
         JdbcFixSessionsSettingsStore store = startedStore();
         store.add(withPlaceholder(session("placeholder", Duration.ofSeconds(45))));
 
-        store.update(session("placeholder", Duration.ofSeconds(45)).toBuilder().disconnectOnRemove(false).build());
+        store.update(session("placeholder", Duration.ofSeconds(45)).toBuilder().testingMode(true).build());
 
         assertThat(rowJson()).contains(EXPRESSION).doesNotContain("PT45S");
     }

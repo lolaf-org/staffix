@@ -41,6 +41,10 @@ public class SessionStatus {
      * Where the session stands for an operator: tells an incident from a planned pause or an operator's logout.
      */
     FixSessionStatus status;
+    /**
+     * Its settings were updated while it was live and it still runs on the old ones, until it next connects.
+     */
+    boolean pendingSettingsUpdate;
     long incomingSeqNum;
     long outgoingSeqNum;
     /**

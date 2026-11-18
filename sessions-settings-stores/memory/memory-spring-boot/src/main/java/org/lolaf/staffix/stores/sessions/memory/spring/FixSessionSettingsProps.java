@@ -178,20 +178,6 @@ public class FixSessionSettingsProps {
      */
     private Boolean pooledMessageEncodersDirectByteBuffers;
     /**
-     * Whether removing these settings from their store disconnects the live session. On by default. Off makes the
-     * removal a configuration change only: the session keeps running until it drops on its own, which is what a venue
-     * asking you to stop reconnecting after the trading day needs.
-     */
-    private Boolean disconnectOnRemove;
-    /**
-     * Whether updating these settings in their store restarts the live session, so the change takes effect now. On by
-     * default, since an update that never reaches the running session is the worse surprise. Off, the new settings
-     * apply the next time the session connects. Read from the settings the session is running under, not the new
-     * ones.
-     */
-    private Boolean restartLiveSessionOnUpdate;
-
-    /**
      * What this session checks on every inbound message. Each check costs something on the message path, which
      * is why most are off.
      */

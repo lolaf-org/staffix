@@ -25,7 +25,10 @@ public interface FixAdminMXBean {
 
     List<String> getFixSessionsSettingsStoresInstanceIds();
 
-    void reloadFixSessionsSettingsStore(String instanceId);
+    /**
+     * See {@link org.lolaf.staffix.api.admin.AdminApi#reloadFixSessionsSettingsStore}.
+     */
+    void reloadFixSessionsSettingsStore(String instanceId, boolean restartLiveSessions);
 
     List<InitiatorTargets> getInitiatorsTargets();
 

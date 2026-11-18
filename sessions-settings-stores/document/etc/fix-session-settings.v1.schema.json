@@ -185,17 +185,6 @@
       "description" : "How long a disconnect waits for messages already queued to be sent before the socket is closed.",
       "default" : "PT2S"
     },
-    "disconnectOnRemove" : {
-      "anyOf" : [ {
-        "type" : "boolean"
-      }, {
-        "type" : "string",
-        "pattern" : ".*\\$\\{[^}]+}.*",
-        "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ],
-      "description" : "Whether removing these settings from their FixSessionsSettingsStore disconnects the live session. On by default. Off makes the removal a configuration change only: the session keeps running until it drops on its own, which is what a venue asking you to stop reconnecting after the trading day needs.",
-      "default" : true
-    },
     "enabledLogonNextExpectedMsgSeqNum" : {
       "anyOf" : [ {
         "type" : "boolean"
@@ -448,7 +437,7 @@
         "replicationMode" : {
           "type" : "string",
           "enum" : [ "NONE", "ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED" ],
-          "description" : "Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the session is next built, as restartLiveSessionOnUpdate decides: turned on, the follower catches up by snapshot; turned off, it stops holding the session.",
+          "description" : "Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the session is next built: turned on, the follower catches up by snapshot; turned off, it stops holding the session.",
           "default" : "NONE"
         },
         "syncAckLatencyEnabled" : {
@@ -563,17 +552,6 @@
         "description" : "A ${...} placeholder, resolved when the file is loaded"
       } ],
       "description" : "Whether sequence numbers restart at 1 on logon. True resets on every logon, false refuses a counterparty's reset with a Logout (section 4.4.3), and null, the default, follows whatever the counterparty asks for."
-    },
-    "restartLiveSessionOnUpdate" : {
-      "anyOf" : [ {
-        "type" : "boolean"
-      }, {
-        "type" : "string",
-        "pattern" : ".*\\$\\{[^}]+}.*",
-        "description" : "A ${...} placeholder, resolved when the file is loaded"
-      } ],
-      "description" : "Whether updating these settings in their FixSessionsSettingsStore restarts the live session, so the change takes effect now. On by default, since an update that never reaches the running session is the worse surprise. Off, the new settings apply the next time the session connects. Read from the settings the session is running under, not the new ones.",
-      "default" : true
     },
     "rttMeasurementSettings" : {
       "type" : "object",

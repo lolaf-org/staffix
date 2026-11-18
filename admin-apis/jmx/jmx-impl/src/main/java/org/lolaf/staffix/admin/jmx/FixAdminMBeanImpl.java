@@ -46,8 +46,8 @@ public class FixAdminMBeanImpl implements FixAdminMXBean {
     }
 
     @Override
-    public void reloadFixSessionsSettingsStore(String instanceId) {
-        delegate.reloadFixSessionsSettingsStore(instanceId);
+    public void reloadFixSessionsSettingsStore(String instanceId, boolean restartLiveSessions) {
+        delegate.reloadFixSessionsSettingsStore(instanceId, restartLiveSessions);
     }
 
     @Override

@@ -38,10 +38,11 @@ public final class UpdateSessionSettingsRoute extends Route {
 
     @Override
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
+        boolean restart = requiredBooleanQueryParameter(exchange, "restart");
         SessionLookup.StoredSession session = sessions.storedSession(param(path, "group"), param(path, "name"));
         FixSessionSettings settings = SessionSettingsDocuments.read(exchange.getRequestBody(), session.settings);
-        log.info("Admin API: update the settings of {}", session.fixSessionId.getQualifiedName());
-        adminApi.updateFixSessionSettings(session.fixSessionId, settings);
+        log.info("Admin API: update the settings of {}, restart={}", session.fixSessionId.getQualifiedName(), restart);
+        adminApi.updateFixSessionSettings(session.fixSessionId, settings, restart);
         sendNoContent(exchange);
     }
 }

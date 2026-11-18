@@ -110,8 +110,6 @@ public class FromFixSessionSettingsDocumentTransformer {
         mergeHaSessionSettings(settings, builder);
         mergeIfNeeded(settings::getMessageEncodersDirectByteBuffers, builder::messageEncodersDirectByteBuffers);
         mergeIfNeeded(settings::getPooledMessageEncodersDirectByteBuffers, builder::pooledMessageEncodersDirectByteBuffers);
-        mergeIfNeeded(settings::getDisconnectOnRemove, builder::disconnectOnRemove);
-        mergeIfNeeded(settings::getRestartLiveSessionOnUpdate, builder::restartLiveSessionOnUpdate);
         mergeSessionScheduleSettings(settings, builder);
         return builder.build();
     }

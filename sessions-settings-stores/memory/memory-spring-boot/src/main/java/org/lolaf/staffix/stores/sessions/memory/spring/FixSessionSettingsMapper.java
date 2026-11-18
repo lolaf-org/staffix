@@ -143,12 +143,6 @@ public class FixSessionSettingsMapper {
         if (p.getPooledMessageEncodersDirectByteBuffers() != null) {
             b.pooledMessageEncodersDirectByteBuffers(p.getPooledMessageEncodersDirectByteBuffers());
         }
-        if (p.getDisconnectOnRemove() != null) {
-            b.disconnectOnRemove(p.getDisconnectOnRemove());
-        }
-        if (p.getRestartLiveSessionOnUpdate() != null) {
-            b.restartLiveSessionOnUpdate(p.getRestartLiveSessionOnUpdate());
-        }
         if (p.getValidation() != null) {
             FixSessionSettings.ValidationSettings.ValidationSettingsBuilder<?, ?> vb = FixSessionSettings.ValidationSettings.builder();
             FixSessionSettingsProps.ValidationProps v = p.getValidation();

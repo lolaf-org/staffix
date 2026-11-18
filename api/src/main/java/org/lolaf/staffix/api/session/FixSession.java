@@ -149,6 +149,12 @@ public interface FixSession {
     boolean isWithinSessionTime();
 
     /**
+     * Whether its settings were updated while it was live and it still runs on the old ones: they apply when it next
+     * connects, or when an admin update or reload restarts it.
+     */
+    boolean hasPendingSettingsUpdate();
+
+    /**
      * Retrieves the authenticated subject if any
      */
     Subject getAuthenticatedSubject();
