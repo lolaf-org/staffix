@@ -15,8 +15,6 @@
  */
 package org.lolaf.staffix.generator;
 
-import org.lolaf.staffix.api.serde.SerDe;
-import java.nio.charset.StandardCharsets;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Value;
@@ -32,6 +30,7 @@ import org.lolaf.staffix.api.fields.FieldType;
 import org.lolaf.staffix.api.fields.FieldsRegistry;
 import org.lolaf.staffix.api.fields.FixtFieldsRegistry;
 import org.lolaf.staffix.api.msg.*;
+import org.lolaf.staffix.api.serde.SerDe;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.FixVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
@@ -45,14 +44,8 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -166,7 +159,7 @@ public class CodeGenerator {
     private static List<EncoderInfo> generateMessagesEncoders(Element fix, FixVersion fixVersion, String dictionaryId, File sourcesOutputDirectory, File resourcesOutputDirectory,
                                                               Log log, String packageName, VelocityEngine ve, String messagesTypePackage,
                                                               String fieldsPackage, List<Field> generatedFields, Set<Field> usedFields) {
-        log.info("Processing encoders");
+        log.debug("Processing encoders");
         List<EncoderInfo> encoderInfos = new ArrayList<>();
         File packageDir = generatePackagesDir(sourcesOutputDirectory, packageName);
         NodeList messages = ((Element) fix.getElementsByTagName("messages").item(0)).getElementsByTagName("message");
@@ -214,7 +207,7 @@ public class CodeGenerator {
         }
 
         groupEncoders.assignNames();
-        log.info("Processing encoders: " + messageModels.size() + " messages, " + groupEncoders.totalReferences()
+        log.debug("Processing encoders: " + messageModels.size() + " messages, " + groupEncoders.totalReferences()
                 + " group references sharing " + groupEncoders.distinct().size() + " group encoders");
 
         for (MessageModel model : messageModels) {
@@ -352,7 +345,7 @@ public class CodeGenerator {
     private static void generateEncoderRegistryAndFactory(File sourcesOutputDirectory, File resourcesOutputDirectory,
                                                           Log log, String packageName, VelocityEngine ve,
                                                           String dictionaryId, FixRegularVersion fixVersion, List<EncoderInfo> encoderInfos) {
-        log.info("Processing encoder registry and factory");
+        log.debug("Processing encoder registry and factory");
         File packageDir = generatePackagesDir(sourcesOutputDirectory, packageName);
 
         // Generate FixMessageEncoderRegistry
@@ -464,7 +457,7 @@ public class CodeGenerator {
 
     private static void generateMessagesTypes(boolean fixtDict, Element fix, File sourcesOutputDirectory, File resourcesOutputDirectory,
                                               Log log, String packageName, VelocityEngine ve, FixVersion fixVersion, String dictionaryId) {
-        log.info("Processing messages types");
+        log.debug("Processing messages types");
         File packageDir = generatePackagesDir(sourcesOutputDirectory, packageName);
         List<EnumValue> messagesType = new ArrayList<>();
         NodeList messages = ((Element) fix.getElementsByTagName("messages").item(0)).getElementsByTagName("message");
@@ -495,7 +488,7 @@ public class CodeGenerator {
 
     private static void generateMessagesFieldsOrderRegistry(boolean fixtDict, File sourcesOutputDirectory, File resourcesOutputDirectory,
                                                             Log log, String packageName, VelocityEngine ve, FixVersion fixVersion, String dictionaryId) {
-        log.info("Processing messages fields order registry");
+        log.debug("Processing messages fields order registry");
         File packageDir = generatePackagesDir(sourcesOutputDirectory, packageName);
         VelocityContext context = new VelocityContext();
         context.put("packageName", packageName);
@@ -509,7 +502,7 @@ public class CodeGenerator {
 
     private static void generateUsedFields(boolean fixtDict, List<Field> generatedFields, File sourcesOutputDirectory, File resourcesOutputDirectory,
                                            Log log, String packageName, VelocityEngine ve, FixVersion fixVersion, String dictionaryId, Set<Field> usedFields) {
-        log.info("Processing used fields");
+        log.debug("Processing used fields");
         File packageDir = generatePackagesDir(sourcesOutputDirectory, packageName);
         // adding header and trailer fields
         generatedFields.stream().filter(field -> !field.location.equals(FieldLocation.BODY)).forEach(usedFields::add);
@@ -543,7 +536,7 @@ public class CodeGenerator {
     }
 
     private static List<Field> generateFields(Element fix, Log log) {
-        log.info("Processing fields main list");
+        log.debug("Processing fields main list");
         Set<String> headerFields = getFieldsLocation(fix, "header");
         Set<String> trailerFields = getFieldsLocation(fix, "trailer");
         List<Field> generatedFields = new ArrayList<>();

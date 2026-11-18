@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" child.project.url.inherit.append.path="false">
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+         child.project.url.inherit.append.path="false">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.lolaf.staffix</groupId>
@@ -39,7 +41,8 @@
         </developer>
     </developers>
 
-    <scm child.scm.connection.inherit.append.path="false" child.scm.developerConnection.inherit.append.path="false" child.scm.url.inherit.append.path="false">
+    <scm child.scm.connection.inherit.append.path="false" child.scm.developerConnection.inherit.append.path="false"
+         child.scm.url.inherit.append.path="false">
         <connection>scm:git:https://github.com/lolaf-org/staffix.git</connection>
         <!-- HTTPS rather than the conventional ssh: the credential that pushes a release is a token,
              and a token is an HTTPS credential. -->
@@ -71,6 +74,7 @@
         <module>sessions-settings-stores</module>
         <module>monitoring</module>
         <module>admin-apis</module>
+        <module>ha</module>
         <module>impl</module>
         <module>benchmarks</module>
         <module>examples</module>
@@ -84,7 +88,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Filled by the JaCoCo agent; empty so that surefire's @{argLine} still resolves with -Djacoco.skip. -->
-        <argLine />
+        <argLine/>
         <sonar.coverage.jacoco.xmlReportPaths>
             ${maven.multiModuleProjectDirectory}/coverage-report/target/site/jacoco-aggregate/jacoco.xml
         </sonar.coverage.jacoco.xmlReportPaths>
@@ -93,7 +97,8 @@
         <maven.compiler.release>11</maven.compiler.release>
 
         <ringos.version>0.9.2</ringos.version>
-        <betty.version>0.9.3</betty.version>
+        <betty.version>0.9.4</betty.version>
+        <primos.version>0.9.0</primos.version>
         <maven-plugin-api.version>3.10.1</maven-plugin-api.version>
         <maven-plugin-annotations.version>3.16.0</maven-plugin-annotations.version>
         <testcontainers.version>2.0.5</testcontainers.version>
@@ -108,6 +113,7 @@
         <spring-boot.version>4.1.2</spring-boot.version>
         <!-- not 3.x due to java 11 support -->
         <jackson.version>2.22.4</jackson.version>
+        <jackson-annotations.version>2.22</jackson-annotations.version>
 
         <jspecify.version>1.0.1</jspecify.version>
         <slf4j.version>2.0.17</slf4j.version>
@@ -132,12 +138,15 @@
         <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
         <maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
         <!-- Appended to what maven-release-plugin passes to its forked builds -->
-        <release.extraArguments />
+        <release.extraArguments/>
         <lombok-maven-plugin.version>1.18.20.0</lombok-maven-plugin.version>
         <automatic.module.name>org.lolaf.staffix.MODULE.NAME.NOT.SET</automatic.module.name>
         <delombok.skip>false</delombok.skip>
+        <delombok.phase>process-classes</delombok.phase>
         <javadoc.delomboked.sources>${project.build.directory}/delombok</javadoc.delomboked.sources>
         <javadoc.sourcepath>${javadoc.delomboked.sources}</javadoc.sourcepath>
+
+        <staffix.tests.log.messages>false</staffix.tests.log.messages>
     </properties>
 
     <dependencyManagement>
@@ -318,6 +327,7 @@
                             @{argLine}
                             -XX:ContendedPaddingWidth=64
                             -XX:-RestrictContended
+                            -XX:AutoBoxCacheMax=65536
                             --enable-native-access=ALL-UNNAMED
                             --add-opens java.base/jdk.internal.misc=ALL-UNNAMED
                             --add-opens java.base/java.lang=ALL-UNNAMED
@@ -328,6 +338,9 @@
                             -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
                             -Xshare:off
                         </argLine>
+                        <systemPropertyVariables>
+                            <staffix.tests.log.messages>${staffix.tests.log.messages}</staffix.tests.log.messages>
+                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
             </plugins>
@@ -352,7 +365,7 @@
                 <executions>
                     <execution>
                         <id>delombok-for-javadoc</id>
-                        <phase>process-classes</phase>
+                        <phase>${delombok.phase}</phase>
                         <goals>
                             <goal>delombok</goal>
                         </goals>
@@ -471,6 +484,43 @@
     </build>
 
     <profiles>
+        <!-- unbound rather than skipped: the plugin warns on every skip, and on an empty source directory -->
+        <profile>
+            <id>no-main-sources</id>
+            <activation>
+                <file>
+                    <missing>${basedir}/src/main/java</missing>
+                </file>
+            </activation>
+            <properties>
+                <delombok.phase>none</delombok.phase>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- compiler 3.16.0 warns when the test classpath holds a missing main output directory -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>${maven-antrun-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>create-empty-main-output</id>
+                                <phase>process-classes</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target xmlns:if="ant:if">
+                                        <available file="${project.basedir}/src/test/java" property="has.tests"/>
+                                        <mkdir if:set="has.tests" dir="${project.build.outputDirectory}"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <!-- in the reactor so a refactoring that breaks one fails CI, and so a release rewrites their versions;
              the release plugin's arguments turn it off in its builds, so they are never deployed -->
         <profile>
@@ -529,6 +579,7 @@
                                 <excludeArtifact>staffix-compatibility-tests-quickfixj</excludeArtifact>
                                 <excludeArtifact>staffix-fix-conformance-tests</excludeArtifact>
                                 <excludeArtifact>staffix-module-path-tests</excludeArtifact>
+                                <excludeArtifact>staffix-ha-integration-tests</excludeArtifact>
                                 <excludeArtifact>staffix-coverage-report</excludeArtifact>
                                 <excludeArtifact>staffix-test-utils</excludeArtifact>
                                 <excludeArtifact>fix-sanitizer-test</excludeArtifact>

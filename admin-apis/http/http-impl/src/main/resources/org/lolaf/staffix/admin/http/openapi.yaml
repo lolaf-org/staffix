@@ -7,7 +7,8 @@ info:
     API versions served; every other path is under one, /v1 here. A session is always addressed by its name, its
     main config's for an initiator, whichever config it runs. Operations answer once the engine has taken the
     request, not once the session reached the new state: poll status to see it. Errors answer with an
-    application/problem+json body.
+    application/problem+json body. Any path answers 405, with an Allow header, to a method it does not serve, and
+    500 when the engine fails to serve the request.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
@@ -131,10 +132,10 @@ paths:
                 $ref: '#/components/schemas/SessionComponents'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /v1/meters:
+  /v1/sessions/meters:
     get:
       summary: The meters each running session publishes, by the name of the config it runs
-      operationId: getMeters
+      operationId: getSessionsMeters
       responses:
         '200':
           description: One element per running session.
@@ -154,6 +155,21 @@ paths:
                       type: array
                       items:
                         $ref: '#/components/schemas/Meter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/engine/meters:
+    get:
+      summary: The meters of the engine's own components, such as its high availability, tagged with the engine alone
+      operationId: getEngineMeters
+      responses:
+        '200':
+          description: The engine's meters; empty when no component publishes any.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Meter'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /v1/sessions/{group}/{name}/meters:
@@ -253,6 +269,95 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/engine/{component}/probes:
+    get:
+      summary: The probes of one of the engine's own components, which change only when one is added or removed
+      operationId: getComponentProbes
+      parameters:
+        - name: component
+          in: path
+          required: true
+          description: An engine component with probes, as listed in the status, such as ha.
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The component's probes, in the order they were added.
+          headers:
+            ETag:
+              description: The probes' version, quoted; the same as probesVersion in the status.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProbeDescription'
+        '304':
+          description: Unchanged since the ETag sent in If-None-Match.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/engine/{component}/probes/states:
+    get:
+      summary: Where each of the component's probes stood at its last evaluation
+      operationId: getComponentProbeStates
+      parameters:
+        - name: component
+          in: path
+          required: true
+          description: An engine component with probes, as listed in the status, such as ha.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One state per probe evaluated at least once.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProbeStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/engine/{component}/probes/{probe}/clear:
+    post:
+      summary: Clears the component probe's ongoing alert, when its evaluator accepts it
+      description: The alert clears at the engine's next evaluation tick, published as manually cleared. A probe whose
+        condition is polled refuses, since it would only raise the alert again.
+      operationId: clearComponentAlert
+      parameters:
+        - name: component
+          in: path
+          required: true
+          description: An engine component with probes, as listed in the status, such as ha.
+          schema:
+            type: string
+        - name: probe
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/alerts:
     get:
       summary: Every probe in alert across the engine
@@ -267,9 +372,134 @@ paths:
                 $ref: '#/components/schemas/EngineAlerts'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/ha:
+    get:
+      summary: The engine's high availability
+      description: The role it acts on, and on a leader its followers' connections, on a follower its leader.
+      operationId: getHaStatus
+      responses:
+        '200':
+          description: The engine's high availability.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HaNodeStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/ha/sessions:
+    get:
+      summary: Every session configured with replication
+      description: On a leader whether a follower holds each, on a follower what it holds.
+      operationId: getHaSessions
+      responses:
+        '200':
+          description: The replicated sessions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HaSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/ha/electable:
+    post:
+      summary: Takes this node out of elections for maintenance, or puts it back
+      description: A node out of elections keeps voting but never leads. Refused when the leader election cannot,
+        as electableSupported in the high availability's status tells.
+      operationId: setHaElectable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElectableRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/ha/switchover:
+    post:
+      summary: Hands leadership to a follower while this node keeps running
+      description: Once a follower holds every replicated session, this node logs its sessions out, sends the follower
+        every write and tells it so, which spares it the sequence number jump of a failover, then has the leader
+        election transfer leadership. Answers once it ended, at most the switchover timeout later. Refused unless this
+        node leads with a leader election that can transfer leadership.
+      operationId: switchoverHa
+      responses:
+        '200':
+          description: How the switchover ended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SwitchoverResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/ha/resync:
+    post:
+      summary: Sends every replicated session again to every follower, replacing its copy
+      description: Leader only. Until a follower holds a session again, its SYNC sends do not wait for that follower.
+        A session whose storage the follower shares, or which it refuses, is left as it is.
+      operationId: resyncHa
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/ha/sessions/{group}/{name}/resync:
+    post:
+      summary: Sends one replicated session again to every follower, replacing its copy
+      description: Leader only, as v1/ha/resync for this session. The session is named as v1/ha/sessions lists it, by
+        the config it runs, so an initiator running a backup is named after the backup. An initiator and an acceptor of
+        the same name are both re-synced. A session whose settings were changed to replicate it, but which was not
+        rebuilt since, is a conflict.
+      operationId: resyncHaSession
+      parameters:
+        - $ref: '#/components/parameters/group'
+        - $ref: '#/components/parameters/name'
+      responses:
+        '204':
+          $ref: '#/components/responses/Done'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/session-settings-stores/{storeId}/reload:
     post:
-      summary: Reloads a session settings store, starting, stopping or restarting the sessions it changed
+      summary: Reloads a session settings store and applies what changed to its sessions
+      description: >
+        A session whose settings were added starts, and one whose settings went is stopped. A session whose settings
+        changed is treated as by an update: rebuilt on them at once when disconnected, kept running on its old ones
+        until it next connects when live, unless restart asks for it now.
       operationId: reloadSessionSettingsStore
       parameters:
         - name: storeId
@@ -277,6 +507,7 @@ paths:
           required: true
           schema:
             type: string
+        - $ref: '#/components/parameters/restart'
       responses:
         '204':
           description: Reloaded.
@@ -377,13 +608,16 @@ paths:
     put:
       summary: Replaces the session's settings in the store holding them
       description: >
-        The live session restarts on them unless restartLiveSessionOnUpdate is off. A masked application setting keeps
-        the value the session has. An acceptor session's id (CompIDs, FIX version, name) may change; an initiator's is
-        set by its targets.
+        A disconnected session is rebuilt on the new settings at once. A live one keeps running on its old settings
+        until it next connects (a reconnection, its session time window reopening, an operator's logout and logon),
+        unless restart asks for it now. A masked application setting keeps the value the session has. An acceptor
+        session's id (CompIDs, FIX version, name) may change, which replaces the session and so needs restart=true; an
+        initiator's is set by its targets.
       operationId: updateSessionSettings
       parameters:
         - $ref: '#/components/parameters/group'
         - $ref: '#/components/parameters/name'
+        - $ref: '#/components/parameters/restart'
       requestBody:
         required: true
         content:
@@ -404,8 +638,8 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
     delete:
-      summary: Removes the session from the store holding it
-      description: The live session is disconnected unless disconnectOnRemove is off.
+      summary: Removes the session from the store holding it, which stops it
+      description: A live session is logged out and disconnected.
       operationId: removeSession
       parameters:
         - $ref: '#/components/parameters/group'
@@ -605,6 +839,16 @@ components:
       description: The session's name, its main config's for an initiator, as in sessions.
       schema:
         type: string
+    restart:
+      name: restart
+      in: query
+      required: true
+      description: >
+        true restarts a live session whose settings changed on them now: it is logged out and reconnects on them.
+        false leaves it running, and it picks them up when it next connects. Required, so that no change interrupts a
+        session unasked.
+      schema:
+        type: boolean
   responses:
     Done:
       description: Done.
@@ -631,7 +875,7 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     NotFound:
-      description: No such session, config, dictionary or API version.
+      description: No such session, config, dictionary or API version, or no high availability.
       content:
         application/problem+json:
           schema:
@@ -725,7 +969,7 @@ components:
             $ref: '#/components/schemas/DictionaryRef'
     EngineStatus:
       type: object
-      required: [engineId, sessionsVersion, alertsVersion, sessions]
+      required: [engineId, sessionsVersion, alertsVersion, sessions, components]
       properties:
         engineId:
           type: string
@@ -740,9 +984,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SessionStatus'
+        components:
+          type: array
+          description: The engine's own components with probes, such as its high availability.
+          items:
+            $ref: '#/components/schemas/ComponentStatus'
+    ComponentStatus:
+      type: object
+      required: [component, probesVersion]
+      properties:
+        component:
+          type: string
+        probesVersion:
+          type: string
+          description: The version of the component's probes; fetch them again when it differs.
+        alertLevel:
+          $ref: '#/components/schemas/AlertLevel'
     SessionStatus:
       type: object
-      required: [group, name, selectedConfig, loggedIn, connected, withinSessionTime, desiredState, incomingSeqNum,
+      required: [group, name, selectedConfig, desiredState, status, pendingSettingsUpdate, incomingSeqNum,
                  outgoingSeqNum]
       properties:
         group:
@@ -753,16 +1013,21 @@ components:
         selectedConfig:
           type: string
           description: The config running now.
-        loggedIn:
-          type: boolean
-        connected:
-          type: boolean
-        withinSessionTime:
-          type: boolean
         desiredState:
           type: string
           description: LOGGED_OUT when an operator logged the session out.
-          enum: [LOGGED_IN, LOGGED_OUT, CONNECTED, DISCONNECTED]
+          enum: [LOGGED_IN, LOGGED_OUT]
+        status:
+          type: string
+          description: >
+            Where the session stands for an operator: tells an incident (logged out inside its session time) from a
+            planned pause (outside it) or an operator's logout.
+          enum: [LOGGED_IN, LOGGED_OUT_INSIDE_SESSION_TIME, LOGGED_OUT_OUTSIDE_SESSION_TIME, LOGGED_OUT_BY_OPERATOR]
+        pendingSettingsUpdate:
+          type: boolean
+          description: >
+            The session's settings were updated while it was live, without a restart, and it still runs on the old
+            ones. They apply when it next connects, or when an update with restart=true restarts it.
         incomingSeqNum:
           type: integer
           format: int64
@@ -847,7 +1112,7 @@ components:
       enum: [WARNING, MAJOR, CRITICAL]
     ProbeDescription:
       type: object
-      required: [name, description, evaluationInterval, labels, onlyWhileLoggedIn]
+      required: [name, description, evaluationInterval, labels, onlyWhileActive]
       properties:
         name:
           type: string
@@ -856,9 +1121,11 @@ components:
           type: string
         evaluationInterval:
           type: string
+          format: duration
           description: ISO-8601 duration, such as PT1S.
         reminderInterval:
           type: string
+          format: duration
           description: ISO-8601 duration an ongoing alert is published again at; absent for transitions only.
         labels:
           type: object
@@ -869,9 +1136,9 @@ components:
           type: string
           format: uri
           description: What to do about the probe's alerts; absent when it has none.
-        onlyWhileLoggedIn:
+        onlyWhileActive:
           type: boolean
-          description: Evaluated only while the session is LOGGED_IN, suspended in every other status.
+          description: Evaluated only while its scope is active (a session while LOGGED_IN), suspended otherwise.
     ProbeStatus:
       type: object
       required: [probe, suspended]
@@ -910,8 +1177,13 @@ components:
             $ref: '#/components/schemas/ActiveAlert'
     ActiveAlert:
       type: object
-      required: [group, name, selectedConfig, probe, level, message, since]
+      description: Carries either the engine component the probe belongs to, or the session's group, name and
+        selectedConfig.
+      required: [probe, level, message, since]
       properties:
+        component:
+          type: string
+          description: The engine component the probe belongs to, such as ha; absent for a session's probe.
         group:
           type: string
         name:
@@ -933,6 +1205,198 @@ components:
           type: string
           format: uri
           description: The probe's runbook; absent when it has none.
+    HaNodeStatus:
+      type: object
+      required: [nodeId, role, epoch, leadershipValid, leaderElectionType, transferLeadershipSupported, electableSupported,
+        electable, followerConnections, droppedFollowers, sessionSettingsDifferences]
+      properties:
+        nodeId:
+          type: string
+        pairName:
+          type: string
+          description: The same on every node of a pair, absent when the pair is unnamed.
+        role:
+          type: string
+          enum: [LEADER, FOLLOWER, UNKNOWN]
+          description: The role the engine acts on, which trails the election's while it changes over.
+        epoch:
+          type: integer
+          format: int64
+          description: The election's epoch, -1 when unknown.
+        leaderId:
+          type: string
+        leadershipValid:
+          type: boolean
+          description: This node can still prove it leads; a leader that cannot stops its sessions.
+        leaderElectionType:
+          type: string
+          description: The leader election's implementation.
+        switchoverMaxDuration:
+          type: string
+          format: duration
+          description: The longest a switchover can take, from waiting for a follower ready to lead to leadership leaving this node.
+        monitoringInstanceId:
+          type: string
+          description: The instance of the monitoring plugin publishing the node's own meters; absent when it publishes none.
+        roleSince:
+          type: string
+          format: date-time
+          description: When the engine took its role; absent before it took any.
+        transferLeadershipSupported:
+          type: boolean
+          description: The leader election can hand leadership over, for a planned switchover.
+        electableSupported:
+          type: boolean
+          description: The leader election lets this node decline to stand, for maintenance.
+        electable:
+          type: boolean
+          description: This node stands for election.
+        followerConnections:
+          type: array
+          description: The connections of the followers to this node, one entry per follower and lane, while it leads.
+          items:
+            $ref: '#/components/schemas/HaFollowerConnection'
+        droppedFollowers:
+          type: array
+          description: While this node leads, the followers it dropped as too slow and not back in sync since.
+          items:
+            $ref: '#/components/schemas/HaDroppedFollower'
+        sessionSettingsDifferences:
+          type: array
+          description: While this node follows, how its session settings differ from the leader's.
+          items:
+            $ref: '#/components/schemas/HaSessionSettingsDifference'
+        leader:
+          $ref: '#/components/schemas/HaLeader'
+    HaFollowerConnection:
+      type: object
+      required: [lane, address, connected, inSync, snapshotInProgress, unsentBytes, lagMillis]
+      properties:
+        nodeId:
+          type: string
+          description: Absent until the follower said.
+        lane:
+          type: integer
+          description: The lane, each carrying its own share of the sessions over its own connection.
+        address:
+          type: string
+        connected:
+          type: boolean
+          description: Streaming the leader's writes.
+        inSync:
+          type: boolean
+          description: Holds every session of the lane in sync.
+        snapshotInProgress:
+          type: boolean
+        unsentBytes:
+          type: integer
+          format: int64
+          description: >-
+            Bytes the leader wrote and has not sent this follower yet, -1 before it started sending. Reaching the
+            replication log's capacity makes the leader's writes wait, then drops the follower, which a snapshot then
+            catches up.
+        lagMillis:
+          type: integer
+          format: int64
+          description: >-
+            How long the follower has been behind a write it has not applied yet, 0 when caught up. It grows while the
+            follower is stalled, which inSync, as of its last ack, does not show.
+    HaSessionSettingsDifference:
+      type: object
+      required: [store, fixSessionType, fixSessionId, kind]
+      properties:
+        store:
+          type: string
+          description: The instance id of the session settings store.
+        fixSessionType:
+          type: string
+          enum: [INITIATOR, ACCEPTOR]
+        fixSessionId:
+          type: string
+        kind:
+          type: string
+          enum: [MISSING_HERE, EXTRA_HERE, DIFFERENT]
+    HaDroppedFollower:
+      type: object
+      description: >-
+        A follower's lane dropped for reading its replication log so slowly that a write waited logFullTimeout for it.
+      required: [nodeId, lane, droppedAt]
+      properties:
+        nodeId:
+          type: string
+        lane:
+          type: integer
+        droppedAt:
+          type: string
+          format: date-time
+        heldOffUntil:
+          type: string
+          format: date-time
+          description: Until when it is refused, so its resync does not add to the load; absent once it may connect.
+    HaLeader:
+      type: object
+      description: The leader as its follower sees it, over all lanes.
+      required: [address, connected, inSync]
+      properties:
+        leaderId:
+          type: string
+          description: Absent until the leader said.
+        address:
+          type: string
+        connected:
+          type: boolean
+        inSync:
+          type: boolean
+          description: Holds every replicated session in full.
+    HaSession:
+      type: object
+      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, inSync, lastSendUnacknowledged,
+                 unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver, pendingWrites, lostWrites]
+      properties:
+        group:
+          type: string
+        name:
+          type: string
+        fixSessionType:
+          type: string
+          enum: [INITIATOR, ACCEPTOR]
+        replicationMode:
+          type: string
+          enum: [ASYNC, SYNC_RECEIVED, SYNC_APPLIED]
+        replicationAckTimeout:
+          type: string
+          format: duration
+        inSync:
+          type: boolean
+          description: On a leader, a follower holds it in sync; on a follower, it holds it in full.
+        notReplicatedReason:
+          type: string
+          description: Why it is not replicated; absent when it is.
+        lastSendUnacknowledged:
+          type: boolean
+          description: A leader's SYNC session whose last send went out without the follower's ack.
+        unacknowledgedSends:
+          type: integer
+          format: int64
+        nextIncomingSeqNum:
+          type: integer
+          format: int64
+          description: As replicated to this follower, -1 on a leader.
+        nextOutgoingSeqNum:
+          type: integer
+          format: int64
+          description: As replicated to this follower, -1 on a leader.
+        handedOver:
+          type: boolean
+          description: The old leader stopped cleanly with this follower holding it in full, so taking over keeps its seqnum.
+        pendingWrites:
+          type: integer
+          format: int64
+          description: Writes this follower's store has accepted and not stored yet, which it must store before it can lead. 0 on a leader.
+        lostWrites:
+          type: integer
+          format: int64
+          description: Messages this node's store gave up on since its last reset, which a resend gap fills. Clearing the messages-lost alert acknowledges them on a leader; a re-sync clears them on the follower, by copying the leader's store, holes included.
     SessionComponents:
       type: object
       required: [applicationFactories, messagesStores, messagesLoggers, alertsPublishers, sessionsPlugins]
@@ -1011,7 +1475,7 @@ components:
                 properties:
                   pluginTypes:
                     type: array
-                    description: The plugin types it serves, a wrapper's delegates included.
+                    description: The simple class names of the plugin types it serves, a wrapper's delegates included.
                     items:
                       type: string
     EmitterSettings:
@@ -1039,6 +1503,22 @@ components:
         outgoing:
           type: integer
           format: int64
+    SwitchoverResult:
+      type: object
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [TRANSFERRED, NO_FOLLOWER_IN_SYNC, FOLLOWER_STORE_BEHIND, NOT_HANDED_OVER, NOT_TRANSFERRED]
+          description: TRANSFERRED, this node now follows; NO_FOLLOWER_IN_SYNC and FOLLOWER_STORE_BEHIND, nothing was changed; NOT_HANDED_OVER
+            and NOT_TRANSFERRED, this node leads its sessions again.
+    ElectableRequest:
+      type: object
+      required: [electable]
+      properties:
+        electable:
+          type: boolean
+          description: False takes the node out of elections, true puts it back.
     ActivateRequest:
       type: object
       required: [config]

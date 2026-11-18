@@ -19,6 +19,7 @@ import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixEngineBuilder;
 import org.lolaf.staffix.api.admin.AdminApiExporterSettings;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
+import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
@@ -36,8 +37,8 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Assembles the engine itself, gathering the stores, loggers, alerts publishers, plugins and admin APIs each
- * integration module contributed through the SPI.
+ * Assembles the engine itself, gathering the stores, loggers, alerts publishers, plugins, admin APIs and high
+ * availability each integration module contributed through the SPI.
  *
  * <p>Which contributors are present is decided by what is on the classpath, which is how adding a module is all
  * it takes to make its store, logger or publisher nameable from configuration.
@@ -55,6 +56,7 @@ public class StaffixEngineConfiguration {
                                                     ObjectProvider<FixAlertsPublisherSettingsContributor> alertsPublisherContributors,
                                                     ObjectProvider<FixSessionsPluginSettingsContributor> pluginContributors,
                                                     ObjectProvider<AdminApiExporterSettingsContributor> adminContributors,
+                                                    ObjectProvider<HaSettingsContributor> haContributors,
                                                     ObjectProvider<FixSessionSettingsPostProcessor> sessionSettingsPostProcessors) {
 
         FixEngineBuilder.FixEngineBuilderBuilder<?, ?> b = FixEngineBuilder.builder().instanceId(props.getEngine().getInstanceId());
@@ -73,6 +75,16 @@ public class StaffixEngineConfiguration {
         }
         if (!collectedAdmin.isEmpty()) {
             b.adminApiExporter(collectedAdmin.get(0));
+        }
+
+        List<HaSettings> collectedHa = new ArrayList<>();
+        haContributors.orderedStream().forEach(c -> c.contribute(collectedHa::add));
+        if (collectedHa.size() > 1) {
+            throw new IllegalStateException("Multiple high availability contributors registered (" + collectedHa.size()
+                    + "); FixEngine accepts at most one. Disable all but one.");
+        }
+        if (!collectedHa.isEmpty()) {
+            b.highAvailability(collectedHa.get(0));
         }
 
         b.fixApplicationFactory(springApplicationFactorySettings);

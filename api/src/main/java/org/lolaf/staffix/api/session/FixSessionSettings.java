@@ -60,6 +60,14 @@ public class FixSessionSettings {
     @NonNull
     private FixSessionId fixSessionId;
     /**
+     * The {@code ${...}} expressions these resolved settings came from, by JSON pointer into the settings document, so
+     * a store can persist the expression and never the value it resolved to. Not part of equality: two nodes
+     * resolving differently compare by value, and settings built by hand have none.
+     */
+    @Builder.Default
+    @EqualsAndHashCode.Exclude
+    private Map<String, String> placeholders = Map.of();
+    /**
      * Whether these settings describe an initiator or an acceptor session. Required: the same {@link FixSessionId} may
      * be configured for both roles, so this distinguishes them (e.g. in {@link FixSessionsSettingsStore#find}).
      */
@@ -279,21 +287,10 @@ public class FixSessionSettings {
     private CancelOnDisconnectSettings cancelOnDisconnectSettings = CancelOnDisconnectSettings.builder().build();
 
     /**
-     * Whether removing these settings from their {@link FixSessionsSettingsStore} disconnects the live session. On
-     * by default. Off makes the removal a configuration change only: the session keeps running until it drops on its
-     * own, which is what a venue asking you to stop reconnecting after the trading day needs.
+     * Whether and how this session's store is replicated to the follower engine.
      */
     @Builder.Default
-    private boolean disconnectOnRemove = true;
-
-    /**
-     * Whether updating these settings in their {@link FixSessionsSettingsStore} restarts the live session, so the
-     * change takes effect now. On by default, since an update that never reaches the running session is the worse
-     * surprise. Off, the new settings apply the next time the session connects. Read from the settings the session is
-     * running under, not the new ones.
-     */
-    @Builder.Default
-    private boolean restartLiveSessionOnUpdate = true;
+    private HaSessionSettings highAvailability = HaSessionSettings.builder().build();
 
     /**
      * Whether the session's own encoders encode into direct byte buffers.
@@ -368,6 +365,93 @@ public class FixSessionSettings {
          */
         @Builder.Default
         TimeUnit codTimeoutWindowScale = TimeUnit.MILLISECONDS;
+    }
+
+    /**
+     * The high availability settings bound to one session; they take effect only on an engine with
+     * {@link FixEngineBuilder#getHighAvailability() high availability}.
+     */
+    @Getter
+    @SuperBuilder(toBuilder = true)
+    @EqualsAndHashCode
+    public static class HaSessionSettings {
+
+        /**
+         * Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the
+         * session is next built: turned on, the follower catches up by snapshot; turned off, it stops holding the
+         * session.
+         */
+        @Builder.Default
+        ReplicationMode replicationMode = ReplicationMode.NONE;
+
+        /**
+         * How long a {@link ReplicationMode#isSync() SYNC} send waits for the follower's acknowledgement before going out
+         * anyway; {@link Duration#ZERO} waits forever, which a hung follower turns into a frozen session. A follower
+         * that missed it is not waited for again until it catches up.
+         */
+        @Builder.Default
+        Duration replicationAckTimeout = Duration.ofSeconds(1);
+
+        /**
+         * Whether the session's monitoring times each {@link ReplicationMode#isSync() SYNC} send's wait for the follower's
+         * acknowledgement. Off by default: recording costs the session's thread on every send.
+         */
+        @Builder.Default
+        boolean syncAckLatencyEnabled = false;
+
+        @Getter
+        @RequiredArgsConstructor
+        public enum ReplicationMode {
+            /**
+             * Not replicated: after a failover the session starts from the follower's own store.
+             */
+            NONE((byte) 0),
+            /**
+             * Replicated once a message is sent, so nothing waits unless the follower is a whole replication log
+             * behind; a failover may lose the last messages, which the new leader covers by jumping its outgoing
+             * sequence number.
+             */
+            ASYNC((byte) 1),
+            /**
+             * A message is replicated before it is sent, each send waiting for the follower to hold it in memory, not
+             * for its store write: faster with a durable follower store. Lost only if the follower fails before writing
+             * it and the leader is lost too.
+             */
+            SYNC_RECEIVED((byte) 3),
+            /**
+             * A message is replicated before it is sent, so the counterparty never receives one the follower lacks;
+             * each send waits for the follower to have applied it to its store.
+             */
+            SYNC_APPLIED((byte) 2);
+
+            /**
+             * Fixed rather than the ordinal, so a binary format carrying it survives a reordering.
+             */
+            private final byte code;
+
+            /**
+             * Whether a send waits for the follower.
+             */
+            public boolean isSync() {
+                return this == SYNC_RECEIVED || this == SYNC_APPLIED;
+            }
+
+            /**
+             * @throws IllegalStateException for a code no mode has
+             */
+            public static ReplicationMode from(byte code) {
+                if (code == NONE.code) {
+                    return NONE;
+                } else if (code == ASYNC.code) {
+                    return ASYNC;
+                } else if (code == SYNC_APPLIED.code) {
+                    return SYNC_APPLIED;
+                } else if (code == SYNC_RECEIVED.code) {
+                    return SYNC_RECEIVED;
+                }
+                throw new IllegalStateException("Unknown replication mode code " + code);
+            }
+        }
     }
 
     /**

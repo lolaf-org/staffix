@@ -37,6 +37,28 @@ See [Performance](docs/performance.md) for the full measurements and how they ar
 - **Integration**: a plain application factory or a Spring Boot starter.
 - **Runtime**: Java 11 source and target, running on JDK 11 through 25.
 
+### High availability
+
+Two engines run the same sessions: one leads, the other follows and takes over when the leader fails, so the
+counterparty only sees a disconnection. See [High availability](docs/high-availability.md).
+
+- **Leader election**: built on [primos](https://github.com/lolaf-org/primos), the election half of Raft, with a
+  witness as third voter; or plug in a primos node your application already runs.
+- **Store replication over TCP**, chosen per session: `NONE`, `ASYNC`, or `SYNC_RECEIVED` and `SYNC_APPLIED`, where
+  the counterparty never receives a message the follower does not have.
+- **Catch-up**: a follower that connects late or loses the stream resumes where it left off, or receives a snapshot of
+  each session without stalling the others.
+- **Failover**: the new leader resumes the sessions at the old leader's sequence numbers, moving them ahead when it
+  may have missed messages the old leader sent.
+- **Fencing against split brain**: a leader cut off from the majority drops its sessions before another node can be
+  elected, so the two nodes never run a session at the same time.
+- **Planned operations**: switchover with an orderly Logout and no sequence gap, maintenance mode and re-sync, through
+  the admin API over HTTP and JMX.
+- **Session settings replication**: sessions added, changed or removed at runtime on the leader reach the follower,
+  and settings that differ between the nodes are reported.
+- **Observability**: `ha.*` meters, alerting probes and a status endpoint showing who leads and how far behind the
+  follower is.
+
 ## Admin console
 
 [staffix-admin](https://github.com/lolaf-org/staffix-admin) is a web console for staffix engines. It shows every
@@ -158,6 +180,12 @@ The encoders for the FIX version you speak are generated into your build, from t
 Then build an engine, hand it an application per session, and start an acceptor or an initiator from it.
 [`QuickstartExample`](examples/quickstart/src/main/java/org/lolaf/staffix/examples/quickstart/QuickstartExample.java)
 is that program, and it is the one the command above runs.
+
+## AI ready
+
+Staffix is AI ready: its [Claude Code plugin](claude-plugin/README.md) creates a new application, changes the components
+of an existing one, and migrates a QuickFIX/J application, each proven by a test it runs. It works from the documentation
+and a catalogue of every component, at your staffix version.
 
 ## Documentation
 

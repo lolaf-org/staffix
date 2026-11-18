@@ -69,7 +69,7 @@ public class StaffixEngine extends AbstractBenchmark {
     AcceptorApplication acceptorApplication;
 
     private static FixSessionId getInitiatorFixSessionId() {
-        return FixSessionId.of("test", FixRegularVersion.VERSION_44, "SENDER44_TEST", "TARGET44_TEST");
+        return FixSessionId.of(INITIATOR, FixRegularVersion.VERSION_44, "SENDER44_TEST", "TARGET44_TEST");
     }
 
     private IOWorkersGroup getIOWorkersGroup(FixEngineSettings fixEngineSettings) {
@@ -79,7 +79,7 @@ public class StaffixEngine extends AbstractBenchmark {
                 ss = new WakeupSelectStrategy(1);
                 break;
             case LOW_LATENCY:
-                ss = new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance());
+                ss = new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance);
                 break;
             default:
                 throw new IllegalStateException("Implement me");
@@ -91,7 +91,7 @@ public class StaffixEngine extends AbstractBenchmark {
     }
 
     @Override
-    void fixEngineSetup(FixEngineSettings fixEngineSettings) throws Exception {
+    void fixEngineSetup(FixEngineSettings fixEngineSettings) {
         acceptorApplication = new AcceptorApplication();
         initiatorApplication = new InitiatorApplication();
         engine = FixEngineBuilder.builder()
@@ -139,7 +139,7 @@ public class StaffixEngine extends AbstractBenchmark {
 
     private FixSessionSettings getAcceptorFixSessionSettings() {
         return FixSessionSettings.builder()
-                .fixSessionId(FixSessionId.of("test", FixRegularVersion.VERSION_44, "TARGET44_TEST", "SENDER44_TEST"))
+                .fixSessionId(FixSessionId.of(ACCEPTOR, FixRegularVersion.VERSION_44, "TARGET44_TEST", "SENDER44_TEST"))
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                 .resetSeqNumOnLogon(false)
                 .fixApplicationFactoryInstanceId(ACCEPTOR)
@@ -189,7 +189,7 @@ public class StaffixEngine extends AbstractBenchmark {
         }
     }
 
-    private static class InitiatorApplication implements FixApplication {
+    static class InitiatorApplication implements FixApplication {
 
         AtomicBoolean connected = new AtomicBoolean();
         AtomicBoolean receivedResponse = new AtomicBoolean();
@@ -269,7 +269,7 @@ public class StaffixEngine extends AbstractBenchmark {
         }
     }
 
-    private static class AcceptorApplication implements FixApplication {
+    static class AcceptorApplication implements FixApplication {
 
         @Override
         public FixApiVersion getFixApiVersion() {

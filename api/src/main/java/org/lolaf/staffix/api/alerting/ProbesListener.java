@@ -15,30 +15,27 @@
  */
 package org.lolaf.staffix.api.alerting;
 
-import org.lolaf.staffix.api.session.FixSessionId;
-
 /**
- * Told about the probes of every session an engine manages, so an admin tool can keep its own view current instead of
+ * Told about the probes of every scope a source evaluates, so an admin tool can keep its own view current instead of
  * polling. Called synchronously on the thread that caused the change: it must only update its own state and return.
  * An exception is logged and the other listeners are still called.
  */
 public interface ProbesListener {
 
     /**
-     * Called on the thread adding the probe, and for every probe a session already has when the engine starts
-     * managing it.
+     * Called on the thread adding the probe, and for every probe a scope already has when its evaluation starts.
      */
-    void onProbeAdded(FixSessionId fixSessionId, ProbeDefinition probe);
+    void onProbeAdded(ProbeScope scope, ProbeDefinition probe);
 
     /**
-     * Called on the thread removing the probe, and for every probe of a session the engine stops managing. A probe
+     * Called on the thread removing the probe, and for every probe of a scope no longer evaluated. A probe
      * removed while in alert still gets its cleared {@link #onAlertTransition} at the next evaluation tick.
      */
-    void onProbeRemoved(FixSessionId fixSessionId, String probeName);
+    void onProbeRemoved(ProbeScope scope, String probeName);
 
     /**
      * Called on the probes thread when a probe's alert is raised, changes level or clears; neither a reminder nor a
      * change of message alone is a transition.
      */
-    void onAlertTransition(FixSessionId fixSessionId, ProbeState state);
+    void onAlertTransition(ProbeScope scope, ProbeState state);
 }

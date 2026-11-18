@@ -45,7 +45,7 @@ class TestComponentKindCounts {
 
     @Test
     void everyKindIsFoundOnTheEngineBuilder() {
-        assertThat(kinds()).hasSize(7);
+        assertThat(kinds()).hasSize(8);
     }
 
     @ParameterizedTest

@@ -23,12 +23,17 @@ import org.lolaf.staffix.api.codec.FixMessageEncoderFactory;
 import org.lolaf.staffix.api.fields.FieldLocation;
 import org.lolaf.staffix.api.fields.FieldType;
 import org.lolaf.staffix.api.fields.FieldsRegistry;
+import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.VoidMessageLogger;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
@@ -39,7 +44,7 @@ import org.lolaf.staffix.codec.decoders.FixTMessageTypeRegistry;
 import org.lolaf.staffix.impl.ApplicationDictionary;
 import org.lolaf.staffix.impl.FailSafeFixApplication;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
-import org.lolaf.staffix.impl.alerting.FixSessionProbesImpl;
+import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.executor.SessionMessageExecutors;
 import org.lolaf.staffix.impl.session.codec.*;
@@ -73,14 +78,15 @@ final class SessionWiring {
     final MessageTypeRegistry messageTypeRegistry;
     final Clock clock;
     final FixSessionLayerComponents components;
-    final FailSafeFixSessionMessagesStore messagesStore;
+    final FixSessionMessagesStore messagesStore;
     final FixMessagesLogger.Logger messagesLogger;
     final FixAdminMessagesCodec adminMessagesCodec;
     final FixMessageParser messageParser;
     final SessionMessageExecutors messageExecutors;
     final ExecutorService disconnectedSessionsExecutor;
 
-    SessionWiring(FixSessionImpl fixSession, String fixInstanceId, FixSessionSettings settings, FixSessionProbesImpl probes,
+    SessionWiring(FixSessionImpl fixSession, String fixInstanceId, FixSessionSettings settings,
+                  FixSessionDesiredState desiredState, ProbesImpl probes,
                   FixSessionRuntimeDependencies runtimeDependencies, ScheduledExecutorService scheduler,
                   IOSettings ioSettings, MessageExecutorsRuntime messageExecutorsRuntime, Clock providedClock) {
         this.fixSessionId = settings.getFixSessionId();
@@ -100,18 +106,21 @@ final class SessionWiring {
         FixSessionScheduleManager scheduleManager = new FixSessionScheduleManager(settings, clock);
         FixSessionStateComponent state = new FixSessionStateComponent(
                 settings.getFixSessionType().equals(FixSession.FixSessionType.ACCEPTOR),
-                settings.getDesiredSessionState(), scheduleManager);
+                desiredState, scheduleManager);
         this.components = new FixSessionLayerComponents();
-        this.messagesStore = new FailSafeFixSessionMessagesStore(runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes),
-                fixSessionId, runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
-        probes.add(messagesStore.getProbe());
+        GuardedFixSessionMessagesStore guardedStore = new GuardedFixSessionMessagesStore(
+                runtimeDependencies.getFixMessagesStore().getStore(fixSessionId, probes), fixSessionId,
+                runtimeDependencies.getFixMessagesStoreSettings(), runtimeDependencies.getUnderlyingResourceChecker());
+        probes.add(guardedStore.getProbe());
+        probes.add(guardedStore.getLostWritesProbe());
+        this.messagesStore = replicated(settings, guardedStore, probes, runtimeDependencies);
         this.adminMessagesCodec = adminMessagesCodec(fixSession, settings, fixDictionaryId, scheduler, state, plugins);
         this.messagesLogger = messagesLogger(fixInstanceId, probes, runtimeDependencies);
         this.messageExecutors = messageExecutorsRuntime.newSessionExecutors();
         this.disconnectedSessionsExecutor = runtimeDependencies.getDisconnectedSessionsExecutor();
 
         OutgoingMessagesComponent outgoingMessages = new OutgoingMessagesComponent(fixSession, components, fixApplication, messagesStore,
-                messagesLogger, fixSessionId, clock, sendingTimeAccuracy, ioSettings);
+                syncReplicatingStore(settings, messagesStore), messagesLogger, fixSessionId, clock, sendingTimeAccuracy, ioSettings);
         IntFunction<ByteBuffer> encodersAllocator = settings.isMessageEncodersDirectByteBuffers()
                 ? ByteBuffer::allocateDirect : ByteBuffer::allocate;
         CodecsComponent codecs = new CodecsComponent(fixSession, settings, adminMessagesCodec, fixApplication, fieldsRegistry,
@@ -125,7 +134,7 @@ final class SessionWiring {
                 messagesLogger, heldOutgoingMessages, logonLogout);
         MessageRejectsComponent messageRejects = new MessageRejectsComponent(fixSession, adminMessagesCodec, messagesStore, clock);
         IncomingMessagesComponent incomingMessages = new IncomingMessagesComponent(fixSession, components, state, messagesStore,
-                retransmission, messageRejects);
+                retransmission, retransmission.getResendRecovery(), messageRejects);
         // after the component that answers it: the parser reports what it decoded straight to the sequence rules
         this.messageParser = new FixMessageParser(fixSessionId, messageTypeRegistry, fieldsRegistry, messagesLogger,
                 settings.getValidationSettings(), clock, incomingMessages);
@@ -150,7 +159,7 @@ final class SessionWiring {
         components.register(plugins);
     }
 
-    private FixMessagesLogger.Logger messagesLogger(String fixInstanceId, FixSessionProbesImpl probes,
+    private FixMessagesLogger.Logger messagesLogger(String fixInstanceId, ProbesImpl probes,
                                                     FixSessionRuntimeDependencies runtimeDependencies) {
         if (runtimeDependencies.getFixMessagesLogger() == null) {
             return VoidMessageLogger.getInstance();
@@ -160,6 +169,23 @@ final class SessionWiring {
                 fixSessionId, runtimeDependencies.getFixMessagesLoggerSettings(), runtimeDependencies.getUnderlyingResourceChecker());
         probes.add(logger.getProbe());
         return logger;
+    }
+
+    /**
+     * Outside the guarded store, so replication goes on while the session's own storage is down: the follower's copy
+     * is what a failover needs then.
+     */
+    private static FixSessionMessagesStore replicated(FixSessionSettings settings, GuardedFixSessionMessagesStore store,
+                                                      ProbesImpl probes, FixSessionRuntimeDependencies runtimeDependencies) {
+        if (settings.getHighAvailability().getReplicationMode() == ReplicationMode.NONE) {
+            runtimeDependencies.getFixEngineHa().onSessionNotReplicated(settings);
+            return store;
+        }
+        return runtimeDependencies.getFixEngineHa().replicatingStore(settings, store, probes);
+    }
+
+    private static ReplicatingStore syncReplicatingStore(FixSessionSettings settings, FixSessionMessagesStore store) {
+        return settings.getHighAvailability().getReplicationMode().isSync() ? (ReplicatingStore) store : null;
     }
 
     private static FieldsRegistry fieldsRegistry(FixSessionSettings settings, FixDictionaryId fixDictionaryId, FixSessionId fixSessionId) {
@@ -180,8 +206,12 @@ final class SessionWiring {
                                     List<FixMessageDecoder> decoders) {
         CodecsComponent codecs = components.get(CodecsComponent.class);
         codecs.setupApplicationDecoders(decoders);
-        components.get(PluginsComponent.class).setup(runtimeDependencies, codecs.getIncomingMessageTypes(),
-                codecs.getOutgoingMessageTypes());
+        PluginsComponent plugins = components.get(PluginsComponent.class);
+        plugins.setup(runtimeDependencies, codecs.getIncomingMessageTypes(), codecs.getOutgoingMessageTypes());
+        plugins.getPluginContext(FixSessionsMonitoringContext.class).ifPresent(meters -> {
+            messagesStore.onSessionMeters(meters);
+            messagesLogger.onSessionMeters(meters);
+        });
         components.register(new ApplicationNotifierComponent(fixApplication, fixSession, fieldsRegistry, messageTypeRegistry, decoders));
     }
 

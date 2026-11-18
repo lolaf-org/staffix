@@ -18,8 +18,12 @@ package org.lolaf.staffix.admin.jmx;
 import lombok.Value;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeId;
 import org.lolaf.staffix.api.alerting.ProbeState;
+import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 
 import java.util.Arrays;
 import java.util.List;
@@ -79,6 +83,13 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
     }
 
     @Override
+    public boolean isPendingSettingsUpdate() {
+        return delegate.getManagedFixSessions().stream()
+                .filter(session -> session.getFixSessionId().equals(fixSessionId))
+                .anyMatch(FixSession::hasPendingSettingsUpdate);
+    }
+
+    @Override
     public long getIncomingSeqNum() {
         return delegate.getIncomingSeqNum(fixSessionId);
     }
@@ -100,26 +111,30 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
 
     @Override
     public List<Probe> getProbes() {
-        return delegate.getProbeDefinitions(fixSessionId).stream()
-                .map(probe -> new ProbeImpl(probe.getName(), probe.getDescription(), probe.getEvaluationInterval().toString(),
-                        probe.getReminderInterval().map(Object::toString).orElse(null), probe.getLabels(),
-                        probe.getRunbookUrl().map(Object::toString).orElse(null), probe.isOnlyWhileLoggedIn()))
+        return delegate.getProbeDefinitions(FixSessionProbeScope.of(fixSessionId)).stream()
+                .map(FixSessionMBeanImpl::probe)
                 .collect(Collectors.toList());
     }
 
     @Override
     public List<ProbeStatus> getProbeStates() {
-        return delegate.getProbeStates(fixSessionId).stream()
+        return delegate.getProbeStates(FixSessionProbeScope.of(fixSessionId)).stream()
                 .map(FixSessionMBeanImpl::status)
                 .collect(Collectors.toList());
     }
 
     @Override
     public boolean clearAlert(String probeName) {
-        return delegate.clearAlert(fixSessionId, probeName);
+        return delegate.clearAlert(ProbeId.of(FixSessionProbeScope.of(fixSessionId), probeName));
     }
 
-    private static ProbeStatus status(ProbeState state) {
+    static Probe probe(ProbeDefinition probe) {
+        return new ProbeImpl(probe.getName(), probe.getDescription(), probe.getEvaluationInterval().toString(),
+                probe.getReminderInterval().map(Object::toString).orElse(null), probe.getLabels(),
+                probe.getRunbookUrl().map(Object::toString).orElse(null), probe.isOnlyWhileActive());
+    }
+
+    static ProbeStatus status(ProbeState state) {
         Alert alert = state.getAlert().orElse(null);
         return new ProbeStatusImpl(state.getProbeName(),
                 alert == null ? null : alert.getLevel().name(),
@@ -137,7 +152,7 @@ public class FixSessionMBeanImpl implements FixSessionMXBean {
         String reminderInterval;
         Map<String, String> labels;
         String runbookUrl;
-        boolean onlyWhileLoggedIn;
+        boolean onlyWhileActive;
     }
 
     @Value

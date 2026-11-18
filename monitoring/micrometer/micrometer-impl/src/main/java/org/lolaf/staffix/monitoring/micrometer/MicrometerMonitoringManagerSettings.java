@@ -56,10 +56,10 @@ public class MicrometerMonitoringManagerSettings implements FixSessionMonitoring
      */
     @Builder.Default
     private final Consumer<MeterRegistry> startedMeterRegistryConsumer = InstanceProvider.emptyConsumer();
-    @Builder.Default
     /**
      * The timer settings every timer uses unless overridden below.
      */
+    @Builder.Default
     private final TimerSettings defaultTimersSettings = TimerSettings.builder().build();
     /**
      * Per-message-type overrides of the timer settings, for measuring one message type more finely than the rest.
@@ -130,7 +130,7 @@ public class MicrometerMonitoringManagerSettings implements FixSessionMonitoring
 
         /**
          * Whether a histogram is published as well as the summary statistics, which is what lets a backend compute
-     * percentiles across instances rather than per instance.
+         * percentiles across instances rather than per instance.
          */
         @Builder.Default
         private boolean publishPercentileHistogram = true;

@@ -36,7 +36,7 @@ import java.util.Optional;
 public class ProbeDefinition {
 
     /**
-     * Identifies the probe within its session, and keys its {@link ProbeState}.
+     * Identifies the probe within its scope, and keys its {@link ProbeState}.
      */
     @NonNull
     String name;
@@ -66,10 +66,10 @@ public class ProbeDefinition {
     @Getter(AccessLevel.NONE)
     URI runbookUrl;
     /**
-     * See {@link Probe#isOnlyWhileLoggedIn()}; shown so a tool does not read a suspended probe as stale.
+     * See {@link Probe#isOnlyWhileActive()}; shown so a tool does not read a suspended probe as stale.
      */
     @Builder.Default
-    boolean onlyWhileLoggedIn = true;
+    boolean onlyWhileActive = true;
 
     /**
      * The definition of a probe as it was added; a probe never changes, so neither does its definition.
@@ -82,7 +82,7 @@ public class ProbeDefinition {
                 .reminderInterval(probe.getReminderInterval())
                 .labels(probe.getLabels())
                 .runbookUrl(probe.getRunbookUrl())
-                .onlyWhileLoggedIn(probe.isOnlyWhileLoggedIn())
+                .onlyWhileActive(probe.isOnlyWhileActive())
                 .build();
     }
 

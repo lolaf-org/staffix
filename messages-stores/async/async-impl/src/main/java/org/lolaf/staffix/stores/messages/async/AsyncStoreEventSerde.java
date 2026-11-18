@@ -73,7 +73,7 @@ class AsyncStoreEventSerde implements AsyncEventSerde<AsyncStoreEvent> {
         if (toSerialize.getStoreEvent().equals(FixMessagesStore.StoreEventType.STORE_MESSAGE)) {
             Bytes<?> documentBytes = wire.bytes();
             ByteBuffer message = toSerialize.getMessage();
-            documentBytes.write(documentBytes.writePosition(), message, message.position(), message.limit());
+            documentBytes.write(documentBytes.writePosition(), message, message.position(), message.remaining());
             documentBytes.writePosition(documentBytes.writePosition() + message.remaining());
         }
     }

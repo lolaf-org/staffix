@@ -36,6 +36,9 @@ public class IoSettingsPropsMapper {
         if (props.getReadBufferSize() != null) {
             builder.readBufferSize(props.getReadBufferSize());
         }
+        if (props.getMaxReadBufferSize() != null) {
+            builder.maxReadBufferSize(props.getMaxReadBufferSize());
+        }
         if (props.getReadDirectBuffer() != null) {
             builder.readDirectBuffer(props.getReadDirectBuffer());
         }

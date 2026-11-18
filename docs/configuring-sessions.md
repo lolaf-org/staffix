@@ -179,6 +179,16 @@ SessionRejectReason 9, *CompID problem*, without dropping the session.
 | `maxMessageSize` | `null` | advertised to the peer in MaxMessageSize(383) on the Logon, and used to reject oversized inbound messages |
 | `requiredPeerMaxMessageSize` | `null` | the smallest MaxMessageSize you will accept from the peer; a smaller one ends the session with a Logout explaining why |
 
+Two more limits come from the connector rather than the session:
+
+- **The largest message received is 1 MB by default.** The read buffer starts at `IOSettings.readBufferSize` (8 KB)
+  and grows for a larger message up to `IOSettings.maxReadBufferSize`, set on `FixAcceptorBuilder.ioSettings` or
+  `FixInitiatorBuilder.ioSettings` (`io-settings.max-read-buffer-size` with Spring Boot). A message past it
+  disconnects the session, with a session event and a warning naming the limit. Raise it for large security lists
+  or market data snapshots.
+- **A single field value is at most 2048 bytes**, set with the `staffix.FixMessageParser.maxFieldValueSize` system
+  property. A longer one stops the session.
+
 ---
 
 ## Measuring round-trip time and clock offset
@@ -278,34 +288,22 @@ rather than a technical one, and it usually belongs to the same people who set y
 
 ## When settings change under a running session
 
-Settings can change while the session is up, through a reload of the settings store or a direct
-`add`/`remove`/`update` on it. Two flags decide what that does to the live session:
+Settings can change while the session is up: through the admin API, a reload of the settings store, or a direct
+`add`/`remove`/`update` on the store.
 
-| setting | default | effect |
-|---------|---------|--------|
-| `disconnectOnRemove` | `true` | removing these settings disconnects the session |
-| `restartLiveSessionOnUpdate` | `true` | updating them restarts the session so the new values take effect now |
+**An update does not interrupt a live session.** The new settings are managed at once, and the running session keeps
+the ones it was created with until it next connects: a reconnection, its session time window reopening, or an
+operator's logout and logon. Nothing is applied in place, which is one rule rather than a list of which settings can
+be changed live and which cannot. Until then the session reports a pending update:
+`FixSession.hasPendingSettingsUpdate()`, and `pendingSettingsUpdate` in the HTTP admin API's `status`.
 
-Both default to the safe, obvious behaviour: a removed session goes down, and an update reaches the running session.
-Turn them off when the session matters more than the promptness of the change:
+To apply an update now, ask for a restart: `updateFixSessionSettings(sessionId, settings, true)` on the admin API, or
+`restart=true` over HTTP. The live session is logged out and reconnects on the new settings.
 
-```java
-FixSessionSettings.builder()
-        .fixSessionId(sessionId)
-        .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
-        .disconnectOnRemove(false)          // stop managing it, but leave it running
-        .restartLiveSessionOnUpdate(false)  // store the new settings, apply them on next connect
-        .build();
-```
+A session that is not connected is rebuilt on the new settings at once. Either way an operator's logon or logout
+outlives the rebuild, unless the update changes `desiredSessionState` itself.
 
-With `restartLiveSessionOnUpdate(false)` the new settings are managed immediately and the running session keeps the
-ones it was created with: **nothing is applied in place**. That is one rule rather than a list of which settings can
-be changed live and which cannot.
-
-A session that is not connected is never restarted: it picks the new settings up when it next connects.
-
-Both flags are read from the settings the session is **running under**, not from the ones replacing them: a new
-policy only governs the update after it.
+**A removal stops the session**: a live one is logged out and disconnected, whoever removed its settings.
 
 ---
 

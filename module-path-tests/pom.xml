@@ -28,7 +28,6 @@
     <properties>
         <maven.deploy.skip>true</maven.deploy.skip>
         <maven.javadoc.skip>true</maven.javadoc.skip>
-        <delombok.skip>true</delombok.skip>
         <javadoc.delomboked.sources>${project.basedir}/src/main/java</javadoc.delomboked.sources>
     </properties>
 
@@ -48,6 +47,30 @@
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-admin-api-jmx-impl</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-impl</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-primos</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-spring-boot</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-primos-spring-boot</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>

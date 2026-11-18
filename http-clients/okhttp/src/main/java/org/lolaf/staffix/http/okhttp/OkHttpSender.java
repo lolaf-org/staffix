@@ -32,32 +32,30 @@ import java.util.List;
 /**
  * {@link HttpSender} backed by OkHttp.
  *
- * <p><strong>The one to use for an HTTPS collector.</strong> Measured on a 16 KB payload over loopback
- * it allocates about 13 KB per publish over TLS, where the JDK client spends 56 KB and micrometer's
- * default 64 KB, and it is the fastest of the three senders in this library on both transports. Over
- * plaintext it allocates about 8 KB, behind only Jetty and by little. The gap is largest exactly where a
- * real deployment sits, because OkHttp pools and reuses its buffers across exchanges rather than
- * allocating them per operation.
+ * <p><strong>The one to use for an HTTPS collector.</strong> Over TLS it allocates far less per publish
+ * than the JDK client and micrometer's default sender, and it is the fastest of the three senders in this
+ * library on both transports. Over plaintext only Jetty allocates less, and by little. The gap is largest
+ * exactly where a real deployment sits, because OkHttp pools and reuses its buffers across exchanges
+ * rather than allocating them per operation.
  *
- * <p>Those figures hold as the export grows: plaintext allocation is flat in the payload, and over TLS
- * this sender's margin widens rather than narrowing - 30 KB per publish at 128 KB against Jetty's 159 KB
- * and the JDK client's 184 KB. That depends on {@link SegmentedRequestBody}, which is what keeps okio
- * from materialising the whole body as segments before any of it is flushed; see its javadoc.
+ * <p>That holds as the export grows: plaintext allocation is flat in the payload, and over TLS this
+ * sender's margin widens rather than narrowing. That depends on {@link SegmentedRequestBody}, which is
+ * what keeps okio from materialising the whole body as segments before any of it is flushed; see its
+ * javadoc.
  *
- * <p>It also allocates about 2.2 KB per publish less than micrometer's own OkHttp sender, on both
- * transports, because the endpoint and the static headers bind here once rather than being reassembled
- * per request.
+ * <p>It also allocates less per publish than micrometer's own OkHttp sender, on both transports, because
+ * the endpoint and the static headers bind here once rather than being reassembled per request.
  *
  * <p><strong>The cost is the dependency.</strong> OkHttp 5 is written in Kotlin, so this module drags
  * {@code kotlin-stdlib} onto the classpath: four jars and about 2.9 MB in all, of which 1.7 MB is a
  * second language runtime that exists only to publish telemetry. That is a real thing to weigh in a
- * tightly controlled deployment, and it is invisible in the allocation numbers above.
+ * tightly controlled deployment, and it is invisible in the allocation comparison above.
  *
  * <p>Two behaviours here are corrections of what the senders this replaces did:
  *
  * <ul>
  *     <li>Sockets come from a {@link NoDelaySocketFactory}. A stock {@code OkHttpClient} leaves Nagle
- *     on and every publish stalls on the peer's delayed-ACK timer - 42 ms per publish against 0.7 ms.
+ *     on and every publish stalls on the peer's delayed-ACK timer.
  *     This is not optional, and it is why a caller should use this class rather than building an
  *     {@code OkHttpClient} of their own.</li>
  *     <li>The content type goes on the wire exactly as configured. Micrometer's own OkHttp sender

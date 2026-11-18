@@ -51,6 +51,13 @@ public final class ConfigValueResolverChain {
     }
 
     /**
+     * @param resolvers asked in order; empty falls back to the {@linkplain #defaultChain default chain}
+     */
+    public static ConfigValueResolverChain of(List<ConfigValueResolver> resolvers) {
+        return resolvers.isEmpty() ? defaultChain() : new ConfigValueResolverChain(resolvers);
+    }
+
+    /**
      * @return a chain over system properties then environment variables
      */
     public static ConfigValueResolverChain defaultChain() {

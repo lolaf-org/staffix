@@ -21,6 +21,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 import java.util.Map;
 import java.util.function.DoubleSupplier;
+import java.util.function.LongSupplier;
 
 /**
  * The context a session gets when nothing is monitoring it - a singleton whose meters record nothing, so the
@@ -42,6 +43,11 @@ public class VoidFixSessionsMonitoringContext implements FixSessionsMonitoringCo
 
     @Override
     public Counter getCounter(String id, String description, Map<String, String> tags) {
+        return Counter.VoidCounter.getInstance();
+    }
+
+    @Override
+    public Counter getCounter(String id, String description, Map<String, String> tags, LongSupplier total) {
         return Counter.VoidCounter.getInstance();
     }
 

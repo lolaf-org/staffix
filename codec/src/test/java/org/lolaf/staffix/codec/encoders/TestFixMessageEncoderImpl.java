@@ -17,6 +17,8 @@ package org.lolaf.staffix.codec.encoders;
 
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.TestingClock;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -153,6 +155,25 @@ class TestFixMessageEncoderImpl {
             }
             Assertions.assertThat(encoded).isEqualTo(expected);
         }
+    }
+
+    /**
+     * A sent encoder that is not reusable is destroyed. Beginning it again used to write into its freed direct buffers,
+     * crashing the JVM; a heap encoder is refused the same way, so the rule does not depend on the allocator.
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testDestroyedEncoderRefusesToBegin(boolean direct) {
+        encoder = new TestingEncoder(getMessageType(), direct ? ByteBuffer::allocateDirect : ByteBuffer::allocate, 128, 128, 128);
+        encoder.begin().addString(FixField.of(58, FieldType.STRING, FieldLocation.BODY), "sent once");
+        encoder.encode(ByteBuffer::allocate, 1, getFixSessionId("sender", "target"), mock(FixApplication.class),
+                TimeUnit.MICROSECONDS, TestingClock.get().now(), null);
+        encoder.destroy();
+        encoder.release();
+
+        Assertions.assertThatThrownBy(encoder::begin)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("asReusable()");
     }
 
     private static class TestingEncoder extends FixMessageEncoderImpl<TestingEncoder> {

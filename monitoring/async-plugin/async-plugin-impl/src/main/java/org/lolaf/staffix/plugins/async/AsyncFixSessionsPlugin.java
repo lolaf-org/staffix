@@ -73,6 +73,11 @@ public final class AsyncFixSessionsPlugin<C extends PluginContext>
     }
 
     @Override
+    public <T> Optional<T> unwrap(Class<T> type) {
+        return type.isInstance(this) ? Optional.of(type.cast(this)) : delegate.unwrap(type);
+    }
+
+    @Override
     public boolean requiresTimeMeasurement(FixSessionId fixSessionId, FixSessionSettings fixSessionSettings) {
         return delegate.requiresTimeMeasurement(fixSessionId, fixSessionSettings);
     }

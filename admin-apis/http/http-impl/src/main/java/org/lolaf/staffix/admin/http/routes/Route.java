@@ -17,10 +17,15 @@ package org.lolaf.staffix.admin.http.routes;
 
 import com.sun.net.httpserver.HttpExchange;
 import lombok.Getter;
+import org.lolaf.staffix.admin.http.HttpProblemException;
+import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.ha.HaAdmin;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * One endpoint under an engine's path. A template segment in braces matches any value, read back with
@@ -62,6 +67,30 @@ public abstract class Route {
     }
 
     /**
+     * @throws HttpProblemException 400 when it is missing, or neither {@code true} nor {@code false}
+     */
+    protected static boolean requiredBooleanQueryParameter(HttpExchange exchange, String name) {
+        String value = queryParameter(exchange, name)
+                .orElseThrow(() -> new HttpProblemException(400, "Missing query parameter " + name + ", true or false"));
+        if (!value.equals("true") && !value.equals("false")) {
+            throw new HttpProblemException(400, "Query parameter " + name + " must be true or false, not " + value);
+        }
+        return Boolean.parseBoolean(value);
+    }
+
+    private static Optional<String> queryParameter(HttpExchange exchange, String name) {
+        String query = exchange.getRequestURI().getRawQuery();
+        if (query == null) {
+            return Optional.empty();
+        }
+        String prefix = name + "=";
+        return Arrays.stream(query.split("&"))
+                .filter(pair -> pair.startsWith(prefix))
+                .map(pair -> pair.substring(prefix.length()))
+                .findFirst();
+    }
+
+    /**
      * Sets the ETag, and answers 304 when the client already holds this version.
      */
     protected static boolean notModified(HttpExchange exchange, String version) throws IOException {
@@ -80,6 +109,10 @@ public abstract class Route {
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(body);
         }
+    }
+
+    protected static HaAdmin haAdmin(AdminApi adminApi) {
+        return adminApi.getHa().orElseThrow(() -> new HttpProblemException(404, "This engine has no high availability"));
     }
 
     protected static void sendNoContent(HttpExchange exchange) throws IOException {

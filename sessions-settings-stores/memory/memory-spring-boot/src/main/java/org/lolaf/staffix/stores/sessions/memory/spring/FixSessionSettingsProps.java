@@ -20,6 +20,7 @@ import lombok.Data;
 import org.lolaf.staffix.api.session.CancelOnDisconnectType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
+import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.ResendRequestRange;
 import org.lolaf.staffix.spring.boot.spi.FixSessionIdProps;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
@@ -177,20 +178,6 @@ public class FixSessionSettingsProps {
      */
     private Boolean pooledMessageEncodersDirectByteBuffers;
     /**
-     * Whether removing these settings from their store disconnects the live session. On by default. Off makes the
-     * removal a configuration change only: the session keeps running until it drops on its own, which is what a venue
-     * asking you to stop reconnecting after the trading day needs.
-     */
-    private Boolean disconnectOnRemove;
-    /**
-     * Whether updating these settings in their store restarts the live session, so the change takes effect now. On by
-     * default, since an update that never reaches the running session is the worse surprise. Off, the new settings
-     * apply the next time the session connects. Read from the settings the session is running under, not the new
-     * ones.
-     */
-    private Boolean restartLiveSessionOnUpdate;
-
-    /**
      * What this session checks on every inbound message. Each check costs something on the message path, which
      * is why most are off.
      */
@@ -231,6 +218,12 @@ public class FixSessionSettingsProps {
      */
     @NestedConfigurationProperty
     private RttMeasurementProps rttMeasurement;
+
+    /**
+     * Whether and how this session's store is replicated to the follower engine.
+     */
+    @NestedConfigurationProperty
+    private HaProps ha;
 
     @Data
     public static class HeartbeatProps {
@@ -425,6 +418,23 @@ public class FixSessionSettingsProps {
          * the wire.
          */
         private Duration sendingTimeToWireDelay;
+    }
+
+    @Data
+    public static class HaProps {
+        /**
+         * NONE, ASYNC (replicated once sent), SYNC_RECEIVED or SYNC_APPLIED (replicated before it is sent, each send waiting
+         * for the follower to hold it in memory, or to have applied it to its store).
+         */
+        private FixSessionSettings.HaSessionSettings.ReplicationMode replicationMode;
+        /**
+         * How long a SYNC send waits for the follower before going out anyway; unset keeps 1s, zero waits forever.
+         */
+        private Duration replicationAckTimeout;
+        /**
+         * Whether the session's monitoring times each SYNC send's wait for the follower's acknowledgement.
+         */
+        private Boolean syncAckLatencyEnabled;
     }
 
     @Data

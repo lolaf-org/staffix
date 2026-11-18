@@ -26,8 +26,7 @@ import java.net.Socket;
  * <p>Not a tuning detail: a stock {@code OkHttpClient} writes the request head and the request body as
  * separate segments, and with Nagle on, the second one waits for the peer to acknowledge the first.
  * Against a receiver that itself delays acknowledgements - which is the default on Linux - every publish
- * stalls on that 40 ms timer. Measured at 42 ms per publish with the option left alone, against 0.7 ms
- * with it set.
+ * stalls on that 40 ms timer.
  *
  * <p>Applies to TLS too: OkHttp builds the raw socket through this factory and then wraps it, so the
  * option is already set by the time the handshake starts.

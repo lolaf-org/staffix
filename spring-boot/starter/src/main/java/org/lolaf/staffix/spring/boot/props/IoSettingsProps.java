@@ -30,6 +30,11 @@ public class IoSettingsProps {
      */
     private Integer readBufferSize;
     /**
+     * Size the read buffer may grow to for a message larger than {@code readBufferSize}. A message past it
+     * disconnects the session.
+     */
+    private Integer maxReadBufferSize;
+    /**
      * Whether the read buffer is off-heap, which avoids a copy at the socket at the cost of slower allocation.
      */
     private Boolean readDirectBuffer;

@@ -298,7 +298,7 @@ public final class JvmWarmup {
                         .ioWorkersGroup(IOWorkersGroupSettings.builder()
                                 .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder()
                                         .ioThreadCount(Math.min(pairsCount, Runtime.getRuntime().availableProcessors()))
-                                        .selectStrategy(options.isLowLatency() ? new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()) : new WakeupSelectStrategy(10))
+                                        .selectStrategy(options.isLowLatency() ? new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance) : new WakeupSelectStrategy(10))
                                         .build())
                                 .build().newInstance())
                         .build()).start();

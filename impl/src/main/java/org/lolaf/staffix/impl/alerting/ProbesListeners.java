@@ -17,9 +17,9 @@ package org.lolaf.staffix.impl.alerting;
 
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -42,18 +42,18 @@ public final class ProbesListeners implements ProbesListener {
     }
 
     @Override
-    public void onProbeAdded(FixSessionId fixSessionId, ProbeDefinition probe) {
-        forEach(l -> l.onProbeAdded(fixSessionId, probe));
+    public void onProbeAdded(ProbeScope scope, ProbeDefinition probe) {
+        forEach(l -> l.onProbeAdded(scope, probe));
     }
 
     @Override
-    public void onProbeRemoved(FixSessionId fixSessionId, String probeName) {
-        forEach(l -> l.onProbeRemoved(fixSessionId, probeName));
+    public void onProbeRemoved(ProbeScope scope, String probeName) {
+        forEach(l -> l.onProbeRemoved(scope, probeName));
     }
 
     @Override
-    public void onAlertTransition(FixSessionId fixSessionId, ProbeState state) {
-        forEach(l -> l.onAlertTransition(fixSessionId, state));
+    public void onAlertTransition(ProbeScope scope, ProbeState state) {
+        forEach(l -> l.onAlertTransition(scope, state));
     }
 
     private void forEach(Consumer<ProbesListener> call) {

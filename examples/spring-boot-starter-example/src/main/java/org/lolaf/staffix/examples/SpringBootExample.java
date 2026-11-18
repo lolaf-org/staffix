@@ -50,7 +50,7 @@ import java.util.concurrent.locks.LockSupport;
  * {@code java -jar examples/target/staffix-examples.jar} (or run this main directly
  * from your IDE). The acceptor binds to {@code localhost:17001} and the initiator connects to it.
  * <p>
- * Run with -XX:+UnlockDiagnosticVMOptions -XX:-RestrictContended -XX:ContendedPaddingWidth=64 -XX:+DebugNonSafepoints --enable-native-access=ALL-UNNAMED --add-opens java.base/jdk.internal.ref=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED
+ * Run with -XX:+UnlockDiagnosticVMOptions -XX:-RestrictContended -XX:ContendedPaddingWidth=64 -XX:AutoBoxCacheMax=65536 -XX:+DebugNonSafepoints --enable-native-access=ALL-UNNAMED --add-opens java.base/jdk.internal.ref=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED
  */
 @Slf4j
 @SpringBootApplication

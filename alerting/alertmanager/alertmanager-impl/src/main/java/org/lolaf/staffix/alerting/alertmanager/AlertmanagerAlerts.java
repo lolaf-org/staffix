@@ -17,8 +17,7 @@ package org.lolaf.staffix.alerting.alertmanager;
 
 import lombok.Value;
 import org.lolaf.staffix.api.alerting.AlertEvent;
-import org.lolaf.staffix.api.alerting.AlertLabel;
-import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.alerting.ProbeId;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -99,10 +98,7 @@ final class AlertmanagerAlerts {
 
     private PostableAlert toAlert(AlertEvent event) {
         Map<String, String> labels = new LinkedHashMap<>(staticLabels);
-        labels.putAll(event.getProbeLabels());
-        for (AlertLabel label : AlertLabel.values()) {
-            labels.put(label.getLabelName(), label.valueFor(event));
-        }
+        labels.putAll(event.getLabels());
         Map<String, String> annotations = new LinkedHashMap<>();
         annotations.put("summary", event.getAlert().getMessage());
         annotations.put("description", event.getProbeDescription());
@@ -113,12 +109,11 @@ final class AlertmanagerAlerts {
 
     @Value
     private static class ProbeKey {
-        String engineId;
-        FixSessionId fixSessionId;
-        String probeName;
+        String source;
+        ProbeId probeId;
 
         static ProbeKey of(AlertEvent event) {
-            return new ProbeKey(event.getEngineId(), event.getFixSessionId(), event.getProbeName());
+            return new ProbeKey(event.getSource(), event.getProbeId());
         }
     }
 }

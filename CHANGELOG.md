@@ -18,9 +18,40 @@ could mean.
 
 ### Added
 
+- **The JDBC session settings store accepts `${...}` placeholders**, as the file store does: resolved when a row is read,
+  with `configValueResolvers` (in Spring Boot, `config-value-resolver-beans`). The row keeps the expression and never
+  the value it resolved to, and changing a value backed by a placeholder through the store is refused.
+- **High availability.** Two engines run the same sessions: one leads and runs them, the other is a follower that
+  receives every write to their stores and takes them over when the leader fails. Each session chooses, with
+  `highAvailability.replicationMode`, `NONE`, `ASYNC` (nothing waits, unless the follower falls a whole replication
+  log behind), `SYNC_APPLIED` (a message reaches the counterparty only once the follower has written it to its store)
+  or `SYNC_RECEIVED` (only once the follower holds it in memory: faster with a durable follower store, and lost only if
+  both engines fail before the follower writes it). A follower that cannot keep up makes the writes wait at most `logFullTimeout` (1 s), is then dropped, and is let back to catch up after
+  `slowFollowerHoldOff` (1 s, doubling up to a minute). `replicationLanes` splits the sessions over several
+  connections to the follower, so a slow one or a session being caught up holds back only the sessions of its lane,
+  and the follower applies them in parallel. The leader is elected by primos with a witness, or by an election of your
+  own.
+  A planned switchover logs the sessions out and the other engine carries on at the same sequence numbers; after a
+  failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. A leader cut off from
+  the others drops its sessions a fencing margin (50 ms by default) before the other engine can be elected. Two
+  engines sharing one database or directory are detected and not replicated into. Modules `staffix-ha-impl`,
+  `staffix-ha-primos`, `staffix-ha-spring-boot` and `staffix-ha-primos-spring-boot`; see [High availability](docs/high-availability.md),
+  including what it does not do.
+- **Session settings reach both nodes of a high availability pair.** A session added, changed or removed on the leader
+  reaches the follower, with a store per node or one both share, and `${...}` placeholders stay expressions. It is on by
+  default: `sessionSettingsReplicated` turns it off and `replicatedSettingsStores` restricts it. Changes through the
+  admin API are refused on a follower, and settings that differ are shown in the status and raise a warning. A custom
+  session settings store takes part by implementing `getStorageIdentity`; otherwise it is only compared. The JDBC
+  store's `engineIdOverride` lets the two nodes read the same rows.
+- **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
+  switchover, maintenance mode and a re-sync of the follower; it publishes `ha.*` meters and alerts when the follower
+  is missing, out of sync, behind, or dropped for being too slow.
+- **The engine's own components have meters and probes**, beside the sessions': a monitoring manager that supports
+  it (Micrometer's does) publishes engine meters, listed by the HTTP admin API's `GET engine/meters`, and their probes
+  are listed and cleared under `engine/{component}/probes`, or through JMX.
 - **Applications can publish counters**, with `FixSessionsMonitoringContext.getCounter`.
 - **A counter, timer or gauge can raise its own alerts**: add an `AlertingCounter`, `AlertingTimer` or `AlertingGauge`
-  with `FixSessionProbes.watch`, and what the application records is both published and alerted on. A timer alerts
+  with `Probes.watch`, and what the application records is both published and alerted on. A timer alerts
   on a latency percentile, so a short spike does not alert; a gauge alerts above or below thresholds.
 - **The file messages logger has a choice of line format**, set with `lineFormat`. The plain format, the default,
   writes the same lines as before. The new logfmt format (`LogfmtFileLogLineFormat`) starts each line with the time,
@@ -30,22 +61,70 @@ could mean.
   implements `FileLogLineFormat`, set in Java or named by `line-format-bean`.
 - **An evaluator can forget what it measured when its session logs back in**, by overriding
   `ProbeEvaluator.reset()`. The evaluators and alerting meters staffix provides already do.
-- **The admin API, HTTP and JMX, shows whether a probe runs only while logged in** (`onlyWhileLoggedIn`), and
+- **The admin API, HTTP and JMX, shows whether a probe runs only while logged in** (`onlyWhileActive`), and
   whether it is currently waiting for a logon (`suspended`).
+- **A message store that writes in batches can store a batch and the sequence numbers in one call**, with
+  `BatchingFixSessionMessagesStore.storeSentFixMessagesAndSeqNums`. The JDBC store does it in one transaction, so a
+  follower on a database commits once per read from the leader instead of up to three times, and acknowledges `SYNC`
+  messages sooner. The async store writes its batches the same way, so over the JDBC store each batch commits once.
+  A store of your own needs no change: by default the method makes the separate calls.
+
+- **Messages larger than 8 KB are received**, up to 1 MB by default. Raise the limit with
+  `IOSettings.maxReadBufferSize` on the acceptor or initiator builder, or `io-settings.max-read-buffer-size` with
+  Spring Boot. A message past it disconnects the session with a session event and a warning naming the limit.
+- **Lost messages are now counted and alerted on.** A message a store gives up on, which a resend then gap fills, counts
+  in `getLostWrites()` and in `lostWrites` in `GET v1/ha/sessions`, and raises the `messages-lost` alert, which stays
+  until an operator clears it, which also takes them out of the count. A follower's store failing a write while its storage is up no longer stops replication
+  for the other sessions.
+- **The async store and logger keep page faults off the session thread.** A thread of their own prepares the memory
+  of each queue ahead of where the next messages go, so the slowest calls to store or log a message are an order of
+  magnitude faster: on tmpfs at the p99, on disk at the p99.9. It is on by default and follows each session's write
+  rate. `AsyncStoreSettings.pretouchAheadTime` sets how far ahead it works (40 ms of writes) and
+  `pretouchMinAheadBytes` the least it prepares (1 MB); `pretouchInterval(Duration.ZERO)` turns it off. A queue on a
+  tmpfs mounted with huge pages is faster still. A queue on tmpfs whose huge pages do not match the setting, none
+  while preparing ahead or some while not, logs a warning at startup. See
+  [Tuning the async queue](docs/async-queue-tuning.md).
+- **A session tells when an update of its settings is waiting for its next connection**:
+  `FixSession.hasPendingSettingsUpdate()`, `pendingSettingsUpdate` in the HTTP admin API's `GET status`, and the
+  `PendingSettingsUpdate` attribute of the session's JMX bean. The session's log records when an update is held,
+  and when the session restarts on it.
 
 ### Changed
 
+- **Custom session settings stores extending `AbstractFixSessionSettingsStore` manage only their storage.** The base
+  class now holds the sessions: remove `getSettings()` and `find()`, rename `load()` to `onLoad()`, make `onAdd` and
+  `onUpdate` return the settings to manage, and call `hold(settings)` at start for what the store finds.
+- **A placeholder in `default.yaml` stays a placeholder when a session is written back**, where the session's file used
+  to receive the value it resolved to. Refusing to change a value backed by a placeholder no longer names the value in
+  the error.
+- **In a JDBC session settings row, a value that looks like `${...}` is now a placeholder**, and fails the load if
+  nothing resolves it.
+- **`IdleStrategySelectStrategy` now takes a `Supplier<IdleStrategy>`**, from betty 0.9.4, so that each IO thread
+  gets its own idle strategy. Replace `new IdleStrategySelectStrategy(new BackoffIdleStrategy())` with
+  `new IdleStrategySelectStrategy(BackoffIdleStrategy::new)`, and `BusySpinIdleStrategy.getInstance()` with
+  `BusySpinIdleStrategy::getInstance`.
+- **The file messages store has a new file format**, the same on every machine (the old one depended on the CPU's
+  cache line size, so a file could not move between x86 and Apple Silicon) and versioned for later changes. A store
+  refuses to start on a file written by 0.9.1 or older, naming it: delete it, which resets the session's sequence
+  numbers. `blockSize` must now be a multiple of 8.
+- **An encoder that is not reusable now refuses a second message**: `begin()` throws `IllegalStateException` once its
+  first message was sent. Before, reusing it silently worked with the default heap buffers, and crashed the JVM with
+  direct buffers. To send several messages with one encoder, take it from a pool or call `asReusable()`.
 - **Probes an application adds are now evaluated only while their session is logged in.** At logout their
   ongoing alerts are cleared, and at logon they start afresh, so a probe on the order flow no longer alerts all
   night, or the moment the session is back. An application that removed its probes on logout and added them again
   on logon can add them once. For a probe that must keep running while logged out, such as one watching a disk or a
-  queue, build it with `onlyWhileLoggedIn(false)`. The built-in probes are unchanged.
+  queue, build it with `onlyWhileActive(false)`. The built-in probes are unchanged.
 - **`ProbeState.getLastEvaluation()` returns an `Optional<Instant>`**, empty for a probe whose session logged out
   before it was ever evaluated: such a probe now shows as suspended in the admin API instead of not at all. In the
   HTTP and JMX admin APIs, `lastEvaluation` is absent in that case.
 - **The file messages logger's line prefixes belong to the plain line format**: `logInPrefix`, `logOutPrefix` and
   `logEventPrefix` moved from `FileMessagesLoggerSettings` to `PlainFileLogLineFormat`, and their Spring Boot
   properties under `plain.`, for example `staffix.messages-loggers-file.instances.<id>.plain.log-in-prefix`.
+- **The file messages store finds messages without reading its whole file**: a resend, or a follower catching up,
+  reads only the messages it asks for, and stops as soon as it has what it needs. Finds over a large file were
+  proportional to the file's size, whatever they returned. The store keeps a small index in memory, rebuilt from the
+  file when it starts.
 - **The OTLP messages logger gives a message whose type the dictionary does not declare**, such as a user defined
   one, its `fix.mt` attribute, which it used to leave out.
 
@@ -60,12 +139,47 @@ could mean.
   with a last publish, pass `MeterRegistry::close` as `stoppingMeterRegistryConsumer`. The OTLP variant still closes
   the registry it builds.
 
+- **Probes and alerts belong to a scope**, a session or one of the engine's components, so the alerting API no longer
+  assumes a session. `FixSessionProbes` is now `Probes` and `SessionProbeState` is `ScopedProbeState`; the
+  `AdminApi` probe methods take a `ProbeScope` (`FixSessionProbeScope.of(sessionId)` for a session) or a `ProbeId`;
+  `AlertEvent` gives `getSource()` and `getProbeId()` instead of `getEngineId()`, `getFixSessionId()` and
+  `getProbeName()`. An alerts publisher of your own implements `AlertsPublisher`.
+- **The Alertmanager label `engine` is now `source`**, still the engine's instance id: update the routes and
+  silences that match on it. A session's alerts keep `fixSessionGroup` and `fixSessionName`; a component's carry
+  `component` instead.
+- **The HTTP admin API's `GET meters` is now `GET sessions/meters`**, beside the new `GET engine/meters`.
+
+- **The JDBC messages store prunes large tables more cheaply**: it no longer counts a session's rows on every check,
+  and deletes the old ones 10 000 at a time, so the first prune of a big table is no longer one long transaction
+  holding locks on every row it removes. What `maxMessagesPerSession` keeps is unchanged.
+- **Updating a connected session's settings no longer restarts it unless you ask.** It keeps running on its old
+  settings and takes the new ones when it next connects: a reconnection, its session time window reopening, or a
+  logout and logon. To apply them at once, pass `true` to the new argument of `AdminApi.updateFixSessionSettings` or
+  `reloadFixSessionsSettingsStore` (and of the JMX reload). Over HTTP, `PUT sessions/{group}/{name}/settings` and
+  `POST session-settings-stores/{id}/reload` now require `restart=true` or `restart=false`. A disconnected session
+  still takes new settings at once, and changing an acceptor session's CompIDs, FIX version or name requires a
+  restart. Calling `update` on a session settings store directly never restarts a session.
+- **Removing a session's settings always stops the session**, logging it out if it is connected. For an initiator this
+  stops its session only, and adding the settings back starts it again, where the whole initiator used to stop and
+  stay stopped.
+
 ### Removed
 
 - **`FixSessionId.invert()`**.
+- **The session settings `restartLiveSessionOnUpdate` and `disconnectOnRemove`**, in Java, in settings files and in
+  Spring Boot properties: the admin call making a change now decides whether it restarts the session. A settings file
+  that still sets either of them fails to load; delete those lines.
 
 ### Fixed
 
+- **Settings updated while an initiator session is disconnected now take effect**: the next logon used to keep the
+  old ones until the initiator was restarted.
+- **A session logged out from the admin API stays logged out when its settings are updated**, and one logged on stays
+  logged on, unless the update changes `desiredSessionState` itself. An acceptor used to accept the next logon.
+- **Updating a session whose id exists as both an acceptor and an initiator no longer drops the other one** from the
+  session settings store.
+- A message larger than 8 KB stalled the session without any error, and over TLS one larger than about 16 KB ended it
+  with an `IllegalStateException`.
 - An initiator could log on with its SenderCompID and TargetCompID swapped, and be refused as an unknown session,
   when an acceptor in the same JVM had created the opposite session first, as a loopback test does.
 - A session whose dictionary lacks BusinessMessageReject, or any session message, failed to start with a
@@ -86,6 +200,30 @@ could mean.
   `advertiseMsgTypeGrpOnLogon`, `advertiseEngineOnLogon`, `advertiseApplicationOnLogon` and those two set in a
   `default.yaml` were ignored for a session file that left them out. A setting left out of a session file now takes
   the `default.yaml` value, then the default.
+- The memory messages store could resend a message with another message's content when a resend ran while the session
+  kept sending, and with direct memory, the default, could read memory it had already freed. A message overwritten
+  during a resend is now gap filled instead.
+- The file messages store could resend a torn message when a resend ran while the session kept sending, or log the
+  session out with "Unable to fetch FIX messages to resend". A message overwritten during a resend is now gap filled
+  instead.
+- The file messages store's `syncWrites`, on by default, did not make writes durable: they could be lost in an OS
+  crash or a power loss. Each store call now forces its writes to disk, which costs latency; turn `syncWrites` off for
+  the previous behavior, durable across a process crash only.
+- The async messages store failed a resend, logging the session out with "Unable to fetch FIX messages to resend",
+  when the session kept sending: it waited for its queue to empty. It now waits only for the messages sent before the
+  resend.
+- The JDBC messages store read a whole resend range into memory before sending its first message on PostgreSQL, and
+  read it 10 rows per round trip on Oracle. It now streams the range, `findFetchSize` rows at a time (500 by default).
+- **Async store: writes could be lost when an engine stopped or crashed during a storage outage, or crashed during a
+  write.** The first messages that failed to store were kept in memory, so a stop or crash before the storage came back
+  lost them, with nothing in the log. They now stay in the queue on disk and are stored once it is back. After a crash,
+  what was being written is written again, which the store ignores if it already holds it. A message the store keeps
+  refusing while its storage is up now costs that message alone, not its whole batch.
+- **A settings update that did not restart a connected session now takes effect when the session next connects.** The
+  session used to keep its old settings across reconnections, its session time window reopening, and an operator's
+  logout and logon, until it was restarted some other way.
+- The HTTP admin API's OpenAPI document described each session in `GET status` with `loggedIn`, `connected` and
+  `withinSessionTime`, which are not sent, and without its `status`.
 
 ## [0.9.1] - 2026-10-14
 

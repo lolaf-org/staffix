@@ -22,9 +22,9 @@ import java.util.Optional;
 /**
  * Tells whether something a probe watches is currently wrong.
  *
- * <p>Called on the engine's probes thread, never on the session's, and never concurrently with itself: it may keep
- * state of its own, such as a hysteresis or a grace period, but must read what it watches in a thread-safe way. An
- * exception is reported as a {@link AlertLevel#MAJOR} alert on the probe, so a broken evaluator stays visible.
+ * <p>Called on the probes thread, never on the one doing the work it watches, and never concurrently with itself: it
+ * may keep state of its own, such as a hysteresis or a grace period, but must read what it watches in a thread-safe
+ * way. An exception is reported as a {@link AlertLevel#MAJOR} alert on the probe, so a broken evaluator stays visible.
  */
 @FunctionalInterface
 public interface ProbeEvaluator {
@@ -45,8 +45,8 @@ public interface ProbeEvaluator {
     }
 
     /**
-     * Forgets what was measured so far, so a probe resuming at logon does not alert on the previous logon's events.
-     * Called on the probes thread when a {@link Probe#isOnlyWhileLoggedIn()} probe resumes; does nothing by default, as
+     * Forgets what was measured so far, so a probe resuming does not alert on what happened before its suspension.
+     * Called on the probes thread when a {@link Probe#isOnlyWhileActive()} probe resumes; does nothing by default, as
      * suits an evaluator polling a current value.
      */
     default void reset() {

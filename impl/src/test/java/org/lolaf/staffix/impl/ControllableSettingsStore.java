@@ -34,7 +34,6 @@ import java.util.Set;
 class ControllableSettingsStore extends FixSessionsSettingsStore.AbstractFixSessionSettingsStore {
 
     private final String instanceId;
-    private final Set<FixSessionSettings> managed = new HashSet<>();
     private Set<FixSessionSettings> source = new HashSet<>();
 
     ControllableSettingsStore(String instanceId) {
@@ -55,19 +54,7 @@ class ControllableSettingsStore extends FixSessionsSettingsStore.AbstractFixSess
     }
 
     @Override
-    public Collection<FixSessionSettings> getSettings() {
-        return managed;
-    }
-
-    @Override
-    public Optional<FixSessionSettings> find(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
-        return managed.stream()
-                .filter(s -> s.getFixSessionId().equals(fixSessionId) && s.getFixSessionType() == fixSessionType)
-                .findFirst();
-    }
-
-    @Override
-    public Set<FixSessionSettings> load() {
+    protected Set<FixSessionSettings> onLoad() {
         return new HashSet<>(source);
     }
 
@@ -77,19 +64,18 @@ class ControllableSettingsStore extends FixSessionsSettingsStore.AbstractFixSess
     }
 
     @Override
-    public void onAdd(FixSessionSettings settings) {
-        managed.add(settings);
+    protected FixSessionSettings onAdd(FixSessionSettings settings) {
+        return settings;
     }
 
     @Override
-    public void onRemove(FixSessionSettings settings) {
-        managed.remove(settings);
+    protected void onRemove(FixSessionSettings settings) {
+        // nothing but the managed settings
     }
 
     @Override
-    public void onUpdate(FixSessionSettings settings) {
-        managed.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
-        managed.add(settings);
+    protected FixSessionSettings onUpdate(FixSessionSettings settings) {
+        return settings;
     }
 
     @Override

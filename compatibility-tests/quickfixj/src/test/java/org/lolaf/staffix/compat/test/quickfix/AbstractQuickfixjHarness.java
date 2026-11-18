@@ -531,18 +531,47 @@ abstract class AbstractQuickfixjHarness {
 
         SessionSettings sessionSettings = quickfixSessionSettings();
         // a memory store, so that nothing survives a test and no two tests share a directory on disk
+        LogFactory lf = TestingLogger.LOG_MESSAGES ? new ScreenLogFactory(sessionSettings) : (LogFactory) sessionID -> new Log() {
+            @Override
+            public void clear() {
+
+            }
+
+            @Override
+            public void onIncoming(String message) {
+
+            }
+
+            @Override
+            public void onOutgoing(String message) {
+
+            }
+
+            @Override
+            public void onEvent(String text) {
+
+            }
+
+            @Override
+            public void onErrorEvent(String text) {
+
+            }
+        };
+
         quickfixConnector = staffixIsInitiator()
                 ? SocketAcceptor.newBuilder()
                 .withSettings(sessionSettings)
                 .withApplication(quickfixApplication)
                 .withMessageFactory(new DefaultMessageFactory())
                 .withMessageStoreFactory(new MemoryStoreFactory())
+                .withLogFactory(lf)
                 .build()
                 : SocketInitiator.newBuilder()
                 .withSettings(sessionSettings)
                 .withApplication(quickfixApplication)
                 .withMessageFactory(new DefaultMessageFactory())
                 .withMessageStoreFactory(new MemoryStoreFactory())
+                .withLogFactory(lf)
                 .build();
     }
 

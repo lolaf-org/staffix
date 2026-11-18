@@ -57,8 +57,10 @@ public class JdbcMessagesStoreContributor implements FixMessagesStoreSettingsCon
                 .instanceId(mapKey)
                 .dataSource(ds);
         if (p.getTablePrefix() != null) b.tablePrefix(p.getTablePrefix());
+        if (p.getStorageIdentity() != null) b.storageIdentity(p.getStorageIdentity());
         if (p.getMaxMessagesPerSession() != null) b.maxMessagesPerSession(p.getMaxMessagesPerSession());
         if (p.getPruningCheckInterval() != null) b.pruningCheckInterval(p.getPruningCheckInterval());
+        if (p.getFindFetchSize() != null) b.findFetchSize(p.getFindFetchSize());
         if (p.getResourceCheckInterval() != null) b.resourceCheckInterval(p.getResourceCheckInterval());
         if (p.getAlertClearDelay() != null) b.alertClearDelay(p.getAlertClearDelay());
         return b.build();

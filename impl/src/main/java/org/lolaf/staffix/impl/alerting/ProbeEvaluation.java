@@ -20,8 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertEvent;
 import org.lolaf.staffix.api.alerting.Probe;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
-import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -37,8 +38,8 @@ final class ProbeEvaluation {
 
     private static final long NOT_EVALUATED = Long.MIN_VALUE;
 
-    private final String engineId;
-    private final FixSessionId fixSessionId;
+    private final String source;
+    private final ProbeId probeId;
     @Getter
     private final Probe probe;
     private final long evaluationTicks;
@@ -56,9 +57,9 @@ final class ProbeEvaluation {
     @Getter
     private volatile boolean suspended;
 
-    ProbeEvaluation(String engineId, FixSessionId fixSessionId, Probe probe, long firstTick) {
-        this.engineId = engineId;
-        this.fixSessionId = fixSessionId;
+    ProbeEvaluation(String source, ProbeScope scope, Probe probe, long firstTick) {
+        this.source = source;
+        this.probeId = ProbeId.of(scope, probe.getName());
         this.probe = probe;
         this.evaluationTicks = toTicks(probe.getEvaluationInterval());
         this.reminderTicks = probe.getReminderInterval() == null ? 0 : toTicks(probe.getReminderInterval());
@@ -135,7 +136,7 @@ final class ProbeEvaluation {
         try {
             probe.getEvaluator().reset();
         } catch (Exception e) {
-            log.warn("Probe {} of session {} failed to reset", probe.getName(), fixSessionId, e);
+            log.warn("Probe {} failed to reset", probeId, e);
         }
         manualClearAccepted = false;
         nextEvaluationTick = tick;
@@ -186,7 +187,7 @@ final class ProbeEvaluation {
             Optional<Alert> result = probe.getEvaluator().evaluate();
             return result != null ? result : Optional.of(Alert.major("Probe evaluator returned null instead of an Optional"));
         } catch (Exception e) {
-            log.debug("Probe {} of session {} failed", probe.getName(), fixSessionId, e);
+            log.debug("Probe {} failed", probeId, e);
             return Optional.of(Alert.major("Probe evaluation failed: " + e));
         }
     }
@@ -199,9 +200,8 @@ final class ProbeEvaluation {
     private AlertEvent event(AlertEvent.Type type, Alert eventAlert, long nowMillis, boolean clearedManually) {
         return AlertEvent.builder()
                 .type(type)
-                .engineId(engineId)
-                .fixSessionId(fixSessionId)
-                .probeName(probe.getName())
+                .source(source)
+                .probeId(probeId)
                 .probeDescription(probe.getDescription())
                 .probeLabels(probe.getLabels())
                 .probeRunbookUrl(probe.getRunbookUrl())

@@ -49,7 +49,7 @@ public class ExampleOptions {
     private OtlpTransport otlpTransport;
     @CommandLine.Option(names = "-ohv", description = "HTTP version the OTLP HTTP senders speak: HTTP_1_1 or "
             + "HTTP_2. On cleartext HTTP_2 is prior knowledge, so it fails against an HTTP/1.1 collector rather "
-            + "than degrading to one, and it costs 1.17-1.51x the allocation", defaultValue = "HTTP_1_1")
+            + "than degrading to one, and it allocates more than HTTP_1_1", defaultValue = "HTTP_1_1")
     private HttpVersion otlpHttpVersion;
     @CommandLine.Option(names = "-oe", description = "Monitoring, traces, logs OTLP endpoint url", defaultValue = "http://localhost:4318")
     private String otlpEndpointUrl;

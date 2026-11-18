@@ -99,7 +99,7 @@ public class AsyncLogEventSerde implements AsyncEventSerde<AsyncLogEvent> {
     private void writeMessageTypeAndLog(MessageType messageType, ByteBuffer message, ValueOut wire, DocumentContext dc) {
         wire.bytes(messageType.serialized());
         Bytes<?> documentBytes = dc.wire().bytes();
-        documentBytes.write(documentBytes.writePosition(), message, message.position(), message.limit());
+        documentBytes.write(documentBytes.writePosition(), message, message.position(), message.remaining());
         documentBytes.writePosition(documentBytes.writePosition() + message.remaining());
     }
 

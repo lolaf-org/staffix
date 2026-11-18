@@ -20,6 +20,8 @@ import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.ProbeState;
 
+import java.time.Instant;
+
 /**
  * Where a probe stood at its last evaluation; level, message and since are absent while it is normal, the last
  * evaluation for a probe suspended before its first. Times are ISO-8601 instants.
@@ -29,8 +31,8 @@ public class ProbeStatus {
     String probe;
     AlertLevel level;
     String message;
-    String since;
-    String lastEvaluation;
+    Instant since;
+    Instant lastEvaluation;
     boolean suspended;
 
     public static ProbeStatus of(ProbeState state) {
@@ -38,8 +40,8 @@ public class ProbeStatus {
         return new ProbeStatus(state.getProbeName(),
                 alert == null ? null : alert.getLevel(),
                 alert == null ? null : alert.getMessage(),
-                state.getSince().map(Object::toString).orElse(null),
-                state.getLastEvaluation().map(Object::toString).orElse(null),
+                state.getSince().orElse(null),
+                state.getLastEvaluation().orElse(null),
                 state.isSuspended());
     }
 }

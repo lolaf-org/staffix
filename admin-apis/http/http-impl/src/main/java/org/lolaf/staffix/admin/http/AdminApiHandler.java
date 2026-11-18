@@ -18,6 +18,8 @@ package org.lolaf.staffix.admin.http;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import lombok.Getter;
@@ -48,43 +50,52 @@ public class AdminApiHandler implements HttpHandler {
 
     private final byte[] fullAuthorization;
     private final byte[] readOnlyAuthorization;
-    private final ObjectMapper mapper;
     @Getter
     private final ProbesDocuments probesDocuments;
+    private final JsonResponseBuffer json;
     private final Route[] routes;
 
     AdminApiHandler(AdminApi adminApi, String apiToken, String readOnlyApiToken) {
         this.fullAuthorization = bearer(apiToken);
         this.readOnlyAuthorization = readOnlyApiToken == null ? null : bearer(readOnlyApiToken);
-        this.mapper = newObjectMapper();
+        ObjectMapper mapper = newObjectMapper();
         this.probesDocuments = new ProbesDocuments(adminApi, mapper);
-        this.routes = routes(adminApi, mapper, probesDocuments);
+        this.json = new JsonResponseBuffer(mapper);
+        this.routes = routes(adminApi, mapper, probesDocuments, json);
     }
 
     static ObjectMapper newObjectMapper() {
-        return new ObjectMapper().setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
+        return new ObjectMapper()
+                .setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL)
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS);
     }
 
-    static void sendProblem(HttpExchange exchange, ObjectMapper mapper, HttpProblemException problem) throws IOException {
-        Route.send(exchange, problem.getStatus(), "application/problem+json",
-                mapper.writeValueAsBytes(new Problem(problem.getStatus(), problem.getMessage())));
+    static void sendProblem(HttpExchange exchange, JsonResponseBuffer json, HttpProblemException problem) throws IOException {
+        json.send(exchange, problem.getStatus(), "application/problem+json", new Problem(problem.getStatus(), problem.getMessage()));
     }
 
-    private static Route[] routes(AdminApi adminApi, ObjectMapper mapper, ProbesDocuments probes) {
+    private static Route[] routes(AdminApi adminApi, ObjectMapper mapper, ProbesDocuments probes, JsonResponseBuffer json) {
         SessionLookup sessions = new SessionLookup(adminApi);
+        ComponentLookup components = new ComponentLookup(adminApi);
         SessionsDocumentCache documents = new SessionsDocumentCache(adminApi, mapper);
-        JsonResponseBuffer json = new JsonResponseBuffer(mapper);
         return new Route[]{
                 new EngineInfoRoute(adminApi, json),
                 new SessionsRoute(documents),
                 new StatusRoute(adminApi, documents, probes, json),
                 new AlertsRoute(adminApi, probes, json),
+                new HaStatusRoute(adminApi, json),
+                new HaSessionsRoute(adminApi, json),
                 new ComponentsRoute(adminApi, json),
                 new SessionComponentsRoute(adminApi, json),
-                new MetersRoute(adminApi, json),
+                new SessionsMetersRoute(adminApi, json),
+                new EngineMetersRoute(adminApi, json),
                 new SessionMetersRoute(adminApi, sessions, json),
                 new SessionProbesRoute(probes, sessions),
                 new SessionProbeStatesRoute(adminApi, sessions, json),
+                new ComponentProbesRoute(probes, components),
+                new ComponentProbeStatesRoute(adminApi, components, json),
                 new SessionSettingsSchemaRoute(),
                 new SessionSettingsStoresRoute(adminApi, json),
                 new AddSessionRoute(adminApi),
@@ -97,10 +108,15 @@ public class AdminApiHandler implements HttpHandler {
                 new LogonRoute(adminApi, sessions),
                 new LogoutRoute(adminApi, sessions),
                 new ClearAlertRoute(adminApi, sessions),
+                new ComponentClearAlertRoute(adminApi, components),
                 new ResetRoute(adminApi, sessions, mapper),
                 new SeqNumsRoute(adminApi, sessions, mapper),
                 new SendMessagesRoute(adminApi, sessions, mapper),
-                new ActivateRoute(adminApi, sessions, mapper)
+                new ActivateRoute(adminApi, sessions, mapper),
+                new HaElectableRoute(adminApi, mapper),
+                new HaResyncRoute(adminApi),
+                new HaSessionResyncRoute(adminApi),
+                new HaSwitchoverRoute(adminApi, mapper)
         };
     }
 
@@ -125,16 +141,16 @@ public class AdminApiHandler implements HttpHandler {
             }
             route(exchange, pathAfterEngine(exchange), access);
         } catch (HttpProblemException e) {
-            sendProblem(exchange, mapper, e);
+            sendProblem(exchange, json, e);
         } catch (JacksonException e) {
-            sendProblem(exchange, mapper, new HttpProblemException(400, "Invalid request body: " + e.getOriginalMessage()));
+            sendProblem(exchange, json, new HttpProblemException(400, "Invalid request body: " + e.getOriginalMessage()));
         } catch (IllegalArgumentException e) {
-            sendProblem(exchange, mapper, new HttpProblemException(400, e.getMessage()));
+            sendProblem(exchange, json, new HttpProblemException(400, e.getMessage()));
         } catch (IllegalStateException e) {
-            sendProblem(exchange, mapper, new HttpProblemException(409, e.getMessage()));
+            sendProblem(exchange, json, new HttpProblemException(409, e.getMessage()));
         } catch (RuntimeException e) {
             log.error("Admin API request {} {} failed", exchange.getRequestMethod(), exchange.getRequestURI(), e);
-            sendProblem(exchange, mapper, new HttpProblemException(500, "The engine failed to serve the request; see its log"));
+            sendProblem(exchange, json, new HttpProblemException(500, "The engine failed to serve the request; see its log"));
         } finally {
             exchange.close();
         }

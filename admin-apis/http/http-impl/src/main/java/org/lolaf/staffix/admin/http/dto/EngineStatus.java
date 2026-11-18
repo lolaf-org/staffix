@@ -20,9 +20,11 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.alerting.AlertLevel;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ProbeScope;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,8 +33,8 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The live state of every session, in one response the console polls; what does not change is in
- * {@link EngineSessions}.
+ * The live state of every session and of the engine's components with probes, in one response the console polls; what
+ * does not change is in {@link EngineSessions}.
  */
 @Value
 public class EngineStatus {
@@ -46,13 +48,14 @@ public class EngineStatus {
      */
     long alertsVersion;
     List<SessionStatus> sessions;
+    List<ComponentStatus> components;
 
     /**
      * @param probesVersions throws {@code IllegalArgumentException} for a session the engine no longer manages
      */
     public static EngineStatus of(AdminApi adminApi, Map<FixSessionId, FixSession> running, String sessionsVersion,
-                                  long alertsVersion, Function<FixSessionId, String> probesVersions) {
-        Map<FixSessionId, AlertLevel> alertLevels = worstAlertLevels(adminApi);
+                                  long alertsVersion, Function<ProbeScope, String> probesVersions) {
+        Map<ProbeScope, AlertLevel> alertLevels = worstAlertLevels(adminApi);
         List<SessionStatus> sessions = new ArrayList<>(running.size());
         for (FixInitiatorTargets initiator : adminApi.getInitiatorsTargets()) {
             FixSession session = running.get(initiator.getActiveFixSessionId());
@@ -69,24 +72,28 @@ public class EngineStatus {
                 }
             }
         }
-        return new EngineStatus(adminApi.getInstanceId(), sessionsVersion, alertsVersion, sessions);
+        List<ComponentStatus> components = new ArrayList<>();
+        for (ProbeScope scope : adminApi.getComponentProbeScopes()) {
+            components.add(new ComponentStatus(scope.getName(), probesVersions.apply(scope), alertLevels.get(scope)));
+        }
+        return new EngineStatus(adminApi.getInstanceId(), sessionsVersion, alertsVersion, sessions, components);
     }
 
-    private static Map<FixSessionId, AlertLevel> worstAlertLevels(AdminApi adminApi) {
-        List<SessionProbeState> activeAlerts = adminApi.getActiveAlerts();
+    private static Map<ProbeScope, AlertLevel> worstAlertLevels(AdminApi adminApi) {
+        List<ScopedProbeState> activeAlerts = adminApi.getActiveAlerts();
         if (activeAlerts.isEmpty()) {
             return Map.of();
         }
-        Map<FixSessionId, AlertLevel> levels = new HashMap<>();
-        for (SessionProbeState active : activeAlerts) {
+        Map<ProbeScope, AlertLevel> levels = new HashMap<>();
+        for (ScopedProbeState active : activeAlerts) {
             active.getProbeState().getAlert().ifPresent(alert ->
-                    levels.merge(active.getFixSessionId(), alert.getLevel(), (a, b) -> a.compareTo(b) >= 0 ? a : b));
+                    levels.merge(active.getScope(), alert.getLevel(), (a, b) -> a.compareTo(b) >= 0 ? a : b));
         }
         return levels;
     }
 
-    private static void addIfStillManaged(List<SessionStatus> sessions, AdminApi adminApi, Function<FixSessionId, String> probesVersions,
-                                          Map<FixSessionId, AlertLevel> alertLevels, FixSession session, String name) {
+    private static void addIfStillManaged(List<SessionStatus> sessions, AdminApi adminApi, Function<ProbeScope, String> probesVersions,
+                                          Map<ProbeScope, AlertLevel> alertLevels, FixSession session, String name) {
         try {
             sessions.add(status(adminApi, probesVersions, alertLevels, session, name));
         } catch (IllegalArgumentException removedSinceListed) {
@@ -94,19 +101,21 @@ public class EngineStatus {
         }
     }
 
-    private static SessionStatus status(AdminApi adminApi, Function<FixSessionId, String> probesVersions, Map<FixSessionId, AlertLevel> alertLevels,
+    private static SessionStatus status(AdminApi adminApi, Function<ProbeScope, String> probesVersions, Map<ProbeScope, AlertLevel> alertLevels,
                                         FixSession session, String name) {
         FixSessionId fixSessionId = session.getFixSessionId();
+        ProbeScope scope = FixSessionProbeScope.of(fixSessionId);
         return SessionStatus.builder()
                 .group(fixSessionId.getGroup())
                 .name(name)
                 .selectedConfig(fixSessionId.getName())
                 .desiredState(session.getDesiredState())
                 .status(session.getStatus())
+                .pendingSettingsUpdate(session.hasPendingSettingsUpdate())
                 .incomingSeqNum(adminApi.getIncomingSeqNum(fixSessionId))
                 .outgoingSeqNum(adminApi.getOutgoingSeqNum(fixSessionId))
-                .probesVersion(probesVersions.apply(fixSessionId))
-                .alertLevel(alertLevels.get(fixSessionId))
+                .probesVersion(probesVersions.apply(scope))
+                .alertLevel(alertLevels.get(scope))
                 .build();
     }
 }

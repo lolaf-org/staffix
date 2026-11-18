@@ -56,8 +56,8 @@ public class OtlpMessagesLoggerSettings extends AbstractFixMessageLoggerSettings
      *
      * <p>Defaults to {@link JdkHttpSender}, on the JDK's own HTTP client, for one reason: it is the only
      * implementation that needs nothing on the classpath. <strong>It is not the best one.</strong> Over
-     * TLS it is the most expensive of the three - about 56 KB per publish, against 13 KB for
-     * {@code org.lolaf.staffix.http.okhttp.OkHttpSender} - because the JDK client allocates fresh wrap
+     * TLS it allocates the most of the three, far more than
+     * {@code org.lolaf.staffix.http.okhttp.OkHttpSender}, because the JDK client allocates fresh wrap
      * and unwrap buffers per TLS operation and no caller can tune that, and it is the slowest of them
      * on both transports. <strong>For an HTTPS collector, which is what a production one is, set this to
      * {@code OkHttpSender::new}</strong> and add the {@code staffix-http-client-okhttp} module.

@@ -25,26 +25,32 @@ import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.application.FixApplicationFactory;
 import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
+import org.lolaf.staffix.api.ha.FixEngineHa;
+import org.lolaf.staffix.api.ha.HaAdmin;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
+import org.lolaf.staffix.api.monitoring.FixEngineMonitoringManager;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.session.*;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
+import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.impl.alerting.ProbesListeners;
 import org.lolaf.staffix.impl.alerting.ProbesManager;
-import org.lolaf.staffix.impl.session.FixSessionImpl;
-import org.lolaf.staffix.impl.session.FixSessionRegistryImpl;
-import org.lolaf.staffix.impl.session.FixSessionSettingsValidator;
-import org.lolaf.staffix.impl.session.UnderlyingResourceChecker;
+import org.lolaf.staffix.impl.session.*;
 
 import java.time.Clock;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The engine: owns the stores, loggers, plugins and application factories a session may name, and the
@@ -67,16 +73,22 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private final ProbesManager probesManager;
     private final ProbesListeners probesListeners;
     private final List<FixSessionsPlugin<?>> fixSessionsPlugins;
+    /**
+     * The engine contexts handed to the engine's components, whose meters {@link #getEngineMeters()} lists.
+     */
+    private final CopyOnWriteArrayList<FixEngineMonitoringContext> engineMonitoringContexts = new CopyOnWriteArrayList<>();
+    private final Map<String, ProbesImpl> componentProbes = new ConcurrentHashMap<>();
     private final List<FixApplicationFactory> fixApplicationFactories;
     @Getter
     private final FixEngineBuilder fixEngineBuilder;
     private final AdminApiExporter adminApiExporter;
-
+    private final FixEngineHa fixEngineHa;
     private final Map<String, FixInitiatorImpl> initiators;
     private final Map<String, FixAcceptorImpl> acceptors;
     private final Set<SessionLifecycleListener> sessionLifecycleListeners;
     @Getter
     private final FixSessionRegistryImpl fixSessionRegistry;
+    private volatile boolean active;
     private volatile FixSessionAdminControl[] sessionAdminControls = new FixSessionAdminControl[0];
     private volatile List<FixInitiatorTargets> initiatorsTargets = List.of();
     private volatile List<FixAcceptorSessions> acceptorsSessions = List.of();
@@ -112,12 +124,25 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         this.probesListeners = new ProbesListeners();
         this.probesManager = new ProbesManager(fixEngineBuilder.getInstanceId(), Clock.systemUTC(), probesListeners);
         this.adminApiExporter = fixEngineBuilder.getAdminApiExporter() != null ? fixEngineBuilder.getAdminApiExporter().instance() : null;
+        this.fixEngineHa = fixEngineBuilder.getHighAvailability() != null ? fixEngineBuilder.getHighAvailability().instance() : NoHighAvailability.INSTANCE;
+        this.active = fixEngineBuilder.getHighAvailability() == null;
         this.initiators = new ConcurrentHashMap<>();
         this.acceptors = new ConcurrentHashMap<>();
     }
 
     private static IllegalArgumentException noStoreHolds(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
         return new IllegalArgumentException("No store holds the " + fixSessionType + " session " + fixSessionId);
+    }
+
+    private static void requireUniqueNames(Stream<FixSessionSettings> settings) {
+        Map<String, FixSessionId> byName = new HashMap<>();
+        settings.map(FixSessionSettings::getFixSessionId).forEach(id -> {
+            FixSessionId other = byName.putIfAbsent(id.getQualifiedName(), id);
+            if (other != null) {
+                throw new IllegalStateException("The engine has two sessions named " + id.getQualifiedName() + ": "
+                        + other + " and " + id);
+            }
+        });
     }
 
     private <T extends InstanceIdSupplier> void ensurePluginsUniqueInstanceIdsAreProvided(List<T> pluginsSettings) {
@@ -159,6 +184,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         acceptors.clear();
         onAcceptorSessionsChanged();
         refreshSessionAdminControls();
+        fixEngineHa.stop(stopDeadline);
         stopSelfManagedDisconnectedSessionsExecutor(stopDeadline);
         underlyingResourceChecker.stop();
 
@@ -212,8 +238,9 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         }
         fixSessionsSettingsStores.forEach(s -> {
             s.start();
-            s.getSettings().forEach(FixSessionSettingsValidator::validate);
+            s.getSettings().forEach(this::validate);
         });
+        requireUniqueNames(fixSessionsSettingsStores.stream().flatMap(store -> store.getSettings().stream()));
         fixApplicationFactories.forEach(Startable::start);
         fixMessagesStores.forEach(Startable::start);
         fixSessionsPlugins.forEach(s -> {
@@ -223,9 +250,20 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         });
         fixMessagesLoggers.forEach(Startable::start);
         fixAlertsPublishers.forEach(Startable::start);
+        fixEngineHa.bind(new HaEngineAccess());
+        fixEngineHa.start();
         probesManager.start();
         if (adminApiExporter != null) {
             adminApiExporter.export(this);
+        }
+    }
+
+    private void validate(FixSessionSettings settings) {
+        FixSessionSettingsValidator.validate(settings);
+        ReplicationMode replicationMode = settings.getHighAvailability().getReplicationMode();
+        if (fixEngineBuilder.getHighAvailability() == null && replicationMode != ReplicationMode.NONE) {
+            throw new IllegalArgumentException("FIX session " + settings.getFixSessionId() + " asks for replication mode "
+                    + replicationMode + ", but engine " + getInstanceId() + " has no high availability configured");
         }
     }
 
@@ -236,10 +274,10 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 fixEngineBuilder.getFixMessagesStores().get(fixMessagesStores.indexOf(fixMessagesStore)),
                 fixMessagesLogger,
                 fixMessagesLogger == null ? null : fixEngineBuilder.getFixMessagesLoggers().get(fixMessagesLoggers.indexOf(fixMessagesLogger)),
-                findMatchAmongstAlertsPublishers(fixSessionSettings),
+                findMatchAmongstAlertsPublishers(fixSessionSettings.getFixAlertsPublisherInstanceId()),
                 findMatchAmongstFixApplicationFactories(fixSessionSettings),
                 findMatchAmongstPluginsComponent(fixSessionSettings),
-                fixSessionRegistry, disconnectedSessionsExecutor(), underlyingResourceChecker);
+                fixSessionRegistry, disconnectedSessionsExecutor(), underlyingResourceChecker, fixEngineHa);
     }
 
     @Override
@@ -248,7 +286,8 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
             throw new IllegalStateException("Start the FIX engine first");
         }
         FixInitiator initiator = initiators.computeIfAbsent(fixInitiatorBuilder.getInstanceId(), instanceId -> {
-            FixInitiatorImpl newInitiator = new FixInitiatorImpl(fixInitiatorBuilder, this::getDependencies, fixSessionsSettingsStores, this);
+            FixInitiatorImpl newInitiator = new FixInitiatorImpl(fixInitiatorBuilder, this::getDependencies, fixSessionsSettingsStores, this,
+                    () -> active);
             checkNoBackupManagedElsewhere(fixInitiatorBuilder);
             return newInitiator;
         });
@@ -256,6 +295,8 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         onInitiatorTargetsChanged();
         return initiator;
     }
+
+    // AdminApi implementation - routes each operation to the initiator/acceptor managing the session
 
     // initiators sharing a main target predate backup targets and stay allowed; a backup target must be unambiguous
     private void checkNoBackupManagedElsewhere(FixInitiatorBuilder fixInitiatorBuilder) {
@@ -281,15 +322,14 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 });
     }
 
-    // AdminApi implementation - routes each operation to the initiator/acceptor managing the session
-
     @Override
     public FixAcceptor newAcceptor(FixAcceptorBuilder fixAcceptorBuilder) {
         if (!isStarted()) {
             throw new IllegalStateException("Start the FIX engine first");
         }
         FixAcceptor acceptor = acceptors.computeIfAbsent(fixAcceptorBuilder.getInstanceId(),
-                instanceId -> new FixAcceptorImpl(fixAcceptorBuilder, this::getDependencies, fixSessionsSettingsStores, this));
+                instanceId -> new FixAcceptorImpl(fixAcceptorBuilder, this::getDependencies, fixSessionsSettingsStores, this,
+                        () -> active));
         refreshSessionAdminControls();
         onAcceptorSessionsChanged();
         return acceptor;
@@ -302,42 +342,42 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
 
     @Override
     public void logonSession(FixSessionId fixSessionId) {
-        findControl(fixSessionId).logonSession(fixSessionId);
+        runningControl(fixSessionId, "log on").logonSession(fixSessionId);
     }
 
     @Override
     public void logoutSession(FixSessionId fixSessionId) {
-        findControl(fixSessionId).logoutSession(fixSessionId);
+        runningControl(fixSessionId, "log out").logoutSession(fixSessionId);
     }
 
     @Override
     public void resetSession(FixSessionId fixSessionId, AdminApi.ResetFixSessionMode resetFixSessionMode) {
-        findControl(fixSessionId).resetSession(fixSessionId, resetFixSessionMode);
+        runningControl(fixSessionId, "reset").resetSession(fixSessionId, resetFixSessionMode);
     }
 
     @Override
     public void setIncomingSeqNum(FixSessionId fixSessionId, long incomingSeqNum) {
-        findControl(fixSessionId).setIncomingSeqNum(fixSessionId, incomingSeqNum);
+        runningControl(fixSessionId, "set the incoming sequence number of").setIncomingSeqNum(fixSessionId, incomingSeqNum);
     }
 
     @Override
     public void setOutgoingSeqNum(FixSessionId fixSessionId, long outgoingSeqNum) {
-        findControl(fixSessionId).setOutgoingSeqNum(fixSessionId, outgoingSeqNum);
+        runningControl(fixSessionId, "set the outgoing sequence number of").setOutgoingSeqNum(fixSessionId, outgoingSeqNum);
     }
 
     @Override
     public void sendFixMessage(FixSessionId fixSessionId, String fixMessage, char separator, boolean possDupFlag) {
-        findControl(fixSessionId).sendFixMessage(fixSessionId, fixMessage, separator, possDupFlag);
+        runningControl(fixSessionId, "send a message on").sendFixMessage(fixSessionId, fixMessage, separator, possDupFlag);
     }
 
     @Override
     public long getIncomingSeqNum(FixSessionId fixSessionId) {
-        return findControl(fixSessionId).getIncomingSeqNum(fixSessionId);
+        return runningControl(fixSessionId, "read the incoming sequence number of").getIncomingSeqNum(fixSessionId);
     }
 
     @Override
     public long getOutgoingSeqNum(FixSessionId fixSessionId) {
-        return findControl(fixSessionId).getOutgoingSeqNum(fixSessionId);
+        return runningControl(fixSessionId, "read the outgoing sequence number of").getOutgoingSeqNum(fixSessionId);
     }
 
     @Override
@@ -357,29 +397,49 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
-    public void reloadFixSessionsSettingsStore(String instanceId) {
+    public void reloadFixSessionsSettingsStore(String instanceId, boolean restartLiveSessions) {
+        fixEngineHa.requireSettingsStoreWritable(store(instanceId));
+        List<FixSessionSettings> updated = reloadStore(instanceId);
+        if (restartLiveSessions) {
+            updated.forEach(this::restartOnPendingSettings);
+        }
+    }
+
+    private List<FixSessionSettings> reloadStore(String instanceId) {
         FixSessionsSettingsStore store = store(instanceId);
         synchronized (store) {
-            // load() reads the backing source without mutating the store; we reconcile the difference here, keyed by
-            // FixSessionId, so that the store's add/remove/update fire the listener callbacks the sessions react to.
-            Set<FixSessionSettings> loaded = store.load();
-            loaded.forEach(FixSessionSettingsValidator::validate);
-            Map<FixSessionId, FixSessionSettings> currentBySessionId = store.getSettings().stream()
-                    .collect(Collectors.toMap(FixSessionSettings::getFixSessionId, s -> s));
-            Set<FixSessionId> loadedSessionIds = new HashSet<>();
-            for (FixSessionSettings loadedSettings : loaded) {
-                loadedSessionIds.add(loadedSettings.getFixSessionId());
-                FixSessionSettings current = currentBySessionId.get(loadedSettings.getFixSessionId());
-                if (current == null) {
-                    store.add(loadedSettings);
-                } else if (!current.equals(loadedSettings)) {
-                    store.update(loadedSettings);
-                }
-            }
-            currentBySessionId.values().stream()
-                    .filter(current -> !loadedSessionIds.contains(current.getFixSessionId()))
-                    .forEach(store::remove);
+            return reconcile(store, store.load());
         }
+    }
+
+    /**
+     * Makes the store's managed settings those wanted, through add, remove and update so that the listeners the
+     * sessions react with are notified, and returns the settings it updated.
+     */
+    private List<FixSessionSettings> reconcile(FixSessionsSettingsStore store, Set<FixSessionSettings> wanted) {
+        wanted.forEach(this::validate);
+        requireUniqueNames(Stream.concat(fixSessionsSettingsStores.stream()
+                .filter(other -> other != store)
+                .flatMap(other -> other.getSettings().stream()), wanted.stream()));
+        wanted.forEach(settings -> requireNotABackupTarget(settings.getFixSessionId().getQualifiedName()));
+        Map<FixSessionId, FixSessionSettings> currentBySessionId = store.getSettings().stream()
+                .collect(Collectors.toMap(FixSessionSettings::getFixSessionId, s -> s));
+        Set<FixSessionId> wantedSessionIds = new HashSet<>();
+        List<FixSessionSettings> updated = new ArrayList<>();
+        for (FixSessionSettings wantedSettings : wanted) {
+            wantedSessionIds.add(wantedSettings.getFixSessionId());
+            FixSessionSettings current = currentBySessionId.get(wantedSettings.getFixSessionId());
+            if (current == null) {
+                store.add(wantedSettings);
+            } else if (!current.equals(wantedSettings)) {
+                store.update(wantedSettings);
+                updated.add(wantedSettings);
+            }
+        }
+        currentBySessionId.values().stream()
+                .filter(current -> !wantedSessionIds.contains(current.getFixSessionId()))
+                .forEach(store::remove);
+        return updated;
     }
 
     @Override
@@ -395,7 +455,8 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Override
     public void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings) {
         FixSessionsSettingsStore store = store(storeInstanceId);
-        FixSessionSettingsValidator.validate(settings);
+        fixEngineHa.requireSettingsStoreWritable(store);
+        validate(settings);
         requireResolvableComponents(settings);
         synchronized (store) {
             requireUnusedName(settings.getFixSessionId(), null);
@@ -404,18 +465,24 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
-    public void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings) {
+    public void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings, boolean restartLiveSession) {
         FixSession.FixSessionType type = settings.getFixSessionType();
-        if (type == FixSession.FixSessionType.INITIATOR && !settings.getFixSessionId().equals(fixSessionId)) {
+        boolean idChanges = !settings.getFixSessionId().equals(fixSessionId);
+        if (type == FixSession.FixSessionType.INITIATOR && idChanges) {
             throw new IllegalArgumentException("An initiator session's id is set by the initiator's targets: "
                     + fixSessionId + " cannot become " + settings.getFixSessionId());
         }
+        if (idChanges && !restartLiveSession) {
+            throw new IllegalArgumentException("Changing session " + fixSessionId + " to " + settings.getFixSessionId()
+                    + " replaces it, which restarts it: ask for the restart");
+        }
         FixSessionsSettingsStore store = storeHolding(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));
-        FixSessionSettingsValidator.validate(settings);
+        fixEngineHa.requireSettingsStoreWritable(store);
+        validate(settings);
         requireResolvableComponents(settings);
         synchronized (store) {
             FixSessionSettings current = store.find(fixSessionId, type).orElseThrow(() -> noStoreHolds(fixSessionId, type));
-            if (settings.getFixSessionId().equals(fixSessionId)) {
+            if (!idChanges) {
                 store.update(settings);
             } else {
                 // a store updates by id, so a session whose id changes is replaced
@@ -424,14 +491,26 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 store.add(settings);
             }
         }
+        if (restartLiveSession) {
+            restartOnPendingSettings(settings);
+        }
     }
 
     @Override
     public void removeFixSessionSettings(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
         FixSessionsSettingsStore store = storeHolding(fixSessionId, fixSessionType)
                 .orElseThrow(() -> noStoreHolds(fixSessionId, fixSessionType));
+        fixEngineHa.requireSettingsStoreWritable(store);
         synchronized (store) {
             store.find(fixSessionId, fixSessionType).ifPresent(store::remove);
+        }
+    }
+
+    private void restartOnPendingSettings(FixSessionSettings settings) {
+        if (active) {
+            for (FixSessionAdminControl control : sessionAdminControls) {
+                control.applyPendingSettings(settings);
+            }
         }
     }
 
@@ -473,6 +552,10 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 .ifPresent(id -> {
                     throw new IllegalStateException("The engine already has a session " + name + ": " + id);
                 });
+        requireNotABackupTarget(name);
+    }
+
+    private void requireNotABackupTarget(String name) {
         initiatorsTargets.stream()
                 .flatMap(initiator -> initiator.getBackupTargets().stream())
                 .filter(backup -> backup.getFixSessionId().getQualifiedName().equals(name))
@@ -491,6 +574,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         if (targeting.isEmpty()) {
             throw new IllegalArgumentException("No initiator has FIX session " + fixSessionId + " as a target");
         }
+        requireActive(fixSessionId, "switch to");
         targeting.forEach(initiator -> initiator.switchTo(fixSessionId));
     }
 
@@ -546,6 +630,13 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
+    public List<FixMeterDescriptor> getEngineMeters() {
+        return engineMonitoringContexts.stream()
+                .flatMap(context -> context.getMeterDescriptors().stream())
+                .collect(Collectors.toUnmodifiableList());
+    }
+
+    @Override
     public List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId) {
         return findManagedSession(fixSessionId)
                 .flatMap(session -> session.getPluginContext(FixSessionsMonitoringContext.class))
@@ -554,25 +645,62 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     }
 
     @Override
-    public List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId) {
-        return managedSession(fixSessionId).getProbes().list().stream()
+    public List<ProbeDefinition> getProbeDefinitions(ProbeScope scope) {
+        return probesOf(scope).list().stream()
                 .map(ProbeDefinition::of)
                 .collect(Collectors.toUnmodifiableList());
     }
 
     @Override
-    public List<ProbeState> getProbeStates(FixSessionId fixSessionId) {
-        return probesManager.getProbeStates(managedSession(fixSessionId));
+    public List<ProbeState> getProbeStates(ProbeScope scope) {
+        probesOf(scope);
+        return probesManager.getProbeStates(scope);
     }
 
     @Override
-    public List<SessionProbeState> getActiveAlerts() {
+    public Optional<HaAdmin> getHa() {
+        return fixEngineHa == NoHighAvailability.INSTANCE ? Optional.empty() : Optional.of(fixEngineHa);
+    }
+
+    @Override
+    public List<ScopedProbeState> getActiveAlerts() {
         return probesManager.getActiveAlerts();
     }
 
     @Override
-    public boolean clearAlert(FixSessionId fixSessionId, String probeName) {
-        return probesManager.clearAlert(managedSession(fixSessionId), probeName);
+    public boolean clearAlert(ProbeId probeId) {
+        if (probesOf(probeId.getScope()).list().stream().noneMatch(probe -> probe.getName().equals(probeId.getName()))) {
+            throw new IllegalArgumentException(probeId.getScope() + " has no probe named " + probeId.getName());
+        }
+        return probesManager.clearAlert(probeId);
+    }
+
+    @Override
+    public List<ProbeScope> getComponentProbeScopes() {
+        return componentProbes.values().stream()
+                .map(ProbesImpl::getScope)
+                .sorted(Comparator.comparing(ProbeScope::getName))
+                .collect(Collectors.toUnmodifiableList());
+    }
+
+    /**
+     * A session's probes through the sessions it manages rather than the probes manager, which only knows the
+     * registered ones: a session stays managed, with its probes, while not registered.
+     */
+    private Probes probesOf(ProbeScope scope) {
+        if (ComponentProbeScope.isComponent(scope)) {
+            ProbesImpl probes = componentProbes.get(scope.getName());
+            if (probes != null) {
+                return probes;
+            }
+        } else if (FixSessionProbeScope.isSession(scope)) {
+            for (FixSession session : getManagedFixSessions()) {
+                if (session.getFixSessionId().getQualifiedName().equals(scope.getName())) {
+                    return session.getProbes();
+                }
+            }
+        }
+        throw new IllegalArgumentException("Engine " + getInstanceId() + " evaluates no probe scope " + scope);
     }
 
     @Override
@@ -591,11 +719,6 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 .findFirst();
     }
 
-    private FixSession managedSession(FixSessionId fixSessionId) {
-        return findManagedSession(fixSessionId)
-                .orElseThrow(() -> new IllegalArgumentException("No initiator or acceptor manages session " + fixSessionId));
-    }
-
     @Override
     public void registerSessionLifecycleListener(SessionLifecycleListener listener) {
         sessionLifecycleListeners.add(listener);
@@ -610,14 +733,14 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     public void onSessionRegistered(FixSession fixSession) {
         fixSessionRegistry.register(fixSession);
         FixSessionImpl fixSessionImpl = (FixSessionImpl) fixSession;
-        probesManager.register(fixSessionImpl, fixSessionImpl.getProbes(), fixSessionImpl.getAlertsPublisher());
+        probesManager.register(fixSessionImpl.getProbes(), fixSessionImpl.getAlertsPublisher(), fixSessionImpl::isLoggedIn);
         sessionLifecycleListeners.forEach(l -> l.onSessionRegistered(fixSession));
     }
 
     @Override
     public void onSessionUnregistered(FixSession fixSession) {
         fixSessionRegistry.unregister(fixSession);
-        probesManager.unregister(fixSession, ((FixSessionImpl) fixSession).getProbes());
+        probesManager.unregister(((FixSessionImpl) fixSession).getProbes());
         sessionLifecycleListeners.forEach(l -> l.onSessionUnregistered(fixSession));
     }
 
@@ -641,6 +764,23 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         List<FixSessionAdminControl> controls = new ArrayList<>(initiators.values());
         controls.addAll(acceptors.values());
         sessionAdminControls = controls.toArray(FixSessionAdminControl[]::new);
+    }
+
+    /**
+     * The control of a session this engine runs: an engine that does not lead runs none, and acting on a session there would act on the
+     * leader's in the store the replica writes, or bring it up on two nodes at once.
+     */
+    private FixSessionAdminControl runningControl(FixSessionId fixSessionId, String action) {
+        FixSessionAdminControl control = findControl(fixSessionId);
+        requireActive(fixSessionId, action);
+        return control;
+    }
+
+    private void requireActive(FixSessionId fixSessionId, String action) {
+        if (!active) {
+            throw new IllegalStateException("Engine " + getInstanceId() + " does not lead and does not run FIX session "
+                    + fixSessionId + ": " + action + " it on the engine that leads");
+        }
     }
 
     private FixSessionAdminControl findControl(FixSessionId fixSessionId) {
@@ -684,7 +824,7 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     private void requireResolvableComponents(FixSessionSettings settings) {
         findMatchAmongstMessagesStores(settings);
         findMatchAmongstMessagesLoggers(settings);
-        findMatchAmongstAlertsPublishers(settings);
+        findMatchAmongstAlertsPublishers(settings.getFixAlertsPublisherInstanceId());
         findMatchAmongstPluginsComponent(settings);
         FixApplicationFactory factory = findMatchAmongstFixApplicationFactories(settings);
         if (!factory.getApplicationIds().contains(settings.getFixApplicationInstanceId())) {
@@ -729,16 +869,16 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
                 fixMessagesLoggers.stream().map(FixMessagesLogger::getInstanceId).collect(Collectors.joining(","))));
     }
 
-    private FixAlertsPublisher findMatchAmongstAlertsPublishers(FixSessionSettings fixSessionSettings) {
+    private FixAlertsPublisher findMatchAmongstAlertsPublishers(String alertsPublisherInstanceId) {
         if (fixAlertsPublishers.isEmpty()) {
             return VoidAlertsPublisher.getInstance();
         }
         for (FixAlertsPublisher publisher : fixAlertsPublishers) {
-            if (publisher.getInstanceId().equals(fixSessionSettings.getFixAlertsPublisherInstanceId())) {
+            if (publisher.getInstanceId().equals(alertsPublisherInstanceId)) {
                 return publisher;
             }
         }
-        throw new IllegalArgumentException(String.format("Unable to find any FIX alerts publisher for id '%s' within: '%s'", fixSessionSettings.getFixAlertsPublisherInstanceId(),
+        throw new IllegalArgumentException(String.format("Unable to find any FIX alerts publisher for id '%s' within: '%s'", alertsPublisherInstanceId,
                 fixAlertsPublishers.stream().map(FixAlertsPublisher::getInstanceId).collect(Collectors.joining(","))));
     }
 
@@ -752,6 +892,109 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         @Override
         public Class<FixEngineBuilder> getSettingsClass() {
             return FixEngineBuilder.class;
+        }
+    }
+
+    private final class HaEngineAccess implements FixEngineHa.EngineAccess {
+
+        @Override
+        public List<FixSessionSettings> getFixSessionsSettings() {
+            return getManagedFixSessionsSettings();
+        }
+
+        @Override
+        public List<FixSessionsSettingsStore> getFixSessionsSettingsStores() {
+            return fixSessionsSettingsStores;
+        }
+
+        @Override
+        public void applySessionSettings(String storeInstanceId, FixSessionSettings settings) {
+            FixSessionsSettingsStore store = store(storeInstanceId);
+            validate(settings);
+            requireResolvableComponents(settings);
+            synchronized (store) {
+                Optional<FixSessionSettings> current = store.find(settings.getFixSessionId(), settings.getFixSessionType());
+                if (current.isEmpty()) {
+                    requireUnusedName(settings.getFixSessionId(), null);
+                    store.add(settings);
+                } else if (settings.getPlaceholders().keySet().containsAll(current.get().getPlaceholders().keySet())) {
+                    store.update(settings);
+                } else {
+                    // an update keeps the expression of a placeholder it does not mention, here one the leader dropped
+                    store.remove(current.get());
+                    store.add(settings);
+                }
+            }
+        }
+
+        @Override
+        public void reloadSessionSettings(String storeInstanceId) {
+            reloadStore(storeInstanceId);
+        }
+
+        @Override
+        public void forEachFixSessionSettings(Consumer<FixSessionSettings> action) {
+            for (FixSessionAdminControl control : sessionAdminControls) {
+                control.forEachManagedFixSessionSettings(action);
+            }
+        }
+
+        @Override
+        public org.lolaf.staffix.api.time.Clock getClock() {
+            return ClockImpl.get();
+        }
+
+        @Override
+        public FixMessagesStore.FixSessionMessagesStore openStore(FixSessionSettings settings) {
+            ProbesImpl probes = new ProbesImpl(FixSessionProbeScope.of(settings.getFixSessionId()));
+            FixAlertsPublisher alertsPublisher = findMatchAmongstAlertsPublishers(settings.getFixAlertsPublisherInstanceId());
+            return ReplicaStore.of(findMatchAmongstMessagesStores(settings).getStore(settings.getFixSessionId(), probes),
+                    () -> probesManager.register(probes, alertsPublisher, () -> true), () -> probesManager.unregister(probes));
+        }
+
+        @Override
+        public FixEngineMonitoringContext monitoring(String monitoringInstanceId) {
+            FixEngineMonitoringContext context = fixSessionsPlugins.stream()
+                    .filter(plugin -> plugin.getInstanceId().equals(monitoringInstanceId))
+                    .flatMap(plugin -> plugin.unwrap(FixEngineMonitoringManager.class).stream())
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Engine " + getInstanceId()
+                            + " has no engine monitoring manager " + monitoringInstanceId))
+                    .engineContext(getInstanceId());
+            engineMonitoringContexts.addIfAbsent(context);
+            return context;
+        }
+
+        @Override
+        public Probes probes(String component, String alertsPublisherInstanceId, BooleanSupplier componentActive) {
+            return componentProbes.computeIfAbsent(component, name -> {
+                ProbesImpl probes = new ProbesImpl(ComponentProbeScope.of(name));
+                probesManager.register(probes, findMatchAmongstAlertsPublishers(alertsPublisherInstanceId), componentActive);
+                return probes;
+            });
+        }
+
+        @Override
+        public synchronized void activate() {
+            active = true;
+            forEachRunningWhileLeading(RunsWhileLeading::activate);
+        }
+
+        @Override
+        public synchronized void deactivate() {
+            active = false;
+            forEachRunningWhileLeading(endpoint -> endpoint.deactivate(endpoint.dropDeadline(), false));
+        }
+
+        @Override
+        public synchronized void deactivateWithLogout(Deadline deadline) {
+            active = false;
+            forEachRunningWhileLeading(endpoint -> endpoint.deactivate(deadline, true));
+        }
+
+        private void forEachRunningWhileLeading(Consumer<RunsWhileLeading> action) {
+            initiators.values().forEach(action);
+            acceptors.values().forEach(action);
         }
     }
 }

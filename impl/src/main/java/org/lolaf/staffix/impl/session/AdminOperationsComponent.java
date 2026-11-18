@@ -97,7 +97,6 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
         return fixSessionMessagesStore.getIncomingSeqNum();
     }
 
-    @ExternalThread
     void setIncomingSeqNum(long seqNum) {
         failIfStoreStopped("set incoming sequence number");
         fixSession.logEvent("Admin API set incoming sequence: %s", seqNum);
@@ -109,7 +108,6 @@ class AdminOperationsComponent implements FixSessionLayerComponent {
         return fixSessionMessagesStore.getOutgoingSeqNum();
     }
 
-    @ExternalThread
     void setOutgoingSeqNum(long seqNum) {
         failIfStoreStopped("set outgoing sequence number");
         fixSession.logEvent("Admin API set outgoing sequence: %s", seqNum);

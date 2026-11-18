@@ -20,7 +20,9 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLabel;
 import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.ProbeId;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 
 import java.net.URI;
 import java.time.Duration;
@@ -45,9 +47,8 @@ class TestAlertmanagerAlerts {
     static AlertEvent event(AlertEvent.Type type, Alert alert, Instant time) {
         return AlertEvent.builder()
                 .type(type)
-                .engineId("engine")
-                .fixSessionId(SESSION_ID)
-                .probeName("queue")
+                .source("engine")
+                .probeId(ProbeId.of(FixSessionProbeScope.of(SESSION_ID), "queue"))
                 .probeDescription("Orders waiting")
                 .alert(alert)
                 .since(SINCE)
@@ -65,9 +66,9 @@ class TestAlertmanagerAlerts {
             assertThat(alert.getLabels()).containsExactlyInAnyOrderEntriesOf(Map.of(
                     "env", "prod",
                     AlertLabel.ALERT_NAME.getLabelName(), "queue",
-                    AlertLabel.ENGINE.getLabelName(), "engine",
-                    AlertLabel.FIX_SESSION_GROUP.getLabelName(), SESSION_ID.getGroup(),
-                    AlertLabel.FIX_SESSION_NAME.getLabelName(), "orders",
+                    AlertLabel.SOURCE.getLabelName(), "engine",
+                    FixSessionProbeScope.GROUP_LABEL, SESSION_ID.getGroup(),
+                    FixSessionProbeScope.NAME_LABEL, "orders",
                     AlertLabel.SEVERITY.getLabelName(), "warning"));
             assertThat(alert.getAnnotations()).containsExactlyInAnyOrderEntriesOf(Map.of(
                     "summary", "100 queued", "description", "Orders waiting"));
@@ -130,9 +131,8 @@ class TestAlertmanagerAlerts {
     void carriesTheProbesLabelsOverStaticOnesAndItsRunbook() {
         AlertEvent event = AlertEvent.builder()
                 .type(RAISED)
-                .engineId("engine")
-                .fixSessionId(SESSION_ID)
-                .probeName("queue")
+                .source("engine")
+                .probeId(ProbeId.of(FixSessionProbeScope.of(SESSION_ID), "queue"))
                 .probeDescription("Orders waiting")
                 .alert(Alert.warning("100 queued"))
                 .since(SINCE)

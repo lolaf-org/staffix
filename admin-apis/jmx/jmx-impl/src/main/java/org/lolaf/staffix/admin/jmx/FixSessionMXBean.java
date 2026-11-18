@@ -47,6 +47,11 @@ public interface FixSessionMXBean {
      */
     void sendFixMessage(String fixMessage, char separator, boolean possDupFlag);
 
+    /**
+     * See {@link org.lolaf.staffix.api.session.FixSession#hasPendingSettingsUpdate()}.
+     */
+    boolean isPendingSettingsUpdate();
+
     long getIncomingSeqNum();
 
     void setIncomingSeqNum(long seqNum);
@@ -90,7 +95,7 @@ public interface FixSessionMXBean {
 
         String getRunbookUrl();
 
-        boolean isOnlyWhileLoggedIn();
+        boolean isOnlyWhileActive();
     }
 
     /**

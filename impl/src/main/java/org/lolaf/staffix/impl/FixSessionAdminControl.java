@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Internal per-runtime (initiator/acceptor) session-control surface. The engine's
@@ -48,6 +49,12 @@ interface FixSessionAdminControl {
     List<FixSessionSettings> getManagedFixSessionsSettings();
 
     /**
+     * Visits {@link #getManagedFixSessionsSettings()} without copying them. Sessions cannot be added or changed while
+     * {@code action} runs.
+     */
+    void forEachManagedFixSessionSettings(Consumer<FixSessionSettings> action);
+
+    /**
      * Same answer as searching {@link #getManagedFixSessionsSettings()}, without copying them: the engine routes every
      * admin call through it, and {@code status} makes two per session.
      */
@@ -62,6 +69,12 @@ interface FixSessionAdminControl {
      * {@code status} call, into a list sized from {@link #getManagedFixSessionsSize()}.
      */
     void addManagedFixSessions(List<FixSession> sessions);
+
+    /**
+     * Restarts the session these settings belong to on the settings an update held back while it was live; does
+     * nothing if none are pending.
+     */
+    void applyPendingSettings(FixSessionSettings settings);
 
     /**
      * @return {@code true} if this control runs initiator sessions, {@code false} if it runs acceptor sessions

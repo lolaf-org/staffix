@@ -46,7 +46,7 @@ class TestFixEngineReloadSessionsSettings {
 
     private static FixSessionSettings session(String sender, String target) {
         return FixSessionSettings.builder()
-                .fixSessionId(FixSessionId.of("test", FixRegularVersion.VERSION_44, sender, target))
+                .fixSessionId(FixSessionId.of(sender, FixRegularVersion.VERSION_44, sender, target))
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR)
                 .desiredSessionState(FixSessionDesiredState.LOGGED_OUT)
                 .build();
@@ -87,6 +87,28 @@ class TestFixEngineReloadSessionsSettings {
     }
 
     @Test
+    void anEngineWhoseStoreHoldsTwoSessionsOfOneNameDoesNotStart() {
+        store.add(session("SENDER_A", "TARGET_A"));
+        store.add(session("SENDER_A", "TARGET_B"));
+
+        assertThatThrownBy(this::adminApi)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("two sessions named default.SENDER_A");
+    }
+
+    @Test
+    void aReloadBringingTwoSessionsOfOneNameIsRefusedBeforeAnythingChanges() {
+        FixSessionSettings a = session("SENDER_A", "TARGET_A");
+        store.add(a);
+        store.setSource(a, session("SENDER_B", "TARGET_B"), session("SENDER_B", "TARGET_C"));
+
+        assertThatThrownBy(() -> adminApi().reloadFixSessionsSettingsStore(STORE_ID, true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("two sessions named default.SENDER_B");
+        assertThat(store.getSettings()).containsExactly(a);
+    }
+
+    @Test
     void reloadAddsSessionsDiscoveredInTheBackingSource() {
         FixSessionsSettingsStore.Listener listener = mock(FixSessionsSettingsStore.Listener.class);
         store.register(listener);
@@ -95,7 +117,7 @@ class TestFixEngineReloadSessionsSettings {
         FixSessionSettings b = session("SENDER_B", "TARGET_B");
         store.setSource(a, b);
 
-        adminApi().reloadFixSessionsSettingsStore(STORE_ID);
+        adminApi().reloadFixSessionsSettingsStore(STORE_ID, true);
 
         assertThat(store.getSettings()).containsExactlyInAnyOrder(a, b);
         verify(listener).onAddedSession(a);
@@ -121,7 +143,7 @@ class TestFixEngineReloadSessionsSettings {
         FixSessionSettings c = session("SENDER_C", "TARGET_C");
         store.setSource(aUpdated, d, c);
 
-        adminApi().reloadFixSessionsSettingsStore(STORE_ID);
+        adminApi().reloadFixSessionsSettingsStore(STORE_ID, true);
 
         assertThat(store.getSettings()).containsExactlyInAnyOrder(aUpdated, d, c);
         verify(listener).onUpdatedSession(a, aUpdated);
@@ -139,7 +161,7 @@ class TestFixEngineReloadSessionsSettings {
         store.register(listener);
         store.setSource(a);
 
-        adminApi().reloadFixSessionsSettingsStore(STORE_ID);
+        adminApi().reloadFixSessionsSettingsStore(STORE_ID, true);
 
         assertThat(store.getSettings()).containsExactly(a);
         verify(listener, never()).onAddedSession(any());
@@ -149,7 +171,7 @@ class TestFixEngineReloadSessionsSettings {
 
     @Test
     void reloadThrowsForUnknownStoreInstanceId() {
-        assertThatThrownBy(() -> adminApi().reloadFixSessionsSettingsStore("does-not-exist"))
+        assertThatThrownBy(() -> adminApi().reloadFixSessionsSettingsStore("does-not-exist", true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("does-not-exist");
     }
@@ -167,7 +189,7 @@ class TestFixEngineReloadSessionsSettings {
                 .build()).start();
 
         store.setSource(b);
-        adminApi().reloadFixSessionsSettingsStore(STORE_ID);
+        adminApi().reloadFixSessionsSettingsStore(STORE_ID, true);
 
         assertThat(adminApi().getIncomingSeqNum(b.getFixSessionId())).as("added after start").isPositive();
         assertThatThrownBy(() -> adminApi().getIncomingSeqNum(a.getFixSessionId()))

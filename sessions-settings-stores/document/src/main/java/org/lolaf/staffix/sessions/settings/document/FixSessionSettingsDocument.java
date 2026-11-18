@@ -100,11 +100,11 @@ public class FixSessionSettingsDocument {
     @Valid
     private RttMeasurementSettings rttMeasurementSettings;
     @Valid
+    private HaSessionSettings highAvailability;
+    @Valid
     private SessionScheduleSettings sessionScheduleSettings;
     private Boolean messageEncodersDirectByteBuffers;
     private Boolean pooledMessageEncodersDirectByteBuffers;
-    private Boolean disconnectOnRemove;
-    private Boolean restartLiveSessionOnUpdate;
 
 
     @Data
@@ -220,6 +220,17 @@ public class FixSessionSettingsDocument {
         private Duration maxAcceptedRtt;
         private String probeTestReqIdPrefix;
         private Duration sendingTimeToWireDelay;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class HaSessionSettings {
+
+        private FixSessionSettings.HaSessionSettings.ReplicationMode replicationMode;
+        private Duration replicationAckTimeout;
+        private Boolean syncAckLatencyEnabled;
     }
 
     @Data

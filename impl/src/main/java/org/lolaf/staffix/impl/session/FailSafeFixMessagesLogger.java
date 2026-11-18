@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.alerting.RaisedAlertEvaluator;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.time.UTCTime;
@@ -58,8 +59,13 @@ public class FailSafeFixMessagesLogger implements FixMessagesLogger.Logger {
                 logger::isUnderlyingStorageResourceAvailable, logger::getUnderlyingStorageResourceDescription,
                 settings.getResourceCheckInterval(), checker, this::raiseResourceDown);
         this.probe = Probe.builder().name(PROBE_NAME).description("Messages logger")
-                .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).onlyWhileLoggedIn(false).build();
+                .evaluator(alertEvaluator.withClearDelay(settings.getAlertClearDelay())).onlyWhileActive(false).build();
         this.alertLock = new Object();
+    }
+
+    @Override
+    public void onSessionMeters(FixSessionsMonitoringContext meters) {
+        logger.onSessionMeters(meters);
     }
 
     @Override

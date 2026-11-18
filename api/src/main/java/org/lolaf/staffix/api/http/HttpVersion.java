@@ -20,8 +20,8 @@ package org.lolaf.staffix.api.http;
  *
  * <p>A constructor argument on each sender rather than an {@link HttpSenderSettings} field, because each
  * client asks for it differently. Every sender defaults to {@link #HTTP_1_1}, which none of the
- * underlying clients does on its own: HTTP/2 costs 17-40% more latency and 1.17x-1.51x the allocation
- * for an OTLP export, which has nothing to multiplex.
+ * underlying clients does on its own: HTTP/2 is slower and allocates more for an OTLP export, which has
+ * nothing to multiplex.
  */
 public enum HttpVersion {
 

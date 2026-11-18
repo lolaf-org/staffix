@@ -143,12 +143,6 @@ public class FixSessionSettingsMapper {
         if (p.getPooledMessageEncodersDirectByteBuffers() != null) {
             b.pooledMessageEncodersDirectByteBuffers(p.getPooledMessageEncodersDirectByteBuffers());
         }
-        if (p.getDisconnectOnRemove() != null) {
-            b.disconnectOnRemove(p.getDisconnectOnRemove());
-        }
-        if (p.getRestartLiveSessionOnUpdate() != null) {
-            b.restartLiveSessionOnUpdate(p.getRestartLiveSessionOnUpdate());
-        }
         if (p.getValidation() != null) {
             FixSessionSettings.ValidationSettings.ValidationSettingsBuilder<?, ?> vb = FixSessionSettings.ValidationSettings.builder();
             FixSessionSettingsProps.ValidationProps v = p.getValidation();
@@ -206,6 +200,14 @@ public class FixSessionSettingsMapper {
             if (r.getProbeTestReqIdPrefix() != null) rb.probeTestReqIdPrefix(r.getProbeTestReqIdPrefix());
             if (r.getSendingTimeToWireDelay() != null) rb.sendingTimeToWireDelay(r.getSendingTimeToWireDelay());
             b.rttMeasurementSettings(rb.build());
+        }
+        if (p.getHa() != null) {
+            FixSessionSettings.HaSessionSettings.HaSessionSettingsBuilder<?, ?> hb = FixSessionSettings.HaSessionSettings.builder();
+            FixSessionSettingsProps.HaProps h = p.getHa();
+            if (h.getReplicationMode() != null) hb.replicationMode(h.getReplicationMode());
+            if (h.getReplicationAckTimeout() != null) hb.replicationAckTimeout(h.getReplicationAckTimeout());
+            if (h.getSyncAckLatencyEnabled() != null) hb.syncAckLatencyEnabled(h.getSyncAckLatencyEnabled());
+            b.highAvailability(hb.build());
         }
         if (p.getSchedule() != null) {
             FixSessionSettings.SessionScheduleSettings.SessionScheduleSettingsBuilder ssb = FixSessionSettings.SessionScheduleSettings.builder();

@@ -26,6 +26,7 @@ import org.lolaf.ringos.rb.RingBuffer;
 import org.lolaf.ringos.rb.RingBufferFactory;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
+import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.serde.SerDe;
@@ -42,6 +43,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
 /**
@@ -59,6 +61,13 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
     private final FixSessionLayerComponents fixSessionLayerComponents;
     private final FixApplication fixApplication;
     private final FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore;
+    /**
+     * A {@code SYNC} session's store, null for any other: its messages are replicated as they are built, before the
+     * write, so the follower has them before the counterparty does, then stored after the write like any other.
+     */
+    private final ReplicatingStore syncReplicatingStore;
+    private final Consumer<FixSessionFixMessageContext> beforeWrite;
+    private final Consumer<FixSessionBufferedFixMessageContext> beforeBufferedWrite;
     private final FixMessagesLogger.Logger fixMessagesLogger;
     private final FixSessionId fixSessionId;
     private final Clock clock;
@@ -74,12 +83,15 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
 
     OutgoingMessagesComponent(FixSessionImpl fixSession, FixSessionLayerComponents fixSessionLayerComponents,
                               FixApplication fixApplication, FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore,
-                              FixMessagesLogger.Logger fixMessagesLogger, FixSessionId fixSessionId, Clock clock,
-                              TimeUnit sendingTimeAccuracy, IOSettings ioSettings) {
+                              ReplicatingStore syncReplicatingStore, FixMessagesLogger.Logger fixMessagesLogger,
+                              FixSessionId fixSessionId, Clock clock, TimeUnit sendingTimeAccuracy, IOSettings ioSettings) {
         this.fixSession = fixSession;
         this.fixSessionLayerComponents = fixSessionLayerComponents;
         this.fixApplication = fixApplication;
         this.fixSessionMessagesStore = fixSessionMessagesStore;
+        this.syncReplicatingStore = syncReplicatingStore;
+        this.beforeWrite = syncReplicatingStore == null ? null : this::replicateAndAwait;
+        this.beforeBufferedWrite = syncReplicatingStore == null ? null : this::replicateAndAwait;
         this.fixMessagesLogger = fixMessagesLogger;
         this.fixSessionId = fixSessionId;
         this.clock = clock;
@@ -93,7 +105,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         }
         this.bufferMessageSendingContexts = RingBufferFactory.build(accessType, ioSettings.getTasksRingBufferSize());
         while (!bufferMessageSendingContexts.isFull()) {
-            bufferMessageSendingContexts.offer(new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts, fixSession));
+            bufferMessageSendingContexts.offer(new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts, fixSession, beforeBufferedWrite));
         }
         this.bufferedMessageSendingContexts = new ArrayList<>(messageSendingContexts.getSize());
         // filled as carriers come back, so a session whose sends never wait never builds one
@@ -269,14 +281,14 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
             return ctx;
         }
         if (fixSession.isWithinSessionOwnerThread(currentIOSession)) {
-            return new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts, fixSession);
+            return new FixSessionBufferedFixMessageContext(bufferMessageSendingContexts, fixSession, beforeBufferedWrite);
         }
         return bufferMessageSendingContexts.pollBlocking(pollBlockingIdleStrategy);
     }
 
     private FixSessionFixMessageContext newMessageSendingContext() {
         return new FixSessionFixMessageContext(fixSessionMessagesStore::getNextOutgoingSeqNum, fixApplication,
-                sendingTimeAccuracy, clock, fixSession, fixSessionId, messageSendingContexts, this::detach);
+                sendingTimeAccuracy, clock, fixSession, fixSessionId, messageSendingContexts, this::detach, beforeWrite);
     }
 
     private void messageSentCallback(ByteBuffer message, Exception sendingError, FixSessionFixMessageContext context) {
@@ -302,6 +314,30 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
 
         callOnMessageCallbackIfNeeded(sendingError, callback, messageSendOperationCallbackParam1, messageSendOperationCallbackParam2);
         fixSessionLayerComponents.onMessageSent(context.getSendingTime());
+    }
+
+    private void replicateAndAwait(FixSessionFixMessageContext ctx) {
+        replicateBeforeWrite(ctx);
+        syncReplicatingStore.awaitReplicated();
+    }
+
+    private void replicateAndAwait(FixSessionBufferedFixMessageContext batch) {
+        FixSessionFixMessageContext[] sendingContexts = batch.getSendingContexts();
+        for (int i = 0; i < batch.getSendingContextsCount(); i++) {
+            replicateBeforeWrite(sendingContexts[i]);
+        }
+        syncReplicatingStore.awaitReplicated();
+    }
+
+    /**
+     * The message is written up to its position, not yet flipped by the IO session.
+     */
+    private void replicateBeforeWrite(FixSessionFixMessageContext ctx) {
+        ByteBuffer message = ctx.getMessage();
+        int end = message.position();
+        int limit = message.limit();
+        syncReplicatingStore.replicateSent(ctx.getEncoder().getMessageType(), ctx.getOutgoingSeqNum(), message.limit(end).position(0));
+        message.limit(limit).position(end);
     }
 
     private void bufferedMessagesSentCallback(ByteBuffer bufferedWritesMessage, Exception sendingError, FixSessionBufferedFixMessageContext bufferedMessagesSendingContext) {

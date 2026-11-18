@@ -21,6 +21,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Probe;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -30,11 +31,14 @@ import org.lolaf.staffix.stores.core.async.QueueSizeEvaluator;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Map;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 
 @Slf4j
 class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> implements FixMessagesLogger.Logger {
+
+    static final String PRETOUCH_MISSED_PAGES = "async.logger.pretouch.missed.pages";
 
     private final FixMessagesLogger.Logger wrappedLogger;
     private final FixMessagesLogger.BatchingLogger batchingWrappedLogger;
@@ -78,6 +82,14 @@ class AsyncLogger extends Startable.SimpleStartable<FixMessagesLogger.Logger> im
 
     Probe getResourceDownProbe() {
         return underlyingResourceWatchContext.getResourceDownProbe();
+    }
+
+    @Override
+    public void onSessionMeters(FixSessionsMonitoringContext meters) {
+        wrappedLogger.onSessionMeters(meters);
+        meters.getCounter(PRETOUCH_MISSED_PAGES, "Pages of the async logger's queue its writer reached before the pretouch"
+                + " thread, each a page fault on the session thread: a steady rise means pretouchAheadTime is too short.",
+                Map.of(), messagesQueue::pretouchMissedPages);
     }
 
     @Override

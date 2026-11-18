@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.codec.encoders;
 
-import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.unsafe.UnsafeOperations;
 import org.lolaf.ringos.unsafe.UnsafeOperationsApi;
 import org.lolaf.staffix.api.application.FixApplication;
@@ -55,7 +54,6 @@ import java.util.function.Supplier;
  * <p>An encoder is reusable: {@code begin()} resets it for the next message, which is what makes a pooled
  * encoder cheaper than a fresh one on the message path.
  */
-@Slf4j
 public abstract class FixMessageEncoderImpl<T extends FixMessageEncoder<?>> implements FixMessageEncoder<T> {
 
     private static final String DIRECT_BB_ALLOCATOR = "direct";
@@ -103,7 +101,7 @@ public abstract class FixMessageEncoderImpl<T extends FixMessageEncoder<?>> impl
     private ByteBuffer trailerBuffer;
     private FieldScope fieldScope;
     private int checksumSum;
-    private boolean destroyed;
+    private volatile boolean destroyed;
     private long encodingStartTimeInNanos;
 
     protected FixMessageEncoderImpl(Consumer<FixMessageEncoder<?>> releaser, MessageType messageType, IntFunction<ByteBuffer> allocator,
@@ -150,13 +148,12 @@ public abstract class FixMessageEncoderImpl<T extends FixMessageEncoder<?>> impl
 
     @Override
     public void destroy() {
+        if (destroyed) {
+            return;
+        }
+        destroyed = true;
         if (bodyBuffer.isDirect()) {
-            if (!destroyed) {
-                UnsafeOperationsApi.ifAvailableDo(this::cleanBuffers);
-                destroyed = true;
-            } else {
-                log.error("FixMessageEncoder {} has been already destroyed, are you reusing the same non pooled instance to send multiple messages ?", this.getClass().getName());
-            }
+            UnsafeOperationsApi.ifAvailableDo(this::cleanBuffers);
         }
     }
 
@@ -208,6 +205,10 @@ public abstract class FixMessageEncoderImpl<T extends FixMessageEncoder<?>> impl
 
     @Override
     public T begin() {
+        if (destroyed) {
+            throw new IllegalStateException("Encoder " + getClass().getSimpleName() + " was destroyed once its message "
+                    + "was sent: get one from a FixMessageEncodersPool or call asReusable() to send several messages");
+        }
         if (fieldScope != null) {
             throw new IllegalStateException("Encoder begin() already called, but encoder not yet sent");
         }

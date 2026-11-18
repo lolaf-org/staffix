@@ -21,6 +21,7 @@ import org.lolaf.betty.api.ClientBuilder;
 import org.lolaf.betty.api.io.IOEventsListener;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.io.IOWorkersGroup;
+import org.lolaf.betty.api.io.ReadBufferFullException;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.stats.IOStats;
 import org.lolaf.ringos.Deadline;
@@ -28,6 +29,7 @@ import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.admin.AdminApi.ResetFixSessionMode;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
@@ -41,6 +43,8 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -53,7 +57,7 @@ import static org.lolaf.staffix.impl.FixAcceptorImpl.*;
  * session outlives the connection and resumes on the sequence numbers the store kept.
  */
 @Slf4j
-public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> implements FixInitiator, FixSessionAdminControl,
+public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> implements FixInitiator, FixSessionAdminControl, RunsWhileLeading,
         FixSessionsSettingsStore.Listener {
 
     private final FixInitiatorBuilder fixInitiatorBuilder;
@@ -62,17 +66,28 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     private final FixSessionsObserver fixSessionsObserver;
     private final List<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final Object lifecycleLock;
-    private FixSessionSettings mainSettings;
+    private final BooleanSupplier engineActive;
+    private volatile FixSessionSettings mainSettings;
     private FixInitiatorTarget activeFixInitiatorTarget;
     private FixInitiatorTargets fixInitiatorTargets;
-    private FixSessionSettings fixSessionSettings;
+    private volatile FixSessionSettings fixSessionSettings;
     private ScheduledExecutorService scheduledExecutorService;
     private FixSessionImpl fixSession;
     private Client ioClient;
-    private boolean targetRunning;
+    private volatile boolean targetRunning;
+    /**
+     * Between a successful {@code startMe} and {@code stopMe}, under the lifecycle lock: {@link #isStarted()} turns
+     * true only after {@code startMe} returns, too late for what runs under the lock in between.
+     */
+    private boolean startedUnderLock;
 
+    /**
+     * @param engineActive false while the engine does not lead: the session is not even built until it is true
+     */
     FixInitiatorImpl(FixInitiatorBuilder fixInitiatorBuilder, Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesProvider,
-                     List<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver) {
+                     List<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver,
+                     BooleanSupplier engineActive) {
+        this.engineActive = engineActive;
         validateTargets(fixInitiatorBuilder, fixSessionsSettingsStores);
         this.mainSettings = findSettings(fixInitiatorBuilder.getMainTarget().getFixSessionId(), fixSessionsSettingsStores).orElseThrow();
         requireApplicationSpeaksEveryTarget(fixInitiatorBuilder, mainSettings, fixRuntimeDependenciesProvider.apply(mainSettings));
@@ -153,7 +168,8 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
 
     @Override
     public boolean isConnected() {
-        return fixSession.isConnected();
+        FixSessionImpl session = fixSession;
+        return session != null && session.isConnected();
     }
 
     @Override
@@ -183,29 +199,28 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                 throw new IllegalStateException("FIX session " + fixInitiatorBuilder.getMainTarget().getFixSessionId()
                         + " settings, which its backups run on, were removed from its store");
             }
-            // start() and stop() flip isStarted before taking the lock, so only targetRunning says a target runs
-            boolean running = isStarted() && targetRunning;
+            boolean running = startedUnderLock && targetRunning;
             log.info("Switching initiator '{}' from FIX session {} to {}", fixInitiatorBuilder.getInstanceId(),
                     activeFixInitiatorTarget.getFixSessionId(), fixSessionId);
             if (running) {
-                stopTarget("Fix initiator switching to " + fixSessionId, Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
+                stopTarget("Fix initiator switching to " + fixSessionId, Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), true);
             }
             activeFixInitiatorTarget = target;
             fixInitiatorTargets = fixInitiatorTargets(target);
             fixSessionsObserver.onInitiatorTargetsChanged();
             fixSessionSettings = settingsOf(target);
             if (running) {
-                startSwitchedTarget();
+                startTargetOrStop(fixSessionSettings.getDesiredSessionState(), "after a switch");
             }
         }
     }
 
-    private void startSwitchedTarget() {
+    private void startTargetOrStop(FixSessionDesiredState desiredState, String cause) {
         try {
-            startTarget();
+            startTarget(desiredState);
         } catch (RuntimeException failure) {
-            log.warn("Initiator '{}' failed to start FIX session {} after a switch, stopping it", fixInitiatorBuilder.getInstanceId(),
-                    fixSessionSettings.getFixSessionId());
+            log.warn("Initiator '{}' failed to start FIX session {} {}, stopping it", fixInitiatorBuilder.getInstanceId(),
+                    fixSessionSettings.getFixSessionId(), cause);
             stop(Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
             throw failure;
         }
@@ -234,6 +249,12 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             log.info("Starting initiator for FIX session {}", fixSessionSettings.getFixSessionId());
             checkNoBackupHasStoredSettings(fixInitiatorBuilder, fixSessionsSettingsStores);
             startInitiatorResources();
+            if (!engineActive.getAsBoolean()) {
+                log.info("Started initiator for FIX session {} on an engine that does not lead: it connects once the engine leads",
+                        fixSessionSettings.getFixSessionId());
+                startedUnderLock = true;
+                return;
+            }
             try {
                 startTarget();
             } catch (RuntimeException failure) {
@@ -242,8 +263,35 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                 stopInitiatorResources(Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
                 throw failure;
             }
+            startedUnderLock = true;
             log.info("Started initiator for FIX session {}", fixSessionSettings.getFixSessionId());
         }
+    }
+
+    @Override
+    public void activate() {
+        synchronized (lifecycleLock) {
+            if (startedUnderLock && !targetRunning && mainSettings != null) {
+                log.info("Engine leads, starting initiator for FIX session {}", fixSessionSettings.getFixSessionId());
+                startTarget();
+            }
+        }
+    }
+
+    @Override
+    public void deactivate(Deadline deadline, boolean logout) {
+        synchronized (lifecycleLock) {
+            if (targetRunning) {
+                log.info("Engine {} FIX session {}", logout ? "hands leadership over, logging out"
+                        : "no longer leads, dropping", fixSessionSettings.getFixSessionId());
+                stopTarget(logout ? "FIX engine hands leadership over" : "FIX engine no longer leads", deadline, logout);
+            }
+        }
+    }
+
+    @Override
+    public Deadline dropDeadline() {
+        return Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay());
     }
 
     private void startInitiatorResources() {
@@ -260,8 +308,12 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     }
 
     private void startTarget() {
+        startTarget(fixSessionSettings.getDesiredSessionState());
+    }
+
+    private void startTarget(FixSessionDesiredState desiredState) {
         FixSessionRuntimeDependencies runtimeDependencies = fixSessionRuntimeDependencies.apply(fixSessionSettings);
-        fixSession = new FixSessionImpl(fixInitiatorBuilder.getInstanceId(), fixSessionSettings,
+        fixSession = new FixSessionImpl(fixInitiatorBuilder.getInstanceId(), fixSessionSettings, desiredState,
                 runtimeDependencies, getScheduler(), fixInitiatorBuilder.getIoSettings(), messageExecutorsRuntime, fixInitiatorBuilder.getClock());
         boolean registered = false;
         try {
@@ -321,7 +373,9 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                         .build())
                 .ioWorkersGroup(ioWorkerGroup)
                 .ioStatsProvider(getIoStatsProvider(hasConfiguredPluginsWithTimeMeasurementRequired))
-                .ioEventsListener(new IOEventsListenerImpl(fixSession)).build().newInstance();
+                .ioEventsListener(new IOEventsListenerImpl(fixSession,
+                        () -> getScheduler().execute(this::applyPendingSettingsBeforeDialling)))
+                .build().newInstance();
     }
 
     private IOStats.IOStatsProvider getIoStatsProvider(boolean monitoringEnabled) {
@@ -362,9 +416,10 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     @Override
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
         synchronized (lifecycleLock) {
+            startedUnderLock = false;
             log.info("Stopping initiator for FIX session {}", fixSessionSettings.getFixSessionId());
             fixSessionsSettingsStores.forEach(s -> s.unregister(this));
-            stopTarget("Fix initiator stop", stopDeadline);
+            stopTarget("Fix initiator stop", stopDeadline, true);
             stopInitiatorResources(stopDeadline);
             log.info("Stopped initiator for FIX session {}", fixSessionSettings.getFixSessionId());
         }
@@ -376,16 +431,24 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         messageExecutorsRuntime.stop(stopDeadline);
     }
 
-    private void stopTarget(String reason, Deadline stopDeadline) {
+    private void stopTarget(String reason, Deadline stopDeadline, boolean logout) {
         if (!targetRunning) {
             return;
         }
         targetRunning = false;
         fixSessionsObserver.onSessionUnregistered(fixSession);
-        fixSession.stopProtocol(reason, stopDeadline.fromRemainingTime(0.7));
+        if (logout) {
+            fixSession.stopProtocol(reason, stopDeadline.fromRemainingTime(0.7));
+        } else {
+            fixSession.dropProtocol(reason, stopDeadline.fromRemainingTime(0.7));
+        }
         ioClient.stop(stopDeadline.fromRemainingTime(0.8));
         fixSession.releaseResources(stopDeadline);
         ioClient = null;
+    }
+
+    private boolean hasManagedSettings() {
+        return mainSettings != null || targetRunning;
     }
 
     private boolean isMain(FixSessionSettings settings) {
@@ -400,6 +463,11 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             if (isMain(settings)) {
                 mainSettings = settings;
                 fixSessionSettings = settingsOf(activeFixInitiatorTarget);
+                if (targetRunning) {
+                    fixSession.markPendingSettingsUpdate();
+                } else if (startedUnderLock && engineActive.getAsBoolean()) {
+                    startTargetOrStop(fixSessionSettings.getDesiredSessionState(), "after its settings were added back");
+                }
             }
         }
     }
@@ -411,17 +479,16 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
                 return;
             }
             mainSettings = null;
-            if (settings.isDisconnectOnRemove() && isStarted() && fixSession != null) {
-                log.info("FIX session {} settings removed from the store, disconnecting {}", settings.getFixSessionId(),
+            if (targetRunning) {
+                log.info("FIX session {} settings removed from the store, stopping {}", settings.getFixSessionId(),
                         activeFixInitiatorTarget.getFixSessionId());
-                stop(Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
+                stopTarget("FIX session settings removed", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()), true);
             }
         }
     }
 
     /**
-     * The policy comes from {@code oldSettings} - the ones the session is running under - see
-     * {@link FixSessionSettings#isRestartLiveSessionOnUpdate()}.
+     * A live session keeps running on its settings until it next dials, or until {@link #applyPendingSettings}.
      */
     @Override
     public void onUpdatedSession(FixSessionSettings oldSettings, FixSessionSettings newSettings) {
@@ -431,14 +498,45 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
             }
             mainSettings = newSettings;
             fixSessionSettings = settingsOf(activeFixInitiatorTarget);
-            boolean live = isStarted() && fixSession != null && fixSession.isConnected();
-            if (live && oldSettings.isRestartLiveSessionOnUpdate()) {
-                log.info("FIX session {} settings updated, restarting the live session {}", newSettings.getFixSessionId(),
-                        activeFixInitiatorTarget.getFixSessionId());
-                stop(Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()));
-                start();
+            if (!targetRunning) {
+                return;
             }
-            // otherwise the new settings are held and the next connection is built from them
+            if (fixSession.isConnected()) {
+                fixSession.markPendingSettingsUpdate();
+            } else {
+                rebuildTarget("Rebuilt on updated settings");
+            }
+        }
+    }
+
+    private void rebuildTarget(String event) {
+        FixSessionDesiredState desiredState = fixSession.desiredStateAfterUpdateTo(fixSessionSettings);
+        stopTarget("FIX session settings updated", Deadline.of(fixInitiatorBuilder.getShutdownMaxDelay()),
+                fixSession.isConnected());
+        startTargetOrStop(desiredState, "after a settings update");
+        fixSession.logEvent(event);
+    }
+
+    @Override
+    public void applyPendingSettings(FixSessionSettings settings) {
+        synchronized (lifecycleLock) {
+            if (isMain(settings) && targetRunning && fixSession.hasPendingSettingsUpdate()) {
+                rebuildTarget("Restarted by the admin API on its pending settings");
+            }
+        }
+    }
+
+    private void applyPendingSettingsBeforeDialling() {
+        synchronized (lifecycleLock) {
+            if (!targetRunning || fixSession.isConnected() || !fixSession.hasPendingSettingsUpdate()) {
+                return;
+            }
+            try {
+                rebuildTarget("Rebuilt on its pending settings");
+            } catch (RuntimeException failure) {
+                log.error("Initiator '{}' failed to apply the pending settings of FIX session {}",
+                        fixInitiatorBuilder.getInstanceId(), fixSessionSettings.getFixSessionId(), failure);
+            }
         }
     }
 
@@ -501,7 +599,14 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
 
     @Override
     public List<FixSessionSettings> getManagedFixSessionsSettings() {
-        return List.of(fixSessionSettings);
+        return hasManagedSettings() ? List.of(fixSessionSettings) : List.of();
+    }
+
+    @Override
+    public void forEachManagedFixSessionSettings(Consumer<FixSessionSettings> action) {
+        if (hasManagedSettings()) {
+            action.accept(fixSessionSettings);
+        }
     }
 
     @Override
@@ -535,10 +640,12 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
     private static class IOEventsListenerImpl implements IOEventsListener {
 
         private final FixSessionImpl fixSession;
+        private final Runnable applyPendingSettings;
         private List<Certificate> remotePeerCertificates;
 
-        public IOEventsListenerImpl(FixSessionImpl fixSession) {
+        public IOEventsListenerImpl(FixSessionImpl fixSession, Runnable applyPendingSettings) {
             this.fixSession = fixSession;
+            this.applyPendingSettings = applyPendingSettings;
         }
 
         @Override
@@ -555,6 +662,10 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
 
         @Override
         public boolean isReadyToConnect(InetSocketAddress remoteAddress) {
+            if (fixSession.hasPendingSettingsUpdate()) {
+                applyPendingSettings.run();
+                return false;
+            }
             return fixSession.isReadyToConnect();
         }
 
@@ -574,6 +685,15 @@ public class FixInitiatorImpl extends Startable.SimpleStartable<FixInitiator> im
         @Override
         public void onRead(IOSession session, ByteBuffer message, long localReceiveTimeInNanos) {
             fixSession.onMessageRead(message, localReceiveTimeInNanos);
+        }
+
+        @Override
+        public void onError(IOSession session, Exception error) {
+            if (error instanceof ReadBufferFullException) {
+                fixSession.onReadBufferFull((ReadBufferFullException) error);
+                return;
+            }
+            IOEventsListener.super.onError(session, error);
         }
 
         @Override

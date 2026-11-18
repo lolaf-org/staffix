@@ -22,8 +22,10 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
+import org.lolaf.staffix.api.stores.JdbcStorageIdentity;
 import org.lolaf.staffix.stores.messages.testkit.AbstractFixSessionMessagesStoreTest;
 
+import javax.sql.DataSource;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -67,6 +69,62 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
                 .dataSource(dataSource)
                 .messageFilter(messagesFilter)
                 .build(), sessionId, scheduledExecutorService);
+    }
+
+    static JdbcStorageIdentity identity(DataSource source, String tablePrefix) {
+        return new JdbcStorageIdentity(source, tablePrefix, null);
+    }
+
+    @Test
+    void storesOnOneDatabaseAndTablesShareTheirStorageIdentity() {
+        assertThat(identity(dataSource, "").get()).hasValueSatisfying(id -> assertThat(id).startsWith("jdbc:"));
+        assertThat(identity(dataSource, "").get()).isEqualTo(identity(dataSource, "").get());
+        assertThat(messageStore.getStorageIdentity())
+                .isEqualTo(identity(dataSource, "").get());
+    }
+
+    @Test
+    void anotherTablePrefixIsAnotherStorage() {
+        assertThat(identity(dataSource, "other").get()).isNotEqualTo(identity(dataSource, "").get());
+    }
+
+    @Test
+    void aConfiguredStorageIdentityWinsOverTheDatabases() {
+        JdbcStorageIdentity configured = new JdbcStorageIdentity(dataSource, "", "shared-db");
+
+        assertThat(configured.get()).contains("shared-db");
+    }
+
+    @Test
+    void anUnreachableDatabaseHasNoStorageIdentityUntilItIsBack() {
+        FailingDataSource failing = new FailingDataSource(dataSource);
+        JdbcStorageIdentity identity = identity(failing, "");
+
+        failing.setDown(true);
+        assertThat(identity.get()).isEmpty();
+        failing.setDown(false);
+        assertThat(identity.get()).isEqualTo(identity(dataSource, "").get());
+    }
+
+    @Test
+    void aBatchWhoseSequenceNumbersFailToStoreLeavesItsMessagesOutToo() {
+        FailingDataSource database = startStoreOn(new FailingDataSource(dataSource));
+        messageStore.storeMessageSent(1L, ByteBuffer.wrap("message1".getBytes()));
+
+        database.setFailingUpdates(true);
+        assertThatThrownBy(() -> messageStore.storeSentFixMessagesAndSeqNums(
+                new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[]{
+                        new TestingSentFixMessage(2L, ByteBuffer.wrap("message2".getBytes()))
+                }, 1, 7L, 3L))
+                .isInstanceOf(FixMessagesStore.FixSessionMessagesStore.StoreException.class);
+        database.setFailingUpdates(false);
+        messageStore.stop(Deadline.immediate()).start();
+
+        assertThat(messageStore.getIncomingSeqNum()).isEqualTo(1L);
+        assertThat(messageStore.getOutgoingSeqNum()).isEqualTo(2L);
+        List<FixMessagesStore.FixSessionMessagesStore.StoreMessage> messages = messageStore.find(1L, 10L);
+        assertThat(messages).hasSize(1);
+        assertMessage(messages, 0, "message1");
     }
 
     @Override
@@ -234,6 +292,21 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
     }
 
     @Test
+    void shouldPruneOldMessagesInSeveralBatches() throws Exception {
+        getMessageStoreForPruning(100);
+        messageStore.pruneBatchRows = 7;
+        for (long i = 1; i <= 150; i++) {
+            insertMessageDirectly(sessionId.getQualifiedName(), i);
+        }
+
+        messageStore.start();
+
+        Awaitility.await().untilAsserted(() -> assertThat(countMessagesInDatabase(sessionId.getQualifiedName()))
+                .isEqualTo(100));
+        assertThat(getMinMaxSequenceNumbers(sessionId.getQualifiedName())).containsExactly(51, 150);
+    }
+
+    @Test
     void shouldPruneOldMessagesWithGappedSequenceNumbers() throws Exception {
         getMessageStoreForPruning(3);
 
@@ -246,7 +319,7 @@ abstract class AbstractJdbcFixSessionMessagesStore extends AbstractFixSessionMes
 
         messageStore.start();
 
-        // excessCount=3 OFFSET 2 -> cutoff=6, delete <=6 → keeps (7, 10, 15)
+        // the 4th newest, 6, and every older one go: keeps (7, 10, 15)
         Awaitility.await().untilAsserted(() ->
                 assertThat(countMessagesInDatabase(sessionId.getQualifiedName()))
                         .as("Message count after pruning should be exactly maxMessagesPerSession (3)")

@@ -22,10 +22,10 @@ import lombok.Getter;
 import lombok.NonNull;
 import lombok.Singular;
 import lombok.Value;
-import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -40,21 +40,13 @@ public class AlertEvent {
     @NonNull
     Type type;
     /**
-     * The {@code FixEngineBuilder} instance id, so a system collecting alerts from several engines can tell them apart:
-     * a session id is only unique within an engine.
+     * Who evaluated the probe, so a system collecting alerts from several sources can tell them apart: a probe id is
+     * only unique within its source. Such as an engine instance id.
      */
     @NonNull
-    String engineId;
-    /**
-     * The session the probe is bound to.
-     */
+    String source;
     @NonNull
-    FixSessionId fixSessionId;
-    /**
-     * The {@link Probe#getName() name} of the probe, unique within its session.
-     */
-    @NonNull
-    String probeName;
+    ProbeId probeId;
     /**
      * The {@link Probe#getDescription() description} of the probe, carried so a publisher needs nothing else.
      */
@@ -92,6 +84,18 @@ public class AlertEvent {
      */
     public Optional<URI> getProbeRunbookUrl() {
         return Optional.ofNullable(probeRunbookUrl);
+    }
+
+    /**
+     * Every label of the alert: the probe's, its scope's and the {@link AlertLabel}s, in that order.
+     */
+    public Map<String, String> getLabels() {
+        Map<String, String> labels = new LinkedHashMap<>(probeLabels);
+        labels.putAll(probeId.getScope().getLabels());
+        for (AlertLabel label : AlertLabel.values()) {
+            labels.put(label.getLabelName(), label.valueFor(this));
+        }
+        return labels;
     }
 
     /**

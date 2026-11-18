@@ -18,7 +18,7 @@ package org.lolaf.staffix.stores.loggers.demux;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLogger.BatchingLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLogger.BatchingLogger.LogEvent;
@@ -40,7 +40,7 @@ import static org.mockito.Mockito.*;
 
 class TestDemuxMessagesLogger {
 
-    private final FixSessionProbes probes = mock(FixSessionProbes.class);
+    private final Probes probes = mock(Probes.class);
 
     private FixSessionId fixSessionId;
     private MessageType messageType;

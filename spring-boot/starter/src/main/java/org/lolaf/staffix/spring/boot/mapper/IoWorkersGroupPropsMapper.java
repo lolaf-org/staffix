@@ -100,9 +100,9 @@ public class IoWorkersGroupPropsMapper {
             return new WakeupSelectStrategy(selectTimeoutMillis);
         }
         return switch (s) {
-            case BUSY_SPIN -> new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance());
-            case YIELDING -> new IdleStrategySelectStrategy(YieldingIdleStrategy.getInstance());
-            case BACKOFF -> new IdleStrategySelectStrategy(new BackoffIdleStrategy());
+            case BUSY_SPIN -> new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance);
+            case YIELDING -> new IdleStrategySelectStrategy(YieldingIdleStrategy::getInstance);
+            case BACKOFF -> new IdleStrategySelectStrategy(BackoffIdleStrategy::new);
             default -> new WakeupSelectStrategy(selectTimeoutMillis);
         };
     }

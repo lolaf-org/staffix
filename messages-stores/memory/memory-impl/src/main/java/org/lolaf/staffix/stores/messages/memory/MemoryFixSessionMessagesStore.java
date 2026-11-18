@@ -16,21 +16,16 @@
 package org.lolaf.staffix.stores.messages.memory;
 
 import lombok.extern.slf4j.Slf4j;
-import org.lolaf.ringos.rb.RingBuffer;
-import org.lolaf.ringos.rb.RingBufferFactory;
-import org.lolaf.ringos.unsafe.UnsafeOperations;
-import org.lolaf.ringos.unsafe.UnsafeOperationsApi;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
-import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
 @Slf4j
@@ -40,9 +35,9 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
     private final AtomicLong incomingSequenceNumber;
     private final IntFunction<ByteBuffer> allocator;
     private final BiPredicate<MessageType, ByteBuffer> messageFilter;
-    private final Consumer<ByteBuffer> byteBufferCleaner;
     private final boolean enabledMessageStoring;
-    private final RingBuffer<StoredMessage> storeMessages;
+    private final StoredMessage[] storedMessages;
+    private final String storageIdentity = "memory:" + UUID.randomUUID();
 
     public MemoryFixSessionMessagesStore(MemoryMessageStoreSettings settings) {
         allocator = settings.isUseDirectMemory() ? ByteBuffer::allocateDirect : ByteBuffer::allocate;
@@ -50,23 +45,23 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
         outgoingSequenceNumber = new AtomicLong(1);
         incomingSequenceNumber = new AtomicLong(1);
         messageFilter = settings.getMessageFilter();
-        byteBufferCleaner = settings.isUseDirectMemory() ? this::doClean : this::doNotClean;
         if (enabledMessageStoring) {
-            storeMessages = RingBufferFactory.build(RingBufferFactory.AccessType.SINGLE_CONSUMER_SINGLE_PRODUCER, settings.getMaxEntriesInMemory());
-            while (!storeMessages.isFull()) {
-                storeMessages.offer(new StoredMessage());
-            }
+            storedMessages = new StoredMessage[settings.getMaxEntriesInMemory()];
+            Arrays.setAll(storedMessages, index -> new StoredMessage());
         } else {
-            storeMessages = null;
+            storedMessages = null;
         }
     }
 
-    private void doNotClean(ByteBuffer bb) {
-        // nothing to do
+    private static void addIfNotNull(List<StoreMessage> messages, StoreMessage message) {
+        if (message != null) {
+            messages.add(message);
+        }
     }
 
-    private void doClean(ByteBuffer bb) {
-        UnsafeOperationsApi.ifAvailableDo(UnsafeOperations::invokeCleaner, bb);
+    @Override
+    public Optional<String> getStorageIdentity() {
+        return Optional.of(storageIdentity);
     }
 
     @Override
@@ -79,7 +74,9 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
         outgoingSequenceNumber.set(1);
         incomingSequenceNumber.set(1);
         if (enabledMessageStoring) {
-            storeMessages.forEachEntry(s -> s.seqNum = Long.MIN_VALUE);
+            for (StoredMessage stored : storedMessages) {
+                stored.clear();
+            }
         }
     }
 
@@ -111,21 +108,9 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
     @Override
     public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
         outgoingSequenceNumber.set(outgoingSeqNum + 1);
-        if (!enabledMessageStoring) {
-            return;
+        if (enabledMessageStoring) {
+            slotOf(outgoingSeqNum).store(outgoingSeqNum, message, allocator);
         }
-        StoredMessage event = storeMessages.poll();
-        event.seqNum = outgoingSeqNum;
-        if (event.message != null) {
-            if (event.message.capacity() < message.remaining()) {
-                byteBufferCleaner.accept(event.message);
-                event.message = allocator.apply(message.remaining());
-            }
-        } else {
-            event.message = allocator.apply(message.remaining());
-        }
-        event.message.clear().put(message).flip();
-        storeMessages.offer(event);
     }
 
     @Override
@@ -133,15 +118,9 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
         if (!enabledMessageStoring) {
             return;
         }
-        // the ring holds them in no particular order, so the matching ones are collected before being handed over:
-        // the contract is ascending MsgSeqNum(34), and this store keeps everything in memory anyway
-        List<StoreMessage> messages = new ArrayList<>(32);
-        storeMessages.forEach(e -> {
-            if (e.seqNum >= startSequenceNumber && e.seqNum <= stopSequenceNumber) {
-                messages.add(new StoreMessage(e.seqNum, e.message));
-            }
-        });
-        messages.sort(Comparator.comparingLong(StoreMessage::getSeqNum));
+        List<StoreMessage> messages = stopSequenceNumber - startSequenceNumber < storedMessages.length
+                ? copyBySlot(startSequenceNumber, stopSequenceNumber)
+                : copyByScan(startSequenceNumber, stopSequenceNumber);
         for (StoreMessage message : messages) {
             if (!consumer.onMessage(message.getSeqNum(), message.getMessage())) {
                 return;
@@ -149,8 +128,95 @@ class MemoryFixSessionMessagesStore extends Startable.VoidStartable<FixMessagesS
         }
     }
 
+    private StoredMessage slotOf(long seqNum) {
+        return storedMessages[(int) Math.floorMod(seqNum, (long) storedMessages.length)];
+    }
+
+    private List<StoreMessage> copyBySlot(long startSequenceNumber, long stopSequenceNumber) {
+        List<StoreMessage> messages = new ArrayList<>(32);
+        for (long offset = 0; offset <= stopSequenceNumber - startSequenceNumber; offset++) {
+            long seqNum = startSequenceNumber + offset;
+            addIfNotNull(messages, slotOf(seqNum).copyIfIn(seqNum, seqNum));
+        }
+        return messages;
+    }
+
+    private List<StoreMessage> copyByScan(long startSequenceNumber, long stopSequenceNumber) {
+        List<StoreMessage> messages = new ArrayList<>(32);
+        for (StoredMessage stored : storedMessages) {
+            addIfNotNull(messages, stored.copyIfIn(startSequenceNumber, stopSequenceNumber));
+        }
+        // the slots wrap around, and a sequence number moved ahead leaves older messages in the slots it skipped
+        messages.sort(Comparator.comparingLong(StoreMessage::getSeqNum));
+        return messages;
+    }
+
+    /**
+     * Written by the session while resends and replication snapshots copy it on threads of their own: a seqlock, so a
+     * copy torn by a write is dropped, and gap filled, rather than handed over. A buffer outgrown is left to the
+     * garbage collector instead of being freed, since a copy in progress may still read it.
+     */
     private static final class StoredMessage {
+
+        // A slot sized to exactly its message is outgrown as soon as MsgSeqNum(34) gains a digit, which makes every
+        // later message one byte longer: each slot then reallocates on its next write, the whole ring in turn, on the
+        // session's write path. 16 bytes leave room for MsgSeqNum(34) and BodyLength(9) to grow for a session's life.
+        private static final int GROWTH_HEADROOM = 16;
+        private static final VarHandle VERSION;
+
+        static {
+            try {
+                VERSION = MethodHandles.lookup().findVarHandle(StoredMessage.class, "version", long.class);
+            } catch (ReflectiveOperationException e) {
+                throw new ExceptionInInitializerError(e);
+            }
+        }
+
+        /**
+         * Odd while a write is in progress. Release and acquire rather than volatile: a full fence on every message
+         * stored would cost the session's write path.
+         */
+        private long version;
         private long seqNum = Long.MIN_VALUE;
         private ByteBuffer message;
+        private int length;
+
+        void store(long seqNum, ByteBuffer message, IntFunction<ByteBuffer> allocator) {
+            long writing = version + 1;
+            VERSION.setOpaque(this, writing);
+            VarHandle.storeStoreFence();
+            this.seqNum = seqNum;
+            this.length = message.remaining();
+            if (this.message == null || this.message.capacity() < length) {
+                this.message = allocator.apply(length + GROWTH_HEADROOM);
+            }
+            this.message.clear().put(message).flip();
+            VERSION.setRelease(this, writing + 1);
+        }
+
+        void clear() {
+            long writing = version + 1;
+            VERSION.setOpaque(this, writing);
+            VarHandle.storeStoreFence();
+            seqNum = Long.MIN_VALUE;
+            VERSION.setRelease(this, writing + 1);
+        }
+
+        StoreMessage copyIfIn(long startSequenceNumber, long stopSequenceNumber) {
+            long before = (long) VERSION.getAcquire(this);
+            long copiedSeqNum = seqNum;
+            ByteBuffer stored = message;
+            int copiedLength = length;
+            if ((before & 1) != 0 || copiedSeqNum < startSequenceNumber || copiedSeqNum > stopSequenceNumber
+                    || stored == null || copiedLength > stored.capacity()) {
+                return null;
+            }
+            byte[] bytes = new byte[copiedLength];
+            ByteBuffer source = stored.duplicate();
+            source.clear().limit(copiedLength);
+            source.get(bytes);
+            VarHandle.loadLoadFence();
+            return (long) VERSION.getAcquire(this) == before ? new StoreMessage(copiedSeqNum, ByteBuffer.wrap(bytes)) : null;
+        }
     }
 }

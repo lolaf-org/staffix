@@ -26,6 +26,9 @@ import net.openhft.chronicle.queue.impl.single.ThreadLocalAppender;
 import net.openhft.chronicle.wire.DocumentContext;
 import net.openhft.chronicle.wire.WireType;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.stores.core.async.pretoucher.Pretouchable;
+import org.lolaf.staffix.stores.core.async.pretoucher.QueueMountCheck;
+import org.lolaf.staffix.stores.core.async.pretoucher.QueuePretoucher;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,7 +46,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * message path, not to make it optional - an event already queued must still be written after a crash.
  */
 @Slf4j
-public class PersistentQueue<T extends AsyncEvent> {
+public class PersistentQueue<T extends AsyncEvent> implements Pretouchable {
 
     private final AtomicLong offers;
     private final AtomicLong polls;
@@ -58,20 +61,31 @@ public class PersistentQueue<T extends AsyncEvent> {
      */
     private final AtomicInteger generation;
     /**
-     * Sweeps {@link #poll(AsyncEventSerde, AsyncEvent)} triggered on the cleaner. Only bumped when the tailer has
+     * Sweeps {@link #confirmPolled()} triggered on the cleaner. Only bumped when the tailer has
      * actually rolled past a pending cycle, ie when a sweep can delete something, so draining a backlog behind a
      * released-but-not-yet-deletable cycle leaves it untouched. Visible for testing.
      */
     private final AtomicLong pendingDeletionSweeps;
+    private final AtomicLong pretouchMissedPages;
     private SingleChronicleQueue queue;
+    /**
+     * Named, so its position outlives the process: it only ever moves past what was confirmed, so a crash reads again
+     * what was polled and not confirmed.
+     */
+    private ExcerptTailer confirmedTailer;
     private ExcerptTailer tailer;
+    private int unconfirmedPolls;
+    private long firstUnconfirmedIndex;
     /**
      * Non-null when the current {@link StoreFilesCleaner} holds cycles waiting for the tailer to move past them, so
      * that the polling thread can complete the deletions Chronicle notified too early. Reading this single reference
-     * is all {@link #poll(AsyncEventSerde, AsyncEvent)} does for the cleanup when there is nothing pending.
+     * is all {@link #confirmPolled()} does for the cleanup when there is nothing pending.
      */
     @SuppressWarnings("java:S3077")
     private volatile StoreFilesCleaner pendingDeletions;
+    @SuppressWarnings("java:S3077")
+    private volatile QueuePretoucher pretoucher;
+    private long pretouchMissedPagesAtStart;
 
     public PersistentQueue(FixSessionId fixSessionId) {
         this.offers = new AtomicLong();
@@ -81,6 +95,7 @@ public class PersistentQueue<T extends AsyncEvent> {
         this.lastPolledCycle = new AtomicInteger();
         this.generation = new AtomicInteger();
         this.pendingDeletionSweeps = new AtomicLong();
+        this.pretouchMissedPages = new AtomicLong();
     }
 
     public void start(AsyncStoreSettings asyncStoreSettings, String type) {
@@ -96,6 +111,7 @@ public class PersistentQueue<T extends AsyncEvent> {
                 throw new IllegalStateException("Unable to create directory " + queueDir);
             }
         }
+        QueueMountCheck.INSTANCE.check(new File(queueDir).toPath(), asyncStoreSettings.isPretouching());
 
         String name = type + "-" + fixSessionId.forFileName("");
         // bump the generation first, so that a cleaner of the previous generation can no longer publish itself here
@@ -107,15 +123,22 @@ public class PersistentQueue<T extends AsyncEvent> {
                 .rollCycle(asyncStoreSettings.getRollCycleProvider().apply(fixSessionId));
         asyncStoreSettings.getBuilderConfigurer().accept(fixSessionId, builder);
         queue = builder.build();
-        tailer = queue.createTailer(name);
+        pretouchMissedPagesAtStart = pretouchMissedPages.get();
+        pretoucher = new QueuePretoucher(queue, asyncStoreSettings.getPretouchAheadTime(),
+                asyncStoreSettings.getPretouchMinAheadBytes(), pretouchMissedPages);
+        confirmedTailer = queue.createTailer(name);
+        confirmedTailer.singleThreadedCheckDisabled(true);
+        tailer = queue.createTailer();
         tailer.singleThreadedCheckDisabled(true);
         polls.set(0);
         offers.set(0);
-        try (DocumentContext dc = tailer.readingDocument()) {
+        unconfirmedPolls = 0;
+        try (DocumentContext dc = confirmedTailer.readingDocument()) {
             if (dc.isPresent()) {
+                tailer.moveToIndex(dc.index());
                 long lastQueueWriteIndex = queue.lastIndex();
                 log.debug("Chronicle lastQueueWriteIndex {}", lastQueueWriteIndex);
-                long lastQueueReadIndex = tailer.lastReadIndex();
+                long lastQueueReadIndex = confirmedTailer.lastReadIndex();
                 log.debug("Chronicle lastQueueReadIndex  {}", lastQueueReadIndex);
                 long size = 0;
                 if (lastQueueWriteIndex != lastQueueReadIndex) {
@@ -124,11 +147,13 @@ public class PersistentQueue<T extends AsyncEvent> {
                 log.info("Chronicle computed queue size is {}", size);
                 offers.set(size);
                 dc.rollbackOnClose();
+            } else {
+                tailer.toEnd();
             }
         }
         // the tailer sits on the oldest cycle that is not fully polled yet, so every cycle strictly before it can be
         // deleted by the StoreFilesCleaner. On an empty queue cycle() returns Integer.MIN_VALUE, which keeps every file.
-        lastPolledCycle.set(tailer.cycle());
+        lastPolledCycle.set(confirmedTailer.cycle());
         started.set(true);
         log.info("Persistent queue {} for FIX session {} started with {} unprocessed elements and last polled cycle {}", type, fixSessionId, getSize(), lastPolledCycle);
     }
@@ -142,11 +167,17 @@ public class PersistentQueue<T extends AsyncEvent> {
             return;
         }
         started.set(false);
+        unconfirmedPolls = 0;
+        pretoucher.close();
+        pretoucher = null;
         tailer.close();
         tailer = null;
+        confirmedTailer.close();
+        confirmedTailer = null;
         queue.close();
         queue = null;
-        log.info("Persistent queue for FIX session {} is stopped with {} unprocessed elements", fixSessionId, getSize());
+        log.info("Persistent queue for FIX session {} is stopped with {} unprocessed elements and {} pages the writer reached before the pretoucher",
+                fixSessionId, getSize(), pretouchMissedPages.get() - pretouchMissedPagesAtStart);
     }
 
     public long pollsCount() {
@@ -177,6 +208,25 @@ public class PersistentQueue<T extends AsyncEvent> {
         offers.getAndIncrement();
     }
 
+    /**
+     * Takes the page faults of the next appends off {@link #offer}.
+     */
+    @Override
+    public void pretouch() {
+        QueuePretoucher localPretoucher = pretoucher;
+        if (localPretoucher != null) {
+            localPretoucher.pretouch();
+        }
+    }
+
+    /**
+     * Pages the writer reached before the pretouch thread, each a page fault on the writer's thread, since this queue
+     * was created: it never goes down, a restart included. The stop log line gives the run's own share.
+     */
+    public long pretouchMissedPages() {
+        return pretouchMissedPages.get();
+    }
+
     public boolean poll(AsyncEventSerde<T> asyncEventSerde, T target) {
         ExcerptTailer localTailer = tailer;
         if (localTailer == null) {
@@ -185,21 +235,64 @@ public class PersistentQueue<T extends AsyncEvent> {
         }
         try (DocumentContext dc = localTailer.readingDocument()) {
             if (dc.isPresent()) {
-                int polledCycle = localTailer.cycle();
-                lastPolledCycle.set(polledCycle);
+                if (unconfirmedPolls++ == 0) {
+                    firstUnconfirmedIndex = dc.index();
+                }
                 asyncEventSerde.deserialize(dc, target);
                 polls.getAndIncrement();
-                StoreFilesCleaner cleaner = pendingDeletions;
-                // sweeping is worth its monitor only once the tailer has rolled past the oldest pending cycle,
-                // otherwise every event of a backlog would take the cleaner lock for nothing
-                if (cleaner != null && cleaner.hasDeletableCycle(polledCycle)) {
-                    pendingDeletionSweeps.getAndIncrement();
-                    cleaner.deletePolledCycles();
-                }
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * The events polled since the last confirmation are stored: they will not be returned, and files holding nothing
+     * else may go.
+     */
+    public void confirmPolled() {
+        ExcerptTailer localTailer = confirmedTailer;
+        if (unconfirmedPolls == 0 || localTailer == null) {
+            return;
+        }
+        for (; unconfirmedPolls > 0; unconfirmedPolls--) {
+            try (DocumentContext dc = localTailer.readingDocument()) {
+                if (!dc.isPresent()) {
+                    log.error("Unable to confirm a polled event of FIX session {}, abnormal situation", fixSessionId);
+                    break;
+                }
+            }
+        }
+        unconfirmedPolls = 0;
+        int confirmedCycle = localTailer.cycle();
+        lastPolledCycle.set(confirmedCycle);
+        StoreFilesCleaner cleaner = pendingDeletions;
+        // sweeping is worth its monitor only once the tailer has rolled past the oldest pending cycle,
+        // otherwise every event of a backlog would take the cleaner lock for nothing
+        if (cleaner != null && cleaner.hasDeletableCycle(confirmedCycle)) {
+            pendingDeletionSweeps.getAndIncrement();
+            cleaner.deletePolledCycles();
+        }
+    }
+
+    /**
+     * Puts back the events polled since the last confirmation, so the next poll reads them again.
+     *
+     * @return false when the queue is stopped: they are read again at its next start
+     */
+    public boolean returnPolled() {
+        ExcerptTailer localTailer = tailer;
+        if (localTailer == null) {
+            return false;
+        }
+        if (unconfirmedPolls > 0) {
+            if (!localTailer.moveToIndex(firstUnconfirmedIndex)) {
+                return false;
+            }
+            polls.addAndGet(-unconfirmedPolls);
+            unconfirmedPolls = 0;
+        }
+        return true;
     }
 
     /**

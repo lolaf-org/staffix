@@ -22,6 +22,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.api.InstanceProvider;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.stores.DirectoryStorageIdentity;
 import org.lolaf.staffix.impl.session.FixSessionSettingsValidator;
 import org.lolaf.staffix.impl.session.ScheduleProbe;
 import org.lolaf.staffix.spring.boot.mapper.AddressUtils;
@@ -284,7 +285,9 @@ class TestCfgToStaffix {
         Map<Path, String> files = new LinkedHashMap<>();
         try (Stream<Path> walk = Files.walk(root)) {
             for (Path file : walk.filter(Files::isRegularFile).sorted().collect(Collectors.toList())) {
-                if (!file.getFileName().toString().endsWith(".schema.json")) {
+                String name = file.getFileName().toString();
+                // loadYaml starts a file store on the shared output, which writes its identity there
+                if (!name.endsWith(".schema.json") && !name.equals(DirectoryStorageIdentity.FILE_NAME)) {
                     files.put(root.relativize(file), Files.readString(file));
                 }
             }

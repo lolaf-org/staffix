@@ -20,30 +20,26 @@ import lombok.Builder;
 import lombok.NonNull;
 import lombok.Singular;
 import lombok.Value;
-import org.lolaf.staffix.api.session.FixSessionStatus;
-
 import java.net.URI;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
- * Watches one thing of a FIX session and raises an alert while it is wrong. Immutable: changing a probe means removing
- * it and adding a new one.
+ * Watches one thing of its {@link ProbeScope} and raises an alert while it is wrong. Immutable: changing a probe means
+ * removing it and adding a new one.
  */
 @Value
 public class Probe {
 
     /**
-     * The engine evaluates probes on a one-second tick, so no interval can be shorter.
+     * Probes are evaluated on a one-second tick, so no interval can be shorter.
      */
     public static final Duration MIN_INTERVAL = Duration.ofSeconds(1);
-    private static final Pattern LABEL_NAME = Pattern.compile("[a-zA-Z_][a-zA-Z0-9_]*");
 
     /**
-     * Identifies the probe within its session.
+     * Identifies the probe within its scope.
      */
     String name;
     /**
@@ -64,7 +60,8 @@ public class Probe {
     Duration reminderInterval;
     /**
      * Carried on every alert for routing and grouping, such as the owning team. Names follow Prometheus' label syntax,
-     * since Alertmanager refuses a whole post over one invalid name, and cannot be an {@link AlertLabel}.
+     * since Alertmanager refuses a whole post over one invalid name, and cannot be an {@link AlertLabel} or a label of
+     * the probe's {@link ProbeScope}.
      */
     Map<String, String> labels;
     /**
@@ -72,42 +69,26 @@ public class Probe {
      */
     URI runbookUrl;
     /**
-     * Evaluate the probe only while the session is {@link FixSessionStatus#LOGGED_IN}; {@code true} by default, since an
-     * application probe usually watches business traffic, which stops outside a logon. Suspended in every other status,
-     * {@link FixSessionStatus#LOGGED_OUT_INSIDE_SESSION_TIME} included: the built-in {@code session-down} probe alerts
-     * then, and this probe would only report a consequence of it. Suspending clears an ongoing alert, resuming
+     * Evaluate the probe only while its scope is active, as its owner defines it (a session while logged in);
+     * {@code true} by default, since a probe usually watches activity that stops when its scope is inactive, and would
+     * only report a consequence of that. Suspending clears an ongoing alert, resuming
      * {@link ProbeEvaluator#reset() resets} the evaluator. Set {@code false} for a probe whose subject outlives the
-     * logon, such as a queue or a disk.
+     * activity, such as a queue or a disk.
      */
-    boolean onlyWhileLoggedIn;
+    boolean onlyWhileActive;
 
     @Builder
     private Probe(@NonNull String name, @NonNull String description, @NonNull ProbeEvaluator evaluator,
                   Duration evaluationInterval, Duration reminderInterval, @Singular Map<String, String> labels, URI runbookUrl,
-                  Boolean onlyWhileLoggedIn) {
+                  Boolean onlyWhileActive) {
         this.name = name;
         this.description = description;
         this.evaluator = evaluator;
         this.evaluationInterval = requireAtLeastMinInterval("evaluationInterval", evaluationInterval == null ? MIN_INTERVAL : evaluationInterval);
         this.reminderInterval = reminderInterval == null ? null : requireAtLeastMinInterval("reminderInterval", reminderInterval);
-        this.labels = Collections.unmodifiableMap(new LinkedHashMap<>(requireValidLabels(labels)));
+        this.labels = Collections.unmodifiableMap(new LinkedHashMap<>(Labels.requireValid(labels)));
         this.runbookUrl = runbookUrl;
-        this.onlyWhileLoggedIn = onlyWhileLoggedIn == null || onlyWhileLoggedIn;
-    }
-
-    private static Map<String, String> requireValidLabels(Map<String, String> labels) {
-        labels.forEach((labelName, value) -> {
-            if (!LABEL_NAME.matcher(labelName).matches()) {
-                throw new IllegalArgumentException("Label name " + labelName + " must match " + LABEL_NAME);
-            }
-            if (AlertLabel.isReserved(labelName)) {
-                throw new IllegalArgumentException("Label name " + labelName + " is reserved by " + AlertLabel.class.getSimpleName());
-            }
-            if (value == null) {
-                throw new IllegalArgumentException("Label " + labelName + " has no value");
-            }
-        });
-        return labels;
+        this.onlyWhileActive = onlyWhileActive == null || onlyWhileActive;
     }
 
     private static Duration requireAtLeastMinInterval(String name, Duration interval) {

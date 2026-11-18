@@ -16,10 +16,13 @@
 package org.lolaf.staffix.admin.jmx;
 
 import lombok.Value;
+import org.lolaf.staffix.api.ComponentProbeScope;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.util.ArrayList;
@@ -43,8 +46,8 @@ public class FixAdminMBeanImpl implements FixAdminMXBean {
     }
 
     @Override
-    public void reloadFixSessionsSettingsStore(String instanceId) {
-        delegate.reloadFixSessionsSettingsStore(instanceId);
+    public void reloadFixSessionsSettingsStore(String instanceId, boolean restartLiveSessions) {
+        delegate.reloadFixSessionsSettingsStore(instanceId, restartLiveSessions);
     }
 
     @Override
@@ -72,18 +75,42 @@ public class FixAdminMBeanImpl implements FixAdminMXBean {
     @Override
     public List<ActiveAlert> getActiveAlerts() {
         List<ActiveAlert> alerts = new ArrayList<>();
-        for (SessionProbeState active : delegate.getActiveAlerts()) {
+        for (ScopedProbeState active : delegate.getActiveAlerts()) {
             ProbeState state = active.getProbeState();
-            state.getAlert().ifPresent(alert -> alerts.add(new ActiveAlertImpl(active.getFixSessionId().toString(),
+            state.getAlert().ifPresent(alert -> alerts.add(new ActiveAlertImpl(active.getScope().getQualifiedName(),
                     state.getProbeName(), alert.getLevel().name(), alert.getMessage(),
                     state.getSince().map(Object::toString).orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null))));
         }
         return alerts;
     }
 
+    @Override
+    public List<String> getProbedComponents() {
+        return delegate.getComponentProbeScopes().stream().map(ProbeScope::getName).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<FixSessionMXBean.Probe> getComponentProbes(String component) {
+        return delegate.getProbeDefinitions(ComponentProbeScope.of(component)).stream()
+                .map(FixSessionMBeanImpl::probe)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<FixSessionMXBean.ProbeStatus> getComponentProbeStates(String component) {
+        return delegate.getProbeStates(ComponentProbeScope.of(component)).stream()
+                .map(FixSessionMBeanImpl::status)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean clearComponentAlert(String component, String probeName) {
+        return delegate.clearAlert(ProbeId.of(ComponentProbeScope.of(component), probeName));
+    }
+
     @Value
     private static class ActiveAlertImpl implements ActiveAlert {
-        String fixSessionId;
+        String scope;
         String probe;
         String level;
         String message;

@@ -31,7 +31,7 @@ public class Slf4jAlertsPublisherEntryProps {
     private Boolean useMDC;
 
     /**
-     * Spring bean name of Function from FixSessionId to String that derives the SLF4J logger name per session.
+     * Spring bean name of Function from ProbeScope to String that derives the SLF4J logger name per probe scope.
      */
-    private String loggerNameForFixSessionBean;
+    private String loggerNameForScopeBean;
 }

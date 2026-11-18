@@ -18,7 +18,7 @@ package org.lolaf.staffix.api;
 import lombok.Getter;
 import org.lolaf.ringos.Deadline;
 
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The lifecycle contract of everything the engine owns: message stores, message loggers, session plugins,
@@ -28,9 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * across components that may be draining a queue or flushing a file, and none of them may hold the engine open
  * indefinitely.
  *
- * <p>Two bases are provided. {@link SimpleStartable} is the usual one: it flips the flag with a compare-and-set
- * so {@code stopMe} runs at most once however many threads call {@code stop}. {@link VoidStartable} is for a
- * component with nothing to start or stop, which records the flag and does nothing else.
+ * <p>Two bases are provided. {@link SimpleStartable} is the usual one: it moves its {@link State} with a
+ * compare-and-set so {@code startMe} and {@code stopMe} run at most once however many threads call them.
+ * {@link VoidStartable} is for a component with nothing to start or stop, which records the flag and does nothing else.
  */
 public interface Startable<T> {
 
@@ -48,6 +48,21 @@ public interface Startable<T> {
      * Whether {@link #start()} has succeeded and no {@link #stop(Deadline)} has followed.
      */
     boolean isStarted();
+
+    /**
+     * Where the component is in its lifecycle. Only {@link SimpleStartable} reports the transitions; the default
+     * knows only {@link State#STARTED} and {@link State#STOPPED}.
+     */
+    default State getState() {
+        return isStarted() ? State.STARTED : State.STOPPED;
+    }
+
+    enum State {
+        STOPPED,
+        STARTING,
+        STARTED,
+        STOPPING
+    }
 
     /**
      * A start or stop that failed. Unchecked, since a caller can rarely do more than report it.
@@ -91,24 +106,40 @@ public interface Startable<T> {
 
     /**
      * Runs {@link #startMe()} and {@link #stopMe(Deadline)} at most once each per start and stop, however many
-     * threads call them. A {@code startMe} that throws leaves the component stopped, so a start can be retried.
+     * threads call them. {@link #isStarted()} is true only once {@code startMe} returned, so another thread never finds
+     * a component half started. Nothing waits: a stop during {@code startMe} runs {@code stopMe} at once, and a start
+     * during {@code stopMe} runs {@code startMe}. A {@code startMe} that throws leaves the component stopped, so a
+     * start can be retried.
      *
      * @param <T> the component type, returned by start and stop
      */
-    @Getter
     abstract class SimpleStartable<T> implements Startable<T> {
 
-        private final AtomicBoolean started = new AtomicBoolean(false);
+        private final AtomicReference<State> state = new AtomicReference<>(State.STOPPED);
 
         @Override
         public boolean isStarted() {
-            return started.get();
+            return state.get() == State.STARTED;
+        }
+
+        @Override
+        public State getState() {
+            return state.get();
         }
 
         @Override
         public final T stop(Deadline stopDeadline) throws StartStopException {
-            if (started.getAndSet(false)) {
-                stopMe(stopDeadline);
+            State current = state.get();
+            while (current == State.STARTED || current == State.STARTING) {
+                if (state.compareAndSet(current, State.STOPPING)) {
+                    try {
+                        stopMe(stopDeadline);
+                    } finally {
+                        state.compareAndSet(State.STOPPING, State.STOPPED);
+                    }
+                    break;
+                }
+                current = state.get();
             }
             return (T) this;
         }
@@ -120,13 +151,19 @@ public interface Startable<T> {
 
         @Override
         public final T start() throws StartStopException {
-            if (!started.getAndSet(true)) {
-                try {
-                    startMe();
-                } catch (Exception ex) {
-                    started.set(false);
-                    throw ex;
+            State current = state.get();
+            while (current == State.STOPPED || current == State.STOPPING) {
+                if (state.compareAndSet(current, State.STARTING)) {
+                    try {
+                        startMe();
+                    } catch (Exception ex) {
+                        state.compareAndSet(State.STARTING, State.STOPPED);
+                        throw ex;
+                    }
+                    state.compareAndSet(State.STARTING, State.STARTED);
+                    break;
                 }
+                current = state.get();
             }
             return (T) this;
         }

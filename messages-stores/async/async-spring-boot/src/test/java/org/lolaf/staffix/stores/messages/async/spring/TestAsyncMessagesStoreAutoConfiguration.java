@@ -15,8 +15,13 @@
  */
 package org.lolaf.staffix.stores.messages.async.spring;
 
+import net.openhft.chronicle.queue.RollCycles;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
+import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
+import org.lolaf.staffix.stores.messages.async.AsyncMessagesStoreSettings;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -28,6 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 class TestAsyncMessagesStoreAutoConfiguration {
+
+    private static final FixSessionId FIX_SESSION_ID = FixSessionId.of("test", FixRegularVersion.VERSION_44, "sender", "target");
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(AsyncMessagesStoreAutoConfiguration.class));
@@ -56,6 +63,58 @@ class TestAsyncMessagesStoreAutoConfiguration {
                     assertThat(settings.getResourceCheckInterval()).isEqualTo(FixMessagesStoreSettings.DEFAULT_RESOURCE_CHECK_INTERVAL);
                     assertThat(settings.getAlertClearDelay()).isEqualTo(FixMessagesStoreSettings.DEFAULT_ALERT_CLEAR_DELAY);
                 });
+    }
+
+    @Test
+    void bindsTheQueueTuning() {
+        runner.withPropertyValues("staffix.messages-stores-async.instances.MAIN.wraps=MAIN",
+                        "staffix.messages-stores-async.instances.MAIN.async-queue-directory=target/async-store",
+                        "staffix.messages-stores-async.instances.MAIN.events-batching=50",
+                        "staffix.messages-stores-async.instances.MAIN.batching-flush-interval=20ms",
+                        "staffix.messages-stores-async.instances.MAIN.reader-threads-count=3",
+                        "staffix.messages-stores-async.instances.MAIN.reader-thread-max-events-processing-per-store=64",
+                        "staffix.messages-stores-async.instances.MAIN.roll-cycle=five-minutely",
+                        "staffix.messages-stores-async.instances.MAIN.pretouch-interval=0",
+                        "staffix.messages-stores-async.instances.MAIN.pretouch-ahead-time=80ms",
+                        "staffix.messages-stores-async.instances.MAIN.pretouch-min-ahead-bytes=4194304")
+                .run(context -> {
+                    AsyncStoreSettings settings = asyncStoreSettings(context.getBean(AsyncMessagesStoreContributor.class));
+
+                    assertThat(settings.getEventsBatching()).isEqualTo(50);
+                    assertThat(settings.getBatchingFlushInterval()).isEqualTo(Duration.ofMillis(20));
+                    assertThat(settings.getReaderThreadsCount()).isEqualTo(3);
+                    assertThat(settings.getReaderThreadMaxEventsProcessingPerStore()).isEqualTo(64);
+                    assertThat(settings.getRollCycleProvider().apply(FIX_SESSION_ID)).isEqualTo(RollCycles.FIVE_MINUTELY);
+                    assertThat(settings.getPretouchInterval()).isZero();
+                    assertThat(settings.getPretouchAheadTime()).isEqualTo(Duration.ofMillis(80));
+                    assertThat(settings.getPretouchMinAheadBytes()).isEqualTo(4L << 20);
+                });
+    }
+
+    @Test
+    void defaultsTheQueueTuning() {
+        runner.withPropertyValues("staffix.messages-stores-async.instances.MAIN.wraps=MAIN",
+                        "staffix.messages-stores-async.instances.MAIN.async-queue-directory=target/async-store")
+                .run(context -> {
+                    AsyncStoreSettings settings = asyncStoreSettings(context.getBean(AsyncMessagesStoreContributor.class));
+                    AsyncStoreSettings defaults = AsyncStoreSettings.builder().build();
+
+                    assertThat(settings.getAsyncQueueDirectory()).isEqualTo("target/async-store");
+                    assertThat(settings.getEventsBatching()).isEqualTo(defaults.getEventsBatching());
+                    assertThat(settings.getBatchingFlushInterval()).isEqualTo(defaults.getBatchingFlushInterval());
+                    assertThat(settings.getReaderThreadsCount()).isEqualTo(defaults.getReaderThreadsCount());
+                    assertThat(settings.getReaderThreadMaxEventsProcessingPerStore())
+                            .isEqualTo(defaults.getReaderThreadMaxEventsProcessingPerStore());
+                    assertThat(settings.getRollCycleProvider().apply(FIX_SESSION_ID))
+                            .isEqualTo(defaults.getRollCycleProvider().apply(FIX_SESSION_ID));
+                    assertThat(settings.getPretouchInterval()).isEqualTo(defaults.getPretouchInterval());
+                    assertThat(settings.getPretouchAheadTime()).isEqualTo(defaults.getPretouchAheadTime());
+                    assertThat(settings.getPretouchMinAheadBytes()).isEqualTo(defaults.getPretouchMinAheadBytes());
+                });
+    }
+
+    private static AsyncStoreSettings asyncStoreSettings(AsyncMessagesStoreContributor contributor) {
+        return ((AsyncMessagesStoreSettings) contribute(contributor)).getAsyncStoreSettings();
     }
 
     private static FixMessagesStoreSettings contribute(AsyncMessagesStoreContributor contributor) {

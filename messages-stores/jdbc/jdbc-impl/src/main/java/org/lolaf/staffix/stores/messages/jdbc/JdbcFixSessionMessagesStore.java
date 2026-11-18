@@ -18,12 +18,14 @@ package org.lolaf.staffix.stores.messages.jdbc;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.threading.FastThreadLocal;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
+import org.lolaf.staffix.api.stores.JdbcStorageIdentity;
 
 import javax.sql.DataSource;
 import java.io.InputStream;
@@ -35,6 +37,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -60,18 +63,33 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     private final String updateIncomingSeqNumSql;
     private final String updateOutgoingSeqNumSql;
     private final String selectMessagesSql;
-    private final String countMessagesSql;
     // Pruning configuration
     private final int maxMessagesPerSession;
+    private final int findFetchSize;
     private final Duration pruningCheckInterval;
     private final ScheduledExecutorService scheduledExecutorService;
-    private final String resetSql;
+    private final String updateSeqNumsSql;
     private final String deleteAllMessagesSql;
+    private final JdbcStorageIdentity storageIdentity;
     private String findCutoffSeqNumSql;
+    private String findBatchEndSeqNumSql;
+    /**
+     * The most rows one pruning delete removes, so the first prune of a large table is not one huge transaction.
+     */
+    int pruneBatchRows = 10_000;
     private ScheduledFuture<?> pruningTask;
-    private boolean resetPending;
+    /**
+     * Read by finds on the resend and replication threads too, which must not miss a reset pending.
+     */
+    private volatile boolean resetPending;
 
     JdbcFixSessionMessagesStore(JdbcMessageStoreSettings settings, FixSessionId fixSessionId, ScheduledExecutorService scheduledExecutorService) {
+        this(settings, fixSessionId, scheduledExecutorService, new JdbcStorageIdentity(settings.getDataSource(), settings.getTablePrefix(), settings.getStorageIdentity()));
+    }
+
+    JdbcFixSessionMessagesStore(JdbcMessageStoreSettings settings, FixSessionId fixSessionId, ScheduledExecutorService scheduledExecutorService,
+                                JdbcStorageIdentity storageIdentity) {
+        this.storageIdentity = storageIdentity;
         this.cachedInputStreamTL = FastThreadLocal.withInitial(ArrayList::new);
         this.dataSource = settings.getDataSource();
         this.fixSessionId = fixSessionId;
@@ -79,7 +97,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         this.incomingSequenceNumber = new AtomicLong(1);
         this.outgoingSequenceNumber = new AtomicLong(1);
         this.tableName = settings.getTablePrefix().isEmpty() ? "fix_messages" : settings.getTablePrefix() + "_fix_messages";
-        this.resetSql = "UPDATE " + tableName + "_session_state SET incoming_seq_num = ?, outgoing_seq_num = ? WHERE session_id = ?";
+        this.updateSeqNumsSql = "UPDATE " + tableName + "_session_state SET incoming_seq_num = ?, outgoing_seq_num = ? WHERE session_id = ?";
         this.deleteAllMessagesSql = "DELETE FROM " + tableName + " WHERE session_id = ?";
         this.insertMessageSql = "INSERT INTO " + tableName +
                 " (session_id, sequence_number, message_data) VALUES (?, ?, ?)";
@@ -89,10 +107,13 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
                 "SET outgoing_seq_num = ? WHERE session_id = ?";
         this.selectMessagesSql = "SELECT sequence_number, message_data FROM " + tableName +
                 " WHERE session_id = ? AND sequence_number BETWEEN ? AND ? ORDER BY sequence_number";
-        this.countMessagesSql = "SELECT COUNT(*) FROM " + tableName + " WHERE session_id = ?";
 
         // Pruning configuration
         this.maxMessagesPerSession = settings.getMaxMessagesPerSession();
+        if (settings.getFindFetchSize() <= 0) {
+            throw new IllegalArgumentException("findFetchSize must be positive, was " + settings.getFindFetchSize());
+        }
+        this.findFetchSize = settings.getFindFetchSize();
         this.pruningCheckInterval = settings.getPruningCheckInterval();
         this.scheduledExecutorService = scheduledExecutorService;
     }
@@ -104,6 +125,11 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         } catch (SQLException e) {
             return false;
         }
+    }
+
+    @Override
+    public Optional<String> getStorageIdentity() {
+        return storageIdentity.get();
     }
 
     @Override
@@ -138,13 +164,15 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         try (Connection conn = dataSource.getConnection()) {
             boolean isOracle = conn.getMetaData().getDatabaseProductName()
                     .toLowerCase().contains("oracle");
-            this.findCutoffSeqNumSql = isOracle
-                    ? "SELECT sequence_number FROM " + tableName +
-                    " WHERE session_id = ? ORDER BY sequence_number ASC" +
-                    " OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY"
-                    : "SELECT sequence_number FROM " + tableName +
-                    " WHERE session_id = ? ORDER BY sequence_number ASC LIMIT 1 OFFSET ?";
+            this.findCutoffSeqNumSql = "SELECT sequence_number FROM " + tableName
+                    + " WHERE session_id = ? ORDER BY sequence_number DESC" + offsetOneRow(isOracle);
+            this.findBatchEndSeqNumSql = "SELECT sequence_number FROM " + tableName
+                    + " WHERE session_id = ? AND sequence_number <= ? ORDER BY sequence_number ASC" + offsetOneRow(isOracle);
         }
+    }
+
+    private static String offsetOneRow(boolean isOracle) {
+        return isOracle ? " OFFSET ? ROWS FETCH NEXT 1 ROWS ONLY" : " LIMIT 1 OFFSET ?";
     }
 
     @Override
@@ -215,7 +243,11 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
     }
 
     /**
-     * Stores the current numbers rather than 1, so a reset completed late keeps those taken since.
+     * Completes a reset the database could not take when it was asked, the session having carried on from 1 on its
+     * in-memory counters. Every call that reaches the database runs it first, or it would act on the rows from before
+     * the reset, stored under the numbers the session now reuses: a find resending them as current, writes mixing two
+     * histories, seqnum updates leaving the old rows in place. Stores the current numbers rather than 1, so a reset
+     * completed late keeps those taken since.
      */
     private void completePendingResetIfNeeded(Connection conn) throws SQLException {
         if (!resetPending) {
@@ -227,7 +259,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             }
             boolean autoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
-            try (PreparedStatement reset = conn.prepareStatement(resetSql);
+            try (PreparedStatement reset = conn.prepareStatement(updateSeqNumsSql);
                  PreparedStatement deleteAll = conn.prepareStatement(deleteAllMessagesSql)) {
                 reset.setLong(1, incomingSequenceNumber.get());
                 reset.setLong(2, outgoingSequenceNumber.get());
@@ -251,7 +283,7 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
         try {
             conn.rollback();
         } catch (SQLException e) {
-            log.debug("Failed to roll back the reset of session {}", fixSessionId, e);
+            log.debug("Failed to roll back a transaction of session {}", fixSessionId, e);
         }
     }
 
@@ -325,24 +357,113 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     @Override
     public void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) throws StoreException {
+        List<CachedInputStream> cachedInputStreams = cachedInputStreams(sentFixMessageCount);
+        try (Connection conn = dataSource.getConnection()) {
+            completePendingResetIfNeeded(conn);
+            insertMessages(conn, sentFixMessages, sentFixMessageCount, cachedInputStreams);
+        } catch (SQLException e) {
+            throw failed("Failed to store batched messages", e);
+        } finally {
+            clean(cachedInputStreams, sentFixMessageCount);
+        }
+    }
+
+    @Override
+    public void storeSentFixMessagesAndSeqNums(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                               long nextIncomingSeqNum, long nextOutgoingSeqNum) throws StoreException {
+        if (nextIncomingSeqNum >= 0) {
+            incomingSequenceNumber.set(nextIncomingSeqNum);
+        }
+        if (nextOutgoingSeqNum >= 0) {
+            outgoingSequenceNumber.set(nextOutgoingSeqNum);
+        }
+        boolean seqNumsChange = nextIncomingSeqNum >= 0 || nextOutgoingSeqNum >= 0;
+        if (sentFixMessageCount == 0 || !seqNumsChange) {
+            // an explicit transaction would cost a round trip for its COMMIT
+            storeAutocommitted(sentFixMessages, sentFixMessageCount, nextIncomingSeqNum, nextOutgoingSeqNum);
+            return;
+        }
+        List<CachedInputStream> cachedInputStreams = cachedInputStreams(sentFixMessageCount);
+        try (Connection conn = dataSource.getConnection()) {
+            completePendingResetIfNeeded(conn);
+            boolean autoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                insertMessages(conn, sentFixMessages, sentFixMessageCount, cachedInputStreams);
+                updateSequenceNumbers(conn, nextIncomingSeqNum, nextOutgoingSeqNum);
+                conn.commit();
+            } catch (SQLException e) {
+                rollbackQuietly(conn);
+                throw e;
+            } finally {
+                conn.setAutoCommit(autoCommit);
+            }
+        } catch (SQLException e) {
+            throw failed("Failed to store batched messages and sequence numbers", e);
+        } finally {
+            clean(cachedInputStreams, sentFixMessageCount);
+        }
+    }
+
+    private void storeAutocommitted(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                     long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+        if (sentFixMessageCount > 0) {
+            storeSentFixMessages(sentFixMessages, sentFixMessageCount);
+            return;
+        }
+        try (Connection conn = dataSource.getConnection()) {
+            completePendingResetIfNeeded(conn);
+            updateSequenceNumbers(conn, nextIncomingSeqNum, nextOutgoingSeqNum);
+        } catch (SQLException e) {
+            throw failed("Failed to store sequence numbers", e);
+        }
+    }
+
+    private List<CachedInputStream> cachedInputStreams(int count) {
         List<CachedInputStream> cachedInputStreams = cachedInputStreamTL.get();
-        while (cachedInputStreams.size() < sentFixMessageCount) {
+        while (cachedInputStreams.size() < count) {
             cachedInputStreams.add(new CachedInputStream());
         }
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(insertMessageSql)) {
-            completePendingResetIfNeeded(conn);
+        return cachedInputStreams;
+    }
+
+    private static void clean(List<CachedInputStream> cachedInputStreams, int count) {
+        for (int i = 0; i < count; i++) {
+            cachedInputStreams.get(i).clean();
+        }
+    }
+
+    private void insertMessages(Connection conn, SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                List<CachedInputStream> cachedInputStreams) throws SQLException {
+        if (sentFixMessageCount == 0) {
+            return;
+        }
+        try (PreparedStatement stmt = conn.prepareStatement(insertMessageSql)) {
             for (int i = 0; i < sentFixMessageCount; i++) {
                 SentFixMessage sfm = sentFixMessages[i];
                 storeMessage(sfm.getSequenceNumber(), sfm.getMessage(), stmt, cachedInputStreams.get(i));
                 stmt.addBatch();
             }
             stmt.executeBatch();
-        } catch (SQLException e) {
-            throw failed("Failed to store batched messages", e);
-        } finally {
-            for (int i = 0; i < sentFixMessageCount; i++) {
-                cachedInputStreams.get(i).clean();
+        }
+    }
+
+    private void updateSequenceNumbers(Connection conn, long nextIncomingSeqNum, long nextOutgoingSeqNum)
+            throws SQLException {
+        if (nextIncomingSeqNum >= 0 && nextOutgoingSeqNum >= 0) {
+            try (PreparedStatement stmt = conn.prepareStatement(updateSeqNumsSql)) {
+                stmt.setLong(1, nextIncomingSeqNum);
+                stmt.setLong(2, nextOutgoingSeqNum);
+                stmt.setString(3, fixSessionId.getQualifiedName());
+                stmt.executeUpdate();
+            }
+        } else if (nextIncomingSeqNum >= 0) {
+            try (PreparedStatement stmt = conn.prepareStatement(updateIncomingSeqNumSql)) {
+                updateSequenceNumber(nextIncomingSeqNum, stmt);
+            }
+        } else if (nextOutgoingSeqNum >= 0) {
+            try (PreparedStatement stmt = conn.prepareStatement(updateOutgoingSeqNumSql)) {
+                updateSequenceNumber(nextOutgoingSeqNum, stmt);
             }
         }
     }
@@ -355,18 +476,27 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     @Override
     public void find(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(selectMessagesSql)) {
+        try (Connection conn = dataSource.getConnection()) {
             completePendingResetIfNeeded(conn);
-            stmt.setString(1, fixSessionId.getQualifiedName());
-            stmt.setLong(2, startSequenceNumber);
-            stmt.setLong(3, stopSequenceNumber);
-            try (ResultSet rs = stmt.executeQuery()) {
-                // handed over row by row rather than collected first: a peer is free to ask for a range of any width,
-                // and this is the store most likely to be asked for one that does not fit in memory
-                while (rs.next() && consumer.onMessage(rs.getLong(1), ByteBuffer.wrap(rs.getBytes(2)))) {
-                    // nothing more to do, the consumer has taken the message
+            boolean autoCommit = conn.getAutoCommit();
+            // PostgreSQL fetches by cursor only inside a transaction and with a fetch size: otherwise its driver reads
+            // the whole result before the first row
+            conn.setAutoCommit(false);
+            try (PreparedStatement stmt = conn.prepareStatement(selectMessagesSql)) {
+                stmt.setFetchSize(findFetchSize);
+                stmt.setString(1, fixSessionId.getQualifiedName());
+                stmt.setLong(2, startSequenceNumber);
+                stmt.setLong(3, stopSequenceNumber);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    // handed over row by row rather than collected first: a peer is free to ask for a range of any
+                    // width, and this is the store most likely to be asked for one that does not fit in memory
+                    while (rs.next() && consumer.onMessage(rs.getLong(1), ByteBuffer.wrap(rs.getBytes(2)))) {
+                        // nothing more to do, the consumer has taken the message
+                    }
                 }
+            } finally {
+                rollbackQuietly(conn);
+                conn.setAutoCommit(autoCommit);
             }
         } catch (SQLException e) {
             throw failed("Failed to load FIX messages", e);
@@ -375,37 +505,40 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
 
     private void pruneOldMessages() {
         try {
-            long messageCount = countMessages();
-            if (messageCount > maxMessagesPerSession) {
-                long excessCount = messageCount - maxMessagesPerSession;
-                Long cutoffSeqNum = findCutoffSequenceNumber(excessCount);
-                if (cutoffSeqNum != null) {
-                    int deletedCount = deleteMessagesUpTo(cutoffSeqNum);
-                    log.info("Pruned {} old messages for session {} (before: {}, after: ~{}, cutoffSeq: {})",
-                            deletedCount, fixSessionId, messageCount, maxMessagesPerSession, cutoffSeqNum);
-                }
+            // the newest row past those kept, read down the index from the newest: no count, only the kept rows scanned
+            Long cutoffSeqNum = seqNumAt(findCutoffSeqNumSql, null, maxMessagesPerSession);
+            if (cutoffSeqNum == null) {
+                return;
             }
+            long deleted = 0;
+            Long batchEnd;
+            do {
+                batchEnd = seqNumAt(findBatchEndSeqNumSql, cutoffSeqNum, pruneBatchRows - 1);
+                deleted += deleteMessagesUpTo(batchEnd == null ? cutoffSeqNum : batchEnd);
+            } while (batchEnd != null && batchEnd < cutoffSeqNum && isStarted());
+            log.info("Pruned {} old messages for session {}, up to sequence number {}", deleted, fixSessionId, cutoffSeqNum);
         } catch (Exception e) {
             log.warn("Error occurred when pruning old messages for session {}", fixSessionId, e);
         }
     }
 
-    private StoreException failed(String what, SQLException e) {
-        return new StoreException(what + " for session " + fixSessionId, e);
-    }
-
-    private Long findCutoffSequenceNumber(long excessCount) throws SQLException {
+    private @Nullable Long seqNumAt(String sql, @Nullable Long upTo, long offset) throws SQLException {
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(findCutoffSeqNumSql)) {
-            stmt.setString(1, fixSessionId.getQualifiedName());
-            stmt.setLong(2, excessCount - 1); // OFFSET is 0-indexed
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            int index = 1;
+            stmt.setString(index++, fixSessionId.getQualifiedName());
+            if (upTo != null) {
+                stmt.setLong(index++, upTo);
+            }
+            stmt.setLong(index, offset);
             try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong(1);
-                }
+                return rs.next() ? rs.getLong(1) : null;
             }
         }
-        return null;
+    }
+
+    private StoreException failed(String what, SQLException e) {
+        return new StoreException(what + " for session " + fixSessionId, e);
     }
 
     private int deleteMessagesUpTo(long cutoffSeqNum) throws SQLException {
@@ -416,19 +549,6 @@ class JdbcFixSessionMessagesStore extends Startable.SimpleStartable<FixMessagesS
             stmt.setLong(2, cutoffSeqNum);
             return stmt.executeUpdate();
         }
-    }
-
-    private long countMessages() throws SQLException {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(countMessagesSql)) {
-            stmt.setString(1, fixSessionId.getQualifiedName());
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong(1);
-                }
-            }
-        }
-        return 0;
     }
 
     private static final class CachedInputStream extends InputStream {

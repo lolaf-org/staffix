@@ -17,10 +17,16 @@ to allocating. Staffix logs a warning at startup for the ones it can detect.
 -XX:-RestrictContended
 -XX:ContendedPaddingWidth=64
 --add-opens java.base/jdk.internal.misc=ALL-UNNAMED
+-XX:AutoBoxCacheMax=65536
 ```
 
 The first three make `@Contended` actually pad. The `--add-opens` enables the thread-local serdes described below;
 without it they still work, but allocate a fresh object per field and say so once at startup.
+
+`-XX:AutoBoxCacheMax` is for the JDK's own epoll selector: it looks each ready socket up by its file descriptor boxed
+as an `Integer`, which allocates once the descriptor is above 127, so on every message read in any process holding
+more than about 128 files and sockets. The flag widens the `Integer` cache so those boxes come from it instead. Set it
+to the process's descriptor limit (`ulimit -n`); the cache costs about 1 MB of heap at 65536.
 
 ---
 
@@ -129,7 +135,8 @@ Sessions also expose a pool via `newEncodersPool()` for the paths where a single
 ## 8. Keep persistence and logging off the message path
 
 A store or logger that does I/O inline puts that I/O inside your round trip. Wrap it in the async decorator, which
-hands the work to a Chronicle Queue and returns. See [Stores and loggers](stores-and-loggers.md).
+hands the work to a Chronicle Queue and returns. See [Stores and loggers](stores-and-loggers.md), and [Tuning the
+async queue](async-queue-tuning.md) for where to put that queue and how to keep its appends fast.
 
 The benchmark numbers in [Performance](performance.md) were produced with an in-memory store and logging off, so they measure the
 protocol path alone. Turning on a real store is what the async wrapper exists to keep out of the round trip.
@@ -155,5 +162,5 @@ java -jar benchmarks/target/benchmarks.jar
 
 Two habits worth keeping. Measure allocation as well as time: JMH's GC profiler is what shows a change that trades
 0.4 bytes per message for a microsecond. And measure the tail, not the mean: the difference between Staffix's stock
-and busy-spin modes is visible in the mean, but it is *dramatic* at the maximum, and the maximum is what a trading
+and busy-spin modes is visible in the mean, but it is *dramatic* at the maximum, and the maximum is what a latency-sensitive
 system feels.

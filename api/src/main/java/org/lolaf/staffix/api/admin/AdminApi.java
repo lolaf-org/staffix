@@ -19,9 +19,12 @@ import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.fields.CoreFields;
+import org.lolaf.staffix.api.ha.HaAdmin;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
@@ -182,12 +185,14 @@ public interface AdminApi extends InstanceIdSupplier {
      * Reloads the {@link org.lolaf.staffix.api.session.FixSessionsSettingsStore} with the given instance id by
      * calling {@link org.lolaf.staffix.api.session.FixSessionsSettingsStore#load()} and reconciling the result
      * against the currently managed settings, keyed by {@link org.lolaf.staffix.api.session.FixSessionId}: added,
-     * removed and updated sessions are applied through the store's add/remove/update so listeners are notified.
+     * updated and removed sessions are applied as {@link #addFixSessionSettings}, {@link #updateFixSessionSettings}
+     * and {@link #removeFixSessionSettings} apply them, so a removed session stops.
      *
-     * @param instanceId the instance id of the store to reload
+     * @param instanceId          the instance id of the store to reload
+     * @param restartLiveSessions whether the live sessions it updates restart now, rather than at their next connection
      * @throws IllegalArgumentException if no store with the given instance id is configured
      */
-    void reloadFixSessionsSettingsStore(String instanceId);
+    void reloadFixSessionsSettingsStore(String instanceId, boolean restartLiveSessions);
 
     /**
      * @throws IllegalArgumentException if no store with the given instance id is configured
@@ -211,20 +216,21 @@ public interface AdminApi extends InstanceIdSupplier {
     void addFixSessionSettings(String storeInstanceId, FixSessionSettings settings);
 
     /**
-     * Replaces a session's settings in the store holding them. The live session restarts on them unless its
-     * {@link FixSessionSettings#isRestartLiveSessionOnUpdate()} is off.
+     * Replaces a session's settings in the store holding them. A disconnected session is rebuilt on them at once; a
+     * live one keeps running on its old settings until it next connects, so a change does not interrupt it.
      *
-     * @param fixSessionId the session's id now, which the new settings may change (CompIDs, FIX version, name) for an
-     *                     acceptor's session; an initiator's is set by its targets
+     * @param fixSessionId       the session's id now, which the new settings may change (CompIDs, FIX version, name)
+     *                           for an acceptor's session; an initiator's is set by its targets
+     * @param restartLiveSession restart a live session on the new settings now, which logs it out
      * @throws IllegalArgumentException if no store holds the session, the settings are invalid, change its type or an
-     *                                  initiator session's id
+     *                                  initiator session's id, or change an acceptor session's id without a restart,
+     *                                  which a new id implies
      * @throws IllegalStateException    if the new group and name belong to another session
      */
-    void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings);
+    void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings, boolean restartLiveSession);
 
     /**
-     * Removes a session from the store holding it. The live session is disconnected unless its
-     * {@link FixSessionSettings#isDisconnectOnRemove()} is off.
+     * Removes a session from the store holding it, which stops it: a live session is logged out and disconnected.
      *
      * @throws IllegalArgumentException if no store holds the session
      */
@@ -276,6 +282,12 @@ public interface AdminApi extends InstanceIdSupplier {
     List<FixMeterDescriptor> getFixSessionMeters(FixSessionId fixSessionId);
 
     /**
+     * The meters of the engine's own components, such as its high availability, tagged with the engine alone; empty
+     * when none publishes any.
+     */
+    List<FixMeterDescriptor> getEngineMeters();
+
+    /**
      * Makes the given session the active one on every initiator that has it as a target, as
      * {@link org.lolaf.staffix.api.FixInitiator#switchTo} does. Every one, because two initiators may share a main target.
      *
@@ -300,32 +312,44 @@ public interface AdminApi extends InstanceIdSupplier {
     List<FixAcceptorSessions> getAcceptorsSessions();
 
     /**
-     * The probes of the session, in the order they were added.
-     *
-     * @throws IllegalArgumentException if no initiator or acceptor manages the given session
+     * The scopes of the engine's own components that have probes, such as its high availability's; a session's scope
+     * is not listed.
      */
-    List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId);
+    List<ProbeScope> getComponentProbeScopes();
 
     /**
-     * Where each probe of the session stood at its last evaluation; a probe not evaluated yet is absent.
+     * The probes of the scope, in the order they were added; a session's scope is
+     * {@link org.lolaf.staffix.api.session.FixSessionProbeScope#of}.
      *
-     * @throws IllegalArgumentException if no initiator or acceptor manages the given session
+     * @throws IllegalArgumentException if the engine evaluates no such scope
      */
-    List<ProbeState> getProbeStates(FixSessionId fixSessionId);
+    List<ProbeDefinition> getProbeDefinitions(ProbeScope scope);
 
     /**
-     * The probes in alert, across every session of the engine.
+     * Where each probe of the scope stood at its last evaluation; a probe not evaluated yet is absent.
+     *
+     * @throws IllegalArgumentException if the engine evaluates no such scope
      */
-    List<SessionProbeState> getActiveAlerts();
+    List<ProbeState> getProbeStates(ProbeScope scope);
+
+    /**
+     * The probes in alert, across every scope of the engine.
+     */
+    List<ScopedProbeState> getActiveAlerts();
 
     /**
      * Asks the probe's evaluator to end its ongoing alert. Once accepted, the alert clears at the next evaluation tick,
      * published like any other clear but marked as manual.
      *
      * @return false when the probe is not in alert, or its evaluator refuses, as a polled condition does
-     * @throws IllegalArgumentException if no initiator or acceptor manages the given session, or it has no such probe
+     * @throws IllegalArgumentException if the engine evaluates no such scope, or it has no such probe
      */
-    boolean clearAlert(FixSessionId fixSessionId, String probeName);
+    boolean clearAlert(ProbeId probeId);
+
+    /**
+     * The engine's high availability, empty when it has none.
+     */
+    Optional<HaAdmin> getHa();
 
     /**
      * Registers a listener told about every probe added or removed, and every alert transition, from now on.

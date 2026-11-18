@@ -23,14 +23,16 @@ import java.util.List;
 public enum JvmFlagSet {
 
     /**
-     * Pads the {@code @Contended} structures and lets the serdes reuse thread-local buffers; without them staffix runs,
-     * but slower. {@code --enable-native-access} is refused by JDK 16 and older.
+     * Pads the {@code @Contended} structures, lets the serdes reuse thread-local buffers and keeps the JDK selector from
+     * boxing file descriptors; without them staffix runs, but slower. {@code --enable-native-access} is refused by JDK
+     * 16 and older.
      */
     ENGINE(List.of(
             "--enable-native-access=ALL-UNNAMED",
             "-XX:-RestrictContended",
             "-XX:ContendedPaddingWidth=64",
-            "--add-opens java.base/jdk.internal.misc=ALL-UNNAMED")),
+            "--add-opens java.base/jdk.internal.misc=ALL-UNNAMED",
+            "-XX:AutoBoxCacheMax=65536")),
 
     /**
      * Chronicle Queue, behind the async store and logger, fails to start without them.

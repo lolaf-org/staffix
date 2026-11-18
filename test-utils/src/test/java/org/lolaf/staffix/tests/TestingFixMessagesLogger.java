@@ -18,7 +18,7 @@ package org.lolaf.staffix.tests;
 import lombok.AllArgsConstructor;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
@@ -45,7 +45,7 @@ public class TestingFixMessagesLogger extends Startable.SimpleStartable<FixMessa
 
     @Override
     public Logger getLogger(String fixEngineId, String fixInstanceId, FixSessionId fixSessionId, MessageTypeRegistry messageTypeRegistry,
-                            FixSessionProbes probes) {
+                            Probes probes) {
         return testingFixMessagesLoggerSettings.getTestingLogger();
     }
 

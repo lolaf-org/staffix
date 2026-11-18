@@ -15,9 +15,11 @@
  */
 package org.lolaf.staffix.api.session;
 
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.staffix.api.FixEngineBuilder;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
@@ -145,6 +147,12 @@ public interface FixSession {
      * {@link FixSessionSettings.SessionScheduleSettings}.
      */
     boolean isWithinSessionTime();
+
+    /**
+     * Whether its settings were updated while it was live and it still runs on the old ones: they apply when it next
+     * connects, or when an admin update or reload restarts it.
+     */
+    boolean hasPendingSettingsUpdate();
 
     /**
      * Retrieves the authenticated subject if any
@@ -350,19 +358,39 @@ public interface FixSession {
     void logEvent(String event, Object... params);
 
     /**
-     * The probes watching this session, which application code adds and removes at runtime; see
-     * {@link org.lolaf.staffix.api.alerting.Probe}.
+     * The probes watching this session. They live as long as the session, and a session rebuilt after a settings change
+     * starts with none, so add them in {@link org.lolaf.staffix.api.application.FixApplication#onSessionCreated}. The
+     * session is active only while {@link FixSessionStatus#LOGGED_IN}.
      */
-    FixSessionProbes getProbes();
+    Probes getProbes();
 
     /**
      * Indicates whether a FIX session is operated as an {@link #INITIATOR} (it establishes the connection) or an
      * {@link #ACCEPTOR} (it listens for and accepts incoming connections). The same {@link FixSessionId} may be
      * configured for both roles, so this type is required to disambiguate a session's settings.
      */
+    @Getter
+    @RequiredArgsConstructor
     enum FixSessionType {
-        INITIATOR,
-        ACCEPTOR
+        INITIATOR((byte) 1),
+        ACCEPTOR((byte) 0);
+
+        /**
+         * Fixed rather than the ordinal, so a binary format carrying it survives a reordering.
+         */
+        private final byte code;
+
+        /**
+         * @throws IllegalStateException for a code no type has
+         */
+        public static FixSessionType from(byte code) {
+            if (code == ACCEPTOR.code) {
+                return ACCEPTOR;
+            } else if (code == INITIATOR.code) {
+                return INITIATOR;
+            }
+            throw new IllegalStateException("Unknown FIX session type code " + code);
+        }
     }
 
     /**

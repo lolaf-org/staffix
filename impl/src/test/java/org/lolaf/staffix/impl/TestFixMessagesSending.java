@@ -42,6 +42,7 @@ import org.lolaf.staffix.fix44.encoders.MarketDataRequestRejectEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 import org.lolaf.staffix.impl.session.FixSessionImpl;
+import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
@@ -337,6 +338,16 @@ class TestFixMessagesSending extends AbstractFixTests {
         fixInitiator = initiatorFixEngine.newInitiator(fixInitiatorBuilder);
     }
 
+    private void restartAcceptorEngineWithAStorePerSession() {
+        acceptorFixEngine.stop(Deadline.of(ENGINE_STOP_DEADLINE));
+        acceptorFixEngine = acceptorFixEngineBuilder.toBuilder()
+                .clearFixMessagesStores()
+                .fixMessagesStore(MemoryMessageStoreSettings.builder().build())
+                .build()
+                .instance().start();
+        fixAcceptor = acceptorFixEngine.newAcceptor(fixAcceptorBuilder);
+    }
+
     private static void awaitUninterruptibly(CountDownLatch latch) {
         try {
             latch.await();
@@ -360,6 +371,8 @@ class TestFixMessagesSending extends AbstractFixTests {
         FixSessionId secondInitiatorSessionId = FixSessionId.of("second", FixRegularVersion.VERSION_44,
                 "SENDER44_TEST_2", "TARGET44_TEST_2");
 
+        // the testing store hands every session the same store, and two sessions resending from it drain each other's buffers
+        restartAcceptorEngineWithAStorePerSession();
         startFixAcceptor();
         acceptorFixEngine.getFixSessionsSettingsStores().get(0)
                 .add(getAcceptorFixSessionSettings().fixSessionId(secondAcceptorSessionId).build());
@@ -379,6 +392,9 @@ class TestFixMessagesSending extends AbstractFixTests {
         // The first pair first: logonClient traps the session through the initiator application mock and wants exactly
         // one onSessionCreated on it, so the second initiator - which shares that mock - may only come up afterwards.
         logonClient();
+        // a decoder is not thread safe, and the two initiators decode on IO threads of their own
+        when(fixInitiatorApplication.setup(any(), any(), any())).thenAnswer(invocation ->
+                List.of(new TestDecodedFixMessageDecoder(testMessageType, decodedInitiatorMessages::add)));
 
         // the second initiator needs an engine of its own: one engine may not hold two sessions with the same id, and
         // its settings store carries the second session alone

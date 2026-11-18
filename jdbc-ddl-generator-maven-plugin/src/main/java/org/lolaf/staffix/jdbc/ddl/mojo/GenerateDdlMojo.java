@@ -33,12 +33,17 @@ import org.hibernate.tool.schema.TargetType;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.EnumSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Generates the DDL of one JDBC store's tables for one database dialect, through Hibernate's schema export.
  */
-@Mojo(name = "generate-ddl", defaultPhase = LifecyclePhase.GENERATE_RESOURCES)
+@Mojo(name = "generate-ddl", defaultPhase = LifecyclePhase.GENERATE_RESOURCES, threadSafe = true)
 public class GenerateDdlMojo extends AbstractMojo {
+
+    // held so the level survives: java.util.logging only keeps weak references to its loggers
+    private static final Logger HIBERNATE_LOGGER = Logger.getLogger("org.hibernate");
 
     /**
      * Which store's tables to generate.
@@ -97,6 +102,9 @@ public class GenerateDdlMojo extends AbstractMojo {
 
     @Override
     public void execute() throws MojoExecutionException {
+        if (!getLog().isDebugEnabled()) {
+            HIBERNATE_LOGGER.setLevel(Level.SEVERE);
+        }
         try {
             getLog().info("Generating " + schema + " DDL for dialect: " + dialect);
             getLog().info("Output directory: " + outputDirectory.getAbsolutePath());

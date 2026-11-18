@@ -269,6 +269,11 @@ class TestFixCancelOnDisconnect extends AbstractFixTests {
     }
 
     private void resetApplications(Runnable holdTheNotification) {
+        // a stubbing is shared by every thread calling the mock, so a disconnect callback still in flight can take it
+        await().untilAsserted(() -> {
+            verify(fixInitiatorApplication).onDisconnected(any());
+            verify(fixAcceptorApplication).onDisconnected(any());
+        });
         setupOrResetFixInitiatorApplication();
         setupOrResetFixAcceptorApplication();
         holdTheNotification.run();

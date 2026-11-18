@@ -23,11 +23,10 @@ import java.util.*;
 public class TestingFixSessionsSettingsStore extends FixSessionsSettingsStore.AbstractFixSessionSettingsStore {
 
     private final TestingFixSessionsSettingsStoreSettings settings;
-    private final List<FixSessionSettings> sessions;
 
     public TestingFixSessionsSettingsStore(TestingFixSessionsSettingsStoreSettings settings) {
         this.settings = settings;
-        this.sessions = new ArrayList<>(settings.getSessions());
+        settings.getSessions().forEach(this::hold);
     }
 
     @Override
@@ -36,37 +35,24 @@ public class TestingFixSessionsSettingsStore extends FixSessionsSettingsStore.Ab
     }
 
     @Override
-    public Collection<FixSessionSettings> getSettings() {
-        return sessions;
+    protected FixSessionSettings onAdd(FixSessionSettings settings) {
+        return settings;
     }
 
     @Override
-    public Optional<FixSessionSettings> find(FixSessionId fixSessionId, FixSession.FixSessionType fixSessionType) {
-        return sessions.stream()
-                .filter(s -> s.getFixSessionId().equals(fixSessionId) && s.getFixSessionType() == fixSessionType)
-                .findFirst();
+    protected void onRemove(FixSessionSettings settings) {
+        // nothing but the managed settings
     }
 
     @Override
-    public void onAdd(FixSessionSettings settings) {
-        sessions.add(settings);
+    protected FixSessionSettings onUpdate(FixSessionSettings settings) {
+        return settings;
     }
 
     @Override
-    public void onRemove(FixSessionSettings settings) {
-        sessions.remove(settings);
-    }
-
-    @Override
-    public void onUpdate(FixSessionSettings settings) {
-        sessions.removeIf(s -> s.getFixSessionId().equals(settings.getFixSessionId()));
-        sessions.add(settings);
-    }
-
-    @Override
-    public Set<FixSessionSettings> load() {
+    protected Set<FixSessionSettings> onLoad() {
         // no external backing source; the currently held settings are returned
-        return new HashSet<>(sessions);
+        return new HashSet<>(getSettings());
     }
 
     @Override

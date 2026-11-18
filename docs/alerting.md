@@ -1,7 +1,7 @@
 # Alerting
 
-An alert says that something about a session is wrong **right now**: it is down inside its trading hours, its async
-store has stopped keeping up, no order has arrived for ten minutes. Staffix evaluates these conditions itself, once a
+An alert says that something about a session is wrong **right now**: it is down inside its session time, its async
+store has stopped keeping up, no application message has arrived for ten minutes. Staffix evaluates these conditions itself, once a
 second, and tells a publisher each time one starts, changes or ends. What you do with that (a log line, a page, a
 dashboard) is the publisher's job.
 
@@ -33,7 +33,7 @@ Probe probe = Probe.builder()
         .reminderInterval(Duration.ofMinutes(1))     // default none
         .label("team", "fix_ops")                    // default none
         .runbookUrl(URI.create("https://wiki.example.com/runbooks/order-flow"))
-        .onlyWhileLoggedIn(true)                     // default true
+        .onlyWhileActive(true)                     // default true
         .build();
 
 session.getProbes().add(probe);
@@ -68,8 +68,8 @@ once, and calling its `clear()` skips the delay. Both delays combine, in either 
 
 **Labels and a runbook URL travel with every alert of the probe.** Labels are for routing and grouping, such as the
 owning team; their names follow Prometheus' label syntax (`[a-zA-Z_][a-zA-Z0-9_]*`) and cannot be one of the names
-that already identify an alert (`AlertLabel`: `alertname`, `engine`, `fixSessionGroup`, `fixSessionName`,
-`severity`). The runbook URL points an operator at what to do. Both are optional, and both are shown by the admin
+that already identify an alert: `alertname`, `source` and `severity` (`AlertLabel`), and the session's
+`fixSessionGroup` and `fixSessionName`. The runbook URL points an operator at what to do. Both are optional, and both are shown by the admin
 API and passed on by the Alertmanager publisher.
 
 **Both intervals are at least one second** (`Probe.MIN_INTERVAL`), and are rounded up to whole seconds: the engine
@@ -82,9 +82,10 @@ earlier, before the session's plugins are ready, so an alerting meter could not 
 
 ### Only while the session is logged in
 
-**A probe is evaluated only while its session is logged in**, by default. An application probe usually watches
-business traffic, which stops at logout: without this, a probe on the order flow would alert all night. While the
-session is logged out, whether by an operator, outside its session time or inside it, the probe is suspended:
+**A probe is evaluated only while its session is logged in**, by default (`onlyWhileActive`: a probe's scope is
+active, and a session is active while logged in). An application probe usually watches business traffic, which stops
+at logout: without this, a probe on the order flow would alert all night. While the session is logged out, whether
+by an operator, outside its session time or inside it, the probe is suspended:
 
 - **at logout, an ongoing alert is cleared**, published as any other clear;
 - **nothing is evaluated** until the next logon, and an operator has nothing to clear;
@@ -96,8 +97,8 @@ A logout inside session time suspends the probe too: the built-in `session-down`
 matters then, and a probe on the order flow would only add a consequence of it.
 
 **For a probe whose subject outlives the logon**, such as a disk, a queue still draining, or a connection of your own,
-build it with `.onlyWhileLoggedIn(false)`: it is then evaluated whatever the session's state, as every built-in probe
-is. The admin API shows both: `onlyWhileLoggedIn` on the probe, and `suspended` on its state while it waits for a
+build it with `.onlyWhileActive(false)`: it is then evaluated whatever the session's state, as every built-in probe
+is. The admin API shows both: `onlyWhileActive` on the probe, and `suspended` on its state while it waits for a
 logon, its last evaluation then dating from before the logout.
 
 ### Raising an alert from your own code
@@ -190,10 +191,19 @@ its threshold for a minute is `.above(AlertLevel.WARNING, 500).raiseDelay(Durati
 For a value the application already holds, such as a gauge registered with a supplier, use a
 `ThresholdAlertEvaluator` on that supplier: it alerts as an `AlertingGauge`, without publishing anything.
 
+## The engine's own components
+
+Besides its sessions, the engine watches some of its own components, such as its high availability. Their probes
+belong to the component rather than to a session: their alerts carry a `component` label (`ha`) instead of
+`fixSessionGroup` and `fixSessionName`, go to the publisher the component's settings name, and are listed by the admin
+API under the component's name. A component's probe is suspended while the component is inactive, as a session's is
+while logged out.
+
 ## What a publisher is told
 
-A publisher receives an `AlertEvent`: the engine's instance id (a session id is only unique within an engine), the
-session, the probe's name and description, the alert, since when it is ongoing, and one of four types.
+A publisher receives an `AlertEvent`: its source, the engine's instance id (a probe is only unique within an engine),
+the probe's id (its scope, such as the session, and its name), the probe's description, the alert, since when it is
+ongoing, and one of four types. `getLabels()` gives every label of the alert, ready for a label-based system.
 
 | type | when |
 |------|------|
@@ -216,6 +226,8 @@ session from the engine, or the session logging out for a probe evaluated only w
 | `async-store-queue`, `async-logger-queue` | per threshold | the async store's or logger's queue is deeper than a threshold |
 | `async-store-resource`, `async-logger-resource` | `MAJOR` | what the async store or logger writes to is unavailable |
 | `messages-store`, `messages-logger` | `WARNING`, then `MAJOR` | a store or logger call failed, then its resource was found down |
+| `messages-lost` | `MAJOR` | messages were not stored and never will be; stays raised once the failures are over, until an operator clears it, which also takes them out of `lostWrites`; a new loss raises it again |
+| `ha-replication` | `MAJOR` | while leading: a `SYNC` send went out without the follower's ack in time, a message was too long for the replication log, or a follower refuses to replicate the session |
 
 **Every built-in probe is evaluated whether the session is logged in or not**: each watches something a logout does
 not fix, or the logout itself.
@@ -228,6 +240,8 @@ session using them. The queue probe raises the highest level whose depth is reac
 `QueueSizeThresholdsSettings.thresholds` (by default `WARNING` from 250, `MAJOR` from 1000, `CRITICAL` from 5000),
 measured every `evaluationInterval` (10 seconds by default). The resource probe holds until what failed to be written
 has been replayed. See the [async store README](../messages-stores/async/async-impl/README.md#queue-monitoring).
+On a [high availability](high-availability.md) follower, the store probes of each session it holds a copy of are
+evaluated too, under the session's scope, although the session does not run there.
 
 `messages-store` and `messages-logger` are on every session that has a store or a logger, whatever its
 implementation. A failed call raises `WARNING`, carrying the call and the error, and has the engine check whether the
@@ -237,6 +251,23 @@ calls have kept succeeding for `alertClearDelay` (30 seconds by default). A data
 using that database, once each however many calls fail, with the same name, so Alertmanager groups them into one
 notification. Behind the async store or logger, the async probes report the outage of what it writes to, and these two
 report failures of the async queue itself, such as a full disk.
+
+`ha-replication` is on every replicated session. A late ack or a message too long for the replication log keeps the
+alert raised for 5 minutes after the last one, since nothing tells that they stopped; a follower refusing the session
+(it has no settings for it, gives it another replication mode, or cannot identify its storage) keeps it raised for as
+long as it refuses. A send with no follower in sync is left to the node's `ha-followers`, so one outage raises one
+alert rather than one per session.
+
+Component `ha` has the node's own probes when `ReplicationHaSettings.alertsPublisherInstanceId` names a publisher
+(unknown, the engine refuses to start). Each is raised once its condition has lasted 10 seconds, and reports nothing in
+a role it does not apply to:
+
+| probe | level | raised when |
+|-------|-------|-------------|
+| `ha-followers` | `MAJOR`, `WARNING` | leading with no follower connected, a follower dropped as too slow (a write waited `logFullTimeout` for it) and not back in sync, or a follower that has not applied a write for longer than `followerLagAlertThreshold` (5 s by default); a follower connected but not in sync, or catching up by snapshot |
+| `ha-session-settings` | `WARNING` | following, with session settings that differ from the leader's: a failover runs this node's own |
+| `ha-leader-connection` | `MAJOR`, `WARNING` | following without a connection to the leader; connected but not holding every session in full |
+| `ha-leadership` | `CRITICAL` | the node has no role, or is elected leader but cannot prove it, so it runs no session |
 
 ## Binding a publisher
 
@@ -270,9 +301,9 @@ and `INFO` once cleared:
 Alert RAISED on session acceptor.acceptor-session-1, probe order-flow (Time since the last NewOrderSingle): WARNING no order for more than 4s (since 2026-10-10T11:23:14.648Z)
 ```
 
-`loggerNameForFixSession` picks the logger name per session, so one session's alerts can be routed or silenced
-independently, and `useMDC` (on by default) puts the session's group and name in the MDC under `fixSessionGroup` and
-`fixSessionName`, the keys the SLF4J message logger uses.
+`loggerNameForScope` picks the logger name per probe scope, so one session's alerts can be routed or silenced
+independently, and `useMDC` (on by default) puts the scope's labels in the MDC: a session's group and name under
+`fixSessionGroup` and `fixSessionName`, the keys the SLF4J message logger uses.
 
 From Spring Boot, add `staffix-alerts-publisher-slf4j-spring-boot` and declare an instance:
 
@@ -295,7 +326,7 @@ AlertmanagerAlertsPublisherSettings.builder()
         .build();
 ```
 
-Each alert carries the labels `alertname` (the probe name), `engine` (the engine's instance id), `fixSessionGroup`,
+Each alert carries the labels `alertname` (the probe name), `source` (the engine's instance id), `fixSessionGroup`,
 `fixSessionName` and `severity` (`warning`, `major` or `critical`), plus the probe's labels and your static labels (a
 probe label wins over a static one of the same name), and the annotations `summary` (the alert message),
 `description` (the probe description) and, when the probe has one, `runbook_url`. `startsAt` is when the alert was

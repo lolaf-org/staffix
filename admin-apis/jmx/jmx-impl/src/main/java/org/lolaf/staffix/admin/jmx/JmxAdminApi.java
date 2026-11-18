@@ -40,6 +40,7 @@ public class JmxAdminApi implements AdminApiExporter, AdminApi.SessionLifecycleL
     private final Map<FixSessionId, ObjectName> sessionMBeans = new LinkedHashMap<>();
     private AdminApi adminApi;
     private ObjectName adminMBean;
+    private ObjectName haMBean;
 
     JmxAdminApi(JmxAdminApiSettings settings) {
         this.settings = settings;
@@ -59,6 +60,15 @@ public class JmxAdminApi implements AdminApiExporter, AdminApi.SessionLifecycleL
         } catch (Exception e) {
             log.error("Failed to register JMX MBean for instance {}", instanceId, e);
         }
+        adminApi.getHa().ifPresent(ha -> {
+            try {
+                haMBean = new ObjectName(settings.getJmxDomain() + ":type=FixHa,instance=" + ObjectName.quote(instanceId));
+                mBeanServer.registerMBean(new FixHaMBeanImpl(ha), haMBean);
+                log.info("Registered JMX MBean: {}", haMBean);
+            } catch (Exception e) {
+                log.error("Failed to register JMX high availability MBean for instance {}", instanceId, e);
+            }
+        });
         // Listen first, then snapshot: sessions are created after the engine starts and can be added/removed at
         // runtime, so registering the listener before reading the snapshot avoids missing any in between.
         adminApi.registerSessionLifecycleListener(this);
@@ -107,6 +117,10 @@ public class JmxAdminApi implements AdminApiExporter, AdminApi.SessionLifecycleL
         if (adminMBean != null) {
             unregister(adminMBean);
             adminMBean = null;
+        }
+        if (haMBean != null) {
+            unregister(haMBean);
+            haMBean = null;
         }
         adminApi = null;
     }

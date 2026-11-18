@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.http;
 import org.lolaf.staffix.admin.http.dto.DictionaryRef;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.utils.Sha256;
 import org.lolaf.staffix.api.version.FixtVersion;
 
 import java.io.IOException;

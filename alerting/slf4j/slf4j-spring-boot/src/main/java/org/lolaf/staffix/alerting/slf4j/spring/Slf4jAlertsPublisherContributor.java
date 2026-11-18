@@ -17,7 +17,7 @@ package org.lolaf.staffix.alerting.slf4j.spring;
 
 import org.lolaf.staffix.alerting.slf4j.Slf4jAlertsPublisherSettings;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
-import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.spring.boot.spi.BeanRef;
 import org.lolaf.staffix.spring.boot.spi.FixAlertsPublisherSettingsContributor;
 import org.springframework.context.ApplicationContext;
@@ -53,9 +53,9 @@ public class Slf4jAlertsPublisherContributor implements FixAlertsPublisherSettin
         Slf4jAlertsPublisherSettings.Slf4jAlertsPublisherSettingsBuilder<?, ?> b = Slf4jAlertsPublisherSettings.builder()
                 .instanceId(mapKey);
         if (p.getUseMDC() != null) b.useMDC(p.getUseMDC());
-        BeanRef.<Function<FixSessionId, String>>resolveOptional(ctx, p.getLoggerNameForFixSessionBean(), Function.class,
-                        "staffix.alerts-publishers-slf4j.instances." + mapKey + ".logger-name-for-fix-session-bean")
-                .ifPresent(b::loggerNameForFixSession);
+        BeanRef.<Function<ProbeScope, String>>resolveOptional(ctx, p.getLoggerNameForScopeBean(), Function.class,
+                        "staffix.alerts-publishers-slf4j.instances." + mapKey + ".logger-name-for-scope-bean")
+                .ifPresent(b::loggerNameForScope);
         return b.build();
     }
 }

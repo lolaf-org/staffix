@@ -45,8 +45,8 @@ public class ProbeState {
      */
     boolean clearedManually;
     /**
-     * Whether the probe is not evaluated while its session is not logged in, as
-     * {@link Probe#isOnlyWhileLoggedIn()} asks; it is then normal, and its last evaluation is from before the logout.
+     * Whether the probe is not evaluated while its scope is inactive, as {@link Probe#isOnlyWhileActive()} asks; it
+     * is then normal, and its last evaluation is from before the suspension.
      */
     boolean suspended;
 

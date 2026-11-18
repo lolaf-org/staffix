@@ -44,6 +44,7 @@ public class TestingFixSessionMessagesStore implements FixMessagesStore.FixSessi
     private final BiPredicate<MessageType, ByteBuffer> messagesFilter;
     private final List<String> writesRefusedWhileStopped = new CopyOnWriteArrayList<>();
     private volatile boolean stopped;
+    private volatile Thread lastSequenceNumberWriter;
 
     public TestingFixSessionMessagesStore(BiPredicate<MessageType, ByteBuffer> messagesFilter) {
         allocator = ByteBuffer::allocate;
@@ -130,12 +131,14 @@ public class TestingFixSessionMessagesStore implements FixMessagesStore.FixSessi
     @Override
     public void storeNextIncomingSeqNum(long nextIncomingSeqNum) {
         refuseIfStopped("storeNextIncomingSeqNum " + nextIncomingSeqNum);
+        lastSequenceNumberWriter = Thread.currentThread();
         incomingSequenceNumber.set(nextIncomingSeqNum);
     }
 
     @Override
     public void storeNextOutgoingSeqNum(long nextOutgoingSeqNum) {
         refuseIfStopped("storeNextOutgoingSeqNum " + nextOutgoingSeqNum);
+        lastSequenceNumberWriter = Thread.currentThread();
         outgoingSequenceNumber.set(nextOutgoingSeqNum);
     }
 
@@ -163,5 +166,12 @@ public class TestingFixSessionMessagesStore implements FixMessagesStore.FixSessi
                 return;
             }
         }
+    }
+
+    /**
+     * The thread that last stored a sequence number, to check it is the session's own.
+     */
+    public Thread getLastSequenceNumberWriter() {
+        return lastSequenceNumberWriter;
     }
 }

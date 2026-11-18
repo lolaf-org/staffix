@@ -28,6 +28,8 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiPredicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -486,6 +488,33 @@ public abstract class AbstractFixSessionMessagesStoreTest<T extends FixMessagesS
     }
 
     @Test
+    protected void aBatchWithSequenceNumbersStoresBothAndKeepsAnUnchangedOneAsItWas() {
+        if (!(messageStore instanceof FixMessagesStore.BatchingFixSessionMessagesStore)) {
+            return;
+        }
+        FixMessagesStore.BatchingFixSessionMessagesStore batchingStore =
+                (FixMessagesStore.BatchingFixSessionMessagesStore) messageStore;
+        messageStore.start();
+
+        batchingStore.storeSentFixMessagesAndSeqNums(
+                new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[]{
+                        new TestingSentFixMessage(1L, ByteBuffer.wrap("message1".getBytes())),
+                        new TestingSentFixMessage(2L, ByteBuffer.wrap("message2".getBytes()))
+                }, 2, 5L, 3L);
+        batchingStore.storeSentFixMessagesAndSeqNums(
+                new FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[0], 0, -1L, 4L);
+
+        messageStore.stop(Deadline.immediate()).start();
+
+        assertThat(messageStore.getIncomingSeqNum()).isEqualTo(5L);
+        assertThat(messageStore.getOutgoingSeqNum()).isEqualTo(4L);
+        List<FixMessagesStore.FixSessionMessagesStore.StoreMessage> messages = messageStore.find(1L, 10L);
+        assertThat(messages).hasSize(2);
+        assertMessage(messages, 0, "message1");
+        assertMessage(messages, 1, "message2");
+    }
+
+    @Test
     protected void shouldHandleMessageFiltering() {
         // Given - store with custom filter
         messageStore.start();
@@ -494,6 +523,69 @@ public abstract class AbstractFixSessionMessagesStoreTest<T extends FixMessagesS
         assertThat(messageStore.filter(MessageType.of("a", false), ByteBuffer.allocate(10))).isFalse();
         assertThat(messageStore.filter(MessageType.of("b", true), ByteBuffer.allocate(10))).isTrue();
 
+    }
+
+    /**
+     * Resends and replication snapshots read on threads of their own while the session keeps storing what it sends.
+     * This checks a store's protocol, not its memory ordering: on x86 the hardware never reorders stores or loads, so
+     * a missing fence still passes.
+     */
+    @Test
+    protected void shouldOnlyFindIntactMessagesWhileTheSessionKeepsWriting() throws Exception {
+        messageStore.start();
+        int maxWrites = concurrentFindMaxWrites();
+        AtomicLong lastWritten = new AtomicLong();
+        AtomicLong finds = new AtomicLong();
+        AtomicReference<Throwable> writeFailure = new AtomicReference<>();
+        Thread writer = new Thread(() -> {
+            try {
+                for (long seqNum = 1; seqNum <= maxWrites && finds.get() < CONCURRENT_FINDS; seqNum++) {
+                    messageStore.storeMessageSent(seqNum, ByteBuffer.wrap(concurrentFindMessage(seqNum)));
+                    lastWritten.set(seqNum);
+                }
+            } catch (Throwable e) {
+                writeFailure.set(e);
+            }
+        }, "store-writer");
+        writer.start();
+        while (writer.isAlive()) {
+            long last = lastWritten.get();
+            long first = Math.max(1, last - 2 * CONCURRENT_FIND_WINDOW);
+            long previous = 0;
+            for (FixMessagesStore.FixSessionMessagesStore.StoreMessage found : messageStore.find(first, last + CONCURRENT_FIND_WINDOW)) {
+                ByteBuffer message = found.getMessage();
+                byte[] bytes = new byte[message.remaining()];
+                message.duplicate().get(bytes);
+                assertThat(found.getSeqNum()).as("ascending").isGreaterThan(previous);
+                assertThat(new String(bytes, StandardCharsets.US_ASCII)).as("message %s", found.getSeqNum())
+                        .isEqualTo(new String(concurrentFindMessage(found.getSeqNum()), StandardCharsets.US_ASCII));
+                previous = found.getSeqNum();
+            }
+            if (last > 2 * CONCURRENT_FIND_WINDOW) {
+                finds.incrementAndGet();
+            }
+        }
+        writer.join();
+        assertThat(writeFailure.get()).isNull();
+        assertThat(lastWritten.get()).as("messages written").isGreaterThan(2 * CONCURRENT_FIND_WINDOW);
+    }
+
+    /**
+     * The most messages {@link #shouldOnlyFindIntactMessagesWhileTheSessionKeepsWriting} stores, for a store too slow
+     * to race {@value #CONCURRENT_FINDS} finds before.
+     */
+    protected int concurrentFindMaxWrites() {
+        return 1_000_000;
+    }
+
+    private static final int CONCURRENT_FINDS = 500;
+
+    private static final int CONCURRENT_FIND_WINDOW = 1_000;
+
+    private static byte[] concurrentFindMessage(long seqNum) {
+        // lengths vary, so a store reusing its buffers outgrows some of them
+        return ("8=FIX.4.4\u000134=" + seqNum + "\u000158=" + "x".repeat((int) (seqNum % 13) * 40) + "\u0001")
+                .getBytes(StandardCharsets.US_ASCII);
     }
 
     protected void assertMessage(List<FixMessagesStore.FixSessionMessagesStore.StoreMessage> messages,

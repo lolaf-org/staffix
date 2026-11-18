@@ -15,15 +15,15 @@
  */
 package org.lolaf.staffix.impl;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.betty.api.Server;
 import org.lolaf.betty.api.ServerBuilder;
 import org.lolaf.betty.api.io.IOEventsListener;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.io.IOWorkersGroup;
+import org.lolaf.betty.api.io.ReadBufferFullException;
 import org.lolaf.betty.api.settings.IOBufferPoolSettings;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
@@ -41,7 +41,11 @@ import org.lolaf.staffix.api.codec.FixMessageEncoder;
 import org.lolaf.staffix.api.codec.FixMessageEncodersPool;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.serde.SerDe;
-import org.lolaf.staffix.api.session.*;
+import org.lolaf.staffix.api.session.FixSession;
+import org.lolaf.staffix.api.session.FixSessionDesiredState;
+import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.api.version.FixApplVerID;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -61,9 +65,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
-import java.util.function.Function;
-import java.util.function.Predicate;
+import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -75,7 +77,7 @@ import java.util.stream.Stream;
  */
 @Slf4j
 @SuppressWarnings("java:S3077")
-public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> implements FixAcceptor, FixSessionAdminControl, FixSessionsSettingsStore.Listener {
+public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> implements FixAcceptor, FixSessionAdminControl, RunsWhileLeading, FixSessionsSettingsStore.Listener {
 
     // short window to let a best-effort rejection reply (Logout) flush before the connection is torn down
     private static final Duration REJECTION_REPLY_FLUSH_DELAY = Duration.ofSeconds(1);
@@ -90,6 +92,15 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
      */
     private final Set<FixSessionSettings> configuredSessionsSettings;
     private final Map<FixSessionId, FixSessionImpl> configuredSessions;
+    /**
+     * Settings updated while their session was live and kept off it: the session is rebuilt on them when its peer
+     * next logs on.
+     */
+    private final Map<FixSessionId, FixSessionSettings> pendingSettings;
+    /**
+     * Held while a session is replaced, so a store change and a logon applying pending settings cannot interleave.
+     */
+    private final Object sessionsLock = new Object();
     private final Map<Class<?>, String> encodersPoolIdsForBroadCasting;
     private final MessageExecutorsRuntime messageExecutorsRuntime;
     private final FixAcceptorBuilder fixAcceptorBuilder;
@@ -98,18 +109,35 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
     private final Collection<FixSessionsSettingsStore> fixSessionsSettingsStores;
     private final FixSessionsObserver fixSessionsObserver;
     private final Map<IOSession, ScheduledFuture<?>> logonTimeouts;
+    private final Object lifecycleLock = new Object();
+    private final BooleanSupplier engineActive;
+    private final FixSessionsSettingsStore.Listener managedSettingsTracker;
     private volatile FixSessionImpl[] connectedSessionsArray;
     private volatile FixAcceptorSessions fixAcceptorSessions;
     private ScheduledExecutorService scheduledExecutorService;
     private Server ioServer;
     private boolean shuttingDown;
+    private boolean running;
+    /**
+     * Between a successful {@code startMe} and {@code stopMe}, under the lifecycle lock: {@link #isStarted()} turns
+     * true only after {@code startMe} returns, too late for an {@link #activate()} that ran in between.
+     */
+    private boolean startedUnderLock;
 
+    /**
+     * @param engineActive false while the engine does not lead: no session is built and nothing is bound until it is
+     *                     true
+     */
     FixAcceptorImpl(FixAcceptorBuilder fixAcceptorBuilder, Function<FixSessionSettings, FixSessionRuntimeDependencies> fixRuntimeDependenciesSupplier,
-                    Collection<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver) {
+                    Collection<FixSessionsSettingsStore> fixSessionsSettingsStores, FixSessionsObserver fixSessionsObserver,
+                    BooleanSupplier engineActive) {
+        this.engineActive = engineActive;
         this.configuredSessionsSettings = Collections.synchronizedSet(new HashSet<>());
+        this.managedSettingsTracker = new ManagedSettingsTracker();
         this.connectedSessions = Collections.synchronizedSet(new HashSet<>());
         this.connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
         this.configuredSessions = new ConcurrentHashMap<>();
+        this.pendingSettings = new ConcurrentHashMap<>();
         this.encodersPoolIdsForBroadCasting = new IdentityHashMap<>();
         this.fixAcceptorBuilder = fixAcceptorBuilder;
         this.fixRuntimeDependenciesSupplier = fixRuntimeDependenciesSupplier;
@@ -178,6 +206,61 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     protected void startMe() throws StartStopException {
+        synchronized (lifecycleLock) {
+            if (engineActive.getAsBoolean()) {
+                startAcceptor();
+            } else {
+                log.info("Started FIX server {} on an engine that does not lead: it binds once the engine leads", fixAcceptorBuilder.getInstanceId());
+                listSessionsWithoutBuilding();
+            }
+            startedUnderLock = true;
+        }
+    }
+
+    @Override
+    public void activate() {
+        synchronized (lifecycleLock) {
+            if (startedUnderLock && !running) {
+                log.info("Engine leads, starting FIX server {}", fixAcceptorBuilder.getInstanceId());
+                startAcceptor();
+            }
+        }
+    }
+
+    @Override
+    public void deactivate(Deadline deadline, boolean logout) {
+        synchronized (lifecycleLock) {
+            if (running) {
+                log.info("Engine {} the sessions of FIX server {}", logout ? "hands leadership over, logging out"
+                        : "no longer leads, dropping", fixAcceptorBuilder.getInstanceId());
+                stopAcceptor(deadline, logout);
+                listSessionsWithoutBuilding();
+            }
+        }
+    }
+
+    @Override
+    public Deadline dropDeadline() {
+        return Deadline.of(fixAcceptorBuilder.getShutdownMaxDelay());
+    }
+
+    /**
+     * Lists the settings of this acceptor's sessions without building any, for an engine not leading whose high availability
+     * replicates them before the acceptor runs one. Followed afterwards, as a session the leader refused to replicate
+     * for want of settings here must be bound once they appear.
+     */
+    private void listSessionsWithoutBuilding() {
+        fixSessionsSettingsStores.forEach(store -> store.register(managedSettingsTracker));
+        synchronized (configuredSessionsSettings) {
+            configuredSessionsSettings.clear();
+            fixSessionsSettingsStores.forEach(store -> store.getSettings().stream()
+                    .filter(FixAcceptorImpl::isAcceptorSession)
+                    .forEach(configuredSessionsSettings::add));
+        }
+    }
+
+    private void startAcceptor() {
+        fixSessionsSettingsStores.forEach(store -> store.unregister(managedSettingsTracker));
         if (fixAcceptorBuilder.getScheduledExecutorService() == null) {
             scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "Staffix-server-scheduler-" + fixAcceptorBuilder.getInstanceId());
@@ -198,7 +281,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                     .filter(FixAcceptorImpl::isAcceptorSession)
                     .collect(Collectors.toList());
             configuredSessionsSettings.addAll(settings);
-            settings.forEach(this::setupNewFixSession);
+            settings.forEach(s -> setupNewFixSession(s, s.getDesiredSessionState()));
             store.register(this);
         });
         refreshFixAcceptorSessions();
@@ -228,6 +311,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 .build().newInstance();
         shuttingDown = false;
         ioServer.start();
+        running = true;
     }
 
     private IOStats.IOStatsProvider getIoStatsProvider(boolean monitoringEnabled) {
@@ -266,9 +350,9 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         return fixAcceptorBuilder.getScheduledExecutorService() != null ? fixAcceptorBuilder.getScheduledExecutorService() : scheduledExecutorService;
     }
 
-    private void setupNewFixSession(FixSessionSettings settings) {
+    private void setupNewFixSession(FixSessionSettings settings, FixSessionDesiredState desiredState) {
         FixSessionRuntimeDependencies runtimeDependencies = fixRuntimeDependenciesSupplier.apply(settings);
-        FixSessionImpl fixSessionImpl = new FixSessionImpl(fixAcceptorBuilder.getInstanceId(), settings,
+        FixSessionImpl fixSessionImpl = new FixSessionImpl(fixAcceptorBuilder.getInstanceId(), settings, desiredState,
                 runtimeDependencies, getScheduler(), fixAcceptorBuilder.getIoSettings(), messageExecutorsRuntime, fixAcceptorBuilder.getClock());
         fixSessionImpl.start(runtimeDependencies);
         configuredSessions.put(settings.getFixSessionId(), fixSessionImpl);
@@ -277,12 +361,23 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     protected void stopMe(Deadline stopDeadline) throws StartStopException {
+        synchronized (lifecycleLock) {
+            startedUnderLock = false;
+            fixSessionsSettingsStores.forEach(store -> store.unregister(managedSettingsTracker));
+            if (running) {
+                stopAcceptor(stopDeadline, true);
+            }
+        }
+    }
+
+    private void stopAcceptor(Deadline stopDeadline, boolean logout) {
+        running = false;
         shuttingDown = true;
         ioServer.stopListening();
         fixSessionsSettingsStores.forEach(s -> s.unregister(this));
         configuredSessions.values().forEach(fixSessionsObserver::onSessionUnregistered);
 
-        stopSessionsProtocol(stopDeadline);
+        stopSessionsProtocol(stopDeadline, logout);
         ioServer.stop(stopDeadline.fromRemainingTime(0.8));
         configuredSessions.values().forEach(fixSession -> fixSession.releaseResources(stopDeadline));
         stopOwnSchedulerIfNeeded(scheduledExecutorService, fixAcceptorBuilder.getInstanceId(),
@@ -296,17 +391,18 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             connectedSessionsArray = connectedSessions.toArray(new FixSessionImpl[0]);
         }
         configuredSessions.clear();
+        pendingSettings.clear();
         configuredSessionsSettings.clear();
         refreshFixAcceptorSessions();
         log.info("FIX server {} is stopped", fixAcceptorBuilder.getInstanceId());
     }
 
     /**
-     * Logs every session out and takes its connection down, holding nothing back: the stores and the loggers stay open
-     * until {@link #stopMe(Deadline)} has stopped the IO server and each session has released its own resources, so a
-     * message still being delivered while this runs is recorded rather than written into released memory.
+     * Logs every session out, or drops it without a Logout, and takes its connection down: the stores and the loggers
+     * stay open until the IO server is stopped and each session has released its own resources, so a message still
+     * being delivered while this runs is recorded rather than written into released memory.
      */
-    private void stopSessionsProtocol(Deadline stopDeadline) {
+    private void stopSessionsProtocol(Deadline stopDeadline, boolean logout) {
         if (configuredSessions.isEmpty()) {
             return;
         }
@@ -319,7 +415,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         configuredSessions.values().forEach(fixSession ->
                 sessionsStopService.submit(() -> {
                     try {
-                        fixSession.stopProtocol("FIX server stop", sessionStopDeadline);
+                        if (logout) {
+                            fixSession.stopProtocol("FIX server stop", sessionStopDeadline);
+                        } else {
+                            fixSession.dropProtocol("FIX engine no longer leads", sessionStopDeadline);
+                        }
                     } finally {
                         countDownLatch.countDown();
                     }
@@ -387,60 +487,103 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
 
     @Override
     public void onAddedSession(FixSessionSettings settings) {
+        synchronized (sessionsLock) {
+            addSession(settings, settings.getDesiredSessionState());
+        }
+    }
+
+    private void addSession(FixSessionSettings settings, FixSessionDesiredState desiredState) {
         // Same filter as the initial load: a store adding an initiator session at runtime is not this acceptor's.
         if (isAcceptorSession(settings)) {
             // Kept in step with onRemovedSession, which takes the settings back out: without this a session added
             // after start up was managed but absent from getConfiguredSessionsSettings().
             configuredSessionsSettings.add(settings);
             refreshFixAcceptorSessions();
-            setupNewFixSession(settings);
+            setupNewFixSession(settings, desiredState);
         }
     }
 
     @Override
     public void onRemovedSession(FixSessionSettings settings) {
-
-        stopManaging(settings, settings.isDisconnectOnRemove());
+        synchronized (sessionsLock) {
+            stopManaging(settings);
+        }
     }
 
     /**
-     * Whether the settings replacing the current ones can be applied without touching the running session.
-     * <p>
-     * The policy comes from {@code oldSettings} - the ones the session is running under - because it describes how
-     * that session may be treated, and that session is the one a restart would disturb. See
-     * {@link FixSessionSettings#isRestartLiveSessionOnUpdate()}.
+     * A live session keeps running on its settings until its peer next logs on, or until {@link #applyPendingSettings}.
      */
     @Override
     public void onUpdatedSession(FixSessionSettings oldSettings, FixSessionSettings newSettings) {
         if (!isAcceptorSession(oldSettings) && !isAcceptorSession(newSettings)) {
             return;
         }
-        FixSessionImpl runningSession = configuredSessions.get(oldSettings.getFixSessionId());
-        boolean restart = oldSettings.isRestartLiveSessionOnUpdate() || runningSession == null
-                || !runningSession.isConnected();
-        if (restart) {
-            stopManaging(oldSettings, true);
-            onAddedSession(newSettings);
-            return;
+        synchronized (sessionsLock) {
+            FixSessionImpl oldSession = configuredSessions.get(oldSettings.getFixSessionId());
+            if (oldSession == null || !oldSession.isConnected()) {
+                stopManaging(oldSettings);
+                addSession(newSettings, oldSession == null ? newSettings.getDesiredSessionState()
+                        : oldSession.desiredStateAfterUpdateTo(newSettings));
+                FixSessionImpl rebuilt = configuredSessions.get(newSettings.getFixSessionId());
+                if (oldSession != null && rebuilt != null) {
+                    rebuilt.logEvent("Rebuilt on updated settings");
+                }
+                return;
+            }
+            pendingSettings.put(newSettings.getFixSessionId(), newSettings);
+            oldSession.markPendingSettingsUpdate();
+            synchronized (configuredSessionsSettings) {
+                configuredSessionsSettings.remove(oldSettings);
+                configuredSessionsSettings.add(newSettings);
+            }
+            refreshFixAcceptorSessions();
         }
-        // the running session keeps the settings it was created with; the new ones are managed and are what the next
-        // session created for this id will be built from
-        synchronized (configuredSessionsSettings) {
-            configuredSessionsSettings.remove(oldSettings);
-            configuredSessionsSettings.add(newSettings);
-        }
-        refreshFixAcceptorSessions();
     }
 
-    /**
-     * Takes the settings out of the managed collection and, when asked to, takes the live session down with them.
-     * Leaving the session up means the engine no longer manages it: it runs until it drops on its own.
-     */
-    private void stopManaging(FixSessionSettings settings, boolean disconnect) {
+    @Override
+    public void applyPendingSettings(FixSessionSettings settings) {
+        if (!isAcceptorSession(settings)) {
+            return;
+        }
+        synchronized (sessionsLock) {
+            FixSessionImpl session = configuredSessions.get(settings.getFixSessionId());
+            if (session != null && session.hasPendingSettingsUpdate()) {
+                replaceOnPendingSettings(session, "Restarted by the admin API on its pending settings");
+            }
+        }
+    }
+
+    private FixSessionImpl withPendingSettingsApplied(FixSessionImpl session) {
+        if (!session.hasPendingSettingsUpdate()) {
+            return session;
+        }
+        synchronized (sessionsLock) {
+            FixSessionImpl current = configuredSessions.get(session.getFixSessionId());
+            if (current == null) {
+                return session;
+            }
+            if (current.isConnected() || !current.hasPendingSettingsUpdate()) {
+                return current;
+            }
+            return replaceOnPendingSettings(current, "Rebuilt on its pending settings");
+        }
+    }
+
+    private FixSessionImpl replaceOnPendingSettings(FixSessionImpl session, String event) {
+        FixSessionSettings pending = pendingSettings.get(session.getFixSessionId());
+        stopManaging(pending);
+        addSession(pending, session.desiredStateAfterUpdateTo(pending));
+        FixSessionImpl rebuilt = configuredSessions.get(session.getFixSessionId());
+        rebuilt.logEvent(event);
+        return rebuilt;
+    }
+
+    private void stopManaging(FixSessionSettings settings) {
         configuredSessionsSettings.remove(settings);
         refreshFixAcceptorSessions();
+        pendingSettings.remove(settings.getFixSessionId());
         FixSessionImpl fixSession = configuredSessions.remove(settings.getFixSessionId());
-        if (fixSession != null && disconnect) {
+        if (fixSession != null) {
             fixSession.onSessionRemoved();
             fixSessionsObserver.onSessionUnregistered(fixSession);
         }
@@ -500,6 +643,11 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         synchronized (configuredSessionsSettings) {
             return new ArrayList<>(configuredSessionsSettings);
         }
+    }
+
+    @Override
+    public void forEachManagedFixSessionSettings(Consumer<FixSessionSettings> action) {
+        configuredSessionsSettings.forEach(action);
     }
 
     @Override
@@ -680,21 +828,19 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         }
     }
 
-    @Getter
+    @Value
     @Builder
-    @AllArgsConstructor
-
     private static class ReceivedFixSessionId {
-        private final FixRegularVersion fixVersion;
-        private final FixtVersion fixtVersion;
-        private final FixApplVerID fixApplVerId;
-        private final String defaultApplVerId;
-        private final String senderCompID;
-        private final String senderSubID;
-        private final String senderLocationID;
-        private final String targetCompID;
-        private final String targetSubID;
-        private final String targetLocationID;
+        FixRegularVersion fixVersion;
+        FixtVersion fixtVersion;
+        FixApplVerID fixApplVerId;
+        String defaultApplVerId;
+        String senderCompID;
+        String senderSubID;
+        String senderLocationID;
+        String targetCompID;
+        String targetSubID;
+        String targetLocationID;
 
         @Override
         public String toString() {
@@ -717,6 +863,29 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
         private void addIfProvided(StringBuilder sb, String value) {
             if (value != null) {
                 sb.append(":").append(value);
+            }
+        }
+    }
+
+    private class ManagedSettingsTracker implements FixSessionsSettingsStore.Listener {
+
+        @Override
+        public void onAddedSession(FixSessionSettings settings) {
+            if (isAcceptorSession(settings)) {
+                configuredSessionsSettings.add(settings);
+            }
+        }
+
+        @Override
+        public void onRemovedSession(FixSessionSettings settings) {
+            configuredSessionsSettings.remove(settings);
+        }
+
+        @Override
+        public void onUpdatedSession(FixSessionSettings oldSettings, FixSessionSettings newSettings) {
+            synchronized (configuredSessionsSettings) {
+                onRemovedSession(oldSettings);
+                onAddedSession(newSettings);
             }
         }
     }
@@ -800,6 +969,16 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
                 return;
             }
             fixSession.onIOThreadTask(task, taskCallback);
+        }
+
+        @Override
+        public void onError(IOSession session, Exception error) {
+            FixSessionImpl fixSession = session.getAttachment();
+            if (fixSession != null && error instanceof ReadBufferFullException) {
+                fixSession.onReadBufferFull((ReadBufferFullException) error);
+                return;
+            }
+            IOEventsListener.super.onError(session, error);
         }
 
         @Override
@@ -911,6 +1090,7 @@ public class FixAcceptorImpl extends Startable.SimpleStartable<FixAcceptor> impl
             if (Arrays.stream(connectedSessionsArray).anyMatch(s -> s.getFixSessionId().equals(matchedFixSessionId))) {
                 throw new MultipleLogonException();
             }
+            match = withPendingSettingsApplied(match);
             checkIPAndCertificatesWhiteList(session, match.getFixSessionSettings());
             return match;
         }

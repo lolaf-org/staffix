@@ -18,12 +18,14 @@ package org.lolaf.staffix.stores.messages.file;
 import lombok.Getter;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.stores.DirectoryStorageIdentity;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -36,6 +38,7 @@ public class FileMessagesStore extends Startable.SimpleStartable<FixMessagesStor
     private final Map<FixSessionId, FixSessionMessagesStore> fileFixSessionStoreContext;
     @Getter
     private final String instanceId;
+    private volatile String storageIdentity;
 
     protected FileMessagesStore(FileMessageStoreSettings settings) {
         this.settings = settings;
@@ -44,8 +47,8 @@ public class FileMessagesStore extends Startable.SimpleStartable<FixMessagesStor
     }
 
     @Override
-    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {
-        return fileFixSessionStoreContext.computeIfAbsent(fixSessionId, sid -> new FileFixSessionMessagesStore(settings, fixSessionId));
+    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, Probes probes) {
+        return fileFixSessionStoreContext.computeIfAbsent(fixSessionId, sid -> new FileFixSessionMessagesStore(settings, fixSessionId, storageIdentity));
     }
 
     @Override
@@ -59,6 +62,11 @@ public class FileMessagesStore extends Startable.SimpleStartable<FixMessagesStor
         }
         if (!directory.exists() && !directory.mkdirs()) {
             throw new IllegalArgumentException("Cannot create directory " + directory.getPath());
+        }
+        try {
+            storageIdentity = DirectoryStorageIdentity.of(directory.toPath());
+        } catch (IOException e) {
+            throw new StartStopException("Cannot read the storage identity of " + directory.getPath(), e);
         }
     }
 

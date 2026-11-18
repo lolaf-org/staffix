@@ -58,7 +58,8 @@ FileMessageStoreSettings.builder()
 | `syncWrites`                | `true`                  |
 
 `syncWrites(true)` is the durable setting and the reason a file store costs more than a memory one: it forces the
-write out before the session continues. Turn it off and you trade recovery guarantees for latency; better still, keep
+write to disk before the session continues, so it survives an OS crash or a power loss. Off, a write survives the
+process crashing but not the machine. Turn it off and you trade recovery guarantees for latency; better still, keep
 it on and put the store behind the [async wrapper](#taking-io-off-the-session-thread).
 
 ### Over JDBC
@@ -77,10 +78,16 @@ JdbcMessageStoreSettings.builder()
 | `tablePrefix`              | `""`               |
 | `maxMessagesPerSession`    | `0` (unlimited)    |
 | `pruningCheckInterval`     | 5 minutes          |
+| `findFetchSize`            | 500                |
 | `scheduledExecutorService` | supplied if absent |
 
 Schemas are generated rather than shipped as a fixed `.sql`: the DDL generator plugin produces them for several
-dialects via Hibernate. `maxMessagesPerSession` with `pruningCheckInterval` keeps the table bounded.
+dialects via Hibernate. `maxMessagesPerSession` with `pruningCheckInterval` keeps the table bounded: each check deletes a session's rows
+past its newest `maxMessagesPerSession`, 10 000 rows per transaction.
+
+`findFetchSize` is how many rows a resend, or a high availability snapshot, reads per round trip. It is what lets a
+wide read stream: without it PostgreSQL reads the whole range into memory first. MySQL streams only with
+`useCursorFetch=true` in its JDBC URL.
 
 **Keep the pool's connection timeout short.** While the database is down, the first failed call and every sequence
 number update wait for it on the session thread; see [When a store or logger fails](#when-a-store-or-logger-fails).
@@ -148,7 +155,7 @@ format's prefixes are under `plain.`. A format of your own implements `FileLogLi
 
 ## When a store or logger fails
 
-A store or logger failure never reaches the session, which keeps trading. The engine logs it and raises the session's
+A store or logger failure never reaches the session, which keeps running. The engine logs it and raises the session's
 `messages-store` or `messages-logger` [alert](alerting.md#built-in-probes), then checks, off the session thread,
 whether the store's or logger's resource is available. If it is down, until a check every `resourceCheckInterval` finds
 it back:
@@ -159,7 +166,8 @@ it back:
 - **a logger skips every call.**
 
 A sent message that was not stored is gap filled if the peer later asks for it again: the peer stays in sequence but
-never receives that message a second time. To lose nothing through an outage, put the store behind the
+never receives that message a second time. The store counts them, as `getLostWrites()`, until its next sequence number
+reset or an operator clears the `messages-lost` alert, which stays raised until then. To lose nothing through an outage, put the store behind the
 [async wrapper](#taking-io-off-the-session-thread), which queues to local disk and replays once the resource is back.
 
 | setting                 | default    | what it is for                                                                     |
@@ -198,7 +206,8 @@ AsyncMessagesStoreSettings.builder()
 ```
 
 Chronicle's queue is off-heap and memory-mapped, so the handover allocates nothing, and queued work survives a
-process crash rather than dying with the buffer that held it.
+process crash rather than dying with the buffer that held it. Where to put the queue, batching, the reader threads
+and pretouching are in [Tuning the async queue](async-queue-tuning.md).
 
 | setting                                      | default    | what it is for                                                                 |
 |----------------------------------------------|------------|--------------------------------------------------------------------------------|

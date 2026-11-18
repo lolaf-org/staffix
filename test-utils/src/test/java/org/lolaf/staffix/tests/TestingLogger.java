@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @RequiredArgsConstructor
 public class TestingLogger extends Startable.VoidStartable<FixMessagesLogger.Logger> implements FixMessagesLogger.Logger {
 
-    private static final boolean LOG_MESSAGES = Boolean.parseBoolean(System.getProperty("staffix.tests.log.messages", "true"));
+    public static final boolean LOG_MESSAGES = Boolean.parseBoolean(System.getProperty("staffix.tests.log.messages", "true"));
 
     private final String prefix;
     private final List<String> incomingMessages = new CopyOnWriteArrayList<>();

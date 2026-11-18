@@ -6,4 +6,4 @@ production:
     Register it as default, or name it from every session: once any publisher is registered, a session naming none uses
     default.
   - >-
-    Route or silence one session's alerts with loggerNameForFixSession.
+    Route or silence one session's alerts with loggerNameForScope.

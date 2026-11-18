@@ -32,6 +32,7 @@ class IoSettingsPropsMapperTest {
     private static IoSettingsProps allSet() {
         IoSettingsProps props = new IoSettingsProps();
         props.setReadBufferSize(16 * 1024);
+        props.setMaxReadBufferSize(4 * 1024 * 1024);
         props.setReadDirectBuffer(false);
         props.setTasksRingBufferSize(128);
         props.setMultiThreadedWriteApiCalls(false);
@@ -44,6 +45,7 @@ class IoSettingsPropsMapperTest {
 
     private static void assertAllSet(IOSettings settings) {
         assertThat(settings.getReadBufferSize()).isEqualTo(16 * 1024);
+        assertThat(settings.getMaxReadBufferSize()).isEqualTo(4 * 1024 * 1024);
         assertThat(settings.isReadDirectBuffer()).isFalse();
         assertThat(settings.getTasksRingBufferSize()).isEqualTo(128);
         assertThat(settings.isMultiThreadedWriteAPICalls()).isFalse();

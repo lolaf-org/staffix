@@ -17,13 +17,16 @@ package org.lolaf.staffix.admin.http;
 
 import lombok.Getter;
 
+/**
+ * An answer to the caller, not a fault: no stack trace, as a poll may meet it on every request.
+ */
 @Getter
 public class HttpProblemException extends RuntimeException {
 
     private final int status;
 
     public HttpProblemException(int status, String detail) {
-        super(detail);
+        super(detail, null, false, false);
         this.status = status;
     }
 }

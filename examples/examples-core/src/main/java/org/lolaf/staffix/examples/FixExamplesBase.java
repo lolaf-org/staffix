@@ -362,7 +362,7 @@ class FixExamplesBase {
                 .ioWorkersGroup(IOWorkersGroupSettings.builder()
                         .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder()
                                 .ioThreadCount(options.getClientsCount())
-                                .selectStrategy(options.isLowLatency() ? new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()) : new WakeupSelectStrategy(10))
+                                .selectStrategy(options.isLowLatency() ? new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance) : new WakeupSelectStrategy(10))
                                 .threadFactory(options.isCpuAffinity() ? FastThreadLocalThreadWithAffinity::new : FastThreadLocalThread::new)
                                 .build())
                         .build().newInstance());
@@ -383,7 +383,7 @@ class FixExamplesBase {
                 .messageExecutorSettings(MessageExecutorSettings.builder().idleStrategy(options.isLowLatency() ? BusySpinIdleStrategy::getInstance : WaitNotifyIdleStrategy::new).build())
                 .ioWorkersGroup(IOWorkersGroupSettings.builder()
                         .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder()
-                                .selectStrategy(options.isLowLatency() ? new IdleStrategySelectStrategy(BusySpinIdleStrategy.getInstance()) : new WakeupSelectStrategy(10))
+                                .selectStrategy(options.isLowLatency() ? new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance) : new WakeupSelectStrategy(10))
                                 .threadFactory(options.isCpuAffinity() ? FastThreadLocalThreadWithAffinity::new : FastThreadLocalThread::new)
                                 .build())
                         .build().newInstance());

@@ -66,6 +66,10 @@ rttMeasurementSettings:
   maxAcceptedRtt: "PT2S"
   probeTestReqIdPrefix: "RTT-measurement-"
   sendingTimeToWireDelay: "PT0.0000015S"
+highAvailability:
+  replicationMode: "NONE"
+  replicationAckTimeout: "PT1S"
+  syncAckLatencyEnabled: false
 sessionScheduleSettings:
   outsideSessionTimePreTriggerDelay: "PT2S"
   timeZone: "Europe/Zurich"
@@ -81,5 +85,3 @@ sessionScheduleSettings:
     - dayOfWeek: "WEDNESDAY"
 messageEncodersDirectByteBuffers: true
 pooledMessageEncodersDirectByteBuffers: true
-disconnectOnRemove: true
-restartLiveSessionOnUpdate: true

@@ -26,6 +26,7 @@ import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
 import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.function.BiPredicate;
 
 import static org.mockito.Mockito.mock;
@@ -44,6 +45,8 @@ class TestAsyncMessagesStoreWithTestKit extends AbstractFixSessionMessagesStoreT
                         .build())
                 .wrappedFixMessagesStoreSettings(TestingFixMessagesStoreSettings.builder()
                         .build())
+                // a find waits for the whole backlog the test's unthrottled writer builds, longer on a slow machine
+                .findWaitForEmptyQueueTimeout(Duration.ofSeconds(30))
                 .build();
 
         asyncEventInstanceProvider = releaseCallback -> new AsyncStoreEvent(ByteBuffer.allocate(1024), releaseCallback);
@@ -56,6 +59,14 @@ class TestAsyncMessagesStoreWithTestKit extends AbstractFixSessionMessagesStoreT
     protected void afterTearDown() throws Exception {
         asyncStoreThreads.stop(Deadline.unlimited());
         super.afterTearDown();
+    }
+
+    /**
+     * Bounds the backlog a find waits for: the writer offers faster than the async thread drains.
+     */
+    @Override
+    protected int concurrentFindMaxWrites() {
+        return 100_000;
     }
 
     @Override

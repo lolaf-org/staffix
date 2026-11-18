@@ -40,6 +40,6 @@ public final class StatusRoute extends JsonRoute {
     Object body(List<String> path) throws IOException {
         SessionsDocument document = documents.get();
         return EngineStatus.of(adminApi, document.getRunning(), document.getVersion(), probes.getAlertsVersion(),
-                fixSessionId -> probes.get(fixSessionId).getVersion());
+                scope -> probes.get(scope).getVersion());
     }
 }

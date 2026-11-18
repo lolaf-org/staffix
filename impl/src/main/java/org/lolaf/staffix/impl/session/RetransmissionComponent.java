@@ -34,7 +34,8 @@ import org.lolaf.staffix.impl.threading.SchedulerThread;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.concurrent.*;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
 
 /**
  * Section 4.3.11: what this session is missing, what it has asked the peer for, and what it does when the answer
@@ -185,9 +186,10 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
 
     /**
      * Runs a retransmission off the IO thread, bound to the connection current when it was asked for. Called on the IO
-     * thread, where that connection can be read.
+     * thread, where that connection can be read. The resend is handed whether the session is stopping, and must check
+     * it between messages: the stop waits for it before the store is released.
      */
-    void executeResend(Consumer<IOSession> resend) {
+    void executeResend(BiConsumer<IOSession, BooleanSupplier> resend) {
         IOSession ioSession = fixSession.currentIOSession();
         if (ioSession == null) {
             return;
@@ -199,7 +201,8 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
                 return thread;
             });
         }
-        resendExecutor.execute(() -> resend.accept(ioSession));
+        ExecutorService executor = resendExecutor;
+        executor.execute(() -> resend.accept(ioSession, executor::isShutdown));
     }
 
     @Override
@@ -229,9 +232,9 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
     }
 
     /**
-     * A parser of its own for replaying a message held on top of a gap, so that feeding one back cannot disturb the
-     * state the session's own parser keeps for the network read in progress - a message split across two TCP reads
-     * lives in there. Built on first use: a session that never loses a message never allocates it.
+     * A parser of its own for replaying a message held on top of a gap: the replay runs between two messages of a
+     * network read, which the session's own parser is still in the middle of. Built on first use: a session that never
+     * loses a message never allocates it.
      */
     private FixMessageParser outOfSequenceMessagesParser() {
         if (outOfSequenceMessagesParser == null) {
@@ -270,9 +273,10 @@ public class RetransmissionComponent implements FixSessionLayerComponent {
         resendExecutor = null;
         stopping.shutdownNow();
         try {
-            // Deadline floors at zero and awaitTermination(0) does not wait at all, so an expired deadline is still
-            // given a millisecond: the point is to leave the thread nowhere to be but finished
-            if (!stopping.awaitTermination(Math.max(1L, deadline.fromRemainingTime(0.2).getRemainingTime().toMillis()), TimeUnit.MILLISECONDS)) {
+            // the whole deadline, the store being released right after: the resend stops at its next message, so
+            // only an application blocked in onResendRequest holds it. Deadline floors at zero and
+            // awaitTermination(0) does not wait at all, so an expired deadline is still given a millisecond
+            if (!stopping.awaitTermination(Math.max(1L, deadline.getRemainingTime().toMillis()), TimeUnit.MILLISECONDS)) {
                 log.warn("Timed out waiting for the retransmission thread of FIX session {} to stop", fixSessionId);
             }
         } catch (InterruptedException ex) {

@@ -18,12 +18,14 @@ package org.lolaf.staffix.admin.http.routes;
 import org.lolaf.staffix.admin.http.ProbesDocuments;
 import org.lolaf.staffix.admin.http.dto.ActiveAlert;
 import org.lolaf.staffix.admin.http.dto.EngineAlerts;
+import org.lolaf.staffix.api.ComponentProbeScope;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.alerting.Alert;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
-import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -47,18 +49,24 @@ public final class AlertsRoute extends JsonRoute {
     @Override
     Object body(List<String> path) {
         long alertsVersion = probes.getAlertsVersion();
-        Map<FixSessionId, String> mainNames = new HashMap<>();
+        Map<ProbeScope, String> mainNames = new HashMap<>();
         for (FixInitiatorTargets initiator : adminApi.getInitiatorsTargets()) {
-            mainNames.put(initiator.getActiveFixSessionId(), initiator.getMainTarget().getFixSessionId().getName());
+            mainNames.put(FixSessionProbeScope.of(initiator.getActiveFixSessionId()), initiator.getMainTarget().getFixSessionId().getName());
         }
         List<ActiveAlert> alerts = new ArrayList<>();
-        for (SessionProbeState active : adminApi.getActiveAlerts()) {
-            FixSessionId fixSessionId = active.getFixSessionId();
+        for (ScopedProbeState active : adminApi.getActiveAlerts()) {
+            ProbeScope scope = active.getScope();
             ProbeState state = active.getProbeState();
             Alert alert = state.getAlert().orElseThrow();
-            alerts.add(new ActiveAlert(fixSessionId.getGroup(), mainNames.getOrDefault(fixSessionId, fixSessionId.getName()),
-                    fixSessionId.getName(), state.getProbeName(), alert.getLevel(), alert.getMessage(),
-                    state.getSince().map(Object::toString).orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null)));
+            if (FixSessionProbeScope.isSession(scope)) {
+                String selectedConfig = scope.getLabels().get(FixSessionProbeScope.NAME_LABEL);
+                alerts.add(new ActiveAlert(null, scope.getLabels().get(FixSessionProbeScope.GROUP_LABEL),
+                        mainNames.getOrDefault(scope, selectedConfig), selectedConfig, state.getProbeName(), alert.getLevel(),
+                        alert.getMessage(), state.getSince().orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null)));
+            } else if (ComponentProbeScope.isComponent(scope)) {
+                alerts.add(new ActiveAlert(scope.getName(), null, null, null, state.getProbeName(), alert.getLevel(),
+                        alert.getMessage(), state.getSince().orElse(null), active.getRunbookUrl().map(Object::toString).orElse(null)));
+            }
         }
         return new EngineAlerts(adminApi.getInstanceId(), alertsVersion, alerts);
     }

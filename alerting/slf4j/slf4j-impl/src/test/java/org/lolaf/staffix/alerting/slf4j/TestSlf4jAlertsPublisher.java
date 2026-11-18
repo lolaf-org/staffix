@@ -22,7 +22,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.ProbeId;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.slf4j.MDC;
 import org.slf4j.event.Level;
@@ -35,6 +37,7 @@ class TestSlf4jAlertsPublisher {
 
     private static final Instant SINCE = Instant.parse("2026-10-10T10:00:00Z");
     private static final FixSessionId SESSION_ID = FixSessionId.of("orders", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
+    private static final ProbeId PROBE_ID = ProbeId.of(FixSessionProbeScope.of(SESSION_ID), "queue");
 
     @BeforeEach
     void clearLogs() {
@@ -61,8 +64,8 @@ class TestSlf4jAlertsPublisher {
     void saysWhenAnAlertWasClearedManually() {
         Slf4jAlertsPublisher publisher = new Slf4jAlertsPublisher(Slf4jAlertsPublisherSettings.builder().build());
 
-        publisher.publish(AlertEvent.builder().type(AlertEvent.Type.CLEARED).engineId("engine").fixSessionId(SESSION_ID)
-                .probeName("queue").probeDescription("Orders waiting").alert(Alert.warning("100 queued")).since(SINCE)
+        publisher.publish(AlertEvent.builder().type(AlertEvent.Type.CLEARED).source("engine").probeId(PROBE_ID)
+                .probeDescription("Orders waiting").alert(Alert.warning("100 queued")).since(SINCE)
                 .time(SINCE.plusSeconds(5)).clearedManually(true).build());
 
         assertThat(TestLoggerFactory.getTestLogger(Slf4jAlertsPublisher.class).getLoggingEvents()).singleElement()
@@ -83,7 +86,7 @@ class TestSlf4jAlertsPublisher {
     @Test
     void logsUnderTheLoggerChosenForTheSessionWithoutMdcWhenDisabled() {
         Slf4jAlertsPublisher publisher = new Slf4jAlertsPublisher(Slf4jAlertsPublisherSettings.builder()
-                .loggerNameForFixSession(sessionId -> "alerts." + sessionId.getName())
+                .loggerNameForScope(scope -> "alerts." + scope.getLabels().get(FixSessionProbeScope.NAME_LABEL))
                 .useMDC(false)
                 .build());
 
@@ -96,9 +99,8 @@ class TestSlf4jAlertsPublisher {
     private static AlertEvent event(AlertEvent.Type type, Alert alert) {
         return AlertEvent.builder()
                 .type(type)
-                .engineId("engine")
-                .fixSessionId(SESSION_ID)
-                .probeName("queue")
+                .source("engine")
+                .probeId(PROBE_ID)
                 .probeDescription("Orders waiting")
                 .alert(alert)
                 .since(SINCE)

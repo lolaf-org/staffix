@@ -58,7 +58,7 @@ import java.util.concurrent.TimeUnit;
  * <p>The micrometer OkHttp arm is given a socket factory that sets {@code TCP_NODELAY}, which is not
  * what {@code new OkHttpClient()} does. Left on its default that sender writes the request head and body
  * as separate segments with Nagle enabled, and every publish stalls on the peer's 40 ms delayed-ACK
- * timer - measured here at 42 ms per publish against 0.7 ms with the option set. Benchmarking the
+ * timer. Benchmarking the
  * default would only measure that stall, so the option is set on the baseline arm, and
  * {@code org.lolaf.staffix.http.okhttp.OkHttpSender} sets it for itself.
  */

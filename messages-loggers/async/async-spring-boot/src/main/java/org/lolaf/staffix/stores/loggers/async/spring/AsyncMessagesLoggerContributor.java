@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.stores.loggers.async.spring;
 
+import net.openhft.chronicle.queue.RollCycle;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.spring.boot.spi.FixMessagesLoggerSettingsContributor;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
@@ -54,7 +55,7 @@ public class AsyncMessagesLoggerContributor implements FixMessagesLoggerSettings
                 throw new IllegalArgumentException("staffix.messages-loggers-async.instances." + key + ".async-queue-directory is required");
             }
             AsyncMessagesLoggerSettings.AsyncMessagesLoggerSettingsBuilder<?, ?> b = AsyncMessagesLoggerSettings.builder()
-                    .asyncStoreSettings(AsyncStoreSettings.builder().asyncQueueDirectory(p.getAsyncQueueDirectory()).build())
+                    .asyncStoreSettings(asyncStoreSettings(p))
                     .wrappedLoggerSettings(wrapped);
             if (p.getUnderlyingLoggerResourceWatchTaskCheckDelay() != null)
                 b.underlyingLoggerResourceWatchTaskCheckDelay(p.getUnderlyingLoggerResourceWatchTaskCheckDelay());
@@ -66,5 +67,21 @@ public class AsyncMessagesLoggerContributor implements FixMessagesLoggerSettings
             if (p.getAlertClearDelay() != null) b.alertClearDelay(p.getAlertClearDelay());
             registry.put(p.getWraps(), b.build());
         });
+    }
+
+    private static AsyncStoreSettings asyncStoreSettings(AsyncLoggerEntryProps p) {
+        AsyncStoreSettings.AsyncStoreSettingsBuilder<?, ?> b = AsyncStoreSettings.builder()
+                .asyncQueueDirectory(p.getAsyncQueueDirectory());
+        if (p.getEventsBatching() != null) b.eventsBatching(p.getEventsBatching());
+        if (p.getBatchingFlushInterval() != null) b.batchingFlushInterval(p.getBatchingFlushInterval());
+        if (p.getReaderThreadsCount() != null) b.readerThreadsCount(p.getReaderThreadsCount());
+        if (p.getReaderThreadMaxEventsProcessingPerStore() != null)
+            b.readerThreadMaxEventsProcessingPerStore(p.getReaderThreadMaxEventsProcessingPerStore());
+        RollCycle rollCycle = p.getRollCycle();
+        if (rollCycle != null) b.rollCycleProvider(sid -> rollCycle);
+        if (p.getPretouchInterval() != null) b.pretouchInterval(p.getPretouchInterval());
+        if (p.getPretouchAheadTime() != null) b.pretouchAheadTime(p.getPretouchAheadTime());
+        if (p.getPretouchMinAheadBytes() != null) b.pretouchMinAheadBytes(p.getPretouchMinAheadBytes());
+        return b.build();
     }
 }

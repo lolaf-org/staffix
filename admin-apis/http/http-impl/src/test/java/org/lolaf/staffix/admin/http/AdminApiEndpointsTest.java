@@ -19,6 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ComponentProbeScope;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
@@ -28,9 +29,11 @@ import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
@@ -38,7 +41,14 @@ import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringManager;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionId.FixSessionIdBuilder;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.api.ha.HaAdmin;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.ha.HaStatus;
+import org.lolaf.staffix.api.ha.LeaderElection;
+import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.mockito.ArgumentCaptor;
 
@@ -159,6 +169,16 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void statusTellsWhetherASessionHasASettingsUpdatePending() throws Exception {
+        FixSession trading = adminApi.getManagedFixSessions().get(0);
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"pendingSettingsUpdate\":false");
+
+        when(trading.hasPendingSettingsUpdate()).thenReturn(true);
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"pendingSettingsUpdate\":true");
+    }
+
+    @Test
     void sessionsAreServedWithTheVersionStatusReportsAsTheirETag() throws Exception {
         HttpResponse<String> sessions = call("GET", "/engines/alpha-engine/v1/sessions", null);
 
@@ -177,18 +197,18 @@ class AdminApiEndpointsTest {
 
     @Test
     void aSessionsProbesAreServedWithTheVersionStatusReportsAsTheirETag() throws Exception {
-        when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(ProbeDefinition.builder()
+        when(adminApi.getProbeDefinitions(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(ProbeDefinition.builder()
                 .name("order-flow").description("Time since the last order")
                 .evaluationInterval(Duration.ofSeconds(1)).reminderInterval(Duration.ofMinutes(1))
                 .label("team", "fix_ops").runbookUrl(URI.create("https://wiki.example.com/order-flow"))
-                .onlyWhileLoggedIn(false).build()));
+                .onlyWhileActive(false).build()));
 
         HttpResponse<String> probes = call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null);
 
         assertThat(probes.statusCode()).isEqualTo(200);
         assertThat(probes.body()).isEqualTo("[{\"name\":\"order-flow\",\"description\":\"Time since the last order\","
                 + "\"evaluationInterval\":\"PT1S\",\"reminderInterval\":\"PT1M\",\"labels\":{\"team\":\"fix_ops\"},"
-                + "\"runbookUrl\":\"https://wiki.example.com/order-flow\",\"onlyWhileLoggedIn\":false}]");
+                + "\"runbookUrl\":\"https://wiki.example.com/order-flow\",\"onlyWhileActive\":false}]");
         String etag = probes.headers().firstValue("ETag").orElseThrow();
         assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"probesVersion\":" + etag);
         HttpResponse<String> unchanged = client.send(HttpRequest.newBuilder(
@@ -204,11 +224,11 @@ class AdminApiEndpointsTest {
         String before = call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null).headers()
                 .firstValue("ETag").orElseThrow();
         ProbeDefinition added = ProbeDefinition.builder().name("queue").description("d").evaluationInterval(Duration.ofSeconds(1)).build();
-        when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(added));
+        when(adminApi.getProbeDefinitions(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(added));
         ArgumentCaptor<ProbesListener> listener = ArgumentCaptor.forClass(ProbesListener.class);
         verify(adminApi).addProbesListener(listener.capture());
 
-        listener.getValue().onProbeAdded(TRADING, added);
+        listener.getValue().onProbeAdded(FixSessionProbeScope.of(TRADING), added);
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes", null).headers()
                 .firstValue("ETag")).isNotEqualTo(Optional.of(before));
@@ -216,7 +236,7 @@ class AdminApiEndpointsTest {
 
     @Test
     void aSuspendedProbeIsServedAsSuspended() throws Exception {
-        when(adminApi.getProbeStates(TRADING)).thenReturn(List.of(ProbeState.builder().probeName("orders")
+        when(adminApi.getProbeStates(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(ProbeState.builder().probeName("orders")
                 .lastEvaluation(Instant.parse("2026-10-10T10:00:05Z")).suspended(true).build()));
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
@@ -225,7 +245,7 @@ class AdminApiEndpointsTest {
 
     @Test
     void aProbeSuspendedBeforeItsFirstEvaluationHasNoLastEvaluation() throws Exception {
-        when(adminApi.getProbeStates(TRADING)).thenReturn(List.of(ProbeState.builder().probeName("orders").suspended(true).build()));
+        when(adminApi.getProbeStates(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(ProbeState.builder().probeName("orders").suspended(true).build()));
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
                 .isEqualTo("[{\"probe\":\"orders\",\"suspended\":true}]");
@@ -236,8 +256,8 @@ class AdminApiEndpointsTest {
         running(adminApi, TRADING_DRP);
         ProbeState alerting = ProbeState.builder().probeName("session-down").alert(Alert.critical("down"))
                 .since(Instant.parse("2026-10-10T10:00:00Z")).lastEvaluation(Instant.parse("2026-10-10T10:00:05Z")).build();
-        when(adminApi.getProbeStates(TRADING_DRP)).thenReturn(List.of(alerting));
-        when(adminApi.getActiveAlerts()).thenReturn(List.of(new SessionProbeState(TRADING_DRP, alerting,
+        when(adminApi.getProbeStates(FixSessionProbeScope.of(TRADING_DRP))).thenReturn(List.of(alerting));
+        when(adminApi.getActiveAlerts()).thenReturn(List.of(new ScopedProbeState(FixSessionProbeScope.of(TRADING_DRP), alerting,
                 URI.create("https://wiki.example.com/session-down"))));
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/states", null).body())
@@ -252,12 +272,54 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void anEngineComponentsProbesStatesAndAlertsAreServedUnderItsName() throws Exception {
+        ProbeScope ha = ComponentProbeScope.of("ha");
+        ProbeState alerting = ProbeState.builder().probeName("followers").alert(Alert.major("no follower"))
+                .since(Instant.parse("2026-10-10T10:00:00Z")).lastEvaluation(Instant.parse("2026-10-10T10:00:05Z")).build();
+        when(adminApi.getComponentProbeScopes()).thenReturn(List.of(ha));
+        when(adminApi.getProbeDefinitions(ha)).thenReturn(List.of(ProbeDefinition.builder().name("followers")
+                .description("A follower in sync").evaluationInterval(Duration.ofSeconds(1)).build()));
+        when(adminApi.getProbeStates(ha)).thenReturn(List.of(alerting));
+        when(adminApi.getActiveAlerts()).thenReturn(List.of(new ScopedProbeState(ha, alerting)));
+
+        HttpResponse<String> probes = call("GET", "/engines/alpha-engine/v1/engine/ha/probes", null);
+
+        assertThat(probes.statusCode()).isEqualTo(200);
+        assertThat(probes.body()).contains("\"name\":\"followers\"");
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).body()).contains("\"components\":[{\"component\":\"ha\","
+                + "\"probesVersion\":" + probes.headers().firstValue("ETag").orElseThrow() + ",\"alertLevel\":\"MAJOR\"}]");
+        assertThat(call("GET", "/engines/alpha-engine/v1/engine/ha/probes/states", null).body())
+                .startsWith("[{\"probe\":\"followers\",\"level\":\"MAJOR\"");
+        assertThat(call("GET", "/engines/alpha-engine/v1/alerts", null).body())
+                .endsWith("\"alerts\":[{\"component\":\"ha\",\"probe\":\"followers\",\"level\":\"MAJOR\","
+                        + "\"message\":\"no follower\",\"since\":\"2026-10-10T10:00:00Z\"}]}");
+        assertThat(call("GET", "/engines/alpha-engine/v1/engine/other/probes", null).statusCode()).isEqualTo(404);
+        assertThat(call("GET", "/engines/alpha-engine/v1/engine/other/probes/states", null).statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void clearingAComponentsAlertAnswers204WhenAccepted409WhenRefusedAnd404ForAnUnknownProbeOrComponent() throws Exception {
+        ProbeScope ha = ComponentProbeScope.of("ha");
+        when(adminApi.getComponentProbeScopes()).thenReturn(List.of(ha));
+        when(adminApi.getProbeDefinitions(ha)).thenReturn(List.of(
+                ProbeDefinition.builder().name("unprotected").description("d").evaluationInterval(Duration.ofSeconds(1)).build(),
+                ProbeDefinition.builder().name("followers").description("d").evaluationInterval(Duration.ofSeconds(1)).build()));
+        when(adminApi.clearAlert(ProbeId.of(ha, "unprotected"))).thenReturn(true);
+
+        assertThat(call("POST", "/engines/alpha-engine/v1/engine/ha/probes/unprotected/clear", null).statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/engine/ha/probes/followers/clear", null).statusCode()).isEqualTo(409);
+        assertThat(call("POST", "/engines/alpha-engine/v1/engine/ha/probes/unknown/clear", null).statusCode()).isEqualTo(404);
+        assertThat(call("POST", "/engines/alpha-engine/v1/engine/other/probes/followers/clear", null).statusCode()).isEqualTo(404);
+        verify(adminApi, never()).clearAlert(ProbeId.of(ha, "unknown"));
+    }
+
+    @Test
     void anAlertTransitionMovesTheAlertsVersion() throws Exception {
         ArgumentCaptor<ProbesListener> listener = ArgumentCaptor.forClass(ProbesListener.class);
         verify(adminApi).addProbesListener(listener.capture());
         long before = alertsVersion();
 
-        listener.getValue().onAlertTransition(TRADING, ProbeState.builder().probeName("queue").lastEvaluation(Instant.EPOCH).build());
+        listener.getValue().onAlertTransition(FixSessionProbeScope.of(TRADING), ProbeState.builder().probeName("queue").lastEvaluation(Instant.EPOCH).build());
 
         assertThat(alertsVersion()).isEqualTo(before + 1);
     }
@@ -300,15 +362,15 @@ class AdminApiEndpointsTest {
 
     @Test
     void clearingAnAlertAnswers204WhenAccepted409WhenRefusedAnd404ForAnUnknownProbe() throws Exception {
-        when(adminApi.getProbeDefinitions(TRADING)).thenReturn(List.of(
+        when(adminApi.getProbeDefinitions(FixSessionProbeScope.of(TRADING))).thenReturn(List.of(
                 ProbeDefinition.builder().name("rejects").description("d").evaluationInterval(Duration.ofSeconds(1)).build(),
                 ProbeDefinition.builder().name("queue").description("d").evaluationInterval(Duration.ofSeconds(1)).build()));
-        when(adminApi.clearAlert(TRADING, "rejects")).thenReturn(true);
+        when(adminApi.clearAlert(ProbeId.of(FixSessionProbeScope.of(TRADING), "rejects"))).thenReturn(true);
 
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/rejects/clear", null).statusCode()).isEqualTo(204);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/queue/clear", null).statusCode()).isEqualTo(409);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/probes/unknown/clear", null).statusCode()).isEqualTo(404);
-        verify(adminApi, never()).clearAlert(TRADING, "unknown");
+        verify(adminApi, never()).clearAlert(ProbeId.of(FixSessionProbeScope.of(TRADING), "unknown"));
     }
 
     @Test
@@ -427,8 +489,19 @@ class AdminApiEndpointsTest {
                 + "\"tagKeys\":[\"venue\"],\"percentiles\":true,\"custom\":true}";
 
         assertThat(call("GET", "/engines/alpha-engine/v1/sessions/alpha/trading/meters", null).body()).isEqualTo("[" + meter + "]");
-        assertThat(call("GET", "/engines/alpha-engine/v1/meters", null).body())
+        assertThat(call("GET", "/engines/alpha-engine/v1/sessions/meters", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"meters\":[" + meter + "]}]");
+        assertThat(call("GET", "/engines/alpha-engine/v1/meters", null).statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void theEnginesOwnMetersAreListed() throws Exception {
+        when(adminApi.getEngineMeters()).thenReturn(List.of(FixMeterDescriptor.builder().name("ha.role")
+                .type(FixMeterDescriptor.Type.GAUGE).description("The role").build()));
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/engine/meters", null).body())
+                .isEqualTo("[{\"name\":\"ha.role\",\"type\":\"GAUGE\",\"description\":\"The role\",\"tagKeys\":[],"
+                        + "\"percentiles\":false,\"custom\":false}]");
     }
 
     @Test
@@ -460,6 +533,17 @@ class AdminApiEndpointsTest {
     }
 
     @Test
+    void aProblemAfterADocumentHoldsOnlyItself() throws Exception {
+        assertThat(call("GET", "/engines/alpha-engine/v1/status", null).statusCode()).isEqualTo(200);
+
+        HttpResponse<String> problem = call("GET", "/engines/alpha-engine/v1/ha", null);
+
+        assertThat(problem.statusCode()).isEqualTo(404);
+        assertThat(problem.headers().firstValue("Content-Type")).hasValue("application/problem+json");
+        assertThat(problem.body()).isEqualTo("{\"status\":404,\"detail\":\"This engine has no high availability\"}");
+    }
+
+    @Test
     void errorsAreProblemDetails() throws Exception {
         doThrow(new IllegalStateException("trading is not logged in"))
                 .when(adminApi).sendFixMessages(any(), anyList(), anyChar(), anyBoolean());
@@ -471,6 +555,8 @@ class AdminApiEndpointsTest {
         assertThat(refused.body()).isEqualTo("{\"status\":409,\"detail\":\"trading is not logged in\"}");
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/messages", "{\"messages\":[],\"separator\":\"|\"}").body())
                 .isEqualTo("{\"status\":400,\"detail\":\"No message to send\"}");
+        assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/messages", "{\"messages\":[\"35=B|\"]}").statusCode())
+                .isEqualTo(400);
 
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/beta/trading/logon", null).statusCode()).isEqualTo(404);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading-drp/logon", null).statusCode()).isEqualTo(404);
@@ -500,6 +586,101 @@ class AdminApiEndpointsTest {
         betaExporter.shutdown(Deadline.of(Duration.ofSeconds(1)));
         assertThat(call("GET", "/engines/beta-engine/v1/status", null, "beta-token").statusCode()).isEqualTo(404);
         assertThat(call("GET", "/engines/alpha-engine/v1/status", null, "alpha-token").statusCode()).isEqualTo(200);
+    }
+
+    @Test
+    void anEngineWithoutHighAvailabilityAnswersNotFound() throws Exception {
+        HttpResponse<String> response = call("GET", "/engines/alpha-engine/v1/ha", null);
+
+        assertThat(response.statusCode()).isEqualTo(404);
+        assertThat(response.body()).contains("This engine has no high availability");
+        assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void theHighAvailabilityAndItsSessionsAreRead() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
+                .leaderId("1").leadershipValid(true).leaderElectionType("PrimosLeaderElection")
+                .roleSince(Instant.parse("2026-10-10T10:00:00Z")).switchoverMaxDuration(Duration.ofMinutes(1)).monitoringInstanceId("metrics")
+                .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
+                        .unsentBytes(0).lagMillis(3).build())
+                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1)
+                        .droppedAt(Instant.parse("2026-10-10T10:05:00Z"))
+                        .heldOffUntil(Instant.parse("2026-10-10T10:05:02Z")).build())
+                .sessionSettingsDifference(HaStatus.SessionSettingsDifference.builder().store("files")
+                        .fixSessionType(FixSession.FixSessionType.ACCEPTOR).fixSessionId("s")
+                        .kind(HaStatus.SessionSettingsDifference.Kind.DIFFERENT).build())
+                .build());
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
+                .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
+                .replicationAckTimeout(Duration.ZERO).inSync(true).nextIncomingSeqNum(-1).nextOutgoingSeqNum(-1).build()));
+        when(adminApi.getHa()).thenReturn(Optional.of(ha));
+
+        assertThat(call("GET", "/engines/alpha-engine/v1/ha", null).body())
+                .isEqualTo("{\"nodeId\":\"1\",\"pairName\":\"gateway\",\"role\":\"LEADER\",\"epoch\":7,\"leaderId\":\"1\",\"leadershipValid\":true,"
+                        + "\"leaderElectionType\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
+                        + "\"transferLeadershipSupported\":false,\"electableSupported\":false,\"electable\":false,\"switchoverMaxDuration\":\"PT1M\",\"monitoringInstanceId\":\"metrics\","
+                        + "\"followerConnections\":[{\"nodeId\":\"2\",\"lane\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
+                        + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3}],"
+                        + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"lane\":1,\"droppedAt\":\"2026-10-10T10:05:00Z\","
+                        + "\"heldOffUntil\":\"2026-10-10T10:05:02Z\"}],"
+                        + "\"sessionSettingsDifferences\":[{\"store\":\"files\",\"fixSessionType\":\"ACCEPTOR\",\"fixSessionId\":\"s\",\"kind\":\"DIFFERENT\"}]}");
+        assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
+                .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
+                        + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"lastSendUnacknowledged\":false,"
+                        + "\"unacknowledgedSends\":0,\"nextIncomingSeqNum\":-1,\"nextOutgoingSeqNum\":-1,\"handedOver\":false,\"pendingWrites\":0,\"lostWrites\":0}]");
+    }
+
+    @Test
+    void theHighAvailabilityActionsReachItsAdmin() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
+                .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
+                .replicationAckTimeout(Duration.ZERO).build()));
+        when(adminApi.getHa()).thenReturn(Optional.of(ha));
+
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/electable", "{\"electable\":false}").statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/resync", null).statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/trading/resync", null).statusCode()).isEqualTo(204);
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/drop-copy/resync", null).statusCode()).isEqualTo(404);
+
+        when(ha.switchover()).thenReturn(SwitchoverOutcome.NOT_TRANSFERRED);
+        HttpResponse<String> switchover = call("POST", "/engines/alpha-engine/v1/ha/switchover", null);
+        assertThat(switchover.statusCode()).isEqualTo(200);
+        assertThat(switchover.body()).isEqualTo("{\"outcome\":\"NOT_TRANSFERRED\"}");
+
+        verify(ha).setElectable(false);
+        verify(ha).resync();
+        verify(ha).resync(TRADING, FixSession.FixSessionType.INITIATOR);
+    }
+
+    @Test
+    void aSessionListedButNotYetReplicatedCannotBeResynced() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
+                .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
+                .replicationAckTimeout(Duration.ZERO).build()));
+        doThrow(new IllegalArgumentException("FIX session INITIATOR " + TRADING + " is not replicated"))
+                .when(ha).resync(TRADING, FixSession.FixSessionType.INITIATOR);
+        when(adminApi.getHa()).thenReturn(Optional.of(ha));
+
+        HttpResponse<String> response = call("POST", "/engines/alpha-engine/v1/ha/sessions/alpha/trading/resync", null);
+
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.body()).contains("is not replicated until it is next built");
+    }
+
+    @Test
+    void aHighAvailabilityActionTheNodeCannotTakeIsAConflict() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        doThrow(new IllegalStateException("Only the leader re-syncs its followers")).when(ha).resync();
+        when(adminApi.getHa()).thenReturn(Optional.of(ha));
+
+        HttpResponse<String> response = call("POST", "/engines/alpha-engine/v1/ha/resync", null);
+
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.body()).contains("Only the leader re-syncs its followers");
     }
 
     @Test

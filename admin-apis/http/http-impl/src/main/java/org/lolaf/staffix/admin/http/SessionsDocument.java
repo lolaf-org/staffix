@@ -32,6 +32,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.utils.Sha256;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;

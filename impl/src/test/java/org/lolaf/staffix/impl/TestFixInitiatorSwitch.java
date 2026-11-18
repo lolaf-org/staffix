@@ -134,13 +134,14 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
     }
 
     @Test
-    void anActiveBackupFollowsAnUpdateOfItsMainTargetsSettings() {
+    void anActiveBackupRestartsOnAnUpdateOfItsMainTargetsSettings() {
         logonMainTarget();
         fixInitiator.switchTo(BACKUP_INITIATOR);
         fixInitiator.getSession().logon();
         await().untilAsserted(() -> assertThat(fixInitiator.getSession().isConnected()).isTrue());
+        FixSessionSettings updated = mainSettings().toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(11)).build();
 
-        initiatorStore().update(mainSettings().toBuilder().logInOrOutResponseTimeout(Duration.ofSeconds(11)).build());
+        ((AdminApi) initiatorFixEngine).updateFixSessionSettings(updated.getFixSessionId(), updated, true);
 
         FixSessionSettings running = fixInitiator.getSession().getFixSessionSettings();
         assertThat(running.getFixSessionId()).isEqualTo(BACKUP_INITIATOR);
@@ -179,7 +180,6 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
     @Test
     void removedMainTargetSettingsBlockSwitchesUntilAddedBack() {
         logonMainTarget();
-        initiatorStore().update(mainSettings().toBuilder().disconnectOnRemove(false).build());
         FixSession main = fixInitiator.getSession();
         FixSessionSettings settings = mainSettings();
 
@@ -349,7 +349,6 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
     @Test
     void aSwitchWhoseTargetCannotBeResolvedStopsTheInitiator() {
         logonMainTarget();
-        initiatorStore().update(mainSettings().toBuilder().restartLiveSessionOnUpdate(false).build());
         initiatorStore().update(mainSettings().toBuilder().fixMessageStoreInstanceId("no-such-store").build());
 
         assertThatThrownBy(() -> fixInitiator.switchTo(BACKUP_INITIATOR)).hasMessageContaining("no-such-store");

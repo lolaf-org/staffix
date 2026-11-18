@@ -15,6 +15,8 @@
  */
 package org.lolaf.staffix.stores.messages.async;
 
+import com.github.valfirst.slf4jtest.TestLogger;
+import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,18 +25,22 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLevel;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.stores.core.async.AsyncStoreSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.slf4j.event.Level;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -43,6 +49,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,7 +61,8 @@ class TestAsyncMessagesStore {
 
     private static final String TEST_MESSAGE_STORE_DESCRIPTION = "test message store description";
 
-    private final FixSessionProbes probes = mock(FixSessionProbes.class);
+    private final Probes probes = mock(Probes.class);
+    private final TestLogger storeLog = TestLoggerFactory.getTestLogger(AsyncMessageStore.class);
 
     AsyncMessagesStore asyncMessagesStore;
     AsyncMessageStore asyncMessageStore;
@@ -65,13 +73,32 @@ class TestAsyncMessagesStore {
     BiPredicate<MessageType, ByteBuffer> messageFilter;
 
     private static FixMessagesStore.BatchingFixSessionMessagesStore getBatchingFixSessionMessagesStoreMock() {
-        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
+        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = batchingMock();
         when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenReturn(true);
         return batchingFixSessionMessagesStore;
     }
 
+    /**
+     * Runs the default combined write, which a mock would otherwise skip, so the tests see the calls it makes.
+     */
+    private static FixMessagesStore.BatchingFixSessionMessagesStore batchingMock() {
+        FixMessagesStore.BatchingFixSessionMessagesStore store = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
+        callRealCombinedWrite(store);
+        return store;
+    }
+
+    private static void resetBatchingMock(FixMessagesStore.BatchingFixSessionMessagesStore store) {
+        reset(store);
+        callRealCombinedWrite(store);
+    }
+
+    private static void callRealCombinedWrite(FixMessagesStore.BatchingFixSessionMessagesStore store) {
+        doCallRealMethod().when(store).storeSentFixMessagesAndSeqNums(any(), anyInt(), anyLong(), anyLong());
+    }
+
     @BeforeEach
     void setup() {
+        storeLog.clearAll();
         testMessage = ByteBuffer.wrap("test".getBytes());
         fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "sender", "target");
         messageStore = mock(FixMessagesStore.FixSessionMessagesStore.class);
@@ -117,6 +144,18 @@ class TestAsyncMessagesStore {
     void addsItsProbesToTheSession() {
         verify(probes).add(argThat(probe -> probe.getName().equals("async-store-queue")));
         verify(probes).add(argThat(probe -> probe.getName().equals("async-store-resource")));
+    }
+
+    @Test
+    void registersItsMissedPagesCounterAndPassesTheMetersOn() {
+        FixSessionsMonitoringContext meters = mock(FixSessionsMonitoringContext.class);
+        ArgumentCaptor<LongSupplier> missedPages = ArgumentCaptor.forClass(LongSupplier.class);
+
+        asyncMessageStore.onSessionMeters(meters);
+
+        verify(meters).getCounter(eq("async.store.pretouch.missed.pages"), anyString(), eq(Map.of()), missedPages.capture());
+        assertThat(missedPages.getValue().getAsLong()).isZero();
+        verify(messageStore).onSessionMeters(meters);
     }
 
     @Test
@@ -214,12 +253,12 @@ class TestAsyncMessagesStore {
         resource.replayFailsOnceThenSucceeds(asyncMessageStore);
         await().untilAsserted(() -> verify(messageStore, times(3)).storeMessageSent(1L, testMessage));
         await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
-        assertThat(asyncMessageStore.pendingWrites()).isZero();
+        assertThat(asyncMessageStore.getPendingWrites()).isZero();
     }
 
     @Test
     void testFailedBatchReplayIsRetried() {
-        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = mock(FixMessagesStore.BatchingFixSessionMessagesStore.class);
+        FixMessagesStore.BatchingFixSessionMessagesStore batchingFixSessionMessagesStore = batchingMock();
         FlappingResource resource = new FlappingResource();
         when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> resource.available.get());
         doAnswer(i -> resource.write()).when(batchingFixSessionMessagesStore).storeSentFixMessages(any(), anyInt());
@@ -232,7 +271,7 @@ class TestAsyncMessagesStore {
         resource.replayFailsOnceThenSucceeds(asyncMessageStore);
         assertBatchingMessageProcessed(3, 1, 1, batchingFixSessionMessagesStore, testMessage);
         await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
-        assertThat(asyncMessageStore.pendingWrites()).isZero();
+        assertThat(asyncMessageStore.getPendingWrites()).isZero();
     }
 
     @Test
@@ -251,7 +290,7 @@ class TestAsyncMessagesStore {
 
         await().untilAsserted(() -> verify(messageStore, times(2)).storeMessageSent(1L, testMessage));
         await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isTrue());
-        assertThat(asyncMessageStore.pendingWrites()).isZero();
+        assertThat(asyncMessageStore.getPendingWrites()).isZero();
     }
 
     @Test
@@ -267,7 +306,212 @@ class TestAsyncMessagesStore {
         asyncMessageStore.storeMessageSent(2L, testMessage2);
 
         await().untilAsserted(() -> verify(messageStore).storeMessageSent(2L, testMessage2));
-        await().untilAsserted(() -> assertThat(asyncMessageStore.pendingWrites()).isZero());
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
+    }
+
+    @Test
+    void aWriteFailedWithTheResourceDownOutlivesAStop() {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        AtomicBoolean available = new AtomicBoolean(true);
+        when(messageStore.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> available.get());
+        doAnswer(i -> {
+            if (!available.get()) {
+                throw new IllegalStateException("test exception");
+            }
+            return stored.add(i.getArgument(0));
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        recreateStore(0);
+        asyncMessageStore.start();
+
+        restartsThroughAnOutage(available);
+
+        assertThat(stored).containsExactly(1L, 2L, 3L);
+    }
+
+    @Test
+    void aBatchFailedWithTheResourceDownOutlivesAStop() {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        AtomicBoolean available = new AtomicBoolean(true);
+        FixMessagesStore.BatchingFixSessionMessagesStore batching = batchingMock();
+        when(batching.isUnderlyingStorageResourceAvailable()).thenAnswer(i -> available.get());
+        doAnswer(i -> {
+            if (!available.get()) {
+                throw new IllegalStateException("test exception");
+            }
+            FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] messages = i.getArgument(0);
+            for (int n = 0; n < i.<Integer>getArgument(1); n++) {
+                stored.add(messages[n].getSequenceNumber());
+            }
+            return null;
+        }).when(batching).storeSentFixMessages(any(), anyInt());
+        messageStore = batching;
+        recreateStore(10);
+        asyncMessageStore.start();
+
+        restartsThroughAnOutage(available);
+
+        assertThat(stored).containsExactly(1L, 2L, 3L);
+    }
+
+    private void restartsThroughAnOutage(AtomicBoolean available) {
+        available.set(false);
+        for (long seqNum = 1; seqNum <= 3; seqNum++) {
+            asyncMessageStore.storeMessageSent(seqNum, testMessage);
+        }
+        await().untilAsserted(() -> assertThat(asyncMessageStore.hasInactiveUnderlyingResourceWatchDog()).isFalse());
+        asyncMessageStore.stop(Deadline.immediate());
+        available.set(true);
+        asyncMessageStore.start();
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
+    }
+
+    @Test
+    void aBadMessageInABatchCostsThatMessageAlone() {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        FixMessagesStore.BatchingFixSessionMessagesStore batching = getBatchingFixSessionMessagesStoreMock();
+        doAnswer(i -> {
+            FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] messages = i.getArgument(0);
+            for (int n = 0; n < i.<Integer>getArgument(1); n++) {
+                if (messages[n].getSequenceNumber() == 3) {
+                    throw new IllegalStateException("test exception");
+                }
+            }
+            for (int n = 0; n < i.<Integer>getArgument(1); n++) {
+                stored.add(messages[n].getSequenceNumber());
+            }
+            return null;
+        }).when(batching).storeSentFixMessages(any(), anyInt());
+        doAnswer(i -> {
+            if (i.<Long>getArgument(0) == 3) {
+                throw new IllegalStateException("test exception");
+            }
+            return stored.add(i.getArgument(0));
+        }).when(batching).storeMessageSent(anyLong(), any());
+        messageStore = batching;
+        recreateStore(10);
+        asyncMessageStore.start();
+
+        for (long seqNum = 1; seqNum <= 5; seqNum++) {
+            asyncMessageStore.storeMessageSent(seqNum, testMessage);
+        }
+
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
+        assertThat(stored).containsExactlyInAnyOrder(1L, 2L, 4L, 5L);
+        assertThat(asyncMessageStore.getLostWrites()).isEqualTo(1);
+    }
+
+    @Test
+    void aResetForgetsTheWritesLost() {
+        doThrow(new IllegalStateException("test exception")).when(messageStore).storeMessageSent(eq(1L), any());
+        recreateStore(0);
+        asyncMessageStore.start();
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getLostWrites()).isEqualTo(1));
+
+        asyncMessageStore.resetSequenceNumbers();
+
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getLostWrites()).isZero());
+    }
+
+    private void storeRefusingMessage2ItHolds(List<Long> stored) {
+        FixMessagesStore.BatchingFixSessionMessagesStore batching = getBatchingFixSessionMessagesStoreMock();
+        doAnswer(i -> {
+            FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] messages = i.getArgument(0);
+            for (int n = 0; n < i.<Integer>getArgument(1); n++) {
+                if (messages[n].getSequenceNumber() == 2) {
+                    throw new IllegalStateException("duplicate key");
+                }
+            }
+            return null;
+        }).when(batching).storeSentFixMessages(any(), anyInt());
+        doAnswer(i -> {
+            if (i.<Long>getArgument(0) == 2) {
+                throw new IllegalStateException("duplicate key");
+            }
+            return stored.add(i.getArgument(0));
+        }).when(batching).storeMessageSent(anyLong(), any());
+        doAnswer(i -> {
+            if (i.<Long>getArgument(0) == 2) {
+                ((FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer) i.getArgument(2)).onMessage(2, testMessage);
+            }
+            return null;
+        }).when(batching).find(anyLong(), anyLong(), any());
+        messageStore = batching;
+        recreateStore(10);
+        asyncMessageStore.start();
+    }
+
+    @Test
+    void aMessageTheStoreAlreadyHoldsIsNotLost() {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        storeRefusingMessage2ItHolds(stored);
+
+        for (long seqNum = 1; seqNum <= 3; seqNum++) {
+            asyncMessageStore.storeMessageSent(seqNum, testMessage);
+        }
+
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
+        assertThat(stored).containsExactlyInAnyOrder(1L, 3L);
+        assertThat(asyncMessageStore.getLostWrites()).isZero();
+    }
+
+    @Test
+    void aMessageTheStoreAlreadyHoldsIsNoErrorAndCarriesNoStackTrace() {
+        storeRefusingMessage2ItHolds(new CopyOnWriteArrayList<>());
+
+        for (long seqNum = 1; seqNum <= 3; seqNum++) {
+            asyncMessageStore.storeMessageSent(seqNum, testMessage);
+        }
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getPendingWrites()).isZero());
+
+        assertThat(storeLog.getAllLoggingEvents())
+                .anySatisfy(e -> assertThat(e.getFormattedMessage()).contains("already stored"))
+                .noneMatch(e -> e.getLevel() == Level.ERROR)
+                .allMatch(e -> e.getThrowable().isEmpty());
+    }
+
+    @Test
+    void aLostWriteIsAnErrorWithItsStackTrace() {
+        FixMessagesStore.BatchingFixSessionMessagesStore batching = getBatchingFixSessionMessagesStoreMock();
+        doThrow(new IllegalStateException("test exception")).when(batching).storeSentFixMessages(any(), anyInt());
+        doThrow(new IllegalStateException("test exception")).when(batching).storeMessageSent(anyLong(), any());
+        messageStore = batching;
+        recreateStore(10);
+        asyncMessageStore.start();
+
+        asyncMessageStore.storeMessageSent(1, testMessage);
+        await().untilAsserted(() -> assertThat(asyncMessageStore.getLostWrites()).isEqualTo(1));
+
+        assertThat(storeLog.getAllLoggingEvents()).filteredOn(e -> e.getLevel() == Level.ERROR)
+                .extracting(e -> e.getThrowable().map(Throwable::getMessage).orElse(null))
+                .contains("test exception");
+    }
+
+    @Test
+    void aWriteInProgressWhenTheStoreStopsIsWrittenAtItsNextStart() throws InterruptedException {
+        List<Long> stored = new CopyOnWriteArrayList<>();
+        CountDownLatch writeStarted = new CountDownLatch(1);
+        CountDownLatch writeReleased = new CountDownLatch(1);
+        AtomicBoolean firstWrite = new AtomicBoolean(true);
+        doAnswer(i -> {
+            if (firstWrite.getAndSet(false)) {
+                writeStarted.countDown();
+                writeReleased.await();
+                throw new IllegalStateException("test exception");
+            }
+            return stored.add(i.getArgument(0));
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        recreateStore(0);
+        asyncMessageStore.start();
+
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        writeStarted.await();
+        asyncMessageStore.stop(Deadline.immediate());
+        writeReleased.countDown();
+        asyncMessageStore.start();
+
+        await().untilAsserted(() -> assertThat(stored).containsExactly(1L));
+        assertThat(asyncMessageStore.getLostWrites()).isZero();
     }
 
     @Test
@@ -390,7 +634,7 @@ class TestAsyncMessagesStore {
 
         assertBatchingMessageProcessed(1, 2, 1, batchingFixSessionMessagesStore, testMessage);
 
-        reset(batchingFixSessionMessagesStore);
+        resetBatchingMock(batchingFixSessionMessagesStore);
         when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenReturn(false);
         Mockito.doThrow(new IllegalStateException("test exception")).when(batchingFixSessionMessagesStore).storeSentFixMessages(any(), anyInt());
 
@@ -438,7 +682,7 @@ class TestAsyncMessagesStore {
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore).storeNextOutgoingSeqNum(2L));
         assertBatchingMessageProcessed(1, 10, 1, batchingFixSessionMessagesStore, testMessage);
 
-        Mockito.reset(batchingFixSessionMessagesStore);
+        resetBatchingMock(batchingFixSessionMessagesStore);
         when(batchingFixSessionMessagesStore.isUnderlyingStorageResourceAvailable()).thenReturn(true);
 
         asyncMessageStore.storeNextOutgoingSeqNum(2L);
@@ -449,6 +693,83 @@ class TestAsyncMessagesStore {
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore, times(1)).storeNextOutgoingSeqNum(anyLong()));
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore).storeNextOutgoingSeqNum(5L));
         assertBatchingMessageProcessed(1, 10, 2, batchingFixSessionMessagesStore, testMessage);
+    }
+
+    @Test
+    void writesArePendingUntilTheyReachTheWrappedStore() throws InterruptedException {
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            release.await();
+            return null;
+        }).when(messageStore).storeMessageSent(anyLong(), any());
+        asyncMessageStore.start();
+        assertThat(asyncMessageStore.getPendingWrites()).isZero();
+
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+        asyncMessageStore.storeMessageSent(2L, testMessage);
+
+        assertThat(asyncMessageStore.getPendingWrites()).isEqualTo(2);
+        release.countDown();
+        await().until(() -> asyncMessageStore.getPendingWrites() == 0);
+    }
+
+    @Test
+    void aBatchWritesNothingFromBeforeAResetAfterIt() {
+        List<String> writes = batchingStoreRecording();
+
+        asyncMessageStore.storeMessageSent(7L, testMessage);
+        asyncMessageStore.storeNextIncomingSeqNum(50L);
+        asyncMessageStore.resetSequenceNumbers();
+        asyncMessageStore.storeMessageSent(1L, testMessage);
+
+        await().untilAsserted(() -> {
+            List<String> written = List.copyOf(writes);
+            assertThat(written.subList(written.indexOf("reset") + 1, written.size())).containsExactly("message 1", "outgoing 2");
+        });
+    }
+
+    @Test
+    void aBatchEndingInAResetLeavesTheStoreReset() {
+        List<String> writes = batchingStoreRecording();
+
+        asyncMessageStore.storeMessageSent(7L, testMessage);
+        asyncMessageStore.storeNextIncomingSeqNum(50L);
+        asyncMessageStore.resetSequenceNumbers();
+
+        await().untilAsserted(() -> assertThat(writes).contains("reset"));
+        await().during(Duration.ofMillis(200)).untilAsserted(() -> assertThat(writes).endsWith("reset"));
+    }
+
+    private List<String> batchingStoreRecording() {
+        asyncMessagesStore.stop(Deadline.immediate());
+        List<String> writes = new CopyOnWriteArrayList<>();
+        FixMessagesStore.BatchingFixSessionMessagesStore store = getBatchingFixSessionMessagesStoreMock();
+        doAnswer(invocation -> {
+            FixMessagesStore.BatchingFixSessionMessagesStore.SentFixMessage[] messages = invocation.getArgument(0);
+            int count = invocation.getArgument(1);
+            for (int i = 0; i < count; i++) {
+                writes.add("message " + messages[i].getSequenceNumber());
+            }
+            return null;
+        }).when(store).storeSentFixMessages(any(), anyInt());
+        doAnswer(invocation -> writes.add("outgoing " + invocation.getArgument(0))).when(store).storeNextOutgoingSeqNum(anyLong());
+        doAnswer(invocation -> writes.add("incoming " + invocation.getArgument(0))).when(store).storeNextIncomingSeqNum(anyLong());
+        doAnswer(invocation -> writes.add("reset")).when(store).resetSequenceNumbers();
+        asyncMessagesStoreSettings = asyncMessagesStoreSettings.toBuilder()
+                .asyncStoreSettings(asyncMessagesStoreSettings.getAsyncStoreSettings().toBuilder()
+                        .asyncQueueDirectory("./target/" + System.nanoTime())
+                        .eventsBatching(10)
+                        .batchingFlushInterval(Duration.ofMillis(100))
+                        .build())
+                .wrappedFixMessagesStoreSettings(TestingFixMessagesStoreSettings.builder()
+                        .testingFixSessionMessagesStore(store)
+                        .build())
+                .build();
+        asyncMessagesStore = new AsyncMessagesStore(asyncMessagesStoreSettings);
+        asyncMessagesStore.start();
+        asyncMessageStore = (AsyncMessageStore) asyncMessagesStore.getStore(fixSessionId, probes);
+        asyncMessageStore.start();
+        return writes;
     }
 
     @Test
@@ -488,13 +809,13 @@ class TestAsyncMessagesStore {
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore).resetSequenceNumbers());
         assertBatchingMessageProcessed(1, 10, 1, batchingFixSessionMessagesStore, testMessage);
 
-        reset(batchingFixSessionMessagesStore);
+        resetBatchingMock(batchingFixSessionMessagesStore);
         for (int i = 0; i < 5; i++) {
             asyncMessageStore.storeMessageSent(i, testMessage);
         }
         await().untilAsserted(() -> verify(batchingFixSessionMessagesStore).storeSentFixMessages(any(), eq(5)));
 
-        reset(batchingFixSessionMessagesStore);
+        resetBatchingMock(batchingFixSessionMessagesStore);
         for (int i = 0; i < 14; i++) {
             asyncMessageStore.storeMessageSent(i, testMessage);
         }

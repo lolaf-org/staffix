@@ -19,7 +19,7 @@ forced onto a management protocol you do not use.
 | `getManagedFixSessions()` | the live sessions |
 | `getManagedFixSessionsSettings()` | their settings |
 | `getFixSessionsSettingsStoresInstanceIds()` | which settings stores exist |
-| `reloadFixSessionsSettingsStore(String)` | re-read one, picking up changes without a restart |
+| `reloadFixSessionsSettingsStore(String, boolean)` | re-read one, picking up changes without restarting the engine; see [Reloading settings](#reloading-settings) |
 | `switchInitiatorSession(FixSessionId)` | move an initiator to another of its [targets](#switching-an-initiator-to-a-backup) |
 | `getInitiatorsTargets()` | each initiator's sessions, and the one it runs |
 | `getAcceptorsSessions()` | each acceptor's sessions |
@@ -52,8 +52,18 @@ engine-level MBean. Any JMX client (JConsole, VisualVM, your monitoring agent) c
 
 The session MBean's `Probes` and `ProbeStates` attributes list its [probes](alerting.md) and where each stood at its
 last evaluation, with each probe's labels and runbook URL; the engine-level MBean's `ActiveAlerts` lists every probe in
-alert across the engine, with its runbook URL. Levels are strings, times ISO-8601. The session MBean's
-`clearAlert(String probeName)` [clears a probe's alert by hand](alerting.md#clearing-an-alert-by-hand).
+alert across the engine, with its scope (`session/group.name`, or `component/ha` for one of the engine's own
+components) and runbook URL. Levels are strings, times ISO-8601. The session MBean's `clearAlert(String probeName)`
+[clears a probe's alert by hand](alerting.md#clearing-an-alert-by-hand). The engine's own components with probes, such
+as its high availability, are listed by the engine-level MBean's `ProbedComponents`, with `getComponentProbes`,
+`getComponentProbeStates` and `clearComponentAlert` taking the component's name.
+
+An engine with [high availability](high-availability.md) also registers `type=FixHa`: `Status` and `SessionStatuses`
+(the role, the epoch, the leader, what the election supports, each follower and replicated session), and the
+operations `switchover()` (answering its outcome), `updateElectable(boolean)` (maintenance mode), `resync()` and
+`resyncSession(String fixSessionId, String fixSessionType)`. An engine that does not lead refuses the session actions above, since
+running one there would put the session up on both nodes. Changes to a replicated settings store are refused there too:
+make them on the leader, which [passes them to the follower](high-availability.md#session-settings-on-both-nodes).
 
 The engine-level MBean names a session by its full `toString()` form, `alpha.trading:VERSION_44:SENDER->TARGET`, in
 both `getInitiatorsTargets()` and `switchInitiatorSession(String)`: a session name is unique only within its group.
@@ -109,30 +119,40 @@ state: read `status` again to see it.
 | request, under `v1/` | |
 |---------|---|
 | `GET sessions` | every running session: its configs (for an initiator the main one, then its backups, with the addresses each dials), each config's identity and dictionaries, its messages logger and monitoring plugin instance ids, the session settings store holding it; with a `version`, also its `ETag`, that changes only when the sessions or their settings do |
-| `GET status` | every session's `status` (`LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`, `LOGGED_OUT_OUTSIDE_SESSION_TIME`, `LOGGED_OUT_INSIDE_SESSION_TIME`), running config, sequence numbers, `probesVersion` and the worst level of its ongoing alerts (`alertLevel`, absent when none), with `sessionsVersion` and `alertsVersion`: fetch `sessions` or `alerts` again when one differs |
-| `GET alerts` | every probe in alert across the engine: session, probe, level, message, since and runbook URL, with the `alertsVersion` it is at least as recent as |
+| `GET status` | every session's `status` (`LOGGED_IN`, `LOGGED_OUT_BY_OPERATOR`, `LOGGED_OUT_OUTSIDE_SESSION_TIME`, `LOGGED_OUT_INSIDE_SESSION_TIME`), running config, sequence numbers, whether an update of its settings waits for its next connection (`pendingSettingsUpdate`), `probesVersion` and the worst level of its ongoing alerts (`alertLevel`, absent when none), the same for each of the engine's own components with probes (`components`), with `sessionsVersion` and `alertsVersion`: fetch `sessions` or `alerts` again when one differs |
+| `GET alerts` | every probe in alert across the engine: session (or `component`), probe, level, message, since and runbook URL, with the `alertsVersion` it is at least as recent as |
 | `GET sessions/{group}/{name}/probes` | the session's [probes](alerting.md): name, description, intervals, labels and runbook URL; the `ETag` is its `probesVersion` in `status`, which changes only when a probe is added or removed |
 | `GET sessions/{group}/{name}/probes/states` | where each probe stood at its last evaluation: level, message and since while in alert |
 | `POST sessions/{group}/{name}/probes/{probe}/clear` | [clears the probe's alert by hand](alerting.md#clearing-an-alert-by-hand); 409 when it is not in alert or its evaluator refuses |
+| `GET engine/{component}/probes`, `GET engine/{component}/probes/states`, `POST engine/{component}/probes/{probe}/clear` | the same for one of the engine's own components with probes, such as `ha`; 404 for a component without probes |
 | `GET schemas/session-settings` | the JSON Schema of a session's settings document, every field described, with its default |
 | `GET sessions/{group}/{name}/settings` | the session's settings as a document of that schema; an application setting declared secret, or whose name looks secret, is masked |
-| `PUT sessions/{group}/{name}/settings` | replaces them in the store holding them; the live session restarts on them unless `restartLiveSessionOnUpdate` is off. A masked value keeps the session's. An acceptor session's CompIDs may change; an initiator's id is set by its targets |
-| `DELETE sessions/{group}/{name}/settings` | removes the session from its store; it is disconnected unless `disconnectOnRemove` is off |
+| `PUT sessions/{group}/{name}/settings?restart=true\|false` | replaces them in the store holding them. `restart` is required: `true` restarts a live session on them now, `false` leaves it on its old settings until it next connects; a disconnected session is rebuilt on them at once either way. A masked value keeps the session's. An acceptor session's CompIDs may change, with `restart=true`; an initiator's id is set by its targets |
+| `DELETE sessions/{group}/{name}/settings` | removes the session from its store, which stops it: a live session is logged out and disconnected |
 | `GET sessions/{group}/{name}/application-settings` | the application settings the session's application declares, `{"id", "description", "secret"}` |
 | `POST sessions/{group}/{name}/logon`, `logout` | |
 | `POST sessions/{group}/{name}/reset` | `{"mode": "RESET_SEQUENCE"}` |
 | `PUT sessions/{group}/{name}/seqnums` | `{"incoming": 1, "outgoing": 1}`, either may be left out |
 | `POST sessions/{group}/{name}/messages` | `{"messages": ["35=B|148=hello|"], "separator": "|", "possDup": false}`, sent in order; stops at the first refused one |
 | `POST sessions/{group}/{name}/activate` | `{"config": "trading-drp"}` switches an initiator session to one of its configs |
-| `GET meters`, `GET sessions/{group}/{name}/meters` | the meters each running session (or this one) publishes, with their descriptions: the monitoring's own and the application's custom timers once it asked for them |
+| `GET sessions/meters`, `GET sessions/{group}/{name}/meters` | the meters each running session (or this one) publishes, with their descriptions: the monitoring's own and the application's custom timers once it asked for them |
+| `GET engine/meters` | the meters of the engine's own components, such as its high availability, tagged with the engine alone |
+| `GET ha`, `GET ha/sessions` | the engine's [high availability](high-availability.md): role, epoch, leader, what its election supports, each follower (connected, in sync, unsent bytes, lag) or the connection to the leader; and per replicated session, its mode, whether a follower holds it, and on a follower whether it would be taken over cleanly now. 404 on an engine without |
+| `POST ha/switchover` | hands leadership to the follower: logs the sessions out, hands every write over, transfers; answers `{"outcome": "TRANSFERRED"}`, or `NO_FOLLOWER_IN_SYNC`, `FOLLOWER_STORE_BEHIND` (nothing changed), `NOT_HANDED_OVER`, `NOT_TRANSFERRED` (this node leads again) |
+| `POST ha/electable` | `{"electable": false}` takes the node out of elections for maintenance, `true` puts it back; a leader switches over first; 409 when the election cannot, or that switchover does not succeed |
+| `POST ha/resync`, `POST ha/sessions/{group}/{name}/resync` | sends the follower a fresh copy of every replicated session, or of one, named as `ha/sessions` lists it; leader only (409 otherwise) |
 | `GET session-components` | what a session's settings can name: application factories with their application ids, message stores, messages loggers, session plugins with the plugin types (full class names) they serve |
-| `GET session-settings-stores`, `POST session-settings-stores/{id}/reload` | each store says whether a change made through the API survives a restart (`persistent`) |
+| `GET session-settings-stores`, `POST session-settings-stores/{id}/reload?restart=true\|false` | each store says whether a change made through the API survives a restart (`persistent`); a reload takes the required `restart` as `PUT sessions/{group}/{name}/settings` does |
 | `POST session-settings-stores/{id}/sessions` | adds a session, a settings document, to the store, which starts it; answers `201` with its `Location` |
 | `GET components` | the messages loggers and session plugins the engine was built with, each with its type and plain settings (nested ones included; functions, executors and credentials left out or masked); a plugin also lists the plugin types it serves, a wrapper's delegates included. Introspection: the fields follow the settings classes and may change with them |
 | `GET dictionaries/{id}` | a dictionary a session config lists in `sessions`, with its SHA-256 as `ETag` |
 
 A session switching config while an operation on it runs answers 409: retry. The read-only token is answered 403 for
 anything but a `GET`.
+
+With [high availability](high-availability.md#session-settings-on-both-nodes), a change to a replicated settings store is
+made on the leader (409 on a follower) and reaches the follower without the call waiting for it; on a follower,
+`GET ha` lists what still differs in `sessionSettingsDifferences`.
 
 An error answers with its status and an `application/problem+json` body, `{"status": 409, "detail": "..."}`.
 The API is described by an OpenAPI 3.1 document at `GET /openapi.yaml`, served without a token.
@@ -171,7 +191,7 @@ properties are in [Spring Boot](spring-boot.md#monitoring-and-admin).
 
 `staffix.actuator.fix-session-state-contributes-to-health-status=true` turns the health endpoint DOWN when a session
 that should be logged in is not: it is inside its schedule, nobody logged it out on purpose, and it is not logged in.
-A session outside its trading hours, or logged out through the admin API, stays UP: DOWN is exactly a
+A session outside its session time, or logged out through the admin API, stays UP: DOWN is exactly a
 `logonStatus` of `LOGGED_OUT_INSIDE_SESSION_TIME`. The health details show each session's `logonStatus`,
 `desiredState` and `withinSessionTime`, so a DOWN can be traced to its session. It is off by
 default: a load balancer should usually see a counterparty outage, but a liveness probe should not restart the
@@ -225,27 +245,23 @@ possible.
 
 ## Reloading settings
 
-`reloadFixSessionsSettingsStore(instanceId)` re-reads one settings store. With the file-backed store this is how a
-YAML change reaches a running engine: edit the file, call reload, and the engine picks up the new settings without a
-restart.
+`reloadFixSessionsSettingsStore(instanceId, restartLiveSessions)` re-reads one settings store. With the file-backed
+store this is how a YAML change reaches a running engine: edit the file, call reload, and the engine picks up the new
+settings without a restart.
 
 The engine reconciles what it read against what it manages, keyed by `FixSessionId`, and applies the difference
 through the store's `add`, `remove` and `update`, which is what initiators and acceptors react to.
 
-**Reloading is not a read-only operation.** By default a session whose settings changed is restarted so the new
-values take effect, and a session whose settings disappeared is disconnected. On a running engine that means a reload
-can drop sessions, which is rarely what you want in the middle of a trading day.
+**Reloading is not a read-only operation.** Each difference is applied as the admin API's own calls apply it:
 
-Each session decides its own exposure, through two settings covered in
-[Configuring a session](configuring-sessions.md#when-settings-change-under-a-running-session):
+| change | live session | disconnected session |
+|--------|--------------|----------------------|
+| settings added | started | started |
+| settings changed, `restartLiveSessions` false | keeps running on its old settings until it next connects | rebuilt on the new ones at once |
+| settings changed, `restartLiveSessions` true | restarted on the new ones now | rebuilt on the new ones at once |
+| settings removed | logged out and stopped | stopped |
 
-| setting | default | on reload |
-|---------|---------|-----------|
-| `disconnectOnRemove` | `true` | settings removed → session disconnected |
-| `restartLiveSessionOnUpdate` | `true` | settings changed → live session restarted |
+A removal is never deferred: a reload that no longer finds a session's settings stops that session, so check what a
+store holds before reloading it on a running engine.
 
-Set both to `false` on the sessions that must not be disturbed, and a reload becomes a configuration change that
-takes effect at their next connection instead.
-
-The same applies to calling `add`, `remove` or `update` on a store directly; reload is only one of their callers,
-and the flags govern every path.
+Calling `add`, `remove` or `update` on a store directly behaves as a reload with `restartLiveSessions` false.

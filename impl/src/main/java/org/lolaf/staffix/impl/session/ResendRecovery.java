@@ -155,7 +155,7 @@ public class ResendRecovery {
      * <p>
      * A resend completes in the middle of decoding the message that completed it, and replaying feeds whole messages
      * back through a parser: doing it there and then would re-enter the parser while it still holds the state of the
-     * message in flight. {@link FixSessionImpl#onMessageRead} picks this up once the read is fully parsed.
+     * message in flight. {@link IncomingMessagesComponent#onMessageDecodingEnd} picks this up once it is done.
      */
     public void requestOutOfSequenceMessagesReplay() {
         outOfSequenceMessagesReplayRequested = true;

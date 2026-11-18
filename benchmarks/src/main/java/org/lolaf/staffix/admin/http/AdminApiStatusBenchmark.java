@@ -68,7 +68,7 @@ public class AdminApiStatusBenchmark {
     public byte[] status(EngineState state) throws IOException {
         SessionsDocument document = state.documents.get();
         return state.mapper.writeValueAsBytes(EngineStatus.of(state.adminApi, document.getRunning(), document.getVersion(),
-                state.probes.getAlertsVersion(), fixSessionId -> state.probes.get(fixSessionId).getVersion()));
+                state.probes.getAlertsVersion(), scope -> state.probes.get(scope).getVersion()));
     }
 
     @Benchmark

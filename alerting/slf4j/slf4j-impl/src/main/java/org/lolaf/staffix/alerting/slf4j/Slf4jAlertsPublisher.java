@@ -21,7 +21,7 @@ import org.lolaf.staffix.api.alerting.AlertEvent;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisher;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
-import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -32,9 +32,7 @@ import org.slf4j.event.Level;
  */
 public class Slf4jAlertsPublisher extends Startable.SimpleStartable<FixAlertsPublisher> implements FixAlertsPublisher {
 
-    static final String TEMPLATE = "Alert {} on session {}, probe {} ({}): {} {} (since {})";
-    private static final String FIX_SESSION_NAME = "fixSessionName";
-    private static final String FIX_SESSION_GROUP = "fixSessionGroup";
+    static final String TEMPLATE = "Alert {} on {} {}, probe {} ({}): {} {} (since {})";
 
     private final Slf4jAlertsPublisherSettings settings;
 
@@ -49,19 +47,18 @@ public class Slf4jAlertsPublisher extends Startable.SimpleStartable<FixAlertsPub
 
     @Override
     public void publish(AlertEvent event) {
-        FixSessionId fixSessionId = event.getFixSessionId();
-        Logger logger = LoggerFactory.getLogger(settings.getLoggerNameForFixSession().apply(fixSessionId));
+        ProbeScope scope = event.getProbeId().getScope();
+        Logger logger = LoggerFactory.getLogger(settings.getLoggerNameForScope().apply(scope));
         if (settings.isUseMDC()) {
-            MDC.put(FIX_SESSION_GROUP, fixSessionId.getGroup());
-            MDC.put(FIX_SESSION_NAME, fixSessionId.getName());
+            scope.getLabels().forEach(MDC::put);
         }
         try {
-            logger.atLevel(levelOf(event)).log(TEMPLATE, event.isClearedManually() ? "CLEARED manually" : event.getType(), fixSessionId.getQualifiedName(), event.getProbeName(),
-                    event.getProbeDescription(), event.getAlert().getLevel(), event.getAlert().getMessage(), event.getSince());
+            logger.atLevel(levelOf(event)).log(TEMPLATE, event.isClearedManually() ? "CLEARED manually" : event.getType(), scope.getType(),
+                    scope.getName(), event.getProbeId().getName(), event.getProbeDescription(), event.getAlert().getLevel(),
+                    event.getAlert().getMessage(), event.getSince());
         } finally {
             if (settings.isUseMDC()) {
-                MDC.remove(FIX_SESSION_GROUP);
-                MDC.remove(FIX_SESSION_NAME);
+                scope.getLabels().keySet().forEach(MDC::remove);
             }
         }
     }

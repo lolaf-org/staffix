@@ -36,6 +36,11 @@ public class JdbcStoreEntryProps {
      */
     private String tablePrefix;
     /**
+     * Overrides the storage identity derived from the database, which high availability compares to refuse replicating
+     * into the leader's own tables.
+     */
+    private String storageIdentity;
+    /**
      * How many messages a session retains before the oldest are pruned.
      */
     private Integer maxMessagesPerSession;
@@ -43,6 +48,10 @@ public class JdbcStoreEntryProps {
      * How often pruning runs.
      */
     private Duration pruningCheckInterval;
+    /**
+     * Rows a find reads per round trip.
+     */
+    private Integer findFetchSize;
     /**
      * How long store calls must keep succeeding before the session's messages-store alert clears.
      */

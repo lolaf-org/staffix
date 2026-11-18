@@ -1,0 +1,193 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.lolaf.staffix.admin.jmx;
+
+import java.util.List;
+
+/**
+ * The engine's high availability, registered only for an engine that has one. Mirrors
+ * {@link org.lolaf.staffix.api.ha.HaAdmin} with enums, instants and durations as text.
+ */
+public interface FixHaMXBean {
+
+    Status getStatus();
+
+    List<Session> getSessionStatuses();
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#setElectable(boolean)}; not a setter, which JMX would show as a
+     * write-only attribute rather than an operation.
+     */
+    void updateElectable(boolean electable);
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#resync()}.
+     */
+    void resync();
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#resync(org.lolaf.staffix.api.session.FixSessionId,
+     * org.lolaf.staffix.api.session.FixSession.FixSessionType)}; the session as {@link Session} names it.
+     */
+    void resyncSession(String fixSessionId, String fixSessionType);
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#switchover()}.
+     *
+     * @return its {@link org.lolaf.staffix.api.ha.SwitchoverOutcome} name
+     */
+    String switchover();
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaStatus}; leader is null unless this node follows one.
+     */
+    interface Status {
+
+        String getNodeId();
+
+        /**
+         * Null when the pair is unnamed.
+         */
+        String getPairName();
+
+        String getRole();
+
+        long getEpoch();
+
+        String getLeaderId();
+
+        boolean isLeadershipValid();
+
+        String getLeaderElectionType();
+
+        String getSwitchoverMaxDuration();
+
+        String getRoleSince();
+
+        /**
+         * Null when the node publishes no meters of its own.
+         */
+        String getMonitoringInstanceId();
+
+        boolean isTransferLeadershipSupported();
+
+        boolean isElectableSupported();
+
+        boolean isElectable();
+
+        List<FollowerConnection> getFollowerConnections();
+
+        List<DroppedFollower> getDroppedFollowers();
+
+        List<SessionSettingsDifference> getSessionSettingsDifferences();
+
+        Leader getLeader();
+    }
+
+    interface FollowerConnection {
+
+        String getNodeId();
+
+        int getLane();
+
+        String getAddress();
+
+        boolean isConnected();
+
+        boolean isInSync();
+
+        boolean isSnapshotInProgress();
+
+        long getUnsentBytes();
+
+        long getLagMillis();
+    }
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaStatus.DroppedFollower}; times as ISO-8601, held off until null once it
+     * may connect.
+     */
+    interface DroppedFollower {
+
+        String getNodeId();
+
+        int getLane();
+
+        String getDroppedAt();
+
+        String getHeldOffUntil();
+    }
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaStatus.SessionSettingsDifference}.
+     */
+    interface SessionSettingsDifference {
+
+        String getStore();
+
+        String getFixSessionType();
+
+        String getFixSessionId();
+
+        String getKind();
+    }
+
+    interface Leader {
+
+        String getLeaderId();
+
+        String getAddress();
+
+        boolean isConnected();
+
+        boolean isInSync();
+    }
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaSessionStatus}; the session in its {@code toString()} form.
+     */
+    interface Session {
+
+        String getFixSessionId();
+
+        String getFixSessionType();
+
+        String getReplicationMode();
+
+        String getReplicationAckTimeout();
+
+        boolean isInSync();
+
+        String getNotReplicatedReason();
+
+        boolean isLastSendUnacknowledged();
+
+        long getUnacknowledgedSends();
+
+        long getNextIncomingSeqNum();
+
+        long getNextOutgoingSeqNum();
+
+        boolean isHandedOver();
+
+        long getPendingWrites();
+
+        /**
+         * Messages this node's store gave up on since its last reset.
+         */
+        long getLostWrites();
+    }
+}

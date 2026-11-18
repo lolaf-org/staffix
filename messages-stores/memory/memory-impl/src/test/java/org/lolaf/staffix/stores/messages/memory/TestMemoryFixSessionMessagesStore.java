@@ -19,10 +19,11 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
-import org.lolaf.staffix.stores.messages.testkit.AbstractFixSessionMessagesStoreTest;
+import org.lolaf.staffix.stores.messages.testkit.AbstractAllocationFreeFixSessionMessagesStoreTest;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.function.BiPredicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Test class for {@link MemoryFixSessionMessagesStore} using the generic test kit.
  */
-class TestMemoryFixSessionMessagesStore extends AbstractFixSessionMessagesStoreTest<MemoryFixSessionMessagesStore> {
+class TestMemoryFixSessionMessagesStore extends AbstractAllocationFreeFixSessionMessagesStoreTest<MemoryFixSessionMessagesStore> {
 
     private MemoryMessageStoreSettings settings;
 
@@ -49,6 +50,14 @@ class TestMemoryFixSessionMessagesStore extends AbstractFixSessionMessagesStoreT
     @Override
     protected MemoryFixSessionMessagesStore createGroupedSessionStore(FixSessionId sessionId) {
         return new MemoryFixSessionMessagesStore(settings);
+    }
+
+    @Test
+    void eachStoreIsItsOwnStorage() {
+        MemoryFixSessionMessagesStore other = createGroupedSessionStore(sessionId);
+
+        assertThat(messageStore.getStorageIdentity()).hasValueSatisfying(id -> assertThat(id).startsWith("memory:"));
+        assertThat(other.getStorageIdentity()).isPresent().isNotEqualTo(messageStore.getStorageIdentity());
     }
 
     @Test
@@ -139,5 +148,34 @@ class TestMemoryFixSessionMessagesStore extends AbstractFixSessionMessagesStoreT
         for (int i = 1; i <= 4; i++) {
             assertMessage(messages, i - 1, "test-event-longer-message" + i);
         }
+    }
+
+    @Test
+    void aRangeFoundAfterTheSlotsWrapIsInAscendingOrder() {
+        setupDisabledStore(4);
+        messageStore.start();
+        for (int seqNum = 1; seqNum <= 6; seqNum++) {
+            messageStore.storeMessageSent(seqNum, ByteBuffer.wrap(("message" + seqNum).getBytes()));
+        }
+
+        assertThat(seqNums(messageStore.find(3, 6))).containsExactly(3L, 4L, 5L, 6L);
+        assertThat(seqNums(messageStore.find(1, 6))).containsExactly(3L, 4L, 5L, 6L);
+        assertThat(seqNums(messageStore.find(1, Long.MAX_VALUE))).containsExactly(3L, 4L, 5L, 6L);
+    }
+
+    @Test
+    void aSequenceNumberMovedAheadLeavesOnlyTheMessagesStillStored() {
+        setupDisabledStore(4);
+        messageStore.start();
+        for (long seqNum : new long[]{1, 2, 7, 8}) {
+            messageStore.storeMessageSent(seqNum, ByteBuffer.wrap(("message" + seqNum).getBytes()));
+        }
+
+        assertThat(seqNums(messageStore.find(2, 5))).containsExactly(2L);
+        assertThat(seqNums(messageStore.find(1, 8))).containsExactly(1L, 2L, 7L, 8L);
+    }
+
+    private static List<Long> seqNums(List<FixMessagesStore.FixSessionMessagesStore.StoreMessage> messages) {
+        return messages.stream().map(FixMessagesStore.FixSessionMessagesStore.StoreMessage::getSeqNum).collect(Collectors.toList());
     }
 }

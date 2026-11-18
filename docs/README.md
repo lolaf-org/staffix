@@ -15,12 +15,14 @@ one command and is the shortest path to a working session. Then come back here.
 | [Decoding in depth](decoding-messages-advanced.md) | Why decoding works this way, what a header field costs, and what do I use when typed bindings are not enough? |
 | [FIX versions and dictionaries](fix-versions-and-dictionaries.md) | Which package do I depend on, how do I run several FIX versions at once, and how do I generate one from a counterparty's dictionary? |
 | [Stores and loggers](stores-and-loggers.md) | Where do my messages get persisted and logged, and how do I keep that off the latency path? |
+| [Tuning the async queue](async-queue-tuning.md) | Where do I put the async store's and logger's queue, should it use huge pages, and what do the pretouch, batching and reader settings change? |
 | [Tuning for latency](tuning-for-latency.md) | What do I actually change to get the numbers in [Performance](performance.md), and what does each one cost? |
 | [Efficient identifier usage](efficient-identifiers-usage.md) | How do I mint and decode ids without allocating, and do I want a UUID or a Snowflake? |
 | [Monitoring](monitoring.md) | How do I get metrics, traces and dashboards without putting them on the message path? |
 | [Session plugins](session-plugins.md) | How do I attach my own behaviour to every message (stamp a field, audit, measure) without touching the application? |
 | [Network monitoring](network-monitoring.md) | How long is the line to my counterparty, and do our clocks agree? |
 | [Alerting](alerting.md) | How do I get told when a session is down, a store falls behind, or my own condition goes wrong? |
+| [High availability](high-availability.md) | How do I run a follower engine that takes over my sessions when the leader fails, and what does my counterparty see? |
 | [Runtime administration](runtime-administration.md) | How do I log a session on, reset a sequence number, or reload settings on a running engine, over the protocol I actually use? |
 | [Spring Boot](spring-boot.md) | How do I declare the whole engine in `application.properties`? |
 | [Performance](performance.md) | What are the measured latency and allocation figures, and how is that latency achieved? |

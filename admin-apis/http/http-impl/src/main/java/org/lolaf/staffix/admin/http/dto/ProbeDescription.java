@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.http.dto;
 import lombok.Value;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -27,21 +28,21 @@ import java.util.Map;
 public class ProbeDescription {
     String name;
     String description;
-    String evaluationInterval;
+    Duration evaluationInterval;
     /**
      * Absent for a probe that publishes transitions only.
      */
-    String reminderInterval;
+    Duration reminderInterval;
     Map<String, String> labels;
     /**
      * Absent for a probe without a runbook.
      */
     String runbookUrl;
-    boolean onlyWhileLoggedIn;
+    boolean onlyWhileActive;
 
     public static ProbeDescription of(ProbeDefinition probe) {
-        return new ProbeDescription(probe.getName(), probe.getDescription(), probe.getEvaluationInterval().toString(),
-                probe.getReminderInterval().map(Object::toString).orElse(null), probe.getLabels(),
-                probe.getRunbookUrl().map(Object::toString).orElse(null), probe.isOnlyWhileLoggedIn());
+        return new ProbeDescription(probe.getName(), probe.getDescription(), probe.getEvaluationInterval(),
+                probe.getReminderInterval().orElse(null), probe.getLabels(),
+                probe.getRunbookUrl().map(Object::toString).orElse(null), probe.isOnlyWhileActive());
     }
 }

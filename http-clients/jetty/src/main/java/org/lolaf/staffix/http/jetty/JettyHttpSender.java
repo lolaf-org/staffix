@@ -40,16 +40,14 @@ import java.util.concurrent.TimeoutException;
 /**
  * {@link HttpSender} backed by the Jetty {@link HttpClient}.
  *
- * <p><strong>The cheapest over plaintext.</strong> Measured on a 16 KB payload over loopback it
- * allocates about 5.9 KB per publish, against 8.3 KB for OkHttp and 17 KB for the JDK client, with
- * OkHttp matching it on time. Jetty pools the byte buffers it does I/O through, where the JDK client
+ * <p><strong>The cheapest over plaintext.</strong> It allocates less per publish than OkHttp, and far
+ * less than the JDK client, with OkHttp matching it on time. Jetty pools the byte buffers it does I/O through, where the JDK client
  * allocates a fresh pair per TLS operation and the legacy stack behind {@code HttpUrlConnectionSender}
  * copies the entity through a stream. An in-cluster collector reached over cleartext is exactly what
  * this is for.
  *
- * <p><strong>Only second over TLS</strong>, at about 28 KB per publish: better than the JDK client's
- * 56 KB, but 2.1 times OkHttp's 13 KB, and the slowest of the three there in time. For an HTTPS
- * collector, prefer OkHttp.
+ * <p><strong>Only second over TLS</strong>: it allocates less than the JDK client but more than OkHttp,
+ * and is slower than OkHttp there. For an HTTPS collector, prefer OkHttp.
  *
  * <p><strong>Requires Java 17.</strong> Jetty 12 is compiled for it, while the rest of this library
  * runs from Java 11, which is why this client lives in a module of its own with a raised baseline

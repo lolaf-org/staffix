@@ -21,10 +21,12 @@ import org.lolaf.staffix.api.FixAcceptor;
 import org.lolaf.staffix.api.FixEngine;
 import org.lolaf.staffix.api.FixInitiator;
 import org.lolaf.staffix.api.alerting.AlertEvent;
+import org.lolaf.staffix.api.alerting.ProbeId;
 import org.lolaf.staffix.api.alerting.FixAlertsPublisherSettings;
 import org.lolaf.staffix.api.application.FixApplication;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -56,7 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StaffixAutoConfigurationTest {
 
     private static final FixSessionId ACCEPTOR_SESSION_ID =
-            FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_1");
+            FixSessionId.of("acceptor-1", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_1");
     private static final FixSessionId INITIATOR_SESSION_ID =
             FixSessionId.of("test", FixRegularVersion.VERSION_44, "INITIATOR_1", "ACCEPTOR");
     private static final FixSessionId BACKUP_SESSION_ID =
@@ -66,12 +68,12 @@ class StaffixAutoConfigurationTest {
      * the whole run.
      */
     private static final FixSessionId NEVER_CONNECTED_SESSION_ID =
-            FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_2");
+            FixSessionId.of("acceptor-2", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_2");
     /**
      * Never connected either, with a short session down delay so it raises an alert during the run.
      */
     private static final FixSessionId ALERTING_SESSION_ID =
-            FixSessionId.of("test", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_3");
+            FixSessionId.of("acceptor-3", FixRegularVersion.VERSION_44, "ACCEPTOR", "INITIATOR_3");
 
     @Autowired
     private FixEngine fixEngine;
@@ -141,9 +143,8 @@ class StaffixAutoConfigurationTest {
         Awaitility.await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() -> assertThat(alertsPublisherContributor.getSettings().getEvents())
                         .anySatisfy(event -> {
-                            assertThat(event.getFixSessionId()).isEqualTo(ALERTING_SESSION_ID);
+                            assertThat(event.getProbeId()).isEqualTo(ProbeId.of(FixSessionProbeScope.of(ALERTING_SESSION_ID), "session-down"));
                             assertThat(event.getType()).isEqualTo(AlertEvent.Type.RAISED);
-                            assertThat(event.getProbeName()).isEqualTo("session-down");
                         }));
     }
 

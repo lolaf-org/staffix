@@ -19,6 +19,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.betty.api.io.IOSession;
+import org.lolaf.betty.api.io.ReadBufferFullException;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.admin.AdminApi;
@@ -39,8 +40,7 @@ import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.api.time.UTCTime;
 import org.lolaf.staffix.codec.decoders.FixMessageParser;
 import org.lolaf.staffix.impl.FixSessionRuntimeDependencies;
-import org.lolaf.staffix.impl.alerting.FixSessionProbesImpl;
-import org.lolaf.staffix.impl.alerting.SessionDownEvaluator;
+import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.impl.executor.MessageExecutorsRuntime;
 import org.lolaf.staffix.impl.executor.SessionMessageExecutors;
 import org.lolaf.staffix.impl.threading.ExternalThread;
@@ -74,6 +74,7 @@ import java.util.function.LongSupplier;
 public class FixSessionImpl implements FixSession {
 
     static final IOException NO_CONNECTED_SESSION = new IOException("No connected session");
+    private static final Duration OWNER_THREAD_TASK_TIMEOUT = Duration.ofSeconds(10);
     private static final BiConsumer<Runnable, Exception> IGNORE_TASK_RESULT = (task, error) -> {
         if (error == NO_CONNECTED_SESSION || error instanceof EOFException) {
             log.debug("Skipped FIX session task {}, the connection is gone: {}", task.getClass().getName(), error.getMessage());
@@ -112,11 +113,12 @@ public class FixSessionImpl implements FixSession {
     private final PluginsComponent plugins;
     private final ReentrantLock ownershipHandover;
     @Getter
-    private final FixSessionProbesImpl probes;
+    private final ProbesImpl probes;
     @Getter
     private final FixAlertsPublisher alertsPublisher;
     @SuppressWarnings("java:S3077")
     private volatile Thread offlineOwnerThread;
+    private volatile boolean pendingSettingsUpdate;
     @Getter
     private Collection<Certificate> remoteCertificates;
     private IOSession ioSession;
@@ -125,8 +127,13 @@ public class FixSessionImpl implements FixSession {
     @Setter
     private Subject authenticatedSubject;
 
+    /**
+     * @param desiredState the state the session starts in, the settings' own unless it replaces a session an operator
+     *                     logged on or out, see {@link #desiredStateAfterUpdateTo}
+     */
     public FixSessionImpl(String fixInstanceId,
                           FixSessionSettings fixSessionSettings,
+                          FixSessionDesiredState desiredState,
                           FixSessionRuntimeDependencies fixSessionRuntimeDependencies,
                           ScheduledExecutorService scheduledExecutorService,
                           IOSettings ioSettings,
@@ -134,8 +141,8 @@ public class FixSessionImpl implements FixSession {
                           Clock providedClock) {
         this.fixSessionSettings = fixSessionSettings;
         this.fixSessionRegistry = fixSessionRuntimeDependencies.getFixSessionRegistry();
-        this.probes = new FixSessionProbesImpl();
-        this.wiring = new SessionWiring(this, fixInstanceId, fixSessionSettings, probes, fixSessionRuntimeDependencies,
+        this.probes = new ProbesImpl(FixSessionProbeScope.of(fixSessionSettings.getFixSessionId()));
+        this.wiring = new SessionWiring(this, fixInstanceId, fixSessionSettings, desiredState, probes, fixSessionRuntimeDependencies,
                 scheduledExecutorService, ioSettings, messageExecutorsRuntime, providedClock);
         SessionDownEvaluator.probe(this, fixSessionSettings.getSessionDownAlertDelay()).ifPresent(probes::add);
         this.alertsPublisher = fixSessionRuntimeDependencies.getFixAlertsPublisher();
@@ -198,6 +205,15 @@ public class FixSessionImpl implements FixSession {
     @Override
     public FixSessionDesiredState getDesiredState() {
         return fixSessionState.getDesiredState();
+    }
+
+    /**
+     * The state a session rebuilt on {@code newSettings} starts in: an operator's logon or logout outlives the rebuild,
+     * unless the update changes the desired state itself.
+     */
+    public FixSessionDesiredState desiredStateAfterUpdateTo(FixSessionSettings newSettings) {
+        FixSessionDesiredState updated = newSettings.getDesiredSessionState();
+        return updated.equals(fixSessionSettings.getDesiredSessionState()) ? getDesiredState() : updated;
     }
 
     @Override
@@ -443,6 +459,40 @@ public class FixSessionImpl implements FixSession {
         handToTheOfflineOwner(task, null);
     }
 
+    /**
+     * Runs a task on the session's own thread and waits for it, rethrowing what it threw; inline when already there,
+     * which would otherwise wait on itself.
+     *
+     * @param what the task, for the failure saying it did not run in time
+     */
+    private void runOnSessionOwnerThreadAndWait(Runnable task, String what) {
+        IOSession currentIOSession = ioSession;
+        if (isWithinSessionOwnerThread(currentIOSession)) {
+            task.run();
+            return;
+        }
+        CompletableFuture<Void> done = new CompletableFuture<>();
+        runOnSessionOwnerThread(() -> {
+            try {
+                task.run();
+                done.complete(null);
+            } catch (RuntimeException e) {
+                done.completeExceptionally(e);
+            }
+        }, currentIOSession);
+        try {
+            done.get(OWNER_THREAD_TASK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (ExecutionException e) {
+            throw (RuntimeException) e.getCause();
+        } catch (TimeoutException e) {
+            throw new IllegalStateException("FIX session " + fixSessionId + " did not " + what + " within "
+                    + OWNER_THREAD_TASK_TIMEOUT, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted waiting for FIX session " + fixSessionId + " to " + what, e);
+        }
+    }
+
     private void handToTheOfflineOwner(Runnable task, IOSession refusedBy) {
         try {
             disconnectedSessionsExecutor.execute(() -> runIfStillDisconnected(task, refusedBy));
@@ -535,11 +585,12 @@ public class FixSessionImpl implements FixSession {
     }
 
     private void disconnect(Deadline deadline) {
-        if (ioSession != null) {
-            if (ioSession.isWithinIOThread()) {
+        IOSession connection = ioSession;
+        if (connection != null) {
+            if (connection.isWithinIOThread()) {
                 stopProcessingTheReadInProgress();
             }
-            ioSession.stop(deadline);
+            connection.stop(deadline);
         }
     }
 
@@ -559,6 +610,19 @@ public class FixSessionImpl implements FixSession {
     @Override
     public boolean isLoggedIn() {
         return fixSessionState.isLoggedIn();
+    }
+
+    @Override
+    public boolean hasPendingSettingsUpdate() {
+        return pendingSettingsUpdate;
+    }
+
+    /**
+     * Its settings were updated while it was connected: they apply when a new session replaces it.
+     */
+    public void markPendingSettingsUpdate() {
+        pendingSettingsUpdate = true;
+        logEvent("Settings updated, applying them when it next connects");
     }
 
     public boolean isLogonReceived() {
@@ -669,11 +733,24 @@ public class FixSessionImpl implements FixSession {
      */
     @ExternalThread
     public void stopProtocol(String message, Deadline stopDeadline) {
+        stopProtocol(message, stopDeadline, true);
+    }
+
+    /**
+     * Like {@link #stopProtocol(String, Deadline)}, without a Logout: for an engine that lost its leadership, which
+     * must stop writing at once, and whose Logout would take a MsgSeqNum(34) the new leader never learns.
+     */
+    @ExternalThread
+    public void dropProtocol(String message, Deadline stopDeadline) {
+        stopProtocol(message, stopDeadline, false);
+    }
+
+    private void stopProtocol(String message, Deadline stopDeadline, boolean logout) {
         fixSessionLayerComponents.onSessionStopping(stopDeadline);
         // before anything else touches the connection: a retransmission still running would otherwise carry on
         // writing into a session being torn down, and the logout below is what the peer should see next
         fixApplication.onSessionPreDestroy(this);
-        if (isLoggedIn()) {
+        if (logout && isLoggedIn()) {
             logout(message);
             Deadline logoutAnswerDeadline = stopDeadline.fromRemainingTime(0.5);
             Duration logoutResponseTimeout = fixSessionSettings.getLogInOrOutResponseTimeout();
@@ -714,13 +791,16 @@ public class FixSessionImpl implements FixSession {
             logEvent("Failed message processing: %s", ex.getMessage());
             message.clear();
             disconnect();
-            return;
         }
-        if (resendRecovery.isOutOfSequenceMessagesReplayRequested()) {
-            // a resend completed while parsing this read: the messages held back on top of the gap it closed can now
-            // be processed, and the parser above is done with its buffer
-            resendRecovery.replayOutOfSequenceMessages();
-        }
+    }
+
+    /**
+     * A message larger than {@code IOSettings.maxReadBufferSize} arrived; betty disconnects the session after this.
+     */
+    public void onReadBufferFull(ReadBufferFullException ex) {
+        log.warn("Session {} received a message larger than {} bytes, raise IOSettings.maxReadBufferSize to accept it",
+                fixSessionId, ex.getMaxReadBufferSize());
+        logEvent("Message larger than the read buffer maximum of %d bytes, disconnecting", ex.getMaxReadBufferSize());
     }
 
     public void onTestRequestResponseReceived(String testReqID, UTCTime sendingTime, long recvMonotonicNanos, long recvWallTimeNanos) {
@@ -746,12 +826,20 @@ public class FixSessionImpl implements FixSession {
         adminOperations.sendFixMessage(fixMessage, separator, possDupFlag);
     }
 
+    /**
+     * Written on the session's own thread, which the store is otherwise only written from, and returns once done.
+     */
+    @ExternalThread
     public void adminSetIncomingSeqNum(long seqNum) {
-        adminOperations.setIncomingSeqNum(seqNum);
+        runOnSessionOwnerThreadAndWait(() -> adminOperations.setIncomingSeqNum(seqNum), "set the incoming sequence number");
     }
 
+    /**
+     * Written on the session's own thread, which the store is otherwise only written from, and returns once done.
+     */
+    @ExternalThread
     public void adminSetOutgoingSeqNum(long seqNum) {
-        adminOperations.setOutgoingSeqNum(seqNum);
+        runOnSessionOwnerThreadAndWait(() -> adminOperations.setOutgoingSeqNum(seqNum), "set the outgoing sequence number");
     }
 
     public void hardSequenceReset(long newSeqNum) {

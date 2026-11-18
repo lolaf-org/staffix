@@ -22,12 +22,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.lolaf.staffix.api.utils.ResourceLocation;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Writer;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
@@ -46,7 +41,7 @@ import java.nio.file.Files;
  * plugin that reads it, and the only sign would be a file-not-found from that plugin. Initialize is early enough for
  * anything, and does not depend on the order plugins happen to be declared in.
  */
-@Mojo(name = "generate", defaultPhase = LifecyclePhase.INITIALIZE)
+@Mojo(name = "generate", defaultPhase = LifecyclePhase.INITIALIZE, threadSafe = true)
 public class DictionaryGeneratorMojo extends AbstractMojo {
 
     /**

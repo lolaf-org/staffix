@@ -19,18 +19,20 @@ import lombok.Getter;
 import lombok.Value;
 import org.lolaf.staffix.api.InstanceIdSupplier;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
+import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionId;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Where a session's outbound messages and sequence numbers are kept, so a restart can serve a ResendRequest.
  *
- * <p>One store serves many sessions, which is why {@link #getStore(FixSessionId, FixSessionProbes)} exists: the per-session view
+ * <p>One store serves many sessions, which is why {@link #getStore(FixSessionId, Probes)} exists: the per-session view
  * is what the session layer holds, while the store owns the file, connection or map underneath.
  */
 public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessagesStore> {
@@ -41,7 +43,7 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
      * @param fixSessionId the fix session id
      * @param probes       the session's probes, where a store adds what is worth watching, such as a queue depth
      */
-    FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes);
+    FixSessionMessagesStore getStore(FixSessionId fixSessionId, Probes probes);
 
     /**
      * What an entry in an asynchronous store's queue records, with the byte it is written as.
@@ -95,6 +97,25 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
         void storeSentFixMessages(SentFixMessage[] sentFixMessages, int sentFixMessageCount) throws StoreException;
 
         /**
+         * Stores a batch of messages, as {@link #storeSentFixMessages}, and then the sequence numbers, in one write a
+         * store with transactions should make atomic: one commit instead of three. The default makes the three calls,
+         * so a caller must still survive a partial write. A negative sequence number is left unchanged.
+         */
+        default void storeSentFixMessagesAndSeqNums(SentFixMessage[] sentFixMessages, int sentFixMessageCount,
+                                                    long nextIncomingSeqNum, long nextOutgoingSeqNum)
+                throws StoreException {
+            if (sentFixMessageCount > 0) {
+                storeSentFixMessages(sentFixMessages, sentFixMessageCount);
+            }
+            if (nextIncomingSeqNum >= 0) {
+                storeNextIncomingSeqNum(nextIncomingSeqNum);
+            }
+            if (nextOutgoingSeqNum >= 0) {
+                storeNextOutgoingSeqNum(nextOutgoingSeqNum);
+            }
+        }
+
+        /**
          * One message of a batch, valid only for the duration of the call.
          */
         interface SentFixMessage {
@@ -117,6 +138,14 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
      */
     interface FixSessionMessagesStore extends Startable<FixSessionMessagesStore> {
 
+        /**
+         * Called each time the session starts, with the session's meters, which are tagged with the session and only
+         * exist from then on: the session's plugins are created after its store. A wrapper passes it on to what it
+         * wraps. Not called for a session without monitoring.
+         */
+        default void onSessionMeters(FixSessionsMonitoringContext meters) {
+            // no meters by default
+        }
 
         /**
          * Indicates if the underlying resource to store the messages is currently available or not,
@@ -131,6 +160,31 @@ public interface FixMessagesStore extends InstanceIdSupplier, Startable<FixMessa
          */
         default String getUnderlyingStorageResourceDescription() {
             return "default";
+        }
+
+        /**
+         * Identifies the storage this store writes to, equal on two engines only when they share it, such as one
+         * database. High availability refuses to replicate a session whose store the follower shares, since replaying
+         * into it would rewrite the leader's own data, and one whose store answers empty: it cannot be identified.
+         */
+        default Optional<String> getStorageIdentity() {
+            return Optional.empty();
+        }
+
+        /**
+         * Writes this store accepted that have not reached its underlying storage yet, 0 for a store writing before it
+         * returns.
+         */
+        default long getPendingWrites() {
+            return 0;
+        }
+
+        /**
+         * Messages this store accepted and gave up on since its sequence numbers were last reset: they will not be
+         * stored, so a resend gap fills them. 0 for a store that reports a failed write to its caller.
+         */
+        default long getLostWrites() {
+            return 0;
         }
 
         /**

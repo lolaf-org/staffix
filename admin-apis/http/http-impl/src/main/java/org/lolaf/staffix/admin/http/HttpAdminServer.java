@@ -15,8 +15,8 @@
  */
 package org.lolaf.staffix.admin.http;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.*;
+import org.lolaf.staffix.admin.http.routes.JsonResponseBuffer;
 import org.lolaf.staffix.admin.http.routes.Route;
 
 import javax.net.ssl.SSLContext;
@@ -59,7 +59,7 @@ class HttpAdminServer {
     private final SSLContext sslContext;
     private final HttpServer server;
     private final ExecutorService executor;
-    private final ObjectMapper mapper;
+    private final JsonResponseBuffer json;
     private int engines;
 
     private HttpAdminServer(InetSocketAddress requestedAddress, SSLContext sslContext) throws IOException {
@@ -73,7 +73,7 @@ class HttpAdminServer {
             thread.setContextClassLoader(staffixClassLoader);
             return thread;
         });
-        this.mapper = AdminApiHandler.newObjectMapper();
+        this.json = new JsonResponseBuffer(AdminApiHandler.newObjectMapper());
         server.setExecutor(executor);
         server.createContext("/", this::serveRoot);
         server.start();
@@ -119,7 +119,7 @@ class HttpAdminServer {
             if (exchange.getRequestURI().getPath().equals(OPENAPI_PATH) && exchange.getRequestMethod().equals("GET")) {
                 Route.send(exchange, 200, "application/yaml", OPENAPI);
             } else {
-                AdminApiHandler.sendProblem(exchange, mapper,
+                AdminApiHandler.sendProblem(exchange, json,
                         new HttpProblemException(404, "No engine serves " + exchange.getRequestURI().getPath()));
             }
         } finally {

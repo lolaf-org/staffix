@@ -19,7 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
@@ -98,11 +98,11 @@ public abstract class AbstractMessagesStoreTest {
         messagesStore.start();
 
         // When
-        FixMessagesStore.FixSessionMessagesStore store = messagesStore.getStore(sessionId, mock(FixSessionProbes.class));
+        FixMessagesStore.FixSessionMessagesStore store = messagesStore.getStore(sessionId, mock(Probes.class));
         messagesStore.stop(Deadline.unlimited()).start();
 
         // Then
-        assertThat(store).isNotSameAs(messagesStore.getStore(sessionId, mock(FixSessionProbes.class)));
+        assertThat(store).isNotSameAs(messagesStore.getStore(sessionId, mock(Probes.class)));
     }
 
     @Test
@@ -111,7 +111,7 @@ public abstract class AbstractMessagesStoreTest {
         messagesStore.start();
 
         // When
-        FixMessagesStore.FixSessionMessagesStore sessionStore = messagesStore.getStore(sessionId, mock(FixSessionProbes.class));
+        FixMessagesStore.FixSessionMessagesStore sessionStore = messagesStore.getStore(sessionId, mock(Probes.class));
 
         // Then
         assertThat(sessionStore).isNotNull();
@@ -123,8 +123,8 @@ public abstract class AbstractMessagesStoreTest {
         messagesStore.start();
 
         // When
-        FixMessagesStore.FixSessionMessagesStore store1 = messagesStore.getStore(sessionId, mock(FixSessionProbes.class));
-        FixMessagesStore.FixSessionMessagesStore store2 = messagesStore.getStore(sessionId, mock(FixSessionProbes.class));
+        FixMessagesStore.FixSessionMessagesStore store1 = messagesStore.getStore(sessionId, mock(Probes.class));
+        FixMessagesStore.FixSessionMessagesStore store2 = messagesStore.getStore(sessionId, mock(Probes.class));
 
         // Then
         assertThat(store1).isSameAs(store2);
@@ -138,8 +138,8 @@ public abstract class AbstractMessagesStoreTest {
         FixSessionId sessionId2 = FixSessionId.of("test", FixRegularVersion.VERSION_44, "SENDER2", "TARGET2");
 
         // When
-        FixMessagesStore.FixSessionMessagesStore store1 = messagesStore.getStore(sessionId, mock(FixSessionProbes.class));
-        FixMessagesStore.FixSessionMessagesStore store2 = messagesStore.getStore(sessionId2, mock(FixSessionProbes.class));
+        FixMessagesStore.FixSessionMessagesStore store1 = messagesStore.getStore(sessionId, mock(Probes.class));
+        FixMessagesStore.FixSessionMessagesStore store2 = messagesStore.getStore(sessionId2, mock(Probes.class));
 
         // Then
         assertThat(store1).isNotSameAs(store2);

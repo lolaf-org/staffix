@@ -18,6 +18,7 @@ package org.lolaf.staffix.admin.jmx;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ComponentProbeScope;
 import org.lolaf.staffix.api.FixInitiatorTarget;
 import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.admin.FixSessionComponents;
@@ -25,19 +26,29 @@ import org.lolaf.staffix.api.admin.FixAcceptorSessions;
 import org.lolaf.staffix.api.admin.FixInitiatorTargets;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.ProbeDefinition;
+import org.lolaf.staffix.api.alerting.ProbeId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 import org.lolaf.staffix.api.alerting.ProbeState;
 import org.lolaf.staffix.api.alerting.ProbesListener;
-import org.lolaf.staffix.api.alerting.SessionProbeState;
+import org.lolaf.staffix.api.alerting.ScopedProbeState;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
+import org.lolaf.staffix.api.ha.HaAdmin;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.ha.HaStatus;
+import org.lolaf.staffix.api.ha.LeaderElection;
+import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 
 import javax.management.JMX;
+import javax.management.MBeanOperationInfo;
 import javax.management.MBeanServer;
 import javax.management.MBeanServerFactory;
 import javax.management.ObjectName;
@@ -55,6 +66,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class JmxAdminApiTest {
@@ -122,6 +134,19 @@ class JmxAdminApiTest {
     }
 
     @Test
+    void aSessionBeanTellsWhetherASettingsUpdateIsPending() throws Exception {
+        FixSession session = session(INITIATOR_SESSION, true);
+        when(session.hasPendingSettingsUpdate()).thenReturn(true);
+        adminApi.managed.add(session);
+        exporter.export(adminApi);
+        adminApi.lifecycleListener.onSessionRegistered(session);
+
+        FixSessionMXBean proxy = JMX.newMXBeanProxy(mBeanServer, sessionName("init1", "Initiator"), FixSessionMXBean.class);
+
+        assertThat(proxy.isPendingSettingsUpdate()).isTrue();
+    }
+
+    @Test
     void sessionMBeanOperationsRouteToTheBoundSession() throws Exception {
         exporter.export(adminApi);
         adminApi.lifecycleListener.onSessionRegistered(session(INITIATOR_SESSION, true));
@@ -163,6 +188,17 @@ class JmxAdminApiTest {
     }
 
     @Test
+    void aReloadPassesOnWhetherToRestartLiveSessions() throws Exception {
+        exporter.export(adminApi);
+        FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
+
+        proxy.reloadFixSessionsSettingsStore("main-store", false);
+        proxy.reloadFixSessionsSettingsStore("main-store", true);
+
+        assertThat(adminApi.reloads).containsExactly("main-store, restart=false", "main-store, restart=true");
+    }
+
+    @Test
     void switchResolvesTheSessionFromItsStringForm() throws Exception {
         adminApi.initiatorsTargets.add(initiatorTargets());
         exporter.export(adminApi);
@@ -197,7 +233,7 @@ class JmxAdminApiTest {
             assertThat(probe.getReminderInterval()).isNull();
             assertThat(probe.getLabels()).containsExactly(Map.entry("team", "fix_ops"));
             assertThat(probe.getRunbookUrl()).isEqualTo("https://wiki.example.com/order-flow");
-            assertThat(probe.isOnlyWhileLoggedIn()).isTrue();
+            assertThat(probe.isOnlyWhileActive()).isTrue();
         });
         assertThat(proxy.getProbeStates()).extracting(FixSessionMXBean.ProbeStatus::getProbe,
                         FixSessionMXBean.ProbeStatus::getLevel, FixSessionMXBean.ProbeStatus::getMessage,
@@ -221,21 +257,144 @@ class JmxAdminApiTest {
     }
 
     @Test
-    void theEnginesActiveAlertsAreReadableWithTheirSessionIdString() throws Exception {
-        adminApi.activeAlerts.add(new SessionProbeState(ACCEPTOR_SESSION, ProbeState.builder().probeName("session-down")
+    void theEnginesActiveAlertsAreReadableWithTheirScope() throws Exception {
+        adminApi.activeAlerts.add(new ScopedProbeState(FixSessionProbeScope.of(ACCEPTOR_SESSION), ProbeState.builder().probeName("session-down")
                 .alert(Alert.critical("down")).since(SINCE).lastEvaluation(SINCE).build(), URI.create("https://wiki.example.com/session-down")));
         exporter.export(adminApi);
 
         FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
 
         assertThat(proxy.getActiveAlerts()).singleElement().satisfies(alert -> {
-            assertThat(alert.getFixSessionId()).isEqualTo(ACCEPTOR_SESSION.toString());
+            assertThat(alert.getScope()).isEqualTo("session/" + ACCEPTOR_SESSION.getQualifiedName());
             assertThat(alert.getProbe()).isEqualTo("session-down");
             assertThat(alert.getLevel()).isEqualTo("CRITICAL");
             assertThat(alert.getMessage()).isEqualTo("down");
             assertThat(alert.getSince()).isEqualTo("2026-10-10T10:00:00Z");
             assertThat(alert.getRunbookUrl()).isEqualTo("https://wiki.example.com/session-down");
         });
+    }
+
+    @Test
+    void anEngineComponentsProbesAreReadableAndClearableFromTheEngineBean() throws Exception {
+        adminApi.componentScopes.add(ComponentProbeScope.of("ha"));
+        adminApi.probeDefinitions.add(ProbeDefinition.builder().name("followers").description("A follower in sync")
+                .evaluationInterval(Duration.ofSeconds(1)).build());
+        adminApi.probeStates.add(ProbeState.builder().probeName("followers").alert(Alert.major("none")).since(SINCE)
+                .lastEvaluation(SINCE).build());
+        exporter.export(adminApi);
+
+        FixAdminMXBean proxy = JMX.newMXBeanProxy(mBeanServer, adminName(), FixAdminMXBean.class);
+
+        assertThat(proxy.getProbedComponents()).containsExactly("ha");
+        assertThat(proxy.getComponentProbes("ha")).extracting(FixSessionMXBean.Probe::getName).containsExactly("followers");
+        assertThat(proxy.getComponentProbeStates("ha")).singleElement()
+                .satisfies(state -> assertThat(state.getLevel()).isEqualTo("MAJOR"));
+        assertThat(proxy.clearComponentAlert("ha", "followers")).isTrue();
+        assertThat(adminApi.clearedAlerts).containsExactly("ha followers");
+    }
+
+    @Test
+    void anEngineWithoutHighAvailabilityHasNoHaBean() throws Exception {
+        exporter.export(adminApi);
+
+        assertThat(mBeanServer.isRegistered(haName())).isFalse();
+    }
+
+    @Test
+    void aLeadersFollowersAreReadable() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
+                .leaderId("1").leaderElectionType("PrimosLeaderElection").roleSince(SINCE).monitoringInstanceId("metrics")
+                .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
+                        .unsentBytes(128).lagMillis(3).build())
+                .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1).droppedAt(SINCE).build())
+                .build());
+        adminApi.ha = ha;
+        exporter.export(adminApi);
+
+        FixHaMXBean.Status status = JMX.newMXBeanProxy(mBeanServer, haName(), FixHaMXBean.class).getStatus();
+
+        assertThat(status.getPairName()).isEqualTo("gateway");
+        assertThat(status.getMonitoringInstanceId()).isEqualTo("metrics");
+        assertThat(status.getFollowerConnections()).singleElement().satisfies(follower -> {
+            assertThat(follower.getNodeId()).isEqualTo("2");
+            assertThat(follower.getLane()).isEqualTo(1);
+            assertThat(follower.getUnsentBytes()).isEqualTo(128);
+            assertThat(follower.getLagMillis()).isEqualTo(3);
+        });
+        assertThat(status.getDroppedFollowers()).singleElement().satisfies(dropped -> {
+            assertThat(dropped.getNodeId()).isEqualTo("3");
+            assertThat(dropped.getLane()).isEqualTo(1);
+            assertThat(dropped.getDroppedAt()).isEqualTo(SINCE.toString());
+            assertThat(dropped.getHeldOffUntil()).as("may connect now").isNull();
+        });
+    }
+
+    @Test
+    void theHighAvailabilityIsReadableAndUnregisteredOnShutdown() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.FOLLOWER).epoch(7)
+                .leaderId("2").leaderElectionType("PrimosLeaderElection").roleSince(SINCE)
+                .leader(HaStatus.Leader.builder().leaderId("2").address("/10.0.0.2:17101").connected(true).inSync(true).build())
+                .build());
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
+                .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC_APPLIED)
+                .replicationAckTimeout(Duration.ofMillis(200)).inSync(true).nextIncomingSeqNum(12).nextOutgoingSeqNum(34)
+                .handedOver(true).pendingWrites(7).lostWrites(2).build()));
+        adminApi.ha = ha;
+        exporter.export(adminApi);
+
+        FixHaMXBean proxy = JMX.newMXBeanProxy(mBeanServer, haName(), FixHaMXBean.class);
+
+        FixHaMXBean.Status status = proxy.getStatus();
+        assertThat(status.getRole()).isEqualTo("FOLLOWER");
+        assertThat(status.getEpoch()).isEqualTo(7);
+        assertThat(status.getRoleSince()).isEqualTo("2026-10-10T10:00:00Z");
+        assertThat(status.getFollowerConnections()).isEmpty();
+        assertThat(status.getLeader().getAddress()).isEqualTo("/10.0.0.2:17101");
+        assertThat(status.getLeader().isInSync()).isTrue();
+        assertThat(proxy.getSessionStatuses()).singleElement().satisfies(session -> {
+            assertThat(session.getFixSessionId()).isEqualTo(ACCEPTOR_SESSION.toString());
+            assertThat(session.getReplicationMode()).isEqualTo("SYNC_APPLIED");
+            assertThat(session.getReplicationAckTimeout()).isEqualTo("PT0.2S");
+            assertThat(session.getNextOutgoingSeqNum()).isEqualTo(34);
+            assertThat(session.isHandedOver()).isTrue();
+            assertThat(session.getPendingWrites()).isEqualTo(7);
+            assertThat(session.getNotReplicatedReason()).isNull();
+        });
+
+        exporter.shutdown(Deadline.immediate());
+        assertThat(mBeanServer.isRegistered(haName())).isFalse();
+    }
+
+    @Test
+    void theHighAvailabilityActionsReachItsAdmin() throws Exception {
+        HaAdmin ha = mock(HaAdmin.class);
+        when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.LEADER).epoch(7)
+                .leaderElectionType("PrimosLeaderElection").electableSupported(true).electable(true).build());
+        when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
+                .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC_APPLIED)
+                .replicationAckTimeout(Duration.ZERO).build()));
+        adminApi.ha = ha;
+        exporter.export(adminApi);
+        FixHaMXBean proxy = JMX.newMXBeanProxy(mBeanServer, haName(), FixHaMXBean.class);
+
+        assertThat(proxy.getStatus().isElectableSupported()).isTrue();
+        proxy.updateElectable(false);
+        proxy.resync();
+        proxy.resyncSession(ACCEPTOR_SESSION.toString(), "ACCEPTOR");
+        when(ha.switchover()).thenReturn(SwitchoverOutcome.TRANSFERRED);
+        assertThat(proxy.switchover()).isEqualTo("TRANSFERRED");
+
+        verify(ha).setElectable(false);
+        verify(ha).resync();
+        verify(ha).resync(ACCEPTOR_SESSION, FixSession.FixSessionType.ACCEPTOR);
+        assertThat(mBeanServer.getMBeanInfo(haName()).getOperations()).extracting(MBeanOperationInfo::getName)
+                .contains("updateElectable", "resync", "resyncSession", "switchover");
+    }
+
+    private ObjectName haName() throws Exception {
+        return new ObjectName(DOMAIN + ":type=FixHa,instance=" + ObjectName.quote(adminApi.getInstanceId()));
     }
 
     private static FixInitiatorTargets initiatorTargets() {
@@ -271,8 +430,11 @@ class JmxAdminApiTest {
         private final List<FixSessionId> switchedTo = new ArrayList<>();
         private final List<ProbeDefinition> probeDefinitions = new ArrayList<>();
         private final List<ProbeState> probeStates = new ArrayList<>();
-        private final List<SessionProbeState> activeAlerts = new ArrayList<>();
+        private final List<ProbeScope> componentScopes = new ArrayList<>();
+        private final List<ScopedProbeState> activeAlerts = new ArrayList<>();
         private final List<String> clearedAlerts = new ArrayList<>();
+        private final List<String> reloads = new ArrayList<>();
+        private HaAdmin ha;
         private SessionLifecycleListener lifecycleListener;
 
         @Override
@@ -331,8 +493,8 @@ class JmxAdminApiTest {
         }
 
         @Override
-        public void reloadFixSessionsSettingsStore(String instanceId) {
-            // nothing to do
+        public void reloadFixSessionsSettingsStore(String instanceId, boolean restartLiveSessions) {
+            reloads.add(instanceId + ", restart=" + restartLiveSessions);
         }
 
         @Override
@@ -351,7 +513,7 @@ class JmxAdminApiTest {
         }
 
         @Override
-        public void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings) {
+        public void updateFixSessionSettings(FixSessionId fixSessionId, FixSessionSettings settings, boolean restartLiveSession) {
             throw new UnsupportedOperationException();
         }
 
@@ -391,24 +553,40 @@ class JmxAdminApiTest {
         }
 
         @Override
-        public List<ProbeDefinition> getProbeDefinitions(FixSessionId fixSessionId) {
+        public List<ProbeScope> getComponentProbeScopes() {
+            return componentScopes;
+        }
+
+        @Override
+        public List<ProbeDefinition> getProbeDefinitions(ProbeScope scope) {
             return probeDefinitions;
         }
 
         @Override
-        public List<ProbeState> getProbeStates(FixSessionId fixSessionId) {
+        public List<ProbeState> getProbeStates(ProbeScope scope) {
             return probeStates;
         }
 
         @Override
-        public List<SessionProbeState> getActiveAlerts() {
+        public List<ScopedProbeState> getActiveAlerts() {
             return activeAlerts;
         }
 
         @Override
-        public boolean clearAlert(FixSessionId fixSessionId, String probeName) {
-            clearedAlerts.add(fixSessionId.getName() + " " + probeName);
-            return !"session-down".equals(probeName);
+        public List<FixMeterDescriptor> getEngineMeters() {
+            return List.of();
+        }
+
+        @Override
+        public Optional<HaAdmin> getHa() {
+            return Optional.ofNullable(ha);
+        }
+
+        @Override
+        public boolean clearAlert(ProbeId probeId) {
+            clearedAlerts.add(probeId.getScope().getLabels().getOrDefault(FixSessionProbeScope.NAME_LABEL, probeId.getScope().getName())
+                    + " " + probeId.getName());
+            return !"session-down".equals(probeId.getName());
         }
 
         @Override

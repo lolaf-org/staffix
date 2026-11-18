@@ -107,10 +107,9 @@ public class FromFixSessionSettingsDocumentTransformer {
         mergeIfNeeded(settings::getSessionDownAlertDelay, builder::sessionDownAlertDelay);
         mergeCancelOnDisconnectSettings(settings, builder);
         mergeRttMeasurementSettings(settings, builder);
+        mergeHaSessionSettings(settings, builder);
         mergeIfNeeded(settings::getMessageEncodersDirectByteBuffers, builder::messageEncodersDirectByteBuffers);
         mergeIfNeeded(settings::getPooledMessageEncodersDirectByteBuffers, builder::pooledMessageEncodersDirectByteBuffers);
-        mergeIfNeeded(settings::getDisconnectOnRemove, builder::disconnectOnRemove);
-        mergeIfNeeded(settings::getRestartLiveSessionOnUpdate, builder::restartLiveSessionOnUpdate);
         mergeSessionScheduleSettings(settings, builder);
         return builder.build();
     }
@@ -140,6 +139,17 @@ public class FromFixSessionSettingsDocumentTransformer {
             mergeIfNeeded(yrtt::getProbeTestReqIdPrefix, rb::probeTestReqIdPrefix);
             mergeIfNeeded(yrtt::getSendingTimeToWireDelay, rb::sendingTimeToWireDelay);
             builder.rttMeasurementSettings(rb.build());
+        }
+    }
+
+    private static void mergeHaSessionSettings(FixSessionSettingsDocument settings, FixSessionSettings.FixSessionSettingsBuilder<?, ?> builder) {
+        FixSessionSettingsDocument.HaSessionSettings yha = settings.getHighAvailability();
+        if (yha != null) {
+            FixSessionSettings.HaSessionSettings.HaSessionSettingsBuilder<?, ?> hb = FixSessionSettings.HaSessionSettings.builder();
+            mergeIfNeeded(yha::getReplicationMode, hb::replicationMode);
+            mergeIfNeeded(yha::getReplicationAckTimeout, hb::replicationAckTimeout);
+            mergeIfNeeded(yha::getSyncAckLatencyEnabled, hb::syncAckLatencyEnabled);
+            builder.highAvailability(hb.build());
         }
     }
 

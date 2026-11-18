@@ -94,6 +94,42 @@ in the same place as the FIX ones:
 })
 ```
 
+### The high availability's meters
+
+An engine with [high availability](high-availability.md) publishes meters of its own, tagged with the engine alone,
+through the monitoring manager `ReplicationHaSettings.monitoringInstanceId` names. Each reads 0 in a role it does not
+apply to, and all but the timers are read at export, so they cost the session thread nothing.
+
+| meter | what it says |
+|---|---|
+| `ha.role` | 2 leader, 1 follower, 0 unknown |
+| `ha.epoch` | the election's epoch, -1 when unknown |
+| `ha.leadership.valid` | 1 while this node leads and can prove it |
+| `ha.followers.connected`, `ha.followers.in.sync` | followers streaming this leader's writes, and holding every replicated session |
+| `ha.follower.unsent` | the most bytes written and not yet sent to a follower; one falling the log's capacity behind is caught up by snapshot |
+| `ha.log.written` | bytes written to the replication log: its rate is the replication's throughput |
+| `ha.sync.ack.latency` | how long `SYNC` sends waited for the follower, for those it acknowledged, tagged `mode` = `sync_received` or `sync_applied` |
+| `ha.sync.unacknowledged` | `SYNC` sends that went out unacknowledged, tagged `reason` = `timed_out` or `no_follower` |
+| `ha.follower.ack.latency` | a follower's round trip, from a batch of writes sent to its acknowledgement, tagged `follower`; covers `ASYNC` too |
+| `ha.follower.lag` | how far a follower is behind: from a write to the replication log to the follower applying it, tagged `follower`, sampled once per round trip |
+| `ha.follower.lag.pending` | how long, in milliseconds, the most behind follower has not applied a write, 0 when all are caught up; unlike the timer, it keeps growing while a follower is stalled |
+| `ha.follower.too.slow`, `ha.snapshots`, `ha.snapshot.messages` | followers dropped for reading the log so slowly that a write waited `logFullTimeout` for them, snapshots sent, messages they copied |
+| `ha.follower.send.waits` | times the leader had writes for a follower and could not send them, every send buffer being in flight or the connection's write limit reached; growing steadily while the network is healthy means `sendBuffers` is too small |
+| `ha.follower.send.buffers.allocated` | send buffers allocated because the pool had none free; should always be 0, any other value is a bug |
+| `ha.replica.connected`, `ha.replica.in.sync` | on a follower: streaming its leader's writes, and holding every replicated session |
+| `ha.replica.received.write.latency` | on a follower: how long it took to write a read's events to its store after acknowledging them as received, the window in which a `SYNC_RECEIVED` send is held in its memory only |
+
+A session with `highAvailability.syncAckLatencyEnabled` also gets `ha.session.sync.ack.latency` in its own meters,
+the same wait as `ha.sync.ack.latency` for that session alone.
+
+### The async store and logger's meters
+
+A session behind an [async store or logger](async-queue-tuning.md) gets a counter in its own meters, read at export:
+
+| meter | what it says |
+|---|---|
+| `async.store.pretouch.missed.pages`, `async.logger.pretouch.missed.pages` | pages of the queue the session thread reached before the pretouch thread, each a page fault it paid for; rising steadily means `pretouchAheadTime` is too short |
+
 ---
 
 ## Tracing

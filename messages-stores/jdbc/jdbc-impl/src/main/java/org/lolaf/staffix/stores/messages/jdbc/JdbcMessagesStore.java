@@ -18,9 +18,10 @@ package org.lolaf.staffix.stores.messages.jdbc;
 import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.Startable;
-import org.lolaf.staffix.api.alerting.FixSessionProbes;
+import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
+import org.lolaf.staffix.api.stores.JdbcStorageIdentity;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,6 +41,7 @@ public class JdbcMessagesStore extends Startable.SimpleStartable<FixMessagesStor
 
     private final JdbcMessageStoreSettings settings;
     private final Map<FixSessionId, FixSessionMessagesStore> sessionStores;
+    private final JdbcStorageIdentity storageIdentity;
     private ScheduledExecutorService scheduledExecutorService;
     private boolean embeddedScheduledExecutorService;
 
@@ -53,12 +55,13 @@ public class JdbcMessagesStore extends Startable.SimpleStartable<FixMessagesStor
         }
         this.settings = settings;
         this.sessionStores = new ConcurrentHashMap<>();
+        this.storageIdentity = new JdbcStorageIdentity(settings.getDataSource(), settings.getTablePrefix(), settings.getStorageIdentity());
     }
 
     @Override
-    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, FixSessionProbes probes) {
+    public FixSessionMessagesStore getStore(FixSessionId fixSessionId, Probes probes) {
         return sessionStores.computeIfAbsent(fixSessionId,
-                sid -> new JdbcFixSessionMessagesStore(settings, fixSessionId, scheduledExecutorService));
+                sid -> new JdbcFixSessionMessagesStore(settings, fixSessionId, scheduledExecutorService, storageIdentity));
     }
 
     @Override

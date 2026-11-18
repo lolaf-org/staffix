@@ -1,0 +1,37 @@
+summary: >-
+  Replicates the stores of the sessions whose highAvailability ask for it to a follower engine, which takes over when
+  the leader election makes it the leader. Needs a leaderElection, such as primos from staffix-ha-primos.
+production:
+  - >-
+    Size logCapacity to the bytes the sessions write while a healthy follower may lag; one a whole log behind makes
+    the sessions' writes wait for it, on their FIX IO threads, at most logFullTimeout, then is dropped, held off
+    slowFollowerHoldOff and caught up by snapshot. A message longer than half of it is not replicated.
+  - >-
+    Raise replicationLanes when snapshots of busy sessions slow the others, or the follower's store cannot apply one
+    stream fast enough: each lane carries its share of the sessions with its own logCapacity log and sender thread,
+    and a network thread on each node. Set it on the leader; the follower opens as many as the leader has.
+  - >-
+    Give the follower's store at least the leader's retention: a snapshot copies everything the leader's store keeps,
+    and after a failover a message the follower's store no longer holds is gap filled.
+  - >-
+    Give both nodes the same peers and logCapacity: a node binds its own peers entry while it leads and connects to
+    the leader's, and a follower sizes its receive buffer from logCapacity.
+  - >-
+    A node that becomes leader moves the outgoing sequence number of every replicated session ahead by
+    promotionOutgoingSeqNumJump, so the counterparty sees a gap it fills with a resend request answered by a gap fill,
+    rather than a number lower than the old leader's, which it would refuse. Size it above what a session sends
+    while unreplicated.
+  - >-
+    Name a monitoring manager in monitoringInstanceId to publish the replication's meters (role, throughput, followers
+    in sync and how far behind, SYNC ack latency and unacknowledged sends, followers dropped as too slow, snapshots);
+    none are published without it.
+  - >-
+    Name an alerts publisher in alertsPublisherInstanceId to probe the node's replication, as component ha: no
+    follower connected or in sync, or one dropped as too slow, while leading, the leader unreachable while following,
+    no role. Each replicated session also gets an ha-replication probe on its own alerts publisher.
+  - >-
+    With primos, a node is named by its primos node id as decimal text: use those ids as nodeId and as the peers keys.
+  - >-
+    Stop the leader's engine rather than kill it: it sends its follower every event within handOverTimeout and says
+    so, and the follower then takes over without moving its sequence numbers ahead. When the application runs the
+    leader election, stop the engine before the election, or the follower takes over with the jump.

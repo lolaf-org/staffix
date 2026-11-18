@@ -19,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.Startable;
+import org.lolaf.staffix.stores.core.async.pretoucher.PretouchThread;
+import org.lolaf.staffix.stores.core.async.thread.StoppableThread;
 
 import java.time.Duration;
 import java.util.*;
@@ -35,6 +37,7 @@ import java.util.function.ToLongFunction;
 public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleStartable<AsyncStoreThreads<T>> {
 
     private final AsyncStoreThread<T>[] asyncStoreThreads;
+    private final PretouchThread pretouchThread;
     private final AsyncStoreSettings asyncStoreSettings;
     private int nextRegisterIndex;
 
@@ -49,12 +52,17 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             asyncStoreThreads[i] = new AsyncStoreThread<>(instanceId, i, asyncStoreSettings.getReaderThreadsIdleStrategy().get(),
                     asyncStoreSettings.getReaderThreadMaxEventsProcessingPerStore(), asyncEventInstanceProvider, asyncStoreSettings.getThreadFactory());
         }
+        this.pretouchThread = new PretouchThread(instanceId, asyncStoreSettings.getThreadFactory(),
+                asyncStoreSettings.getPretouchInterval());
     }
 
     @Override
     protected void startMe() throws StartStopException {
         for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
             asyncStoreThread.start();
+        }
+        if (asyncStoreSettings.isPretouching()) {
+            pretouchThread.start();
         }
     }
 
@@ -63,12 +71,14 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
             asyncStoreThread.stop(stopDeadline);
         }
+        pretouchThread.stop(stopDeadline);
     }
 
     /**
      * Assigns the queue to the next reader thread in turn, for good: a write blocking there delays every queue sharing
      * it. The consumer gets up to {@code eventsBatching} events, the array null-terminated when fewer, once that many
-     * are waiting or the flush interval has passed. It must release each event, which returns it to the pool.
+     * are waiting or the flush interval has passed. It must release each event, which returns it to the pool. What it
+     * does not return to the queue is confirmed once it returns, unless unregistered meanwhile: then it is read again.
      */
     public synchronized void registerBatching(PersistentQueue<T> messagesQueue, Consumer<T[]> eventsConsumer,
                                               AsyncEventSerde<T> asyncEventSerde, Class<T> eventClass) {
@@ -76,6 +86,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             nextRegisterIndex = 0;
         }
         asyncStoreThreads[nextRegisterIndex++].registerBatching(asyncStoreSettings, messagesQueue, eventsConsumer, asyncEventSerde, eventClass);
+        pretouchThread.add(eventsConsumer, messagesQueue);
     }
 
     /**
@@ -83,12 +94,13 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
      * at least a second): the caller must then expect a late call into it.
      */
     public boolean unregisterBatching(Consumer<T[]> eventsConsumer, Deadline deadline) {
-        return removeAndAwait(t -> t.unRegisterBatching(eventsConsumer), deadline);
+        return removeAndAwait(eventsConsumer, t -> t.unRegisterBatching(eventsConsumer), deadline);
     }
 
     /**
      * Assigns the queue to the next reader thread in turn, for good: a write blocking there delays every queue sharing
-     * it. The event handed to the consumer is reused once it returns, so it must not be kept.
+     * it. The event handed to the consumer is reused once it returns, so it must not be kept. What it does not return
+     * to the queue is confirmed once it returns, unless unregistered meanwhile: then it is read again.
      */
     public synchronized void register(PersistentQueue<T> messagesQueue, Consumer<T> eventsConsumer,
                                       AsyncEventSerde<T> asyncEventSerde) {
@@ -96,6 +108,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             nextRegisterIndex = 0;
         }
         asyncStoreThreads[nextRegisterIndex++].register(messagesQueue, eventsConsumer, asyncEventSerde);
+        pretouchThread.add(eventsConsumer, messagesQueue);
     }
 
     /**
@@ -103,13 +116,14 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
      * at least a second): the caller must then expect a late call into it.
      */
     public boolean unregister(Consumer<T> eventsConsumer, Deadline deadline) {
-        return removeAndAwait(t -> t.unRegister(eventsConsumer), deadline);
+        return removeAndAwait(eventsConsumer, t -> t.unRegister(eventsConsumer), deadline);
     }
 
-    private boolean removeAndAwait(ToLongFunction<AsyncStoreThread<T>> unRegister, Deadline deadline) {
+    private boolean removeAndAwait(Object eventsConsumer, ToLongFunction<AsyncStoreThread<T>> unRegister, Deadline deadline) {
         AsyncStoreThread<T> owner = null;
         long operationsCountAtRemoval = NOT_REGISTERED;
         synchronized (this) {
+            pretouchThread.remove(eventsConsumer);
             for (AsyncStoreThread<T> asyncStoreThread : asyncStoreThreads) {
                 operationsCountAtRemoval = unRegister.applyAsLong(asyncStoreThread);
                 if (operationsCountAtRemoval != NOT_REGISTERED) {
@@ -128,21 +142,17 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
 
         private final Map<Consumer<T>, Registration<T>> registrations;
         private final Map<Consumer<T[]>, BatchingRegistration<T>> batchingRegistrations;
-        private final AtomicBoolean running;
         private final int maxEventsProcessingPerStore;
         private final AsyncEventInstanceProvider<T> asyncEventInstanceProvider;
         private final AtomicLong threadOperationsCounter;
         private final IdleStrategy idleStrategy;
-        private final ThreadFactory threadFactory;
-        private final String threadName;
+        private final StoppableThread thread;
         private volatile Registration<T>[] registrationsArray;
         private volatile BatchingRegistration<T>[] batchingRegistrationsArray;
-        private volatile Thread thread;
 
         public AsyncStoreThread(String instanceId, int instance, IdleStrategy idleStrategy,
                                 int maxEventsProcessingPerStore, AsyncEventInstanceProvider<T> asyncEventInstanceProvider,
                                 ThreadFactory threadFactory) {
-            this.running = new AtomicBoolean();
             this.registrations = new HashMap<>();
             this.batchingRegistrations = new HashMap<>();
             this.batchingRegistrationsArray = new BatchingRegistration[0];
@@ -150,8 +160,8 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             this.maxEventsProcessingPerStore = maxEventsProcessingPerStore;
             this.asyncEventInstanceProvider = asyncEventInstanceProvider;
             this.idleStrategy = idleStrategy;
-            this.threadFactory = threadFactory;
-            this.threadName = "Staffix-async-store-reader-" + instanceId + "-" + instance;
+            this.thread = new StoppableThread("Staffix-async-queue-reader-" + instanceId + "-" + instance, threadFactory,
+                    this);
             this.threadOperationsCounter = new AtomicLong();
         }
 
@@ -175,7 +185,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         }
 
         boolean awaitNextOperation(long operationsCountAtRemoval, Deadline deadline) {
-            Thread readerThread = thread;
+            Thread readerThread = thread.getThread();
             // the reader thread unregisters itself when its consumer starts a watchdog: its counter cannot tick until it
             // returns, and the inactive flag already keeps it off the queue once it does
             if (readerThread == null || readerThread == Thread.currentThread() || !readerThread.isAlive()) {
@@ -205,36 +215,17 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
         }
 
         void start() {
-            if (running.compareAndSet(false, true)) {
-                thread = threadFactory.newThread(this);
-                thread.setName(threadName);
-                thread.setUncaughtExceptionHandler((t, e) -> log.error("Uncaught exception occurred in thread {}", t, e));
-                thread.start();
-            }
+            thread.start();
         }
 
         void stop(Deadline stopDeadline) {
-            if (!running.compareAndSet(true, false)) {
-                return;
-            }
-            try {
-                thread.interrupt();
-                // Thread.join(0) waits forever, an immediate or already expired deadline must not do that
-                thread.join(Math.max(stopDeadline.getRemainingTime().toMillis(), 1));
-                if (thread.isAlive()) {
-                    log.warn("Unable to stop thread {} within given deadline {}", thread.getName(), stopDeadline);
-                }
-                thread = null;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            thread.stop(stopDeadline);
         }
 
         @Override
         public void run() {
-            // running is set by start(), see why there
             idleStrategy.assignToThread(Thread.currentThread());
-            while (running.get()) {
+            while (thread.isRunning()) {
                 int readOperations = 0;
                 long now = System.currentTimeMillis();
                 Registration<T>[] localRegistrationsArray = registrationsArray;
@@ -266,6 +257,15 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
             boolean isActiveRegistration() {
                 return activeRegistration.get();
             }
+
+            /**
+             * Not once unregistered: the queue may have restarted, and what it polled since is not this write's.
+             */
+            void confirmPolled() {
+                if (isActiveRegistration()) {
+                    messagesQueue.confirmPolled();
+                }
+            }
         }
 
         private static class Registration<T extends AsyncEvent> extends AbstractRegistration<T> {
@@ -286,6 +286,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
                 while (isActiveRegistration() && readOperation++ < maxEventsProcessing && messagesQueue.poll(asyncEventSerde, asyncEvent)) {
                     eventsConsumer.accept(asyncEvent);
                     asyncEvent.release();
+                    confirmPolled();
                 }
                 return readOperation;
             }
@@ -344,6 +345,7 @@ public class AsyncStoreThreads<T extends AsyncEvent> extends Startable.SimpleSta
                     Arrays.fill(asyncEvents, null);
                     readEvents(elementsToRead);
                     eventsConsumer.accept(asyncEvents);
+                    confirmPolled();
                 }
                 return elementsToRead;
             }

@@ -14,6 +14,6 @@
  * limitations under the License.
  */
 /**
- * The engine side of alerting: the probes of each session and their evaluation.
+ * The engine side of alerting: the probes of each scope and their evaluation.
  */
 package org.lolaf.staffix.impl.alerting;

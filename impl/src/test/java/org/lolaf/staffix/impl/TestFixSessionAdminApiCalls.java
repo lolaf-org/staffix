@@ -160,6 +160,24 @@ class TestFixSessionAdminApiCalls extends AbstractFixTests {
     }
 
     /**
+     * The session's own thread is the only one writing its store, which is what keeps a replicated store's events in
+     * the order they were applied; the call still returns with the write done.
+     */
+    @Test
+    void testSequenceNumbersSetThroughTheAdminApiAreWrittenOnTheSessionsOwnThread() {
+        logonClient();
+        FixSessionImpl initiatorSession = getFixSessionImpl(ConnectorType.INITIATOR);
+
+        initiatorSession.adminSetOutgoingSeqNum(50);
+        assertThat(initiatorSession.adminGetOutgoingSeqNum()).isEqualTo(50);
+        assertThat(getFixMessagesStore(ConnectorType.INITIATOR).getLastSequenceNumberWriter()).isNotSameAs(Thread.currentThread());
+
+        initiatorSession.adminSetIncomingSeqNum(40);
+        assertThat(initiatorSession.adminGetIncomingSeqNum()).isEqualTo(40);
+        assertThat(getFixMessagesStore(ConnectorType.INITIATOR).getLastSequenceNumberWriter()).isNotSameAs(Thread.currentThread());
+    }
+
+    /**
      * Moving a sequence number is a write to the session's message store, and a stopped session has released it - a
      * file store has unmapped the memory the write would have gone to. So the call is refused rather than served.
      */

@@ -1,7 +1,7 @@
 # Staffix examples
 
-Runnable programs, smallest first. Every one of them starts both sides of a FIX session in a single process, so
-there is nothing to install and nothing to connect to: run it and watch a session come up.
+Runnable programs, smallest first. Every one of them but `high-availability` starts both sides of a FIX session in a
+single process, so there is nothing to install and nothing to connect to: run it and watch a session come up.
 
 All commands are run **from the repository root**.
 
@@ -68,6 +68,7 @@ They are [picocli](https://picocli.info) commands, so `--help` lists the options
 | [`alerting`](alerting)                                                       | probes an application adds once and the engine runs only while logged in: its own evaluator, a rate and alerts raised from code, logged through SLF4J | [`AlertingExample.sh`](alerting/AlertingExample.sh)                                    |
 | [`file-session-settings`](file-session-settings)                             | sessions declared in YAML files instead of in code: the acceptor's read from a directory, the initiator's from the classpath                                     | [`FileSessionSettingsExample.sh`](file-session-settings/FileSessionSettingsExample.sh) |
 | [`spring-boot-starter-example`](spring-boot-starter-example)                 | acceptor and initiator declared entirely in `application.properties`; you supply only the `FixApplication` beans       | [`SpringBootExample.sh`](spring-boot-starter-example/SpringBootExample.sh)             |
+| [`high-availability`](high-availability)                                     | an acceptor pair elected by primos with a witness, each node its own process: kill the leader, restart it, stop it cleanly, and watch the counterparty follow | [`start-*.sh`, `stop-*.sh`](high-availability/README.md)                               |
 | [`advanced-monitoring`](advanced-monitoring)                                 | metrics, logs and traces exported over OTLP; pair it with the [Grafana stack](../monitoring/grafana)                   | [`MetricsLogsTracesExample.sh`](advanced-monitoring/MetricsLogsTracesExample.sh)       |
 
 `SessionLifecycleExample` is the one to run after `quickstart`, and the only one of these that is about the session
@@ -221,6 +222,7 @@ already passes:
 -XX:+DebugNonSafepoints \
 -XX:-RestrictContended \
 -XX:ContendedPaddingWidth=64 \
+-XX:AutoBoxCacheMax=65536 \
 --enable-native-access=ALL-UNNAMED \
 --add-opens java.base/jdk.internal.ref=ALL-UNNAMED \
 --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \
@@ -235,6 +237,7 @@ already passes:
 | `-XX:+DebugNonSafepoints`                 | makes the JIT keep debug info away from safepoints, so a sampling profiler (`-pe`) attributes samples to the frames that really ran rather than to the nearest safepoint |
 | `-XX:-RestrictContended`                  | lets `@Contended` apply outside the JDK's own classes; without it the annotation is silently ignored on the ringos and Staffix structures                                |
 | `-XX:ContendedPaddingWidth=64`            | sizes that padding to one cache line, which is what keeps those structures off each other's lines                                                                        |
+| `-XX:AutoBoxCacheMax=65536`               | widens the `Integer` cache past the process's file descriptors, so the JDK selector stops allocating an `Integer` per ready socket once descriptors pass 127              |
 | `--enable-native-access=ALL-UNNAMED`      | allows the native/`Unsafe` access the memory-access layer performs, instead of warning about it                                                                          |
 | `--add-opens java.base/jdk.internal.ref`  | direct-`ByteBuffer` cleaner access, used by the JDK 11–14 memory-access provider                                                                                         |
 | `--add-opens java.base/jdk.internal.misc` | `jdk.internal.misc.Unsafe`, behind the zero-allocation thread-local serdes; without it they still work, but allocate a fresh `String` per field and warn once at startup |

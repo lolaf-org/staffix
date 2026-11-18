@@ -54,8 +54,8 @@ import java.util.Collections;
  *
  * <p><strong>Nagle is disabled on the accepted sockets</strong>, and that is not a detail. A gRPC response
  * is three writes - HEADERS, DATA, then the TRAILERS carrying {@code grpc-status} - so with Nagle left on
- * the server, the later ones wait on the client's delayed-ACK timer and every call costs about 20 ms.
- * Measured that way gRPC looks some 500x slower than HTTP, which is an artefact of this stub rather than
+ * the server, the later ones wait on the client's delayed-ACK timer on every call. Measured that way gRPC
+ * looks far slower than HTTP, which is an artefact of this stub rather than
  * anything about the protocol; the HTTP arm never shows it because its whole response is one small write.
  * Both this library's gRPC senders already set {@code TCP_NODELAY} on their side.
  *

@@ -37,6 +37,7 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionsSettingsStoreSettings;
 import org.lolaf.staffix.api.version.FixApiVersion;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.version.SemVer;
@@ -213,13 +214,17 @@ abstract class AbstractFixTests {
     }
 
     void setupAcceptorSessionsSettings(FixSessionSettings... settings) {
+        setupAcceptorSessionsSettingsStore(settings[0], MemorySessionsSettingsStoreSettings.builder()
+                .fixSessionSettings(List.of(settings))
+                .build());
+    }
+
+    void setupAcceptorSessionsSettingsStore(FixSessionSettings fixVersionSource, FixSessionsSettingsStoreSettings store) {
         stopWithinDeadline(acceptorFixEngine, ConnectorType.ACCEPTOR);
-        speaksVersionOf(fixAcceptorApplication, settings[0]);
+        speaksVersionOf(fixAcceptorApplication, fixVersionSource);
         acceptorFixEngine = acceptorFixEngineBuilder.toBuilder()
                 .clearFixSessionsSettingsStores()
-                .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
-                        .fixSessionSettings(List.of(settings))
-                        .build())
+                .fixSessionsSettingsStore(store)
                 .build()
                 .instance().start();
         fixAcceptor = acceptorFixEngine.newAcceptor(fixAcceptorBuilder);
@@ -230,13 +235,17 @@ abstract class AbstractFixTests {
     }
 
     void setupInitiatorSessionsSettings(FixSessionSettings... settings) {
+        setupInitiatorSessionsSettingsStore(settings[0], MemorySessionsSettingsStoreSettings.builder()
+                .fixSessionSettings(List.of(settings))
+                .build());
+    }
+
+    void setupInitiatorSessionsSettingsStore(FixSessionSettings fixVersionSource, FixSessionsSettingsStoreSettings store) {
         stopWithinDeadline(initiatorFixEngine, ConnectorType.INITIATOR);
-        speaksVersionOf(fixInitiatorApplication, settings[0]);
+        speaksVersionOf(fixInitiatorApplication, fixVersionSource);
         initiatorFixEngine = initiatorFixEngineBuilder.toBuilder()
                 .clearFixSessionsSettingsStores()
-                .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
-                        .fixSessionSettings(List.of(settings))
-                        .build())
+                .fixSessionsSettingsStore(store)
                 .build()
                 .instance().start();
         fixInitiator = initiatorFixEngine.newInitiator(fixInitiatorBuilder);

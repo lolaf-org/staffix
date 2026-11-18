@@ -15,6 +15,9 @@
  */
 package org.lolaf.staffix.stores.core.async;
 
+import com.github.valfirst.slf4jtest.LoggingEvent;
+import com.github.valfirst.slf4jtest.TestLogger;
+import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import lombok.AllArgsConstructor;
 import net.openhft.chronicle.core.io.BackgroundResourceReleaser;
 import net.openhft.chronicle.queue.rollcycles.TestRollCycles;
@@ -29,9 +32,11 @@ import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 class TestPersistentQueue {
 
@@ -110,6 +115,7 @@ class TestPersistentQueue {
         }
         assertThat(polled).containsExactly("test-0", "test-1", "test-2", "test-3", "test-4");
         assertThat(persistentQueue.getSize()).isZero();
+        persistentQueue.confirmPolled();
 
         // everything has been polled, files should be deleted and only last one kept
         BackgroundResourceReleaser.releasePendingResources();
@@ -157,6 +163,7 @@ class TestPersistentQueue {
         int polled = 0;
         while (persistentQueue.poll(asyncEventSerde, testingRead)) {
             assertThat(testingRead.value).isEqualTo("test-" + polled++);
+            persistentQueue.confirmPolled();
         }
         assertThat(polled).isEqualTo(500);
 
@@ -249,6 +256,7 @@ class TestPersistentQueue {
 
         assertThat(persistentQueue.poll(asyncEventSerde, testingEvent)).isTrue();
         assertThat(persistentQueue.poll(asyncEventSerde, testingEvent)).isTrue();
+        persistentQueue.confirmPolled();
         assertThat(persistentQueue.getSize()).isZero();
 
         persistentQueue.stop();
@@ -256,6 +264,229 @@ class TestPersistentQueue {
         persistentQueue.start(asyncStoreSettings, "test");
 
         assertThat(persistentQueue.getSize()).isZero();
+    }
+
+    private List<String> pollAll() {
+        TestingEvent read = new TestingEvent(null);
+        List<String> polled = new ArrayList<>();
+        while (persistentQueue.poll(asyncEventSerde, read)) {
+            polled.add(read.value);
+        }
+        return polled;
+    }
+
+    private void offer(String... values) {
+        for (String value : values) {
+            persistentQueue.offer(asyncEventSerde, new TestingEvent(value));
+        }
+    }
+
+    @Test
+    void eventsReturnedAreReadAgainInOrder() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a", "b", "c");
+
+        assertThat(pollAll()).containsExactly("a", "b", "c");
+        persistentQueue.returnPolled();
+
+        assertThat(persistentQueue.getSize()).isEqualTo(3);
+        assertThat(pollAll()).containsExactly("a", "b", "c");
+    }
+
+    @Test
+    void eventsConfirmedAreNotReturned() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a");
+        assertThat(pollAll()).containsExactly("a");
+        persistentQueue.confirmPolled();
+        offer("b", "c");
+        assertThat(pollAll()).containsExactly("b", "c");
+
+        persistentQueue.returnPolled();
+
+        assertThat(persistentQueue.getSize()).isEqualTo(2);
+        assertThat(pollAll()).containsExactly("b", "c");
+    }
+
+    @Test
+    void eventsReturnedAreReadAgainAfterARestart() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a");
+        assertThat(pollAll()).containsExactly("a");
+        persistentQueue.confirmPolled();
+        offer("b", "c");
+        assertThat(pollAll()).containsExactly("b", "c");
+        persistentQueue.returnPolled();
+
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+
+        assertThat(persistentQueue.getSize()).isEqualTo(2);
+        assertThat(pollAll()).containsExactly("b", "c");
+    }
+
+    @Test
+    void eventsPolledButNotConfirmedAreReadAgainAfterARestart() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a");
+        assertThat(pollAll()).containsExactly("a");
+        persistentQueue.confirmPolled();
+        offer("b", "c");
+        assertThat(pollAll()).containsExactly("b", "c");
+
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+
+        assertThat(persistentQueue.getSize()).isEqualTo(2);
+        assertThat(pollAll()).containsExactly("b", "c");
+    }
+
+    @Test
+    void aRestartOnAQueueFullyConfirmedReadsWhatComesNext() {
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a", "b");
+        assertThat(pollAll()).containsExactly("a", "b");
+        persistentQueue.confirmPolled();
+
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("c");
+
+        assertThat(persistentQueue.getSize()).isEqualTo(1);
+        assertThat(pollAll()).containsExactly("c");
+    }
+
+    @Test
+    void theConfirmedPositionCrossesFiles() {
+        asyncStoreSettings = AsyncStoreSettings.builder()
+                .asyncQueueDirectory("./target/chronicle-" + System.nanoTime())
+                .rollCycleProvider(sid -> TestRollCycles.TEST_SECONDLY)
+                .build();
+        persistentQueue.start(asyncStoreSettings, "test");
+        offer("a");
+        LockSupport.parkNanos(Duration.ofMillis(1100).toNanos());
+        offer("b");
+        LockSupport.parkNanos(Duration.ofMillis(1100).toNanos());
+        offer("c");
+        assertThat(pollAll()).containsExactly("a", "b", "c");
+        persistentQueue.confirmPolled();
+        offer("d");
+        assertThat(pollAll()).containsExactly("d");
+
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+
+        assertThat(pollAll()).containsExactly("d");
+    }
+
+    @Test
+    void theFilesOfEventsPolledAreKeptUntilTheyAreConfirmed() {
+        File chronicleDir = new File("./target/chronicle-" + System.nanoTime());
+        File fixSessionDir = new File(chronicleDir, "test-" + fixSessionId.forFileName(""));
+        asyncStoreSettings = AsyncStoreSettings.builder()
+                .asyncQueueDirectory(chronicleDir.getPath())
+                .rollCycleProvider(sid -> TestRollCycles.TEST_SECONDLY)
+                .build();
+        persistentQueue.start(asyncStoreSettings, "test");
+        for (int i = 0; i < 3; i++) {
+            offer("test-" + i);
+            LockSupport.parkNanos(Duration.ofMillis(1100).toNanos());
+        }
+        persistentQueue.stop();
+        persistentQueue.start(asyncStoreSettings, "test");
+
+        assertThat(pollAll()).containsExactly("test-0", "test-1", "test-2");
+        BackgroundResourceReleaser.releasePendingResources();
+        assertThat(queueFiles(fixSessionDir)).hasSize(3);
+
+        persistentQueue.returnPolled();
+        assertThat(pollAll()).containsExactly("test-0", "test-1", "test-2");
+
+        persistentQueue.confirmPolled();
+        BackgroundResourceReleaser.releasePendingResources();
+        assertThat(queueFiles(fixSessionDir)).hasSize(1);
+    }
+
+    /**
+     * The pretoucher holds the last cycle and is closed and recreated by each stop and start: neither may fail while
+     * it runs, nor keep a polled file from being deleted.
+     */
+    @Test
+    void restartsAndDeletesPolledFilesWhilePretouched() throws InterruptedException {
+        File chronicleDir = new File("./target/chronicle-" + System.nanoTime());
+        File fixSessionDir = new File(chronicleDir, "test-" + fixSessionId.forFileName(""));
+        asyncStoreSettings = AsyncStoreSettings.builder()
+                .asyncQueueDirectory(chronicleDir.getPath())
+                .rollCycleProvider(sid -> TestRollCycles.TEST_SECONDLY)
+                .build();
+        persistentQueue.start(asyncStoreSettings, "test");
+        AtomicBoolean pretouching = new AtomicBoolean(true);
+        Thread pretoucher = new Thread(() -> {
+            while (pretouching.get()) {
+                persistentQueue.pretouch();
+            }
+        });
+        pretoucher.start();
+
+        List<String> polled = new ArrayList<>();
+        try {
+            for (int i = 0; i < 3; i++) {
+                offer("test-" + i);
+                persistentQueue.stop();
+                persistentQueue.start(asyncStoreSettings, "test");
+                polled.addAll(pollAll());
+                persistentQueue.confirmPolled();
+                LockSupport.parkNanos(Duration.ofMillis(1100).toNanos());
+            }
+            offer("test-3");
+            polled.addAll(pollAll());
+            persistentQueue.confirmPolled();
+
+            assertThat(polled).containsExactly("test-0", "test-1", "test-2", "test-3");
+            await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                BackgroundResourceReleaser.releasePendingResources();
+                assertThat(queueFiles(fixSessionDir)).hasSize(1);
+            });
+        } finally {
+            pretouching.set(false);
+            pretoucher.join();
+        }
+    }
+
+    /**
+     * A run's misses add to the previous runs', so a counter read from it never goes down, while the stop log line
+     * keeps reporting the run's own.
+     */
+    @Test
+    void pretouchMissedPagesAddUpAcrossRestarts() {
+        TestLogger log = TestLoggerFactory.getTestLogger(PersistentQueue.class);
+        persistentQueue.start(asyncStoreSettings, "test");
+        long firstRun = writePastThePretoucher();
+        persistentQueue.stop();
+        assertThat(persistentQueue.pretouchMissedPages()).isEqualTo(firstRun);
+
+        persistentQueue.start(asyncStoreSettings, "test");
+        long secondRun = writePastThePretoucher();
+        log.clear();
+        persistentQueue.stop();
+
+        assertThat(firstRun).isPositive();
+        assertThat(secondRun).isPositive();
+        assertThat(persistentQueue.pretouchMissedPages()).isEqualTo(firstRun + secondRun);
+        assertThat(log.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
+                .anyMatch(message -> message.endsWith(" and " + secondRun + " pages the writer reached before the pretoucher"));
+    }
+
+    private long writePastThePretoucher() {
+        long missedBefore = persistentQueue.pretouchMissedPages();
+        offer("first");
+        persistentQueue.pretouch();
+        String padding = "x".repeat(1000);
+        for (int i = 0; i < 2000; i++) {
+            offer(padding);
+        }
+        persistentQueue.pretouch();
+        return persistentQueue.pretouchMissedPages() - missedBefore;
     }
 
     @AllArgsConstructor

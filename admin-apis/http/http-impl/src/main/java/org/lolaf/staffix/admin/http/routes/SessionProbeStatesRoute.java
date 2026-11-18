@@ -17,6 +17,7 @@ package org.lolaf.staffix.admin.http.routes;
 
 import org.lolaf.staffix.admin.http.dto.ProbeStatus;
 import org.lolaf.staffix.api.admin.AdminApi;
+import org.lolaf.staffix.api.session.FixSessionProbeScope;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -34,7 +35,7 @@ public final class SessionProbeStatesRoute extends JsonRoute {
 
     @Override
     Object body(List<String> path) {
-        return adminApi.getProbeStates(sessions.runningConfig(param(path, "group"), param(path, "name"))).stream()
+        return adminApi.getProbeStates(FixSessionProbeScope.of(sessions.runningConfig(param(path, "group"), param(path, "name")))).stream()
                 .map(ProbeStatus::of)
                 .collect(Collectors.toList());
     }

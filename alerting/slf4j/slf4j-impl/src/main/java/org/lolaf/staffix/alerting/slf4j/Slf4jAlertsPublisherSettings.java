@@ -20,7 +20,7 @@ import lombok.Getter;
 import lombok.experimental.SuperBuilder;
 import org.jspecify.annotations.NullMarked;
 import org.lolaf.staffix.api.alerting.AbstractFixAlertsPublisherSettings;
-import org.lolaf.staffix.api.session.FixSessionId;
+import org.lolaf.staffix.api.alerting.ProbeScope;
 
 import java.util.function.Function;
 
@@ -34,13 +34,13 @@ import java.util.function.Function;
 public class Slf4jAlertsPublisherSettings extends AbstractFixAlertsPublisherSettings {
 
     /**
-     * Chooses the logger name per session, so one session's alerts can be routed or silenced independently.
+     * Chooses the logger name per probe scope, so one session's alerts can be routed or silenced independently.
      */
     @Builder.Default
-    private Function<FixSessionId, String> loggerNameForFixSession = s -> Slf4jAlertsPublisher.class.getName();
+    private Function<ProbeScope, String> loggerNameForScope = s -> Slf4jAlertsPublisher.class.getName();
     /**
-     * Whether the session's group and name are put in the MDC ({@code fixSessionGroup}, {@code fixSessionName}), the
-     * same keys the SLF4J message logger uses.
+     * Whether the scope's labels are put in the MDC: a session's group and name ({@code fixSessionGroup},
+     * {@code fixSessionName}), the same keys the SLF4J message logger uses.
      */
     @Builder.Default
     private boolean useMDC = true;
