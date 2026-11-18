@@ -32,7 +32,7 @@
         </javadoc.sourcepath>
         <quickfix.version>3.0.2</quickfix.version>
         <artio.version>0.187</artio.version>
-        <otel.version>1.67.0</otel.version>
+        <otel.version>1.68.0</otel.version>
     </properties>
 
     <dependencies>
@@ -229,7 +229,7 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
-                <version>3.6.4</version>
+                <version>3.7.0</version>
                 <executions>
                     <execution>
                         <goals>
@@ -280,7 +280,7 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
-                <version>3.7.0</version>
+                <version>3.8.0</version>
                 <executions>
                     <execution>
                         <id>add-artio-sources</id>
@@ -319,8 +319,8 @@
             <plugin>
                 <groupId>org.quickfixj</groupId>
                 <artifactId>quickfixj-codegenerator</artifactId>
-                <version>3.0.4</version>
-                <!-- do not change 3.0.4 requires a recent version of maven -->
+                <version>3.0.5</version>
+                <!-- do not change 3.0.5 requires a recent version of maven -->
                 <dependencies>
                     <!-- Maven 3.9 stops providing it to plugins, and the generator needs it once outputDirectory is set -->
                     <dependency>
