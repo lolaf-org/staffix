@@ -36,6 +36,7 @@ public class SendMessageRequest {
     /**
      * The field separator used in {@link #getMessages()}, such as SOH or {@code |}.
      */
-    char separator;
+    @NonNull
+    Character separator;
     boolean possDup;
 }

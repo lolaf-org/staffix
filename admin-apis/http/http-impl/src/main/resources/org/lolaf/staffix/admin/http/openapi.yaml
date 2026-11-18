@@ -7,7 +7,8 @@ info:
     API versions served; every other path is under one, /v1 here. A session is always addressed by its name, its
     main config's for an initiator, whichever config it runs. Operations answer once the engine has taken the
     request, not once the session reached the new state: poll status to see it. Errors answer with an
-    application/problem+json body.
+    application/problem+json body. Any path answers 405, with an Allow header, to a method it does not serve, and
+    500 when the engine fails to serve the request.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
@@ -1120,9 +1121,11 @@ components:
           type: string
         evaluationInterval:
           type: string
+          format: duration
           description: ISO-8601 duration, such as PT1S.
         reminderInterval:
           type: string
+          format: duration
           description: ISO-8601 duration an ongoing alert is published again at; absent for transitions only.
         labels:
           type: object
@@ -1472,7 +1475,7 @@ components:
                 properties:
                   pluginTypes:
                     type: array
-                    description: The plugin types it serves, a wrapper's delegates included.
+                    description: The simple class names of the plugin types it serves, a wrapper's delegates included.
                     items:
                       type: string
     EmitterSettings:

@@ -555,6 +555,8 @@ class AdminApiEndpointsTest {
         assertThat(refused.body()).isEqualTo("{\"status\":409,\"detail\":\"trading is not logged in\"}");
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/messages", "{\"messages\":[],\"separator\":\"|\"}").body())
                 .isEqualTo("{\"status\":400,\"detail\":\"No message to send\"}");
+        assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading/messages", "{\"messages\":[\"35=B|\"]}").statusCode())
+                .isEqualTo(400);
 
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/beta/trading/logon", null).statusCode()).isEqualTo(404);
         assertThat(call("POST", "/engines/alpha-engine/v1/sessions/alpha/trading-drp/logon", null).statusCode()).isEqualTo(404);
