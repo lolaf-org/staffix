@@ -17,9 +17,7 @@ package org.lolaf.staffix.impl;
 
 import lombok.Getter;
 import org.assertj.core.api.Assertions;
-import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
@@ -115,13 +113,6 @@ abstract class AbstractFixTests {
      * that these classes can run alongside anything else and a stray process cannot fail the build.
      */
     int acceptorPort;
-
-    @BeforeAll
-    static void raiseAwaitilityDefaults() {
-        Awaitility.setDefaultPollDelay(100, TimeUnit.MICROSECONDS);
-        Awaitility.setDefaultPollInterval(200, TimeUnit.MICROSECONDS);
-        Awaitility.setDefaultTimeout(Duration.ofSeconds(30));
-    }
 
     static Stream<ConnectorType> initiatorOrAcceptorParams() {
         return Stream.of(ConnectorType.INITIATOR, ConnectorType.ACCEPTOR);

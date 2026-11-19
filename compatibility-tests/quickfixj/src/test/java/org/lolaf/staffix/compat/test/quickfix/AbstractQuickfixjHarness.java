@@ -18,10 +18,8 @@ package org.lolaf.staffix.compat.test.quickfix;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.ToString;
-import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.lolaf.betty.api.settings.SSLSettings;
 import org.lolaf.betty.api.settings.ServerSSLSettings;
@@ -71,7 +69,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -234,13 +231,6 @@ abstract class AbstractQuickfixjHarness {
     Application quickfixApplication;
     SessionID quickfixSessionId;
     Connector quickfixConnector;
-
-    @BeforeAll
-    static void raiseAwaitilityDefaults() {
-        Awaitility.setDefaultPollDelay(100, TimeUnit.MICROSECONDS);
-        Awaitility.setDefaultPollInterval(200, TimeUnit.MICROSECONDS);
-        Awaitility.setDefaultTimeout(Duration.ofSeconds(30));
-    }
 
     private static boolean isResendRequest(String message) {
         return isOfType(message, CoreMessageType.RESEND_REQUEST.code());
