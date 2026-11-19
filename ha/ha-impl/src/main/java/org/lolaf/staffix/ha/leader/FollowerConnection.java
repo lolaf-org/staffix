@@ -408,17 +408,18 @@ public final class FollowerConnection implements FrameHandler {
         long currentEpoch = nodeEpoch.getAsLong();
         filledEventOffset = -1;
         while (state == State.STREAMING && dst.limit() - filled >= WireFormat.STORE_EVENT_BODY_OFFSET) {
-            int body = reader.readInto(dst, filled + WireFormat.STORE_EVENT_BODY_OFFSET);
+            int bodyIndex = filled + WireFormat.STORE_EVENT_BODY_OFFSET;
+            int body = reader.readInto(dst, bodyIndex);
             if (body < 0) {
                 break;
             }
-            int sessionKey = dst.getInt(filled + WireFormat.STORE_EVENT_BODY_OFFSET);
+            int sessionKey = FrameDecoder.storeEventSessionKey(dst, bodyIndex);
             if (sessionKey >= nextToAnnounce) {
                 reader.unread();
                 break;
             }
             if (snapshots.isOf(sessionKey)) {
-                if (dst.get(filled + WireFormat.STORE_EVENT_BODY_OFFSET + Integer.BYTES) != StoreEventType.RESET_SEQ_NUM.getCode()) {
+                if (FrameDecoder.storeEventTypeCode(dst, bodyIndex) != StoreEventType.RESET_SEQ_NUM.getCode()) {
                     continue;
                 }
                 // left for the stream, after the snapshot's end

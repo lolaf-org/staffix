@@ -91,6 +91,7 @@ public final class FixMessageDecoderImpl implements FixMessageDecoder {
     }
 
     public void onPluginsSetup(FixSessionPlugin<?, ?>[] fixSessionPlugins) {
+        fixFieldsDecoderMapper.lockDecoderMappings();
         for (FixSessionPlugin<?, ?> plugin : fixSessionPlugins) {
             plugin.onDecoderSetup(this, fixFieldsDecoderMapper);
         }

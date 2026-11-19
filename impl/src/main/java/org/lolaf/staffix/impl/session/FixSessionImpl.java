@@ -638,6 +638,9 @@ public class FixSessionImpl implements FixSession {
     @Override
     @ExternalThread
     public <P1, P2> void bufferize(FixMessageEncoder<?> encoder, UTCTime sendingTime, MessageSendOperationCallback<P1, P2> messageSendOperationCallback, P1 param1, P2 param2) {
+        if (heldOutgoingMessages.holdIfRecovering(encoder, sendingTime, messageSendOperationCallback, param1, param2)) {
+            return;
+        }
         outgoingMessages.bufferize(encoder, sendingTime, messageSendOperationCallback, param1, param2);
     }
 

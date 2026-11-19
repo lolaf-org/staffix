@@ -39,7 +39,6 @@ import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
-import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.tests.TestingClock;
 
 import java.io.IOException;
@@ -96,7 +95,7 @@ class TestReplicationServer {
                 .ioEventsListener(new IOEventsListener() {
                     @Override
                     public void onConnected(IOSession session) {
-                        ByteBuffer hello = session.borrow(FrameEncoder.bytesWith(FrameType.HELLO, "follower-b")).clear();
+                        ByteBuffer hello = session.borrow(FrameEncoder.bytesWith(FrameType.HELLO, "follower-b"));
                         int length = FrameEncoder.hello(hello, 0, EPOCH, "follower-b", lastAppliedEpoch, lastAppliedOffset, 0);
                         session.send(hello.position(length), true);
                     }

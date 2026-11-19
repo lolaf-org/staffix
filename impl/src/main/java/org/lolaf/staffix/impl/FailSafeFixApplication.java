@@ -79,7 +79,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onCancelOnDisconnectTriggered(fixSession, cancelOnDisconnectType);
         } catch (Exception ex) {
-            log.error("Failed to call onCancelOnDisconnectTriggered on FIX session {}", fixSession);
+            log.error("Failed to call onCancelOnDisconnectTriggered on FIX session {}", fixSession, ex);
         }
     }
 
@@ -88,7 +88,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onSessionCreated(fixSession, fieldsRegistry, messageTypeRegistry, decoders);
         } catch (Exception ex) {
-            log.error("Failed to call onSessionCreated on FIX session {}", fixSession);
+            log.error("Failed to call onSessionCreated on FIX session {}", fixSession, ex);
         }
     }
 
@@ -97,7 +97,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onSessionPreDestroy(fixSession);
         } catch (Exception ex) {
-            log.error("Failed to call onSessionPreDestroy on FIX session {}", fixSession);
+            log.error("Failed to call onSessionPreDestroy on FIX session {}", fixSession, ex);
         }
     }
 
@@ -106,7 +106,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onSessionDestroyed(fixSession);
         } catch (Exception ex) {
-            log.error("Failed to call onSessionDestroyed on FIX session {}", fixSession);
+            log.error("Failed to call onSessionDestroyed on FIX session {}", fixSession, ex);
         }
     }
 
@@ -115,7 +115,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onInsideSessionTime(fixSession);
         } catch (Exception ex) {
-            log.error("Failed to call onInsideSessionTime on FIX session {}", fixSession);
+            log.error("Failed to call onInsideSessionTime on FIX session {}", fixSession, ex);
         }
     }
 
@@ -124,7 +124,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onOutsideSessionTime(fixSession);
         } catch (Exception ex) {
-            log.error("Failed to call onOutsideSessionTime on FIX session {}", fixSession);
+            log.error("Failed to call onOutsideSessionTime on FIX session {}", fixSession, ex);
         }
     }
 
@@ -133,7 +133,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onPreOutsideSessionTime(fixSession, outsideSessionTimeDelay);
         } catch (Exception ex) {
-            log.error("Failed to call onPreOutsideSessionTime on FIX session {}", fixSession);
+            log.error("Failed to call onPreOutsideSessionTime on FIX session {}", fixSession, ex);
         }
     }
 
@@ -142,7 +142,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             return fixApplication.onNoDecoderSetupForMessage(fixSession, messageType);
         } catch (Exception ex) {
-            log.error("Failed to call onNoDecoderSetupForMessage on FIX session {}", fixSession);
+            log.error("Failed to call onNoDecoderSetupForMessage on FIX session {}", fixSession, ex);
         }
         return false;
     }
@@ -152,7 +152,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onMessageSendingFailure(fixSession, messageType, message, sendingError);
         } catch (Exception ex) {
-            log.error("Failed to call onMessageSendingFailure on FIX session {}", fixSession);
+            log.error("Failed to call onMessageSendingFailure on FIX session {}", fixSession, ex);
         }
     }
 
@@ -161,7 +161,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             return fixApplication.onResendRequest(fixSession, messageType, toResend);
         } catch (Exception ex) {
-            log.error("Failed to call onResendRequest on FIX session {}", fixSession);
+            log.error("Failed to call onResendRequest on FIX session {}", fixSession, ex);
             return false;
         }
     }
@@ -171,7 +171,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onSequenceReset(fixSession, newSeqNum, gapFill);
         } catch (Exception ex) {
-            log.error("Failed to call onSequenceReset on FIX session {}", fixSession);
+            log.error("Failed to call onSequenceReset on FIX session {}", fixSession, ex);
         }
     }
 
@@ -180,7 +180,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onResendRequestInitiated(fixSession, fromSeqNum, toSeqNum);
         } catch (Exception ex) {
-            log.error("Failed to call onResendRequestInitiated on FIX session {}", fixSession);
+            log.error("Failed to call onResendRequestInitiated on FIX session {}", fixSession, ex);
         }
     }
 
@@ -189,7 +189,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onResendRequestTerminated(fixSession, fromSeqNum, toSeqNum);
         } catch (Exception ex) {
-            log.error("Failed to call onResendRequestTerminated on FIX session {}", fixSession);
+            log.error("Failed to call onResendRequestTerminated on FIX session {}", fixSession, ex);
         }
     }
 
@@ -198,7 +198,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onAdminMessageEncoding(fixSession, messageType, headersAppender, bodyAppender, trailerAppender);
         } catch (Exception ex) {
-            log.error("Failed to call onAdminMessageEncoding on FIX session {}", fixSession);
+            log.error("Failed to call onAdminMessageEncoding on FIX session {}", fixSession, ex);
         }
     }
 
@@ -207,7 +207,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onMessageEncoding(fixSession, messageType, headersAppender, trailerAppender);
         } catch (Exception ex) {
-            log.error("Failed to call onMessageEncoding on FIX session {}", fixSession);
+            log.error("Failed to call onMessageEncoding on FIX session {}", fixSession, ex);
         }
     }
 
@@ -216,7 +216,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             return fixApplication.validateLogon(fixSession, logonMessage, executor);
         } catch (Exception ex) {
-            log.error("Failed to call validateLogon on FIX session {}", fixSession);
+            log.error("Failed to call validateLogon on FIX session {}", fixSession, ex);
         }
         return CompletableFuture.completedFuture(Optional.of("Failure to validate logon message"));
     }
@@ -226,7 +226,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onLogon(fixSession, logonMessage);
         } catch (Exception ex) {
-            log.error("Failed to call onLogon on FIX session {}", fixSession);
+            log.error("Failed to call onLogon on FIX session {}", fixSession, ex);
         }
     }
 
@@ -235,7 +235,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onPreLogout(fixSession, message, logoutInitiated);
         } catch (Exception ex) {
-            log.error("Failed to call onPreLogout on FIX session {}", fixSession);
+            log.error("Failed to call onPreLogout on FIX session {}", fixSession, ex);
         }
     }
 
@@ -244,7 +244,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onLogout(fixSession, message, logoutMessage);
         } catch (Exception ex) {
-            log.error("Failed to call onLogout on FIX session {}", fixSession);
+            log.error("Failed to call onLogout on FIX session {}", fixSession, ex);
         }
     }
 
@@ -253,7 +253,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onDisconnected(fixSession);
         } catch (Exception ex) {
-            log.error("Failed to call onDisconnected on FIX session {}", fixSession);
+            log.error("Failed to call onDisconnected on FIX session {}", fixSession, ex);
         }
     }
 
@@ -262,7 +262,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onHeartbeat(fixSession, remoteTimestamp);
         } catch (Exception ex) {
-            log.error("Failed to call onHeartbeat on FIX session {}", fixSession);
+            log.error("Failed to call onHeartbeat on FIX session {}", fixSession, ex);
         }
     }
 
@@ -271,7 +271,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onTestRequest(fixSession, testReqID, remoteTimestamp);
         } catch (Exception ex) {
-            log.error("Failed to call onTestRequest on FIX session {}", fixSession);
+            log.error("Failed to call onTestRequest on FIX session {}", fixSession, ex);
         }
     }
 
@@ -280,7 +280,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onTestRequestResponse(fixSession, testReqID, remoteTimestamp);
         } catch (Exception ex) {
-            log.error("Failed to call onTestRequestResponse on FIX session {}", fixSession);
+            log.error("Failed to call onTestRequestResponse on FIX session {}", fixSession, ex);
         }
     }
 
@@ -289,7 +289,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onMessageReject(fixSession, rejectText, rejectReason, refSeqNum, refTagId, refMsgType);
         } catch (Exception ex) {
-            log.error("Failed to call onMessageReject on FIX session {}", fixSession);
+            log.error("Failed to call onMessageReject on FIX session {}", fixSession, ex);
         }
     }
 
@@ -298,7 +298,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onBusinessMessageReject(fixSession, rejectText, rejectReason, refSeqNum, businessRejectRefId, refMsgType);
         } catch (Exception ex) {
-            log.error("Failed to call onBusinessMessageReject on FIX session {}", fixSession);
+            log.error("Failed to call onBusinessMessageReject on FIX session {}", fixSession, ex);
         }
     }
 
@@ -307,7 +307,7 @@ public class FailSafeFixApplication implements FixApplication {
         try {
             fixApplication.onNetworkWatermarkEvent(fixSession, highWatermarkReached, bytesLeftToWrite);
         } catch (Exception ex) {
-            log.error("Failed to call onNetworkWatermarkEvent on FIX session {}", fixSession);
+            log.error("Failed to call onNetworkWatermarkEvent on FIX session {}", fixSession, ex);
         }
     }
 }

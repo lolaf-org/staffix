@@ -127,8 +127,8 @@ public interface FixSessionPlugin<C, T> {
      * Called when a decoder setup has been finished
      *
      * @param decoder             the decoder
-     * @param fieldsDecoderMapper the field decoding mapper for decoding fields from the message,
-     *                            allows the plugin to listen to fields (only if the decoder did not already register)
+     * @param fieldsDecoderMapper the field decoding mapper for decoding fields from the message; a field the decoder
+     *                            already maps keeps the decoder's mapping, and the plugin's is ignored
      */
     default void onDecoderSetup(FixMessageDecoder decoder, FixFieldsDecoderMapper fieldsDecoderMapper) {
 

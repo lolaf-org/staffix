@@ -118,8 +118,8 @@ final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHa
             long frameEpoch = message.getLong(index + WireFormat.OFFSET_EPOCH);
             if (message.get(index + WireFormat.OFFSET_TYPE) == FrameType.STORE_EVENT.getCode()
                     && readConnection.isStreamEpoch(frameEpoch)
-                    && replicaSessions.acksOnReceipt(lane, message.getInt(index + WireFormat.HEADER_BYTES + Long.BYTES))) {
-                lastReceivedOffset = message.getLong(index + WireFormat.HEADER_BYTES);
+                    && replicaSessions.acksOnReceipt(lane, FrameDecoder.storeEventSessionKey(message, index + WireFormat.STORE_EVENT_BODY_OFFSET))) {
+                lastReceivedOffset = FrameDecoder.storeEventLogOffset(message, index);
                 lastReceivedEpoch = frameEpoch;
             }
             index += length;
@@ -127,7 +127,7 @@ final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHa
         message.position(index);
         if (lastReceivedOffset > receivedOffsetAcked) {
             receivedOffsetAcked = lastReceivedOffset;
-            ByteBuffer frame = ioSession.borrow(FrameEncoder.fixedBytes(FrameType.RECEIVED)).clear();
+            ByteBuffer frame = ioSession.borrow(FrameEncoder.fixedBytes(FrameType.RECEIVED));
             ioSession.send(frame.position(FrameEncoder.received(frame, 0, lastReceivedEpoch, lastReceivedOffset)), true);
         }
         thread.wakeup();

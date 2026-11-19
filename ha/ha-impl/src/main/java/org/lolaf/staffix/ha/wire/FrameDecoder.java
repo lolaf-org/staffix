@@ -171,11 +171,35 @@ public class FrameDecoder {
         handler.onSessionAnswer(epoch, in.getInt(p), answer);
     }
 
+    /**
+     * Reads the log offset of the {@link FrameType#STORE_EVENT} at {@code frameIndex} without decoding the frame.
+     */
+    public static long storeEventLogOffset(ByteBuffer in, int frameIndex) {
+        return in.getLong(frameIndex + HEADER_BYTES);
+    }
+
+    /**
+     * Reads the session key of the store event body at {@code bodyIndex}, which is
+     * {@link WireFormat#STORE_EVENT_BODY_OFFSET} bytes into its frame.
+     */
+    public static int storeEventSessionKey(ByteBuffer in, int bodyIndex) {
+        return in.getInt(bodyIndex);
+    }
+
+    /**
+     * Reads the {@link StoreEventType} code of the store event body at {@code bodyIndex}.
+     */
+    public static byte storeEventTypeCode(ByteBuffer in, int bodyIndex) {
+        return in.get(bodyIndex + Integer.BYTES);
+    }
+
     private static void decodeStoreEvent(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+        int frame = p - HEADER_BYTES;
+        int body = frame + WireFormat.STORE_EVENT_BODY_OFFSET;
         int messageLength = in.getInt(p + 24);
         checkVariableBytes(FrameType.STORE_EVENT, messageLength, variableBytes);
-        handler.onStoreEvent(epoch, in.getLong(p), in.getInt(p + 8), eventType(in.get(p + 12)), in.getLong(p + 16),
-                in, p + 28, messageLength, in.get(p + 13));
+        handler.onStoreEvent(epoch, storeEventLogOffset(in, frame), storeEventSessionKey(in, body),
+                eventType(storeEventTypeCode(in, body)), in.getLong(p + 16), in, p + 28, messageLength, in.get(p + 13));
     }
 
     private static void decodeSnapshotMessage(ByteBuffer in, int p, int flags, long epoch, int variableBytes,

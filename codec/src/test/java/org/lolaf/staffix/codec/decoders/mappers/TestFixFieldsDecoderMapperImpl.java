@@ -632,6 +632,46 @@ class TestFixFieldsDecoderMapperImpl {
     }
 
     @Test
+    void testPluginMappingDoesNotReplaceTheDecoderMapping() {
+        AtomicReference<String> decoderSetter = new AtomicReference<>();
+        AtomicReference<String> pluginSetter = new AtomicReference<>();
+        fixFieldsDecoderMapperImpl.mapStringField(Account.get(), decoderSetter::set, null);
+        fixFieldsDecoderMapperImpl.lockDecoderMappings();
+        fixFieldsDecoderMapperImpl.mapStringField(Account.get(), pluginSetter::set, null);
+
+        fixFieldsDecoderMapperImpl.onField(Account.get(), getDeserializationCtx("ACC"));
+
+        Assertions.assertThat(decoderSetter.get()).isEqualTo("ACC");
+        Assertions.assertThat(pluginSetter.get()).isNull();
+    }
+
+    @Test
+    void testPluginMappingDoesNotReplaceTheDecoderMappingInAGroup() {
+        AtomicReference<String> decoderSetter = new AtomicReference<>();
+        AtomicReference<String> pluginSetter = new AtomicReference<>();
+        fixFieldsDecoderMapperImpl.forGroup(NoAllocs.get()).mapStringField(AllocAccount.get(), decoderSetter::set, null);
+        fixFieldsDecoderMapperImpl.lockDecoderMappings();
+        fixFieldsDecoderMapperImpl.forGroup(NoAllocs.get()).mapStringField(AllocAccount.get(), pluginSetter::set, null);
+
+        fixFieldsDecoderMapperImpl.onGroupStart(NoAllocs.get());
+        fixFieldsDecoderMapperImpl.onField(AllocAccount.get(), getDeserializationCtx("ALLOC1"));
+
+        Assertions.assertThat(decoderSetter.get()).isEqualTo("ALLOC1");
+        Assertions.assertThat(pluginSetter.get()).isNull();
+    }
+
+    @Test
+    void testPluginMapsAFieldTheDecoderLeftUnmapped() {
+        AtomicReference<String> pluginSetter = new AtomicReference<>();
+        fixFieldsDecoderMapperImpl.lockDecoderMappings();
+        fixFieldsDecoderMapperImpl.mapStringField(Account.get(), pluginSetter::set, null);
+
+        fixFieldsDecoderMapperImpl.onField(Account.get(), getDeserializationCtx("ACC"));
+
+        Assertions.assertThat(pluginSetter.get()).isEqualTo("ACC");
+    }
+
+    @Test
     void testForGroupOnUnknownGroupThrows() {
         // Account is a real registered field but NOT a group of NewOrderSingle
         Assertions.assertThatThrownBy(() -> fixFieldsDecoderMapperImpl.forGroup(Account.get()))

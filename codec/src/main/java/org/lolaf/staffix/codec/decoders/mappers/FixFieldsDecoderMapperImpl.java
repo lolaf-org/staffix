@@ -118,6 +118,7 @@ public class FixFieldsDecoderMapperImpl implements FixFieldsDecoderMapper {
     private final Map<FixField, FieldSetter> fieldSetters;
     private final FixSessionId fixSessionId;
     private boolean fieldAutoResetEnabled = true;
+    private boolean decoderMappingsLocked;
     private FixFieldsDecoderMapperImpl activeMapper;
     private IndexerSetter indexerSetter;
 
@@ -218,7 +219,19 @@ public class FixFieldsDecoderMapperImpl implements FixFieldsDecoderMapper {
         }
     }
 
+    /**
+     * Mappings made from now on, by the session plugins, leave a field the decoder already mapped as it is.
+     */
+    public void lockDecoderMappings() {
+        fixFieldsDecoderMappersPerGroup.values().forEach(mapper -> mapper.decoderMappingsLocked = true);
+    }
+
     private void register(FixField field, FieldSetter setter) {
+        if (decoderMappingsLocked && fieldSetters.containsKey(field)) {
+            log.warn("Field {} of FIX session {} is already mapped by the decoder, ignoring a session plugin mapping it",
+                    field, fixSessionId);
+            return;
+        }
         fieldSetters.put(field, setter);
     }
 

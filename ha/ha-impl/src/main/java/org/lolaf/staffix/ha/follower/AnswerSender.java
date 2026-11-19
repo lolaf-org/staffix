@@ -44,7 +44,7 @@ interface AnswerSender {
 
         @Override
         public ByteBuffer claim(int bytes) {
-            return ioSession.borrow(bytes).clear();
+            return ioSession.borrow(bytes);
         }
 
         @Override
@@ -102,7 +102,7 @@ interface AnswerSender {
 
         @Override
         public void onFrame(int type, ByteBuffer buffer, int index, int length) {
-            ByteBuffer frame = ioSession.borrow(length).clear();
+            ByteBuffer frame = ioSession.borrow(length);
             for (int i = 0; i < length; i++) {
                 frame.put(i, buffer.get(index + i));
             }

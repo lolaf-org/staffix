@@ -55,6 +55,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.ToIntFunction;
 import java.util.stream.IntStream;
@@ -1060,6 +1061,19 @@ class TestFixMessagesResends extends AbstractFixTests {
     @ParameterizedTest
     @MethodSource("initiatorOrAcceptorParams")
     void testResendRequestWithApplicationSendingMessagesDuringResendRequest(ConnectorType connectorType) {
+        assertMessageHandedOverDuringRecoveryIsHeld(connectorType, session -> session.send(encodeTestMessage(200), null));
+    }
+
+    @ParameterizedTest
+    @MethodSource("initiatorOrAcceptorParams")
+    void testResendRequestWithApplicationBufferizingMessagesDuringResendRequest(ConnectorType connectorType) {
+        assertMessageHandedOverDuringRecoveryIsHeld(connectorType, session -> {
+            session.bufferize(encodeTestMessage(200), null);
+            session.flush();
+        });
+    }
+
+    private void assertMessageHandedOverDuringRecoveryIsHeld(ConnectorType connectorType, Consumer<FixSession> handOver) {
         // Section 4.3.11: a peer should hold "queued or new application messages" until the session is synchronized.
         // A message handed over while the retransmission is running must therefore wait for it to finish, and take
         // its MsgSeqNum(34) then, rather than landing in the middle of the replayed range.
@@ -1082,7 +1096,7 @@ class TestFixMessagesResends extends AbstractFixTests {
         // the window the holding covers
         FixSession recoveringSession = getFixSession(connectorType.inverse());
         doAnswer(invocation -> {
-            recoveringSession.send(encodeTestMessage(200), null);
+            handOver.accept(recoveringSession);
             return null;
         }).when(resendRequestReceiver).onResendRequestInitiated(any(FixSession.class), anyLong(), anyLong());
 
