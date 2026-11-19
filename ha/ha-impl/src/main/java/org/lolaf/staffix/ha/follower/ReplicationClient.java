@@ -91,9 +91,14 @@ public final class ReplicationClient {
      * Stops reading, then waits, within the deadline, for each lane to write what it read: an event acknowledged as
      * received is written before a promotion starts the sessions.
      */
-    public synchronized void stop(Deadline deadline) {
-        stopped = true;
-        for (LaneClient laneClient : laneClients) {
+    public void stop(Deadline deadline) {
+        LaneClient[] stopping;
+        // not held while stopping: a store writer thread applying a WELCOME takes it in lanesAnnounced
+        synchronized (this) {
+            stopped = true;
+            stopping = laneClients;
+        }
+        for (LaneClient laneClient : stopping) {
             laneClient.stop(deadline, true);
         }
         if (storeWriterThreads != null) {

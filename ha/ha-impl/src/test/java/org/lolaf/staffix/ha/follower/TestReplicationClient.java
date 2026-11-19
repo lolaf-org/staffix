@@ -206,6 +206,35 @@ class TestReplicationClient {
         assertThat(follower.store(MAIN).writes).contains("incoming 2");
     }
 
+    /**
+     * A store writer thread applying a WELCOME takes the client's lock, so a stop waiting for that thread must not
+     * hold it: it used to, and the two waited for each other forever.
+     */
+    @Test
+    void aStopWaitingForTheStoreWriterLeavesTheClientLockFree() {
+        FollowerConnection connection = followSyncReceived(leader.getReplicationLogs().get(0).getMaxEventFrameBytes());
+        CountDownLatch writeHeld = new CountDownLatch(1);
+        follower.store(MAIN).incomingWritesHeld = writeHeld;
+
+        syncReceivedStore.storeNextIncomingSeqNum(2);
+        await().until(() -> connection.getReceivedOffset() > connection.getAppliedOffset());
+        ReplicationClient stopping = client;
+        client = null;
+        CompletableFuture<Void> stopped = CompletableFuture.runAsync(() -> stopping.stop(Deadline.of(Duration.ofSeconds(10))));
+        await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(2)).until(() -> !stopped.isDone());
+
+        try {
+            assertThat(CompletableFuture.runAsync(() -> {
+                synchronized (stopping) {
+                    assertThat(stopped).isNotDone();
+                }
+            })).succeedsWithin(Duration.ofSeconds(2));
+        } finally {
+            writeHeld.countDown();
+        }
+        assertThat(stopped).succeedsWithin(Duration.ofSeconds(10));
+    }
+
     @Test
     void aStoreWriterThreadLeavesTheNetworkThreadAcknowledgingAsReceivedWhatItHasNotWrittenYet() {
         assumeTrue(storeWriterThreads > 0, "the network thread writes itself otherwise");
