@@ -74,6 +74,16 @@ class TestFrameCodec {
     }
 
     @Test
+    void sessionsAnnounced() {
+        ByteBuffer buffer = buffer(false);
+        int length = FrameEncoder.sessionsAnnounced(buffer, 0, 7, 3);
+
+        decodeWhole(buffer, 0, length);
+
+        assertThat(handler.frames).containsExactly("SESSIONS_ANNOUNCED epoch=7 count=3");
+    }
+
+    @Test
     void aSessionRemovedOnTheLeaderIsFlagged() {
         ByteBuffer buffer = buffer(false);
         int length = FrameEncoder.sessionSettingsDigest(buffer, 0, 7, 2,

@@ -24,6 +24,8 @@ import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.CloseReason;
+import org.lolaf.staffix.ha.wire.FrameEncoder;
+import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -246,7 +248,37 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         assertThat(connection.getFollowerId()).isEqualTo("follower-b");
         assertThat(sent.frames).containsExactly(
                 "WELCOME epoch=7 version=1 leader=leader-a resume=-1 lanes=1",
-                "SESSION epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null");
+                "SESSION epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
+                "SESSIONS_ANNOUNCED epoch=7 count=1");
+    }
+
+    @Test
+    void theFirstAnnouncementEndsWithTheCountOfSessionsItAnnouncedOverAsManyBatchesAsItTakes() {
+        replicated("main").storeNextIncomingSeqNum(5);
+        replicated("other").storeNextIncomingSeqNum(6);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+
+        fill(FrameEncoder.bytesWith(FrameType.SESSION, SESSION));
+        assertThat(sent.frames).last().asString().startsWith("SESSION epoch=7 key=0 ");
+        fill();
+
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("SESSION")).containsExactly(
+                "SESSION epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
+                "SESSION epoch=7 key=1 INITIATOR SYNC_APPLIED id=default.other:VERSION_44:SENDER->TARGET identity=null",
+                "SESSIONS_ANNOUNCED epoch=7 count=2");
+    }
+
+    @Test
+    void aLaneCarryingNoSessionAnnouncesNone() {
+        ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).replicationLanes(2).build());
+        connection = connection();
+        replicated("main").storeNextIncomingSeqNum(5);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 1);
+
+        fill();
+
+        assertThat(sent.frames).containsExactly("WELCOME epoch=7 version=1 leader=leader-a resume=-1 lanes=2",
+                "SESSIONS_ANNOUNCED epoch=7 count=0");
     }
 
     @Test
@@ -262,10 +294,11 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         fill();
 
         assertThat(ha.getReplicationLogs().get(0).getTailOffset()).as("main, key 0").isPositive();
-        assertThat(sent.frames).hasSize(3);
+        assertThat(sent.frames).hasSize(4);
         assertThat(sent.frames.get(0)).endsWith("lanes=2");
         assertThat(sent.frames.get(1)).startsWith("SESSION epoch=7 key=1 ");
-        assertThat(sent.frames.get(2)).contains("key=1 STORE_INCOMING_SEQ_NUM seq=6");
+        assertThat(sent.frames.get(2)).isEqualTo("SESSIONS_ANNOUNCED epoch=7 count=1");
+        assertThat(sent.frames.get(3)).contains("key=1 STORE_INCOMING_SEQ_NUM seq=6");
         assertThat(connection.carries(0)).isFalse();
         assertThat(connection.carries(1)).isTrue();
     }
@@ -301,6 +334,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         assertThat(sent.frames).containsExactly(
                 "WELCOME epoch=7 version=1 leader=leader-a resume=" + second + " lanes=1",
                 "SESSION epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
+                "SESSIONS_ANNOUNCED epoch=7 count=1",
                 "STORE_EVENT epoch=7 offset=" + second + " key=0 STORE_INCOMING_SEQ_NUM seq=6 message=",
                 "STORE_EVENT epoch=7 offset=" + third + " key=0 STORE_INCOMING_SEQ_NUM seq=7 message=");
     }

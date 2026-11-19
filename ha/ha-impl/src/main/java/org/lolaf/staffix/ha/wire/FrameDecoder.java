@@ -114,6 +114,9 @@ public class FrameDecoder {
             case SESSION_SETTINGS_DIGESTS_COMPLETE:
                 handler.onSessionSettingsDigestsComplete(epoch, in.getInt(p), in.getInt(p + 4));
                 break;
+            case SESSIONS_ANNOUNCED:
+                handler.onSessionsAnnounced(epoch, in.getInt(p));
+                break;
             case CLOSE:
                 decodeClose(in, p, epoch, variableBytes, handler);
                 break;

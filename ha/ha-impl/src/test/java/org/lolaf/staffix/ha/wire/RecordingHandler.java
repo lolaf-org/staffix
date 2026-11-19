@@ -70,6 +70,11 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
+    public void onSessionsAnnounced(long epoch, int announcedCount) {
+        frames.add("SESSIONS_ANNOUNCED epoch=" + epoch + " count=" + announcedCount);
+    }
+
+    @Override
     public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer answer) {
         frames.add("SESSION_ANSWER epoch=" + epoch + " key=" + sessionKey + " " + answer);
     }

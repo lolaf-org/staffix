@@ -144,6 +144,16 @@ public class FrameEncoder {
         return length;
     }
 
+    /**
+     * Ends the first announcement of a stream's sessions, {@code announcedCount} SESSION frames since its WELCOME.
+     */
+    public static int sessionsAnnounced(ByteBuffer out, int index, long epoch, int announcedCount) {
+        int length = header(out, index, FrameType.SESSIONS_ANNOUNCED, 0, epoch, 0);
+        out.putInt(index + HEADER_BYTES, announcedCount);
+        out.putInt(index + HEADER_BYTES + 4, 0);
+        return length;
+    }
+
     public static int sessionAnswer(ByteBuffer out, int index, long epoch, int sessionKey, SessionAnswer answer) {
         int length = header(out, index, FrameType.SESSION_ANSWER, 0, epoch, 0);
         int p = index + HEADER_BYTES;

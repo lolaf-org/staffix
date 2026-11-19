@@ -135,6 +135,12 @@ public final class FollowerConnection implements FrameHandler {
      */
     private int nextToAnnounce;
     /**
+     * The SESSION frames of the stream's first announcement pass, and whether its SESSIONS_ANNOUNCED went out; sender
+     * thread only.
+     */
+    private int firstPassAnnounced;
+    private boolean sessionsAnnounced;
+    /**
      * The last generation of session settings digests sent whole, and how far the one being sent has gone; sender thread only.
      */
     private int sentDigestsGeneration;
@@ -445,8 +451,18 @@ public final class FollowerConnection implements FrameHandler {
                     return filled;
                 }
                 filled += bytes;
+                if (!sessionsAnnounced) {
+                    firstPassAnnounced++;
+                }
             }
             nextToAnnounce++;
+        }
+        if (!sessionsAnnounced) {
+            if (dst.limit() - filled < FrameEncoder.fixedBytes(FrameType.SESSIONS_ANNOUNCED)) {
+                return filled;
+            }
+            filled += FrameEncoder.sessionsAnnounced(dst, filled, currentEpoch, firstPassAnnounced);
+            sessionsAnnounced = true;
         }
         Integer key;
         while ((key = reannouncements.peek()) != null) {

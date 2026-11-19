@@ -19,9 +19,9 @@ import java.util.Arrays;
 
 /**
  * Where each of the leader's lanes stands on this follower, kept across connections so a reconnection resumes: the
- * last event written, and the last applied but not written yet. A lane's offsets are those of its own log. A lane's
- * position is written by its own thread only; the last written is read by any. Allocates nothing but on a lane count
- * change.
+ * last event written, the last applied but not written yet, and whether its stream has announced every session. A
+ * lane's offsets are those of its own log. A lane's position is written by its own thread only; the last written and
+ * the announcing are read by any. Allocates nothing but on a lane count change.
  */
 final class LanePositions {
 
@@ -34,7 +34,8 @@ final class LanePositions {
     }
 
     /**
-     * A lane's position is kept while the count does not change.
+     * A lane's position is kept while the count does not change. A lane added is announcing: a WELCOME named it, so
+     * the leader has sessions for it this follower has not heard of.
      */
     synchronized void setCount(int lanes) {
         Position[] current = positions;
@@ -44,6 +45,7 @@ final class LanePositions {
         Position[] resized = Arrays.copyOf(current, lanes);
         for (int lane = current.length; lane < lanes; lane++) {
             resized[lane] = new Position();
+            resized[lane].announcing = true;
         }
         positions = resized;
     }
@@ -79,6 +81,27 @@ final class LanePositions {
         position.pendingEpoch = position.lastAppliedEpoch;
         position.pendingOffset = position.lastAppliedOffset;
         position.receivedToAck = false;
+        position.announcing = true;
+    }
+
+    void sessionsAnnounced(int lane) {
+        positions[lane].announcing = false;
+    }
+
+    /**
+     * Whether a lane's stream has not announced all its sessions yet. Allocates nothing.
+     */
+    boolean isAnnouncing(int lane) {
+        return position(lane).announcing;
+    }
+
+    boolean isAnyAnnouncing() {
+        for (Position position : positions) {
+            if (position.announcing) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -108,6 +131,7 @@ final class LanePositions {
     private static final class Position {
         private volatile long lastAppliedEpoch;
         private volatile long lastAppliedOffset = -1;
+        private volatile boolean announcing;
         private long pendingEpoch;
         private long pendingOffset = -1;
         private boolean receivedToAck;

@@ -147,6 +147,7 @@ class TestReplicationServer {
                 .containsExactly(
                         "WELCOME epoch=7 version=1 leader=leader-a resume=48 lanes=1",
                         "SESSION epoch=7 key=0 ACCEPTOR ASYNC id=default.main:VERSION_44:SENDER->TARGET identity=null",
+                        "SESSIONS_ANNOUNCED epoch=7 count=1",
                         "STORE_EVENT epoch=7 offset=48 key=0 STORE_INCOMING_SEQ_NUM seq=2 message=",
                         "STORE_EVENT epoch=7 offset=96 key=0 STORE_OUTGOING_SEQ_NUM seq=9 message="));
     }

@@ -75,6 +75,14 @@ public interface FrameHandler {
     }
 
     /**
+     * Every session the leader replicated when the stream started has been announced: until then, the follower cannot
+     * tell a session it lacks from one not announced yet.
+     */
+    default void onSessionsAnnounced(long epoch, int announcedCount) {
+        throw unexpected(FrameType.SESSIONS_ANNOUNCED);
+    }
+
+    /**
      * The follower's answer to a {@code SESSION}, and again whenever the session's state on the follower changes, as
      * when a snapshot completes it.
      */

@@ -24,21 +24,14 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
-import org.lolaf.staffix.ha.wire.CloseReason;
-import org.lolaf.staffix.ha.wire.FrameDecoder;
-import org.lolaf.staffix.ha.wire.FrameEncoder;
-import org.lolaf.staffix.ha.wire.FrameHandler;
-import org.lolaf.staffix.ha.wire.FrameType;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
-import org.lolaf.staffix.ha.wire.WireFormat;
-import org.lolaf.staffix.ha.wire.WireFormatException;
+import org.lolaf.staffix.ha.wire.*;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntConsumer;
-import java.util.function.ObjIntConsumer;
 import java.util.function.LongSupplier;
+import java.util.function.ObjIntConsumer;
 
 /**
  * One connection to the leader, for one of its replication lanes: the handshake, then the leader's frames for the
@@ -51,14 +44,8 @@ import java.util.function.LongSupplier;
 @Slf4j
 public final class LeaderConnection implements FrameHandler {
 
-    public enum State {
-        AWAITING_WELCOME,
-        STREAMING,
-        CLOSED
-    }
-
-    private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     static final long CHECK_INTERVAL_NANOS = Duration.ofSeconds(1).toNanos();
+    private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     /**
      * Fits an {@link AnswerSender.ThroughNetworkThread} frame, at three bytes a character.
      */
@@ -72,6 +59,10 @@ public final class LeaderConnection implements FrameHandler {
     @Getter
     private final int lane;
     private final IntConsumer lanesAnnounced;
+    private final AnswerSender answers;
+    private final boolean receivedAckedByNetworkThread;
+    private final long checkIntervalNanos;
+    private final ObjIntConsumer<SessionAnswer> sendBoundAnswer = (answer, sessionKey) -> sendSessionAnswer(sessionKey, answer);
     @Getter
     private volatile State state = State.AWAITING_WELCOME;
     @Getter
@@ -83,16 +74,13 @@ public final class LeaderConnection implements FrameHandler {
     private volatile long streamEpoch;
     private boolean ackDue;
     private boolean applyFailed;
-    private final AnswerSender answers;
-    private final boolean receivedAckedByNetworkThread;
-    private final long checkIntervalNanos;
-    private final ObjIntConsumer<SessionAnswer> sendBoundAnswer = (answer, sessionKey) -> sendSessionAnswer(sessionKey, answer);
     private long rebindCheckedNanos;
     private long pendingWrites;
     private boolean pendingWritesRead;
     private long pendingWritesReadNanos;
     private boolean ackedInSync;
-
+    private int sessionFramesBeforeAnnounced;
+    private boolean sessionsAnnounced;
     /**
      * @param lanesAnnounced               told the leader's lane count from its WELCOME, before the stream starts
      * @param answers                      how this lane's answers to the leader reach the connection
@@ -100,7 +88,7 @@ public final class LeaderConnection implements FrameHandler {
      *                                     writer thread writing them
      */
     LeaderConnection(IOSession ioSession, ReplicaSessions replicaSessions, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
-               long checkIntervalNanos, AnswerSender answers, boolean receivedAckedByNetworkThread) {
+                     long checkIntervalNanos, AnswerSender answers, boolean receivedAckedByNetworkThread) {
         this.answers = answers;
         this.receivedAckedByNetworkThread = receivedAckedByNetworkThread;
         this.checkIntervalNanos = checkIntervalNanos;
@@ -167,7 +155,29 @@ public final class LeaderConnection implements FrameHandler {
                     + replicaSessions.getLanes());
             return;
         }
+        if (!sessionsAnnounced) {
+            sessionFramesBeforeAnnounced++;
+        }
         sendSessionAnswer(sessionKey, replicaSessions.bind(sessionKey, fixSessionType, fixSessionId, replicationMode, storageIdentity));
+    }
+
+    @Override
+    public void onSessionsAnnounced(long epoch, int announcedCount) {
+        if (!acceptsFrame(epoch)) {
+            return;
+        }
+        if (sessionsAnnounced) {
+            close(CloseReason.PROTOCOL_ERROR, "a second SESSIONS_ANNOUNCED");
+            return;
+        }
+        if (announcedCount != sessionFramesBeforeAnnounced) {
+            close(CloseReason.PROTOCOL_ERROR, "SESSIONS_ANNOUNCED counts " + announcedCount + " sessions, "
+                    + sessionFramesBeforeAnnounced + " were announced");
+            return;
+        }
+        sessionsAnnounced = true;
+        replicaSessions.sessionsAnnounced(lane);
+        ackDue = true;
     }
 
     @Override
@@ -403,6 +413,12 @@ public final class LeaderConnection implements FrameHandler {
 
     void disconnected() {
         state = State.CLOSED;
+    }
+
+    public enum State {
+        AWAITING_WELCOME,
+        STREAMING,
+        CLOSED
     }
 
 }

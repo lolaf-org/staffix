@@ -102,6 +102,10 @@ abstract class LeaderConnectionHarness {
                 settings.getHighAvailability().getReplicationMode(), settings.getFixSessionId().toString(), leaderStorageIdentity);
     }
 
+    static ToIntBiFunction<ByteBuffer, Integer> announced(int count) {
+        return (out, index) -> FrameEncoder.sessionsAnnounced(out, index, EPOCH, count);
+    }
+
     static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
                                                               String message) {
         return (out, index) -> TestingFrameEncoder.storeEvent(out, index, epoch, offset, key, type, seq,
@@ -130,7 +134,7 @@ abstract class LeaderConnectionHarness {
     }
 
     void streaming() {
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN), announced(1));
         sent.frames.clear();
     }
 
@@ -139,7 +143,7 @@ abstract class LeaderConnectionHarness {
                 .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
                 .build();
         engine.replace(syncReceived);
-        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, syncReceived));
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, syncReceived), announced(1));
         sent.frames.clear();
     }
 

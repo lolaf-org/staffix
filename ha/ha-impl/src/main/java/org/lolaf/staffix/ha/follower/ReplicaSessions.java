@@ -120,6 +120,13 @@ public final class ReplicaSessions {
     }
 
     /**
+     * The lane's stream has announced every session the leader replicated when it started.
+     */
+    void sessionsAnnounced(int lane) {
+        positions.sessionsAnnounced(lane);
+    }
+
+    /**
      * The leader stopped cleanly after sending every event of the lane, so each of its sessions complete here holds
      * exactly what the leader last wrote: taking it over needs no seqnum jump. Holds until the lane's next stream.
      */
@@ -129,9 +136,13 @@ public final class ReplicaSessions {
 
     /**
      * Every session the leader replicates is in sync here: one refused is missing, although nothing is replicated
-     * into it.
+     * into it, and so is one a lane still announcing has not named yet. A follower that never streamed has nothing
+     * missing.
      */
     public boolean isInSync() {
+        if (positions.isAnyAnnouncing()) {
+            return false;
+        }
         for (ReplicaSession session : sessionsByKey) {
             if (session != null && session.isOutOfSync()) {
                 return false;
@@ -144,7 +155,7 @@ public final class ReplicaSessions {
      * {@link #isInSync()} for the sessions of one lane. Allocates nothing.
      */
     boolean isLaneInSync(int lane) {
-        return !anyOf(lane, ReplicaSession::isOutOfSync);
+        return !positions.isAnnouncing(lane) && !anyOf(lane, ReplicaSession::isOutOfSync);
     }
 
     /**

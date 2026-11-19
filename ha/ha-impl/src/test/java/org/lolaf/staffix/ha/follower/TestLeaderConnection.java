@@ -86,7 +86,60 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
         assertThat(connection.getState()).isEqualTo(LeaderConnection.State.STREAMING);
         assertThat(connection.getLeaderId()).isEqualTo("leader-a");
-        assertThat(sent.frames).as("nothing replicated yet, nothing missing").containsExactly("ACK epoch=7 applied=-1 inSync=true");
+        assertThat(sent.frames).as("the leader's sessions not announced yet").containsExactly("ACK epoch=7 applied=-1 inSync=false");
+    }
+
+    @Test
+    void aFollowerThatNeverStreamedHasNothingMissing() {
+        assertThat(replicaSessions.isInSync()).isTrue();
+    }
+
+    @Test
+    void aLaneIsInSyncOnceTheLeaderAnnouncedEverySessionItReplicates() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME), announced(0));
+
+        assertThat(replicaSessions.isInSync()).isTrue();
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=-1 inSync=true");
+    }
+
+    @Test
+    void aLaneTheWelcomeNamesIsNotInSyncUntilItsOwnSessionsAreAnnounced() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME, 2), announced(0));
+
+        assertThat(replicaSessions.isInSync()).as("lane 1 never connected").isFalse();
+    }
+
+    @Test
+    void aResumedStreamIsNotInSyncUntilItsSessionsAreAnnouncedAgain() {
+        streaming();
+        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 22, 14));
+        assertThat(replicaSessions.isInSync()).isTrue();
+        LeaderConnection next = newConnection(0);
+
+        decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), next);
+        assertThat(replicaSessions.isInSync()).as("a session added on the leader meanwhile is not known yet").isFalse();
+        decode(writeFrames(announced(1)), next);
+
+        assertThat(replicaSessions.isInSync()).isTrue();
+    }
+
+    @Test
+    void anAnnouncementCountingOtherSessionsThanTheStreamAnnouncedIsAProtocolError() {
+        read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN), announced(2));
+
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    }
+
+    @Test
+    void aSecondAnnouncementIsAProtocolError() {
+        streaming();
+
+        read(announced(1));
+
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
     }
 
     @Test
@@ -127,7 +180,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     @Test
     void theStoresAreAskedAtOnceOnTurningInSync() {
         LeaderConnection checkingHourly = checkingHourly();
-        checkingHourly.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), new FrameDecoder(1 << 20));
+        checkingHourly.read(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN), announced(1)), new FrameDecoder(1 << 20));
         engine.store(MAIN).pendingWrites = 7;
         sent.frames.clear();
 
