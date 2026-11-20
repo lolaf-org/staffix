@@ -192,7 +192,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     void aLeaderStopsItsSessionsWhenItsLeaseEndsNotOnItsNextPoll() {
         Node leader = new Node("a", new RecordingEngine().with(MAIN), Duration.ofSeconds(30));
         leader.election.elect(Role.LEADER, 3, "a");
-        leader.election.leaseFor(Duration.ofSeconds(1));
+        leader.election.leaseFor(Duration.ofMillis(300));
         leader.start();
         await().until(() -> leader.engine.activity.contains("activate, stores open 0"));
         assertThat(leader.engine.activity).doesNotContain("deactivate");
@@ -516,6 +516,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aLeaderDropsAFollowerItsWritesWaitedTooLongForAndReportsItUntilItIsBackInSync() {
+        a = tuned("a", settings -> settings.logFullTimeout(Duration.ofMillis(200)).slowFollowerHoldOff(Duration.ofMillis(100)));
         aLeadsBFollows();
         await().until(() -> HaProbes.followersEvaluator(a.ha).evaluate().isEmpty());
         CountDownLatch stalled = new CountDownLatch(1);

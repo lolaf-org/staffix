@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.ha.ReplicationHaSettings.ReplicationHaSettingsBuilder;
 import org.lolaf.staffix.ha.follower.RecordingEngine;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 
@@ -31,6 +32,7 @@ import java.net.Socket;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 import static org.awaitility.Awaitility.await;
 
@@ -96,12 +98,13 @@ abstract class HaPairFixture {
         }
 
         Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLanes) {
-            this(nodeId, engine, heartbeatInterval, replicationLanes, Duration.ofSeconds(2));
+            this(nodeId, engine, heartbeatInterval, replicationLanes, settings -> settings);
         }
 
-        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLanes, Duration switchoverTimeout) {
+        Node(String nodeId, RecordingEngine engine, Duration heartbeatInterval, int replicationLanes,
+             UnaryOperator<ReplicationHaSettingsBuilder> tuning) {
             this.engine = engine;
-            ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
+            ha = new ReplicationFixEngineHa(tuning.apply(ReplicationHaSettings.builder()
                     .nodeId(nodeId)
                     .peer("a", addressA)
                     .peer("b", addressB)
@@ -110,12 +113,12 @@ abstract class HaPairFixture {
                     .followerStoreWriterThreads(storeWriterThreads ? replicationLanes : 0)
                     .heartbeatInterval(heartbeatInterval)
                     .reconnectInterval(Duration.ofMillis(50))
-                    .switchoverTimeout(switchoverTimeout)
+                    .switchoverTimeout(Duration.ofSeconds(2))
                     .followerCheckInterval(Duration.ofMillis(50))
                     .followerLagAlertThreshold(Duration.ofMillis(200))
                     .leaderElection(FakeLeaderElection.Settings.builder().election(election).build())
                     .monitoringInstanceId("monitoring")
-                    .alertsPublisherInstanceId("alerts")
+                    .alertsPublisherInstanceId("alerts"))
                     .build());
             ha.bind(engine);
             store = ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), sessionProbes);
@@ -158,6 +161,10 @@ abstract class HaPairFixture {
     }
 
     Node switchingOverWithin(String nodeId, Duration switchoverTimeout) {
-        return new Node(nodeId, new RecordingEngine().with(MAIN), Duration.ofMillis(50), 1, switchoverTimeout);
+        return tuned(nodeId, settings -> settings.switchoverTimeout(switchoverTimeout));
+    }
+
+    Node tuned(String nodeId, UnaryOperator<ReplicationHaSettingsBuilder> tuning) {
+        return new Node(nodeId, new RecordingEngine().with(MAIN), Duration.ofMillis(50), 1, tuning);
     }
 }
