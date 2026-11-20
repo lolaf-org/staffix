@@ -29,6 +29,7 @@ import org.lolaf.staffix.fix44.msg.MessageTypes;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -111,6 +112,7 @@ final class Counterparty extends Fix44Application {
         long expected = answers.get() + 1;
         session.send(session.newEncoder(EmailEncoder.class).begin().setSubject(BIG_REQUEST), null);
         await().atMost(java.time.Duration.ofSeconds(30)).until(() -> answers.get() >= expected);
+        awaitAnswerProcessed();
     }
 
     void roundTrips(int count) {
@@ -120,5 +122,16 @@ final class Counterparty extends Fix44Application {
             session.send(ping.begin().setSubject("ping"), null);
             await().until(() -> answers.get() >= expected);
         }
+        awaitAnswerProcessed();
+    }
+
+    /**
+     * An answer is counted as it is decoded, before the session stores its seqnum: a task queued on the session's
+     * thread runs once that thread is done with it.
+     */
+    private void awaitAnswerProcessed() {
+        CountDownLatch processed = new CountDownLatch(1);
+        session.processTask(processed::countDown);
+        await().until(() -> processed.getCount() == 0);
     }
 }
