@@ -44,8 +44,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aSwitchoverLogsTheSessionsOutAndTheFollowerTakesThemOverWithoutMovingThemAhead() {
-        aLeadsBFollows();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        startPairInSync();
         a.store.storeNextIncomingSeqNum(7);
         a.election.transfersWith(() -> {
             a.election.elect(Role.FOLLOWER, 4, "b");
@@ -63,8 +62,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aFollowerReconnectingBeforeTheLeaderStopsListeningKeepsItsHandOver() {
-        aLeadsBFollows();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        startPairInSync();
 
         assertThat(a.ha.getServer().handOver(Deadline.of(Duration.ofSeconds(2)))).isTrue();
 
@@ -79,8 +77,7 @@ class TestSwitchover extends HaPairFixture {
     @Test
     void aSwitchoverWhoseTransferNeverLandsResumesAndALaterFailoverStillMovesTheSessionsAhead() {
         a = switchingOverWithin("a", GIVING_UP_SOON);
-        aLeadsBFollows();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        startPairInSync();
         a.election.transfersWith(() -> {
         });
 
@@ -134,7 +131,7 @@ class TestSwitchover extends HaPairFixture {
     @Test
     void aSwitchoverRefusesAFollowerWithTooMuchLeftToStoreAndChangesNothing() {
         a = switchingOverWithin("a", GIVING_UP_SOON);
-        aLeadsBFollows();
+        startPairInSync();
         bTakesOverOnTransfer();
         bHasLeftToStore(1_001);
 
@@ -146,7 +143,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aSwitchoverGoesAheadWithAsMuchLeftToStoreAsItAllows() {
-        aLeadsBFollows();
+        startPairInSync();
         bTakesOverOnTransfer();
         bHasLeftToStore(1_000);
 
@@ -155,7 +152,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aSwitchoverWaitsForTheFollowerToStoreItsBacklog() {
-        aLeadsBFollows();
+        startPairInSync();
         bTakesOverOnTransfer();
         bHasLeftToStore(5_000);
         bStoresAllAfter(Duration.ofMillis(300));
@@ -168,7 +165,7 @@ class TestSwitchover extends HaPairFixture {
     @Test
     void aBacklogStoredLateLeavesTheSwitchoverItsWholeTimeout() {
         a = switchingOverWithin("a", Duration.ofMillis(800));
-        aLeadsBFollows();
+        startPairInSync();
         a.election.transfersWith(() -> {
             Thread landing = new Thread(() -> {
                 await().pollDelay(Duration.ofMillis(400)).until(() -> true);
@@ -187,8 +184,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aLeaderWithdrawingFromElectionsSwitchesOverFirst() {
-        aLeadsBFollows();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        startPairInSync();
         a.election.electableSupported(true);
         bTakesOverOnTransfer();
 
@@ -203,7 +199,7 @@ class TestSwitchover extends HaPairFixture {
     @Test
     void aLeaderThatCannotSwitchOverStaysElectable() {
         a = switchingOverWithin("a", GIVING_UP_SOON);
-        aLeadsBFollows();
+        startPairInSync();
         a.election.electableSupported(true);
         bTakesOverOnTransfer();
         bHasLeftToStore(1_001);
@@ -217,7 +213,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aFollowerWithdrawsFromElectionsWithoutASwitchover() {
-        aLeadsBFollows();
+        startPairInSync();
         b.election.electableSupported(true);
         bTakesOverOnTransfer();
 
@@ -230,7 +226,7 @@ class TestSwitchover extends HaPairFixture {
     @Test
     void aZeroSwitchoverTimeoutRefusesAFollowerNotReadyAtOnce() {
         a = notWaitingToSwitchOver("a");
-        aLeadsBFollows();
+        startPairInSync();
         bTakesOverOnTransfer();
         bHasLeftToStore(1_001);
         long start = System.nanoTime();
@@ -244,7 +240,7 @@ class TestSwitchover extends HaPairFixture {
     @Test
     void aZeroSwitchoverTimeoutStillSwitchesOverToAFollowerReadyNow() {
         a = notWaitingToSwitchOver("a");
-        aLeadsBFollows();
+        startPairInSync();
         bTakesOverOnTransfer();
         await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
 
@@ -253,7 +249,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void onlyALeaderWithAnElectionThatCanTransferSwitchesOver() {
-        aLeadsBFollows();
+        startPairInSync();
 
         assertThatThrownBy(() -> a.ha.switchover()).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("cannot transfer leadership");

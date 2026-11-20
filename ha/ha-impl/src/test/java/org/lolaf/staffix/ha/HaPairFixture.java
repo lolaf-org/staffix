@@ -137,15 +137,17 @@ abstract class HaPairFixture {
     }
 
     /**
-     * Until b is in sync, a write is not streamed to it: the snapshot carries the store's state instead.
+     * Starts a as leader and b as its follower, returning once both count b in sync: until then a write is not
+     * streamed to b, and a sync write waits for no ack.
      */
-    void aLeadsBFollows() {
+    void startPairInSync() {
         a.election.elect(Role.LEADER, 3, "a");
         b.election.elect(Role.FOLLOWER, 3, "a");
         a.start();
         b.start();
         await().until(() -> a.engine.activity.contains("activate, stores open 0"));
         await().until(() -> b.engine.store(MAIN) != null && b.ha.getReplicaSessions().isInSync());
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
     }
 
     Node notWaitingToSwitchOver(String nodeId) {

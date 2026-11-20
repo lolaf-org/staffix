@@ -49,7 +49,7 @@ class TestHaStatusReport extends HaPairFixture {
 
     @Test
     void theLeaderSeesItsFollowerInSyncAndTheFollowerItsLeader() {
-        aLeadsBFollows();
+        startPairInSync();
 
         await().untilAsserted(() -> {
             HaStatus leader = a.ha.getStatus();
@@ -79,7 +79,7 @@ class TestHaStatusReport extends HaPairFixture {
 
     @Test
     void eachNodeDescribesTheReplicatedSessionFromItsSide() {
-        aLeadsBFollows();
+        startPairInSync();
 
         await().untilAsserted(() -> assertThat(a.ha.getSessionStatuses()).singleElement().satisfies(session -> {
             assertThat(session.getFixSessionId()).isEqualTo(MAIN.getFixSessionId());
@@ -108,7 +108,7 @@ class TestHaStatusReport extends HaPairFixture {
         ReplicationFixEngineHa named = new ReplicationFixEngineHa(ReplicationHaSettings.builder().nodeId("a").pairName("gateway").build());
         assertThat(named.getStatus().getPairName()).isEqualTo("gateway");
 
-        aLeadsBFollows();
+        startPairInSync();
         assertThat(a.ha.getStatus().getPairName()).as("an election naming nothing").isNull();
         a.election.pairName = "cluster";
         assertThat(a.ha.getStatus().getPairName()).isEqualTo("cluster");

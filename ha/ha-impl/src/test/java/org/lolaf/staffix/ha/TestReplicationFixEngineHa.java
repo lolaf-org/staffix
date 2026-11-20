@@ -81,7 +81,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void theLeaderRunsItsSessionsAndItsFollowerReplicatesThemWithoutRunningAny() {
-        aLeadsBFollows();
+        startPairInSync();
 
         a.store.storeNextIncomingSeqNum(7);
 
@@ -91,7 +91,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void promotionClosesTheReplicaBeforeRunningTheSessions() {
-        aLeadsBFollows();
+        startPairInSync();
         a.store.storeNextIncomingSeqNum(7);
         await().until(() -> b.engine.store(MAIN) != null && b.engine.store(MAIN).writes.contains("incoming 7"));
 
@@ -107,7 +107,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aFollowerTakesOverALeaderThatStoppedCleanlyWithoutMovingItsSessionsAhead() {
-        aLeadsBFollows();
+        startPairInSync();
         a.store.storeNextIncomingSeqNum(7);
 
         a.ha.stop(Deadline.of(Duration.ofSeconds(2)));
@@ -221,7 +221,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aSessionBuiltWithoutReplicationIsDroppedByTheFollowerThenCaughtUpBySnapshotOnceReplicatedAgain() {
-        aLeadsBFollows();
+        startPairInSync();
         RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);
 
         b.engine.replace(MAIN.toBuilder()
@@ -242,7 +242,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aSessionTheLeaderStopsReplicatingIsDroppedBeforeTheFollowerSettingsCatchUpWithoutARefusal() {
-        aLeadsBFollows();
+        startPairInSync();
         await().until(() -> b.ha.getSessionStatuses().get(0).isInSync());
         RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);
 
@@ -255,7 +255,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aReplicationModeChangedOnTheLeaderAloneIsRefusedByTheFollower() {
-        aLeadsBFollows();
+        startPairInSync();
         await().until(() -> b.ha.getSessionStatuses().get(0).isInSync());
         FixSessionSettings sync = MAIN.toBuilder()
                 .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
@@ -269,13 +269,12 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aSyncReceivedSendIsTimedUnderItsModeAndTheFollowerTimesTheWriteItAcknowledgedFirst() {
-        aLeadsBFollows();
         FixSessionSettings syncReceived = untilAcked(MAIN.toBuilder()
                 .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
                 .build());
         b.engine.replace(syncReceived);
         ReplicatingStore store = a.ha.replicatingStore(syncReceived, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        await().until(() -> a.ha.getSessionStatuses().get(0).isInSync());
+        startPairInSync();
 
         store.storeNextIncomingSeqNum(7);
         store.awaitReplicated();
@@ -288,7 +287,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     @Test
     void theMetersFollowTheReplicationOnBothNodes() {
         ReplicatingStore store = a.ha.replicatingStore(untilAcked(MAIN), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        aLeadsBFollows();
+        startPairInSync();
         RecordingMeters leader = a.engine.meters;
         RecordingMeters follower = b.engine.meters;
 
@@ -401,7 +400,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         RecordingMeters untimedMeters = new RecordingMeters();
         b.engine.replace(sync(MAIN, true));
         ReplicatingStore timed = a.ha.replicatingStore(sync(MAIN, true), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        aLeadsBFollows();
+        startPairInSync();
 
         timed.onSessionMeters(timedMeters);
         timed.storeNextIncomingSeqNum(7);
@@ -424,8 +423,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aResyncSendsEverySessionAgainToTheFollowerWhichHoldsItInSyncAgain() {
-        aLeadsBFollows();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        startPairInSync();
 
         a.ha.resync();
 
@@ -435,8 +433,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aResyncOfOneSessionNamesAReplicatedSession() {
-        aLeadsBFollows();
-        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+        startPairInSync();
 
         a.ha.resync(MAIN.getFixSessionId(), MAIN.getFixSessionType());
 
@@ -447,7 +444,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void onlyTheLeaderResyncs() {
-        aLeadsBFollows();
+        startPairInSync();
 
         assertThatThrownBy(() -> b.ha.resync()).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Only the leader re-syncs its followers; node b is FOLLOWER");
@@ -503,7 +500,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aLeaderAlertsOnAConnectedFollowerThatStoppedApplyingItsWrites() {
-        aLeadsBFollows();
+        startPairInSync();
         await().until(() -> HaProbes.followersEvaluator(a.ha).evaluate().isEmpty());
         CountDownLatch stalled = new CountDownLatch(1);
         b.engine.store(MAIN).incomingWritesHeld = stalled;
@@ -528,7 +525,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     @Test
     void aLeaderDropsAFollowerItsWritesWaitedTooLongForAndReportsItUntilItIsBackInSync() {
         a = tuned("a", settings -> settings.logFullTimeout(Duration.ofMillis(200)).slowFollowerHoldOff(Duration.ofMillis(100)));
-        aLeadsBFollows();
+        startPairInSync();
         await().until(() -> HaProbes.followersEvaluator(a.ha).evaluate().isEmpty());
         CountDownLatch stalled = new CountDownLatch(1);
         b.engine.store(MAIN).incomingWritesHeld = stalled;
@@ -691,7 +688,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         assertThatThrownBy(() -> a.ha.requireSettingsStoreWritable(replicated))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("files").hasMessageContaining("leads");
 
-        aLeadsBFollows();
+        startPairInSync();
         a.ha.requireSettingsStoreWritable(replicated);
     }
 
