@@ -53,6 +53,8 @@ import org.lolaf.staffix.ha.primos.PrimosLeaderElectionSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.TestPorts;
+import org.lolaf.staffix.tests.TestingFixMessagesLoggerSettings;
+import org.lolaf.staffix.tests.TestingLogger;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -117,6 +119,7 @@ class TestPrimosFailover {
         return FixEngineBuilder.builder()
                 .instanceId(name)
                 .fixMessagesStore(MemoryMessageStoreSettings.builder().build())
+                .fixMessagesLogger(TestingFixMessagesLoggerSettings.builder().testingLogger(new TestingLogger(name)).build())
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder().instanceId("app").application("app", application).build())
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSetting(settings).build());
     }

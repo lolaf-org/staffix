@@ -64,7 +64,9 @@ import org.lolaf.staffix.stores.messages.memory.MemoryMessagesStore;
 import org.lolaf.staffix.stores.sessions.file.FileSessionsSettingsStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
 import org.lolaf.staffix.tests.TestPorts;
+import org.lolaf.staffix.tests.TestingFixMessagesLoggerSettings;
 import org.lolaf.staffix.tests.TestingFixMessagesStoreSettings;
+import org.lolaf.staffix.tests.TestingLogger;
 
 import java.io.File;
 import java.io.IOException;
@@ -150,6 +152,7 @@ class TestSwitchover {
         return FixEngineBuilder.builder()
                 .instanceId(name)
                 .fixMessagesStore(store)
+                .fixMessagesLogger(TestingFixMessagesLoggerSettings.builder().testingLogger(new TestingLogger(name)).build())
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder().instanceId("app").application("app", application).build())
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSetting(settings).build());
     }
@@ -998,6 +1001,7 @@ class TestSwitchover {
         FixEngine counterpartyFixEngine = start(FixEngineBuilder.builder()
                 .instanceId("counterparty")
                 .fixMessagesStore(MemoryMessageStoreSettings.builder().build())
+                .fixMessagesLogger(TestingFixMessagesLoggerSettings.builder().testingLogger(new TestingLogger("counterparty")).build())
                 .fixApplicationFactory(applications.build())
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSettings(List.of(counterpartySessions)).build())
                 .build().instance());
