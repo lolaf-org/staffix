@@ -611,7 +611,8 @@ class AdminApiEndpointsTest {
                 .build());
         when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(TRADING)
                 .fixSessionType(FixSession.FixSessionType.INITIATOR).replicationMode(ReplicationMode.ASYNC)
-                .replicationAckTimeout(Duration.ZERO).inSync(true).nextIncomingSeqNum(-1).nextOutgoingSeqNum(-1).build()));
+                .replicationAckTimeout(Duration.ZERO).unencryptedMessageType("S").inSync(true).nextIncomingSeqNum(-1)
+                .nextOutgoingSeqNum(-1).build()));
         when(adminApi.getHa()).thenReturn(Optional.of(ha));
 
         assertThat(call("GET", "/engines/alpha-engine/v1/ha", null).body())
@@ -625,7 +626,7 @@ class AdminApiEndpointsTest {
                         + "\"sessionSettingsDifferences\":[{\"store\":\"files\",\"fixSessionType\":\"ACCEPTOR\",\"fixSessionId\":\"s\",\"kind\":\"DIFFERENT\"}]}");
         assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
-                        + "\"replicationAckTimeout\":\"PT0S\",\"inSync\":true,\"lastSendUnacknowledged\":false,"
+                        + "\"replicationAckTimeout\":\"PT0S\",\"unencryptedMessageTypes\":[\"S\"],\"inSync\":true,\"lastSendUnacknowledged\":false,"
                         + "\"unacknowledgedSends\":0,\"nextIncomingSeqNum\":-1,\"nextOutgoingSeqNum\":-1,\"handedOver\":false,\"pendingWrites\":0,\"lostWrites\":0}]");
     }
 

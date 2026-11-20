@@ -16,6 +16,8 @@
 package org.lolaf.staffix.impl.session;
 
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionDesiredState;
 import org.lolaf.staffix.api.session.FixSessionId;
@@ -25,9 +27,12 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class TestFixSessionSettingsValidator {
 
@@ -361,5 +366,56 @@ class TestFixSessionSettingsValidator {
         assertThatThrownBy(() -> FixSessionSettingsValidator.validate(settings))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("highAvailability.replicationAckTimeout must be set and not negative");
+    }
+
+    private FixSessionSettings withUnencryptedMessageTypes(String... codes) {
+        return validSettings()
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.ASYNC)
+                        .unencryptedMessageTypes(List.of(codes))
+                        .build())
+                .build();
+    }
+
+    @Test
+    void acceptsUnencryptedMessageTypesTheDictionaryHasUserDefinedOnesAndAllAlone() {
+        MessageTypeRegistry registry = mock(MessageTypeRegistry.class);
+        when(registry.find("S")).thenReturn(MessageType.of("S", false));
+
+        assertThatCode(() -> FixSessionSettingsValidator.validate(withUnencryptedMessageTypes("S", "U1"))).doesNotThrowAnyException();
+        assertThatCode(() -> FixSessionSettingsValidator.validateUnencryptedMessageTypes(withUnencryptedMessageTypes("S", "U1"), registry))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> FixSessionSettingsValidator.validate(withUnencryptedMessageTypes("*"))).doesNotThrowAnyException();
+        assertThatCode(() -> FixSessionSettingsValidator.validateUnencryptedMessageTypes(withUnencryptedMessageTypes("*"), registry))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsLogonInTheUnencryptedMessageTypes() {
+        assertThatThrownBy(() -> FixSessionSettingsValidator.validate(withUnencryptedMessageTypes("S", "A")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("highAvailability.unencryptedMessageTypes must not name Logon (A)");
+    }
+
+    @Test
+    void rejectsAllMessageTypesBesideOthers() {
+        assertThatThrownBy(() -> FixSessionSettingsValidator.validate(withUnencryptedMessageTypes("*", "S")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("which stands alone");
+    }
+
+    @Test
+    void rejectsABlankUnencryptedMessageType() {
+        assertThatThrownBy(() -> FixSessionSettingsValidator.validate(withUnencryptedMessageTypes(" ")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not hold a blank code");
+    }
+
+    @Test
+    void rejectsAnUnencryptedMessageTypeTheDictionaryLacks() {
+        assertThatThrownBy(() -> FixSessionSettingsValidator.validateUnencryptedMessageTypes(withUnencryptedMessageTypes("ZZ"),
+                mock(MessageTypeRegistry.class)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("names ZZ, which is no message type of the session's dictionary");
     }
 }

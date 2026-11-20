@@ -450,6 +450,19 @@
           } ],
           "description" : "Whether the session's monitoring times each SYNC send's wait for the follower's acknowledgement. Off by default: recording costs the session's thread on every send.",
           "default" : false
+        },
+        "unencryptedMessageTypes" : {
+          "type" : "array",
+          "items" : {
+            "anyOf" : [ {
+              "type" : "string"
+            }, {
+              "type" : "string",
+              "pattern" : ".*\\$\\{[^}]+}.*",
+              "description" : "A ${...} placeholder, resolved when the file is loaded"
+            } ]
+          },
+          "description" : "MsgType(35) values the replication sends unencrypted, though still authenticated: heavy traffic not worth hiding, such as quotes. Only worth setting when the engine encrypts its replication; a clear one ignores it. * alone names every type; empty, the default, encrypts every message. Logon (A) is refused, since it carries the password. Read on the leader, and applied when the session is next built."
         }
       },
       "description" : "Whether and how this session's store is replicated to the follower engine."

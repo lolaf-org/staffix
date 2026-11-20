@@ -72,6 +72,9 @@ highAvailability:
   replicationMode: "SYNC_APPLIED"
   replicationAckTimeout: "PT0.5S"
   syncAckLatencyEnabled: true
+  unencryptedMessageTypes:
+    - "S"
+    - "W"
 sessionScheduleSettings:
   outsideSessionTimePreTriggerDelay: "PT11S"
   timeZone: "Europe/Zurich"

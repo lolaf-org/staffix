@@ -169,6 +169,8 @@ public interface FixHaMXBean {
 
         String getReplicationAckTimeout();
 
+        List<String> getUnencryptedMessageTypes();
+
         boolean isInSync();
 
         String getNotReplicatedReason();

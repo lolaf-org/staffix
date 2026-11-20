@@ -207,6 +207,7 @@ public class FixSessionSettingsMapper {
             if (h.getReplicationMode() != null) hb.replicationMode(h.getReplicationMode());
             if (h.getReplicationAckTimeout() != null) hb.replicationAckTimeout(h.getReplicationAckTimeout());
             if (h.getSyncAckLatencyEnabled() != null) hb.syncAckLatencyEnabled(h.getSyncAckLatencyEnabled());
+            if (h.getUnencryptedMessageTypes() != null) hb.unencryptedMessageTypes(h.getUnencryptedMessageTypes());
             b.highAvailability(hb.build());
         }
         if (p.getSchedule() != null) {

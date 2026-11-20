@@ -16,6 +16,7 @@
 package org.lolaf.staffix.api.ha;
 
 import lombok.Builder;
+import lombok.Singular;
 import lombok.Value;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -24,6 +25,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * A replicated session, as this node sees it: on a leader whether a follower holds it, on a follower what it holds.
@@ -37,6 +39,11 @@ public class HaSessionStatus {
     FixSessionType fixSessionType;
     ReplicationMode replicationMode;
     Duration replicationAckTimeout;
+    /**
+     * As {@link org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings#getUnencryptedMessageTypes()}.
+     */
+    @Singular
+    List<String> unencryptedMessageTypes;
     /**
      * On a leader, a follower holds it in sync; on a follower, it holds it in full.
      */

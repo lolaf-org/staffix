@@ -231,6 +231,7 @@ public class FixSessionSettingsDocument {
         private FixSessionSettings.HaSessionSettings.ReplicationMode replicationMode;
         private Duration replicationAckTimeout;
         private Boolean syncAckLatencyEnabled;
+        private List<String> unencryptedMessageTypes;
     }
 
     @Data

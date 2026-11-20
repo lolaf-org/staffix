@@ -16,6 +16,9 @@
 package org.lolaf.staffix.impl.session;
 
 import lombok.experimental.UtilityClass;
+import org.lolaf.staffix.api.msg.CoreMessageType;
+import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 
 import java.time.DayOfWeek;
@@ -49,6 +52,27 @@ public class FixSessionSettingsValidator {
         validateRttMeasurement(settings, violations);
         validateHaSessionSettings(settings, violations);
 
+        throwIfAny(settings, violations);
+    }
+
+    /**
+     * The checks needing the session's dictionary, which {@link #validate} runs without: a code in
+     * {@code highAvailability.unencryptedMessageTypes} must be one of its message types, or user defined.
+     */
+    public static void validateUnencryptedMessageTypes(FixSessionSettings settings, MessageTypeRegistry messageTypes) {
+        List<String> violations = new ArrayList<>();
+        for (String code : settings.getHighAvailability().getUnencryptedMessageTypes()) {
+            if (!FixSessionSettings.HaSessionSettings.ALL_MESSAGE_TYPES.equals(code)
+                    && messageTypes.find(code) == null
+                    && !MessageType.of(code, false).isUserDefined()) {
+                violations.add("highAvailability.unencryptedMessageTypes names " + code
+                        + ", which is no message type of the session's dictionary");
+            }
+        }
+        throwIfAny(settings, violations);
+    }
+
+    private static void throwIfAny(FixSessionSettings settings, List<String> violations) {
         if (!violations.isEmpty()) {
             String details = violations.stream().sorted().reduce("", (a, b) -> a + "\n  - " + b);
             throw new IllegalArgumentException("Invalid FIX session settings for " + settings.getFixSessionId() + ":" + details);
@@ -199,6 +223,16 @@ public class FixSessionSettingsValidator {
             violations.add("highAvailability.replicationMode must be set");
         }
         requireNonNegative(violations, ha.getReplicationAckTimeout(), "highAvailability.replicationAckTimeout");
+        List<String> unencrypted = ha.getUnencryptedMessageTypes();
+        if (unencrypted.contains(CoreMessageType.LOGON.code())) {
+            violations.add("highAvailability.unencryptedMessageTypes must not name Logon (A): it carries the password");
+        }
+        if (unencrypted.contains(FixSessionSettings.HaSessionSettings.ALL_MESSAGE_TYPES) && unencrypted.size() > 1) {
+            violations.add("highAvailability.unencryptedMessageTypes names every type with *, which stands alone");
+        }
+        if (unencrypted.stream().anyMatch(code -> code == null || code.isBlank())) {
+            violations.add("highAvailability.unencryptedMessageTypes must not hold a blank code");
+        }
     }
 
     /**

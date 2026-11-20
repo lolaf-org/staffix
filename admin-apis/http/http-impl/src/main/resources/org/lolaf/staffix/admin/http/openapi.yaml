@@ -1350,8 +1350,8 @@ components:
           description: Holds every replicated session in full.
     HaSession:
       type: object
-      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, inSync, lastSendUnacknowledged,
-                 unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver, pendingWrites, lostWrites]
+      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, unencryptedMessageTypes, inSync,
+                 lastSendUnacknowledged, unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver, pendingWrites, lostWrites]
       properties:
         group:
           type: string
@@ -1366,6 +1366,11 @@ components:
         replicationAckTimeout:
           type: string
           format: duration
+        unencryptedMessageTypes:
+          type: array
+          items:
+            type: string
+          description: MsgType(35) values an encrypted replication sends unencrypted, still authenticated; "*" for all.
         inSync:
           type: boolean
           description: On a leader, a follower holds it in sync; on a follower, it holds it in full.

@@ -377,6 +377,11 @@ public class FixSessionSettings {
     public static class HaSessionSettings {
 
         /**
+         * The {@link #getUnencryptedMessageTypes() unencryptedMessageTypes} entry naming every message type.
+         */
+        public static final String ALL_MESSAGE_TYPES = "*";
+
+        /**
          * Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the
          * session is next built: turned on, the follower catches up by snapshot; turned off, it stops holding the
          * session.
@@ -398,6 +403,15 @@ public class FixSessionSettings {
          */
         @Builder.Default
         boolean syncAckLatencyEnabled = false;
+
+        /**
+         * MsgType(35) values the replication sends unencrypted, though still authenticated: heavy traffic not worth
+         * hiding, such as quotes. Only worth setting when the engine encrypts its replication; a clear one ignores it.
+         * {@code *} alone names every type; empty, the default, encrypts every message. Logon ({@code A}) is refused,
+         * since it carries the password. Read on the leader, and applied when the session is next built.
+         */
+        @Singular
+        List<String> unencryptedMessageTypes;
 
         @Getter
         @RequiredArgsConstructor

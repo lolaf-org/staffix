@@ -198,6 +198,9 @@ public class ToFixSessionSettingsDocumentTransformer {
             mergeIfNeeded(ha::getReplicationMode, hb::replicationMode);
             mergeIfNeeded(ha::getReplicationAckTimeout, hb::replicationAckTimeout);
             mergeIfNeeded(ha::isSyncAckLatencyEnabled, hb::syncAckLatencyEnabled);
+            if (!ha.getUnencryptedMessageTypes().isEmpty()) {
+                hb.unencryptedMessageTypes(ha.getUnencryptedMessageTypes());
+            }
             builder.highAvailability(hb.build());
         }
     }

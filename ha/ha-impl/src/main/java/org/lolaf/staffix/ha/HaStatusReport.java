@@ -104,6 +104,7 @@ final class HaStatusReport {
                 .fixSessionType(sessionSettings.getFixSessionType())
                 .replicationMode(haSettings.getReplicationMode())
                 .replicationAckTimeout(haSettings.getReplicationAckTimeout())
+                .unencryptedMessageTypes(haSettings.getUnencryptedMessageTypes())
                 .nextIncomingSeqNum(-1)
                 .nextOutgoingSeqNum(-1);
         if (Role.LEADER.equals(role)) {

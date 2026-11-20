@@ -435,6 +435,11 @@ public class FixSessionSettingsProps {
          * Whether the session's monitoring times each SYNC send's wait for the follower's acknowledgement.
          */
         private Boolean syncAckLatencyEnabled;
+        /**
+         * MsgType(35) values an encrypted replication sends unencrypted, though still authenticated, such as quotes;
+         * {@code *} alone for every type. Unset encrypts every message; Logon (A) is refused.
+         */
+        private List<String> unencryptedMessageTypes;
     }
 
     @Data

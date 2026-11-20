@@ -68,6 +68,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
@@ -438,6 +439,25 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
                 .extracting(AlertEvent::getType).containsExactly(AlertEvent.Type.RAISED, AlertEvent.Type.CLEARED));
         assertThatThrownBy(() -> engine.probes("other", "elsewhere", () -> true)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> admin.getProbeStates(ComponentProbeScope.of("other"))).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void anUnencryptedMessageTypeIsCheckedAgainstTheSessionsDictionaryWhenTheEngineLoadsIt() {
+        withHighAvailability();
+
+        assertThatThrownBy(() -> setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.ASYNC)
+                .toBuilder().unencryptedMessageType("ZZ").build()).build()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("names ZZ, which is no message type of the session's dictionary");
+    }
+
+    @Test
+    void anUnencryptedMessageTypeOfTheSessionsDictionaryIsAccepted() {
+        withHighAvailability();
+
+        assertThatCode(() -> setupInitiatorSessionSettings(b -> b.highAvailability(replicated(ReplicationMode.ASYNC)
+                .toBuilder().unencryptedMessageType("C").build()).build()))
+                .doesNotThrowAnyException();
     }
 
     @Test

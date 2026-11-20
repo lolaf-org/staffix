@@ -22,6 +22,7 @@ import org.lolaf.staffix.spring.boot.spi.FixSessionIdProps;
 
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -118,6 +119,19 @@ class TestFixSessionSettingsMapper {
         assertThat(mapped.getReplicationMode()).isEqualTo(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC_APPLIED);
         assertThat(mapped.getReplicationAckTimeout()).isEqualTo(FixSessionSettings.HaSessionSettings.builder().build().getReplicationAckTimeout());
         assertThat(mapped.isSyncAckLatencyEnabled()).isFalse();
+        assertThat(mapped.getUnencryptedMessageTypes()).as("every message encrypted").isEmpty();
+    }
+
+    @Test
+    void mapsTheUnencryptedMessageTypes() {
+        FixSessionSettingsProps.HaProps ha = new FixSessionSettingsProps.HaProps();
+        ha.setReplicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.ASYNC);
+        ha.setUnencryptedMessageTypes(List.of("S", "W"));
+        FixSessionSettingsProps props = sessionProps();
+        props.setHa(ha);
+
+        assertThat(FixSessionSettingsMapper.toSettings(props).getHighAvailability().getUnencryptedMessageTypes())
+                .containsExactly("S", "W");
     }
 
     @Test

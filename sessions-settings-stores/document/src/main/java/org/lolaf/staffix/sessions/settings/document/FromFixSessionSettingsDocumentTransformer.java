@@ -149,6 +149,7 @@ public class FromFixSessionSettingsDocumentTransformer {
             mergeIfNeeded(yha::getReplicationMode, hb::replicationMode);
             mergeIfNeeded(yha::getReplicationAckTimeout, hb::replicationAckTimeout);
             mergeIfNeeded(yha::getSyncAckLatencyEnabled, hb::syncAckLatencyEnabled);
+            mergeIfNeeded(yha::getUnencryptedMessageTypes, hb::unencryptedMessageTypes);
             builder.highAvailability(hb.build());
         }
     }

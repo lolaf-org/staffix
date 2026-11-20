@@ -27,6 +27,7 @@ import org.lolaf.staffix.api.application.FixApplicationFactorySettings;
 import org.lolaf.staffix.api.application.FixApplicationSessionSettingDescriptor;
 import org.lolaf.staffix.api.ha.FixEngineHa;
 import org.lolaf.staffix.api.ha.HaAdmin;
+import org.lolaf.staffix.api.msg.MessageTypeRegistry;
 import org.lolaf.staffix.api.logging.FixMessagesLogger;
 import org.lolaf.staffix.api.logging.FixMessagesLoggerSettings;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
@@ -39,6 +40,7 @@ import org.lolaf.staffix.api.session.plugins.FixSessionsPlugin;
 import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
+import org.lolaf.staffix.codec.decoders.FixTMessageTypeRegistry;
 import org.lolaf.staffix.impl.alerting.ProbesImpl;
 import org.lolaf.staffix.impl.alerting.ProbesListeners;
 import org.lolaf.staffix.impl.alerting.ProbesManager;
@@ -264,6 +266,26 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
         if (fixEngineBuilder.getHighAvailability() == null && replicationMode != ReplicationMode.NONE) {
             throw new IllegalArgumentException("FIX session " + settings.getFixSessionId() + " asks for replication mode "
                     + replicationMode + ", but engine " + getInstanceId() + " has no high availability configured");
+        }
+        if (!settings.getHighAvailability().getUnencryptedMessageTypes().isEmpty()) {
+            messageTypes(settings).ifPresent(messageTypes ->
+                    FixSessionSettingsValidator.validateUnencryptedMessageTypes(settings, messageTypes));
+        }
+    }
+
+    private Optional<MessageTypeRegistry> messageTypes(FixSessionSettings settings) {
+        String applicationId = settings.getFixApplicationInstanceId();
+        try {
+            FixApplicationFactory factory = findMatchAmongstFixApplicationFactories(settings);
+            if (!factory.getApplicationIds().contains(applicationId)) {
+                return Optional.empty();
+            }
+            FixDictionaryId dictionaryId = ApplicationDictionary.require(factory.getDictionaryId(applicationId),
+                    applicationId, settings.getFixSessionId());
+            return Optional.of(FixTMessageTypeRegistry.get(dictionaryId, settings.getFixSessionId().getFixVersion()));
+        } catch (IllegalArgumentException unresolvable) {
+            // reported by building the session, or by requireResolvableComponents on an admin change
+            return Optional.empty();
         }
     }
 

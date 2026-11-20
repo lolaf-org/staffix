@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * A replicated session, as {@link HaSessionStatus} with its id split.
@@ -32,6 +33,7 @@ public class HaSession {
     FixSessionType fixSessionType;
     ReplicationMode replicationMode;
     Duration replicationAckTimeout;
+    List<String> unencryptedMessageTypes;
     boolean inSync;
     String notReplicatedReason;
     boolean lastSendUnacknowledged;
@@ -45,6 +47,7 @@ public class HaSession {
     public static HaSession of(HaSessionStatus status) {
         return new HaSession(status.getFixSessionId().getGroup(), status.getFixSessionId().getName(),
                 status.getFixSessionType(), status.getReplicationMode(), status.getReplicationAckTimeout(),
+                status.getUnencryptedMessageTypes(),
                 status.isInSync(), status.getNotReplicatedReason(), status.isLastSendUnacknowledged(),
                 status.getUnacknowledgedSends(), status.getNextIncomingSeqNum(), status.getNextOutgoingSeqNum(),
                 status.isHandedOver(), status.getPendingWrites(), status.getLostWrites());

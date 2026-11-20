@@ -76,6 +76,7 @@ Then ask for replication per session, in its settings:
 highAvailability:
   replicationMode: ASYNC        # NONE (default), ASYNC, SYNC_RECEIVED or SYNC_APPLIED
   replicationAckTimeout: PT1S   # SYNC modes only: how long a send waits for the follower, zero for ever
+  unencryptedMessageTypes: []         # MsgType(35) values an encrypted replication leaves unencrypted, such as [S]; * for all
 ```
 
 **The leader keeps the follower's session settings in line with its own**, see
