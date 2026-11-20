@@ -26,9 +26,8 @@ import org.lolaf.primos.transport.UdpTransport;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
+import org.lolaf.staffix.tests.TestPorts;
 
-import java.io.IOException;
-import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -59,15 +58,7 @@ class TestPrimosLeaderElection {
 
     TestPrimosLeaderElection() {
         for (int id = 1; id <= NODES; id++) {
-            ports[id] = freeUdpPort();
-        }
-    }
-
-    private static int freeUdpPort() {
-        try (DatagramSocket socket = new DatagramSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
+            ports[id] = TestPorts.findFree();
         }
     }
 

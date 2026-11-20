@@ -32,11 +32,9 @@ import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.tests.TestPorts;
 
-import java.io.IOException;
-import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -55,28 +53,12 @@ class TestReplicationOverPrimos {
     @TempDir
     Path state;
 
-    private final int[] electionPorts = {0, freeUdpPort(), freeUdpPort(), freeUdpPort()};
-    private final int[] replicationPorts = {0, freeTcpPort(), freeTcpPort()};
+    private final int[] electionPorts = {0, TestPorts.findFree(), TestPorts.findFree(), TestPorts.findFree()};
+    private final int[] replicationPorts = {0, TestPorts.findFree(), TestPorts.findFree()};
     private final Engine[] engines = {null, new Engine(), new Engine()};
     private ReplicationFixEngineHa first;
     private ReplicationFixEngineHa second;
     private LeaderElection voter;
-
-    private static int freeUdpPort() {
-        try (DatagramSocket socket = new DatagramSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    private static int freeTcpPort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 
     /**
      * An engine with no session, which records whether it runs them.

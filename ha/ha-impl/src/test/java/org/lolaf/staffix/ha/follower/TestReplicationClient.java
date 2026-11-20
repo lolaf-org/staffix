@@ -35,10 +35,9 @@ import org.lolaf.staffix.ha.leader.ReplicationStats;
 import org.lolaf.staffix.ha.leader.SlowFollowers;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.tests.TestPorts;
 
-import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -71,20 +70,12 @@ class TestReplicationClient {
     private static final FixSessionSettings OTHER = RecordingEngine.session("other", FixSessionType.ACCEPTOR);
 
     private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
-    private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
+    private final InetSocketAddress address = new InetSocketAddress("localhost", TestPorts.findFree());
     private final ReplicationServer server = server(address, leader);
     private final RecordingEngine follower = new RecordingEngine().with(MAIN);
     private final ReplicaSessions replicaSessions = new ReplicaSessions(follower);
     private final ReplicatingStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
     private ReplicationClient client;
-
-    private static int freePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 
     private ReplicationServer twoLanesServer;
     private ReplicationServer syncReceivedServer;
@@ -113,7 +104,7 @@ class TestReplicationClient {
         follower.with(OTHER);
         ReplicationFixEngineHa twoLanes = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16)
                 .replicationLanes(2).build());
-        InetSocketAddress twoLanesAddress = new InetSocketAddress("localhost", freePort());
+        InetSocketAddress twoLanesAddress = new InetSocketAddress("localhost", TestPorts.findFree());
         twoLanesServer = server(twoLanesAddress, twoLanes, twoLanesStats);
         twoLanesMain = twoLanes.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
         twoLanesOther = twoLanes.replicatingStore(OTHER, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
@@ -151,7 +142,7 @@ class TestReplicationClient {
                 .build();
         follower.replace(syncReceived);
         syncReceivedLeader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
-        InetSocketAddress syncReceivedAddress = new InetSocketAddress("localhost", freePort());
+        InetSocketAddress syncReceivedAddress = new InetSocketAddress("localhost", TestPorts.findFree());
         syncReceivedServer = server(syncReceivedAddress, syncReceivedLeader);
         syncReceivedStore = syncReceivedLeader.replicatingStore(syncReceived, new RecordingEngine.RecordingStore().start(),
                 new RecordingProbes());

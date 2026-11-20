@@ -40,10 +40,9 @@ import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.tests.TestPorts;
 
-import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -62,20 +61,12 @@ class TestReplicationServer {
     private static final long EPOCH = 7;
 
     private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
-    private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
+    private final InetSocketAddress address = new InetSocketAddress("localhost", TestPorts.findFree());
     private final ReplicationServer server = new ReplicationServer(address, ha.getReplicationLogs(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
             "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE,
             BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock());
     private final RecordingHandler received = new RecordingHandler();
     private Client follower;
-
-    private static int freePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 
     private FixSessionMessagesStore replicated() {
         return ha.replicatingStore(FixSessionSettings.builder()

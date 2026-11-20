@@ -24,10 +24,10 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings.ReplicationHaSettingsBuilder;
 import org.lolaf.staffix.ha.follower.RecordingEngine;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
+import org.lolaf.staffix.tests.TestPorts;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -44,8 +44,8 @@ abstract class HaPairFixture {
 
     static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.ACCEPTOR);
     static final FixSessionSettings OTHER = RecordingEngine.session("other", FixSessionType.ACCEPTOR);
-    final InetSocketAddress addressA = new InetSocketAddress("localhost", freePort());
-    final InetSocketAddress addressB = new InetSocketAddress("localhost", freePort());
+    final InetSocketAddress addressA = new InetSocketAddress("localhost", TestPorts.findFree());
+    final InetSocketAddress addressB = new InetSocketAddress("localhost", TestPorts.findFree());
     final List<ReplicationFixEngineHa> started = new ArrayList<>();
     /**
      * One per lane, so a stalled lane holds back no other.
@@ -58,14 +58,6 @@ abstract class HaPairFixture {
         this.storeWriterThreads = storeWriterThreads;
         a = new Node("a");
         b = new Node("b");
-    }
-
-    static int freePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
     }
 
     static boolean listening(InetSocketAddress address) {

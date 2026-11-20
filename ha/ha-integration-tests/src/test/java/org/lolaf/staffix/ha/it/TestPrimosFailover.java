@@ -58,7 +58,6 @@ import org.lolaf.staffix.tests.TestingLogger;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -96,14 +95,6 @@ class TestPrimosFailover {
     private AdminApi counterpartyEngine;
     private FixSessionId counterpartySession;
 
-    private static int freeUdpPort() {
-        try (DatagramSocket socket = new DatagramSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
     private static FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode) {
         return FixSessionSettings.builder()
                 .fixSessionId(id)
@@ -135,7 +126,7 @@ class TestPrimosFailover {
 
     private void start(Pair pair) throws IOException {
         InetSocketAddress witness = startWitness();
-        int[] electionPorts = {0, freeUdpPort(), freeUdpPort()};
+        int[] electionPorts = {0, TestPorts.findFree(), TestPorts.findFree()};
         InetSocketAddress[] replication = {null, new InetSocketAddress("localhost", TestPorts.findFree()),
                 new InetSocketAddress("localhost", TestPorts.findFree())};
         InetSocketAddress[] fix = {null, new InetSocketAddress("localhost", TestPorts.findFree()),
