@@ -444,7 +444,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         } else {
             client = new ReplicationClient(leader, replicaSessions, election::getEpoch, settings.getNodeId(),
                     replicationLogs.getMaxEventFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get(),
-                    settings.getFollowerStoreWriterThreads(), settings.getFollowerStoreWriterIdleStrategy());
+                    settings.getFollowerStoreWriterThreads(), settings.getFollowerStoreWriterIdleStrategy(),
+                    settings.getFollowerCheckInterval());
             client.start();
         }
         roleChanged(Role.FOLLOWER, electionEpoch, leader);

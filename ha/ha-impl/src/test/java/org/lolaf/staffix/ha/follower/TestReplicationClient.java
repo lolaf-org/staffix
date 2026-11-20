@@ -138,7 +138,7 @@ class TestReplicationClient {
 
     private void connect(InetSocketAddress address, int maxFrameBytes) {
         client = new ReplicationClient(address, replicaSessions, () -> EPOCH, "follower-b", maxFrameBytes, Duration.ofMillis(50),
-                new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new);
+                new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1));
         client.start();
     }
 

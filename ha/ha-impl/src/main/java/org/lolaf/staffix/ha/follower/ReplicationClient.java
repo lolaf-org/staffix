@@ -57,6 +57,7 @@ public final class ReplicationClient {
     private final String nodeId;
     private final int maxFrameBytes;
     private final Duration connectionRetry;
+    private final long checkIntervalNanos;
     private final SelectStrategy selectStrategy;
     private final @Nullable StoreWriterThreads storeWriterThreads;
     private volatile LaneClient[] laneClients = new LaneClient[0];
@@ -67,10 +68,11 @@ public final class ReplicationClient {
      *                           {@link org.lolaf.staffix.ha.log.ReplicationLog#getMaxEventFrameBytes()}
      * @param storeWriterThreads threads writing what the lanes read into the stores, 0 to write on the lanes' network
      *                           threads
+     * @param checkInterval      see {@link org.lolaf.staffix.ha.ReplicationHaSettings#getFollowerCheckInterval()}
      */
     public ReplicationClient(InetSocketAddress leaderAddress, ReplicaSessions replicaSessions, LongSupplier nodeEpoch,
                              String nodeId, int maxFrameBytes, Duration connectionRetry, SelectStrategy selectStrategy,
-                             int storeWriterThreads, Supplier<IdleStrategy> storeWriterIdleStrategy) {
+                             int storeWriterThreads, Supplier<IdleStrategy> storeWriterIdleStrategy, Duration checkInterval) {
         this.storeWriterThreads = storeWriterThreads == 0 ? null
                 : new StoreWriterThreads(storeWriterThreads, storeWriterIdleStrategy, nodeId);
         this.selectStrategy = selectStrategy;
@@ -80,6 +82,7 @@ public final class ReplicationClient {
         this.nodeId = nodeId;
         this.maxFrameBytes = maxFrameBytes;
         this.connectionRetry = connectionRetry;
+        this.checkIntervalNanos = checkInterval.toNanos();
     }
 
     public synchronized void start() {
@@ -215,7 +218,7 @@ public final class ReplicationClient {
             AnswerSender answers = writtenByStoreWriter ?
                     new AnswerSender.ThroughNetworkThread(session) : new AnswerSender.OnNetworkThread(session);
             LeaderConnection connected = new LeaderConnection(session, replicaSessions, nodeEpoch, nodeId, lane,
-                    ReplicationClient.this::lanesAnnounced, LeaderConnection.CHECK_INTERVAL_NANOS, answers, writtenByStoreWriter);
+                    ReplicationClient.this::lanesAnnounced, checkIntervalNanos, answers, writtenByStoreWriter);
             session.setAttachment(connected);
             connection = connected;
             if (writtenByStoreWriter) {

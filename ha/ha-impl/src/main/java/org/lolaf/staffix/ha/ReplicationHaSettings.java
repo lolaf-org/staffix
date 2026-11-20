@@ -213,6 +213,14 @@ public class ReplicationHaSettings extends HaSettings {
     private final long switchoverMaxPendingWrites = 1_000;
 
     /**
+     * How often a follower checks again two things: how many writes its stores still have to make, which it reports to
+     * the leader for a switchover to wait on, and whether it can now accept a session it refused because its settings
+     * were missing or differed from the leader's. Each check looks at every session of a lane.
+     */
+    @Builder.Default
+    private final Duration followerCheckInterval = Duration.ofSeconds(1);
+
+    /**
      * How long a connected follower may go without applying a write before the {@code ha-followers} probe raises a
      * major alert: a failover then loses what it has not applied. Well above a healthy lag, so it means a stalled or
      * overloaded follower rather than a busy one.
@@ -270,6 +278,9 @@ public class ReplicationHaSettings extends HaSettings {
         if (switchoverMaxPendingWrites < 0) {
             throw new IllegalArgumentException("switchoverMaxPendingWrites must not be negative, got "
                     + switchoverMaxPendingWrites);
+        }
+        if (followerCheckInterval.isNegative() || followerCheckInterval.isZero()) {
+            throw new IllegalArgumentException("followerCheckInterval must be positive, got " + followerCheckInterval);
         }
         if (snapshotChunkBytes < 1) {
             throw new IllegalArgumentException("snapshotChunkBytes must be positive, got " + snapshotChunkBytes);

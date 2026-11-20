@@ -152,7 +152,7 @@ abstract class LeaderConnectionHarness {
     }
 
     LeaderConnection newConnection(int lane) {
-        return newConnection(lane, LeaderConnection.CHECK_INTERVAL_NANOS);
+        return newConnection(lane, TimeUnit.SECONDS.toNanos(1));
     }
 
     private LeaderConnection newConnection(int lane, long checkIntervalNanos) {

@@ -194,7 +194,7 @@ staffix.ha-replication.fencing-margin=50ms
 **`node-id` and the `peers` keys are the primos node ids**: primos names the leader by its id, and the replication
 looks that name up in `peers`. The other `ReplicationHaSettings` settings bind the same way (`pair-name`, `log-capacity`,
 `replication-lanes`, `heartbeat-interval`, `reconnect-interval`, `send-buffers`, `snapshot-chunk-bytes`,
-`promotion-outgoing-seq-num-jump`, `hand-over-timeout`, `switchover-timeout`, `switchover-max-pending-writes`, `follower-lag-alert-threshold`,
+`promotion-outgoing-seq-num-jump`, `hand-over-timeout`, `switchover-timeout`, `switchover-max-pending-writes`, `follower-check-interval`, `follower-lag-alert-threshold`,
 `follower-stall-timeout`, `log-full-timeout`, `slow-follower-hold-off`, `session-settings-replicated`, `replicated-settings-stores`); their defaults are in the guide.
 `sender-idle-strategy`, `sync-ack-idle-strategy` and `select-strategy` take `default` or `busy-spin`; see
 [Latency](high-availability.md#latency).

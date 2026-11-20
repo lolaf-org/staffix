@@ -72,6 +72,7 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         ifSet(props.getHandOverTimeout(), settings::handOverTimeout);
         ifSet(props.getSwitchoverTimeout(), settings::switchoverTimeout);
         ifSet(props.getSwitchoverMaxPendingWrites(), settings::switchoverMaxPendingWrites);
+        ifSet(props.getFollowerCheckInterval(), settings::followerCheckInterval);
         ifSet(props.getFollowerLagAlertThreshold(), settings::followerLagAlertThreshold);
         ifSet(props.getFollowerStallTimeout(), settings::followerStallTimeout);
         ifSet(props.getLogFullTimeout(), settings::logFullTimeout);

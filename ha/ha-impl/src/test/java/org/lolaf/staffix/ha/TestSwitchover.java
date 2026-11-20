@@ -31,6 +31,11 @@ import static org.awaitility.Awaitility.await;
 @ValueSource(booleans = {false, true})
 class TestSwitchover extends HaPairFixture {
 
+    /**
+     * Long enough to log out and hand over, short for a test waiting it out to be refused.
+     */
+    private static final Duration GIVING_UP_SOON = Duration.ofMillis(300);
+
     TestSwitchover(boolean storeWriterThreads) {
         super(storeWriterThreads);
     }
@@ -56,6 +61,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aSwitchoverWhoseTransferNeverLandsResumesAndALaterFailoverStillMovesTheSessionsAhead() {
+        a = switchingOverWithin("a", GIVING_UP_SOON);
         aLeadsBFollows();
         await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
         a.election.transfersWith(() -> {
@@ -75,6 +81,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aSwitchoverWaitsForAFollowerInSyncAndChangesNothingWithoutOne() {
+        a = switchingOverWithin("a", GIVING_UP_SOON);
         a.election.elect(Role.LEADER, 3, "a");
         a.start();
         await().until(() -> a.engine.activity.contains("activate, stores open 0"));
@@ -109,6 +116,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aSwitchoverRefusesAFollowerWithTooMuchLeftToStoreAndChangesNothing() {
+        a = switchingOverWithin("a", GIVING_UP_SOON);
         aLeadsBFollows();
         bTakesOverOnTransfer();
         bHasLeftToStore(1_001);
@@ -142,10 +150,11 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aBacklogStoredLateLeavesTheSwitchoverItsWholeTimeout() {
+        a = switchingOverWithin("a", Duration.ofMillis(800));
         aLeadsBFollows();
         a.election.transfersWith(() -> {
             Thread landing = new Thread(() -> {
-                await().pollDelay(Duration.ofMillis(1_500)).until(() -> true);
+                await().pollDelay(Duration.ofMillis(400)).until(() -> true);
                 a.election.elect(Role.FOLLOWER, 4, "b");
                 b.election.elect(Role.LEADER, 4, "b");
             });
@@ -153,8 +162,8 @@ class TestSwitchover extends HaPairFixture {
             landing.start();
         });
         bHasLeftToStore(5_000);
-        // the follower reports once a second: seen a second in, leaving less than the landing takes
-        bStoresAllAfter(Duration.ofMillis(400));
+        // waiting for it and the landing together take longer than the timeout
+        bStoresAllAfter(Duration.ofMillis(450));
 
         assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
     }
@@ -176,6 +185,7 @@ class TestSwitchover extends HaPairFixture {
 
     @Test
     void aLeaderThatCannotSwitchOverStaysElectable() {
+        a = switchingOverWithin("a", GIVING_UP_SOON);
         aLeadsBFollows();
         a.election.electableSupported(true);
         bTakesOverOnTransfer();

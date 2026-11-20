@@ -111,6 +111,7 @@ abstract class HaPairFixture {
                     .heartbeatInterval(heartbeatInterval)
                     .reconnectInterval(Duration.ofMillis(50))
                     .switchoverTimeout(switchoverTimeout)
+                    .followerCheckInterval(Duration.ofMillis(50))
                     .followerLagAlertThreshold(Duration.ofMillis(200))
                     .leaderElection(FakeLeaderElection.Settings.builder().election(election).build())
                     .monitoringInstanceId("monitoring")
@@ -153,6 +154,10 @@ abstract class HaPairFixture {
     }
 
     Node notWaitingToSwitchOver(String nodeId) {
-        return new Node(nodeId, new RecordingEngine().with(MAIN), Duration.ofMillis(50), 1, Duration.ZERO);
+        return switchingOverWithin(nodeId, Duration.ZERO);
+    }
+
+    Node switchingOverWithin(String nodeId, Duration switchoverTimeout) {
+        return new Node(nodeId, new RecordingEngine().with(MAIN), Duration.ofMillis(50), 1, switchoverTimeout);
     }
 }

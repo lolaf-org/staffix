@@ -44,7 +44,6 @@ import java.util.function.ObjIntConsumer;
 @Slf4j
 public final class LeaderConnection implements FrameHandler {
 
-    static final long CHECK_INTERVAL_NANOS = Duration.ofSeconds(1).toNanos();
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     /**
      * Fits an {@link AnswerSender.ThroughNetworkThread} frame, at three bytes a character.
@@ -337,7 +336,7 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     /**
-     * At most once a check interval, a second outside tests: the engine's sessions are listed to find them, and a
+     * At most once a check interval: the engine's sessions are listed to find them, and a
      * refusal is rare.
      */
     private void bindSessionsAgain() {

@@ -186,6 +186,13 @@ public class ReplicationHaProps {
     private Long switchoverMaxPendingWrites;
 
     /**
+     * How often a follower checks again two things: how many writes its stores still have to make, which it reports to
+     * the leader for a switchover to wait on, and whether it can now accept a session it refused because its settings
+     * were missing or differed from the leader's. Unset keeps 1s. Each check looks at every session of a lane.
+     */
+    private Duration followerCheckInterval;
+
+    /**
      * How long a connected follower may go without applying a write before the {@code ha-followers} probe raises a
      * major alert: a failover then loses what it has not applied. Unset keeps 5s. Well above a healthy lag, so it means
      * a stalled or overloaded follower rather than a busy one.

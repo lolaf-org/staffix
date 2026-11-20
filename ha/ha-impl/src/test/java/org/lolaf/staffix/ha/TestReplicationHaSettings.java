@@ -97,6 +97,14 @@ class TestReplicationHaSettings {
     }
 
     @Test
+    void followerCheckIntervalMustBePositive() {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder().followerCheckInterval(Duration.ZERO).build();
+
+        assertThatThrownBy(settings::validate).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("followerCheckInterval");
+    }
+
+    @Test
     void switchoverMaxPendingWritesMustNotBeNegative() {
         ReplicationHaSettings settings = ReplicationHaSettings.builder().switchoverMaxPendingWrites(-1).build();
 
