@@ -46,7 +46,7 @@ public final class LeaderConnection implements FrameHandler {
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     /**
-     * Fits an {@link AnswerSender.ThroughNetworkThread} frame, at three bytes a character.
+     * Fits an {@link ThroughNetworkThreadAnswerSender} frame, at three bytes a character.
      */
     private final IOSession ioSession;
     private final ReplicaSessions replicaSessions;
@@ -80,6 +80,7 @@ public final class LeaderConnection implements FrameHandler {
     private boolean ackedInSync;
     private int sessionFramesBeforeAnnounced;
     private boolean sessionsAnnounced;
+
     /**
      * @param lanesAnnounced               told the leader's lane count from its WELCOME, before the stream starts
      * @param answers                      how this lane's answers to the leader reach the connection

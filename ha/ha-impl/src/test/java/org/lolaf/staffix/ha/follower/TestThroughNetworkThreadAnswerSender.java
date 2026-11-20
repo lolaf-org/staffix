@@ -22,9 +22,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
-class TestAnswerSender {
+class TestThroughNetworkThreadAnswerSender {
 
-    private final AnswerSender.ThroughNetworkThread throughNetworkThread = new AnswerSender.ThroughNetworkThread(mock(IOSession.class));
+    private final ThroughNetworkThreadAnswerSender throughNetworkThread = new ThroughNetworkThreadAnswerSender(mock(IOSession.class));
 
     @Test
     void anAnswerQueuedByAStoreWriterThreadGetsTheRoomItClaims() {

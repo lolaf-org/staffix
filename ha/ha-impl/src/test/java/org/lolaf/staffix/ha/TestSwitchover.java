@@ -18,6 +18,8 @@ package org.lolaf.staffix.ha;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 
@@ -57,6 +59,21 @@ class TestSwitchover extends HaPairFixture {
         assertThat(b.engine.store(MAIN).writes).as("every write reached b before the transfer").contains("incoming 7")
                 .doesNotContain("outgoing 10001");
         await().until(() -> a.ha.getStatus().getRole() == Role.FOLLOWER);
+    }
+
+    @Test
+    void aFollowerReconnectingBeforeTheLeaderStopsListeningKeepsItsHandOver() {
+        aLeadsBFollows();
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+
+        assertThat(a.ha.getServer().handOver(Deadline.of(Duration.ofSeconds(2)))).isTrue();
+
+        await().until(() -> isHandedOver(b));
+        await().alias("b reconnects every 50 ms").during(Duration.ofMillis(300)).until(() -> isHandedOver(b));
+    }
+
+    private static boolean isHandedOver(Node node) {
+        return node.ha.getSessionStatuses().stream().allMatch(HaSessionStatus::isHandedOver);
     }
 
     @Test

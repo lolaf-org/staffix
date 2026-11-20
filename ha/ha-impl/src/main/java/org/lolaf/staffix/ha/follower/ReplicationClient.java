@@ -216,7 +216,7 @@ public final class ReplicationClient {
         public void onConnected(IOSession session) {
             boolean writtenByStoreWriter = writeQueue != null;
             AnswerSender answers = writtenByStoreWriter ?
-                    new AnswerSender.ThroughNetworkThread(session) : new AnswerSender.OnNetworkThread(session);
+                    new ThroughNetworkThreadAnswerSender(session) : new OnNetworkThreadAnswerSender(session);
             LeaderConnection connected = new LeaderConnection(session, replicaSessions, nodeEpoch, nodeId, lane,
                     ReplicationClient.this::lanesAnnounced, checkIntervalNanos, answers, writtenByStoreWriter);
             session.setAttachment(connected);

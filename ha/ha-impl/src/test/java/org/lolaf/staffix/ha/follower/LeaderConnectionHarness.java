@@ -21,25 +21,15 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.wire.CloseReason;
-import org.lolaf.staffix.ha.wire.FrameDecoder;
-import org.lolaf.staffix.ha.wire.FrameEncoder;
-import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
-import org.lolaf.staffix.ha.wire.FrameHandler;
-import org.lolaf.staffix.ha.wire.RecordingHandler;
-import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.wire.*;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.function.ToIntBiFunction;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 /**
  * A leader connection over a mocked IO session, fed the frames a leader would send.
@@ -77,14 +67,6 @@ abstract class LeaderConnectionHarness {
         }
     }
 
-    /**
-     * Hands the connection the frames written by each encoder in one read, as the client does.
-     */
-    @SafeVarargs
-    final void read(ToIntBiFunction<ByteBuffer, Integer>... frames) {
-        connection.read(writeFrames(frames), new FrameDecoder(1 << 20));
-    }
-
     static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset) {
         return welcome(epoch, resumeOffset, 1);
     }
@@ -107,7 +89,7 @@ abstract class LeaderConnectionHarness {
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
-                                                              String message) {
+                                                      String message) {
         return (out, index) -> TestingFrameEncoder.storeEvent(out, index, epoch, offset, key, type, seq,
                 message == null ? null : ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
     }
@@ -131,6 +113,32 @@ abstract class LeaderConnectionHarness {
     static ToIntBiFunction<ByteBuffer, Integer> snapshotMessage(long seq, String message) {
         return (out, index) -> TestingFrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq,
                 ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
+    }
+
+    static ToIntBiFunction<ByteBuffer, Integer> heartbeat() {
+        return (out, index) -> FrameEncoder.heartbeat(out, index, EPOCH, 0);
+    }
+
+    static ToIntBiFunction<ByteBuffer, Integer> close(CloseReason reason) {
+        return (out, index) -> FrameEncoder.close(out, index, EPOCH, reason, "test");
+    }
+
+    @SafeVarargs
+    static ByteBuffer writeFrames(ToIntBiFunction<ByteBuffer, Integer>... frames) {
+        ByteBuffer buffer = ByteBuffer.allocate(1 << 16);
+        int length = 0;
+        for (ToIntBiFunction<ByteBuffer, Integer> frame : frames) {
+            length += frame.applyAsInt(buffer, length);
+        }
+        return buffer.limit(length);
+    }
+
+    /**
+     * Hands the connection the frames written by each encoder in one read, as the client does.
+     */
+    @SafeVarargs
+    final void read(ToIntBiFunction<ByteBuffer, Integer>... frames) {
+        connection.read(writeFrames(frames), new FrameDecoder(1 << 20));
     }
 
     void streaming() {
@@ -157,11 +165,7 @@ abstract class LeaderConnectionHarness {
 
     private LeaderConnection newConnection(int lane, long checkIntervalNanos) {
         return new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", lane, replicaSessions::setLanes,
-                checkIntervalNanos, new AnswerSender.OnNetworkThread(ioSession), false);
-    }
-
-    static ToIntBiFunction<ByteBuffer, Integer> heartbeat() {
-        return (out, index) -> FrameEncoder.heartbeat(out, index, EPOCH, 0);
+                checkIntervalNanos, new OnNetworkThreadAnswerSender(ioSession), false);
     }
 
     long lostWrites() {
@@ -174,19 +178,5 @@ abstract class LeaderConnectionHarness {
         read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
                 (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
         engine.store(MAIN).writes.clear();
-    }
-
-    static ToIntBiFunction<ByteBuffer, Integer> close(CloseReason reason) {
-        return (out, index) -> FrameEncoder.close(out, index, EPOCH, reason, "test");
-    }
-
-    @SafeVarargs
-    static ByteBuffer writeFrames(ToIntBiFunction<ByteBuffer, Integer>... frames) {
-        ByteBuffer buffer = ByteBuffer.allocate(1 << 16);
-        int length = 0;
-        for (ToIntBiFunction<ByteBuffer, Integer> frame : frames) {
-            length += frame.applyAsInt(buffer, length);
-        }
-        return buffer.limit(length);
     }
 }

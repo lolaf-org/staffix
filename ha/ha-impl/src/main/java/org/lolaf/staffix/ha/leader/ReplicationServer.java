@@ -73,6 +73,7 @@ public final class ReplicationServer {
     private final Clock clock;
     private IOWorkersGroup ioWorkers;
     private Server server;
+    private volatile boolean handedOver;
 
     private static void launchSender(Runnable loop) {
         Thread thread = new Thread(loop, "staffix-ha-sender");
@@ -106,14 +107,17 @@ public final class ReplicationServer {
 
     /**
      * Hands over to every follower, for a leader stopping cleanly; see {@link FollowerConnection#handOver(Deadline)}.
+     * Once a follower was told, the server refuses the followers connecting.
      *
      * @return whether a follower was told
      */
     public boolean handOver(Deadline deadline) {
+        handedOver = true;
         boolean told = false;
         for (FollowerConnection connection : followers.connections()) {
             told |= connection.handOver(deadline);
         }
+        handedOver = told;
         return told;
     }
 
@@ -149,6 +153,10 @@ public final class ReplicationServer {
 
         @Override
         public void onConnected(IOSession session) {
+            if (handedOver) {
+                session.stop(Deadline.immediate());
+                return;
+            }
             FollowerConnection connection = new FollowerConnection(session, logs, sessions, nodeEpoch, leaderId, heartbeatInterval, stallTimeout,
                     sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationServer::launchSender, clock);
             session.setAttachment(connection);
