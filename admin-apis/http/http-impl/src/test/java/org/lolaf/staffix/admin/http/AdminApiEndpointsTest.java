@@ -50,9 +50,9 @@ import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.tests.TestPorts;
 import org.mockito.ArgumentCaptor;
 
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -568,10 +568,7 @@ class AdminApiEndpointsTest {
 
     @Test
     void enginesOfOneJvmShareAPortEachWithItsOwnToken() throws Exception {
-        int sharedPort;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            sharedPort = probe.getLocalPort();
-        }
+        int sharedPort = TestPorts.findFree();
         AdminApi alpha = adminApi("alpha-engine");
         AdminApi beta = adminApi("beta-engine");
         export(alpha, sharedPort, "alpha-token");
@@ -685,10 +682,7 @@ class AdminApiEndpointsTest {
 
     @Test
     void aSecondEngineWithTheSameInstanceIdIsNotServed() throws Exception {
-        int sharedPort;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            sharedPort = probe.getLocalPort();
-        }
+        int sharedPort = TestPorts.findFree();
         export(adminApi("alpha-engine"), sharedPort, "first");
         HttpAdminApi duplicate = export(adminApi("alpha-engine"), sharedPort, "second");
         port = sharedPort;

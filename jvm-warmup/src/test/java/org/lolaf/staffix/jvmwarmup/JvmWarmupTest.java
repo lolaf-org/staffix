@@ -26,9 +26,8 @@ import org.lolaf.staffix.api.session.plugins.FixSessionsPluginSettings;
 import org.lolaf.staffix.api.session.plugins.PluginContext;
 import org.lolaf.staffix.stores.loggers.slf4j.Slf4jMessagesLoggerSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
+import org.lolaf.staffix.tests.TestPorts;
 
-import java.io.IOException;
-import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Optional;
@@ -48,18 +47,12 @@ class JvmWarmupTest {
      */
     private static final int MIN_MESSAGES_EXCHANGED = 30;
 
-    private static int freePort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0)) {
-            return s.getLocalPort();
-        }
-    }
-
     @Test
     void runsAndExchangesMessages() throws Exception {
         JvmWarmupOptions options = JvmWarmupOptions.builder()
                 .warmupDuration(Duration.ofSeconds(3))
                 .throttling(Duration.ofMillis(10))
-                .port(freePort())
+                .port(TestPorts.findFree())
                 .build();
 
         JvmWarmupResult result = JvmWarmup.run(options).get(30, TimeUnit.SECONDS);
@@ -82,7 +75,7 @@ class JvmWarmupTest {
         JvmWarmupOptions options = JvmWarmupOptions.builder()
                 .warmupDuration(Duration.ofSeconds(3))
                 .throttling(Duration.ofMillis(10))
-                .port(freePort())
+                .port(TestPorts.findFree())
                 .fixEngineBuilder(sourceBuilder)
                 .build();
 
@@ -104,7 +97,7 @@ class JvmWarmupTest {
         JvmWarmupOptions options = JvmWarmupOptions.builder()
                 .warmupDuration(Duration.ofSeconds(3))
                 .throttling(Duration.ofMillis(10))
-                .port(freePort())
+                .port(TestPorts.findFree())
                 .fixEngineBuilder(sourceBuilder)
                 .build();
 
@@ -125,7 +118,7 @@ class JvmWarmupTest {
         JvmWarmupOptions options = JvmWarmupOptions.builder()
                 .warmupDuration(Duration.ofSeconds(3))
                 .throttling(Duration.ofMillis(10))
-                .port(freePort())
+                .port(TestPorts.findFree())
                 .fixEngineBuilder(sourceBuilder)
                 .build();
 
@@ -142,7 +135,7 @@ class JvmWarmupTest {
         JvmWarmupOptions options = JvmWarmupOptions.builder()
                 .warmupDuration(Duration.ofSeconds(3))
                 .throttling(Duration.ofMillis(10))
-                .port(freePort())
+                .port(TestPorts.findFree())
                 .fixt(true)
                 .build();
 
@@ -166,7 +159,7 @@ class JvmWarmupTest {
         JvmWarmupOptions options = JvmWarmupOptions.builder()
                 .warmupDuration(Duration.ofMinutes(10))
                 .throttling(Duration.ofMillis(10))
-                .port(freePort())
+                .port(TestPorts.findFree())
                 .build();
 
         CompletableFuture<JvmWarmupResult> future = JvmWarmup.run(options);

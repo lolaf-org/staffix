@@ -24,10 +24,10 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.alerting.Alert;
 import org.lolaf.staffix.api.alerting.AlertLabel;
+import org.lolaf.staffix.tests.TestPorts;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
@@ -103,10 +103,7 @@ class TestAlertmanagerAlertsPublisher {
 
     @Test
     void keepsPostingToTheReachableAlertmanagerWhenAnotherIsDown() throws IOException {
-        int closedPort;
-        try (ServerSocket socket = new ServerSocket(0)) {
-            closedPort = socket.getLocalPort();
-        }
+        int closedPort = TestPorts.findFree();
         start(AlertmanagerAlertsPublisherSettings.builder()
                 .alertmanagerUrl(URI.create("http://localhost:" + closedPort))
                 .alertmanagerUrl(alertmanagerUrl())
