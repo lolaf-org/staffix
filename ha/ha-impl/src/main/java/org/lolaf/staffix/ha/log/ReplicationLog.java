@@ -16,12 +16,9 @@
 package org.lolaf.staffix.ha.log;
 
 import lombok.Getter;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.idling.RetryStrategy;
-import org.lolaf.ringos.rb.BroadcastByteRingBuffer;
-import org.lolaf.ringos.rb.ByteRingBufferFactory;
-import org.lolaf.ringos.rb.ByteRingReader;
-import org.lolaf.ringos.rb.ByteTranslator;
-import org.lolaf.ringos.rb.ProducerType;
+import org.lolaf.ringos.rb.*;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
@@ -49,22 +46,20 @@ public class ReplicationLog {
     private final BroadcastByteRingBuffer ring;
     private final List<Reader> readers = new CopyOnWriteArrayList<>();
     /**
-     * Counts the readers dropped, so writers that gave up together drop one reader, not one each.
-     */
-    private volatile long drops;
-
-    /**
      * The longest message an event can carry, in fragments past {@link #getMaxFragmentLength()}: half the log, so the
      * other half still holds the events a follower had not read when it was written.
      */
     @Getter
     private final int maxMessageLength;
-
     /**
      * The longest message one event carries whole, the ring's largest frame.
      */
     @Getter
     private final int maxFragmentLength;
+    /**
+     * Counts the readers dropped, so writers that gave up together drop one reader, not one each.
+     */
+    private volatile long drops;
 
     /**
      * @param capacity bytes, a power of two of at least 1024
@@ -113,19 +108,29 @@ public class ReplicationLog {
 
     private long write(StoreEventRecord storeEventRecord, RetryStrategy logFullWait) {
         int length = FrameEncoder.storeEventBodyBytes(storeEventRecord.getFragmentLength());
-        while (true) {
-            long dropsBefore = drops;
-            long offset = ring.writeRetrying(STORE_EVENT, length, ENCODE, storeEventRecord, logFullWait);
-            if (offset != BroadcastByteRingBuffer.GATED) {
-                return offset;
-            }
+        long dropsBefore = drops;
+        long offset;
+        while ((offset = ring.writeRetrying(STORE_EVENT, length, ENCODE, storeEventRecord, logFullWait)) == BroadcastByteRingBuffer.GATED) {
             dropSlowestReader(dropsBefore);
+            // dropSlowestReader can modify drops
+            dropsBefore = drops;
+        }
+        return offset;
+    }
+
+    private void dropSlowestReader(long dropsBefore) {
+        Reader dropped = closeSlowestReader(dropsBefore);
+        if (dropped != null) {
+            dropped.onDropped.run();
         }
     }
 
-    private synchronized void dropSlowestReader(long dropsBefore) {
+    /**
+     * Locked so that writers that gave up together retry only once the reader is closed, rather than wait for it again.
+     */
+    private synchronized @Nullable Reader closeSlowestReader(long dropsBefore) {
         if (drops != dropsBefore) {
-            return;
+            return null;
         }
         Reader slowest = null;
         for (Reader reader : readers) {
@@ -136,8 +141,8 @@ public class ReplicationLog {
         if (slowest != null) {
             drops++;
             slowest.close();
-            slowest.onDropped.run();
         }
+        return slowest;
     }
 
     /**

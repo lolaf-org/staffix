@@ -429,17 +429,23 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     }
 
     @Test
-    void aFollowerAWriteWaitedTheLogFullTimeoutForIsDroppedAsTooSlow() {
+    void aFollowerAWriteWaitedTheLogFullTimeoutForIsDroppedAsTooSlowAndClosedByItsSender() {
         ha = engine(1024);
-        connection = connection();
+        Runnable[] sender = new Runnable[1];
+        connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
+                Duration.ofHours(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop,
+                new TestingClock());
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         for (int seq = 2; seq < 200; seq++) {
             store.storeNextIncomingSeqNum(seq);
         }
+        assertThat(connection.getState()).as("the write only marks it").isEqualTo(FollowerConnection.State.DROPPED_AS_TOO_SLOW);
+        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("CLOSE"));
+        verify(ioSession, never()).stop(any());
 
-        fill();
+        sender[0].run();
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("STORE_EVENT"));
@@ -688,7 +694,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         connection.close(CloseReason.PROTOCOL_ERROR, "a bad frame");
 
-        connection.close(CloseReason.TOO_SLOW, "a write waited the log full timeout for it");
+        connection.droppedAsTooSlow();
 
         assertThat(stats.getDroppedTooSlow()).isZero();
         assertThat(stats.getSlowFollowers().notBackInSync()).isEmpty();

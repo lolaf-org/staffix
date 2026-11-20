@@ -229,6 +229,9 @@ public final class FollowerConnection implements FrameHandler {
         lag = new LagSampler(stats.lag(nodeId, lane));
         // a writer may have dropped the reader already
         if (!STATE.compareAndSet(this, State.AWAITING_HELLO, State.STREAMING)) {
+            if (state == State.DROPPED_AS_TOO_SLOW) {
+                closeDropped();
+            }
             return;
         }
         log.info("Follower {} connected lane {} of {} at epoch {}, {}", nodeId, lane, logs.count(), currentEpoch,
@@ -581,6 +584,10 @@ public final class FollowerConnection implements FrameHandler {
         lastSendNanos = clock.nanoTime();
         lastAckNanos = lastSendNanos;
         while (state != State.CLOSED && !handingOver) {
+            if (state == State.DROPPED_AS_TOO_SLOW) {
+                closeDropped();
+                break;
+            }
             if (isStalled(clock.nanoTime())) {
                 close(CloseReason.STALLED, "no ack for " + TimeUnit.NANOSECONDS.toMillis(stallTimeoutNanos)
                         + " ms with writes unapplied");
@@ -679,9 +686,6 @@ public final class FollowerConnection implements FrameHandler {
         } else {
             log.warn("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, text);
         }
-        if (reason == CloseReason.TOO_SLOW) {
-            stats.droppedTooSlow(followerId, lane);
-        }
         // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
         String shortText = FrameEncoder.closeText(text);
         ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, shortText));
@@ -698,7 +702,23 @@ public final class FollowerConnection implements FrameHandler {
         markClosed();
     }
 
-    private void droppedAsTooSlow() {
+    /**
+     * Run by the appending thread, which only marks the connection: closing it would hold that thread, and the log,
+     * flushing the CLOSE to a follower that does not read. The sender, or the HELLO before it starts, closes it.
+     */
+    void droppedAsTooSlow() {
+        State current;
+        do {
+            current = state;
+            if (current != State.AWAITING_HELLO && current != State.STREAMING) {
+                return;
+            }
+        } while (!STATE.compareAndSet(this, current, State.DROPPED_AS_TOO_SLOW));
+        stats.droppedTooSlow(followerId, lane);
+        senderIdle.wakeup();
+    }
+
+    private void closeDropped() {
         close(CloseReason.TOO_SLOW, "a write waited the log full timeout for it");
     }
 
@@ -723,6 +743,10 @@ public final class FollowerConnection implements FrameHandler {
     public enum State {
         AWAITING_HELLO,
         STREAMING,
+        /**
+         * Dropped as too slow by a write, its CLOSE not sent yet.
+         */
+        DROPPED_AS_TOO_SLOW,
         CLOSED
     }
 }
