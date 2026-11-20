@@ -34,9 +34,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Answers each Email with an Email, with {@link Counterparty#BIG_ANSWER_LENGTH} bytes of Text when asked with
- * {@link Counterparty#BIG_REQUEST}, counting what it receives again as possible duplicates, and telling a
- * {@link LoggedOnNodes} its pair shares when its session logs on and off.
+ * Answers each Email with an Email whose Subject is {@link Counterparty#ANSWER_PREFIX} and the request's, with
+ * {@link Counterparty#BIG_ANSWER_LENGTH} bytes of Text when asked with {@link Counterparty#BIG_REQUEST}, counting what
+ * it receives again as possible duplicates, and telling a {@link LoggedOnNodes} its pair shares when its session logs
+ * on and off.
  */
 final class Echo extends Fix44Application {
 
@@ -87,11 +88,12 @@ final class Echo extends Fix44Application {
                 if (possDupFlag) {
                     duplicates.incrementAndGet();
                 }
-                if (!Counterparty.BIG_REQUEST.equals(subject)) {
-                    session.send(answer.begin().setSubject("pong"), null);
+                String answerSubject = Counterparty.ANSWER_PREFIX + subject;
+                if (subject == null || !subject.startsWith(Counterparty.BIG_REQUEST)) {
+                    session.send(answer.begin().setSubject(answerSubject), null);
                     return;
                 }
-                NoLinesOfTextEncoder lines = answer.begin().setSubject("pong").addNoLinesOfText(Counterparty.BIG_ANSWER_LINES);
+                NoLinesOfTextEncoder lines = answer.begin().setSubject(answerSubject).addNoLinesOfText(Counterparty.BIG_ANSWER_LINES);
                 for (int i = 0; i < Counterparty.BIG_ANSWER_LINES; i++) {
                     lines.setText(Counterparty.BIG_ANSWER_LINE);
                 }

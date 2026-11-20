@@ -24,14 +24,15 @@ import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.fields.NoLinesOfText;
+import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.fix44.fields.Text;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.awaitility.Awaitility.await;
 
@@ -45,6 +46,10 @@ final class Counterparty extends Fix44Application {
      * lines rather than one field, as a large message is.
      */
     static final String BIG_REQUEST = "big";
+    /**
+     * Echo answers a request with its Subject after this prefix.
+     */
+    static final String ANSWER_PREFIX = "re: ";
     static final int BIG_ANSWER_LINES = 5 << 10;
     static final String BIG_ANSWER_LINE = "x".repeat(1024);
     static final int BIG_ANSWER_LENGTH = BIG_ANSWER_LINES * 1024;
@@ -52,7 +57,12 @@ final class Counterparty extends Fix44Application {
     final AtomicInteger logons = new AtomicInteger();
     final AtomicInteger logoutsReceived = new AtomicInteger();
     final AtomicInteger resendRequests = new AtomicInteger();
-    final AtomicLong answers = new AtomicLong();
+    /**
+     * By Subject: a request received again after a failover is answered again, so counting answers would end a round
+     * trip early.
+     */
+    private final Set<String> answered = ConcurrentHashMap.newKeySet();
+    private final AtomicInteger requests = new AtomicInteger();
     /**
      * The Text length of the last answer, and of the longest received again as a possible duplicate.
      */
@@ -82,6 +92,7 @@ final class Counterparty extends Fix44Application {
     public List<FixMessageDecoder> setup(FixSessionSettings settings, FixSession fixSession, Set<MessageType> encodedMessagesTypes) {
         return List.of(new FixMessageDecoder() {
             private int textLength;
+            private String subject;
 
             @Override
             public MessageType getMessageType() {
@@ -90,6 +101,7 @@ final class Counterparty extends Fix44Application {
 
             @Override
             public void mapFieldsForDecoding(FixFieldsDecoderMapper mapper, FieldsRegistry fieldsRegistry) {
+                mapper.mapStringField(Subject.get(), value -> subject = value, null);
                 mapper.forGroup(NoLinesOfText.get()).mapStringField(Text.get(), value -> textLength += value == null ? 0 : value.length(), null);
             }
 
@@ -100,7 +112,7 @@ final class Counterparty extends Fix44Application {
                     longestPossibleDuplicate.accumulateAndGet(textLength, Math::max);
                 }
                 textLength = 0;
-                answers.incrementAndGet();
+                answered.add(subject);
             }
         });
     }
@@ -109,24 +121,24 @@ final class Counterparty extends Fix44Application {
      * Asks for one {@link #BIG_ANSWER_LENGTH} answer and waits for it.
      */
     void bigRoundTrip() {
-        long expected = answers.get() + 1;
-        session.send(session.newEncoder(EmailEncoder.class).begin().setSubject(BIG_REQUEST), null);
-        await().atMost(java.time.Duration.ofSeconds(30)).until(() -> answers.get() >= expected);
+        String request = BIG_REQUEST + " " + requests.incrementAndGet();
+        session.send(session.newEncoder(EmailEncoder.class).begin().setSubject(request), null);
+        await().atMost(java.time.Duration.ofSeconds(30)).until(() -> answered.contains(ANSWER_PREFIX + request));
         awaitAnswerProcessed();
     }
 
     void roundTrips(int count) {
         EmailEncoder ping = session.newEncoder(EmailEncoder.class).asReusable();
         for (int i = 0; i < count; i++) {
-            long expected = answers.get() + 1;
-            session.send(ping.begin().setSubject("ping"), null);
-            await().until(() -> answers.get() >= expected);
+            String request = "ping " + requests.incrementAndGet();
+            session.send(ping.begin().setSubject(request), null);
+            await().until(() -> answered.contains(ANSWER_PREFIX + request));
         }
         awaitAnswerProcessed();
     }
 
     /**
-     * An answer is counted as it is decoded, before the session stores its seqnum: a task queued on the session's
+     * An answer is recorded as it is decoded, before the session stores its seqnum: a task queued on the session's
      * thread runs once that thread is done with it.
      */
     private void awaitAnswerProcessed() {
