@@ -180,6 +180,10 @@ staffix.ha-replication.peers.2=fix-b.internal:17101
 staffix.ha-replication.monitoring-instance-id=metrics
 staffix.ha-replication.alerts-publisher-instance-id=alerts
 
+# encrypts the replication: the same secret, cipher and MAC on both nodes
+staffix.ha-replication.encryption.mode=required
+staffix.ha-replication.encryption.secret=${STAFFIX_HA_SECRET}
+
 # switchover and maintenance mode move a leadership the application shares, so they are off unless allowed
 staffix.ha-replication.leadership-control=true
 # how long before any successor's election this node's sessions are dropped; unset keeps 50ms
@@ -197,7 +201,8 @@ looks that name up in `peers`. The other `ReplicationHaSettings` settings bind t
 `promotion-outgoing-seq-num-jump`, `hand-over-timeout`, `switchover-timeout`, `switchover-max-pending-writes`, `follower-check-interval`, `follower-lag-alert-threshold`,
 `follower-stall-timeout`, `log-full-timeout`, `slow-follower-hold-off`, `session-settings-replicated`, `replicated-settings-stores`); their defaults are in the guide.
 `sender-idle-strategy`, `sync-ack-idle-strategy` and `select-strategy` take `default` or `busy-spin`; see
-[Latency](high-availability.md#latency).
+[Latency](high-availability.md#latency). `encryption.mode` takes `disabled`, `preferred` or `required`, beside
+`encryption.cipher`, `encryption.key-bits`, `encryption.mac` and `encryption.provider`.
 
 The engine stops one lifecycle phase before the primos node, so a leader shutting down hands its sessions over
 before primos hands its leadership over, and its follower takes them over without moving its sequence numbers.

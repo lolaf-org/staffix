@@ -16,7 +16,9 @@
 package org.lolaf.staffix.ha.spring;
 
 import lombok.Data;
+import lombok.ToString;
 import org.lolaf.staffix.api.metadata.ConfiguresComponent;
+import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -82,6 +84,11 @@ public class ReplicationHaProps {
      * each. Read on the leader, which tells its followers.
      */
     private Integer replicationLanes;
+
+    /**
+     * Encrypts the replication with a secret both nodes share; off unless {@code mode} is set.
+     */
+    private Encryption encryption = new Encryption();
 
     /**
      * How long a follower waits between two attempts to connect to its leader; unset keeps 1s.
@@ -233,6 +240,47 @@ public class ReplicationHaProps {
      * election timeout, which bounds the lease.
      */
     private Duration fencingMargin;
+
+    @Data
+    public static class Encryption {
+
+        /**
+         * {@code disabled} replicates in clear, {@code preferred} encrypts when the peer does and logs an error when it
+         * does not, {@code required} refuses a peer that does not. Unset keeps {@code disabled}.
+         */
+        private EncryptionMode mode;
+
+        /**
+         * The secret both nodes share, at least 16 bytes once encoded as UTF-8; required unless {@code disabled}.
+         * Take it from the environment, such as {@code ${STAFFIX_HA_SECRET}}, rather than writing it in a file.
+         */
+        @ToString.Exclude
+        private String secret;
+
+        /**
+         * A JCE transformation, spelled exactly: {@code AES/GCM/NoPadding} (unset), {@code ChaCha20-Poly1305},
+         * {@code AES/CTR/NoPadding} or {@code ChaCha20}, the last two authenticated by {@code mac}. The same on both
+         * nodes.
+         */
+        private String cipher;
+
+        /**
+         * The cipher's key size: 128, 192 or 256 for AES, 256 for ChaCha20; unset keeps 256.
+         */
+        private Integer keyBits;
+
+        /**
+         * The JCE Mac authenticating the frames of a stream cipher, ignored with an AEAD; unset keeps
+         * {@code HmacSHA256}. The same on both nodes.
+         */
+        private String mac;
+
+        /**
+         * The JCE provider of the cipher and the MAC, such as a faster one than the JVM's; unset takes the JVM's
+         * choice.
+         */
+        private String provider;
+    }
 
     /**
      * How a replication thread waits for work: as by default, or busy spinning for the lowest {@code SYNC} latency.

@@ -22,11 +22,15 @@ import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.BusySpinIdleStrategy;
 import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
+import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -88,6 +92,45 @@ class TestReplicationHaAutoConfiguration {
                     assertThat(settings.getSelectStrategy().get()).isInstanceOf(WakeupSelectStrategy.class);
                     assertThat(settings.getFollowerStoreWriterThreads()).as("writes on the network threads").isZero();
                     assertThat(settings.getFollowerStoreWriterIdleStrategy().get()).isInstanceOf(BackoffIdleStrategy.class);
+                    assertThat(settings.getEncryption()).isEqualTo(ReplicationEncryptionSettings.builder().build());
+                });
+    }
+
+    @Test
+    void bindsTheEncryption() {
+        runner.withBean(LeaderElectionSettings.class, () -> election)
+                .withPropertyValues("staffix.ha-replication.node-id=1",
+                        "staffix.ha-replication.encryption.mode=required",
+                        "staffix.ha-replication.encryption.secret=0123456789abcdéf",
+                        "staffix.ha-replication.encryption.cipher=AES/CTR/NoPadding",
+                        "staffix.ha-replication.encryption.key-bits=128",
+                        "staffix.ha-replication.encryption.mac=HmacSHA512",
+                        "staffix.ha-replication.encryption.provider=SunJCE")
+                .run(context -> {
+                    ReplicationEncryptionSettings encryption = contribute(context.getBean(ReplicationHaContributor.class))
+                            .getEncryption();
+
+                    assertThat(encryption.getMode()).isEqualTo(EncryptionMode.REQUIRED);
+                    assertThat(encryption.getSecret()).isEqualTo("0123456789abcdéf".getBytes(StandardCharsets.UTF_8));
+                    assertThat(encryption.getCipher()).isEqualTo("AES/CTR/NoPadding");
+                    assertThat(encryption.getKeyBits()).isEqualTo(128);
+                    assertThat(encryption.getMac()).isEqualTo("HmacSHA512");
+                    assertThat(encryption.getProvider()).isEqualTo("SunJCE");
+                    assertThat(context.getBean(ReplicationHaProps.class).toString()).doesNotContain("0123456789abc");
+                });
+    }
+
+    @Test
+    void refusesToEncryptWithoutASecret() {
+        runner.withBean(LeaderElectionSettings.class, () -> election)
+                .withPropertyValues("staffix.ha-replication.node-id=1",
+                        "staffix.ha-replication.encryption.mode=preferred",
+                        "staffix.ha-replication.encryption.secret=")
+                .run(context -> {
+                    ReplicationHaSettings settings = contribute(context.getBean(ReplicationHaContributor.class));
+
+                    assertThatThrownBy(() -> new ReplicationFixEngineHa(settings))
+                            .hasMessageContaining("encryption.secret");
                 });
     }
 

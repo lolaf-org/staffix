@@ -21,10 +21,12 @@ import org.lolaf.ringos.idling.BusySpinIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
+import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.spring.boot.spi.HaSettingsContributor;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -55,6 +57,7 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         props.getPeers().forEach((nodeId, address) -> settings.peer(nodeId, address(nodeId, address)));
         ifSet(props.getLogCapacity(), settings::logCapacity);
         ifSet(props.getReplicationLanes(), settings::replicationLanes);
+        settings.encryption(encryption(props.getEncryption()));
         ifSet(props.getReconnectInterval(), settings::reconnectInterval);
         ifSet(props.getHeartbeatInterval(), settings::heartbeatInterval);
         ifSet(props.getSendBuffers(), settings::sendBuffers);
@@ -78,6 +81,20 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         ifSet(props.getLogFullTimeout(), settings::logFullTimeout);
         ifSet(props.getSlowFollowerHoldOff(), settings::slowFollowerHoldOff);
         sink.accept(settings.build());
+    }
+
+    private static ReplicationEncryptionSettings encryption(ReplicationHaProps.Encryption props) {
+        ReplicationEncryptionSettings.ReplicationEncryptionSettingsBuilder encryption =
+                ReplicationEncryptionSettings.builder().provider(props.getProvider());
+        ifSet(props.getMode(), encryption::mode);
+        String secret = props.getSecret();
+        if (secret != null && !secret.isEmpty()) {
+            encryption.secret(secret.getBytes(StandardCharsets.UTF_8));
+        }
+        ifSet(props.getCipher(), encryption::cipher);
+        ifSet(props.getKeyBits(), encryption::keyBits);
+        ifSet(props.getMac(), encryption::mac);
+        return encryption.build();
     }
 
     private static <T> void ifSet(@Nullable T value, Consumer<T> setter) {

@@ -4,6 +4,9 @@ summary: >-
 production:
   - >-
     Give every node the same peers, and its own node-id; with primos, node ids are the primos node ids.
+  - >-
+    Outside a trusted network, set encryption.mode to required on both nodes, with the same encryption.secret taken
+    from the environment.
 failures:
   - symptom: >-
       The application fails to start with "Store replication needs a LeaderElectionSettings bean".
