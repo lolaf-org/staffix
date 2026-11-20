@@ -115,6 +115,9 @@ class TestSwitchover {
     private HikariDataSource settingsDataSource;
     private Duration switchoverTimeout = Duration.ofSeconds(30);
     private Duration followerStallTimeout = Duration.ofSeconds(10);
+    private Duration logFullTimeout = Duration.ofSeconds(1);
+    private Duration slowFollowerHoldOff = Duration.ofSeconds(1);
+    private Duration replicationAckTimeout = Duration.ofSeconds(1);
     private HoldableStore followerStore;
     private Supplier<FixEngine> startFollower;
     private FixEngine follower;
@@ -126,11 +129,11 @@ class TestSwitchover {
                 .map(mode -> Arguments.of(pair, mode)));
     }
 
-    private static FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode) {
+    private FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode) {
         return sessionSettings(id, type, mode, "app");
     }
 
-    private static FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode,
+    private FixSessionSettings sessionSettings(FixSessionId id, FixSession.FixSessionType type, ReplicationMode mode,
                                                       String applicationId) {
         return FixSessionSettings.builder()
                 .fixSessionId(id)
@@ -138,7 +141,7 @@ class TestSwitchover {
                 .fixApplicationFactoryInstanceId("app")
                 .fixApplicationInstanceId(applicationId)
                 .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
-                .highAvailability(HaSessionSettings.builder().replicationMode(mode).build())
+                .highAvailability(HaSessionSettings.builder().replicationMode(mode).replicationAckTimeout(replicationAckTimeout).build())
                 .build();
     }
 
@@ -243,6 +246,9 @@ class TestSwitchover {
                         .promotionOutgoingSeqNumJump(JUMP)
                         .switchoverTimeout(switchoverTimeout)
                         .followerStallTimeout(followerStallTimeout)
+                        .followerCheckInterval(Duration.ofMillis(50))
+                        .logFullTimeout(logFullTimeout)
+                        .slowFollowerHoldOff(slowFollowerHoldOff)
                         .leaderElection(SharedLeaderElection.Settings.builder().ballot(ballot).nodeId(nodeId).build())
                         .build())
                 .build().instance());
@@ -806,6 +812,9 @@ class TestSwitchover {
         followerStore = new HoldableStore(new MemoryMessagesStore.MemoryStoreFactoryImpl()
                 .newInstance(MemoryMessageStoreSettings.builder().build()).getStore(ACCEPTOR_ID, new ProbesImpl(ProbeScope.builder().type("session").name("follower").build())));
         followerStallTimeout = Duration.ZERO;
+        logFullTimeout = Duration.ofMillis(200);
+        slowFollowerHoldOff = Duration.ofMillis(100);
+        replicationAckTimeout = Duration.ofMillis(200);
         start(Pair.ACCEPTORS, mode);
 
         int resetsBefore = followerStore.resets();
