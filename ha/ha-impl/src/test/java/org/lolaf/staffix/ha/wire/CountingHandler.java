@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha.wire;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.EncryptionMode;
 
 import java.nio.ByteBuffer;
 
@@ -30,12 +31,14 @@ class CountingHandler implements FrameHandler {
     long checksum;
 
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane) {
+    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
+                        EncryptionMode encryptionMode, byte[] nonce) {
         frames++;
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes) {
+    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes,
+                          EncryptionMode encryptionMode, byte[] nonce) {
         frames++;
     }
 

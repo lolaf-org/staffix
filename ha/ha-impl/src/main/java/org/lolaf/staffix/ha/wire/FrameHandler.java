@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.wire;
 
+import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
@@ -39,8 +40,11 @@ public interface FrameHandler {
      *                          leader resumes after it when its log still holds it in the same epoch
      * @param lane              which of the leader's lanes this connection carries, 0 for the first, the one that
      *                          learns how many there are
+     * @param encryptionMode    the follower's, which with the leader's decides whether the connection encrypts
+     * @param nonce             the follower's random part of this connection's keys, zeros when it does not encrypt
      */
-    default void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane) {
+    default void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
+                         EncryptionMode encryptionMode, byte[] nonce) {
         throw unexpected(FrameType.HELLO);
     }
 
@@ -48,9 +52,20 @@ public interface FrameHandler {
      * @param resumeOffset where the stream resumes, or {@link WireFormat#NO_RESUME} when every session is caught up
      *                     by snapshot
      * @param lanes        how many lanes the leader splits its sessions over; the follower opens the others
+     * @param encryptionMode the leader's, as in {@link #onHello}
+     * @param nonce          the leader's, as in {@link #onHello}
      */
-    default void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes) {
+    default void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes,
+                           EncryptionMode encryptionMode, byte[] nonce) {
         throw unexpected(FrameType.WELCOME);
+    }
+
+    /**
+     * The follower holds the same secret and cipher: {@code confirmation} is the HMAC of the HELLO and WELCOME under a
+     * key derived from both. The leader streams only once it verifies.
+     */
+    default void onKeyConfirmation(long epoch, byte[] confirmation) {
+        throw unexpected(FrameType.KEY_CONFIRMATION);
     }
 
     /**

@@ -28,6 +28,7 @@ import org.lolaf.betty.api.ss.SelectStrategy;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.HaStatus;
+import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
@@ -60,6 +61,7 @@ public final class ReplicationClient {
     private final long checkIntervalNanos;
     private final SelectStrategy selectStrategy;
     private final @Nullable StoreWriterThreads storeWriterThreads;
+    private final KeyExchange keyExchange;
     private volatile LaneClient[] laneClients = new LaneClient[0];
     private boolean stopped;
 
@@ -72,7 +74,9 @@ public final class ReplicationClient {
      */
     public ReplicationClient(InetSocketAddress leaderAddress, ReplicaSessions replicaSessions, LongSupplier nodeEpoch,
                              String nodeId, int maxFrameBytes, Duration connectionRetry, SelectStrategy selectStrategy,
-                             int storeWriterThreads, Supplier<IdleStrategy> storeWriterIdleStrategy, Duration checkInterval) {
+                             int storeWriterThreads, Supplier<IdleStrategy> storeWriterIdleStrategy, Duration checkInterval,
+                             KeyExchange keyExchange) {
+        this.keyExchange = keyExchange;
         this.storeWriterThreads = storeWriterThreads == 0 ? null
                 : new StoreWriterThreads(storeWriterThreads, storeWriterIdleStrategy, nodeId);
         this.selectStrategy = selectStrategy;
@@ -218,7 +222,7 @@ public final class ReplicationClient {
             AnswerSender answers = writtenByStoreWriter ?
                     new ThroughNetworkThreadAnswerSender(session) : new OnNetworkThreadAnswerSender(session);
             LeaderConnection connected = new LeaderConnection(session, replicaSessions, nodeEpoch, nodeId, lane,
-                    ReplicationClient.this::lanesAnnounced, checkIntervalNanos, answers, writtenByStoreWriter);
+                    ReplicationClient.this::lanesAnnounced, checkIntervalNanos, answers, writtenByStoreWriter, keyExchange);
             session.setAttachment(connected);
             connection = connected;
             if (writtenByStoreWriter) {

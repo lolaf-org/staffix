@@ -29,6 +29,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.leader.FollowerConnection;
 import org.lolaf.staffix.ha.leader.ReplicationServer;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
@@ -93,7 +94,7 @@ class TestReplicationClient {
                                                   ReplicationStats stats) {
         return new ReplicationServer(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
                 () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE, BackoffIdleStrategy::new,
-                new WakeupSelectStrategy(10), stats, new TestingClock());
+                new WakeupSelectStrategy(10), stats, new TestingClock(), TestingKeyExchanges.CLEAR);
     }
 
     /**
@@ -129,7 +130,7 @@ class TestReplicationClient {
 
     private void connect(InetSocketAddress address, int maxFrameBytes) {
         client = new ReplicationClient(address, replicaSessions, () -> EPOCH, "follower-b", maxFrameBytes, Duration.ofMillis(50),
-                new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1));
+                new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1), TestingKeyExchanges.CLEAR);
         client.start();
     }
 

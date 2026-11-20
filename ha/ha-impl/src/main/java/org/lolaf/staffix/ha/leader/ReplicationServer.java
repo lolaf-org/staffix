@@ -31,6 +31,7 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.ha.ReplicatedSessions;
+import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
@@ -71,6 +72,7 @@ public final class ReplicationServer {
     private final SelectStrategy selectStrategy;
     private final ReplicationStats stats;
     private final Clock clock;
+    private final KeyExchange keyExchange;
     private IOWorkersGroup ioWorkers;
     private Server server;
     private volatile boolean handedOver;
@@ -158,7 +160,7 @@ public final class ReplicationServer {
                 return;
             }
             FollowerConnection connection = new FollowerConnection(session, logs, sessions, nodeEpoch, leaderId, heartbeatInterval, stallTimeout,
-                    sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationServer::launchSender, clock);
+                    sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationServer::launchSender, clock, keyExchange);
             session.setAttachment(connection);
             followers.add(connection);
         }

@@ -26,7 +26,11 @@ import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.ha.ReplicatedSession;
+import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicatedSessions;
+import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
+import org.lolaf.staffix.ha.encryption.KeyExchange;
+import org.lolaf.staffix.ha.encryption.Negotiation;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
@@ -92,6 +96,17 @@ public final class FollowerConnection implements FrameHandler {
     private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
     private final Consumer<Runnable> senderLauncher;
     private final Clock clock;
+    private final KeyExchange keyExchange;
+    /**
+     * This connection's keys once both peers encrypt, null on a clear one; IO thread until the stream starts.
+     */
+    @Getter
+    private volatile @Nullable ConnectionEncryptionKeys encryptionKeys;
+    /**
+     * The HELLO and WELCOME of an encrypted connection, which its KEY_CONFIRMATION covers; IO thread only.
+     */
+    private byte @Nullable [] receivedHelloBytes;
+    private byte @Nullable [] sentWelcomeBytes;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
     private volatile boolean followerHungUp;
@@ -168,11 +183,12 @@ public final class FollowerConnection implements FrameHandler {
      * @param snapshotChunkBytes the most bytes of a snapshot sent between two live batches, at most a batch
      * @param senderLauncher     starts the loop streaming the log, on a thread of its own
      * @param clock              what the stall timeout and the heartbeat interval are measured on
+     * @param stallTimeout       also how long a follower may take to send its KEY_CONFIRMATION; zero waits for ever
      */
     FollowerConnection(IOSession ioSession, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier nodeEpoch,
                        String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
                        int snapshotChunkBytes, IdleStrategy senderIdle, ReplicationStats stats,
-                       Consumer<Runnable> senderLauncher, Clock clock) {
+                       Consumer<Runnable> senderLauncher, Clock clock, KeyExchange keyExchange) {
         this.ioSession = ioSession;
         this.address = String.valueOf(ioSession.getSocketAddress());
         this.logs = logs;
@@ -186,13 +202,15 @@ public final class FollowerConnection implements FrameHandler {
         this.stats = stats;
         this.senderLauncher = senderLauncher;
         this.clock = clock;
+        this.keyExchange = keyExchange;
         this.batches = new BatchBuffers(ioSession, sendBuffers, WireFormat.bufferBytes(maxEventFrameBytes), stats);
         this.snapshots = new SnapshotSender(this, sessions, syncs, batches, stats, nodeEpoch, maxEventFrameBytes,
                 snapshotChunkBytes);
     }
 
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane) {
+    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
+                        EncryptionMode followerMode, byte[] followerNonce) {
         followerId = nodeId;
         long currentEpoch = nodeEpoch.getAsLong();
         if (state != State.AWAITING_HELLO) {
@@ -212,6 +230,12 @@ public final class FollowerConnection implements FrameHandler {
             return;
         }
         this.lane = lane;
+        Negotiation negotiation = keyExchange.negotiate(followerMode);
+        if (negotiation == Negotiation.REFUSED) {
+            close(CloseReason.ENCRYPTION_REQUIRED, "this leader's encryption is " + keyExchange.getMode()
+                    + ", the follower's " + followerMode);
+            return;
+        }
         replicationLog = logs.get(lane);
         Optional<Instant> heldOffUntil = stats.getSlowFollowers().heldOffUntil(nodeId, lane);
         if (heldOffUntil.isPresent()) {
@@ -228,8 +252,9 @@ public final class FollowerConnection implements FrameHandler {
         receivedOffset = lastAppliedOffset;
         ackLatency = new AckLatencySampler(stats.ackLatency(nodeId, lane));
         lag = new LagSampler(stats.lag(nodeId, lane));
+        boolean encrypted = negotiation == Negotiation.ENCRYPTED;
         // a writer may have dropped the reader already
-        if (!STATE.compareAndSet(this, State.AWAITING_HELLO, State.STREAMING)) {
+        if (!STATE.compareAndSet(this, State.AWAITING_HELLO, encrypted ? State.AWAITING_KEY_CONFIRMATION : State.STREAMING)) {
             if (state == State.DROPPED_AS_TOO_SLOW) {
                 closeDropped();
             }
@@ -237,10 +262,60 @@ public final class FollowerConnection implements FrameHandler {
         }
         log.info("Follower {} connected lane {} of {} at epoch {}, {}", nodeId, lane, logs.count(), currentEpoch,
                 resumed ? "resuming after offset " + lastAppliedOffset : "needing a snapshot");
-        ByteBuffer welcome = ioSession.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
-        int length = FrameEncoder.welcome(welcome.clear(), 0, currentEpoch, leaderId, resumed ? reader.getOffset() : WireFormat.NO_RESUME, logs.count());
-        ioSession.send(BatchBuffers.written(welcome, length), true);
+        if (negotiation == Negotiation.CLEAR_AGAINST_PREFERENCE) {
+            log.error("Replicating in clear to follower {} lane {}: this leader prefers encryption, the follower has it "
+                    + "disabled", nodeId, lane);
+        }
+        byte[] leaderNonce = keyExchange.newNonce();
+        long resumeOffset = resumed ? reader.getOffset() : WireFormat.NO_RESUME;
+        ByteBuffer frame = ioSession.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
+        int length = FrameEncoder.welcome(frame.clear(), 0, currentEpoch, leaderId, resumeOffset, logs.count(),
+                keyExchange.getMode(), leaderNonce);
+        if (encrypted) {
+            receivedHelloBytes = helloAsSent(epoch, nodeId, lastAppliedEpoch, lastAppliedOffset, lane, followerMode,
+                    followerNonce);
+            sentWelcomeBytes = copy(frame, length);
+            encryptionKeys = keyExchange.deriveKeys(followerNonce, leaderNonce);
+        }
+        ioSession.send(BatchBuffers.written(frame, length), true);
         senderLauncher.accept(this::runSender);
+    }
+
+    @Override
+    public void onKeyConfirmation(long epoch, byte[] confirmation) {
+        ConnectionEncryptionKeys keys = encryptionKeys;
+        if (state == State.DROPPED_AS_TOO_SLOW) {
+            return;
+        }
+        if (state != State.AWAITING_KEY_CONFIRMATION || keys == null) {
+            close(CloseReason.PROTOCOL_ERROR, "a KEY_CONFIRMATION on a connection not waiting for one");
+            return;
+        }
+        if (!keyExchange.confirms(keys, receivedHelloBytes, sentWelcomeBytes, confirmation)) {
+            close(CloseReason.KEY_MISMATCH, "the follower's secret or cipher differ from this leader's "
+                    + keyExchange.describeCipher());
+            return;
+        }
+        receivedHelloBytes = null;
+        sentWelcomeBytes = null;
+        if (STATE.compareAndSet(this, State.AWAITING_KEY_CONFIRMATION, State.STREAMING)) {
+            log.info("Replicating encrypted to follower {} lane {}, {}", followerId, lane, keyExchange.describeCipher());
+            senderIdle.wakeup();
+        }
+    }
+
+    private static byte[] helloAsSent(long epoch, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
+                                      EncryptionMode mode, byte[] nonce) {
+        ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
+        return copy(frame, FrameEncoder.hello(frame, 0, epoch, nodeId, lastAppliedEpoch, lastAppliedOffset, lane, mode, nonce));
+    }
+
+    private static byte[] copy(ByteBuffer frame, int length) {
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < length; i++) {
+            bytes[i] = frame.get(i);
+        }
+        return bytes;
     }
 
     /**
@@ -409,13 +484,17 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * Fills {@code dst} from index 0, up to its limit, with what the follower has not received: the sessions it does
-     * not know yet, then events until the next one does not fit. An event of a session registered after this fill
-     * began is left for the next one, behind that session's announcement.
+     * Fills {@code dst} from index 0, up to its limit, once streaming, with what the follower has not received: the
+     * sessions it does not know yet, then events until the next one does not fit. An event of a session registered
+     * after this fill began is left for the next one, behind that session's announcement.
      *
      * @return the bytes filled
      */
     int fillBatch(ByteBuffer dst) {
+        filledEventOffset = -1;
+        if (state != State.STREAMING) {
+            return 0;
+        }
         lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getEventOffset(), appliedOffset);
         int filled = announceSessions(dst);
         filled += fillSessionSettingsDigests(dst, filled);
@@ -589,6 +668,15 @@ public final class FollowerConnection implements FrameHandler {
                 closeDropped();
                 break;
             }
+            if (state == State.AWAITING_KEY_CONFIRMATION) {
+                if (stallTimeoutNanos > 0 && clock.nanoTime() - lastAckNanos > stallTimeoutNanos) {
+                    close(CloseReason.PROTOCOL_ERROR, "no KEY_CONFIRMATION within "
+                            + TimeUnit.NANOSECONDS.toMillis(stallTimeoutNanos) + " ms");
+                    break;
+                }
+                senderIdle.idle();
+                continue;
+            }
             if (isStalled(clock.nanoTime())) {
                 close(CloseReason.STALLED, "no ack for " + TimeUnit.NANOSECONDS.toMillis(stallTimeoutNanos)
                         + " ms with writes unapplied");
@@ -702,6 +790,8 @@ public final class FollowerConnection implements FrameHandler {
         String shortText = FrameEncoder.closeText(text);
         if (reason == CloseReason.SHUTDOWN || reason == CloseReason.RETRY_LATER) {
             log.info("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, shortText);
+        } else if (reason.isEncryptionRefusal()) {
+            log.error("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, shortText);
         } else {
             log.warn("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, shortText);
         }
@@ -728,7 +818,7 @@ public final class FollowerConnection implements FrameHandler {
         State current;
         do {
             current = state;
-            if (current != State.AWAITING_HELLO && current != State.STREAMING) {
+            if (current != State.AWAITING_HELLO && current != State.AWAITING_KEY_CONFIRMATION && current != State.STREAMING) {
                 return;
             }
         } while (!STATE.compareAndSet(this, current, State.DROPPED_AS_TOO_SLOW));
@@ -760,6 +850,10 @@ public final class FollowerConnection implements FrameHandler {
 
     public enum State {
         AWAITING_HELLO,
+        /**
+         * Both peers encrypt: nothing streams until the follower's KEY_CONFIRMATION verifies.
+         */
+        AWAITING_KEY_CONFIRMATION,
         STREAMING,
         /**
          * Dropped as too slow by a write, its CLOSE not sent yet.

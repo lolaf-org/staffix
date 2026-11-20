@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.wire;
 
+import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
 import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
@@ -81,6 +82,10 @@ public class FrameDecoder {
             case WELCOME:
                 decodeWelcome(in, p, epoch, variableBytes, handler);
                 break;
+            case KEY_CONFIRMATION:
+                checkVariableBytes(FrameType.KEY_CONFIRMATION, 0, variableBytes);
+                handler.onKeyConfirmation(epoch, bytes(in, p, WireFormat.KEY_CONFIRMATION_BYTES));
+                break;
             case SESSION:
                 decodeSession(in, p, flags, epoch, variableBytes, handler);
                 break;
@@ -127,14 +132,16 @@ public class FrameDecoder {
 
     private static void decodeHello(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
         checkMagic(in, p);
-        String nodeId = string(in, p + 32, unsignedShort(in, p + 6), variableBytes, FrameType.HELLO);
-        handler.onHello(epoch, in.getShort(p + 4), nodeId, in.getLong(p + 8), in.getLong(p + 16), unsignedShort(in, p + 24));
+        String nodeId = string(in, p + 48, unsignedShort(in, p + 6), variableBytes, FrameType.HELLO);
+        handler.onHello(epoch, in.getShort(p + 4), nodeId, in.getLong(p + 8), in.getLong(p + 16), unsignedShort(in, p + 24),
+                encryptionMode(in.get(p + 26)), bytes(in, p + 32, WireFormat.NONCE_BYTES));
     }
 
     private static void decodeWelcome(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
         checkMagic(in, p);
-        String leaderId = string(in, p + 24, unsignedShort(in, p + 6), variableBytes, FrameType.WELCOME);
-        handler.onWelcome(epoch, in.getShort(p + 4), leaderId, in.getLong(p + 8), unsignedShort(in, p + 16));
+        String leaderId = string(in, p + 40, unsignedShort(in, p + 6), variableBytes, FrameType.WELCOME);
+        handler.onWelcome(epoch, in.getShort(p + 4), leaderId, in.getLong(p + 8), unsignedShort(in, p + 16),
+                encryptionMode(in.get(p + 18)), bytes(in, p + 24, WireFormat.NONCE_BYTES));
     }
 
     private static void decodeSession(ByteBuffer in, int p, int flags, long epoch, int variableBytes, FrameHandler handler) {
@@ -250,6 +257,22 @@ public class FrameDecoder {
         } catch (IllegalStateException e) {
             throw new WireFormatException(e.getMessage());
         }
+    }
+
+    private static EncryptionMode encryptionMode(byte code) {
+        try {
+            return EncryptionMode.from(code);
+        } catch (IllegalArgumentException e) {
+            throw new WireFormatException(e.getMessage());
+        }
+    }
+
+    private static byte[] bytes(ByteBuffer in, int index, int length) {
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < length; i++) {
+            bytes[i] = in.get(index + i);
+        }
+        return bytes;
     }
 
     private static ReplicationMode replicationMode(byte code) {

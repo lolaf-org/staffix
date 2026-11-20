@@ -15,25 +15,47 @@
  */
 package org.lolaf.staffix.ha;
 
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
 /**
  * Whether a node encrypts its replication, decided per connection with its peer's mode.
  */
+@Getter
+@RequiredArgsConstructor
 public enum EncryptionMode {
 
     /**
      * Replicates in clear; a {@link #REQUIRED} peer refuses it.
      */
-    DISABLED,
+    DISABLED((byte) 0),
 
     /**
      * Encrypts when the peer does, replicates in clear with an error logged when it does not: the step between
      * clear and {@link #REQUIRED} while the other node is not yet set up.
      */
-    PREFERRED,
+    PREFERRED((byte) 1),
 
     /**
      * Refuses a peer that does not encrypt. Only this mode stops an attacker on the network downgrading the
      * connection to clear.
      */
-    REQUIRED
+    REQUIRED((byte) 2);
+
+    /**
+     * Sent in HELLO and WELCOME; fixed rather than the ordinal, so the wire survives a reordering.
+     */
+    private final byte code;
+
+    /**
+     * @throws IllegalArgumentException for a code no mode has
+     */
+    public static EncryptionMode from(byte code) {
+        for (EncryptionMode mode : values()) {
+            if (mode.code == code) {
+                return mode;
+            }
+        }
+        throw new IllegalArgumentException("Unknown encryption mode code " + code);
+    }
 }

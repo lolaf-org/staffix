@@ -31,6 +31,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.follower.ReplicaSessions;
 import org.lolaf.staffix.ha.follower.ReplicationClient;
 import org.lolaf.staffix.ha.leader.Followers;
@@ -65,6 +66,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     @Getter
     private final ReplicationHaSettings settings;
+    private final KeyExchange keyExchange;
     @Getter
     private final ReplicationLogs replicationLogs;
     @Getter
@@ -110,6 +112,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
         settings.validate();
         this.settings = settings;
+        this.keyExchange = new KeyExchange(settings.getEncryption());
         this.replicationLogs = new ReplicationLogs(settings.getReplicationLanes(), settings.getLogCapacity());
         this.sessions = new ReplicatedSessions();
         this.followers = new Followers();
@@ -424,7 +427,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         server = new ReplicationServer(settings.getPeers().get(settings.getNodeId()), replicationLogs, sessions, followers,
                 () -> electionEpoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getFollowerStallTimeout(),
                 settings.getSendBuffers(), settings.getSnapshotChunkBytes(),
-                settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats, engine.getClock());
+                settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats, engine.getClock(), keyExchange);
         server.start();
     }
 
@@ -445,7 +448,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             client = new ReplicationClient(leader, replicaSessions, election::getEpoch, settings.getNodeId(),
                     replicationLogs.getMaxEventFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get(),
                     settings.getFollowerStoreWriterThreads(), settings.getFollowerStoreWriterIdleStrategy(),
-                    settings.getFollowerCheckInterval());
+                    settings.getFollowerCheckInterval(), keyExchange);
             client.start();
         }
         roleChanged(Role.FOLLOWER, electionEpoch, leader);

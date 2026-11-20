@@ -1,0 +1,136 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.lolaf.staffix.ha.follower;
+
+import com.github.valfirst.slf4jtest.LoggingEvent;
+import com.github.valfirst.slf4jtest.TestLogger;
+import com.github.valfirst.slf4jtest.TestLoggerFactory;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.encryption.KeyExchange;
+import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.wire.CloseReason;
+import org.lolaf.staffix.ha.wire.FrameDecoder;
+import org.lolaf.staffix.ha.wire.FrameEncoder;
+import org.lolaf.staffix.ha.wire.FrameType;
+import org.lolaf.staffix.ha.wire.WireFormat;
+import org.slf4j.event.Level;
+
+import java.nio.ByteBuffer;
+import java.util.function.ToIntBiFunction;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * The follower's side of the encryption handshake: what its HELLO says, the KEY_CONFIRMATION it answers an encrypting
+ * WELCOME with, and the rows of the behaviour table it decides on the WELCOME.
+ */
+class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
+
+    private final TestLogger connectionLog = TestLoggerFactory.getTestLogger(LeaderConnection.class);
+
+    @BeforeEach
+    void clearThisThreadsLogs() {
+        TestLoggerFactory.clear();
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> welcome(EncryptionMode leaderMode, byte[] leaderNonce) {
+        return (out, index) -> FrameEncoder.welcome(out, index, EPOCH, "leader-a", WireFormat.NO_RESUME, 1, leaderMode,
+                leaderNonce);
+    }
+
+    @SafeVarargs
+    private static void read(LeaderConnection connection, ToIntBiFunction<ByteBuffer, Integer>... frames) {
+        connection.read(writeFrames(frames), new FrameDecoder(1 << 20));
+    }
+
+    private long errors() {
+        return connectionLog.getLoggingEvents().stream().filter(event -> event.getLevel() == Level.ERROR).count();
+    }
+
+    private static byte[] bytes(ByteBuffer frame, int length) {
+        byte[] bytes = new byte[length];
+        frame.get(bytes);
+        return bytes;
+    }
+
+    @Test
+    void anEncryptingFollowerSaysSoInItsHelloWithANonce() {
+        newConnection(TestingKeyExchanges.of(EncryptionMode.PREFERRED)).hello();
+
+        assertThat(sent.frames).singleElement().asString().endsWith("lane=0 encryption=PREFERRED nonce=random");
+    }
+
+    @Test
+    void bothEncryptingTheFollowerConfirmsItsKeysBeforeItAnswersAnything() {
+        KeyExchange leader = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.PREFERRED));
+        encrypting.hello();
+        byte[] followerNonce = sent.lastNonce;
+        byte[] leaderNonce = leader.newNonce();
+
+        read(encrypting, welcome(EncryptionMode.REQUIRED, leaderNonce));
+
+        assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.STREAMING);
+        assertThat(encrypting.getEncryptionKeys()).isNotNull();
+        assertThat(sent.frames.get(1)).isEqualTo("KEY_CONFIRMATION epoch=7 bytes=32");
+        ByteBuffer hello = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.HELLO, "follower-b"));
+        int helloLength = FrameEncoder.hello(hello, 0, EPOCH, "follower-b", replicaSessions.getLastAppliedEpoch(0),
+                replicaSessions.getLastAppliedOffset(0), 0, EncryptionMode.PREFERRED, followerNonce);
+        ByteBuffer welcome = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.WELCOME, "leader-a"));
+        int welcomeLength = welcome(EncryptionMode.REQUIRED, leaderNonce).applyAsInt(welcome, 0);
+        assertThat(leader.confirms(leader.deriveKeys(followerNonce, leaderNonce), bytes(hello, helloLength),
+                bytes(welcome, welcomeLength), sent.lastKeyConfirmation)).as("the leader verifies it").isTrue();
+        assertThat(connectionLog.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
+                .contains("Following leader leader-a encrypted on lane 0, AES/GCM/NoPadding 256");
+    }
+
+    @Test
+    void aFollowerRequiringEncryptionRefusesAWelcomeWithoutIt() {
+        LeaderConnection requiring = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+        requiring.hello();
+
+        read(requiring, welcome(EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE));
+
+        assertThat(requiring.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString()
+                .startsWith("CLOSE epoch=7 ENCRYPTION_REQUIRED this follower's encryption is REQUIRED, the leader's DISABLED");
+        assertThat(errors()).isEqualTo(1);
+    }
+
+    @Test
+    void aFollowerPreferringEncryptionFollowsALeaderWithoutItInClearWithAnError() {
+        LeaderConnection preferring = newConnection(TestingKeyExchanges.of(EncryptionMode.PREFERRED));
+        preferring.hello();
+
+        read(preferring, welcome(EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE));
+
+        assertThat(preferring.getState()).isEqualTo(LeaderConnection.State.STREAMING);
+        assertThat(preferring.getEncryptionKeys()).isNull();
+        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("KEY_CONFIRMATION"));
+        assertThat(errors()).isEqualTo(1);
+    }
+
+    @Test
+    void aLeaderRefusingTheEncryptionIsAnError() {
+        connection.hello();
+
+        read((out, index) -> FrameEncoder.close(out, index, EPOCH, CloseReason.KEY_MISMATCH, "secret or cipher differ"));
+
+        assertThat(errors()).isEqualTo(1);
+    }
+}

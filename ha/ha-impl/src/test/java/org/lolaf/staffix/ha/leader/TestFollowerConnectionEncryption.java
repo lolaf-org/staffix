@@ -1,0 +1,184 @@
+/*
+ * Copyright © 2024-2026 Lolaf.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.lolaf.staffix.ha.leader;
+
+import com.github.valfirst.slf4jtest.LoggingEvent;
+import com.github.valfirst.slf4jtest.TestLogger;
+import com.github.valfirst.slf4jtest.TestLoggerFactory;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.encryption.KeyExchange;
+import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.wire.FrameEncoder;
+import org.lolaf.staffix.ha.wire.FrameType;
+import org.lolaf.staffix.ha.wire.WireFormat;
+import org.slf4j.event.Level;
+
+import java.nio.ByteBuffer;
+import java.time.Duration;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * The leader's side of the encryption handshake: the rows of the behaviour table it decides, and the KEY_CONFIRMATION it
+ * waits for before anything streams.
+ */
+class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
+
+    private final TestLogger connectionLog = TestLoggerFactory.getTestLogger(FollowerConnection.class);
+
+    @BeforeEach
+    void clearThisThreadsLogs() {
+        TestLoggerFactory.clear();
+    }
+
+    private void leaderEncryption(EncryptionMode mode) {
+        keyExchange = mode == EncryptionMode.DISABLED ? TestingKeyExchanges.CLEAR : TestingKeyExchanges.of(mode);
+        connection = connection();
+    }
+
+    private void hello(EncryptionMode followerMode, byte[] followerNonce) {
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, followerMode, followerNonce);
+    }
+
+    private long errors() {
+        return connectionLog.getLoggingEvents().stream().filter(event -> event.getLevel() == Level.ERROR).count();
+    }
+
+    /**
+     * What an encrypting follower would send after the WELCOME the connection sent.
+     */
+    private byte[] followerConfirmation(KeyExchange follower, byte[] followerNonce) {
+        byte[] leaderNonce = sent.lastNonce;
+        ByteBuffer hello = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.HELLO, "follower-b"));
+        int helloLength = FrameEncoder.hello(hello, 0, EPOCH, "follower-b", 0, -1, 0, EncryptionMode.REQUIRED, followerNonce);
+        ByteBuffer welcome = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.WELCOME, "leader-a"));
+        int welcomeLength = FrameEncoder.welcome(welcome, 0, EPOCH, "leader-a", WireFormat.NO_RESUME, 1,
+                EncryptionMode.REQUIRED, leaderNonce);
+        byte[] helloBytes = new byte[helloLength];
+        hello.get(helloBytes);
+        byte[] welcomeBytes = new byte[welcomeLength];
+        welcome.get(welcomeBytes);
+        return follower.confirm(follower.deriveKeys(followerNonce, leaderNonce), helloBytes, welcomeBytes);
+    }
+
+    @Test
+    void aLeaderRequiringEncryptionRefusesAFollowerWithoutIt() {
+        leaderEncryption(EncryptionMode.REQUIRED);
+
+        hello(EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
+        assertThat(sent.frames).singleElement().asString()
+                .startsWith("CLOSE epoch=7 ENCRYPTION_REQUIRED this leader's encryption is REQUIRED, the follower's DISABLED");
+        assertThat(errors()).isEqualTo(1);
+    }
+
+    @Test
+    void aLeaderWithoutEncryptionRefusesAFollowerRequiringIt() {
+        hello(EncryptionMode.REQUIRED, TestingKeyExchanges.of(EncryptionMode.REQUIRED).newNonce());
+
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 ENCRYPTION_REQUIRED");
+    }
+
+    @Test
+    void aLeaderPreferringEncryptionStreamsInClearToAFollowerWithoutItAndLogsAnError() {
+        leaderEncryption(EncryptionMode.PREFERRED);
+
+        hello(EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
+        assertThat(connection.getEncryptionKeys()).isNull();
+        assertThat(sent.frames).first().asString().endsWith("encryption=PREFERRED nonce=random");
+        assertThat(errors()).isEqualTo(1);
+    }
+
+    @Test
+    void aLeaderWithoutEncryptionStreamsInClearToAFollowerPreferringIt() {
+        hello(EncryptionMode.PREFERRED, TestingKeyExchanges.of(EncryptionMode.PREFERRED).newNonce());
+
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
+        assertThat(errors()).as("the follower logs it").isZero();
+    }
+
+    @Test
+    void nothingStreamsBeforeTheKeyConfirmationAndTheRightOneStartsTheStream() {
+        replicated("main");
+        leaderEncryption(EncryptionMode.REQUIRED);
+        KeyExchange follower = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+        byte[] followerNonce = follower.newNonce();
+
+        hello(EncryptionMode.REQUIRED, followerNonce);
+        fill();
+
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.AWAITING_KEY_CONFIRMATION);
+        assertThat(connection.getEncryptionKeys()).isNotNull();
+        assertThat(sent.frames).singleElement().asString().endsWith("encryption=REQUIRED nonce=random");
+
+        connection.onKeyConfirmation(EPOCH, followerConfirmation(follower, followerNonce));
+        fill();
+
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
+        assertThat(sent.frames).anyMatch(frame -> frame.startsWith("SESSION "));
+        assertThat(connectionLog.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
+                .contains("Replicating encrypted to follower follower-b lane 0, AES/GCM/NoPadding 256");
+    }
+
+    @Test
+    void aKeyConfirmationOfAnotherSecretClosesWithKeyMismatch() {
+        leaderEncryption(EncryptionMode.REQUIRED);
+        KeyExchange follower = TestingKeyExchanges.of(EncryptionMode.REQUIRED, "another-secret-entirely",
+                "AES/GCM/NoPadding");
+        byte[] followerNonce = follower.newNonce();
+        hello(EncryptionMode.REQUIRED, followerNonce);
+
+        connection.onKeyConfirmation(EPOCH, followerConfirmation(follower, followerNonce));
+
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 KEY_MISMATCH the follower's secret or cipher "
+                + "differ from this leader's AES/GCM/NoPadding 256");
+        assertThat(errors()).isEqualTo(1);
+    }
+
+    @Test
+    void aKeyConfirmationOnAClearConnectionIsAProtocolError() {
+        hello(EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+
+        connection.onKeyConfirmation(EPOCH, new byte[WireFormat.KEY_CONFIRMATION_BYTES]);
+
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    }
+
+    @Test
+    void aFollowerNotConfirmingItsKeysWithinTheStallTimeoutIsClosed() throws InterruptedException {
+        keyExchange = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+        Thread[] sender = new Thread[1];
+        connection = connectionStallingAfter(Duration.ofMillis(100), sender);
+        hello(EncryptionMode.REQUIRED, TestingKeyExchanges.of(EncryptionMode.REQUIRED).newNonce());
+        awaitSenderTurn();
+        senderClock.advance(Duration.ofMillis(100));
+        awaitSenderTurn();
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.AWAITING_KEY_CONFIRMATION);
+
+        senderClock.advance(Duration.ofNanos(1));
+
+        sender[0].join(5_000);
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR no KEY_CONFIRMATION within 100 ms");
+    }
+}

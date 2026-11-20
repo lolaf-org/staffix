@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.wire;
 
+import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
@@ -66,8 +67,11 @@ public class FrameEncoder {
         return length;
     }
 
+    /**
+     * @param nonce {@link WireFormat#NONCE_BYTES} bytes
+     */
     public static int hello(ByteBuffer out, int index, long epoch, String nodeId, long lastAppliedEpoch,
-                            long lastAppliedOffset, int lane) {
+                            long lastAppliedOffset, int lane, EncryptionMode encryptionMode, byte[] nonce) {
         byte[] id = utf8(nodeId);
         int length = header(out, index, FrameType.HELLO, 0, epoch, id.length);
         int p = index + HEADER_BYTES;
@@ -77,11 +81,18 @@ public class FrameEncoder {
         out.putLong(p + 8, lastAppliedEpoch);
         out.putLong(p + 16, lastAppliedOffset);
         out.putShort(p + 24, (short) lane);
-        putBytes(out, p + 32, id);
+        out.put(p + 26, encryptionMode.getCode());
+        zero(out, p + 27, 5);
+        putNonce(out, p + 32, nonce);
+        putBytes(out, p + 48, id);
         return length;
     }
 
-    public static int welcome(ByteBuffer out, int index, long epoch, String leaderId, long resumeOffset, int lanes) {
+    /**
+     * @param nonce {@link WireFormat#NONCE_BYTES} bytes
+     */
+    public static int welcome(ByteBuffer out, int index, long epoch, String leaderId, long resumeOffset, int lanes,
+                              EncryptionMode encryptionMode, byte[] nonce) {
         byte[] id = utf8(leaderId);
         int length = header(out, index, FrameType.WELCOME, 0, epoch, id.length);
         int p = index + HEADER_BYTES;
@@ -90,7 +101,22 @@ public class FrameEncoder {
         out.putShort(p + 6, (short) id.length);
         out.putLong(p + 8, resumeOffset);
         out.putShort(p + 16, (short) lanes);
-        putBytes(out, p + 24, id);
+        out.put(p + 18, encryptionMode.getCode());
+        zero(out, p + 19, 5);
+        putNonce(out, p + 24, nonce);
+        putBytes(out, p + 40, id);
+        return length;
+    }
+
+    /**
+     * @param confirmation {@link WireFormat#KEY_CONFIRMATION_BYTES} bytes
+     */
+    public static int keyConfirmation(ByteBuffer out, int index, long epoch, byte[] confirmation) {
+        if (confirmation.length != WireFormat.KEY_CONFIRMATION_BYTES) {
+            throw new IllegalArgumentException("A key confirmation is " + WireFormat.KEY_CONFIRMATION_BYTES + " bytes, got " + confirmation.length);
+        }
+        int length = header(out, index, FrameType.KEY_CONFIRMATION, 0, epoch, 0);
+        putBytes(out, index + HEADER_BYTES, confirmation);
         return length;
     }
 
@@ -316,6 +342,19 @@ public class FrameEncoder {
                     + bytes.length + ": " + value.substring(0, 64) + "...");
         }
         return bytes;
+    }
+
+    private static void putNonce(ByteBuffer out, int index, byte[] nonce) {
+        if (nonce.length != WireFormat.NONCE_BYTES) {
+            throw new IllegalArgumentException("A nonce is " + WireFormat.NONCE_BYTES + " bytes, got " + nonce.length);
+        }
+        putBytes(out, index, nonce);
+    }
+
+    private static void zero(ByteBuffer out, int index, int length) {
+        for (int i = 0; i < length; i++) {
+            out.put(index + i, (byte) 0);
+        }
     }
 
     private static void putBytes(ByteBuffer out, int index, byte[] bytes) {

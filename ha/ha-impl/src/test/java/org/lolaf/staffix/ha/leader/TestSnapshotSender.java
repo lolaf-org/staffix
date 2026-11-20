@@ -21,6 +21,8 @@ import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreException;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
+import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
@@ -56,7 +58,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         replicated("main").storeNextIncomingSeqNum(5);
         replicated("shared").storeNextIncomingSeqNum(6);
         replicated("refused").storeNextIncomingSeqNum(7);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
         connection.onSessionAnswer(EPOCH, 1, SessionAnswer.SHARED_STORAGE);
@@ -88,7 +90,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
             return null;
         }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
 
@@ -121,7 +123,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
             return null;
         }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sentTypeHashes.clear();
 
@@ -137,7 +139,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     void aSnapshotGoesInChunksBetweenTheBatchesOfTheOtherSessionsAndSkipsItsOwnEvents() {
         FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
         FixSessionMessagesStore other = replicated("other");
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
         sent.frames.clear();
@@ -166,9 +168,9 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         int chunkBytes = 4 << 10;
         connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofMillis(100), Duration.ZERO, 4, chunkBytes, new BackoffIdleStrategy(), stats, loop -> {
-        }, new TestingClock());
+        }, new TestingClock(), TestingKeyExchanges.CLEAR);
         ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
         connection.startPendingSnapshot();
@@ -187,10 +189,10 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     void aSnapshotReadsTheStoreOnlyAboutAsFarAsEachChunkSends() {
         connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofMillis(100), Duration.ZERO, 4, 4 << 10, new BackoffIdleStrategy(), stats, loop -> {
-        }, new TestingClock());
+        }, new TestingClock(), TestingKeyExchanges.CLEAR);
         FixSessionMessagesStore store = storeHolding(1_001L);
         ha.replicatingStore(settings("main"), store, new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
 
@@ -210,7 +212,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     @Test
     void aSnapshotEndsWithTheRoundThatCaughtUpWithTheSessionWrites() {
         ha.replicatingStore(settings("main"), storeHolding(1_001L, 1_011L), new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
         sent.frames.clear();
@@ -224,7 +226,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     @Test
     void aSnapshotNotCatchingUpSendsItsLastRoundWhole() {
         ha.replicatingStore(settings("main"), storeHolding(1_001L, 3_001L), new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
         connection.startPendingSnapshot();
@@ -244,7 +246,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     @Test
     void aResetOfTheSessionEndsItsSnapshotAndIsSentAfterItsEnd() {
         FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
         connection.startPendingSnapshot();
@@ -276,7 +278,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
             return null;
         }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
 
@@ -295,7 +297,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         FixSessionMessagesStore local = startedStore();
         when(local.getOutgoingSeqNum()).thenReturn(1_001L);
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
 
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
@@ -315,7 +317,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
         when(local.getOutgoingSeqNum()).thenReturn(5L);
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
         connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
@@ -341,7 +343,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         when(local.getOutgoingSeqNum()).thenReturn(5L);
         doThrow(new StoreException("storage down")).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
         ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
 

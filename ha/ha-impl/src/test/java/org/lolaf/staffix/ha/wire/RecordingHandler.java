@@ -18,10 +18,12 @@ package org.lolaf.staffix.ha.wire;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.EncryptionMode;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -39,16 +41,42 @@ public class RecordingHandler implements FrameHandler {
         return new String(bytes, StandardCharsets.US_ASCII);
     }
 
+    /**
+     * The nonce of the last HELLO or WELCOME, and the last KEY_CONFIRMATION, which the frames only summarise.
+     */
+    public byte[] lastNonce;
+    public byte[] lastKeyConfirmation;
+
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane) {
+    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
+                        EncryptionMode encryptionMode, byte[] nonce) {
+        lastNonce = nonce;
         frames.add("HELLO epoch=" + epoch + " version=" + version + " node=" + nodeId + " lastEpoch=" + lastAppliedEpoch
-                + " lastOffset=" + lastAppliedOffset + " lane=" + lane);
+                + " lastOffset=" + lastAppliedOffset + " lane=" + lane + encryption(encryptionMode, nonce));
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes) {
+    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes,
+                          EncryptionMode encryptionMode, byte[] nonce) {
+        lastNonce = nonce;
         frames.add("WELCOME epoch=" + epoch + " version=" + version + " leader=" + leaderId + " resume=" + resumeOffset
-                + " lanes=" + lanes);
+                + " lanes=" + lanes + encryption(encryptionMode, nonce));
+    }
+
+    @Override
+    public void onKeyConfirmation(long epoch, byte[] confirmation) {
+        lastKeyConfirmation = confirmation;
+        frames.add("KEY_CONFIRMATION epoch=" + epoch + " bytes=" + confirmation.length);
+    }
+
+    /**
+     * Nothing for a clear peer, so the frames of the tests that do not encrypt read as they always did.
+     */
+    private static String encryption(EncryptionMode encryptionMode, byte[] nonce) {
+        if (encryptionMode == EncryptionMode.DISABLED) {
+            return "";
+        }
+        return " encryption=" + encryptionMode + " nonce=" + (Arrays.equals(nonce, new byte[nonce.length]) ? "zeros" : "random");
     }
 
     @Override

@@ -21,6 +21,9 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.encryption.KeyExchange;
+import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.wire.*;
 
 import java.nio.ByteBuffer;
@@ -72,7 +75,7 @@ abstract class LeaderConnectionHarness {
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset, int lanes) {
-        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, lanes);
+        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, lanes, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings) {
@@ -166,8 +169,16 @@ abstract class LeaderConnectionHarness {
     }
 
     private LeaderConnection newConnection(int lane, long checkIntervalNanos) {
+        return newConnection(lane, checkIntervalNanos, TestingKeyExchanges.CLEAR);
+    }
+
+    LeaderConnection newConnection(KeyExchange keyExchange) {
+        return newConnection(0, TimeUnit.SECONDS.toNanos(1), keyExchange);
+    }
+
+    private LeaderConnection newConnection(int lane, long checkIntervalNanos, KeyExchange keyExchange) {
         return new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", lane, replicaSessions::setLanes,
-                checkIntervalNanos, new OnNetworkThreadAnswerSender(ioSession), false);
+                checkIntervalNanos, new OnNetworkThreadAnswerSender(ioSession), false, keyExchange);
     }
 
     long lostWrites() {

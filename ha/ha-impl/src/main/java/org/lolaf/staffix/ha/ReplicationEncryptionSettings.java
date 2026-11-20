@@ -82,6 +82,13 @@ public class ReplicationEncryptionSettings {
     String provider;
 
     /**
+     * Whether {@link #getCipher() cipher} is a stream cipher, authenticated by {@link #getMac() mac}, rather than an AEAD.
+     */
+    public boolean isStreamCipher() {
+        return STREAM_CIPHERS.contains(cipher);
+    }
+
+    /**
      * @throws IllegalArgumentException for an encrypting setting this JVM cannot run; nothing is checked when
      *                                  {@link EncryptionMode#DISABLED DISABLED}
      */
@@ -96,7 +103,7 @@ public class ReplicationEncryptionSettings {
         if (provider != null && Security.getProvider(provider) == null) {
             throw new IllegalArgumentException("encryption.provider " + provider + " is not installed");
         }
-        boolean stream = STREAM_CIPHERS.contains(cipher);
+        boolean stream = isStreamCipher();
         if (!stream && !AEAD_CIPHERS.contains(cipher)) {
             throw new IllegalArgumentException("encryption.cipher must be one of " + AEAD_CIPHERS + " or "
                     + STREAM_CIPHERS + ", got " + cipher);

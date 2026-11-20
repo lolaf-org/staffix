@@ -32,8 +32,10 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
@@ -64,7 +66,7 @@ class TestReplicationServer {
     private final InetSocketAddress address = new InetSocketAddress("localhost", TestPorts.findFree());
     private final ReplicationServer server = new ReplicationServer(address, ha.getReplicationLogs(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
             "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE,
-            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock());
+            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock(), TestingKeyExchanges.CLEAR);
     private final RecordingHandler received = new RecordingHandler();
     private Client follower;
 
@@ -87,7 +89,7 @@ class TestReplicationServer {
                     @Override
                     public void onConnected(IOSession session) {
                         ByteBuffer hello = session.borrow(FrameEncoder.bytesWith(FrameType.HELLO, "follower-b"));
-                        int length = FrameEncoder.hello(hello, 0, EPOCH, "follower-b", lastAppliedEpoch, lastAppliedOffset, 0);
+                        int length = FrameEncoder.hello(hello, 0, EPOCH, "follower-b", lastAppliedEpoch, lastAppliedOffset, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
                         session.send(hello.position(length), true);
                     }
 

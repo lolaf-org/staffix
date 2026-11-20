@@ -23,7 +23,11 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
+import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
+import org.lolaf.staffix.ha.encryption.KeyExchange;
+import org.lolaf.staffix.ha.encryption.Negotiation;
 import org.lolaf.staffix.ha.wire.*;
 
 import java.nio.ByteBuffer;
@@ -62,6 +66,17 @@ public final class LeaderConnection implements FrameHandler {
     private final boolean receivedAckedByNetworkThread;
     private final long checkIntervalNanos;
     private final ObjIntConsumer<SessionAnswer> sendBoundAnswer = (answer, sessionKey) -> sendSessionAnswer(sessionKey, answer);
+    private final KeyExchange keyExchange;
+    /**
+     * This connection's keys once both peers encrypt, null on a clear one.
+     */
+    @Getter
+    private volatile @Nullable ConnectionEncryptionKeys encryptionKeys;
+    private byte[] followerNonce = new byte[WireFormat.NONCE_BYTES];
+    /**
+     * The HELLO as sent, which the KEY_CONFIRMATION covers.
+     */
+    private byte @Nullable [] sentHelloBytes;
     @Getter
     private volatile State state = State.AWAITING_WELCOME;
     @Getter
@@ -88,7 +103,9 @@ public final class LeaderConnection implements FrameHandler {
      *                                     writer thread writing them
      */
     LeaderConnection(IOSession ioSession, ReplicaSessions replicaSessions, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
-                     long checkIntervalNanos, AnswerSender answers, boolean receivedAckedByNetworkThread) {
+                     long checkIntervalNanos, AnswerSender answers, boolean receivedAckedByNetworkThread,
+                     KeyExchange keyExchange) {
+        this.keyExchange = keyExchange;
         this.answers = answers;
         this.receivedAckedByNetworkThread = receivedAckedByNetworkThread;
         this.checkIntervalNanos = checkIntervalNanos;
@@ -101,9 +118,15 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     void hello() {
-        ByteBuffer hello = answers.claim(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
-        answers.send(hello, FrameEncoder.hello(hello, 0, nodeEpoch.getAsLong(), nodeId, replicaSessions.getLastAppliedEpoch(lane),
-                replicaSessions.getLastAppliedOffset(lane), lane));
+        followerNonce = keyExchange.newNonce();
+        ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
+        int length = FrameEncoder.hello(frame, 0, nodeEpoch.getAsLong(), nodeId, replicaSessions.getLastAppliedEpoch(lane),
+                replicaSessions.getLastAppliedOffset(lane), lane, keyExchange.getMode(), followerNonce);
+        sentHelloBytes = new byte[length];
+        for (int i = 0; i < length; i++) {
+            sentHelloBytes[i] = frame.get(i);
+        }
+        answers.send(frame, length);
     }
 
     /**
@@ -115,7 +138,8 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes) {
+    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes,
+                          EncryptionMode leaderMode, byte[] leaderNonce) {
         if (state != State.AWAITING_WELCOME) {
             close(CloseReason.PROTOCOL_ERROR, "a second WELCOME");
             return;
@@ -134,6 +158,18 @@ public final class LeaderConnection implements FrameHandler {
             return;
         }
         this.leaderId = leaderId;
+        Negotiation negotiation = keyExchange.negotiate(leaderMode);
+        if (negotiation == Negotiation.REFUSED) {
+            close(CloseReason.ENCRYPTION_REQUIRED, "this follower's encryption is " + keyExchange.getMode()
+                    + ", the leader's " + leaderMode);
+            return;
+        }
+        if (negotiation == Negotiation.ENCRYPTED) {
+            confirmKeys(epoch, leaderId, resumeOffset, lanes, leaderMode, leaderNonce);
+        } else if (negotiation == Negotiation.CLEAR_AGAINST_PREFERENCE) {
+            log.error("Following leader {} in clear on lane {}: this follower prefers encryption, the leader has it "
+                    + "disabled", leaderId, lane);
+        }
         streamEpoch = epoch;
         lanesAnnounced.accept(lanes);
         boolean resumed = resumeOffset != WireFormat.NO_RESUME;
@@ -142,6 +178,24 @@ public final class LeaderConnection implements FrameHandler {
         ackDue = true;
         log.info("Following leader {} at epoch {} on lane {} of {}, {}", leaderId, epoch, lane, lanes,
                 resumed ? "resuming at offset " + resumeOffset : "from its log tail, needing a snapshot");
+    }
+
+    /**
+     * Sent before anything else this connection answers, so the leader verifies it before it streams.
+     */
+    private void confirmKeys(long epoch, String leaderId, long resumeOffset, int lanes, EncryptionMode leaderMode,
+                           byte[] leaderNonce) {
+        ConnectionEncryptionKeys keys = keyExchange.deriveKeys(followerNonce, leaderNonce);
+        ByteBuffer welcomeFrame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
+        int welcomeLength = FrameEncoder.welcome(welcomeFrame, 0, epoch, leaderId, resumeOffset, lanes, leaderMode, leaderNonce);
+        byte[] receivedWelcomeBytes = new byte[welcomeLength];
+        welcomeFrame.get(receivedWelcomeBytes);
+        byte[] confirmation = keyExchange.confirm(keys, sentHelloBytes, receivedWelcomeBytes);
+        encryptionKeys = keys;
+        sentHelloBytes = null;
+        ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.KEY_CONFIRMATION));
+        answers.send(frame, FrameEncoder.keyConfirmation(frame, 0, nodeEpoch.getAsLong(), confirmation));
+        log.info("Following leader {} encrypted on lane {}, {}", leaderId, lane, keyExchange.describeCipher());
     }
 
     @Override
@@ -224,12 +278,14 @@ public final class LeaderConnection implements FrameHandler {
     @Override
     public void onClose(long epoch, CloseReason reason, String text) {
         if (reason == CloseReason.SHUTDOWN && state == State.STREAMING && epoch == streamEpoch) {
-            log.info("Leader {} stopped cleanly and handed over: {}", leaderId, text);
+            log.info("Leader {} stopped cleanly and handed over: {}", leaderName(), text);
             replicaSessions.handedOver(lane);
         } else if (reason == CloseReason.RETRY_LATER) {
-            log.info("Leader {} holds this follower off: {}", leaderId, text);
+            log.info("Leader {} holds this follower off: {}", leaderName(), text);
+        } else if (reason.isEncryptionRefusal()) {
+            log.error("Leader {} refused the replication stream: {} {}", leaderName(), reason, text);
         } else {
-            log.warn("Leader {} closed the replication stream: {} {}", leaderId, reason, text);
+            log.warn("Leader {} closed the replication stream: {} {}", leaderName(), reason, text);
         }
         state = State.CLOSED;
         // hanging up tells the leader the close was read, which a hand over waits for before leadership moves
@@ -399,6 +455,14 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     /**
+     * The leader's id, or its address before its WELCOME named it: a leader may close before sending one.
+     */
+    private String leaderName() {
+        String id = leaderId;
+        return id != null ? id : "at " + ioSession.getSocketAddress();
+    }
+
+    /**
      * Sends a CLOSE and disconnects, the connection flushing it first; the client connects again.
      */
     void close(CloseReason reason, String text) {
@@ -406,7 +470,11 @@ public final class LeaderConnection implements FrameHandler {
             return;
         }
         String shortText = FrameEncoder.closeText(text);
-        log.warn("Closing the replication stream from leader {}: {} {}", leaderId, reason, shortText);
+        if (reason.isEncryptionRefusal()) {
+            log.error("Closing the replication stream from leader {}: {} {}", leaderName(), reason, shortText);
+        } else {
+            log.warn("Closing the replication stream from leader {}: {} {}", leaderName(), reason, shortText);
+        }
         state = State.CLOSED;
         ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.CLOSE, shortText));
         answers.send(frame, FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, shortText));

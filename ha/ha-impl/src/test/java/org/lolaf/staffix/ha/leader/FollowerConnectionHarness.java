@@ -15,6 +15,8 @@
  */
 package org.lolaf.staffix.ha.leader;
 
+import org.lolaf.staffix.ha.encryption.KeyExchange;
+import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.ha.wire.FrameType;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -81,6 +83,7 @@ abstract class FollowerConnectionHarness {
      */
     final TestingClock senderClock = new TestingClock();
     final AtomicLong senderIdles = new AtomicLong();
+    KeyExchange keyExchange = TestingKeyExchanges.CLEAR;
     ReplicationFixEngineHa ha = engine(1 << 16);
     FollowerConnection connection = connection();
 
@@ -125,7 +128,7 @@ abstract class FollowerConnectionHarness {
         return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
                 Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats,
                 loop -> {
-                }, new TestingClock());
+                }, new TestingClock(), keyExchange);
     }
 
     static FixSessionSettings settings(String name) {
@@ -193,7 +196,7 @@ abstract class FollowerConnectionHarness {
                 Duration.ofHours(1), stallTimeout, 4, Integer.MAX_VALUE, countingIdles(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
-        }, senderClock);
+        }, senderClock, keyExchange);
     }
 
     private BackoffIdleStrategy countingIdles() {
@@ -220,7 +223,7 @@ abstract class FollowerConnectionHarness {
 
     FollowerConnection senderRunningConnection(int snapshotChunkBytes) {
         return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                Duration.ZERO, 4, snapshotChunkBytes, countingIdles(), stats, loop -> new Thread(loop).start(), new TestingClock());
+                Duration.ZERO, 4, snapshotChunkBytes, countingIdles(), stats, loop -> new Thread(loop).start(), new TestingClock(), keyExchange);
     }
 
     /**

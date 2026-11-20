@@ -87,6 +87,17 @@ public class WireFormat {
     public static final int MAX_STRING_BYTES = 0xFFFF;
 
     /**
+     * The random nonce of {@link FrameType#HELLO} and {@link FrameType#WELCOME}, zeros from a peer that does not
+     * encrypt: both nonces make each connection's keys new.
+     */
+    public static final int NONCE_BYTES = 16;
+
+    /**
+     * The HMAC-SHA256 of {@link FrameType#KEY_CONFIRMATION}.
+     */
+    public static final int KEY_CONFIRMATION_BYTES = 32;
+
+    /**
      * {@link FrameType#SESSION}: the leader's store has a storage identity.
      */
     public static final int FLAG_STORAGE_IDENTITY = 0x01;

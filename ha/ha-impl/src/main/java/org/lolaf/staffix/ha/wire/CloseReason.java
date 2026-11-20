@@ -57,11 +57,19 @@ public enum CloseReason {
      */
     NO_SUCH_LANE(9),
     /**
+     * The peers encrypt with different secrets or ciphers: the follower's KEY_CONFIRMATION does not verify.
+     */
+    KEY_MISMATCH(10),
+    /**
+     * One peer requires encryption and the other has it disabled.
+     */
+    ENCRYPTION_REQUIRED(11),
+    /**
      * Any other code, from a newer peer; kept rather than refused so the close is still reported.
      */
     UNKNOWN(0xFFFF);
 
-    private static final CloseReason[] BY_CODE = new CloseReason[NO_SUCH_LANE.code + 1];
+    private static final CloseReason[] BY_CODE = new CloseReason[ENCRYPTION_REQUIRED.code + 1];
 
     static {
         for (CloseReason reason : values()) {
@@ -75,6 +83,13 @@ public enum CloseReason {
 
     CloseReason(int code) {
         this.code = code;
+    }
+
+    /**
+     * The peers disagree on encryption: logged as an error at both ends, since only an operator can fix it.
+     */
+    public boolean isEncryptionRefusal() {
+        return this == KEY_MISMATCH || this == ENCRYPTION_REQUIRED;
     }
 
     public static CloseReason forCode(int code) {
