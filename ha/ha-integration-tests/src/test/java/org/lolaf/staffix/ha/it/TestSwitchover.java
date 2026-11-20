@@ -160,7 +160,7 @@ class TestSwitchover {
             target.connectAddress(address);
         }
         // the counterparty receives a message of several MiB, past the 1 MiB betty grows its read buffer to by default
-        return FixInitiatorBuilder.builder().connectionRetry(Duration.ofMillis(100)).mainTarget(target.build())
+        return FixInitiatorBuilder.builder().connectionRetry(Duration.ofMillis(10)).mainTarget(target.build())
                 .ioSettings(IOSettings.builder().maxReadBufferSize(8 << 20).build()).build();
     }
 
