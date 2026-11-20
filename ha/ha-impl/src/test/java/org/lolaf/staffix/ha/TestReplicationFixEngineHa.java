@@ -54,6 +54,15 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         super(storeWriterThreads);
     }
 
+    /**
+     * Waiting for the ack as long as the follower is in sync: a wait that timed out is not timed, and a loaded machine
+     * can take longer than the default timeout.
+     */
+    private static FixSessionSettings untilAcked(FixSessionSettings settings) {
+        return settings.toBuilder().highAvailability(settings.getHighAvailability().toBuilder()
+                .replicationAckTimeout(Duration.ZERO).build()).build();
+    }
+
     @Test
     void thereIsAtLeastOneReplicationLane() {
         ReplicationHaSettings settings = ReplicationHaSettings.builder().replicationLanes(0).build();
@@ -261,9 +270,9 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     @Test
     void aSyncReceivedSendIsTimedUnderItsModeAndTheFollowerTimesTheWriteItAcknowledgedFirst() {
         aLeadsBFollows();
-        FixSessionSettings syncReceived = MAIN.toBuilder()
+        FixSessionSettings syncReceived = untilAcked(MAIN.toBuilder()
                 .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_RECEIVED).build())
-                .build();
+                .build());
         b.engine.replace(syncReceived);
         ReplicatingStore store = a.ha.replicatingStore(syncReceived, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
         await().until(() -> a.ha.getSessionStatuses().get(0).isInSync());
@@ -278,6 +287,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void theMetersFollowTheReplicationOnBothNodes() {
+        ReplicatingStore store = a.ha.replicatingStore(untilAcked(MAIN), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
         aLeadsBFollows();
         RecordingMeters leader = a.engine.meters;
         RecordingMeters follower = b.engine.meters;
@@ -296,8 +306,8 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         assertThat(follower.read("ha.leadership.valid")).isZero();
         double written = leader.read("ha.log.written");
 
-        a.store.storeNextIncomingSeqNum(7);
-        a.store.awaitReplicated();
+        store.storeNextIncomingSeqNum(7);
+        store.awaitReplicated();
 
         assertThat(leader.read("ha.log.written")).isGreaterThan(written);
         assertThat(leader.recordings(HaMeters.SYNC_ACK_LATENCY, Map.of("mode", "sync_applied"))).isEqualTo(1);
@@ -408,8 +418,8 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     }
 
     private static FixSessionSettings sync(FixSessionSettings settings, boolean syncAckLatencyEnabled) {
-        return settings.toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
-                .replicationMode(ReplicationMode.SYNC_APPLIED).syncAckLatencyEnabled(syncAckLatencyEnabled).build()).build();
+        return untilAcked(settings.toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                .replicationMode(ReplicationMode.SYNC_APPLIED).syncAckLatencyEnabled(syncAckLatencyEnabled).build()).build());
     }
 
     @Test
