@@ -171,12 +171,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     @Test
     void theSenderWaitsWhileEverySendBufferIsInFlightAndResumesOnceOneIsWritten() {
         FixSessionMessagesStore main = replicated("main");
-        Thread[] sender = new Thread[1];
-        connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> {
-            sender[0] = new Thread(loop);
-            sender[0].start();
-        }, new TestingClock());
+        connection = senderRunningConnection();
         holdingWrites = true;
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         try {
@@ -187,17 +182,20 @@ class TestFollowerConnection extends FollowerConnectionHarness {
                 await().until(() -> batchesSent.get() == sent);
             }
 
-            await().during(Duration.ofMillis(200)).alias("all four in flight, nothing to send")
-                    .until(() -> stats.getSendWaits() == 0);
+            awaitSenderTurn();
+            assertThat(stats.getSendWaits()).as("all four in flight, nothing to send").isZero();
 
             main.storeNextIncomingSeqNum(4);
 
-            await().during(Duration.ofMillis(200)).until(() -> batchesSent.get() == 4);
+            awaitSenderTurn();
+            assertThat(batchesSent.get()).isEqualTo(4);
             assertThat(stats.getSendWaits()).as("a write held back").isEqualTo(1);
             main.storeNextIncomingSeqNum(5);
-            await().during(Duration.ofMillis(200)).alias("the same wait").until(() -> stats.getSendWaits() == 1);
+            awaitSenderTurn();
+            assertThat(stats.getSendWaits()).as("the same wait").isEqualTo(1);
             unwrittenBatches.poll().run();
-            await().during(Duration.ofMillis(200)).alias("the batch written last is kept").until(() -> batchesSent.get() == 4);
+            awaitSenderTurn();
+            assertThat(batchesSent.get()).as("the batch written last is kept").isEqualTo(4);
             unwrittenBatches.poll().run();
             await().until(() -> batchesSent.get() == 5);
         } finally {
@@ -214,7 +212,8 @@ class TestFollowerConnection extends FollowerConnectionHarness {
             await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
 
             connection.onWriteWatermark(true);
-            await().during(Duration.ofMillis(200)).until(() -> stats.getSendWaits() == 0);
+            awaitSenderTurn();
+            assertThat(stats.getSendWaits()).isZero();
 
             main.storeNextIncomingSeqNum(1);
             await().until(() -> stats.getSendWaits() == 1);

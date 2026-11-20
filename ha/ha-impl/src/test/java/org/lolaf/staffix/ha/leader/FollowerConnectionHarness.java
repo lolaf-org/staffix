@@ -172,22 +172,25 @@ abstract class FollowerConnectionHarness {
     }
 
     FollowerConnection connectionStallingAfter(Duration stallTimeout, Thread[] sender) {
-        BackoffIdleStrategy countingIdles = new BackoffIdleStrategy() {
+        return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
+                Duration.ofHours(1), stallTimeout, 4, Integer.MAX_VALUE, countingIdles(), stats, loop -> {
+            sender[0] = new Thread(loop);
+            sender[0].start();
+        }, senderClock);
+    }
+
+    private BackoffIdleStrategy countingIdles() {
+        return new BackoffIdleStrategy() {
             @Override
             public void idle() {
                 senderIdles.incrementAndGet();
                 super.idle();
             }
         };
-        return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofHours(1), stallTimeout, 4, Integer.MAX_VALUE, countingIdles, stats, loop -> {
-            sender[0] = new Thread(loop);
-            sender[0].start();
-        }, senderClock);
     }
 
     /**
-     * Returns once the sender went through a whole turn of its loop, so checked for a stall on the clock as it is now.
+     * Returns once the sender went through a whole turn of its loop, so it acted on everything done before the call.
      */
     void awaitSenderTurn() {
         long idles = senderIdles.get();
@@ -200,7 +203,7 @@ abstract class FollowerConnectionHarness {
 
     FollowerConnection senderRunningConnection(int snapshotChunkBytes) {
         return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                Duration.ZERO, 4, snapshotChunkBytes, new BackoffIdleStrategy(), stats, loop -> new Thread(loop).start(), new TestingClock());
+                Duration.ZERO, 4, snapshotChunkBytes, countingIdles(), stats, loop -> new Thread(loop).start(), new TestingClock());
     }
 
     /**
