@@ -90,6 +90,7 @@ class TestFixInitiatorSwitch extends AbstractFixTests {
         trapCreatedFixSession(ConnectorType.INITIATOR);
         fixInitiatorSession.logon();
         await().untilAsserted(() -> verify(fixAcceptorApplication).onLogon(any(FixSession.class), any()));
+        await().untilAsserted(() -> verify(fixInitiatorApplication).onLogon(eq(fixInitiatorSession), any()));
         return fixInitiatorSession;
     }
 
