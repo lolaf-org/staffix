@@ -1211,6 +1211,8 @@ class TestFixMessagesResends extends AbstractFixTests {
      */
     @Test
     void messagesHeldOnOneReusableEncoderAreStoredWhenTheConnectionClosesDuringTheRecovery() {
+        // the initiator, held in its retransmission, cannot answer the Logout that closes the connection
+        setupSessionSettings(ConnectorType.ACCEPTOR, s -> s.logInOrOutResponseTimeout(Duration.ofMillis(500)).build());
         logonClient();
         sendMessagesAndCutConnection(ConnectorType.INITIATOR, i -> fixInitiatorSession.send(encodeTestMessage(i), null));
         clearApplicationsInvocations();

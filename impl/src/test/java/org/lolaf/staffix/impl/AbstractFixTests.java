@@ -278,7 +278,7 @@ abstract class AbstractFixTests {
     void shutdown() {
         if (fixAcceptorSession != null && fixAcceptorSession.isLoggedIn()) {
             fixAcceptorSession.logoutPermanently("finished test");
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1000));
+            Deadline.of(Duration.ofSeconds(1)).waitAsLongAs(fixAcceptorSession::isConnected);
         }
 
         stopWithinDeadline(initiatorFixEngine, ConnectorType.INITIATOR);
