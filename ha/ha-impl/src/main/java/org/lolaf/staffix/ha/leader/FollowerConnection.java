@@ -94,6 +94,7 @@ public final class FollowerConnection implements FrameHandler {
     private final Clock clock;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
+    private volatile boolean followerHungUp;
     @Getter
     private volatile @Nullable String followerId;
     /**
@@ -648,10 +649,10 @@ public final class FollowerConnection implements FrameHandler {
     /**
      * For a leader stopping cleanly, its sessions already stopped: waits for every event of the log to be sent, then
      * closes with {@link CloseReason#SHUTDOWN}. Arriving after them on the same connection, it tells the follower it
-     * holds everything, so the follower takes over without moving its seqnums ahead. When the deadline passes first,
-     * the connection is dropped without it.
+     * holds everything, so the follower takes over without moving its seqnums ahead. Returns once the follower hung up
+     * on it, so it has read it before leadership moves. When the deadline passes first, the connection is dropped.
      *
-     * @return whether the follower was told
+     * @return whether the follower read it
      */
     boolean handOver(Deadline deadline) {
         if (state != State.STREAMING) {
@@ -668,7 +669,16 @@ public final class FollowerConnection implements FrameHandler {
             ioSession.stop(Deadline.immediate());
             return false;
         }
-        return close(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent");
+        if (!sendClose(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent")) {
+            return false;
+        }
+        boolean read = deadline.waitAsLongAs(() -> !followerHungUp);
+        ioSession.stop(Deadline.of(CLOSE_FLUSH));
+        if (!read) {
+            log.warn("Follower {} did not hang up on the hand over before the deadline: it may take over with its seqnums moved"
+                    + " ahead", followerId);
+        }
+        return read;
     }
 
     /**
@@ -678,6 +688,14 @@ public final class FollowerConnection implements FrameHandler {
      * @return false when the connection was already closed, and nothing sent
      */
     boolean close(CloseReason reason, String text) {
+        if (!sendClose(reason, text)) {
+            return false;
+        }
+        ioSession.stop(Deadline.of(CLOSE_FLUSH));
+        return true;
+    }
+
+    private boolean sendClose(CloseReason reason, String text) {
         if (!markClosed()) {
             return false;
         }
@@ -691,7 +709,6 @@ public final class FollowerConnection implements FrameHandler {
         ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, shortText));
         int length = FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, shortText);
         ioSession.send(BatchBuffers.written(frame, length), false);
-        ioSession.stop(Deadline.of(CLOSE_FLUSH));
         return true;
     }
 
@@ -699,6 +716,7 @@ public final class FollowerConnection implements FrameHandler {
      * The connection is gone: the send loop ends at its next turn.
      */
     void disconnected() {
+        followerHungUp = true;
         markClosed();
     }
 

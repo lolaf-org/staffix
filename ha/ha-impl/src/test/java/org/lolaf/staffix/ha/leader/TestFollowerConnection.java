@@ -45,9 +45,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -637,11 +639,36 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
         store.storeNextIncomingSeqNum(6);
         fill();
+        followerHangsUpOnClose();
 
         assertThat(connection.handOver(Deadline.of(Duration.ofSeconds(1)))).isTrue();
 
         assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 SHUTDOWN");
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
+    }
+
+    @Test
+    void aHandOverTheFollowerDoesNotHangUpOnBeforeTheDeadlineFails() {
+        FixSessionMessagesStore store = replicated("main");
+        store.storeNextIncomingSeqNum(5);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
+        fill();
+
+        assertThat(connection.handOver(Deadline.of(Duration.ofMillis(50)))).isFalse();
+
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 SHUTDOWN");
+        verify(ioSession).stop(any(Deadline.class));
+    }
+
+    private void followerHangsUpOnClose() {
+        doAnswer(invocation -> {
+            ByteBuffer frames = invocation.getArgument(0);
+            decodeAll(frames.duplicate().flip());
+            if (!sent.frames.isEmpty() && sent.frames.get(sent.frames.size() - 1).startsWith("CLOSE")) {
+                connection.disconnected();
+            }
+            return null;
+        }).when(ioSession).send(any(ByteBuffer.class), anyBoolean());
     }
 
     @Test

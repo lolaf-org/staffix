@@ -232,6 +232,8 @@ public final class LeaderConnection implements FrameHandler {
             log.warn("Leader {} closed the replication stream: {} {}", leaderId, reason, text);
         }
         state = State.CLOSED;
+        // hanging up tells the leader the close was read, which a hand over waits for before leadership moves
+        ioSession.stop(Deadline.immediate());
     }
 
     /**
