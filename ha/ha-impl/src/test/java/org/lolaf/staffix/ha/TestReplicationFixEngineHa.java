@@ -426,6 +426,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     @Test
     void aResyncOfOneSessionNamesAReplicatedSession() {
         aLeadsBFollows();
+        await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
 
         a.ha.resync(MAIN.getFixSessionId(), MAIN.getFixSessionType());
 
