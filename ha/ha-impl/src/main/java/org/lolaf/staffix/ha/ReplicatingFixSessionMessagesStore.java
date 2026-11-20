@@ -30,6 +30,7 @@ import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.log.StoreEventRecord;
+import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -91,9 +92,9 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void replicateSent(MessageType messageType, long outgoingSeqNum, ByteBuffer message) {
         if (messageType.isStorable() && !store.filter(messageType, message)) {
-            append(StoreEventType.STORE_MESSAGE, outgoingSeqNum, message);
+            append(StoreEventType.STORE_MESSAGE, outgoingSeqNum, messageType.codeHash(), message);
         } else {
-            append(StoreEventType.STORE_OUTGOING_SEQ_NUM, outgoingSeqNum + 1, null);
+            append(StoreEventType.STORE_OUTGOING_SEQ_NUM, outgoingSeqNum + 1, WireFormat.NO_MESSAGE_TYPE, null);
         }
         replicatedAhead.add(outgoingSeqNum);
     }
@@ -179,7 +180,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     public void resetSequenceNumbers() {
         store.resetSequenceNumbers();
         replicatedAhead.clear();
-        append(StoreEventType.RESET_SEQ_NUM, 0, null);
+        append(StoreEventType.RESET_SEQ_NUM, 0, WireFormat.NO_MESSAGE_TYPE, null);
     }
 
     @Override
@@ -200,7 +201,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void storeNextIncomingSeqNum(long nextIncomingSeqNum) {
         store.storeNextIncomingSeqNum(nextIncomingSeqNum);
-        append(StoreEventType.STORE_INCOMING_SEQ_NUM, nextIncomingSeqNum, null);
+        append(StoreEventType.STORE_INCOMING_SEQ_NUM, nextIncomingSeqNum, WireFormat.NO_MESSAGE_TYPE, null);
     }
 
     @Override
@@ -209,14 +210,26 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (replicatedAhead.remove(nextOutgoingSeqNum - 1)) {
             return;
         }
-        append(StoreEventType.STORE_OUTGOING_SEQ_NUM, nextOutgoingSeqNum, null);
+        append(StoreEventType.STORE_OUTGOING_SEQ_NUM, nextOutgoingSeqNum, WireFormat.NO_MESSAGE_TYPE, null);
     }
 
     /**
      * The session's store may consume the message; the log is handed it as it came.
      */
     @Override
+    public void storeMessageSent(MessageType messageType, long outgoingSeqNum, ByteBuffer message) {
+        storeMessageSent(outgoingSeqNum, messageType.codeHash(), message);
+    }
+
+    /**
+     * Replicates the message with no type, which the replication then treats as sensitive: a session always gives it.
+     */
+    @Override
     public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
+        storeMessageSent(outgoingSeqNum, WireFormat.NO_MESSAGE_TYPE, message);
+    }
+
+    private void storeMessageSent(long outgoingSeqNum, int messageTypeHash, ByteBuffer message) {
         int position = message.position();
         int limit = message.limit();
         store.storeMessageSent(outgoingSeqNum, message);
@@ -224,8 +237,9 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (replicatedAhead.remove(outgoingSeqNum)) {
             return;
         }
-        append(StoreEventType.STORE_MESSAGE, outgoingSeqNum, message);
+        append(StoreEventType.STORE_MESSAGE, outgoingSeqNum, messageTypeHash, message);
     }
+
 
     @Override
     public void find(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
@@ -237,10 +251,10 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      * follower never gets that message, and a resend of it after a failover is gap filled; the session's next event
      * brings the follower's seqnums back in line.
      */
-    private void append(StoreEventType eventType, long sequenceNumber, @Nullable ByteBuffer message) {
+    private void append(StoreEventType eventType, long sequenceNumber, int messageTypeHash, @Nullable ByteBuffer message) {
         try {
             lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber,
-                    message), logFullWait);
+                    messageTypeHash, message), logFullWait);
             followers.wakeSenders();
         } catch (IllegalArgumentException e) {
             session.recordUnreplicatedEvent();

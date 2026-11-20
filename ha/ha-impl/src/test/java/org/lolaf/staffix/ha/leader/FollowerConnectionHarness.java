@@ -15,6 +15,9 @@
  */
 package org.lolaf.staffix.ha.leader;
 
+import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.wire.FrameType;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.betty.api.io.IOWriter.MessageSentCallback;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
@@ -62,6 +65,10 @@ abstract class FollowerConnectionHarness {
 
     final IOSession ioSession = mock(IOSession.class);
     final RecordingHandler sent = new RecordingHandler();
+    /**
+     * The MsgType(35) hash of each STORE_EVENT and SNAPSHOT_MESSAGE sent, which the follower does not read.
+     */
+    final List<Integer> sentTypeHashes = new CopyOnWriteArrayList<>();
     ReplicationStats stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
     /**
      * The batches sent, whose write betty has not reported yet while {@link #holdingWrites}.
@@ -147,7 +154,17 @@ abstract class FollowerConnectionHarness {
         int index = frames.position();
         int consumed;
         while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, sent)) > 0) {
+            recordTypeHash(frames, index);
             index += consumed;
+        }
+    }
+
+    private void recordTypeHash(ByteBuffer frames, int frameIndex) {
+        int type = frames.get(frameIndex + WireFormat.OFFSET_TYPE);
+        if (type == FrameType.STORE_EVENT.getCode()) {
+            sentTypeHashes.add(FrameDecoder.storeEventMessageTypeHash(frames, frameIndex + WireFormat.STORE_EVENT_BODY_OFFSET));
+        } else if (type == FrameType.SNAPSHOT_MESSAGE.getCode()) {
+            sentTypeHashes.add(frames.getInt(frameIndex + WireFormat.HEADER_BYTES + 16));
         }
     }
 

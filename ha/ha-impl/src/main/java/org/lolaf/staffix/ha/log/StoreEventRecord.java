@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha.log;
 import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 
@@ -31,19 +32,24 @@ public final class StoreEventRecord {
     private int sessionKey;
     private StoreEventType eventType = StoreEventType.STORE_MESSAGE;
     private long sequenceNumber;
+    private int messageTypeHash;
     private @Nullable ByteBuffer message;
     private int fragmentIndex;
     private int fragmentLength;
     private byte fragmentFlags;
 
     /**
-     * @param message the bytes from its position to its limit, read during the append and left untouched; null for
-     *                an event carrying none
+     * @param messageTypeHash the {@link org.lolaf.staffix.api.serde.Hashing#hash(String) hash} of the message's
+     *                        MsgType(35), {@link WireFormat#NO_MESSAGE_TYPE} when unknown or for an event with none
+     * @param message         the bytes from its position to its limit, read during the append and left untouched;
+     *                        null for an event carrying none
      */
-    public StoreEventRecord set(int sessionKey, StoreEventType eventType, long sequenceNumber, @Nullable ByteBuffer message) {
+    public StoreEventRecord set(int sessionKey, StoreEventType eventType, long sequenceNumber, int messageTypeHash,
+                                @Nullable ByteBuffer message) {
         this.sessionKey = sessionKey;
         this.eventType = eventType;
         this.sequenceNumber = sequenceNumber;
+        this.messageTypeHash = messageTypeHash;
         this.message = message;
         return fragment(message == null ? 0 : message.position(), messageLength(), (byte) 0);
     }

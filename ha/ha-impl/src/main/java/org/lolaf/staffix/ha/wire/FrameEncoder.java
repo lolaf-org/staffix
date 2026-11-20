@@ -176,19 +176,22 @@ public class FrameEncoder {
      * It carries {@code length} bytes of {@code message} from {@code messageIndex}, a fragment of it when
      * {@code fragmentFlags} says so; see {@link WireFormat#MORE_FRAGMENTS}.
      *
-     * @param message null for an event carrying none
+     * @param messageTypeHash every fragment carries it, so a fragment is told apart without its first
+     * @param message         null for an event carrying none
      * @return the body's length
      */
     public static int storeEventBody(ByteBuffer out, int index, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                                     @Nullable ByteBuffer message, int messageIndex, int length, byte fragmentFlags) {
+                                     int messageTypeHash, @Nullable ByteBuffer message, int messageIndex, int length,
+                                     byte fragmentFlags) {
         out.putInt(index, sessionKey);
         out.put(index + 4, eventType.getCode());
         out.put(index + 5, fragmentFlags);
         out.putShort(index + 6, (short) 0);
         out.putLong(index + 8, sequenceNumber);
-        out.putInt(index + 16, length);
+        out.putInt(index + 16, messageTypeHash);
+        out.putInt(index + 20, length);
         if (message != null) {
-            copy(message, messageIndex, out, index + 20, length);
+            copy(message, messageIndex, out, index + 24, length);
         }
         return storeEventBodyBytes(length);
     }
@@ -222,13 +225,16 @@ public class FrameEncoder {
      * says so, in the header's flags; see {@link WireFormat#MORE_FRAGMENTS}.
      */
     public static int snapshotMessage(ByteBuffer out, int index, long epoch, int sessionKey, long sequenceNumber,
-                                      ByteBuffer message, int messageIndex, int length, byte fragmentFlags) {
+                                      int messageTypeHash, ByteBuffer message, int messageIndex, int length,
+                                      byte fragmentFlags) {
         int frameLength = header(out, index, FrameType.SNAPSHOT_MESSAGE, fragmentFlags, epoch, length);
         int p = index + HEADER_BYTES;
         out.putInt(p, sessionKey);
         out.putInt(p + 4, length);
         out.putLong(p + 8, sequenceNumber);
-        copy(message, messageIndex, out, p + 16, length);
+        out.putInt(p + 16, messageTypeHash);
+        out.putInt(p + 20, 0);
+        copy(message, messageIndex, out, p + 24, length);
         return frameLength;
     }
 

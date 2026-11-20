@@ -298,13 +298,14 @@ final class SnapshotSender {
                 stopped = true;
                 return false;
             }
+            int messageTypeHash = MessageTypeHash.of(message, message.position(), messageLength);
             int from = 0;
             do {
                 int length = Math.min(maxFragmentLength, messageLength - from);
                 int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
                 room(FrameEncoder.snapshotMessageBytes(length));
-                filled += FrameEncoder.snapshotMessage(batch, filled, currentEpoch, sessionKey, seqNum, message,
-                        message.position() + from, length, (byte) flags);
+                filled += FrameEncoder.snapshotMessage(batch, filled, currentEpoch, sessionKey, seqNum, messageTypeHash,
+                        message, message.position() + from, length, (byte) flags);
                 from += length;
             } while (from < messageLength && connection.isConnected());
             messageCount++;

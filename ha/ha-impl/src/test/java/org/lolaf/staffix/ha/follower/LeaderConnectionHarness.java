@@ -98,7 +98,8 @@ abstract class LeaderConnectionHarness {
         return (out, index) -> {
             ByteBuffer message = ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));
             int body = FrameEncoder.storeEventBody(out, index + WireFormat.STORE_EVENT_BODY_OFFSET, key,
-                    StoreEventType.STORE_MESSAGE, seq, message, 0, message.remaining(), (byte) flags);
+                    StoreEventType.STORE_MESSAGE, seq, WireFormat.NO_MESSAGE_TYPE, message, 0, message.remaining(),
+                    (byte) flags);
             return FrameEncoder.storeEventHeader(out, index, EPOCH, offset, body);
         };
     }
@@ -106,7 +107,8 @@ abstract class LeaderConnectionHarness {
     static ToIntBiFunction<ByteBuffer, Integer> snapshotFragment(long seq, String text, int flags) {
         return (out, index) -> {
             ByteBuffer message = ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));
-            return FrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq, message, 0, message.remaining(), (byte) flags);
+            return FrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq, WireFormat.NO_MESSAGE_TYPE, message, 0,
+                    message.remaining(), (byte) flags);
         };
     }
 

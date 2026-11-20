@@ -39,9 +39,10 @@ public class TestingFrameEncoder {
                                  StoreEventType eventType, long sequenceNumber, @Nullable ByteBuffer message) {
         int bodyLength = message == null
                 ? FrameEncoder.storeEventBody(out, index + WireFormat.STORE_EVENT_BODY_OFFSET, sessionKey, eventType,
-                        sequenceNumber, null, 0, 0, (byte) 0)
+                        sequenceNumber, WireFormat.NO_MESSAGE_TYPE, null, 0, 0, (byte) 0)
                 : FrameEncoder.storeEventBody(out, index + WireFormat.STORE_EVENT_BODY_OFFSET, sessionKey, eventType,
-                        sequenceNumber, message, message.position(), message.remaining(), (byte) 0);
+                        sequenceNumber, WireFormat.NO_MESSAGE_TYPE, message, message.position(), message.remaining(),
+                        (byte) 0);
         return FrameEncoder.storeEventHeader(out, index, epoch, logOffset, bodyLength);
     }
 
@@ -50,7 +51,7 @@ public class TestingFrameEncoder {
      */
     public static int snapshotMessage(ByteBuffer out, int index, long epoch, int sessionKey, long sequenceNumber,
                                       ByteBuffer message) {
-        return FrameEncoder.snapshotMessage(out, index, epoch, sessionKey, sequenceNumber, message, message.position(),
-                message.remaining(), (byte) 0);
+        return FrameEncoder.snapshotMessage(out, index, epoch, sessionKey, sequenceNumber, WireFormat.NO_MESSAGE_TYPE,
+                message, message.position(), message.remaining(), (byte) 0);
     }
 }

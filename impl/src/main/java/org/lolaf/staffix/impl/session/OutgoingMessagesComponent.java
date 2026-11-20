@@ -66,6 +66,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
      * write, so the follower has them before the counterparty does, then stored after the write like any other.
      */
     private final ReplicatingStore syncReplicatingStore;
+    private final SentMessageStore sentMessageStore;
     private final Consumer<FixSessionFixMessageContext> beforeWrite;
     private final Consumer<FixSessionBufferedFixMessageContext> beforeBufferedWrite;
     private final FixMessagesLogger.Logger fixMessagesLogger;
@@ -90,6 +91,9 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
         this.fixApplication = fixApplication;
         this.fixSessionMessagesStore = fixSessionMessagesStore;
         this.syncReplicatingStore = syncReplicatingStore;
+        this.sentMessageStore = fixSessionMessagesStore instanceof ReplicatingStore
+                ? ((ReplicatingStore) fixSessionMessagesStore)::storeMessageSent
+                : (messageType, outgoingSeqNum, message) -> fixSessionMessagesStore.storeMessageSent(outgoingSeqNum, message);
         this.beforeWrite = syncReplicatingStore == null ? null : this::replicateAndAwait;
         this.beforeBufferedWrite = syncReplicatingStore == null ? null : this::replicateAndAwait;
         this.fixMessagesLogger = fixMessagesLogger;
@@ -305,7 +309,7 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
             fixApplication.onMessageSendingFailure(fixSession, sentMessageType, message.position(0), sendingError);
         }
         if (sentMessageType.isStorable() && !fixSessionMessagesStore.filter(sentMessageType, message)) {
-            fixSessionMessagesStore.storeMessageSent(outgoingSeqNum, message.position(0));
+            sentMessageStore.store(sentMessageType, outgoingSeqNum, message.position(0));
         } else {
             fixSessionMessagesStore.storeNextOutgoingSeqNum(outgoingSeqNum + 1);
         }
@@ -370,5 +374,11 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
     private static class FixSessionFixMessageResendingContext implements FixSessionFixMessageSendingContext {
         MessageType messageType;
         UTCTime sendingTime;
+    }
+
+    @FunctionalInterface
+    private interface SentMessageStore {
+
+        void store(MessageType messageType, long outgoingSeqNum, ByteBuffer message);
     }
 }

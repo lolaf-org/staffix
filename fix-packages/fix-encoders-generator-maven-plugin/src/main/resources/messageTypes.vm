@@ -16,6 +16,7 @@
 package $packageName;
 
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.serde.Hashing;
 
 public enum MessageTypes implements MessageType {
 
@@ -30,11 +31,13 @@ public enum MessageTypes implements MessageType {
 
     private final String code;
     private final byte[] serialized;
+    private final int codeHash;
 
     MessageTypes(String code) {
         this.code = code.intern();
         this.code.hashCode(); // preload hashCode computation
         this.serialized = code.getBytes();
+        this.codeHash = Hashing.hash(code);
     }
 
     @Override
@@ -50,5 +53,10 @@ public enum MessageTypes implements MessageType {
     @Override
     public byte[] serialized() {
         return serialized;
+    }
+
+    @Override
+    public int codeHash() {
+        return codeHash;
     }
 }

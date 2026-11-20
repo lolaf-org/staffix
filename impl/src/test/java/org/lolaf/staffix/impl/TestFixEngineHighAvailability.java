@@ -508,7 +508,7 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         fixSession.flush();
 
         await().untilAsserted(() -> assertThat(stores.get(0).outgoingWrites)
-                .containsExactly("replicate 2", "replicate 3", "replicate 4", "await", "message 2", "message 3", "message 4"));
+                .containsExactly("replicate 2", "replicate 3", "replicate 4", "await", "message 2 C", "message 3 C", "message 4 C"));
         List<TestingDecodedFixMessage> received = getDecodedFixMessages(ConnectorType.ACCEPTOR);
         assertMessageReceived(received, Subject.get(), "subject-1");
         assertMessageReceived(received, Subject.get(), "subject-3");
@@ -614,7 +614,13 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
 
         @Override
         public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
-            outgoingWrites.add("message " + outgoingSeqNum);
+            outgoingWrites.add("message " + outgoingSeqNum + " untyped");
+            store.storeMessageSent(outgoingSeqNum, message);
+        }
+
+        @Override
+        public void storeMessageSent(MessageType messageType, long outgoingSeqNum, ByteBuffer message) {
+            outgoingWrites.add("message " + outgoingSeqNum + " " + messageType.code());
             store.storeMessageSent(outgoingSeqNum, message);
         }
 

@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.leader;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreException;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
@@ -104,6 +105,32 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_SENT);
         assertThat(stats.getSnapshots()).isEqualTo(1);
         assertThat(stats.getSnapshotMessages()).isEqualTo(2);
+    }
+
+    @Test
+    void aSnapshotMessageCarriesTheHashOfTheMsgTypeInItsBytesOnEveryFragment() {
+        int fragment = ha.getReplicationLogs().get(0).getMaxEventFrameBytes() - FrameEncoder.snapshotMessageBytes(0);
+        String quote = "8=FIX.4.4\u00019=5\u000135=S\u0001" + "x".repeat(2 * fragment) + "\u000110=000\u0001";
+        FixSessionMessagesStore local = startedStore();
+        when(local.getIncomingSeqNum()).thenReturn(21L);
+        when(local.getOutgoingSeqNum()).thenReturn(13L);
+        doAnswer(invocation -> {
+            StoreMessagesConsumer consumer = invocation.getArgument(2);
+            consumer.onMessage(11, ByteBuffer.wrap(quote.getBytes(StandardCharsets.US_ASCII)));
+            consumer.onMessage(12, ByteBuffer.wrap("no type".getBytes(StandardCharsets.US_ASCII)));
+            return null;
+        }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
+        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
+        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
+        fill();
+        sentTypeHashes.clear();
+
+        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        snapshot();
+
+        assertThat(sentTypeHashes).as("three fragments, then the untyped message").hasSize(4);
+        assertThat(sentTypeHashes.subList(0, 3)).containsOnly(Hashing.hash("S"));
+        assertThat(sentTypeHashes).last().isEqualTo(WireFormat.NO_MESSAGE_TYPE);
     }
 
     @Test

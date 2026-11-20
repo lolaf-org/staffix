@@ -62,6 +62,12 @@ public class WireFormat {
     public static final byte CONTINUED_FRAGMENT = 0x02;
 
     /**
+     * The MsgType(35) hash of a {@link FrameType#STORE_EVENT} carrying no message, or whose message's type the leader
+     * does not know.
+     */
+    public static final int NO_MESSAGE_TYPE = 0;
+
+    /**
      * Opens {@link FrameType#HELLO} and {@link FrameType#WELCOME}, so a peer that is not a staffix replication
      * endpoint is refused before anything else is read: 'SFHA'.
      */

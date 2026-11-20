@@ -196,20 +196,27 @@ public class FrameDecoder {
         return in.get(bodyIndex + Integer.BYTES);
     }
 
+    /**
+     * Reads the MsgType(35) hash of the store event body at {@code bodyIndex}.
+     */
+    public static int storeEventMessageTypeHash(ByteBuffer in, int bodyIndex) {
+        return in.getInt(bodyIndex + 16);
+    }
+
     private static void decodeStoreEvent(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
         int frame = p - HEADER_BYTES;
         int body = frame + WireFormat.STORE_EVENT_BODY_OFFSET;
-        int messageLength = in.getInt(p + 24);
+        int messageLength = in.getInt(p + 28);
         checkVariableBytes(FrameType.STORE_EVENT, messageLength, variableBytes);
         handler.onStoreEvent(epoch, storeEventLogOffset(in, frame), storeEventSessionKey(in, body),
-                eventType(storeEventTypeCode(in, body)), in.getLong(p + 16), in, p + 28, messageLength, in.get(p + 13));
+                eventType(storeEventTypeCode(in, body)), in.getLong(p + 16), in, p + 32, messageLength, in.get(p + 13));
     }
 
     private static void decodeSnapshotMessage(ByteBuffer in, int p, int flags, long epoch, int variableBytes,
                                               FrameHandler handler) {
         int messageLength = in.getInt(p + 4);
         checkVariableBytes(FrameType.SNAPSHOT_MESSAGE, messageLength, variableBytes);
-        handler.onSnapshotMessage(epoch, in.getInt(p), in.getLong(p + 8), in, p + 16, messageLength, (byte) flags);
+        handler.onSnapshotMessage(epoch, in.getInt(p), in.getLong(p + 8), in, p + 24, messageLength, (byte) flags);
     }
 
     private static void decodeClose(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {

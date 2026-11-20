@@ -172,6 +172,12 @@ public interface FixEngineHa extends Startable<FixEngineHa>, HaAdmin {
         void replicateSent(MessageType messageType, long outgoingSeqNum, ByteBuffer message);
 
         /**
+         * {@link #storeMessageSent(long, ByteBuffer)} with the message's type, which a session gives its replicating
+         * store so the replication can tell its messages apart without reading them.
+         */
+        void storeMessageSent(MessageType messageType, long outgoingSeqNum, ByteBuffer message);
+
+        /**
          * Called by a {@code SYNC} session after {@link #replicateSent}, before the message goes out, from the
          * session's thread. Returns when the follower has every write replicated so far, when
          * {@link FixSessionSettings.HaSessionSettings#getReplicationAckTimeout()} runs out, or at once while no follower

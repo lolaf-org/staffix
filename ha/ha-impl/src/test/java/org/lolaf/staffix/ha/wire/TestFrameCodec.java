@@ -303,7 +303,7 @@ class TestFrameCodec {
     void aMessageLengthDisagreeingWithTheFrameLengthIsRefused() {
         ByteBuffer buffer = buffer(false);
         int length = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
-        buffer.putInt(WireFormat.HEADER_BYTES + 24, MESSAGE.length + 1);
+        buffer.putInt(WireFormat.HEADER_BYTES + 28, MESSAGE.length + 1);
 
         assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))
                 .isInstanceOf(WireFormatException.class).hasMessageContaining("declares");

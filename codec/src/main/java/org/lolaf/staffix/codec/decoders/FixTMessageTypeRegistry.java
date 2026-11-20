@@ -18,7 +18,6 @@ package org.lolaf.staffix.codec.decoders;
 import org.lolaf.staffix.api.FixDictionaryId;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.msg.MessageTypeRegistry;
-import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.version.FixVersion;
 import org.lolaf.staffix.api.version.FixtVersion;
 import org.lolaf.staffix.collections.Int2ObjectHashMap;
@@ -44,7 +43,7 @@ public class FixTMessageTypeRegistry implements MessageTypeRegistry {
         for (MessageTypeRegistry r : registries) {
             r.getMessageTypes().forEach(mt -> {
                 messageTypes.put(mt.code(), mt);
-                messageTypesByHash.put(Hashing.hash(mt.code()), mt);
+                messageTypesByHash.put(mt.codeHash(), mt);
             });
         }
         this.messageTypesByHash.compact();

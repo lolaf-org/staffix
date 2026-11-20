@@ -72,4 +72,10 @@ public interface MessageType extends IntSupplier {
      * The code as the bytes written on the wire, so encoding does not convert it each time.
      */
     byte[] serialized();
+
+    /**
+     * MUST return {@link org.lolaf.staffix.api.serde.Hashing#hash(String) Hashing.hash(code())}, computed once: what
+     * {@link MessageTypeRegistry#find(int)} is keyed by. Not {@code hashCode()}, which an enum cannot override.
+     */
+    int codeHash();
 }

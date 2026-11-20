@@ -128,6 +128,11 @@ class TestLogfmtFileLogLineFormat {
             public byte[] serialized() {
                 return type.serialized();
             }
+
+            @Override
+            public int codeHash() {
+                return type.codeHash();
+            }
         };
     }
 

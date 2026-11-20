@@ -21,6 +21,7 @@ import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -30,6 +31,8 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.wire.FrameDecoder;
+import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -44,12 +47,15 @@ import static org.mockito.Mockito.when;
 class TestReplicatingFixSessionMessagesStore {
 
     private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
+    private static final MessageType NEW_ORDER = MessageType.of("D", false);
+    private static final MessageType HEARTBEAT = MessageType.of("0", true);
 
     private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final ReplicationLog.Reader reader = ha.getReplicationLogs().get(0).newReader(() -> {
     });
     private final ConsumingStore local = new ConsumingStore();
     private final ByteBuffer event = ByteBuffer.allocate(1 << 16);
+    private int lastEventTypeHash;
 
     private static FixSessionSettings session(String name, FixSessionType type) {
         return FixSessionSettings.builder()
@@ -64,16 +70,17 @@ class TestReplicatingFixSessionMessagesStore {
     }
 
     /**
-     * The next event in the log as "key type seq message".
+     * The next event in the log as "key type seq message", its MsgType hash kept in {@link #lastEventTypeHash}.
      */
     private String nextEvent() {
         int length = reader.readInto(event, 0);
         if (length < 0) {
             return "none";
         }
-        byte[] text = new byte[event.getInt(16)];
+        lastEventTypeHash = FrameDecoder.storeEventMessageTypeHash(event, 0);
+        byte[] text = new byte[event.getInt(20)];
         for (int i = 0; i < text.length; i++) {
-            text[i] = event.get(20 + i);
+            text[i] = event.get(24 + i);
         }
         return event.getInt(0) + " " + event.get(4) + " " + event.getLong(8) + " " + new String(text, StandardCharsets.US_ASCII);
     }
@@ -156,9 +163,7 @@ class TestReplicatingFixSessionMessagesStore {
      * object per write would cost at least 16 bytes each.
      */
     private static MessageType messageType(boolean storable) {
-        MessageType type = mock(MessageType.class);
-        when(type.isStorable()).thenReturn(storable);
-        return type;
+        return storable ? NEW_ORDER : HEARTBEAT;
     }
 
     private ReplicatingStore syncStore() {
@@ -175,7 +180,25 @@ class TestReplicatingFixSessionMessagesStore {
 
         assertThat(local.calls).containsExactly("message 5");
         assertThat(nextEvent()).isEqualTo("0 0 5 " + MESSAGE);
+        assertThat(lastEventTypeHash).isEqualTo(Hashing.hash("D"));
         assertThat(nextEvent()).as("logged once").isEqualTo("none");
+    }
+
+    @Test
+    void aMessageIsLoggedWithTheHashOfItsTypeAndAnEventWithoutOneWithNone() {
+        ReplicatingStore store = syncStore();
+
+        store.storeMessageSent(NEW_ORDER, 5, message());
+        store.storeMessageSent(6, message());
+        store.storeNextOutgoingSeqNum(8);
+
+        assertThat(local.calls).containsExactly("message 5", "message 6", "outgoing 8");
+        assertThat(nextEvent()).isEqualTo("0 0 5 " + MESSAGE);
+        assertThat(lastEventTypeHash).isEqualTo(Hashing.hash("D"));
+        assertThat(nextEvent()).isEqualTo("0 0 6 " + MESSAGE);
+        assertThat(lastEventTypeHash).as("untyped").isEqualTo(WireFormat.NO_MESSAGE_TYPE);
+        assertThat(nextEvent()).isEqualTo("0 2 8 ");
+        assertThat(lastEventTypeHash).isEqualTo(WireFormat.NO_MESSAGE_TYPE);
     }
 
     @Test
@@ -272,16 +295,16 @@ class TestReplicatingFixSessionMessagesStore {
     @Test
     void writesAllocateNothingPerWrite() {
         local.recording = false;
-        FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes());
+        ReplicatingStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes());
         ByteBuffer message = message();
         for (int i = 0; i < 20_000; i++) {
-            store.storeMessageSent(i, message);
+            store.storeMessageSent(NEW_ORDER, i, message);
             store.storeNextIncomingSeqNum(i);
         }
 
         long before = AllocatedBytes.ofCurrentThread();
         for (int i = 0; i < 100_000; i++) {
-            store.storeMessageSent(i, message);
+            store.storeMessageSent(NEW_ORDER, i, message);
             store.storeNextIncomingSeqNum(i);
         }
 

@@ -30,6 +30,7 @@ import org.lolaf.staffix.api.monitoring.FixMeterDescriptor;
 import org.lolaf.staffix.api.monitoring.FixMonitoringAttributes;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.msg.MessageType;
+import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.session.FixSession;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionStatus;
@@ -1051,6 +1052,11 @@ class MicrometerMonitoringManagerTest {
             @Override
             public int getAsInt() {
                 return index;
+            }
+
+            @Override
+            public int codeHash() {
+                return Hashing.hash(code);
             }
         };
     }

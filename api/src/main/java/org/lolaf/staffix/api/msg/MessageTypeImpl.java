@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.api.msg;
 
+import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.serde.SerDe;
 import lombok.EqualsAndHashCode;
 
@@ -24,11 +25,13 @@ class MessageTypeImpl implements MessageType {
     private final String code;
     private final boolean admin;
     private final byte[] serialized;
+    private final int codeHash;
 
     public MessageTypeImpl(String code, boolean admin) {
         this.code = code;
         this.admin = admin;
         this.serialized = code.getBytes(SerDe.CHARSET);
+        this.codeHash = Hashing.hash(code);
     }
 
     @Override
@@ -55,6 +58,11 @@ class MessageTypeImpl implements MessageType {
     @Override
     public byte[] serialized() {
         return serialized;
+    }
+
+    @Override
+    public int codeHash() {
+        return codeHash;
     }
 
 }

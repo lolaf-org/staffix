@@ -32,10 +32,10 @@ import org.jspecify.annotations.Nullable;
  *                                       storage identity length 2; then the session id, then the identity
  * SESSION_ANSWER    follower to leader  session key 4, answer 1
  * STORE_EVENT       leader to follower  log offset 8, session key 4, event type 1, fragment flags 1, reserved 2,
- *                                       sequence number 8, message length 4; then the message
+ *                                       sequence number 8, MsgType hash 4, message length 4; then the message
  * SNAPSHOT_BEGIN    leader to follower  session key 4, reserved 4, snapshot offset 8, next incoming 8, next outgoing 8
- * SNAPSHOT_MESSAGE  leader to follower  session key 4, message length 4, sequence number 8; then the message,
- *                                       its fragment flags in the header's flags
+ * SNAPSHOT_MESSAGE  leader to follower  session key 4, message length 4, sequence number 8, MsgType hash 4,
+ *                                       reserved 4; then the message, its fragment flags in the header's flags
  * SNAPSHOT_END      leader to follower  session key 4, message count 4, next incoming 8, next outgoing 8
  * ACK               follower to leader  applied offset 8, pending writes 8
  * RECEIVED          follower to leader  received offset 8
@@ -55,9 +55,9 @@ public enum FrameType {
     WELCOME(2, 24),
     SESSION(3, 10),
     SESSION_ANSWER(4, 5),
-    STORE_EVENT(5, 28),
+    STORE_EVENT(5, 32),
     SNAPSHOT_BEGIN(6, 32),
-    SNAPSHOT_MESSAGE(7, 16),
+    SNAPSHOT_MESSAGE(7, 24),
     SNAPSHOT_END(8, 24),
     ACK(9, 16),
     HEARTBEAT(10, 8),
