@@ -19,6 +19,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.*;
 import org.lolaf.staffix.api.alerting.Probe;
@@ -74,6 +75,7 @@ import static org.awaitility.Awaitility.await;
  * thread that receives, answers, stores and replicates must pay nothing for replication, {@code SYNC} included.
  */
 @Slf4j
+@Isolated
 class TestReplicationAllocation {
 
     private static final int WARM_UP = 20_000;

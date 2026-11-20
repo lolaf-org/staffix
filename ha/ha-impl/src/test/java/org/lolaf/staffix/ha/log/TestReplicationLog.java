@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.log;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.ringos.idling.RetryStrategy;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
@@ -39,6 +40,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@Isolated
 class TestReplicationLog {
 
     private static final int CAPACITY = 1 << 16;

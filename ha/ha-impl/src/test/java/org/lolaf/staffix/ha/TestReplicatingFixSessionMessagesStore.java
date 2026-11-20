@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.msg.MessageType;
@@ -39,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@Isolated
 class TestReplicatingFixSessionMessagesStore {
 
     private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";

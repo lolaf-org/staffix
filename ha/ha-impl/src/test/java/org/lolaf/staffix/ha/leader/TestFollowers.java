@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.leader;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
@@ -44,6 +45,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@Isolated
 class TestFollowers {
 
     private static final long EPOCH = 7;
@@ -53,7 +55,7 @@ class TestFollowers {
     private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
     private final Followers followers = new Followers();
     private final IdleStrategy idle = new BackoffIdleStrategy();
-    private long offset;
+    private final long offset;
 
     TestFollowers() {
         FixSessionMessagesStore store = ha.replicatingStore(FixSessionSettings.builder()
@@ -64,6 +66,14 @@ class TestFollowers {
         store.storeNextIncomingSeqNum(1);
         offset = ha.getReplicationLogs().get(0).getTailOffset();
         store.storeNextIncomingSeqNum(2);
+    }
+
+    private static FixSessionSettings syncSession(String name) {
+        return FixSessionSettings.builder()
+                .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
+                .fixSessionType(FixSessionType.INITIATOR)
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
+                .build();
     }
 
     private FollowerConnection inSyncFollower(long appliedOffset) {
@@ -256,14 +266,6 @@ class TestFollowers {
         connection.fillBatch(ByteBuffer.allocate(1 << 16));
         followers.add(connection);
         return connection;
-    }
-
-    private static FixSessionSettings syncSession(String name) {
-        return FixSessionSettings.builder()
-                .fixSessionId(FixSessionId.of(name, FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
-                .fixSessionType(FixSessionType.INITIATOR)
-                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
-                .build();
     }
 
     @Test

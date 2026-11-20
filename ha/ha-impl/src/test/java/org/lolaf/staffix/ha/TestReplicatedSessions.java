@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -27,6 +28,7 @@ import org.lolaf.staffix.ha.wire.AllocatedBytes;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+@Isolated
 class TestReplicatedSessions {
 
     private static final FixSessionId ID = FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET");

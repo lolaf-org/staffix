@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.follower;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
@@ -30,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Isolated
 class TestReplicaSessions {
 
     private static final FixSessionSettings REPLICATED = RecordingEngine.session("main", FixSessionType.ACCEPTOR);

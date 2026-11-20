@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.leader;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
 import org.lolaf.staffix.tests.TestingClock;
@@ -25,6 +26,7 @@ import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Isolated
 class TestSlowFollowers {
 
     private static final Instant START = Instant.parse("2026-11-01T10:00:00Z");
