@@ -99,8 +99,8 @@ class JvmWarmupInitiatorApplication implements FixApplication {
         }
 
         Timeout t = throttlingTimer.schedule(reusableTimeout, this::submitSend, messageExecutor, throttling.toNanos(), TimeUnit.NANOSECONDS);
-        if (t.isRejected()) {
-            log.warn("Throttling submission queue full for session {} — dropping send", fixSession.getFixSessionId());
+        if (t.isRejected() && throttlingTimer.isStarted()) {
+            log.warn("Throttling submission queue full for session {}: dropping send", fixSession.getFixSessionId());
         }
     }
 

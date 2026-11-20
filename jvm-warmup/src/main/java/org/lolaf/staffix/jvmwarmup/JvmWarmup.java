@@ -138,20 +138,23 @@ public final class JvmWarmup {
             this.future = new WarmupFuture(this);
         }
 
+        /**
+         * The timer first: a send it fires once the engine stopped finds the session's executor released.
+         */
         private static void shutdownQuietly(FixEngine engine, WheelTimer throttlingTimer) {
-            try {
-                if (engine != null) {
-                    engine.stop(Deadline.of(Duration.ofSeconds(5)));
-                }
-            } catch (Exception e) {
-                log.warn("Engine stop failed", e);
-            }
             try {
                 if (throttlingTimer != null) {
                     throttlingTimer.stop(Duration.ofSeconds(5));
                 }
             } catch (Exception e) {
                 log.warn("Throttling timer stop failed", e);
+            }
+            try {
+                if (engine != null) {
+                    engine.stop(Deadline.of(Duration.ofSeconds(5)));
+                }
+            } catch (Exception e) {
+                log.warn("Engine stop failed", e);
             }
         }
 
