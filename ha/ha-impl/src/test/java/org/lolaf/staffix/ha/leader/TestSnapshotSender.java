@@ -24,6 +24,7 @@ import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.tests.TestingClock;
 import org.mockito.ArgumentCaptor;
 
 import java.nio.ByteBuffer;
@@ -138,7 +139,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         int chunkBytes = 4 << 10;
         connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofMillis(100), Duration.ZERO, 4, chunkBytes, new BackoffIdleStrategy(), stats, loop -> {
-        });
+        }, new TestingClock());
         ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         fill();
@@ -159,7 +160,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     void aSnapshotReadsTheStoreOnlyAboutAsFarAsEachChunkSends() {
         connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofMillis(100), Duration.ZERO, 4, 4 << 10, new BackoffIdleStrategy(), stats, loop -> {
-        });
+        }, new TestingClock());
         FixSessionMessagesStore store = storeHolding(1_001L);
         ha.replicatingStore(settings("main"), store, new RecordingProbes());
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);

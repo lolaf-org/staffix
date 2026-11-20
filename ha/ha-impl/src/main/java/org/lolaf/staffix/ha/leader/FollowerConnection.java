@@ -24,6 +24,7 @@ import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
@@ -90,6 +91,7 @@ public final class FollowerConnection implements FrameHandler {
      */
     private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
     private final Consumer<Runnable> senderLauncher;
+    private final Clock clock;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
     @Getter
@@ -164,11 +166,12 @@ public final class FollowerConnection implements FrameHandler {
      *                           last is reused only once the next is written
      * @param snapshotChunkBytes the most bytes of a snapshot sent between two live batches, at most a batch
      * @param senderLauncher     starts the loop streaming the log, on a thread of its own
+     * @param clock              what the stall timeout and the heartbeat interval are measured on
      */
     FollowerConnection(IOSession ioSession, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier nodeEpoch,
                        String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
                        int snapshotChunkBytes, IdleStrategy senderIdle, ReplicationStats stats,
-                       Consumer<Runnable> senderLauncher) {
+                       Consumer<Runnable> senderLauncher, Clock clock) {
         this.ioSession = ioSession;
         this.address = String.valueOf(ioSession.getSocketAddress());
         this.logs = logs;
@@ -181,6 +184,7 @@ public final class FollowerConnection implements FrameHandler {
         this.senderIdle = senderIdle;
         this.stats = stats;
         this.senderLauncher = senderLauncher;
+        this.clock = clock;
         this.batches = new BatchBuffers(ioSession, sendBuffers, WireFormat.bufferBytes(maxEventFrameBytes), stats);
         this.snapshots = new SnapshotSender(this, sessions, syncs, batches, stats, nodeEpoch, maxEventFrameBytes,
                 snapshotChunkBytes);
@@ -264,7 +268,7 @@ public final class FollowerConnection implements FrameHandler {
             recoveringFromTooSlow = false;
             stats.getSlowFollowers().backInSync(followerId, lane);
         }
-        lastAckNanos = System.nanoTime();
+        lastAckNanos = clock.nanoTime();
         long overdue = overdueOffset;
         if (overdue >= 0 && appliedOffset >= overdue) {
             overdueOffset = -1;
@@ -574,10 +578,10 @@ public final class FollowerConnection implements FrameHandler {
 
     private void sendLoop() {
         senderIdle.reset();
-        lastSendNanos = System.nanoTime();
+        lastSendNanos = clock.nanoTime();
         lastAckNanos = lastSendNanos;
         while (state != State.CLOSED && !handingOver) {
-            if (isStalled(System.nanoTime())) {
+            if (isStalled(clock.nanoTime())) {
                 close(CloseReason.STALLED, "no ack for " + TimeUnit.NANOSECONDS.toMillis(stallTimeoutNanos)
                         + " ms with writes unapplied");
                 break;
@@ -596,7 +600,7 @@ public final class FollowerConnection implements FrameHandler {
                 sent = true;
             }
             if (sent) {
-                lastSendNanos = System.nanoTime();
+                lastSendNanos = clock.nanoTime();
                 senderIdle.reset();
             } else {
                 senderIdle.idle();
@@ -608,20 +612,19 @@ public final class FollowerConnection implements FrameHandler {
         ByteBuffer batch = batches.take();
         int filled = fillBatch(batch);
         if (filled == 0 && state == State.STREAMING) {
-            filled = heartbeatIfDue(batch, System.nanoTime());
+            filled = heartbeatIfDue(batch, clock.nanoTime());
         }
         if (filled == 0 || state != State.STREAMING) {
             batches.keep(batch);
             return false;
         }
         if (filledEventOffset >= 0) {
-            long nowNanos = System.nanoTime();
             if (lastSentEventOffset <= appliedOffset) {
-                owedSinceNanos = nowNanos;
+                owedSinceNanos = clock.nanoTime();
             }
             lastSentEventOffset = filledEventOffset;
             // before the send: an ack processed in between would otherwise leave the sample to the next one
-            ackLatency.onSent(filledEventOffset, nowNanos);
+            ackLatency.onSent(filledEventOffset, System.nanoTime());
         }
         batches.send(batch, filled);
         return true;

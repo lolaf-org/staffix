@@ -71,7 +71,7 @@ class TestFollowers {
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerConnection connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
-        });
+        }, new TestingClock());
         connection.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0, 0);
         connection.fillBatch(ByteBuffer.allocate(1 << 16));
         connection.onSessionAnswer(EPOCH, KEY, SessionAnswer.REPLICATING);
@@ -215,7 +215,7 @@ class TestFollowers {
         FollowerConnection connectionOfMain = new FollowerConnection(ioSession, twoLanes.getReplicationLogs(), twoLanes.getSessions(),
                 () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
-        });
+        }, new TestingClock());
         connectionOfMain.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, 0);
         connectionOfMain.fillBatch(ByteBuffer.allocate(1 << 16));
         connectionOfMain.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
@@ -251,7 +251,7 @@ class TestFollowers {
         FollowerConnection connection = new FollowerConnection(ioSession, twoLanes.getReplicationLogs(), twoLanes.getSessions(),
                 () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
-        });
+        }, new TestingClock());
         connection.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, lane);
         connection.fillBatch(ByteBuffer.allocate(1 << 16));
         followers.add(connection);

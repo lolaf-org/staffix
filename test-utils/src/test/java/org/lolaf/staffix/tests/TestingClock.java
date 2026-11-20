@@ -22,7 +22,9 @@ import org.lolaf.staffix.api.time.UTCTime;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 
 public class TestingClock implements Clock {
 
@@ -39,7 +41,15 @@ public class TestingClock implements Clock {
      * transitions instead of sleeping until the real wall-clock crosses a window boundary.
      */
     public void toAdvanceableTime(Instant instant) {
-        clock = new AdvanceableClock(instant);
+        clock = new AdvanceableClock(instant, System::nanoTime);
+    }
+
+    /**
+     * As {@link #toAdvanceableTime(Instant)}, {@link #nanoTime()} included: it starts at {@code nanoTime} and moves
+     * with {@link #advance(Duration)} only, to drive a timeout measured on it without waiting it out.
+     */
+    public void toAdvanceableTime(Instant instant, long nanoTime) {
+        clock = new AdvanceableClock(instant, nanoTime);
     }
 
     /**
@@ -108,13 +118,29 @@ public class TestingClock implements Clock {
     public static class AdvanceableClock implements Clock {
 
         private final AtomicReference<Instant> current;
+        private final LongSupplier nanoTime;
+        /**
+         * Null when {@link #nanoTime()} is not advanced.
+         */
+        private final AtomicLong advancedNanoTime;
 
-        public AdvanceableClock(Instant instant) {
+        public AdvanceableClock(Instant instant, LongSupplier nanoTime) {
             this.current = new AtomicReference<>(instant);
+            this.nanoTime = nanoTime;
+            this.advancedNanoTime = null;
+        }
+
+        public AdvanceableClock(Instant instant, long nanoTime) {
+            this.current = new AtomicReference<>(instant);
+            this.advancedNanoTime = new AtomicLong(nanoTime);
+            this.nanoTime = advancedNanoTime::get;
         }
 
         public void advance(Duration duration) {
             current.updateAndGet(instant -> instant.plus(duration));
+            if (advancedNanoTime != null) {
+                advancedNanoTime.addAndGet(duration.toNanos());
+            }
         }
 
         @Override
@@ -134,7 +160,7 @@ public class TestingClock implements Clock {
 
         @Override
         public long nanoTime() {
-            return System.nanoTime();
+            return nanoTime.getAsLong();
         }
     }
 

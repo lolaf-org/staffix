@@ -424,7 +424,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         server = new ReplicationServer(settings.getPeers().get(settings.getNodeId()), replicationLogs, sessions, followers,
                 () -> electionEpoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getFollowerStallTimeout(),
                 settings.getSendBuffers(), settings.getSnapshotChunkBytes(),
-                settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats);
+                settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats, engine.getClock());
         server.start();
     }
 

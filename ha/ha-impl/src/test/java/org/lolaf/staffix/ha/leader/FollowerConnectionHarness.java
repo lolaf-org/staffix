@@ -34,12 +34,15 @@ import org.lolaf.staffix.tests.TestingClock;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -66,10 +69,16 @@ abstract class FollowerConnectionHarness {
     final Queue<Runnable> unwrittenBatches = new ConcurrentLinkedQueue<>();
     final AtomicInteger batchesSent = new AtomicInteger();
     volatile boolean holdingWrites;
+    /**
+     * The sender's clock in the connections {@link #connectionStallingAfter} builds.
+     */
+    final TestingClock senderClock = new TestingClock();
+    final AtomicLong senderIdles = new AtomicLong();
     ReplicationFixEngineHa ha = engine(1 << 16);
     FollowerConnection connection = connection();
 
     FollowerConnectionHarness() {
+        senderClock.toAdvanceableTime(Instant.parse("2026-11-01T10:00:00Z"), 0);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         doAnswer(invocation -> {
             ByteBuffer frames = invocation.getArgument(0);
@@ -109,7 +118,7 @@ abstract class FollowerConnectionHarness {
         return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
                 Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats,
                 loop -> {
-                });
+                }, new TestingClock());
     }
 
     static FixSessionSettings settings(String name) {
@@ -163,11 +172,26 @@ abstract class FollowerConnectionHarness {
     }
 
     FollowerConnection connectionStallingAfter(Duration stallTimeout, Thread[] sender) {
+        BackoffIdleStrategy countingIdles = new BackoffIdleStrategy() {
+            @Override
+            public void idle() {
+                senderIdles.incrementAndGet();
+                super.idle();
+            }
+        };
         return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofHours(1), stallTimeout, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> {
+                Duration.ofHours(1), stallTimeout, 4, Integer.MAX_VALUE, countingIdles, stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
-        });
+        }, senderClock);
+    }
+
+    /**
+     * Returns once the sender went through a whole turn of its loop, so checked for a stall on the clock as it is now.
+     */
+    void awaitSenderTurn() {
+        long idles = senderIdles.get();
+        await().until(() -> senderIdles.get() >= idles + 2);
     }
 
     FollowerConnection senderRunningConnection() {
@@ -176,7 +200,7 @@ abstract class FollowerConnectionHarness {
 
     FollowerConnection senderRunningConnection(int snapshotChunkBytes) {
         return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                Duration.ZERO, 4, snapshotChunkBytes, new BackoffIdleStrategy(), stats, loop -> new Thread(loop).start());
+                Duration.ZERO, 4, snapshotChunkBytes, new BackoffIdleStrategy(), stats, loop -> new Thread(loop).start(), new TestingClock());
     }
 
     /**

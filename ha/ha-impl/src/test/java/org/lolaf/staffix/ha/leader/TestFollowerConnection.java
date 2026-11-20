@@ -64,7 +64,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
                 Duration.ofHours(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
-        });
+        }, new TestingClock());
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
         main.storeNextIncomingSeqNum(1);
@@ -84,8 +84,14 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         Thread[] sender = new Thread[1];
         connection = connectionStallingAfter(Duration.ofMillis(100), sender);
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
-
+        await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
         main.storeNextIncomingSeqNum(1);
+        await().until(() -> batchesSent.get() == 2);
+        senderClock.advance(Duration.ofMillis(100));
+        awaitSenderTurn();
+        assertThat(connection.getState()).as("silent for the timeout, not past it").isEqualTo(FollowerConnection.State.STREAMING);
+
+        senderClock.advance(Duration.ofNanos(1));
 
         sender[0].join(5_000);
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
@@ -99,9 +105,13 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection = connectionStallingAfter(Duration.ofMillis(100), sender);
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         try {
+            await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
             for (int seq = 1; seq <= 10; seq++) {
                 main.storeNextIncomingSeqNum(seq);
-                await().pollDelay(Duration.ofMillis(40)).until(() -> true);
+                int sent = seq + 1;
+                await().until(() -> batchesSent.get() == sent);
+                senderClock.advance(Duration.ofMillis(60));
+                awaitSenderTurn();
                 connection.onAck(EPOCH, 0, true, 0);
             }
 
@@ -118,13 +128,19 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection = connectionStallingAfter(Duration.ofMillis(100), sender);
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         try {
-            await().pollDelay(Duration.ofMillis(300)).until(() -> true);
+            await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
+            senderClock.advance(Duration.ofMillis(300));
+            awaitSenderTurn();
 
             long offset = ha.getReplicationLogs().get(0).getTailOffset();
             main.storeNextIncomingSeqNum(1);
-            await().pollDelay(Duration.ofMillis(30)).until(() -> true);
+            await().until(() -> batchesSent.get() == 2);
+            senderClock.advance(Duration.ofMillis(30));
+            awaitSenderTurn();
+            assertThat(connection.getState()).as("owing since the write only").isEqualTo(FollowerConnection.State.STREAMING);
             connection.onAck(EPOCH, offset, true, 0);
-            await().pollDelay(Duration.ofMillis(150)).until(() -> true);
+            senderClock.advance(Duration.ofMillis(150));
+            awaitSenderTurn();
 
             assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
         } finally {
@@ -137,7 +153,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         ha = engine(1024);
         Runnable[] sender = new Runnable[1];
         connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofNanos(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop);
+                Duration.ofNanos(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop, new TestingClock());
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
@@ -160,7 +176,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
                 Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> {
             sender[0] = new Thread(loop);
             sender[0].start();
-        });
+        }, new TestingClock());
         holdingWrites = true;
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0);
         try {

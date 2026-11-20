@@ -29,6 +29,7 @@ import org.lolaf.betty.api.ss.SelectStrategy;
 import org.lolaf.betty.api.stats.IOBufferPoolStats;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
+import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
 import org.lolaf.staffix.ha.wire.CloseReason;
@@ -69,6 +70,7 @@ public final class ReplicationServer {
     private final Supplier<IdleStrategy> senderIdleStrategy;
     private final SelectStrategy selectStrategy;
     private final ReplicationStats stats;
+    private final Clock clock;
     private IOWorkersGroup ioWorkers;
     private Server server;
 
@@ -148,7 +150,7 @@ public final class ReplicationServer {
         @Override
         public void onConnected(IOSession session) {
             FollowerConnection connection = new FollowerConnection(session, logs, sessions, nodeEpoch, leaderId, heartbeatInterval, stallTimeout,
-                    sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationServer::launchSender);
+                    sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationServer::launchSender, clock);
             session.setAttachment(connection);
             followers.add(connection);
         }

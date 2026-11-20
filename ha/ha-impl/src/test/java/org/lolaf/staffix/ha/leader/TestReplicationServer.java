@@ -65,7 +65,7 @@ class TestReplicationServer {
     private final InetSocketAddress address = new InetSocketAddress("localhost", freePort());
     private final ReplicationServer server = new ReplicationServer(address, ha.getReplicationLogs(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
             "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE,
-            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
+            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock());
     private final RecordingHandler received = new RecordingHandler();
     private Client follower;
 

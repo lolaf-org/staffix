@@ -102,7 +102,7 @@ class TestReplicationClient {
                                                   ReplicationStats stats) {
         return new ReplicationServer(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
                 () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE, BackoffIdleStrategy::new,
-                new WakeupSelectStrategy(10), stats);
+                new WakeupSelectStrategy(10), stats, new TestingClock());
     }
 
     /**
