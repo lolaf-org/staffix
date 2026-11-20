@@ -83,6 +83,12 @@ public class ReplicationHaSettings extends HaSettings {
     private final int replicationLanes = 1;
 
     /**
+     * Encrypts the replication with a secret both nodes share; off by default.
+     */
+    @Builder.Default
+    private final ReplicationEncryptionSettings encryption = ReplicationEncryptionSettings.builder().build();
+
+    /**
      * Names this engine to its peer in the replication handshake, and in their logs.
      */
     @Builder.Default
@@ -256,6 +262,7 @@ public class ReplicationHaSettings extends HaSettings {
      * @throws IllegalArgumentException for a setting out of its range
      */
     void validate() {
+        encryption.validate();
         if (heartbeatInterval.isNegative() || heartbeatInterval.isZero()) {
             throw new IllegalArgumentException("heartbeatInterval must be positive, got " + heartbeatInterval);
         }
