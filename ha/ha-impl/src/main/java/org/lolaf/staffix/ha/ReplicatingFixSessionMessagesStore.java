@@ -64,7 +64,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     /**
      * @param syncReceivedAckLatency records how long a {@code SYNC_RECEIVED} send waited for the follower's ack, when
      *                               it came; {@code syncAppliedAckLatency} the same for {@code SYNC_APPLIED}
-     * @param onStarted    given this store once started, before the session writes, so what it writes is replicated
+     * @param onStarted              given this store once started, before the session writes, so what it writes is replicated
      */
     ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog,
                                        LogFullWait logFullWait, ReplicatedSession session, Followers followers,
@@ -255,7 +255,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      * already in the log. Seqnums only grow between resets, so one older than the write looked at is a write that
      * never came, and is dropped. One thread at a time, like the writes.
      */
-    static final class ReplicatedAhead {
+    private static final class ReplicatedAhead {
 
         private long[] seqNums = new long[16];
         private int head;

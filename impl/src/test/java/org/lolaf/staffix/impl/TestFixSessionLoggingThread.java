@@ -93,11 +93,13 @@ class TestFixSessionLoggingThread extends AbstractFixTests {
         List<Thread> senders = startSenders(sending);
 
         for (int cycle = 0; cycle < CONNECTION_CYCLES; cycle++) {
+            awaitTrafficWhileLoggedIn();
             fixInitiatorSession.logoutPermanently("cycling the connection");
             await().untilAsserted(() -> assertThat(fixInitiatorSession.isConnected()).isFalse());
             fixInitiatorSession.logon();
             await().untilAsserted(() -> assertThat(fixInitiatorSession.isLoggedIn()).isTrue());
         }
+        awaitTrafficWhileLoggedIn();
 
         sending.set(false);
         for (Thread sender : senders) {
@@ -105,11 +107,15 @@ class TestFixSessionLoggingThread extends AbstractFixTests {
         }
 
         assertThat(senderFailures).as("the senders must have run, or nothing was driven at all").isEmpty();
-        assertThat(initiatorLogger.getOutgoingMessages().size())
-                .as("the cycles must have had traffic under them")
-                .isGreaterThan(SENDER_THREADS * CONNECTION_CYCLES);
         assertThat(initiatorLogger.getConcurrentCalls()).isEmpty();
         assertThat(acceptorLogger.getConcurrentCalls()).isEmpty();
+    }
+
+    private void awaitTrafficWhileLoggedIn() {
+        int sentBefore = initiatorLogger.getOutgoingMessages().size();
+        await().untilAsserted(() -> assertThat(initiatorLogger.getOutgoingMessages().size())
+                .as("each connection must have traffic under it before it is cut")
+                .isGreaterThanOrEqualTo(sentBefore + SENDER_THREADS));
     }
 
     private List<Thread> startSenders(AtomicBoolean sending) {
