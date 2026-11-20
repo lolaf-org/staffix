@@ -79,6 +79,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -101,6 +102,7 @@ class TestSwitchover {
     private final List<Runnable> stops = new ArrayList<>();
     private final SharedLeaderElection.Ballot ballot = new SharedLeaderElection.Ballot("a");
     private final Counterparty counterparty = new Counterparty();
+    private final TestingLogger counterpartyLog = new TestingLogger("counterparty");
     @TempDir
     Path storageDirectory;
     private HaAdmin a;
@@ -147,12 +149,12 @@ class TestSwitchover {
                 .build();
     }
 
-    private static FixEngineBuilder.FixEngineBuilderBuilder engine(String name, FixApplication application, FixSessionSettings settings,
-                                                                   FixMessagesStoreSettings store) {
+    private static FixEngineBuilder.FixEngineBuilderBuilder engine(String name, TestingLogger logger, FixApplication application,
+                                                                   FixSessionSettings settings, FixMessagesStoreSettings store) {
         return FixEngineBuilder.builder()
                 .instanceId(name)
                 .fixMessagesStore(store)
-                .fixMessagesLogger(TestingFixMessagesLoggerSettings.builder().testingLogger(new TestingLogger(name)).build())
+                .fixMessagesLogger(TestingFixMessagesLoggerSettings.builder().testingLogger(logger).build())
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder().instanceId("app").application("app", application).build())
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder().fixSessionSetting(settings).build());
     }
@@ -197,7 +199,7 @@ class TestSwitchover {
                 return engineB;
             };
             follower = startFollower.get();
-            FixEngine counterpartyFixEngine = start(engine("counterparty", counterparty,
+            FixEngine counterpartyFixEngine = start(engine("counterparty", counterpartyLog, counterparty,
                     sessionSettings(INITIATOR_ID, FixSession.FixSessionType.INITIATOR, ReplicationMode.NONE),
                     MemoryMessageStoreSettings.builder().build()).build().instance());
             counterpartyFixEngine.newInitiator(initiator(INITIATOR_ID, fixA, fixB)).start();
@@ -205,7 +207,7 @@ class TestSwitchover {
             counterpartySession = INITIATOR_ID;
         } else {
             InetSocketAddress fix = new InetSocketAddress("localhost", TestPorts.findFree());
-            FixEngine counterpartyFixEngine = start(engine("counterparty", counterparty,
+            FixEngine counterpartyFixEngine = start(engine("counterparty", counterpartyLog, counterparty,
                     sessionSettings(ACCEPTOR_ID, FixSession.FixSessionType.ACCEPTOR, ReplicationMode.NONE),
                     MemoryMessageStoreSettings.builder().build()).build().instance());
             counterpartyFixEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(fix).build()).start();
@@ -235,7 +237,7 @@ class TestSwitchover {
         if (nodeId.equals("b")) {
             followerApplication = echo;
         }
-        FixEngine engine = start(engine(nodeId, echo, settings[0], storeOf(nodeId))
+        FixEngine engine = start(engine(nodeId, new TestingLogger(nodeId), echo, settings[0], storeOf(nodeId))
                 .instanceId(engineIdOf(nodeId))
                 .clearFixSessionsSettingsStores()
                 .fixSessionsSettingsStore(settingsStoreOf(nodeId, settings))
@@ -710,6 +712,13 @@ class TestSwitchover {
         return counterpartyEngine.getIncomingSeqNum(counterpartySession);
     }
 
+    private List<String> receivedSince(int index) {
+        List<String> messages = counterpartyLog.getIncomingMessages();
+        return messages.subList(index, messages.size()).stream()
+                .map(message -> message.replace('\u0001', '|'))
+                .collect(Collectors.toList());
+    }
+
     @AfterEach
     void stop() {
         stops.forEach(Runnable::run);
@@ -890,6 +899,7 @@ class TestSwitchover {
         counterparty.roundTrips(10);
         await().until(() -> a.getStatus().getLeader() != null && a.getStatus().getLeader().isInSync());
         long expected = counterpartyIncomingSeqNum();
+        int receivedBefore = counterpartyLog.getIncomingMessages().size();
 
         assertThat(b.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
 
@@ -897,7 +907,8 @@ class TestSwitchover {
         counterparty.roundTrips(10);
         assertThat(counterparty.resendRequests.get()).as("only the failover's gap: a caught up on b, newer epoch included")
                 .isEqualTo(1);
-        assertThat(counterpartyIncomingSeqNum()).as("b's Logout, a's Logon and ten answers").isEqualTo(expected + 12);
+        assertThat(counterpartyIncomingSeqNum()).as(() -> "b's Logout, a's Logon and ten answers, received "
+                + receivedSince(receivedBefore)).isEqualTo(expected + 12);
         assertThat(a.getStatus().getRole()).isEqualTo(org.lolaf.staffix.api.ha.LeaderElection.Role.LEADER);
     }
 
