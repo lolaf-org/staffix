@@ -405,9 +405,9 @@ public final class LeaderConnection implements FrameHandler {
         if (state == State.CLOSED) {
             return;
         }
-        log.warn("Closing the replication stream from leader {}: {} {}", leaderId, reason, text);
-        state = State.CLOSED;
         String shortText = FrameEncoder.closeText(text);
+        log.warn("Closing the replication stream from leader {}: {} {}", leaderId, reason, shortText);
+        state = State.CLOSED;
         ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.CLOSE, shortText));
         answers.send(frame, FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, shortText));
         ioSession.stop(Deadline.of(CLOSE_FLUSH));

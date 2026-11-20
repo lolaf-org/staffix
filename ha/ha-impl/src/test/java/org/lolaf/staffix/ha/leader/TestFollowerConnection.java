@@ -707,10 +707,12 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aCloseTextTooLongForTheWireIsCut() {
         connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0);
 
-        assertThat(connection.close(CloseReason.PROTOCOL_ERROR, "é".repeat(40_000))).isTrue();
+        String tooLong = "aCloseTextTooLongForTheWireIsCut é ".repeat(2_000);
+
+        assertThat(connection.close(CloseReason.PROTOCOL_ERROR, tooLong)).isTrue();
 
         assertThat(sent.frames).filteredOn(frame -> frame.startsWith("CLOSE")).singleElement().asString()
-                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR " + "é".repeat(1024));
+                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR " + tooLong.substring(0, 1024));
         verify(ioSession).stop(any(Deadline.class));
     }
 

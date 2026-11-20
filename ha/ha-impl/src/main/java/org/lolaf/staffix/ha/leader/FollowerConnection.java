@@ -699,13 +699,13 @@ public final class FollowerConnection implements FrameHandler {
         if (!markClosed()) {
             return false;
         }
+        String shortText = FrameEncoder.closeText(text);
         if (reason == CloseReason.SHUTDOWN || reason == CloseReason.RETRY_LATER) {
-            log.info("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, text);
+            log.info("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, shortText);
         } else {
-            log.warn("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, text);
+            log.warn("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, shortText);
         }
         // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
-        String shortText = FrameEncoder.closeText(text);
         ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, shortText));
         int length = FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, shortText);
         ioSession.send(BatchBuffers.written(frame, length), false);
