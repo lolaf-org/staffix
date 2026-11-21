@@ -267,6 +267,7 @@ a role it does not apply to:
 | `ha-followers` | `MAJOR`, `WARNING` | leading with no follower connected, a follower dropped as too slow (a write waited `logFullTimeout` for it) and not back in sync, or a follower that has not applied a write for longer than `followerLagAlertThreshold` (5 s by default); a follower connected but not in sync, or catching up by snapshot |
 | `ha-session-settings` | `WARNING` | following, with session settings that differ from the leader's: a failover runs this node's own |
 | `ha-leader-connection` | `MAJOR`, `WARNING` | following without a connection to the leader; connected but not holding every session in full |
+| `ha-encryption` | `WARNING` | encryption `PREFERRED` and a replication lane in clear, the other node having encryption disabled |
 | `ha-leadership` | `CRITICAL` | the node has no role, or is elected leader but cannot prove it, so it runs no session |
 
 ## Binding a publisher

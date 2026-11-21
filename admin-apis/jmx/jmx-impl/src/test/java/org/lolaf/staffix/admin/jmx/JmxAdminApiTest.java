@@ -306,7 +306,7 @@ class JmxAdminApiTest {
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
                 .leaderId("1").leaderElectionType("PrimosLeaderElection").roleSince(SINCE).monitoringInstanceId("metrics")
                 .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
-                        .unsentBytes(128).lagMillis(3).build())
+                        .unsentBytes(128).lagMillis(3).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
                 .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1).droppedAt(SINCE).build())
                 .build());
         adminApi.ha = ha;
@@ -321,6 +321,7 @@ class JmxAdminApiTest {
             assertThat(follower.getLane()).isEqualTo(1);
             assertThat(follower.getUnsentBytes()).isEqualTo(128);
             assertThat(follower.getLagMillis()).isEqualTo(3);
+            assertThat(follower.getCipher()).isEqualTo("AES/CTR/NoPadding 256 HmacSHA256");
         });
         assertThat(status.getDroppedFollowers()).singleElement().satisfies(dropped -> {
             assertThat(dropped.getNodeId()).isEqualTo("3");
@@ -354,6 +355,7 @@ class JmxAdminApiTest {
         assertThat(status.getFollowerConnections()).isEmpty();
         assertThat(status.getLeader().getAddress()).isEqualTo("/10.0.0.2:17101");
         assertThat(status.getLeader().isInSync()).isTrue();
+        assertThat(status.getLeader().getCipher()).as("in clear").isNull();
         assertThat(proxy.getSessionStatuses()).singleElement().satisfies(session -> {
             assertThat(session.getFixSessionId()).isEqualTo(ACCEPTOR_SESSION.toString());
             assertThat(session.getReplicationMode()).isEqualTo("SYNC_APPLIED");

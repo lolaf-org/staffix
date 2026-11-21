@@ -65,6 +65,7 @@ class TestHaStatusReport extends HaPairFixture {
                 assertThat(follower.isSnapshotInProgress()).isFalse();
                 assertThat(follower.getUnsentBytes()).isZero();
                 assertThat(follower.getLagMillis()).isZero();
+                assertThat(follower.getCipher()).as("in clear").isNull();
             });
         });
         HaStatus follower = b.ha.getStatus();
@@ -75,6 +76,7 @@ class TestHaStatusReport extends HaPairFixture {
         assertThat(follower.getLeader().getLeaderId()).isEqualTo("a");
         assertThat(follower.getLeader().isConnected()).isTrue();
         assertThat(follower.getLeader().isInSync()).isTrue();
+        assertThat(follower.getLeader().getCipher()).as("in clear").isNull();
     }
 
     @Test

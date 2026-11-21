@@ -606,7 +606,7 @@ class AdminApiEndpointsTest {
                 .leaderId("1").leadershipValid(true).leaderElectionType("PrimosLeaderElection")
                 .roleSince(Instant.parse("2026-10-10T10:00:00Z")).switchoverMaxDuration(Duration.ofMinutes(1)).monitoringInstanceId("metrics")
                 .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
-                        .unsentBytes(0).lagMillis(3).build())
+                        .unsentBytes(0).lagMillis(3).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
                 .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1)
                         .droppedAt(Instant.parse("2026-10-10T10:05:00Z"))
                         .heldOffUntil(Instant.parse("2026-10-10T10:05:02Z")).build())
@@ -625,7 +625,7 @@ class AdminApiEndpointsTest {
                         + "\"leaderElectionType\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
                         + "\"transferLeadershipSupported\":false,\"electableSupported\":false,\"electable\":false,\"switchoverMaxDuration\":\"PT1M\",\"monitoringInstanceId\":\"metrics\","
                         + "\"followerConnections\":[{\"nodeId\":\"2\",\"lane\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
-                        + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3}],"
+                        + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3,\"cipher\":\"AES/CTR/NoPadding 256 HmacSHA256\"}],"
                         + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"lane\":1,\"droppedAt\":\"2026-10-10T10:05:00Z\","
                         + "\"heldOffUntil\":\"2026-10-10T10:05:02Z\"}],"
                         + "\"sessionSettingsDifferences\":[{\"store\":\"files\",\"fixSessionType\":\"ACCEPTOR\",\"fixSessionId\":\"s\",\"kind\":\"DIFFERENT\"}]}");

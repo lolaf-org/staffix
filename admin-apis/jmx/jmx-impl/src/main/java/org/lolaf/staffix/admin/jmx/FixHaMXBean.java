@@ -114,6 +114,8 @@ public interface FixHaMXBean {
         long getUnsentBytes();
 
         long getLagMillis();
+
+        String getCipher();
     }
 
     /**
@@ -154,6 +156,8 @@ public interface FixHaMXBean {
         boolean isConnected();
 
         boolean isInSync();
+
+        String getCipher();
     }
 
     /**

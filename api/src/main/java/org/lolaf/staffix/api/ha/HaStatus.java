@@ -142,6 +142,11 @@ public class HaStatus {
          * follower is stalled, which {@link #inSync}, as of its last ack, does not show.
          */
         long lagMillis;
+        /**
+         * What seals the lane: the cipher, its key size and, for a stream cipher, its MAC. Null while the lane is not
+         * connected or replicates in clear.
+         */
+        @Nullable String cipher;
     }
 
     /**
@@ -201,5 +206,10 @@ public class HaStatus {
          * Holds every replicated session in full, as of the last write applied.
          */
         boolean inSync;
+        /**
+         * What seals every lane: the cipher, its key size and, for a stream cipher, its MAC. Null while a lane is not
+         * connected or replicates in clear.
+         */
+        @Nullable String cipher;
     }
 }

@@ -149,6 +149,7 @@ public final class ReplicationClient {
                 .address(String.valueOf(leaderAddress))
                 .connected(isConnected())
                 .inSync(isInSync())
+                .cipher(isEncrypted() ? keyExchange.describeCipher() : null)
                 .build();
     }
 
@@ -168,6 +169,21 @@ public final class ReplicationClient {
 
     public boolean isInSync() {
         return isConnected() && replicaSessions.isInSync();
+    }
+
+    /**
+     * Every lane the leader announced is streaming sealed.
+     */
+    public boolean isEncrypted() {
+        LaneClient[] current = laneClients;
+        for (LaneClient laneClient : current) {
+            LeaderConnection connection = laneClient.connection;
+            if (connection == null || connection.getState() != LeaderConnection.State.STREAMING
+                    || connection.getEncryptionKeys() == null) {
+                return false;
+            }
+        }
+        return current.length > 0;
     }
 
     /**

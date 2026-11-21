@@ -464,11 +464,19 @@ public final class FollowerConnection implements FrameHandler {
                 .snapshotInProgress(syncs.isSnapshotInProgress(sessionCount))
                 .unsentBytes(getUnsentBytes())
                 .lagMillis(TimeUnit.NANOSECONDS.toMillis(getLagNanos(System.nanoTime())))
+                .cipher(isEncrypted() ? keyExchange.describeCipher() : null)
                 .build();
     }
 
     public boolean isConnected() {
         return state == State.STREAMING;
+    }
+
+    /**
+     * Streaming sealed, the follower having confirmed the keys.
+     */
+    public boolean isEncrypted() {
+        return isConnected() && encryptionKeys != null;
     }
 
     /**

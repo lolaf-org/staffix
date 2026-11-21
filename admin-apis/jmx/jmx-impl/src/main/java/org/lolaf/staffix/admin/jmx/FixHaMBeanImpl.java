@@ -84,7 +84,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     private static FollowerConnection followerConnection(HaStatus.FollowerConnection connection) {
         return new FollowerConnectionImpl(connection.getNodeId(), connection.getLane(), connection.getAddress(),
                 connection.isConnected(), connection.isInSync(), connection.isSnapshotInProgress(),
-                connection.getUnsentBytes(), connection.getLagMillis());
+                connection.getUnsentBytes(), connection.getLagMillis(), connection.getCipher());
     }
 
     private static DroppedFollower droppedFollower(HaStatus.DroppedFollower dropped) {
@@ -98,7 +98,8 @@ public class FixHaMBeanImpl implements FixHaMXBean {
     }
 
     private static Leader leader(HaStatus.Leader leader) {
-        return new LeaderImpl(leader.getLeaderId(), leader.getAddress(), leader.isConnected(), leader.isInSync());
+        return new LeaderImpl(leader.getLeaderId(), leader.getAddress(), leader.isConnected(), leader.isInSync(),
+                leader.getCipher());
     }
 
     private static String toStringOrNull(Object value) {
@@ -161,6 +162,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         boolean snapshotInProgress;
         long unsentBytes;
         long lagMillis;
+        String cipher;
     }
 
     @Value
@@ -169,6 +171,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         String address;
         boolean connected;
         boolean inSync;
+        String cipher;
     }
 
     @Value

@@ -1301,6 +1301,11 @@ components:
           description: >-
             How long the follower has been behind a write it has not applied yet, 0 when caught up. It grows while the
             follower is stalled, which inSync, as of its last ack, does not show.
+        cipher:
+          type: string
+          description: >-
+            What seals the lane: the cipher, its key size and, for a stream cipher, its MAC, such as
+            "AES/CTR/NoPadding 256 HmacSHA256". Absent while the lane is not connected or replicates in clear.
     HaSessionSettingsDifference:
       type: object
       required: [store, fixSessionType, fixSessionId, kind]
@@ -1348,6 +1353,11 @@ components:
         inSync:
           type: boolean
           description: Holds every replicated session in full.
+        cipher:
+          type: string
+          description: >-
+            What seals every lane: the cipher, its key size and, for a stream cipher, its MAC. Absent while a lane is
+            not connected or replicates in clear.
     HaSession:
       type: object
       required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, unencryptedMessageTypes, inSync,
