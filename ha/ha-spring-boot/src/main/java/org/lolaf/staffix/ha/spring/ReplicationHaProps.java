@@ -264,8 +264,8 @@ public class ReplicationHaProps {
         private String secret;
 
         /**
-         * A JCE transformation, spelled exactly: {@code AES/GCM/NoPadding} (unset), {@code ChaCha20-Poly1305},
-         * {@code AES/CTR/NoPadding} or {@code ChaCha20}, the last two authenticated by {@code mac}. The same on both
+         * A JCE transformation, spelled exactly: {@code AES/CTR/NoPadding} (unset) or {@code ChaCha20}, both
+         * authenticated by {@code mac}, {@code AES/GCM/NoPadding} or {@code ChaCha20-Poly1305}. The same on both
          * nodes.
          */
         private String cipher;

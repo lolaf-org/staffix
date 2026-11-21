@@ -55,12 +55,13 @@ public class ReplicationEncryptionSettings {
     byte @Nullable [] secret;
 
     /**
-     * A JCE transformation, spelled exactly: an AEAD ({@code AES/GCM/NoPadding}, {@code ChaCha20-Poly1305}) sealing
-     * each frame, or a stream cipher ({@code AES/CTR/NoPadding}, {@code ChaCha20}) authenticated by {@link #getMac()
-     * mac}.
+     * A JCE transformation, spelled exactly: a stream cipher ({@code AES/CTR/NoPadding}, {@code ChaCha20})
+     * authenticated by {@link #getMac() mac}, or an AEAD ({@code AES/GCM/NoPadding}, {@code ChaCha20-Poly1305}) sealing
+     * each frame. The default, AES-CTR, allocates nothing per frame, where the JDK's AEADs allocate on every one; GCM
+     * is faster only for messages of a kilobyte or more.
      */
     @Builder.Default
-    String cipher = "AES/GCM/NoPadding";
+    String cipher = "AES/CTR/NoPadding";
 
     /**
      * The cipher's key size: 128, 192 or 256 for AES, 256 for ChaCha20.

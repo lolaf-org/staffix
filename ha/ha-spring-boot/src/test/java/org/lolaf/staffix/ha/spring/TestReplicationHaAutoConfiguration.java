@@ -107,7 +107,7 @@ class TestReplicationHaAutoConfiguration {
                 .withPropertyValues("staffix.ha-replication.node-id=1",
                         "staffix.ha-replication.encryption.mode=required",
                         "staffix.ha-replication.encryption.secret=0123456789abcdéf",
-                        "staffix.ha-replication.encryption.cipher=AES/CTR/NoPadding",
+                        "staffix.ha-replication.encryption.cipher=AES/GCM/NoPadding",
                         "staffix.ha-replication.encryption.key-bits=128",
                         "staffix.ha-replication.encryption.mac=HmacSHA512",
                         "staffix.ha-replication.encryption.provider=SunJCE")
@@ -117,7 +117,7 @@ class TestReplicationHaAutoConfiguration {
 
                     assertThat(encryption.getMode()).isEqualTo(EncryptionMode.REQUIRED);
                     assertThat(encryption.getSecret()).isEqualTo("0123456789abcdéf".getBytes(StandardCharsets.UTF_8));
-                    assertThat(encryption.getCipher()).isEqualTo("AES/CTR/NoPadding");
+                    assertThat(encryption.getCipher()).isEqualTo("AES/GCM/NoPadding");
                     assertThat(encryption.getKeyBits()).isEqualTo(128);
                     assertThat(encryption.getMac()).isEqualTo("HmacSHA512");
                     assertThat(encryption.getProvider()).isEqualTo("SunJCE");
