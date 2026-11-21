@@ -76,7 +76,7 @@ Then ask for replication per session, in its settings:
 highAvailability:
   replicationMode: ASYNC        # NONE (default), ASYNC, SYNC_RECEIVED or SYNC_APPLIED
   replicationAckTimeout: PT1S   # SYNC modes only: how long a send waits for the follower, zero for ever
-  unencryptedMessageTypes: []         # MsgType(35) values an encrypted replication leaves unencrypted, such as [S]; * for all
+  unencryptedMessageTypes: []   # MsgType(35) values an encrypted replication leaves unencrypted, such as [S]; ["*"] for all
 ```
 
 **The leader keeps the follower's session settings in line with its own**, see
@@ -111,6 +111,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `pairName` | the election's | Names the pair in the status, the same on both nodes, for a console to group them. Primos gives its `applicationName`; another election gives none unless this is set. |
 | `monitoringInstanceId` | none | The monitoring manager publishing the replication's meters. |
 | `alertsPublisherInstanceId` | none | The alerts publisher publishing the replication's probes. |
+| `encryption` | clear | Whether the replication is encrypted, with which secret and cipher; see [Encrypting the replication](#encrypting-the-replication). |
 
 ## Replication modes
 
@@ -342,6 +343,91 @@ table prefix; the file store from a marker file in its directory. When the deriv
 databases (cloned servers), set `JdbcMessageStoreSettings.storageIdentity` to a different value on each node. A
 storage that cannot be identified is refused too, rather than risk it.
 
+## Encrypting the replication
+
+The replication carries every message the sessions store, their identities and their settings (which may hold a Logon
+password), in clear by default. With a secret both nodes share, it encrypts them:
+
+```java
+.highAvailability(ReplicationHaSettings.builder()
+        // nodeId, peers and leaderElection as above
+        .encryption(ReplicationEncryptionSettings.builder()
+                .mode(EncryptionMode.REQUIRED)
+                .secret(replicationSecret)
+                .build())
+        .build())
+```
+
+In Spring Boot, `staffix.ha-replication.encryption.mode` and `.secret`; see [Spring Boot](spring-boot.md#high-availability).
+
+- **The secret** is at least 16 bytes, the same on both nodes, and keep it out of the code as `clusterSecret`. It is
+  never sent nor logged: the nodes prove they share it when they connect, and each connection derives keys of its
+  own from it.
+- **Each node has a mode**, and the two decide each connection:
+
+  | this node | the other node | the connection |
+  |---|---|---|
+  | `DISABLED` (default) | `DISABLED` | clear |
+  | `PREFERRED` | `DISABLED` | clear; an error logged, and the `ha-encryption` warning raised, on the `PREFERRED` node |
+  | `REQUIRED` | `DISABLED` | refused, an error logged on both |
+  | `PREFERRED` or `REQUIRED` | `PREFERRED` or `REQUIRED`, the same secret and cipher | encrypted, the cipher logged |
+  | `PREFERRED` or `REQUIRED` | `PREFERRED` or `REQUIRED`, another secret or cipher | refused, an error logged on both: it never falls back to clear |
+
+  A refused follower keeps trying every `reconnectInterval`, and the leader's `ha-followers` probe alerts that it has
+  no follower.
+- **Only `REQUIRED` stops an attacker on the network.** Under `PREFERRED`, one who rewrites the connection's opening
+  to say the other node has encryption disabled gets the replication in clear. `PREFERRED` is for the rollout.
+- **Every encrypted frame is also authenticated**: one altered, replayed or reordered closes the connection, and the
+  follower reconnects. The frames the protocol runs on (acknowledgements, heartbeats, the bounds of a snapshot) carry
+  sequence numbers and offsets but no message, and are neither encrypted nor authenticated: an attacker on the network
+  could forge one, for instance acknowledging a `SYNC` send the follower never received. Keep the replication on a
+  network you control.
+
+**Rolling it out on a running pair**, without stopping the sessions:
+
+1. Set `PREFERRED` and the secret on the follower, and restart it. It replicates in clear, and warns that it does.
+2. Switch over, so that it leads.
+3. Set the same on the other node, now the follower, and restart it. The replication is encrypted.
+4. Set `REQUIRED` on the follower and restart it, switch over, then do the same on the other node.
+
+A restarted follower is caught up by snapshot. There is no rotation: two different secrets refuse each other in every
+mode, so a new secret goes through clear, one node back to `DISABLED` beside a `PREFERRED` one, then the rollout again.
+
+**The cipher**, set the same on both nodes, as a difference refuses the connection like a wrong secret:
+
+| setting | default | what it decides |
+|---|---|---|
+| `cipher` | `AES/CTR/NoPadding` | `AES/CTR/NoPadding` or `ChaCha20`, authenticated by `mac`; or `AES/GCM/NoPadding` or `ChaCha20-Poly1305`, which authenticate themselves |
+| `keyBits` | 256 | 128, 192 or 256 for AES; 256 for ChaCha20 |
+| `mac` | `HmacSHA256` | The JCE MAC of `AES/CTR/NoPadding` and `ChaCha20`, making tags of 16 bytes or more |
+| `provider` | the JVM's | A JCE provider to take the cipher and MAC from, installed by the application |
+
+- **The default allocates nothing per message**, on every JDK from 11, so encryption adds no garbage collection. The AEADs allocate on each message, in the JDK itself: about 1 KiB for `AES/GCM/NoPadding`, 1.2 to
+  3.5 KiB for `ChaCha20-Poly1305`, which also holds twice the message to decrypt it up to JDK 21.
+- **For large messages, AES-GCM is faster.** Measured with `HaFrameCipherBenchmark` (in `benchmarks`) on a laptop
+  CPU with AES-NI, JDK 21, encrypting one message on the leader, in µs:
+
+  | message | AES-CTR + HmacSHA256 | JDK AES-GCM 256 | Corretto AES-GCM 256 |
+  |---|---|---|---|
+  | 200 B | 0.46 | 0.53 | 0.50 |
+  | 1 KiB | 1.2 | 0.93 | 0.81 |
+  | 16 KiB | 14 | 9.1 | 6.5 |
+
+  Decrypting on the follower costs about as much again. [Amazon Corretto Crypto Provider](https://github.com/corretto/amazon-corretto-crypto-provider)
+  (`provider` `AmazonCorrettoCryptoProvider`) allocates 128 B a message against the JDK's 1 KiB: the choice when
+  most messages are a kilobyte or more, at the price of a native library to ship. ChaCha20 is slower than AES on any
+  CPU with AES-NI, and Bouncy Castle slower than the JDK.
+- **On a `SYNC` round trip, encryption costs about 1 µs** with the default and 2 µs with AES-GCM, with every thread
+  busy spinning ([Latency](#latency)); with the defaults, it is lost in the wake-ups. Spinning, the JDK's AES-GCM
+  showed in the tail through its garbage collections: 3 ms at p99.9, where the default stayed under 60 µs.
+
+**A session can leave some of its messages unencrypted**, with `unencryptedMessageTypes` in its `highAvailability`
+settings: a list of MsgType(35) values, or `["*"]` for all. For a market data session, `[S]` or `[W, X]` leaves its
+quotes or its snapshots and updates unencrypted, so they cost the replication less, while its other messages, its
+identity and its settings stay encrypted. An unencrypted message is still authenticated, so it cannot be altered in
+transit. A Logon, which carries the password, is always encrypted: a list naming `A` is refused. The leader's settings
+decide, as it is the one encrypting.
+
 ## Caveats
 
 - **Application state is not replicated.** See the introduction.
@@ -371,7 +457,8 @@ storage that cannot be identified is refused too, rather than risk it.
   and each replicated session's (`ha-replication`); see [Alerting](alerting.md).
 - **Status**: `GET v1/ha` and `GET v1/ha/sessions` say who leads, whether the follower holds each session and how far
   behind it is, which followers were dropped as too slow and are not back in sync, and, on the follower, whether a
-  session would be taken over cleanly now.
+  session would be taken over cleanly now. Each follower lane's `cipher`, on the leader, and the leader's, on the
+  follower, names the cipher of an encrypted replication, and is absent in clear.
 - **A follower in sync may still have writes to store.** With the async store, in sync means queued: `pendingWrites` in
   `GET v1/ha/sessions` counts what it has not stored yet, and it must store all of it before it can lead, so a large
   count delays a takeover, a snapshot after a restart above all. A switchover waits for it; a failover cannot, and past

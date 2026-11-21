@@ -4,11 +4,11 @@ An acceptor pair elected by [primos](https://github.com/lolaf-org/primos), as th
 [high availability guide](../../docs/high-availability.md) describes it, with each process on its own so you can stop,
 kill and restart them by hand:
 
-| process            | what it is                                                                                                                                                                      | listens on                                                  |
-|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------|
-| `witness`          | the primos witness: the third voter, which never leads, so either node alone still has a majority; the `ghcr.io/lolaf-org/primos-witness` Docker image                         | UDP 7420                                                    |
-| `node-1`, `node-2` | the same engine twice ([`HaNode`](src/main/java/org/lolaf/staffix/examples/ha/HaNode.java)): an `ASYNC` replicated acceptor session answering each Email, primos run by staffix | FIX 7111 / 7112, replication 17101 / 17102, UDP 7421 / 7422 |
-| `counterparty`     | an initiator given both nodes' addresses ([`Counterparty`](src/main/java/org/lolaf/staffix/examples/ha/Counterparty.java)), sending an Email every second                       | none                                                        |
+| process            | what it is                                                                                                                                                                                                 | listens on                                                  |
+|--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------|
+| `witness`          | the primos witness: the third voter, which never leads, so either node alone still has a majority; the `ghcr.io/lolaf-org/primos-witness` Docker image                                                     | UDP 7420                                                    |
+| `node-1`, `node-2` | the same engine twice ([`HaNode`](src/main/java/org/lolaf/staffix/examples/ha/HaNode.java)): an `ASYNC` replicated acceptor session answering each Email, primos run by staffix, the replication encrypted | FIX 7111 / 7112, replication 17101 / 17102, UDP 7421 / 7422 |
+| `counterparty`     | an initiator given both nodes' addresses ([`Counterparty`](src/main/java/org/lolaf/staffix/examples/ha/Counterparty.java)), sending an Email every second                                                  | none                                                        |
 
 All on `127.0.0.1`; the witness needs Docker. Each node keeps its message store and its primos term and vote under
 `target/node-<id>`, the witness its votes under `target/witness`, so a restarted process carries on where it stopped;
@@ -65,6 +65,9 @@ counterparty  Counterparty - request 1 answered by node 1
 The gap on the very first logon is expected: a node taking leadership cannot tell a first start from a takeover after
 the other node crashed, so it moves its outgoing sequence numbers ahead by `promotionOutgoingSeqNumJump` (10 000), and
 the counterparty asks for the gap and gets a gap fill.
+
+The replication between the nodes is encrypted (`EncryptionMode.REQUIRED`, with a secret of its own in `Topology`):
+both nodes log the cipher when the follower connects, `AES/CTR/NoPadding 256 HmacSHA256`, the default.
 
 ### Kill the leader: a jump and a gap fill
 
@@ -174,6 +177,6 @@ counterparty  Counterparty - Gap 20073 to 30072 filled
   [Runtime administration](../../docs/runtime-administration.md)); this example does not start the HTTP admin.
 - **`SYNC_APPLIED`** replication: change `ReplicationMode.ASYNC` in `HaNode`. A message then reaches the counterparty only once
   the follower has it.
-- **Real deployment**: the witness on a third machine, the secret out of the code and out of `witness.properties`
+- **Real deployment**: the witness on a third machine, the secrets out of the code and out of `witness.properties`
   (`env:` or `file:`), and the same session settings on both nodes. See the
   [high availability guide](../../docs/high-availability.md).

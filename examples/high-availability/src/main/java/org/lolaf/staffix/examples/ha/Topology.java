@@ -23,7 +23,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import java.net.InetSocketAddress;
 
 /**
- * Where every process of the example listens, all on localhost, and the session they share. The cluster name and the
+ * Where every process of the example listens, all on localhost, and the session they share. The cluster name and its
  * secret must match the witness's configuration in {@code witness/}.
  */
 @UtilityClass
@@ -32,6 +32,7 @@ class Topology {
     static final String HOST = "127.0.0.1";
     static final String CLUSTER = "staffix-ha-example";
     static final String CLUSTER_SECRET = "an-example-secret-change-it";
+    static final String REPLICATION_SECRET = "another-example-secret-change-it";
 
     static final int WITNESS_ID = Peer.MAX_ID;
     static final int WITNESS_PORT = 7420;

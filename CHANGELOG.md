@@ -43,6 +43,15 @@ could mean.
   admin API are refused on a follower, and settings that differ are shown in the status and raise a warning. A custom
   session settings store takes part by implementing `getStorageIdentity`; otherwise it is only compared. The JDBC
   store's `engineIdOverride` lets the two nodes read the same rows.
+- **The replication between the two high availability nodes can be encrypted**, with a secret they share:
+  `ReplicationHaSettings.encryption`, or `staffix.ha-replication.encryption.*` in Spring Boot. The messages, the
+  sessions' identities and their settings are encrypted and authenticated, and a wrong secret refuses the connection
+  rather than fall back to clear. `REQUIRED` refuses a node that does not encrypt; `PREFERRED` accepts it in clear, with
+  an error and the `ha-encryption` warning, so a running pair moves to encryption one node at a time. AES-CTR with
+  HMAC-SHA256 by default, which allocates nothing per message; AES-GCM, ChaCha20 and another JCE provider can be
+  chosen. A session can leave some message types unencrypted, its quotes for instance, with
+  `highAvailability.unencryptedMessageTypes`. The status names the cipher of each replication lane. See
+  [Encrypting the replication](docs/high-availability.md#encrypting-the-replication).
 - **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
   switchover, maintenance mode and a re-sync of the follower; it publishes `ha.*` meters and alerts when the follower
   is missing, out of sync, behind, or dropped for being too slow.
@@ -127,6 +136,8 @@ could mean.
   file when it starts.
 - **The OTLP messages logger gives a message whose type the dictionary does not declare**, such as a user defined
   one, its `fix.mt` attribute, which it used to leave out.
+- **`MessageType` has a new method, `codeHash()`**, which must return `Hashing.hash(code())`. The generated message
+  types have it; a `MessageType` of your own must add it.
 
 - **FIX 4.3 treats BusinessMessageReject as an application message**, as every other FIX version does. A business
   reject the session sends now goes through `onMessageEncoding` rather than `onAdminMessageEncoding`.

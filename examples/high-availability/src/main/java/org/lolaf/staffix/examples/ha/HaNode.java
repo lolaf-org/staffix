@@ -41,6 +41,8 @@ import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySe
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
+import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.primos.PrimosLeaderElectionSettings;
 import org.lolaf.staffix.stores.messages.file.FileMessageStoreSettings;
@@ -57,7 +59,7 @@ import static org.lolaf.staffix.examples.ha.Topology.*;
 
 /**
  * One node of the acceptor pair, {@code 1} or {@code 2}: the same engine on both, answering each Email with an Email
- * naming the node. Its stores and its primos term and vote are kept under {@code target/node-<id>}, so a restarted node
+ * naming the node, its replication encrypted. Its stores and its primos term and vote are kept under {@code target/node-<id>}, so a restarted node
  * carries on from them. Stopped by SIGTERM, it stops its engine, which hands the sessions and the leadership over.
  */
 @Slf4j
@@ -101,6 +103,10 @@ public final class HaNode {
                                 .stateDirectory(directory.resolve("primos"))
                                 .bindAddress(new InetSocketAddress(HOST, electionPort(nodeId)))
                                 .clusterSecret(CLUSTER_SECRET.getBytes(StandardCharsets.UTF_8))
+                                .build())
+                        .encryption(ReplicationEncryptionSettings.builder()
+                                .mode(EncryptionMode.REQUIRED)
+                                .secret(REPLICATION_SECRET.getBytes(StandardCharsets.UTF_8))
                                 .build())
                         .build())
                 .build().instance().start();
