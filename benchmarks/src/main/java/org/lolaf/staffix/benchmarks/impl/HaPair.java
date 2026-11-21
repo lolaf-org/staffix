@@ -43,6 +43,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStoreSettings;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
+import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.monitoring.micrometer.MicrometerMonitoringManagerSettings;
 import org.lolaf.staffix.stores.loggers.slf4j.Slf4jMessagesLoggerSettings;
@@ -64,6 +65,7 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -140,6 +142,16 @@ public class HaPair {
      */
     @Param({"NO_MONITORING"})
     HaParams.Monitoring monitoring;
+    /**
+     * The replication's cipher, {@code CLEAR} by default; with {@code -p messageEncryption=UNENCRYPTED_MESSAGES}, an
+     * encrypted lane only authenticates the sessions' messages.
+     */
+    @Param({"CLEAR"})
+    HaParams.Encryption encryption;
+    @Param({"ENCRYPTED_MESSAGES"})
+    HaParams.MessageEncryption messageEncryption;
+    @Param({"PROVIDER_JDK"})
+    HaParams.CryptoProvider provider;
 
     /**
      * Which of the replication's threads busy spin, each one more core.
@@ -174,16 +186,17 @@ public class HaPair {
     private FollowerStorage leaderStorage;
 
     @Setup(Level.Trial)
-    public void setup() throws IOException {
+    public void setup() throws IOException, GeneralSecurityException {
+        ReplicationEncryptionSettings encryptionSettings = encryption.settings(provider.install());
         followerStorage = new FollowerStorage(followerStore.getKind(), fileWrites.isSync());
         leaderStorage = new FollowerStorage(leaderStore.getKind(), fileWrites.isSync());
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
-        FixEngine leaderEngine = haEngine("a", Role.LEADER, leaderStorage.settings(), replicationA, replicationB);
+        FixEngine leaderEngine = haEngine("a", Role.LEADER, leaderStorage.settings(), replicationA, replicationB, encryptionSettings);
         leaderEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
                         .ioWorkersGroup(busySpinning(leaderIoThreads.getCount())).build()).start();
-        FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB);
+        FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB, encryptionSettings);
         // a follower knows the sessions its connectors register, and binds nothing until it leads
         followerEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", freePort())).build()).start();
         HaAdmin follower = ((AdminApi) followerEngine).getHa().orElseThrow();
@@ -299,14 +312,16 @@ public class HaPair {
     }
 
     private FixEngine haEngine(String nodeId, Role role, FixMessagesStoreSettings store, InetSocketAddress replicationA,
-                               InetSocketAddress replicationB) {
+                               InetSocketAddress replicationB, ReplicationEncryptionSettings encryptionSettings) {
         StaffixEngine.AcceptorApplication application = new StaffixEngine.AcceptorApplication();
         FixEngineBuilder.FixEngineBuilderBuilder<?, ?> engine = engine(nodeId, store)
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder().instanceId(APPLICATION)
                         .application(APPLICATION, application).build())
                 .fixSessionsSettingsStore(MemorySessionsSettingsStoreSettings.builder()
-                        .fixSessionSetting(session(acceptorId("MEASURED"), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode))
-                        .fixSessionSetting(session(acceptorId("BUSY"), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode))
+                        .fixSessionSetting(session(acceptorId("MEASURED"), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode,
+                                messageEncryption.getUnencryptedMessageTypes()))
+                        .fixSessionSetting(session(acceptorId("BUSY"), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode,
+                                messageEncryption.getUnencryptedMessageTypes()))
                         .build())
                 .highAvailability(replicationWaiting(ReplicationHaSettings.builder(), replicationWaiting)
                         .nodeId(nodeId)
@@ -314,6 +329,7 @@ public class HaPair {
                         .followerStoreWriterThreads(followerStoreWriterThreads.getCount())
                         .peer("a", replicationA)
                         .peer("b", replicationB)
+                        .encryption(encryptionSettings)
                         .monitoringInstanceId(monitoring.isEnabled() && nodeId.equals("a") ? MONITORING_INSTANCE_ID : null)
                         .leaderElection(StaticLeaderElection.Settings.builder().role(role).leaderId("a").build())
                         .build());
@@ -363,6 +379,11 @@ public class HaPair {
 
     static FixSessionSettings session(FixSessionId id, FixSession.FixSessionType type, String application,
                                               ReplicationMode mode) {
+        return session(id, type, application, mode, List.of());
+    }
+
+    static FixSessionSettings session(FixSessionId id, FixSession.FixSessionType type, String application,
+                                      ReplicationMode mode, List<String> unencryptedMessageTypes) {
         return FixSessionSettings.builder()
                 .fixSessionId(id)
                 .fixSessionType(type)
@@ -371,7 +392,8 @@ public class HaPair {
                 .fixApplicationFactoryInstanceId(APPLICATION)
                 .fixApplicationInstanceId(application)
                 .desiredSessionState(FixSessionDesiredState.LOGGED_IN)
-                .highAvailability(HaSessionSettings.builder().replicationMode(mode).build())
+                .highAvailability(HaSessionSettings.builder().replicationMode(mode)
+                        .unencryptedMessageTypes(unencryptedMessageTypes).build())
                 .build();
     }
 

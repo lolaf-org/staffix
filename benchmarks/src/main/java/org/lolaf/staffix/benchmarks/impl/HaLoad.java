@@ -50,6 +50,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
 import org.lolaf.staffix.benchmarks.fix44.encoders.QuoteRequestEncoder;
 import org.lolaf.staffix.benchmarks.fix44.msg.MessageTypes;
+import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;
@@ -62,6 +63,7 @@ import org.openjdk.jmh.annotations.TearDown;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -131,6 +133,16 @@ public class HaLoad {
      */
     @Param({"NO_MONITORING"})
     HaParams.Monitoring monitoring;
+    /**
+     * The replication's cipher, {@code CLEAR} by default; with {@code -p messageEncryption=UNENCRYPTED_MESSAGES}, an
+     * encrypted lane only authenticates the sessions' messages.
+     */
+    @Param({"CLEAR"})
+    HaParams.Encryption encryption;
+    @Param({"ENCRYPTED_MESSAGES"})
+    HaParams.MessageEncryption messageEncryption;
+    @Param({"PROVIDER_JDK"})
+    HaParams.CryptoProvider provider;
 
     private final List<Runnable> stops = new ArrayList<>();
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
@@ -142,15 +154,16 @@ public class HaLoad {
     private long iterationNanos;
 
     @Setup(Level.Trial)
-    public void setup() {
+    public void setup() throws GeneralSecurityException {
+        ReplicationEncryptionSettings encryptionSettings = encryption.settings(provider.install());
         int fixPort = freePort();
         InetSocketAddress replicationA = new InetSocketAddress("localhost", freePort());
         InetSocketAddress replicationB = new InetSocketAddress("localhost", freePort());
         followerStorage = new FollowerStorage(followerStore.getKind(), fileWrites.isSync());
-        haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB)
+        haEngine("a", Role.LEADER, MemoryMessageStoreSettings.builder().build(), replicationA, replicationB, encryptionSettings)
                 .newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", fixPort))
                         .ioWorkersGroup(busySpinning(leaderIoThreads.getCount())).build()).start();
-        FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB);
+        FixEngine followerEngine = haEngine("b", Role.FOLLOWER, followerStorage.settings(), replicationA, replicationB, encryptionSettings);
         // a follower knows the sessions its connectors register, and binds nothing until it leads
         followerEngine.newAcceptor(FixAcceptorBuilder.builder().bindAddress(new InetSocketAddress("localhost", freePort())).build()).start();
         HaAdmin follower = ((AdminApi) followerEngine).getHa().orElseThrow();
@@ -311,10 +324,11 @@ public class HaLoad {
     }
 
     private FixEngine haEngine(String nodeId, Role role, FixMessagesStoreSettings store, InetSocketAddress replicationA,
-                               InetSocketAddress replicationB) {
+                               InetSocketAddress replicationB, ReplicationEncryptionSettings encryptionSettings) {
         MemorySessionsSettingsStoreSettings.MemorySessionsSettingsStoreSettingsBuilder acceptors = MemorySessionsSettingsStoreSettings.builder();
         for (int i = 0; i < sessions.getCount(); i++) {
-            acceptors.fixSessionSetting(session(acceptorId(name(i)), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode));
+            acceptors.fixSessionSetting(session(acceptorId(name(i)), FixSession.FixSessionType.ACCEPTOR, APPLICATION, mode,
+                                messageEncryption.getUnencryptedMessageTypes()));
         }
         FixEngineBuilder.FixEngineBuilderBuilder<?, ?> engine = engine(nodeId, store)
                 .fixApplicationFactory(SimpleApplicationFactorySettings.builder().instanceId(APPLICATION)
@@ -325,6 +339,7 @@ public class HaLoad {
                         .replicationLanes(replicationLanes.getCount())
                         .peer("a", replicationA)
                         .peer("b", replicationB)
+                        .encryption(encryptionSettings)
                         .monitoringInstanceId(monitoring.isEnabled() && nodeId.equals("a") ? HaPair.MONITORING_INSTANCE_ID : null)
                         .leaderElection(StaticLeaderElection.Settings.builder().role(role).leaderId("a").build())
                         .build());

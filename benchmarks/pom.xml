@@ -33,6 +33,9 @@
         <quickfix.version>3.0.2</quickfix.version>
         <artio.version>0.187</artio.version>
         <otel.version>1.68.0</otel.version>
+        <bouncycastle.version>1.87</bouncycastle.version>
+        <bouncycastle-lts.version>2.73.13</bouncycastle-lts.version>
+        <corretto-crypto-provider.version>2.5.0</corretto-crypto-provider.version>
     </properties>
 
     <dependencies>
@@ -339,6 +342,45 @@
                             <outputDirectory>${generated.quickfixj}</outputDirectory>
                             <packaging>org.lolaf.staffix.benchmarks.quickfix.fix44</packaging>
                             <fieldPackage>org.lolaf.staffix.benchmarks.quickfix.fix44.field</fieldPackage>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-crypto-providers</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Not dependencies: both Bouncy Castle jars hold the same classes, so
+                                 HaParams.CryptoProvider loads each in a class loader of its own. -->
+                            <outputDirectory>${project.build.directory}/providers</outputDirectory>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>org.bouncycastle</groupId>
+                                    <artifactId>bcprov-jdk18on</artifactId>
+                                    <version>${bouncycastle.version}</version>
+                                    <destFileName>bcprov.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>org.bouncycastle</groupId>
+                                    <artifactId>bcprov-lts8on</artifactId>
+                                    <version>${bouncycastle-lts.version}</version>
+                                    <destFileName>bcprov-lts.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>software.amazon.cryptools</groupId>
+                                    <artifactId>AmazonCorrettoCryptoProvider</artifactId>
+                                    <version>${corretto-crypto-provider.version}</version>
+                                    <classifier>linux-x86_64</classifier>
+                                    <destFileName>corretto-crypto-provider.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
                         </configuration>
                     </execution>
                 </executions>

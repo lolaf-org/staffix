@@ -45,7 +45,7 @@ mv "jmh-result-HaRttBenchmark-${DATE}.json" results
 taskset -c "$RTT_CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc HaRttBenchmark -p followerStore=FOLLOWER_MEMORY -p replicationWaiting=SENDER_SPIN,SENDER_WAITER_SPIN,ALL_SPIN
 mv jmh-result.json "jmh-result-HaRttBenchmark-spinning-${DATE}.json"
 mv "jmh-result-HaRttBenchmark-spinning-${DATE}.json" results
-taskset -c "$RTT_CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc HaLoadBenchmark | tee "results/HaLoadBenchmark-${DATE}.log"
+taskset -c "$RTT_CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc HaLoadBenchmark 2>&1 | tee "results/HaLoadBenchmark-${DATE}.log"
 mv jmh-result.json "jmh-result-HaLoadBenchmark-${DATE}.json"
 mv "jmh-result-HaLoadBenchmark-${DATE}.json" results
 taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc OtlpHttpSenderBenchmark
