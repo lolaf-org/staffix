@@ -16,28 +16,38 @@
 package org.lolaf.staffix.ha.leader;
 
 import com.github.valfirst.slf4jtest.LoggingEvent;
+import lombok.extern.slf4j.Slf4j;
 import com.github.valfirst.slf4jtest.TestLogger;
 import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
+import org.lolaf.staffix.ha.log.LogFullWait;
+import org.lolaf.staffix.ha.log.ReplicationLog;
+import org.lolaf.staffix.ha.log.StoreEventRecord;
 import org.lolaf.staffix.ha.log.TestingLogFragments;
+import org.lolaf.staffix.ha.encryption.JceAeadAllocation;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.slf4j.event.Level;
 
+import javax.crypto.Cipher;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -53,12 +63,16 @@ import static org.mockito.Mockito.when;
  * The leader's side of the encryption handshake: the rows of the behaviour table it decides, and the KEY_CONFIRMATION it
  * waits for before anything streams.
  */
+@Slf4j
 class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
 
     private static final MessageType QUOTE = MessageType.of("S", false);
     private static final MessageType ORDER = MessageType.of("D", false);
     private static final String QUOTE_TEXT = "8=FIX.4.4\u00019=5\u000135=S\u0001quote-text\u000110=000\u0001";
     private static final String ORDER_TEXT = "8=FIX.4.4\u00019=5\u000135=D\u0001order-text\u000110=000\u0001";
+    private static final int ORDER_HASH = Hashing.hash("D");
+    private static final int FILLED_MESSAGE_BYTES = 200;
+    private static final int EVENTS_PER_BATCH = 10;
 
     private final TestLogger connectionLog;
 
@@ -84,8 +98,13 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
      * Streams to a follower that confirmed its keys, the sessions registered so far announced.
      */
     private void streamingEncrypted() {
-        leaderEncryption(EncryptionMode.REQUIRED);
-        KeyExchange follower = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+        streamingEncrypted("AES/GCM/NoPadding");
+    }
+
+    private void streamingEncrypted(String cipher) {
+        keyExchange = TestingKeyExchanges.of(EncryptionMode.REQUIRED, TestingKeyExchanges.SECRET, cipher);
+        connection = connection();
+        KeyExchange follower = TestingKeyExchanges.of(EncryptionMode.REQUIRED, TestingKeyExchanges.SECRET, cipher);
         byte[] followerNonce = follower.newNonce();
         hello(EncryptionMode.REQUIRED, followerNonce);
         connection.onKeyConfirmation(EPOCH, followerConfirmation(follower, followerNonce));
@@ -317,5 +336,65 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         fill();
 
         assertThat(sent.frames).last().asString().endsWith("seq=1 message=" + QUOTE_TEXT);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"clear", "AES/CTR/NoPadding", "ChaCha20"})
+    void fillingABatchAllocatesNothingInClearOrWithAStreamCipher(String cipher) {
+        double allocated = fillBytesPerEvent(cipher);
+
+        assertThat(allocated).as("bytes per event filled").isLessThan(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/GCM/NoPadding", "ChaCha20-Poly1305"})
+    void fillingABatchWithAnAeadAllocatesNoMoreThanTheJceItself(String cipher) {
+        double allocated = fillBytesPerEvent(cipher);
+        double jce = JceAeadAllocation.bytesPerFrame(cipher, Cipher.ENCRYPT_MODE,
+                WireFormat.HEADER_BYTES + FrameType.STORE_EVENT.getFixedPayloadBytes(), FILLED_MESSAGE_BYTES);
+
+        assertThat(allocated).as("bytes per event filled, the JCE's %s", jce)
+                .isLessThan(jce + JceAeadAllocation.JIT_SLACK_BYTES);
+    }
+
+    /**
+     * Appends events to the log and fills a batch every few, as a session thread and the sender would, on this thread.
+     */
+    private double fillBytesPerEvent(String cipher) {
+        session("main", "S");
+        if (cipher.equals("clear")) {
+            hello(EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+            fill();
+        } else {
+            streamingEncrypted(cipher);
+        }
+        ReplicationLog replicationLog = ha.getReplicationLogs().get(0);
+        StoreEventRecord record = new StoreEventRecord();
+        LogFullWait wait = new LogFullWait(Duration.ofSeconds(1));
+        ByteBuffer message = ByteBuffer.wrap(new byte[FILLED_MESSAGE_BYTES]);
+        ByteBuffer batch = ByteBuffer.allocateDirect(1 << 16);
+        int warmUp = JceAeadAllocation.warmUpFrames(FILLED_MESSAGE_BYTES);
+
+        appendAndFill(replicationLog, record, wait, message, batch, 0, warmUp);
+        long before = AllocatedBytes.ofCurrentThread();
+        long filled = appendAndFill(replicationLog, record, wait, message, batch, warmUp, JceAeadAllocation.MEASURED);
+        long allocated = AllocatedBytes.ofCurrentThread() - before;
+
+        assertThat(filled).as("every event filled").isGreaterThan((long) JceAeadAllocation.MEASURED * FILLED_MESSAGE_BYTES);
+        double perEvent = (double) allocated / JceAeadAllocation.MEASURED;
+        log.info("Filling with {}: {} bytes per {} byte event", cipher, perEvent, FILLED_MESSAGE_BYTES);
+        return perEvent;
+    }
+
+    private long appendAndFill(ReplicationLog replicationLog, StoreEventRecord record, LogFullWait wait, ByteBuffer message,
+                               ByteBuffer batch, long firstSeq, int events) {
+        long filled = 0;
+        for (long seq = firstSeq; seq < firstSeq + events; seq++) {
+            replicationLog.append(record.set(0, StoreEventType.STORE_MESSAGE, seq, ORDER_HASH, message), wait);
+            if (seq % EVENTS_PER_BATCH == EVENTS_PER_BATCH - 1) {
+                filled += connection.fillBatch(batch);
+            }
+        }
+        return filled + connection.fillBatch(batch);
     }
 }
