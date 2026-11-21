@@ -44,7 +44,7 @@ public class ReplicationLog {
                     storeEventRecord.getFragmentLength(), storeEventRecord.getFragmentFlags());
 
     private final BroadcastByteRingBuffer ring;
-    private final List<Reader> readers = new CopyOnWriteArrayList<>();
+    private final List<Reader> readers;
     /**
      * The longest message an event can carry, in fragments past {@link #getMaxFragmentLength()}: half the log, so the
      * other half still holds the events a follower had not read when it was written.
@@ -65,6 +65,7 @@ public class ReplicationLog {
      * @param capacity bytes, a power of two of at least 1024
      */
     public ReplicationLog(int capacity) {
+        this.readers = new CopyOnWriteArrayList<>();
         this.ring = ByteRingBufferFactory.broadcast(capacity, ProducerType.MULTI);
         this.maxMessageLength = ring.getCapacity() / 2;
         this.maxFragmentLength = ring.getMaxPayloadLength() - FrameEncoder.storeEventBodyBytes(0);

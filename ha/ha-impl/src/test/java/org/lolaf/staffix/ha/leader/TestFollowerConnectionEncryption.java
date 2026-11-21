@@ -60,7 +60,11 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     private static final String QUOTE_TEXT = "8=FIX.4.4\u00019=5\u000135=S\u0001quote-text\u000110=000\u0001";
     private static final String ORDER_TEXT = "8=FIX.4.4\u00019=5\u000135=D\u0001order-text\u000110=000\u0001";
 
-    private final TestLogger connectionLog = TestLoggerFactory.getTestLogger(FollowerConnection.class);
+    private final TestLogger connectionLog;
+
+    TestFollowerConnectionEncryption() {
+        this.connectionLog = TestLoggerFactory.getTestLogger(FollowerConnection.class);
+    }
 
     private static ByteBuffer ascii(String text) {
         return ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));

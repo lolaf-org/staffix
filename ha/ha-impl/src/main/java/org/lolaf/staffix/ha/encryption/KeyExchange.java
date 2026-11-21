@@ -42,12 +42,13 @@ public final class KeyExchange {
     private static final String STAFFIX_HA = "staffix-ha ";
 
     private final ReplicationEncryptionSettings settings;
-    private final SecureRandom random = new SecureRandom();
+    private final SecureRandom random;
 
     /**
      * @param settings validated
      */
     public KeyExchange(ReplicationEncryptionSettings settings) {
+        this.random = new SecureRandom();
         this.settings = settings;
     }
 

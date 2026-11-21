@@ -60,7 +60,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     private final Timer syncAppliedAckLatency;
     private final Consumer<FixSessionMessagesStore> onStarted;
     private Timer sessionSyncAckLatency;
-    private long lastAppendedOffset = -1;
+    private long lastAppendedOffset;
 
     /**
      * @param syncReceivedAckLatency records how long a {@code SYNC_RECEIVED} send waited for the follower's ack, when
@@ -71,6 +71,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
                                        LogFullWait logFullWait, ReplicatedSession session, Followers followers,
                                        Timer syncReceivedAckLatency, Timer syncAppliedAckLatency, IdleStrategy ackIdle,
                                        Consumer<FixSessionMessagesStore> onStarted) {
+        this.lastAppendedOffset = -1;
         this.store = store;
         this.replicationLog = replicationLog;
         this.logFullWait = logFullWait;
@@ -271,9 +272,13 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      */
     private static final class ReplicatedAhead {
 
-        private long[] seqNums = new long[16];
+        private long[] seqNums;
         private int head;
         private int size;
+
+        private ReplicatedAhead() {
+            this.seqNums = new long[16];
+        }
 
         void add(long seqNum) {
             if (size == seqNums.length) {

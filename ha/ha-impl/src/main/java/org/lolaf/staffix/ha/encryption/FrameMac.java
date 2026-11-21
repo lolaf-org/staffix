@@ -47,7 +47,11 @@ abstract class FrameMac {
             "HmacSHA3-384", new Digest("SHA3-384", 104),
             "HmacSHA3-512", new Digest("SHA3-512", 72));
 
-    final byte[] frameNumber = new byte[Long.BYTES];
+    final byte[] frameNumber;
+
+    FrameMac() {
+        this.frameNumber = new byte[Long.BYTES];
+    }
 
     /**
      * @param algorithm a JCE {@link Mac} name, validated

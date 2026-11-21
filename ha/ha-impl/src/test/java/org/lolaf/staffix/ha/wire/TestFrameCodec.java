@@ -42,8 +42,13 @@ class TestFrameCodec {
     private static final int MAX_FRAME_BYTES = 4096;
     private static final byte[] MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001".getBytes(StandardCharsets.US_ASCII);
 
-    private final FrameDecoder decoder = new FrameDecoder(MAX_FRAME_BYTES);
-    private final RecordingHandler handler = new RecordingHandler();
+    private final FrameDecoder decoder;
+    private final RecordingHandler handler;
+
+    TestFrameCodec() {
+        this.decoder = new FrameDecoder(MAX_FRAME_BYTES);
+        this.handler = new RecordingHandler();
+    }
 
     private static ByteBuffer buffer(boolean direct) {
         return direct ? ByteBuffer.allocateDirect(MAX_FRAME_BYTES) : ByteBuffer.allocate(MAX_FRAME_BYTES);

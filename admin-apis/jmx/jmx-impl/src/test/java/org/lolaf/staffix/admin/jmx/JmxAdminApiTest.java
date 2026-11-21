@@ -424,20 +424,35 @@ class JmxAdminApiTest {
 
     private static final class RecordingAdminApi implements AdminApi {
 
-        private final List<FixSession> managed = new ArrayList<>();
-        private final List<FixSessionId> loggedOn = new ArrayList<>();
-        private final List<Long> outgoingSeqNums = new ArrayList<>();
-        private final List<String> sentFixMessages = new ArrayList<>();
-        private final List<FixInitiatorTargets> initiatorsTargets = new ArrayList<>();
-        private final List<FixSessionId> switchedTo = new ArrayList<>();
-        private final List<ProbeDefinition> probeDefinitions = new ArrayList<>();
-        private final List<ProbeState> probeStates = new ArrayList<>();
-        private final List<ProbeScope> componentScopes = new ArrayList<>();
-        private final List<ScopedProbeState> activeAlerts = new ArrayList<>();
-        private final List<String> clearedAlerts = new ArrayList<>();
-        private final List<String> reloads = new ArrayList<>();
+        private final List<FixSession> managed;
+        private final List<FixSessionId> loggedOn;
+        private final List<Long> outgoingSeqNums;
+        private final List<String> sentFixMessages;
+        private final List<FixInitiatorTargets> initiatorsTargets;
+        private final List<FixSessionId> switchedTo;
+        private final List<ProbeDefinition> probeDefinitions;
+        private final List<ProbeState> probeStates;
+        private final List<ProbeScope> componentScopes;
+        private final List<ScopedProbeState> activeAlerts;
+        private final List<String> clearedAlerts;
+        private final List<String> reloads;
         private HaAdmin ha;
         private SessionLifecycleListener lifecycleListener;
+
+        private RecordingAdminApi() {
+            this.managed = new ArrayList<>();
+            this.loggedOn = new ArrayList<>();
+            this.outgoingSeqNums = new ArrayList<>();
+            this.sentFixMessages = new ArrayList<>();
+            this.initiatorsTargets = new ArrayList<>();
+            this.switchedTo = new ArrayList<>();
+            this.probeDefinitions = new ArrayList<>();
+            this.probeStates = new ArrayList<>();
+            this.componentScopes = new ArrayList<>();
+            this.activeAlerts = new ArrayList<>();
+            this.clearedAlerts = new ArrayList<>();
+            this.reloads = new ArrayList<>();
+        }
 
         @Override
         public String getInstanceId() {

@@ -46,11 +46,19 @@ class TestReplicationLog {
     private static final int CAPACITY = 1 << 16;
     private static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
 
-    private final ReplicationLog log = new ReplicationLog(CAPACITY);
-    private final StoreEventRecord record = new StoreEventRecord();
-    private final LogFullWait wait = new LogFullWait(Duration.ofSeconds(1));
-    private final ByteBuffer frame = ByteBuffer.allocateDirect(CAPACITY);
-    private final RecordingHandler handler = new RecordingHandler();
+    private final ReplicationLog log;
+    private final StoreEventRecord record;
+    private final LogFullWait wait;
+    private final ByteBuffer frame;
+    private final RecordingHandler handler;
+
+    TestReplicationLog() {
+        this.log = new ReplicationLog(CAPACITY);
+        this.record = new StoreEventRecord();
+        this.wait = new LogFullWait(Duration.ofSeconds(1));
+        this.frame = ByteBuffer.allocateDirect(CAPACITY);
+        this.handler = new RecordingHandler();
+    }
 
     private static ByteBuffer message(String text) {
         return ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));

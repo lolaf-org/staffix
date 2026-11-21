@@ -50,12 +50,19 @@ class TestReplicatingFixSessionMessagesStore {
     private static final MessageType NEW_ORDER = MessageType.of("D", false);
     private static final MessageType HEARTBEAT = MessageType.of("0", true);
 
-    private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
-    private final ReplicationLog.Reader reader = ha.getReplicationLogs().get(0).newReader(() -> {
-    });
-    private final ConsumingStore local = new ConsumingStore();
-    private final ByteBuffer event = ByteBuffer.allocate(1 << 16);
+    private final ReplicationFixEngineHa ha;
+    private final ReplicationLog.Reader reader;
+    private final ConsumingStore local;
+    private final ByteBuffer event;
     private int lastEventTypeHash;
+
+    TestReplicatingFixSessionMessagesStore() {
+        this.ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
+        this.reader = ha.getReplicationLogs().get(0).newReader(() -> {
+        });
+        this.local = new ConsumingStore();
+        this.event = ByteBuffer.allocate(1 << 16);
+    }
 
     private static FixSessionSettings session(String name, FixSessionType type) {
         return FixSessionSettings.builder()
@@ -316,8 +323,13 @@ class TestReplicatingFixSessionMessagesStore {
      */
     private static final class ConsumingStore implements FixSessionMessagesStore {
 
-        final List<String> calls = new ArrayList<>();
-        boolean recording = true;
+        final List<String> calls;
+        boolean recording;
+
+        private ConsumingStore() {
+            this.calls = new ArrayList<>();
+            this.recording = true;
+        }
 
         private void call(String call, long sequenceNumber) {
             if (recording) {

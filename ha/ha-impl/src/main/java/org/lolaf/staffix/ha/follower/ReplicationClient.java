@@ -176,13 +176,14 @@ public final class ReplicationClient {
     private final class LaneClient implements IOEventsListener {
 
         private final int lane;
-        private final FrameDecoder decoder = new FrameDecoder(maxFrameBytes);
+        private final FrameDecoder decoder;
         private final IOWorkersGroup ioWorkers;
         private final Client client;
         private final @Nullable LaneWriteQueue writeQueue;
         private volatile @Nullable LeaderConnection connection;
 
         LaneClient(int lane) {
+            this.decoder = new FrameDecoder(maxFrameBytes);
             this.lane = lane;
             this.writeQueue = storeWriterThreads == null ? null
                     : new LaneWriteQueue(lane, maxFrameBytes, replicaSessions, storeWriterThreads.forLane(lane));

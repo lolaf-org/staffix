@@ -49,7 +49,7 @@ public class ReplicationHaProps {
      * binds its own entry, and connects to the leader's. A leader election that advertises the leader's endpoint
      * overrides the leader's entry.
      */
-    private Map<String, String> peers = new LinkedHashMap<>();
+    private Map<String, String> peers;
 
     /**
      * Names the pair in the status, the same on both nodes; unset takes the leader election's name, such as primos's
@@ -88,7 +88,7 @@ public class ReplicationHaProps {
     /**
      * Encrypts the replication with a secret both nodes share; off unless {@code mode} is set.
      */
-    private Encryption encryption = new Encryption();
+    private Encryption encryption;
 
     /**
      * How long a follower waits between two attempts to connect to its leader; unset keeps 1s.
@@ -149,7 +149,7 @@ public class ReplicationHaProps {
      * that can be, those with a storage identity. The others are only compared. Change a replicated store through the
      * leader only.
      */
-    private List<String> replicatedSettingsStores = new ArrayList<>();
+    private List<String> replicatedSettingsStores;
 
     /**
      * How a follower's store writer thread waits for what to write, woken by the network thread that read it; unset
@@ -240,6 +240,12 @@ public class ReplicationHaProps {
      * election timeout, which bounds the lease.
      */
     private Duration fencingMargin;
+
+    public ReplicationHaProps() {
+        this.peers = new LinkedHashMap<>();
+        this.encryption = new Encryption();
+        this.replicatedSettingsStores = new ArrayList<>();
+    }
 
     @Data
     public static class Encryption {

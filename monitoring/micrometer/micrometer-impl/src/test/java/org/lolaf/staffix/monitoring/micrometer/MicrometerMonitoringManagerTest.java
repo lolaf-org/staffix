@@ -70,7 +70,11 @@ class MicrometerMonitoringManagerTest {
     private FixSession fixSession;
     private FixSessionId fixSessionId;
     private MicrometerMonitoringManagerSettings settings;
-    private int msgTypeIndex = 0;
+    private int msgTypeIndex;
+
+    MicrometerMonitoringManagerTest() {
+        this.msgTypeIndex = 0;
+    }
 
     @BeforeEach
     void setUp() {
@@ -254,7 +258,7 @@ class MicrometerMonitoringManagerTest {
 
     private static final class RecordingStepMeterRegistry extends StepMeterRegistry {
 
-        private final List<Double> publishedStatuses = new ArrayList<>();
+        private final List<Double> publishedStatuses;
 
         RecordingStepMeterRegistry() {
             super(new StepRegistryConfig() {
@@ -268,6 +272,7 @@ class MicrometerMonitoringManagerTest {
                     return null;
                 }
             }, Clock.SYSTEM);
+            this.publishedStatuses = new ArrayList<>();
         }
 
         @Override

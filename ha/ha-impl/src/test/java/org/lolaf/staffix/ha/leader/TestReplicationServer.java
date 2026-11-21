@@ -62,13 +62,20 @@ class TestReplicationServer {
 
     private static final long EPOCH = 7;
 
-    private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
-    private final InetSocketAddress address = new InetSocketAddress("localhost", TestPorts.findFree());
-    private final ReplicationServer server = new ReplicationServer(address, ha.getReplicationLogs(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
-            "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE,
-            BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock(), TestingKeyExchanges.CLEAR);
-    private final RecordingHandler received = new RecordingHandler();
+    private final ReplicationFixEngineHa ha;
+    private final InetSocketAddress address;
+    private final ReplicationServer server;
+    private final RecordingHandler received;
     private Client follower;
+
+    TestReplicationServer() {
+        this.ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
+        this.address = new InetSocketAddress("localhost", TestPorts.findFree());
+        this.server = new ReplicationServer(address, ha.getReplicationLogs(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
+                "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE,
+                BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock(), TestingKeyExchanges.CLEAR);
+        this.received = new RecordingHandler();
+    }
 
     private FixSessionMessagesStore replicated() {
         return ha.replicatingStore(FixSessionSettings.builder()

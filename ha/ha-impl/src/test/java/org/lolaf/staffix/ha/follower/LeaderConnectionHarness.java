@@ -46,13 +46,18 @@ abstract class LeaderConnectionHarness {
     static final int LAST = WireFormat.CONTINUED_FRAGMENT;
     static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
 
-    final IOSession ioSession = mock(IOSession.class);
-    final RecordingHandler sent = new RecordingHandler();
-    final RecordingEngine engine = new RecordingEngine().with(MAIN);
-    final ReplicaSessions replicaSessions = new ReplicaSessions(engine);
-    final LeaderConnection connection = newConnection(0, 0);
+    final IOSession ioSession;
+    final RecordingHandler sent;
+    final RecordingEngine engine;
+    final ReplicaSessions replicaSessions;
+    final LeaderConnection connection;
 
     LeaderConnectionHarness() {
+        this.ioSession = mock(IOSession.class);
+        this.sent = new RecordingHandler();
+        this.engine = new RecordingEngine().with(MAIN);
+        this.replicaSessions = new ReplicaSessions(engine);
+        this.connection = newConnection(0, 0);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         doAnswer(invocation -> {
             ByteBuffer frames = invocation.getArgument(0);

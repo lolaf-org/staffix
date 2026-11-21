@@ -40,19 +40,23 @@ public final class ReplicatedSessions {
      * Carried here as every connection already has the sessions it announces.
      */
     @Getter
-    private final SessionSettingsDigests settingsDigests = new SessionSettingsDigests();
+    private final SessionSettingsDigests settingsDigests;
 
     /**
      * By type first, as one id may be configured as an initiator and as an acceptor: two sessions.
      */
-    private final Map<FixSessionType, Map<FixSessionId, ReplicatedSession>> byTypeAndId = new EnumMap<>(FixSessionType.class);
-    private final List<ReplicatedSession> byKey = new CopyOnWriteArrayList<>();
+    private final Map<FixSessionType, Map<FixSessionId, ReplicatedSession>> byTypeAndId;
+    private final List<ReplicatedSession> byKey;
     /**
      * Each session's, by key, for the sender deciding per frame: replaced whole on every register.
      */
-    private volatile UnencryptedMessageTypes[] unencryptedMessageTypes = new UnencryptedMessageTypes[0];
+    private volatile UnencryptedMessageTypes[] unencryptedMessageTypes;
 
     public ReplicatedSessions() {
+        this.settingsDigests = new SessionSettingsDigests();
+        this.byTypeAndId = new EnumMap<>(FixSessionType.class);
+        this.byKey = new CopyOnWriteArrayList<>();
+        this.unencryptedMessageTypes = new UnencryptedMessageTypes[0];
         for (FixSessionType fixSessionType : FixSessionType.values()) {
             byTypeAndId.put(fixSessionType, new HashMap<>());
         }

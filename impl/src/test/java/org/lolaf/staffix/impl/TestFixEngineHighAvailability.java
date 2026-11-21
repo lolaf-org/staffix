@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.impl;
 
-import lombok.RequiredArgsConstructor;
 import lombok.experimental.Delegate;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
@@ -88,10 +87,15 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
 
     private static final FixSessionId ADDED_SESSION = FixSessionId.of("added", FixRegularVersion.VERSION_44, "ADDED", "CLIENT");
 
-    private final FixEngineHa ha = mock(FixEngineHa.class);
-    private final List<RecordingReplicatingStore> stores = new CopyOnWriteArrayList<>();
+    private final FixEngineHa ha;
+    private final List<RecordingReplicatingStore> stores;
     private volatile FixEngineHa.EngineAccess engine;
     private boolean leadsOnBind;
+
+    TestFixEngineHighAvailability() {
+        this.ha = mock(FixEngineHa.class);
+        this.stores = new CopyOnWriteArrayList<>();
+    }
 
     private static FixSessionSettings.HaSessionSettings replicated(ReplicationMode mode) {
         return FixSessionSettings.HaSessionSettings.builder().replicationMode(mode).build();
@@ -624,13 +628,18 @@ class TestFixEngineHighAvailability extends AbstractFixTests {
         verify(ha).stop(any());
     }
 
-    @RequiredArgsConstructor
     private static final class RecordingReplicatingStore implements ReplicatingStore {
 
         @Delegate(excludes = OutgoingWrites.class)
         private final FixSessionMessagesStore store;
-        private final List<String> outgoingWrites = new CopyOnWriteArrayList<>();
-        private final List<FixSessionsMonitoringContext> sessionMeters = new CopyOnWriteArrayList<>();
+        private final List<String> outgoingWrites;
+        private final List<FixSessionsMonitoringContext> sessionMeters;
+
+        private RecordingReplicatingStore(FixSessionMessagesStore store) {
+            this.store = store;
+            this.outgoingWrites = new CopyOnWriteArrayList<>();
+            this.sessionMeters = new CopyOnWriteArrayList<>();
+        }
 
         @Override
         public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {

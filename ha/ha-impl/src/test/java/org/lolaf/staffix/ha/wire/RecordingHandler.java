@@ -31,7 +31,11 @@ import java.util.List;
  */
 public class RecordingHandler implements FrameHandler {
 
-    public final List<String> frames = new ArrayList<>();
+    public final List<String> frames;
+
+    public RecordingHandler() {
+        this.frames = new ArrayList<>();
+    }
 
     private static String text(ByteBuffer buffer, int index, int length) {
         byte[] bytes = new byte[length];

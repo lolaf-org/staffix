@@ -41,9 +41,14 @@ import static org.mockito.Mockito.mock;
 
 class TestReplicationHaAutoConfiguration {
 
-    private final LeaderElectionSettings election = mock(LeaderElectionSettings.class);
-    private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(ReplicationHaAutoConfiguration.class));
+    private final LeaderElectionSettings election;
+    private final ApplicationContextRunner runner;
+
+    TestReplicationHaAutoConfiguration() {
+        this.election = mock(LeaderElectionSettings.class);
+        this.runner = new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(ReplicationHaAutoConfiguration.class));
+    }
 
     @Test
     void bindsTheSettingsWithTheContextsLeaderElection() {

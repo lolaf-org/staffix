@@ -73,19 +73,23 @@ public class OutgoingMessagesComponent implements FixSessionLayerComponent {
     private final FixSessionId fixSessionId;
     private final Clock clock;
     private final TimeUnit sendingTimeAccuracy;
-    private final IdleStrategy pollBlockingIdleStrategy = new BackoffIdleStrategy();
+    private final IdleStrategy pollBlockingIdleStrategy;
     private final RingBuffer<FixSessionFixMessageContext> messageSendingContexts;
     private final RingBuffer<FixSessionBufferedFixMessageContext> bufferMessageSendingContexts;
     private final List<FixSessionFixMessageContext> bufferedMessageSendingContexts;
     private final RingBuffer<DetachedFixMessageEncoder> detachedEncoders;
-    private final IOWriter.MessageSentCallback<FixSessionFixMessageContext> messageSentCallback = this::messageSentCallback;
-    private final IOWriter.MessageSentCallback<FixSessionBufferedFixMessageContext> bufferedMessageSentCallback = this::bufferedMessagesSentCallback;
-    private IntFunction<ByteBuffer> byteBufferBorrower = ByteBuffer::allocate;
+    private final IOWriter.MessageSentCallback<FixSessionFixMessageContext> messageSentCallback;
+    private final IOWriter.MessageSentCallback<FixSessionBufferedFixMessageContext> bufferedMessageSentCallback;
+    private IntFunction<ByteBuffer> byteBufferBorrower;
 
     OutgoingMessagesComponent(FixSessionImpl fixSession, FixSessionLayerComponents fixSessionLayerComponents,
                               FixApplication fixApplication, FixMessagesStore.FixSessionMessagesStore fixSessionMessagesStore,
                               ReplicatingStore syncReplicatingStore, FixMessagesLogger.Logger fixMessagesLogger,
                               FixSessionId fixSessionId, Clock clock, TimeUnit sendingTimeAccuracy, IOSettings ioSettings) {
+        this.pollBlockingIdleStrategy = new BackoffIdleStrategy();
+        this.messageSentCallback = this::messageSentCallback;
+        this.bufferedMessageSentCallback = this::bufferedMessagesSentCallback;
+        this.byteBufferBorrower = ByteBuffer::allocate;
         this.fixSession = fixSession;
         this.fixSessionLayerComponents = fixSessionLayerComponents;
         this.fixApplication = fixApplication;

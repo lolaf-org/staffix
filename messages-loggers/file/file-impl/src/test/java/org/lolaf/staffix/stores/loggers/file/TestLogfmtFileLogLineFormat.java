@@ -40,7 +40,11 @@ class TestLogfmtFileLogLineFormat {
     private static final FixSessionId SESSION = FixSessionId.of("CLIENT1", FixRegularVersion.VERSION_44, "EXEC",
             "CLIENT");
 
-    private final MessageTypeRegistry registry = registry(ORDER);
+    private final MessageTypeRegistry registry;
+
+    TestLogfmtFileLogLineFormat() {
+        this.registry = registry(ORDER);
+    }
 
     @Test
     void writesTheAttributesThenTheMessage() {

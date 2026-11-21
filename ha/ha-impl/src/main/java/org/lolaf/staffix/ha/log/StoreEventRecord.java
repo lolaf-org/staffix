@@ -30,13 +30,17 @@ import java.nio.ByteBuffer;
 public final class StoreEventRecord {
 
     private int sessionKey;
-    private StoreEventType eventType = StoreEventType.STORE_MESSAGE;
+    private StoreEventType eventType;
     private long sequenceNumber;
     private int messageTypeHash;
     private @Nullable ByteBuffer message;
     private int fragmentIndex;
     private int fragmentLength;
     private byte fragmentFlags;
+
+    public StoreEventRecord() {
+        this.eventType = StoreEventType.STORE_MESSAGE;
+    }
 
     /**
      * @param messageTypeHash the {@link org.lolaf.staffix.api.serde.Hashing#hash(String) hash} of the message's

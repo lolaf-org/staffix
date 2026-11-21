@@ -76,10 +76,15 @@ class AdminApiEndpointsTest {
     private static final FixSessionId TRADING_DRP = id("trading-drp");
     private static final FixSessionId DROP_COPY = id("drop-copy");
 
-    private final HttpClient client = HttpClient.newHttpClient();
-    private final List<HttpAdminApi> exporters = new ArrayList<>();
+    private final HttpClient client;
+    private final List<HttpAdminApi> exporters;
     private AdminApi adminApi;
     private int port;
+
+    AdminApiEndpointsTest() {
+        this.client = HttpClient.newHttpClient();
+        this.exporters = new ArrayList<>();
+    }
 
     private static FixSessionId id(String name) {
         return FixSessionId.of(FixRegularVersion.VERSION_44, FixSessionIdBuilder.builder()

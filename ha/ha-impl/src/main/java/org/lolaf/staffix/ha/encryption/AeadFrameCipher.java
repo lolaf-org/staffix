@@ -41,15 +41,18 @@ final class AeadFrameCipher extends SealingFrameCipher {
     private final SecretKeySpec key;
     private final boolean gcm;
     private final byte[] iv;
-    private final byte[] nonce = new byte[NONCE_BYTES];
-    private byte[] in = new byte[INITIAL_BYTES];
-    private byte[] out = new byte[INITIAL_BYTES];
+    private final byte[] nonce;
+    private byte[] in;
+    private byte[] out;
 
     /**
      * @param mode {@link Cipher#ENCRYPT_MODE} to seal, {@link Cipher#DECRYPT_MODE} to open
      * @param iv   the direction's, whose first 12 bytes each frame's nonce starts from
      */
     AeadFrameCipher(Cipher cipher, int mode, byte[] key, byte[] iv) {
+        this.nonce = new byte[NONCE_BYTES];
+        this.in = new byte[INITIAL_BYTES];
+        this.out = new byte[INITIAL_BYTES];
         this.cipher = cipher;
         this.mode = mode;
         this.gcm = cipher.getAlgorithm().startsWith("AES");

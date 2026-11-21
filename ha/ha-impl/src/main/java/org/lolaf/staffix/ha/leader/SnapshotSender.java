@@ -59,14 +59,14 @@ final class SnapshotSender {
     private final LongSupplier nodeEpoch;
     private final int maxEventFrameBytes;
     private final int chunkBytes;
-    private final ChunkWriter writer = new ChunkWriter();
-    private final IdleStrategy roomWait = new BackoffIdleStrategy();
+    private final ChunkWriter writer;
+    private final IdleStrategy roomWait;
     private volatile boolean requested;
-    private long retryAtNanos = Long.MAX_VALUE;
+    private long retryAtNanos;
     /**
      * The session being snapshot, {@link #NONE} between two.
      */
-    private int sessionKey = NONE;
+    private int sessionKey;
     private @Nullable FixSessionMessagesStore store;
     private long snapshotOffset;
     /**
@@ -97,6 +97,10 @@ final class SnapshotSender {
      */
     SnapshotSender(FollowerConnection connection, ReplicatedSessions sessions, SessionSyncs syncs, BatchBuffers batches,
                    ReplicationStats stats, LongSupplier nodeEpoch, int maxEventFrameBytes, int chunkBytes) {
+        this.writer = new ChunkWriter();
+        this.roomWait = new BackoffIdleStrategy();
+        this.retryAtNanos = Long.MAX_VALUE;
+        this.sessionKey = NONE;
         this.connection = connection;
         this.sessions = sessions;
         this.syncs = syncs;
@@ -268,10 +272,14 @@ final class SnapshotSender {
     private final class ChunkWriter implements StoreMessagesConsumer {
 
         private long currentEpoch;
-        private FrameCipher cipher = FrameCipher.CLEAR;
+        private FrameCipher cipher;
         private @Nullable ByteBuffer batch;
         private int filled;
         private boolean stopped;
+
+        private ChunkWriter() {
+            this.cipher = FrameCipher.CLEAR;
+        }
 
         void start(long epoch) {
             currentEpoch = epoch;

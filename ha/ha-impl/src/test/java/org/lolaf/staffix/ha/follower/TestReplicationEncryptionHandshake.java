@@ -63,14 +63,20 @@ class TestReplicationEncryptionHandshake {
             .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
             .build();
 
-    private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
-    private final RecordingEngine follower = new RecordingEngine().with(MAIN);
-    private final ReplicaSessions replicaSessions = new ReplicaSessions(follower);
+    private final ReplicationFixEngineHa leader;
+    private final RecordingEngine follower;
+    private final ReplicaSessions replicaSessions;
     private ReplicationServer server;
     private ReplicationClient client;
     private ReplicatingStore leaderStore;
     private String leaderId;
     private String followerId;
+
+    TestReplicationEncryptionHandshake() {
+        this.leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
+        this.follower = new RecordingEngine().with(MAIN);
+        this.replicaSessions = new ReplicaSessions(follower);
+    }
 
     private static KeyExchange exchange(EncryptionMode mode, String secret, String cipher) {
         return mode == EncryptionMode.DISABLED ? TestingKeyExchanges.CLEAR : TestingKeyExchanges.of(mode, secret, cipher);

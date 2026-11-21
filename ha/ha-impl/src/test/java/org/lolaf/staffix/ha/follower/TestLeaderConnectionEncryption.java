@@ -43,7 +43,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
 
-    private final TestLogger connectionLog = TestLoggerFactory.getTestLogger(LeaderConnection.class);
+    private final TestLogger connectionLog;
+
+    TestLeaderConnectionEncryption() {
+        this.connectionLog = TestLoggerFactory.getTestLogger(LeaderConnection.class);
+    }
 
     @BeforeEach
     void clearThisThreadsLogs() {

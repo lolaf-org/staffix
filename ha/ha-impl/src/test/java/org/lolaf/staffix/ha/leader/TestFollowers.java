@@ -54,12 +54,15 @@ class TestFollowers {
     private static final long NO_TIMEOUT = 0;
     private static final int KEY = 0;
 
-    private final ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
-    private final Followers followers = new Followers();
-    private final IdleStrategy idle = new BackoffIdleStrategy();
+    private final ReplicationFixEngineHa ha;
+    private final Followers followers;
+    private final IdleStrategy idle;
     private final long offset;
 
     TestFollowers() {
+        this.ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
+        this.followers = new Followers();
+        this.idle = new BackoffIdleStrategy();
         FixSessionMessagesStore store = ha.replicatingStore(FixSessionSettings.builder()
                 .fixSessionId(FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET"))
                 .fixSessionType(FixSessionType.INITIATOR)

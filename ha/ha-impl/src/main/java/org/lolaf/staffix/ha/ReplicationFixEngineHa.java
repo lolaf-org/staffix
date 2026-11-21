@@ -73,12 +73,12 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final ReplicatedSessions sessions;
     @Getter
     private final Followers followers;
-    private final LateTimer syncReceivedAckLatency = new LateTimer();
-    private final LateTimer syncAppliedAckLatency = new LateTimer();
-    private final LateTimer receivedWriteLatency = new LateTimer();
+    private final LateTimer syncReceivedAckLatency;
+    private final LateTimer syncAppliedAckLatency;
+    private final LateTimer receivedWriteLatency;
     private final PromotionSeqNumJumps promotionJumps;
-    private final HaStatusReport statusReport = new HaStatusReport(this);
-    private final Switchover switchover = new Switchover(this);
+    private final HaStatusReport statusReport;
+    private final Switchover switchover;
     /**
      * What unregisters each settings store's listener.
      */
@@ -94,13 +94,13 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private volatile ScheduledExecutorService roleThread;
     private @Nullable ScheduledFuture<?> leaseCheck;
     @Getter
-    private volatile Role role = Role.UNKNOWN;
+    private volatile Role role;
     /**
      * The election epoch {@link #role} was taken at, -1 while unknown. Written before {@code role}, so a reader of
      * {@code role} sees it.
      */
     @Getter
-    private long roleEpoch = -1;
+    private long roleEpoch;
     private @Nullable InetSocketAddress followedLeader;
     @Getter
     private volatile @Nullable Instant roleSince;
@@ -110,6 +110,13 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private volatile @Nullable ReplicationClient client;
 
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
+        this.syncReceivedAckLatency = new LateTimer();
+        this.syncAppliedAckLatency = new LateTimer();
+        this.receivedWriteLatency = new LateTimer();
+        this.statusReport = new HaStatusReport(this);
+        this.switchover = new Switchover(this);
+        this.role = Role.UNKNOWN;
+        this.roleEpoch = -1;
         settings.validate();
         this.settings = settings;
         this.keyExchange = new KeyExchange(settings.getEncryption());
@@ -499,7 +506,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
      */
     private static final class LateTimer implements Timer {
 
-        private volatile Timer target = Timer.VoidTimer.getInstance();
+        private volatile Timer target;
+
+        private LateTimer() {
+            this.target = Timer.VoidTimer.getInstance();
+        }
 
         @Override
         public void start() {

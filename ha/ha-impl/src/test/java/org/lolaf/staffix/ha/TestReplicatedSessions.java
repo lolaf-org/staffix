@@ -36,7 +36,11 @@ class TestReplicatedSessions {
 
     private static final FixSessionId ID = FixSessionId.of("main", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
 
-    private final ReplicatedSessions sessions = new ReplicatedSessions();
+    private final ReplicatedSessions sessions;
+
+    TestReplicatedSessions() {
+        this.sessions = new ReplicatedSessions();
+    }
 
     private ReplicatedSession register(FixSessionType fixSessionType, String... unencryptedMessageTypes) {
         return sessions.register(FixSessionSettings.builder()

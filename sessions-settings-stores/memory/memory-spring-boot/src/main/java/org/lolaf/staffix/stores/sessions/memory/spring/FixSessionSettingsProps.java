@@ -64,7 +64,7 @@ public class FixSessionSettingsProps {
     /**
      * Settings the application itself declares a need for, passed through untouched.
      */
-    private Map<String, String> applicationSessionSettings = new LinkedHashMap<>();
+    private Map<String, String> applicationSessionSettings;
 
     /**
      * Whether the Logon lists the message types this session sends and accepts, in MsgTypeGrp(384). Off by
@@ -91,7 +91,7 @@ public class FixSessionSettingsProps {
      * Addresses an acceptor will accept this session from. Empty means anywhere. Checked before the Logon
      * is processed, so a connection from elsewhere is dropped without the session ever starting.
      */
-    private List<String> allowedAddresses = new ArrayList<>();
+    private List<String> allowedAddresses;
 
     /**
      * Whether sequence numbers restart at 1 on logon. True resets on every logon, false refuses a counterparty's reset
@@ -167,7 +167,7 @@ public class FixSessionSettingsProps {
      * The plugin instance each plugin type uses for this session, keyed by the plugin's class name, for example
      * org.lolaf.staffix.tracing.otlp.OtelTracing.
      */
-    private Map<String, String> fixSessionPluginsInstanceIds = new LinkedHashMap<>();
+    private Map<String, String> fixSessionPluginsInstanceIds;
 
     /**
      * Whether the session's own encoders encode into direct byte buffers. True by default.
@@ -224,6 +224,12 @@ public class FixSessionSettingsProps {
      */
     @NestedConfigurationProperty
     private HaProps ha;
+
+    public FixSessionSettingsProps() {
+        this.applicationSessionSettings = new LinkedHashMap<>();
+        this.allowedAddresses = new ArrayList<>();
+        this.fixSessionPluginsInstanceIds = new LinkedHashMap<>();
+    }
 
     @Data
     public static class HeartbeatProps {
@@ -347,12 +353,17 @@ public class FixSessionSettingsProps {
         /**
          * The trading windows. A day is either windowed here or non-stop, never both.
          */
-        private List<ScheduleEntryProps> sessionSchedules = new ArrayList<>();
+        private List<ScheduleEntryProps> sessionSchedules;
         /**
          * The days the session runs non-stop, restarting its numbering at the entry's time, section 4.4.2. A day
          * named here must not be covered by session-schedules.
          */
-        private List<NonStopScheduleEntryProps> nonStopSchedules = new ArrayList<>();
+        private List<NonStopScheduleEntryProps> nonStopSchedules;
+
+        public ScheduleProps() {
+            this.sessionSchedules = new ArrayList<>();
+            this.nonStopSchedules = new ArrayList<>();
+        }
 
         @Data
         public static class ScheduleEntryProps {

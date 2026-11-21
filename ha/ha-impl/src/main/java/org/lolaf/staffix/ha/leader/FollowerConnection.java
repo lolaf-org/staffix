@@ -88,13 +88,13 @@ public final class FollowerConnection implements FrameHandler {
     private volatile int lane;
     private final IdleStrategy senderIdle;
     private final ReplicationStats stats;
-    private final SessionSyncs syncs = new SessionSyncs();
+    private final SessionSyncs syncs;
     private final BatchBuffers batches;
     private final SnapshotSender snapshots;
     /**
      * Keys of sessions already announced whose replication mode changed since.
      */
-    private final Queue<Integer> reannouncements = new ConcurrentLinkedQueue<>();
+    private final Queue<Integer> reannouncements;
     private final Consumer<Runnable> senderLauncher;
     private final Clock clock;
     private final KeyExchange keyExchange;
@@ -112,9 +112,9 @@ public final class FollowerConnection implements FrameHandler {
      * Seals every frame the sender writes; set before the sender starts, sender thread after.
      */
     @Getter(AccessLevel.PACKAGE)
-    private FrameCipher frameCipher = FrameCipher.CLEAR;
+    private FrameCipher frameCipher;
     @Getter
-    private volatile State state = State.AWAITING_HELLO;
+    private volatile State state;
     private volatile boolean followerHungUp;
     @Getter
     private volatile @Nullable String followerId;
@@ -122,12 +122,12 @@ public final class FollowerConnection implements FrameHandler {
      * The offset of the last event the follower applied, -1 before it said.
      */
     @Getter
-    private volatile long appliedOffset = -1;
+    private volatile long appliedOffset;
     /**
      * The offset of the last event the follower holds, written to its store or not yet, -1 before it said.
      */
     @Getter
-    private volatile long receivedOffset = -1;
+    private volatile long receivedOffset;
     /**
      * What the follower said of itself in its last ACK; {@link #isSessionInSync(int)} relies on the leader's own account.
      */
@@ -138,7 +138,7 @@ public final class FollowerConnection implements FrameHandler {
      * The offset a {@code SYNC} send gave up waiting for, -1 when none: the follower is not waited for again until it
      * applies it, so a hung follower costs one timeout rather than one per send.
      */
-    private volatile long overdueOffset = -1;
+    private volatile long overdueOffset;
     /**
      * What the follower's stores for this lane have yet to store, as of its last ack.
      */
@@ -147,7 +147,7 @@ public final class FollowerConnection implements FrameHandler {
     /**
      * Where the next batch starts reading the log: once it is the log's tail, every event has been handed to betty.
      */
-    private volatile long sentOffset = -1;
+    private volatile long sentOffset;
     /**
      * Dropped as too slow last time, until its first in-sync ack; IO thread only.
      */
@@ -171,7 +171,7 @@ public final class FollowerConnection implements FrameHandler {
     private int sendingDigestsGeneration;
     private int nextDigest;
     private long lastSendNanos;
-    private long lastSentEventOffset = -1;
+    private long lastSentEventOffset;
     /**
      * When the follower last went from owing nothing to owing an ack, sender thread only.
      */
@@ -179,9 +179,9 @@ public final class FollowerConnection implements FrameHandler {
     /**
      * The offset of the last event the last {@link #fillBatch} took, -1 when it took none.
      */
-    private long filledEventOffset = -1;
-    private AckLatencySampler ackLatency = new AckLatencySampler(Timer.VoidTimer.getInstance());
-    private LagSampler lag = new LagSampler(Timer.VoidTimer.getInstance());
+    private long filledEventOffset;
+    private AckLatencySampler ackLatency;
+    private LagSampler lag;
 
     /**
      * @param sendBuffers        the batch buffers the connection allocates at most, a power of two; the one written
@@ -195,6 +195,18 @@ public final class FollowerConnection implements FrameHandler {
                        String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
                        int snapshotChunkBytes, IdleStrategy senderIdle, ReplicationStats stats,
                        Consumer<Runnable> senderLauncher, Clock clock, KeyExchange keyExchange) {
+        this.syncs = new SessionSyncs();
+        this.reannouncements = new ConcurrentLinkedQueue<>();
+        this.frameCipher = FrameCipher.CLEAR;
+        this.state = State.AWAITING_HELLO;
+        this.appliedOffset = -1;
+        this.receivedOffset = -1;
+        this.overdueOffset = -1;
+        this.sentOffset = -1;
+        this.lastSentEventOffset = -1;
+        this.filledEventOffset = -1;
+        this.ackLatency = new AckLatencySampler(Timer.VoidTimer.getInstance());
+        this.lag = new LagSampler(Timer.VoidTimer.getInstance());
         this.ioSession = ioSession;
         this.address = String.valueOf(ioSession.getSocketAddress());
         this.logs = logs;

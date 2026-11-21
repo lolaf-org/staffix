@@ -69,33 +69,46 @@ abstract class FollowerConnectionHarness {
     static final String SESSION = "default.main:VERSION_44:SENDER->TARGET";
     static final int MESSAGE_BYTES = 1_000;
 
-    final IOSession ioSession = mock(IOSession.class);
-    final RecordingHandler sent = new RecordingHandler();
+    final IOSession ioSession;
+    final RecordingHandler sent;
     /**
      * The MsgType(35) hash of each STORE_EVENT and SNAPSHOT_MESSAGE sent, which the follower does not read.
      */
-    final List<Integer> sentTypeHashes = new CopyOnWriteArrayList<>();
+    final List<Integer> sentTypeHashes;
     /**
      * Every byte sent, as it went on the socket.
      */
-    final List<byte[]> sentBytes = new CopyOnWriteArrayList<>();
-    ReplicationStats stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
+    final List<byte[]> sentBytes;
+    ReplicationStats stats;
     /**
      * The batches sent, whose write betty has not reported yet while {@link #holdingWrites}.
      */
-    final Queue<Runnable> unwrittenBatches = new ConcurrentLinkedQueue<>();
-    final AtomicInteger batchesSent = new AtomicInteger();
+    final Queue<Runnable> unwrittenBatches;
+    final AtomicInteger batchesSent;
     volatile boolean holdingWrites;
     /**
      * The sender's clock in the connections {@link #connectionStallingAfter} builds.
      */
-    final TestingClock senderClock = new TestingClock();
-    final AtomicLong senderIdles = new AtomicLong();
-    KeyExchange keyExchange = TestingKeyExchanges.CLEAR;
-    ReplicationFixEngineHa ha = engine(1 << 16);
-    FollowerConnection connection = connection();
+    final TestingClock senderClock;
+    final AtomicLong senderIdles;
+    KeyExchange keyExchange;
+    ReplicationFixEngineHa ha;
+    FollowerConnection connection;
 
     FollowerConnectionHarness() {
+        this.ioSession = mock(IOSession.class);
+        this.sent = new RecordingHandler();
+        this.sentTypeHashes = new CopyOnWriteArrayList<>();
+        this.sentBytes = new CopyOnWriteArrayList<>();
+        this.stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
+        this.unwrittenBatches = new ConcurrentLinkedQueue<>();
+        this.batchesSent = new AtomicInteger();
+        this.senderClock = new TestingClock();
+        this.senderIdles = new AtomicLong();
+        this.keyExchange = TestingKeyExchanges.CLEAR;
+        this.ha = engine(1 << 16);
+        this.connection = connection();
+        this.opener = FrameCipher.CLEAR;
         senderClock.toAdvanceableTime(Instant.parse("2026-11-01T10:00:00Z"), 0);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         doAnswer(invocation -> {
@@ -176,7 +189,7 @@ abstract class FollowerConnectionHarness {
     }
 
     private ConnectionEncryptionKeys openedKeys;
-    private FrameCipher opener = FrameCipher.CLEAR;
+    private FrameCipher opener;
 
     /**
      * The follower's, one per connection, since it counts the frames it opens.

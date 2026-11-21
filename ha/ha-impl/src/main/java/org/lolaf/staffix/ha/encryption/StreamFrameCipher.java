@@ -46,10 +46,10 @@ final class StreamFrameCipher extends SealingFrameCipher {
     private final boolean chaCha20;
     private final FrameMac mac;
     private final long segmentBytes;
-    private final byte[] in = new byte[CHUNK_BYTES];
-    private final byte[] out = new byte[CHUNK_BYTES];
-    private final byte[] tag = new byte[TAG_BYTES];
-    private final byte[] receivedTag = new byte[TAG_BYTES];
+    private final byte[] in;
+    private final byte[] out;
+    private final byte[] tag;
+    private final byte[] receivedTag;
     private long segment;
     private long segmentLeft;
 
@@ -59,6 +59,10 @@ final class StreamFrameCipher extends SealingFrameCipher {
      */
     StreamFrameCipher(Cipher cipher, int mode, byte[] key, byte[] iv, FrameMac mac, long segmentBytes)
             throws GeneralSecurityException {
+        this.in = new byte[CHUNK_BYTES];
+        this.out = new byte[CHUNK_BYTES];
+        this.tag = new byte[TAG_BYTES];
+        this.receivedTag = new byte[TAG_BYTES];
         this.cipher = cipher;
         this.mode = mode;
         this.chaCha20 = cipher.getAlgorithm().startsWith("ChaCha20");

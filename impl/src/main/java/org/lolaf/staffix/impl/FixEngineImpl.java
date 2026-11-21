@@ -78,8 +78,8 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     /**
      * The engine contexts handed to the engine's components, whose meters {@link #getEngineMeters()} lists.
      */
-    private final CopyOnWriteArrayList<FixEngineMonitoringContext> engineMonitoringContexts = new CopyOnWriteArrayList<>();
-    private final Map<String, ProbesImpl> componentProbes = new ConcurrentHashMap<>();
+    private final CopyOnWriteArrayList<FixEngineMonitoringContext> engineMonitoringContexts;
+    private final Map<String, ProbesImpl> componentProbes;
     private final List<FixApplicationFactory> fixApplicationFactories;
     @Getter
     private final FixEngineBuilder fixEngineBuilder;
@@ -91,13 +91,18 @@ public class FixEngineImpl extends Startable.SimpleStartable<FixEngine> implemen
     @Getter
     private final FixSessionRegistryImpl fixSessionRegistry;
     private volatile boolean active;
-    private volatile FixSessionAdminControl[] sessionAdminControls = new FixSessionAdminControl[0];
-    private volatile List<FixInitiatorTargets> initiatorsTargets = List.of();
-    private volatile List<FixAcceptorSessions> acceptorsSessions = List.of();
+    private volatile FixSessionAdminControl[] sessionAdminControls;
+    private volatile List<FixInitiatorTargets> initiatorsTargets;
+    private volatile List<FixAcceptorSessions> acceptorsSessions;
     private ExecutorService selfManagedDisconnectedSessionsExecutor;
     private UnderlyingResourceChecker underlyingResourceChecker;
 
     FixEngineImpl(FixEngineBuilder fixEngineBuilder) {
+        this.engineMonitoringContexts = new CopyOnWriteArrayList<>();
+        this.componentProbes = new ConcurrentHashMap<>();
+        this.sessionAdminControls = new FixSessionAdminControl[0];
+        this.initiatorsTargets = List.of();
+        this.acceptorsSessions = List.of();
         this.fixEngineBuilder = fixEngineBuilder;
         this.sessionLifecycleListeners = new CopyOnWriteArraySet<>();
         this.fixSessionRegistry = new FixSessionRegistryImpl();

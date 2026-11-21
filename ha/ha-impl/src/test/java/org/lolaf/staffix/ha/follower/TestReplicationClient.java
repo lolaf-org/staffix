@@ -70,19 +70,19 @@ class TestReplicationClient {
 
     private static final FixSessionSettings OTHER = RecordingEngine.session("other", FixSessionType.ACCEPTOR);
 
-    private final ReplicationFixEngineHa leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
-    private final InetSocketAddress address = new InetSocketAddress("localhost", TestPorts.findFree());
-    private final ReplicationServer server = server(address, leader);
-    private final RecordingEngine follower = new RecordingEngine().with(MAIN);
-    private final ReplicaSessions replicaSessions = new ReplicaSessions(follower);
-    private final ReplicatingStore leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+    private final ReplicationFixEngineHa leader;
+    private final InetSocketAddress address;
+    private final ReplicationServer server;
+    private final RecordingEngine follower;
+    private final ReplicaSessions replicaSessions;
+    private final ReplicatingStore leaderStore;
     private ReplicationClient client;
 
     private ReplicationServer twoLanesServer;
     private ReplicationServer syncReceivedServer;
     private ReplicationFixEngineHa syncReceivedLeader;
     private ReplicatingStore syncReceivedStore;
-    private final ReplicationStats twoLanesStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
+    private final ReplicationStats twoLanesStats;
     private ReplicatingStore twoLanesMain;
     private ReplicatingStore twoLanesOther;
 
@@ -115,6 +115,13 @@ class TestReplicationClient {
     }
 
     TestReplicationClient() {
+        this.leader = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
+        this.address = new InetSocketAddress("localhost", TestPorts.findFree());
+        this.server = server(address, leader);
+        this.follower = new RecordingEngine().with(MAIN);
+        this.replicaSessions = new ReplicaSessions(follower);
+        this.leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        this.twoLanesStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
         leaderStore.storeNextIncomingSeqNum(1);
         server.start();
     }

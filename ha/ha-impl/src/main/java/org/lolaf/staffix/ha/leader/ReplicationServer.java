@@ -151,7 +151,11 @@ public final class ReplicationServer {
 
     private final class Listener implements IOEventsListener {
 
-        private final FrameDecoder decoder = new FrameDecoder(MAX_INBOUND_FRAME_BYTES);
+        private final FrameDecoder decoder;
+
+        private Listener() {
+            this.decoder = new FrameDecoder(MAX_INBOUND_FRAME_BYTES);
+        }
 
         @Override
         public void onConnected(IOSession session) {

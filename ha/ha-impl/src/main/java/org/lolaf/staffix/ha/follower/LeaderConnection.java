@@ -65,7 +65,7 @@ public final class LeaderConnection implements FrameHandler {
     private final AnswerSender answers;
     private final boolean receivedAckedByNetworkThread;
     private final long checkIntervalNanos;
-    private final ObjIntConsumer<SessionAnswer> sendBoundAnswer = (answer, sessionKey) -> sendSessionAnswer(sessionKey, answer);
+    private final ObjIntConsumer<SessionAnswer> sendBoundAnswer;
     private final KeyExchange keyExchange;
     /**
      * This connection's keys once both peers encrypt, null on a clear one.
@@ -75,14 +75,14 @@ public final class LeaderConnection implements FrameHandler {
     /**
      * Opens the leader's frames once both peers encrypt; the thread applying them only.
      */
-    private FrameCipher frameCipher = FrameCipher.CLEAR;
-    private byte[] followerNonce = new byte[WireFormat.NONCE_BYTES];
+    private FrameCipher frameCipher;
+    private byte[] followerNonce;
     /**
      * The HELLO as sent, which the KEY_CONFIRMATION covers.
      */
     private byte @Nullable [] sentHelloBytes;
     @Getter
-    private volatile State state = State.AWAITING_WELCOME;
+    private volatile State state;
     @Getter
     private volatile @Nullable String leaderId;
     /**
@@ -109,6 +109,10 @@ public final class LeaderConnection implements FrameHandler {
     LeaderConnection(IOSession ioSession, ReplicaSessions replicaSessions, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
                      long checkIntervalNanos, AnswerSender answers, boolean receivedAckedByNetworkThread,
                      KeyExchange keyExchange) {
+        this.sendBoundAnswer = (answer, sessionKey) -> sendSessionAnswer(sessionKey, answer);
+        this.frameCipher = FrameCipher.CLEAR;
+        this.followerNonce = new byte[WireFormat.NONCE_BYTES];
+        this.state = State.AWAITING_WELCOME;
         this.keyExchange = keyExchange;
         this.answers = answers;
         this.receivedAckedByNetworkThread = receivedAckedByNetworkThread;

@@ -36,7 +36,11 @@ import static org.mockito.Mockito.when;
 
 class TestFixSessionSettingsValidator {
 
-    private final FixSessionId fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
+    private final FixSessionId fixSessionId;
+
+    TestFixSessionSettingsValidator() {
+        this.fixSessionId = FixSessionId.of("test", FixRegularVersion.VERSION_44, "SENDER", "TARGET");
+    }
 
     private static FixSessionSettings.SessionScheduleSettings.NonStopScheduleEntry nonStop(DayOfWeek day, LocalTime resetTime) {
         return FixSessionSettings.SessionScheduleSettings.NonStopScheduleEntry.builder()
