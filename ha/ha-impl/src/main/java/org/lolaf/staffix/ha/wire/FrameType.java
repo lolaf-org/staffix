@@ -49,26 +49,29 @@ import org.jspecify.annotations.Nullable;
  * SESSION_SETTINGS_DIGESTS_COMPLETE    leader to follower  generation 4, digest count 4
  * SESSIONS_ANNOUNCED leader to follower  announced count 4, reserved 4
  * </pre>
+ *
+ * <p>The {@link #isSealed() sealed} types are the ones carrying data. The others go without a tag; since a frame's
+ * length counts its tag, sealing more types changes no layout.
  */
 @Getter
 public enum FrameType {
 
-    HELLO(1, 48),
-    WELCOME(2, 40),
-    SESSION(3, 10),
-    SESSION_ANSWER(4, 5),
-    STORE_EVENT(5, 32),
-    SNAPSHOT_BEGIN(6, 32),
-    SNAPSHOT_MESSAGE(7, 24),
-    SNAPSHOT_END(8, 24),
-    ACK(9, 16),
-    HEARTBEAT(10, 8),
-    CLOSE(11, 4),
-    RECEIVED(12, 8),
-    SESSION_SETTINGS_DIGEST(13, 16),
-    SESSION_SETTINGS_DIGESTS_COMPLETE(14, 8),
-    SESSIONS_ANNOUNCED(15, 8),
-    KEY_CONFIRMATION(16, 32);
+    HELLO(1, 48, false),
+    WELCOME(2, 40, false),
+    SESSION(3, 10, true),
+    SESSION_ANSWER(4, 5, false),
+    STORE_EVENT(5, 32, true),
+    SNAPSHOT_BEGIN(6, 32, false),
+    SNAPSHOT_MESSAGE(7, 24, true),
+    SNAPSHOT_END(8, 24, false),
+    ACK(9, 16, false),
+    HEARTBEAT(10, 8, false),
+    CLOSE(11, 4, false),
+    RECEIVED(12, 8, false),
+    SESSION_SETTINGS_DIGEST(13, 16, true),
+    SESSION_SETTINGS_DIGESTS_COMPLETE(14, 8, false),
+    SESSIONS_ANNOUNCED(15, 8, false),
+    KEY_CONFIRMATION(16, 32, false);
 
     private static final FrameType[] BY_CODE = new FrameType[256];
 
@@ -80,10 +83,15 @@ public enum FrameType {
 
     private final int code;
     private final int fixedPayloadBytes;
+    /**
+     * On an encrypted connection, the frame ends with a tag and its variable part is encrypted.
+     */
+    private final boolean sealed;
 
-    FrameType(int code, int fixedPayloadBytes) {
+    FrameType(int code, int fixedPayloadBytes, boolean sealed) {
         this.code = code;
         this.fixedPayloadBytes = fixedPayloadBytes;
+        this.sealed = sealed;
     }
 
     /**

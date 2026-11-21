@@ -23,6 +23,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.lolaf.betty.api.ss.WakeupSelectStrategy;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
+import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
@@ -40,6 +42,8 @@ import org.lolaf.staffix.tests.TestingClock;
 import org.slf4j.event.Level;
 
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -48,11 +52,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 /**
- * Every row of the encryption behaviour table over a real connection, with the two secret and cipher mismatches.
+ * Every row of the encryption behaviour table over a real connection, with the two secret and cipher mismatches, and
+ * what a connected pair replicates.
  */
 class TestReplicationEncryptionHandshake {
 
     private static final long EPOCH = 7;
+    private static final String ORDER = "8=FIX.4.4\u00019=5\u000135=D\u0001order-text\u000110=000\u0001";
     private static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.ACCEPTOR).toBuilder()
             .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC).build())
             .build();
@@ -62,6 +68,9 @@ class TestReplicationEncryptionHandshake {
     private final ReplicaSessions replicaSessions = new ReplicaSessions(follower);
     private ReplicationServer server;
     private ReplicationClient client;
+    private ReplicatingStore leaderStore;
+    private String leaderId;
+    private String followerId;
 
     private static KeyExchange exchange(EncryptionMode mode, String secret, String cipher) {
         return mode == EncryptionMode.DISABLED ? TestingKeyExchanges.CLEAR : TestingKeyExchanges.of(mode, secret, cipher);
@@ -74,6 +83,48 @@ class TestReplicationEncryptionHandshake {
         return TestLoggerFactory.getTestLogger(logger).getAllLoggingEvents().stream()
                 .filter(event -> event.getLevel() == level && event.getFormattedMessage().contains(id))
                 .collect(Collectors.toList());
+    }
+
+    private InetSocketAddress connect(KeyExchange leaderExchange, KeyExchange followerExchange, int storeWriterThreads) {
+        leaderId = "leader-" + System.identityHashCode(this);
+        followerId = "follower-" + System.identityHashCode(this);
+        InetSocketAddress address = new InetSocketAddress("localhost", TestPorts.findFree());
+        leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        server = new ReplicationServer(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
+                () -> EPOCH, leaderId, Duration.ofMillis(100), Duration.ofSeconds(5), 4, Integer.MAX_VALUE,
+                BackoffIdleStrategy::new, new WakeupSelectStrategy(10),
+                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock(),
+                leaderExchange);
+        server.start();
+        client = new ReplicationClient(address, replicaSessions, () -> EPOCH, followerId,
+                leader.getReplicationLogs().get(0).getMaxEventFrameBytes(), Duration.ofMillis(50),
+                new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1),
+                followerExchange);
+        client.start();
+        return address;
+    }
+
+    /**
+     * The session in sync, then a message and one longer than a cipher's chunk, both written on the follower.
+     */
+    private void awaitReplicated() {
+        await().until(() -> leader.getFollowers().connections().stream().anyMatch(connection -> connection.isSessionInSync(0)));
+        String longOrder = ORDER + "x".repeat(20_000);
+        leaderStore.storeMessageSent(MessageType.of("D", false), 1, ByteBuffer.wrap(ORDER.getBytes(StandardCharsets.US_ASCII)));
+        leaderStore.storeMessageSent(MessageType.of("D", false), 2, ByteBuffer.wrap(longOrder.getBytes(StandardCharsets.US_ASCII)));
+        await().untilAsserted(() -> assertThat(follower.store(MAIN).writes)
+                .contains("message 1 " + ORDER, "message 2 " + longOrder));
+    }
+
+    @ParameterizedTest(name = "{0}, {1} store writer threads")
+    @CsvSource({"AES/GCM/NoPadding, 1", "AES/CTR/NoPadding, 1", "ChaCha20, 0", "ChaCha20-Poly1305, 1"})
+    void anEncryptedPairReplicatesWhicheverThreadWritesTheFollowersStores(String cipher, int storeWriterThreads) {
+        connect(exchange(EncryptionMode.REQUIRED, "pair-secret-0123", cipher),
+                exchange(EncryptionMode.REQUIRED, "pair-secret-0123", cipher), storeWriterThreads);
+
+        awaitReplicated();
+
+        assertThat(leader.getFollowers().connections().get(0).getEncryptionKeys()).isNotNull();
     }
 
     @AfterEach
@@ -104,21 +155,8 @@ class TestReplicationEncryptionHandshake {
     void theModesSecretsAndCiphersDecideTheConnection(EncryptionMode leaderMode, EncryptionMode followerMode,
                                                       String leaderSecret, String followerSecret, String leaderCipher,
                                                       String followerCipher, String outcome) {
-        String leaderId = "leader-" + System.identityHashCode(this);
-        String followerId = "follower-" + System.identityHashCode(this);
-        InetSocketAddress address = new InetSocketAddress("localhost", TestPorts.findFree());
-        leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        server = new ReplicationServer(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
-                () -> EPOCH, leaderId, Duration.ofMillis(100), Duration.ofSeconds(5), 4, Integer.MAX_VALUE,
-                BackoffIdleStrategy::new, new WakeupSelectStrategy(10),
-                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock(),
-                exchange(leaderMode, leaderSecret, leaderCipher));
-        server.start();
-        client = new ReplicationClient(address, replicaSessions, () -> EPOCH, followerId,
-                leader.getReplicationLogs().get(0).getMaxEventFrameBytes(), Duration.ofMillis(50),
-                new WakeupSelectStrategy(10), 0, BackoffIdleStrategy::new, Duration.ofSeconds(1),
-                exchange(followerMode, followerSecret, followerCipher));
-        client.start();
+        InetSocketAddress address = connect(exchange(leaderMode, leaderSecret, leaderCipher),
+                exchange(followerMode, followerSecret, followerCipher), 0);
 
         // named by its address until its WELCOME, which a refusal may come before
         String leaderEnd = outcome.equals("ENCRYPTION_REQUIRED") ? ":" + address.getPort() : leaderId;
@@ -132,7 +170,7 @@ class TestReplicationEncryptionHandshake {
             assertThat(leader.getFollowers().connections()).noneMatch(connection -> connection.isSessionInSync(0));
             return;
         }
-        await().until(() -> leader.getFollowers().connections().stream().anyMatch(connection -> connection.isSessionInSync(0)));
+        awaitReplicated();
         FollowerConnection leaderSide = leader.getFollowers().connections().get(0);
         LeaderConnection followerSide = client.getConnection(0);
         boolean encrypted = outcome.equals("ENCRYPTED");

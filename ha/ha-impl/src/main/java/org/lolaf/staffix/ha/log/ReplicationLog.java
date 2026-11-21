@@ -71,7 +71,8 @@ public class ReplicationLog {
     }
 
     /**
-     * The longest STORE_EVENT frame this log can produce, which a follower's receive buffer must hold.
+     * The longest STORE_EVENT frame this log can produce, which a follower's receive buffer must hold with a
+     * {@link WireFormat#TAG_BYTES tag}.
      */
     public int getMaxEventFrameBytes() {
         return WireFormat.STORE_EVENT_BODY_OFFSET + FrameEncoder.storeEventBodyBytes(maxFragmentLength);

@@ -22,6 +22,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -46,6 +47,10 @@ public final class ReplicatedSessions {
      */
     private final Map<FixSessionType, Map<FixSessionId, ReplicatedSession>> byTypeAndId = new EnumMap<>(FixSessionType.class);
     private final List<ReplicatedSession> byKey = new CopyOnWriteArrayList<>();
+    /**
+     * Each session's, by key, for the sender deciding per frame: replaced whole on every register.
+     */
+    private volatile UnencryptedMessageTypes[] unencryptedMessageTypes = new UnencryptedMessageTypes[0];
 
     public ReplicatedSessions() {
         for (FixSessionType fixSessionType : FixSessionType.values()) {
@@ -62,13 +67,29 @@ public final class ReplicatedSessions {
         ReplicatedSession known = byId.get(settings.getFixSessionId());
         if (known != null) {
             known.update(config);
+            cacheUnencryptedMessageTypes(known.getKey(), config);
             return known;
         }
         // built with its config before it is listed, so a sender never finds it without one
         ReplicatedSession added = new ReplicatedSession(byKey.size(), settings.getFixSessionId(), settings.getFixSessionType(), config);
+        cacheUnencryptedMessageTypes(added.getKey(), config);
         byId.put(settings.getFixSessionId(), added);
         byKey.add(added);
         return added;
+    }
+
+    private void cacheUnencryptedMessageTypes(int key, ReplicatedSession.Config config) {
+        UnencryptedMessageTypes[] cached = Arrays.copyOf(unencryptedMessageTypes, Math.max(unencryptedMessageTypes.length, key + 1));
+        cached[key] = config.getUnencryptedMessageTypes();
+        unencryptedMessageTypes = cached;
+    }
+
+    /**
+     * Whether the session's {@code unencryptedMessageTypes} names the type, on this leader's settings. Any thread;
+     * allocates nothing.
+     */
+    public boolean isUnencrypted(int key, int messageTypeHash) {
+        return unencryptedMessageTypes[key].isUnencrypted(messageTypeHash);
     }
 
     /**

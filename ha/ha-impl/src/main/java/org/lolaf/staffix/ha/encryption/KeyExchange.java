@@ -17,11 +17,14 @@ package org.lolaf.staffix.ha.encryption;
 
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.wire.FrameCipher;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
+import javax.crypto.Cipher;
 import javax.crypto.Mac;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Objects;
@@ -114,6 +117,35 @@ public final class KeyExchange {
      */
     public boolean confirms(ConnectionEncryptionKeys keys, byte[] hello, byte[] welcome, byte[] confirmation) {
         return MessageDigest.isEqual(confirm(keys, hello, welcome), confirmation);
+    }
+
+    /**
+     * Seals what this node sends in the direction {@code keys} are for, on the one thread sending it.
+     */
+    public FrameCipher newSealer(ConnectionEncryptionKeys.DirectionKeys keys) {
+        return newFrameCipher(keys, Cipher.ENCRYPT_MODE);
+    }
+
+    /**
+     * Opens what this node receives in the direction {@code keys} are for, on the one thread reading it.
+     */
+    public FrameCipher newOpener(ConnectionEncryptionKeys.DirectionKeys keys) {
+        return newFrameCipher(keys, Cipher.DECRYPT_MODE);
+    }
+
+    private FrameCipher newFrameCipher(ConnectionEncryptionKeys.DirectionKeys keys, int mode) {
+        String provider = settings.getProvider();
+        try {
+            Cipher cipher = provider == null ? Cipher.getInstance(settings.getCipher())
+                    : Cipher.getInstance(settings.getCipher(), provider);
+            if (settings.isStreamCipher()) {
+                return new StreamFrameCipher(cipher, mode, keys.getCipherKey(), keys.getIv(),
+                        FrameMac.of(settings.getMac(), provider, keys.getMacKey()), StreamFrameCipher.SEGMENT_BYTES);
+            }
+            return new AeadFrameCipher(cipher, mode, keys.getCipherKey(), keys.getIv());
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("The settings validated " + describeCipher() + ", which now fails", e);
+        }
     }
 
     private ConnectionEncryptionKeys.DirectionKeys direction(byte[] prk, String direction) {

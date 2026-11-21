@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.leader;
 
+import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -33,13 +34,16 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
+import org.lolaf.staffix.ha.wire.FrameCipher;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
 import org.lolaf.staffix.tests.TestingClock;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -71,6 +75,10 @@ abstract class FollowerConnectionHarness {
      * The MsgType(35) hash of each STORE_EVENT and SNAPSHOT_MESSAGE sent, which the follower does not read.
      */
     final List<Integer> sentTypeHashes = new CopyOnWriteArrayList<>();
+    /**
+     * Every byte sent, as it went on the socket.
+     */
+    final List<byte[]> sentBytes = new CopyOnWriteArrayList<>();
     ReplicationStats stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
     /**
      * The batches sent, whose write betty has not reported yet while {@link #holdingWrites}.
@@ -150,16 +158,51 @@ abstract class FollowerConnectionHarness {
     }
 
     /**
-     * As a follower would, refusing a frame longer than the log's longest event.
+     * As a follower would, refusing a frame longer than the log's longest event and its tag, and opening the frames
+     * of an encrypted connection.
      */
     void decodeAll(ByteBuffer frames) {
-        FrameDecoder decoder = new FrameDecoder(ha.getReplicationLogs().get(0).getMaxEventFrameBytes());
+        byte[] bytes = new byte[frames.remaining()];
+        frames.duplicate().get(bytes);
+        sentBytes.add(bytes);
+        FrameDecoder decoder = new FrameDecoder(ha.getReplicationLogs().get(0).getMaxEventFrameBytes() + WireFormat.TAG_BYTES);
+        FrameCipher opener = opener();
         int index = frames.position();
         int consumed;
-        while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, sent)) > 0) {
+        while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, sent, opener)) > 0) {
             recordTypeHash(frames, index);
             index += consumed;
         }
+    }
+
+    private ConnectionEncryptionKeys openedKeys;
+    private FrameCipher opener = FrameCipher.CLEAR;
+
+    /**
+     * The follower's, one per connection, since it counts the frames it opens.
+     */
+    private synchronized FrameCipher opener() {
+        ConnectionEncryptionKeys keys = connection.getEncryptionKeys();
+        if (keys != openedKeys) {
+            openedKeys = keys;
+            opener = keys == null ? FrameCipher.CLEAR : keyExchange.newOpener(keys.getLeaderToFollower());
+        }
+        return opener;
+    }
+
+    /**
+     * Whether the bytes sent hold {@code text}, as an observer of the socket would find it.
+     */
+    boolean sentBytesContain(String text) {
+        byte[] wanted = text.getBytes(StandardCharsets.US_ASCII);
+        for (byte[] bytes : sentBytes) {
+            for (int i = 0; i + wanted.length <= bytes.length; i++) {
+                if (Arrays.equals(bytes, i, i + wanted.length, wanted, 0, wanted.length)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void recordTypeHash(ByteBuffer frames, int frameIndex) {
@@ -176,7 +219,7 @@ abstract class FollowerConnectionHarness {
     }
 
     void fill(int batchBytes) {
-        ByteBuffer batch = ByteBuffer.allocate(batchBytes);
+        ByteBuffer batch = ByteBuffer.allocateDirect(batchBytes);
         int filled = connection.fillBatch(batch);
         decodeAll(batch.limit(filled));
     }

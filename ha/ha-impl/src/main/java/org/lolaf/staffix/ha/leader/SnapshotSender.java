@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.Sto
 import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.wire.CloseReason;
+import org.lolaf.staffix.ha.wire.FrameCipher;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -267,12 +268,14 @@ final class SnapshotSender {
     private final class ChunkWriter implements StoreMessagesConsumer {
 
         private long currentEpoch;
+        private FrameCipher cipher = FrameCipher.CLEAR;
         private @Nullable ByteBuffer batch;
         private int filled;
         private boolean stopped;
 
         void start(long epoch) {
             currentEpoch = epoch;
+            cipher = connection.getFrameCipher();
             batch = null;
             filled = 0;
             stopped = false;
@@ -280,8 +283,8 @@ final class SnapshotSender {
 
         void begin() {
             room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_BEGIN));
-            filled += FrameEncoder.snapshotBegin(batch, filled, currentEpoch, sessionKey, snapshotOffset,
-                    nextIncomingSeqNum, nextOutgoingSeqNum);
+            filled += cipher.seal(batch, filled, FrameEncoder.snapshotBegin(batch, filled, currentEpoch, sessionKey,
+                    snapshotOffset, nextIncomingSeqNum, nextOutgoingSeqNum));
         }
 
         /**
@@ -293,19 +296,23 @@ final class SnapshotSender {
             int messageLength = message.remaining();
             int maxFragmentLength = maxEventFrameBytes - FrameEncoder.snapshotMessageBytes(0);
             int fragments = Math.max(1, (messageLength + maxFragmentLength - 1) / maxFragmentLength);
-            if (!whole && filled > 0 && chunkBytes - filled < fragments * FrameEncoder.snapshotMessageBytes(0) + messageLength) {
+            int fragmentBytes = FrameEncoder.snapshotMessageBytes(0) + cipher.getTagBytes();
+            if (!whole && filled > 0 && chunkBytes - filled < fragments * fragmentBytes + messageLength) {
                 next = seqNum;
                 stopped = true;
                 return false;
             }
             int messageTypeHash = MessageTypeHash.of(message, message.position(), messageLength);
+            int unencrypted = cipher.getTagBytes() > 0 && sessions.isUnencrypted(sessionKey, messageTypeHash)
+                    ? WireFormat.UNENCRYPTED_MESSAGE : 0;
             int from = 0;
             do {
                 int length = Math.min(maxFragmentLength, messageLength - from);
-                int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
+                int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0)
+                        | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0) | unencrypted;
                 room(FrameEncoder.snapshotMessageBytes(length));
-                filled += FrameEncoder.snapshotMessage(batch, filled, currentEpoch, sessionKey, seqNum, messageTypeHash,
-                        message, message.position() + from, length, (byte) flags);
+                filled += cipher.seal(batch, filled, FrameEncoder.snapshotMessage(batch, filled, currentEpoch, sessionKey,
+                        seqNum, messageTypeHash, message, message.position() + from, length, (byte) flags));
                 from += length;
             } while (from < messageLength && connection.isConnected());
             messageCount++;
@@ -315,8 +322,8 @@ final class SnapshotSender {
 
         void end() {
             room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_END));
-            filled += FrameEncoder.snapshotEnd(batch, filled, currentEpoch, sessionKey, messageCount,
-                    nextIncomingSeqNum, nextOutgoingSeqNum);
+            filled += cipher.seal(batch, filled, FrameEncoder.snapshotEnd(batch, filled, currentEpoch, sessionKey,
+                    messageCount, nextIncomingSeqNum, nextOutgoingSeqNum));
             flush();
         }
 
@@ -328,7 +335,7 @@ final class SnapshotSender {
         }
 
         private void room(int bytes) {
-            if (batch != null && batches.getBatchBytes() - filled >= bytes) {
+            if (batch != null && batches.getBatchBytes() - filled >= bytes + cipher.getTagBytes()) {
                 return;
             }
             flush();

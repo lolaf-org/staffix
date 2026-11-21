@@ -26,7 +26,11 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
+import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -219,6 +223,55 @@ class TestFrameCodec {
         assertThat(buffer.position()).isZero();
         assertThat(handler.frames).containsExactly("STORE_EVENT epoch=7 offset=4096 key=3 STORE_MESSAGE seq=42 message="
                 + new String(MESSAGE, StandardCharsets.US_ASCII));
+    }
+
+    @Test
+    void aMessageFlaggedUnencryptedOnAClearConnectionIsRefused() {
+        ByteBuffer buffer = buffer(false);
+        int event = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
+        FrameEncoder.markUnencryptedMessage(buffer, 0);
+        int snapshot = FrameEncoder.snapshotMessage(buffer, event, 7, 3, 42, WireFormat.NO_MESSAGE_TYPE, message(), 0,
+                MESSAGE.length, WireFormat.UNENCRYPTED_MESSAGE);
+
+        assertThatThrownBy(() -> decoder.decode(buffer, 0, event, handler)).isInstanceOf(WireFormatException.class)
+                .hasMessage("STORE_EVENT flagged unencrypted on a clear connection");
+        assertThatThrownBy(() -> decoder.decode(buffer, event, snapshot, handler)).isInstanceOf(WireFormatException.class)
+                .hasMessage("SNAPSHOT_MESSAGE flagged unencrypted on a clear connection");
+    }
+
+    @Test
+    void anUnencryptedMessagesFlagIsOpenedNotHandedOver() {
+        KeyExchange exchange = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+        ConnectionEncryptionKeys keys = exchange.deriveKeys(exchange.newNonce(), exchange.newNonce());
+        FrameCipher sealer = exchange.newSealer(keys.getLeaderToFollower());
+        FrameCipher opener = exchange.newOpener(keys.getLeaderToFollower());
+        ByteBuffer buffer = buffer(true);
+        int event = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
+        FrameEncoder.markUnencryptedMessage(buffer, 0);
+        event = sealer.seal(buffer, 0, event);
+        int snapshot = sealer.seal(buffer, event, FrameEncoder.snapshotMessage(buffer, event, 7, 3, 42,
+                WireFormat.NO_MESSAGE_TYPE, message(), 0, MESSAGE.length,
+                (byte) (WireFormat.UNENCRYPTED_MESSAGE | WireFormat.MORE_FRAGMENTS)));
+        List<Byte> flags = new ArrayList<>();
+        FrameHandler flagsHandler = new FrameHandler() {
+            @Override
+            public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType,
+                                     long sequenceNumber, ByteBuffer in, int messageIndex, int messageLength,
+                                     byte fragmentFlags) {
+                flags.add(fragmentFlags);
+            }
+
+            @Override
+            public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer in,
+                                          int messageIndex, int messageLength, byte fragmentFlags) {
+                flags.add(fragmentFlags);
+            }
+        };
+
+        assertThat(decoder.decode(buffer, 0, event, flagsHandler, opener)).isEqualTo(event);
+        assertThat(decoder.decode(buffer, event, snapshot, flagsHandler, opener)).isEqualTo(snapshot);
+
+        assertThat(flags).containsExactly((byte) 0, WireFormat.MORE_FRAGMENTS);
     }
 
     @Test

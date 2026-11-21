@@ -72,6 +72,10 @@ public final class LeaderConnection implements FrameHandler {
      */
     @Getter
     private volatile @Nullable ConnectionEncryptionKeys encryptionKeys;
+    /**
+     * Opens the leader's frames once both peers encrypt; the thread applying them only.
+     */
+    private FrameCipher frameCipher = FrameCipher.CLEAR;
     private byte[] followerNonce = new byte[WireFormat.NONCE_BYTES];
     /**
      * The HELLO as sent, which the KEY_CONFIRMATION covers.
@@ -191,6 +195,7 @@ public final class LeaderConnection implements FrameHandler {
         byte[] receivedWelcomeBytes = new byte[welcomeLength];
         welcomeFrame.get(receivedWelcomeBytes);
         byte[] confirmation = keyExchange.confirm(keys, sentHelloBytes, receivedWelcomeBytes);
+        frameCipher = keyExchange.newOpener(keys.getLeaderToFollower());
         encryptionKeys = keys;
         sentHelloBytes = null;
         ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.KEY_CONFIRMATION));
@@ -319,7 +324,7 @@ public final class LeaderConnection implements FrameHandler {
         }
         try {
             int consumed;
-            while ((consumed = decoder.decode(frames, index, limit - index, this)) > 0) {
+            while ((consumed = decoder.decode(frames, index, limit - index, this, frameCipher)) > 0) {
                 index += consumed;
             }
             return index;

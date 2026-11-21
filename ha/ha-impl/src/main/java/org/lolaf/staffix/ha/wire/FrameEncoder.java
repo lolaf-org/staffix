@@ -34,7 +34,8 @@ import static org.lolaf.staffix.ha.wire.WireFormat.HEADER_BYTES;
 /**
  * Writes frames at an absolute index of a caller-owned buffer, leaving its position and limit alone: several threads
  * can then encode into disjoint ranges of one shared buffer, as the replication log needs. Each method returns the
- * frame's length; the buffer must have room for it, which the {@code ...Bytes} methods size.
+ * frame's length, without the tag a {@link FrameCipher} then adds; the buffer must have room for it, which the
+ * {@code ...Bytes} methods size.
  *
  * <p>{@link #storeEventBody}, {@link #ack} and {@link #heartbeat} allocate nothing; the frames carrying strings encode
  * them, and are sent only when a connection or a session starts.
@@ -232,6 +233,15 @@ public class FrameEncoder {
         int length = header(out, index, FrameType.STORE_EVENT, 0, epoch, messageLength);
         out.putLong(index + HEADER_BYTES, logOffset);
         return length;
+    }
+
+    /**
+     * Flags the message of the {@link FrameType#STORE_EVENT} at {@code frameIndex} as sent unencrypted, on an
+     * encrypted connection only.
+     */
+    public static void markUnencryptedMessage(ByteBuffer out, int frameIndex) {
+        int flagsIndex = frameIndex + WireFormat.OFFSET_STORE_EVENT_FRAGMENT_FLAGS;
+        out.put(flagsIndex, (byte) (out.get(flagsIndex) | WireFormat.UNENCRYPTED_MESSAGE));
     }
 
     public static int snapshotBegin(ByteBuffer out, int index, long epoch, int sessionKey, long snapshotOffset,

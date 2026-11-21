@@ -43,11 +43,21 @@ public class FrameDecoder {
     private final int maxFrameBytes;
 
     /**
+     * Decodes a clear connection's frame.
+     *
      * @param available the bytes readable from {@code index}
      * @return the length of the frame dispatched, or 0 when {@code available} does not hold a whole frame yet
      * @throws WireFormatException for bytes that are not a valid frame
      */
     public int decode(ByteBuffer in, int index, int available, FrameHandler handler) {
+        return decode(in, index, available, handler, FrameCipher.CLEAR);
+    }
+
+    /**
+     * As {@link #decode(ByteBuffer, int, int, FrameHandler)}, opening the frame first: it is dispatched only once its
+     * tag verified.
+     */
+    public int decode(ByteBuffer in, int index, int available, FrameHandler handler, FrameCipher opener) {
         if (available < Integer.BYTES) {
             return 0;
         }
@@ -63,18 +73,34 @@ public class FrameDecoder {
         if (type == null) {
             throw new WireFormatException("Unknown frame type " + (typeCode & 0xFF));
         }
-        int variableBytes = length - HEADER_BYTES - type.getFixedPayloadBytes();
+        int contentLength = opener.open(in, index, length);
+        int variableBytes = contentLength - HEADER_BYTES - type.getFixedPayloadBytes();
         if (variableBytes < 0) {
             throw new WireFormatException(type + " of " + length + " bytes is shorter than its fixed part");
         }
         int flags = in.get(index + WireFormat.OFFSET_FLAGS);
         long epoch = in.getLong(index + WireFormat.OFFSET_EPOCH);
-        dispatch(in, index + HEADER_BYTES, type, flags, epoch, variableBytes, handler);
+        dispatch(in, index + HEADER_BYTES, type, flags, epoch, variableBytes, contentLength != length, handler);
         return length;
     }
 
+    /**
+     * Whether the frame at {@code frameIndex} is a STORE_EVENT or SNAPSHOT_MESSAGE flagged
+     * {@link WireFormat#UNENCRYPTED_MESSAGE}.
+     */
+    public static boolean isUnencryptedMessage(ByteBuffer in, int frameIndex, FrameType type) {
+        switch (type) {
+            case STORE_EVENT:
+                return (in.get(frameIndex + WireFormat.OFFSET_STORE_EVENT_FRAGMENT_FLAGS) & WireFormat.UNENCRYPTED_MESSAGE) != 0;
+            case SNAPSHOT_MESSAGE:
+                return (in.get(frameIndex + WireFormat.OFFSET_FLAGS) & WireFormat.UNENCRYPTED_MESSAGE) != 0;
+            default:
+                return false;
+        }
+    }
+
     private static void dispatch(ByteBuffer in, int p, FrameType type, int flags, long epoch, int variableBytes,
-                                 FrameHandler handler) {
+                                 boolean sealed, FrameHandler handler) {
         switch (type) {
             case HELLO:
                 decodeHello(in, p, epoch, variableBytes, handler);
@@ -93,13 +119,13 @@ public class FrameDecoder {
                 decodeSessionAnswer(in, p, epoch, handler);
                 break;
             case STORE_EVENT:
-                decodeStoreEvent(in, p, epoch, variableBytes, handler);
+                decodeStoreEvent(in, p, epoch, variableBytes, sealed, handler);
                 break;
             case SNAPSHOT_BEGIN:
                 handler.onSnapshotBegin(epoch, in.getInt(p), in.getLong(p + 8), in.getLong(p + 16), in.getLong(p + 24));
                 break;
             case SNAPSHOT_MESSAGE:
-                decodeSnapshotMessage(in, p, flags, epoch, variableBytes, handler);
+                decodeSnapshotMessage(in, p, flags, epoch, variableBytes, sealed, handler);
                 break;
             case SNAPSHOT_END:
                 handler.onSnapshotEnd(epoch, in.getInt(p), in.getInt(p + 4), in.getLong(p + 8), in.getLong(p + 16));
@@ -210,20 +236,33 @@ public class FrameDecoder {
         return in.getInt(bodyIndex + 16);
     }
 
-    private static void decodeStoreEvent(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+    private static void decodeStoreEvent(ByteBuffer in, int p, long epoch, int variableBytes, boolean sealed,
+                                         FrameHandler handler) {
         int frame = p - HEADER_BYTES;
         int body = frame + WireFormat.STORE_EVENT_BODY_OFFSET;
         int messageLength = in.getInt(p + 28);
         checkVariableBytes(FrameType.STORE_EVENT, messageLength, variableBytes);
         handler.onStoreEvent(epoch, storeEventLogOffset(in, frame), storeEventSessionKey(in, body),
-                eventType(storeEventTypeCode(in, body)), in.getLong(p + 16), in, p + 32, messageLength, in.get(p + 13));
+                eventType(storeEventTypeCode(in, body)), in.getLong(p + 16), in, p + 32, messageLength,
+                fragmentFlags(FrameType.STORE_EVENT, in.get(p + 13), sealed));
     }
 
     private static void decodeSnapshotMessage(ByteBuffer in, int p, int flags, long epoch, int variableBytes,
-                                              FrameHandler handler) {
+                                              boolean sealed, FrameHandler handler) {
         int messageLength = in.getInt(p + 4);
         checkVariableBytes(FrameType.SNAPSHOT_MESSAGE, messageLength, variableBytes);
-        handler.onSnapshotMessage(epoch, in.getInt(p), in.getLong(p + 8), in, p + 24, messageLength, (byte) flags);
+        handler.onSnapshotMessage(epoch, in.getInt(p), in.getLong(p + 8), in, p + 24, messageLength,
+                fragmentFlags(FrameType.SNAPSHOT_MESSAGE, (byte) flags, sealed));
+    }
+
+    /**
+     * Without {@link WireFormat#UNENCRYPTED_MESSAGE}, which the opener already obeyed.
+     */
+    private static byte fragmentFlags(FrameType type, byte flags, boolean sealed) {
+        if ((flags & WireFormat.UNENCRYPTED_MESSAGE) != 0 && !sealed) {
+            throw new WireFormatException(type + " flagged unencrypted on a clear connection");
+        }
+        return (byte) (flags & ~WireFormat.UNENCRYPTED_MESSAGE);
     }
 
     private static void decodeClose(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {

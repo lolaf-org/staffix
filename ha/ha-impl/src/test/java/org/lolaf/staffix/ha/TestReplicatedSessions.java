@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
+import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -24,6 +25,8 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -35,12 +38,26 @@ class TestReplicatedSessions {
 
     private final ReplicatedSessions sessions = new ReplicatedSessions();
 
-    private ReplicatedSession register(FixSessionType fixSessionType) {
+    private ReplicatedSession register(FixSessionType fixSessionType, String... unencryptedMessageTypes) {
         return sessions.register(FixSessionSettings.builder()
                 .fixSessionId(ID)
                 .fixSessionType(fixSessionType)
-                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED)
+                        .unencryptedMessageTypes(List.of(unencryptedMessageTypes)).build())
                 .build(), mock(FixSessionMessagesStore.class));
+    }
+
+    @Test
+    void eachSessionsUnencryptedMessageTypesAreTheOnesItWasLastBuiltWith() {
+        register(FixSessionType.INITIATOR, "S");
+        register(FixSessionType.ACCEPTOR);
+        assertThat(sessions.isUnencrypted(0, Hashing.hash("S"))).isTrue();
+        assertThat(sessions.isUnencrypted(1, Hashing.hash("S"))).isFalse();
+
+        register(FixSessionType.INITIATOR, "X");
+
+        assertThat(sessions.isUnencrypted(0, Hashing.hash("S"))).isFalse();
+        assertThat(sessions.isUnencrypted(0, Hashing.hash("X"))).isTrue();
     }
 
     @Test

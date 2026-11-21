@@ -22,13 +22,16 @@ import lombok.experimental.UtilityClass;
  *
  * <pre>
  * offset  size  field
- *      0     4  frame length, header included
+ *      0     4  frame length, header and tag included
  *      4     1  frame type
  *      5     1  flags, per frame type; unused bits sent zero, ignored on receive
  *      6     2  reserved, sent zero
  *      8     8  epoch of the sender's leadership view, fencing a deposed leader
  *     16     -  payload, per frame type
  * </pre>
+ *
+ * <p>On an encrypted connection, a frame of a {@link FrameType#isSealed() sealed} type ends with a
+ * {@link #TAG_BYTES} tag authenticating all of it, its variable part encrypted; see {@link FrameCipher}.
  *
  * <p>Big-endian throughout, {@link java.nio.ByteBuffer}'s default, so nothing calls {@code order()}. Strings are
  * UTF-8, preceded by their length in an unsigned short.
@@ -60,6 +63,17 @@ public class WireFormat {
      * Set on every fragment but a message's first, as {@link #MORE_FRAGMENTS}.
      */
     public static final byte CONTINUED_FRAGMENT = 0x02;
+
+    /**
+     * Set beside the fragment flags, on an encrypted connection only, when the message is sent unencrypted, as its
+     * session's {@code unencryptedMessageTypes} asks: the frame is still authenticated, this bit included.
+     */
+    public static final byte UNENCRYPTED_MESSAGE = 0x04;
+
+    /**
+     * Where a {@link FrameType#STORE_EVENT}'s fragment flags are in its frame.
+     */
+    public static final int OFFSET_STORE_EVENT_FRAGMENT_FLAGS = STORE_EVENT_BODY_OFFSET + 5;
 
     /**
      * The MsgType(35) hash of a {@link FrameType#STORE_EVENT} carrying no message, or whose message's type the leader
@@ -96,6 +110,11 @@ public class WireFormat {
      * The HMAC-SHA256 of {@link FrameType#KEY_CONFIRMATION}.
      */
     public static final int KEY_CONFIRMATION_BYTES = 32;
+
+    /**
+     * The tag ending a sealed frame, whatever the cipher.
+     */
+    public static final int TAG_BYTES = 16;
 
     /**
      * {@link FrameType#SESSION}: the leader's store has a storage identity.

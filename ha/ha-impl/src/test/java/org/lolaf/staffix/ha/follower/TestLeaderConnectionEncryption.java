@@ -20,10 +20,12 @@ import com.github.valfirst.slf4jtest.TestLogger;
 import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.wire.CloseReason;
+import org.lolaf.staffix.ha.wire.FrameCipher;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
@@ -56,6 +58,10 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
     @SafeVarargs
     private static void read(LeaderConnection connection, ToIntBiFunction<ByteBuffer, Integer>... frames) {
         connection.read(writeFrames(frames), new FrameDecoder(1 << 20));
+    }
+
+    private static ToIntBiFunction<ByteBuffer, Integer> sealed(FrameCipher sealer, ToIntBiFunction<ByteBuffer, Integer> frame) {
+        return (out, index) -> sealer.seal(out, index, frame.applyAsInt(out, index));
     }
 
     private long errors() {
@@ -132,5 +138,28 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         read((out, index) -> FrameEncoder.close(out, index, EPOCH, CloseReason.KEY_MISMATCH, "secret or cipher differ"));
 
         assertThat(errors()).isEqualTo(1);
+    }
+
+    @Test
+    void aFrameFailingItsTagClosesTheConnectionAndIsNeverApplied() {
+        KeyExchange leader = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+        encrypting.hello();
+        byte[] leaderNonce = leader.newNonce();
+        FrameCipher sealer = leader.newSealer(leader.deriveKeys(sent.lastNonce, leaderNonce).getLeaderToFollower());
+        read(encrypting, welcome(EncryptionMode.REQUIRED, leaderNonce), sealed(sealer, session(0, MAIN)), announced(1),
+                (out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
+                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1),
+                sealed(sealer, event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 1, MESSAGE)));
+        assertThat(engine.store(MAIN).writes).contains("message 1 " + MESSAGE);
+        ByteBuffer tampered = writeFrames(sealed(sealer, event(EPOCH, 100, 0, StoreEventType.STORE_MESSAGE, 2, MESSAGE)));
+        tampered.put(tampered.limit() - 1, (byte) (tampered.get(tampered.limit() - 1) ^ 1));
+
+        encrypting.read(tampered, new FrameDecoder(1 << 20));
+
+        assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString()
+                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR STORE_EVENT fails its authentication tag");
+        assertThat(engine.store(MAIN).writes).noneMatch(write -> write.startsWith("message 2"));
     }
 }

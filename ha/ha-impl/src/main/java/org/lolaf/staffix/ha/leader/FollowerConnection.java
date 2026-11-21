@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.leader;
 
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -107,6 +108,11 @@ public final class FollowerConnection implements FrameHandler {
      */
     private byte @Nullable [] receivedHelloBytes;
     private byte @Nullable [] sentWelcomeBytes;
+    /**
+     * Seals every frame the sender writes; set before the sender starts, sender thread after.
+     */
+    @Getter(AccessLevel.PACKAGE)
+    private FrameCipher frameCipher = FrameCipher.CLEAR;
     @Getter
     private volatile State state = State.AWAITING_HELLO;
     private volatile boolean followerHungUp;
@@ -203,7 +209,8 @@ public final class FollowerConnection implements FrameHandler {
         this.senderLauncher = senderLauncher;
         this.clock = clock;
         this.keyExchange = keyExchange;
-        this.batches = new BatchBuffers(ioSession, sendBuffers, WireFormat.bufferBytes(maxEventFrameBytes), stats);
+        this.batches = new BatchBuffers(ioSession, sendBuffers,
+                WireFormat.bufferBytes(maxEventFrameBytes + WireFormat.TAG_BYTES), stats);
         this.snapshots = new SnapshotSender(this, sessions, syncs, batches, stats, nodeEpoch, maxEventFrameBytes,
                 snapshotChunkBytes);
     }
@@ -275,7 +282,9 @@ public final class FollowerConnection implements FrameHandler {
             receivedHelloBytes = helloAsSent(epoch, nodeId, lastAppliedEpoch, lastAppliedOffset, lane, followerMode,
                     followerNonce);
             sentWelcomeBytes = copy(frame, length);
-            encryptionKeys = keyExchange.deriveKeys(followerNonce, leaderNonce);
+            ConnectionEncryptionKeys keys = keyExchange.deriveKeys(followerNonce, leaderNonce);
+            frameCipher = keyExchange.newSealer(keys.getLeaderToFollower());
+            encryptionKeys = keys;
         }
         ioSession.send(BatchBuffers.written(frame, length), true);
         senderLauncher.accept(this::runSender);
@@ -495,10 +504,22 @@ public final class FollowerConnection implements FrameHandler {
         if (state != State.STREAMING) {
             return 0;
         }
+        int limit = dst.limit();
+        // every frame then fits with its tag after it
+        dst.limit(limit - frameCipher.getTagBytes());
+        try {
+            return fillBatchUpToLimit(dst);
+        } finally {
+            dst.limit(limit);
+        }
+    }
+
+    private int fillBatchUpToLimit(ByteBuffer dst) {
         lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getEventOffset(), appliedOffset);
         int filled = announceSessions(dst);
         filled += fillSessionSettingsDigests(dst, filled);
         long currentEpoch = nodeEpoch.getAsLong();
+        boolean encrypted = frameCipher.getTagBytes() > 0;
         filledEventOffset = -1;
         while (state == State.STREAMING && dst.limit() - filled >= WireFormat.STORE_EVENT_BODY_OFFSET) {
             int bodyIndex = filled + WireFormat.STORE_EVENT_BODY_OFFSET;
@@ -522,7 +543,11 @@ public final class FollowerConnection implements FrameHandler {
             }
             filledEventOffset = reader.getEventOffset();
             lag.onEventRead(filledEventOffset, reader.getOffset());
-            filled += FrameEncoder.storeEventHeader(dst, filled, currentEpoch, filledEventOffset, body);
+            int frameLength = FrameEncoder.storeEventHeader(dst, filled, currentEpoch, filledEventOffset, body);
+            if (encrypted && sessions.isUnencrypted(sessionKey, FrameDecoder.storeEventMessageTypeHash(dst, bodyIndex))) {
+                FrameEncoder.markUnencryptedMessage(dst, filled);
+            }
+            filled += frameCipher.seal(dst, filled, frameLength);
         }
         sentOffset = reader.getOffset();
         return filled;
@@ -548,7 +573,7 @@ public final class FollowerConnection implements FrameHandler {
             if (dst.limit() - filled < FrameEncoder.fixedBytes(FrameType.SESSIONS_ANNOUNCED)) {
                 return filled;
             }
-            filled += FrameEncoder.sessionsAnnounced(dst, filled, currentEpoch, firstPassAnnounced);
+            filled += frameCipher.seal(dst, filled, FrameEncoder.sessionsAnnounced(dst, filled, currentEpoch, firstPassAnnounced));
             sessionsAnnounced = true;
         }
         Integer key;
@@ -590,12 +615,14 @@ public final class FollowerConnection implements FrameHandler {
                     digest.getValue(), digest.getStoreIdentity(), digest.getDocument())) {
                 return filled - index;
             }
-            filled += FrameEncoder.sessionSettingsDigest(dst, filled, currentEpoch, sendingDigestsGeneration, digest);
+            filled += frameCipher.seal(dst, filled,
+                    FrameEncoder.sessionSettingsDigest(dst, filled, currentEpoch, sendingDigestsGeneration, digest));
         }
         if (dst.limit() - filled < FrameEncoder.fixedBytes(FrameType.SESSION_SETTINGS_DIGESTS_COMPLETE)) {
             return filled - index;
         }
-        filled += FrameEncoder.sessionSettingsDigestsComplete(dst, filled, currentEpoch, sendingDigestsGeneration, digests.size());
+        filled += frameCipher.seal(dst, filled, FrameEncoder.sessionSettingsDigestsComplete(dst, filled, currentEpoch,
+                sendingDigestsGeneration, digests.size()));
         sentDigestsGeneration = sendingDigestsGeneration;
         return filled - index;
     }
@@ -610,8 +637,8 @@ public final class FollowerConnection implements FrameHandler {
             return 0;
         }
         syncs.set(session.getKey(), SessionSyncState.ANNOUNCED);
-        return FrameEncoder.session(dst, index, currentEpoch, session.getKey(), session.getFixSessionType(),
-                config.getReplicationMode(), id, config.getStorageIdentity());
+        return frameCipher.seal(dst, index, FrameEncoder.session(dst, index, currentEpoch, session.getKey(),
+                session.getFixSessionType(), config.getReplicationMode(), id, config.getStorageIdentity()));
     }
 
     /**
@@ -631,7 +658,7 @@ public final class FollowerConnection implements FrameHandler {
         if (nowNanos - lastSendNanos < heartbeatIntervalNanos) {
             return 0;
         }
-        return FrameEncoder.heartbeat(dst, 0, nodeEpoch.getAsLong(), replicationLog.getTailOffset());
+        return frameCipher.seal(dst, 0, FrameEncoder.heartbeat(dst, 0, nodeEpoch.getAsLong(), replicationLog.getTailOffset()));
     }
 
     void onWriteWatermark(boolean reached) {

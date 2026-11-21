@@ -62,11 +62,11 @@ public final class ReplicationClient {
     private final SelectStrategy selectStrategy;
     private final @Nullable StoreWriterThreads storeWriterThreads;
     private final KeyExchange keyExchange;
-    private volatile LaneClient[] laneClients = new LaneClient[0];
+    private volatile LaneClient[] laneClients;
     private boolean stopped;
 
     /**
-     * @param maxFrameBytes      the largest frame the leader sends, see
+     * @param maxFrameBytes      the largest frame the leader sends before its tag, see
      *                           {@link org.lolaf.staffix.ha.log.ReplicationLog#getMaxEventFrameBytes()}
      * @param storeWriterThreads threads writing what the lanes read into the stores, 0 to write on the lanes' network
      *                           threads
@@ -77,6 +77,7 @@ public final class ReplicationClient {
                              int storeWriterThreads, Supplier<IdleStrategy> storeWriterIdleStrategy, Duration checkInterval,
                              KeyExchange keyExchange) {
         this.keyExchange = keyExchange;
+        this.laneClients = new LaneClient[0];
         this.storeWriterThreads = storeWriterThreads == 0 ? null
                 : new StoreWriterThreads(storeWriterThreads, storeWriterIdleStrategy, nodeId);
         this.selectStrategy = selectStrategy;
@@ -84,7 +85,7 @@ public final class ReplicationClient {
         this.replicaSessions = replicaSessions;
         this.nodeEpoch = nodeEpoch;
         this.nodeId = nodeId;
-        this.maxFrameBytes = maxFrameBytes;
+        this.maxFrameBytes = maxFrameBytes + WireFormat.TAG_BYTES;
         this.connectionRetry = connectionRetry;
         this.checkIntervalNanos = checkInterval.toNanos();
     }
