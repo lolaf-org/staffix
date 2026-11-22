@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.follower;
+package org.lolaf.staffix.ha;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

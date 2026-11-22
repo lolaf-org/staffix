@@ -17,9 +17,8 @@ package org.lolaf.staffix.ha.leader;
 
 import lombok.Value;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.api.ha.HaStatus;
 
-import org.lolaf.staffix.api.time.Clock;
+import org.lolaf.staffix.ha.spi.ReplicationClock;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -40,13 +39,13 @@ public final class SlowFollowers {
     static final Duration MAX_HOLD_OFF = Duration.ofMinutes(1);
 
     private final Duration initialHoldOff;
-    private final Clock clock;
+    private final ReplicationClock clock;
     private final Map<Key, Drop> drops;
 
     /**
      * @param initialHoldOff zero never holds a follower off
      */
-    public SlowFollowers(Duration initialHoldOff, Clock clock) {
+    public SlowFollowers(Duration initialHoldOff, ReplicationClock clock) {
         this.initialHoldOff = initialHoldOff;
         this.clock = clock;
         this.drops = new ConcurrentHashMap<>();
@@ -87,7 +86,7 @@ public final class SlowFollowers {
     /**
      * Those not back in sync since their last drop, by node id and lane.
      */
-    public List<HaStatus.DroppedFollower> notBackInSync() {
+    public List<DroppedFollower> notBackInSync() {
         if (drops.isEmpty()) {
             return List.of();
         }
@@ -95,7 +94,7 @@ public final class SlowFollowers {
         return drops.entrySet().stream()
                 .filter(entry -> entry.getValue().backInSyncAt == null)
                 .sorted(Map.Entry.comparingByKey(Comparator.comparing(Key::getFollowerId).thenComparingInt(Key::getLane)))
-                .map(entry -> HaStatus.DroppedFollower.builder().nodeId(entry.getKey().getFollowerId())
+                .map(entry -> DroppedFollower.builder().nodeId(entry.getKey().getFollowerId())
                         .lane(entry.getKey().getLane())
                         .droppedAt(entry.getValue().droppedAt)
                         .heldOffUntil(entry.getValue().heldOffUntil(now).orElse(null)).build())
@@ -103,7 +102,7 @@ public final class SlowFollowers {
     }
 
     private Instant now() {
-        return clock.now().asInstant();
+        return clock.now();
     }
 
     @Value

@@ -21,8 +21,8 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.ha.spi.LeaderStreams;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -34,7 +34,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * The engine's replicated sessions, each with a key that stays its own for the life of the engine, across the
  * restarts that rebuild a session. Keys are dense from 0, in the order sessions were first registered.
  */
-public final class ReplicatedSessions {
+public final class ReplicatedSessions implements LeaderStreams {
 
     /**
      * Identifies FIX session streams in HELLO and WELCOME, so a peer replicating another application is refused:
@@ -53,16 +53,11 @@ public final class ReplicatedSessions {
      */
     private final Map<FixSessionType, Map<FixSessionId, ReplicatedSession>> byTypeAndId;
     private final List<ReplicatedSession> byKey;
-    /**
-     * Each session's, by key, for the sender deciding per frame: replaced whole on every register.
-     */
-    private volatile UnencryptedMessageTypes[] unencryptedMessageTypes;
 
     public ReplicatedSessions() {
         this.settingsDigests = new SessionSettingsDigests();
         this.byTypeAndId = new EnumMap<>(FixSessionType.class);
         this.byKey = new CopyOnWriteArrayList<>();
-        this.unencryptedMessageTypes = new UnencryptedMessageTypes[0];
         for (FixSessionType fixSessionType : FixSessionType.values()) {
             byTypeAndId.put(fixSessionType, new HashMap<>());
         }
@@ -77,39 +72,21 @@ public final class ReplicatedSessions {
         ReplicatedSession known = byId.get(settings.getFixSessionId());
         if (known != null) {
             known.update(config);
-            cacheUnencryptedMessageTypes(known.getKey(), config);
             return known;
         }
         // built with its config before it is listed, so a sender never finds it without one
         ReplicatedSession added = new ReplicatedSession(byKey.size(), settings.getFixSessionId(), settings.getFixSessionType(), config);
-        cacheUnencryptedMessageTypes(added.getKey(), config);
         byId.put(settings.getFixSessionId(), added);
         byKey.add(added);
         return added;
     }
 
-    private void cacheUnencryptedMessageTypes(int key, ReplicatedSession.Config config) {
-        UnencryptedMessageTypes[] cached = Arrays.copyOf(unencryptedMessageTypes,
-                Math.max(unencryptedMessageTypes.length, key + 1));
-        cached[key] = config.getUnencryptedMessageTypes();
-        unencryptedMessageTypes = cached;
-    }
-
-    /**
-     * Whether the session's {@code unencryptedMessageTypes} names the type, on this leader's settings. Any thread;
-     * allocates nothing.
-     */
-    public boolean isUnencrypted(int key, int messageTypeHash) {
-        return unencryptedMessageTypes[key].isUnencrypted(messageTypeHash);
-    }
-
+    @Override
     public int getApplicationId() {
         return APPLICATION_ID;
     }
 
-    /**
-     * Any thread.
-     */
+    @Override
     public ReplicatedSession get(int key) {
         return byKey.get(key);
     }
@@ -121,9 +98,7 @@ public final class ReplicatedSessions {
         return byTypeAndId.get(fixSessionType).get(fixSessionId);
     }
 
-    /**
-     * How many sessions were registered; keys run from 0 to this, excluded. Any thread.
-     */
+    @Override
     public int count() {
         return byKey.size();
     }

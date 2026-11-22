@@ -17,9 +17,8 @@ package org.lolaf.staffix.ha.leader;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
-import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
-import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.ha.spi.TestingReplicationClock;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -31,7 +30,7 @@ class TestSlowFollowers {
 
     private static final Instant START = Instant.parse("2026-11-01T10:00:00Z");
 
-    private final TestingClock clock = new TestingClock();
+    private final TestingReplicationClock clock = new TestingReplicationClock();
     private final SlowFollowers slowFollowers = new SlowFollowers(Duration.ofSeconds(1), clock);
 
     TestSlowFollowers() {
@@ -39,7 +38,7 @@ class TestSlowFollowers {
     }
 
     private Instant now() {
-        return clock.now().asInstant();
+        return clock.now();
     }
 
     @Test
@@ -125,7 +124,7 @@ class TestSlowFollowers {
         neverHolding.dropped("b", 0);
 
         assertThat(neverHolding.heldOffUntil("b", 0)).isEmpty();
-        assertThat(neverHolding.notBackInSync()).extracting(HaStatus.DroppedFollower::getNodeId).containsExactly("b");
+        assertThat(neverHolding.notBackInSync()).extracting(DroppedFollower::getNodeId).containsExactly("b");
     }
 
     @Test

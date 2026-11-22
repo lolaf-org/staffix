@@ -32,7 +32,6 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
-import org.lolaf.staffix.ha.follower.ReplicaSessions;
 import org.lolaf.staffix.ha.follower.ReplicationClient;
 import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.leader.ReplicationServer;
@@ -189,8 +188,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         this.engine = engine;
         this.replicaSessions = new ReplicaSessions(engine);
         replicaSessions.getSettingsComparison().setApplyExecutor(this::onRoleThread);
-        replicaSessions.setReceivedWriteLatency(receivedWriteLatency);
-        this.stats = new ReplicationStats(new SlowFollowers(settings.getSlowFollowerHoldOff(), engine.getClock()));
+        replicaSessions.getStreams().setReceivedWriteLatency(receivedWriteLatency::record);
+        this.stats = new ReplicationStats(new SlowFollowers(settings.getSlowFollowerHoldOff(), new EngineReplicationClock(engine.getClock())));
     }
 
     @Override
@@ -443,7 +442,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         server = new ReplicationServer(settings.getPeers().get(settings.getNodeId()), replicationLogs, sessions, followers,
                 () -> electionEpoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getFollowerStallTimeout(),
                 settings.getSendBuffers(), settings.getSnapshotChunkBytes(),
-                settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats, engine.getClock(), keyExchange);
+                settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats,
+                new EngineReplicationClock(engine.getClock()), keyExchange);
         server.start();
     }
 
@@ -461,7 +461,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (leader == null) {
             log.warn("Node {} follows at epoch {} but has no address for its leader", settings.getNodeId(), electionEpoch);
         } else {
-            client = new ReplicationClient(leader, replicaSessions, election::getEpoch, settings.getNodeId(),
+            client = new ReplicationClient(leader, replicaSessions.getStreams(), election::getEpoch, settings.getNodeId(),
                     replicationLogs.getMaxRecordFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get(),
                     settings.getFollowerStoreWriterThreads(), settings.getFollowerStoreWriterIdleStrategy(),
                     settings.getFollowerCheckInterval(), keyExchange);

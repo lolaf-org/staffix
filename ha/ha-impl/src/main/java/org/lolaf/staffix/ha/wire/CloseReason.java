@@ -31,7 +31,7 @@ public enum CloseReason {
     STALE_EPOCH(2),
     PROTOCOL_ERROR(3),
     /**
-     * The leader could not read a session's store for a snapshot; the follower reconnects to try again.
+     * The leader could not read a stream's snapshot source; the follower reconnects to try again.
      */
     SNAPSHOT_FAILED(4),
     /**

@@ -25,8 +25,11 @@ import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.ha.follower.LeaderStatus;
 import org.lolaf.staffix.ha.follower.ReplicationClient;
+import org.lolaf.staffix.ha.leader.DroppedFollower;
 import org.lolaf.staffix.ha.leader.FollowerConnection;
+import org.lolaf.staffix.ha.leader.FollowerLaneStatus;
 import org.lolaf.staffix.ha.wire.StreamAnswer;
 
 import java.util.ArrayList;
@@ -61,13 +64,13 @@ final class HaStatusReport {
         if (role == Role.LEADER) {
             int sessionCount = ha.getSessions().count();
             for (FollowerConnection connection : ha.getFollowers().connections()) {
-                status.followerConnection(connection.getStatus(sessionCount));
+                status.followerConnection(followerConnection(connection.getStatus(sessionCount)));
             }
-            status.droppedFollowers(ha.getStats().getSlowFollowers().notBackInSync());
+            ha.getStats().getSlowFollowers().notBackInSync().forEach(dropped -> status.droppedFollower(droppedFollower(dropped)));
         }
         ReplicationClient client = ha.getClient();
         if (role == Role.FOLLOWER && client != null) {
-            status.leader(client.getStatus());
+            status.leader(leader(client.getStatus()));
         }
         if (role == Role.FOLLOWER) {
             status.sessionSettingsDifferences(ha.getReplicaSessions().getSettingsComparison().getDifferences());
@@ -125,7 +128,7 @@ final class HaStatusReport {
         String refusal = null;
         for (FollowerConnection connection : ha.getFollowers().connections()) {
             StreamAnswer answer = connection.getStreamAnswer(session.getKey());
-            inSync |= connection.isSessionInSync(session.getKey());
+            inSync |= connection.isStreamInSync(session.getKey());
             if (answer != null && answer.isRefusal()) {
                 refusal = NotReplicatedReason.of(answer);
             }
@@ -135,5 +138,38 @@ final class HaStatusReport {
                 .lastSendUnacknowledged(session.isLastSendUnacknowledged())
                 .unacknowledgedSends(session.getUnacknowledgedSends())
                 .lostWrites(session.getConfig().getStore().getLostWrites());
+    }
+
+    private static HaStatus.FollowerConnection followerConnection(FollowerLaneStatus lane) {
+        return HaStatus.FollowerConnection.builder()
+                .nodeId(lane.getNodeId())
+                .lane(lane.getLane())
+                .address(lane.getAddress())
+                .connected(lane.isConnected())
+                .inSync(lane.isInSync())
+                .snapshotInProgress(lane.isSnapshotInProgress())
+                .unsentBytes(lane.getUnsentBytes())
+                .lagMillis(lane.getLagMillis())
+                .cipher(lane.getCipher())
+                .build();
+    }
+
+    private static HaStatus.DroppedFollower droppedFollower(DroppedFollower dropped) {
+        return HaStatus.DroppedFollower.builder()
+                .nodeId(dropped.getNodeId())
+                .lane(dropped.getLane())
+                .droppedAt(dropped.getDroppedAt())
+                .heldOffUntil(dropped.getHeldOffUntil())
+                .build();
+    }
+
+    private static HaStatus.Leader leader(LeaderStatus leader) {
+        return HaStatus.Leader.builder()
+                .leaderId(leader.getLeaderId())
+                .address(leader.getAddress())
+                .connected(leader.isConnected())
+                .inSync(leader.isInSync())
+                .cipher(leader.getCipher())
+                .build();
     }
 }

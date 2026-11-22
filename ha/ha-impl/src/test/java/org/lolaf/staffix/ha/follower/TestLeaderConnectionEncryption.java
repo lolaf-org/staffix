@@ -144,8 +144,8 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(sent.frames).hasSize(2);
         assertThat(sent.frames.get(1)).isEqualTo("KEY_CONFIRMATION epoch=7 bytes=32");
         ByteBuffer hello = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.HELLO, "follower-b"));
-        int helloLength = TestingFrameEncoder.hello(hello, 0, EPOCH, "follower-b", replicaSessions.getLastAppliedEpoch(0),
-                replicaSessions.getLastAppliedOffset(0), 0, EncryptionMode.PREFERRED, followerNonce);
+        int helloLength = TestingFrameEncoder.hello(hello, 0, EPOCH, "follower-b", replicaStreams.getLastAppliedEpoch(0),
+                replicaStreams.getLastAppliedOffset(0), 0, EncryptionMode.PREFERRED, followerNonce);
         ByteBuffer welcome = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.WELCOME, "leader-a"));
         int welcomeLength = welcome(EncryptionMode.REQUIRED, leaderNonce).applyAsInt(welcome, 0);
         assertThat(leader.confirms(leader.deriveKeys(followerNonce, leaderNonce), bytes(hello, helloLength),

@@ -37,7 +37,7 @@ import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.FrameCipher;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
-import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.ha.spi.TestingReplicationClock;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -89,7 +89,7 @@ abstract class FollowerConnectionHarness {
     /**
      * The sender's clock in the connections {@link #connectionStallingAfter} builds.
      */
-    final TestingClock senderClock;
+    final TestingReplicationClock senderClock;
     final AtomicLong senderIdles;
     KeyExchange keyExchange;
     ReplicationFixEngineHa ha;
@@ -100,10 +100,10 @@ abstract class FollowerConnectionHarness {
         this.sent = new RecordingHandler();
         this.sentPlaintext = new CopyOnWriteArrayList<>();
         this.sentBytes = new CopyOnWriteArrayList<>();
-        this.stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
+        this.stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()));
         this.unwrittenBatches = new ConcurrentLinkedQueue<>();
         this.batchesSent = new AtomicInteger();
-        this.senderClock = new TestingClock();
+        this.senderClock = new TestingReplicationClock();
         this.senderIdles = new AtomicLong();
         this.keyExchange = TestingKeyExchanges.CLEAR;
         this.ha = engine(1 << 16);
@@ -154,7 +154,7 @@ abstract class FollowerConnectionHarness {
         return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofMillis(100),
                 Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats,
                 loop -> {
-                }, new TestingClock(), keyExchange);
+                }, new TestingReplicationClock(), keyExchange);
     }
 
     static FixSessionSettings settings(String name) {
@@ -296,7 +296,7 @@ abstract class FollowerConnectionHarness {
 
     FollowerConnection senderRunningConnection(int snapshotChunkBytes) {
         return new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a", Duration.ofHours(1),
-                Duration.ZERO, 4, snapshotChunkBytes, countingIdles(), stats, loop -> new Thread(loop).start(), new TestingClock(), keyExchange);
+                Duration.ZERO, 4, snapshotChunkBytes, countingIdles(), stats, loop -> new Thread(loop).start(), new TestingReplicationClock(), keyExchange);
     }
 
     /**

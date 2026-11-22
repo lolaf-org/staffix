@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /**
- * The follower's side of replication: the connection to the leader, and the stores it replays the leader's writes
- * into while the sessions are not running.
+ * The follower's side of replication: the connection to the leader, and the sinks it applies the leader's streams
+ * into until it takes over.
  */
 package org.lolaf.staffix.ha.follower;

@@ -26,7 +26,9 @@ import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.ha.follower.ReplicationClient;
+import org.lolaf.staffix.ha.leader.DroppedFollower;
 import org.lolaf.staffix.ha.leader.FollowerConnection;
+import org.lolaf.staffix.ha.leader.FollowerLaneStatus;
 import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.wire.StreamAnswer;
 
@@ -104,7 +106,7 @@ class HaProbes {
             boolean anyConnected = false;
             int lanes = ha.getReplicationLogs().count();
             for (FollowerConnection connection : ha.getFollowers().connections()) {
-                HaStatus.FollowerConnection follower = connection.getStatus(ha.getSessions().count());
+                FollowerLaneStatus follower = connection.getStatus(ha.getSessions().count());
                 anyConnected |= follower.isConnected();
                 String name = laneName(follower.getNodeId(), follower.getLane(), lanes);
                 if (follower.isConnected() && follower.getLagMillis() > thresholdMillis) {
@@ -131,7 +133,7 @@ class HaProbes {
     }
 
     private static Optional<Alert> droppedTooSlowAlert(ReplicationFixEngineHa ha, int lanes) {
-        List<HaStatus.DroppedFollower> dropped = ha.getStats().getSlowFollowers().notBackInSync();
+        List<DroppedFollower> dropped = ha.getStats().getSlowFollowers().notBackInSync();
         if (dropped.isEmpty()) {
             return Optional.empty();
         }

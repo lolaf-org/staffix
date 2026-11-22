@@ -30,6 +30,7 @@ import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.log.LogRecord;
+import org.lolaf.staffix.ha.wire.StreamReplicationMode;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
@@ -106,7 +107,8 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (lastAppendedOffset >= 0) {
             long startNanos = System.nanoTime();
             ReplicatedSession.Config config = session.getConfig();
-            Followers.Ack ack = followers.awaitAck(session.getKey(), lastAppendedOffset, config.getReplicationMode(),
+            Followers.Ack ack = followers.awaitAck(session.getKey(), lastAppendedOffset,
+                    StreamReplicationMode.from(config.getReplicationMode().getCode()),
                     config.getReplicationAckTimeoutNanos(), ackIdle);
             if (ack == Followers.Ack.ACKED) {
                 long waitedNanos = System.nanoTime() - startNanos;

@@ -47,7 +47,7 @@ final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHa
 
     private final int lane;
     private final int maxFrameBytes;
-    private final ReplicaSessions replicaSessions;
+    private final ReplicaStreams replicaStreams;
     private final StoreWriterThreads.StoreWriterThread thread;
     private final ByteRingBuffer queue;
     private final Queue<LeaderConnection> connectedLeaders = new ConcurrentLinkedQueue<>();
@@ -69,10 +69,10 @@ final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHa
     private @Nullable ByteBuffer queueBufferView;
     private @Nullable ByteBuffer viewedQueueBuffer;
 
-    LaneWriteQueue(int lane, int maxFrameBytes, ReplicaSessions replicaSessions, StoreWriterThreads.StoreWriterThread thread) {
+    LaneWriteQueue(int lane, int maxFrameBytes, ReplicaStreams replicaStreams, StoreWriterThreads.StoreWriterThread thread) {
         this.lane = lane;
         this.maxFrameBytes = maxFrameBytes;
-        this.replicaSessions = replicaSessions;
+        this.replicaStreams = replicaStreams;
         this.thread = thread;
         this.queue = ByteRingBufferFactory.queue(queueCapacity(maxFrameBytes));
         this.writerDecoder = new FrameDecoder(maxFrameBytes);
@@ -96,7 +96,7 @@ final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHa
 
     /**
      * Queues the read's whole frames for the writer, then acknowledges as received the last event of a
-     * {@code SYNC_RECEIVED} session among them. A frame of an impossible length goes as its header alone, for the
+     * {@code SYNC_RECEIVED} stream among them. A frame of an impossible length goes as its header alone, for the
      * writer's decoder to refuse, and the rest of the read with it.
      */
     void queueRead(LeaderConnection readConnection, IOSession ioSession, ByteBuffer message) {
@@ -118,7 +118,7 @@ final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHa
             long frameEpoch = message.getLong(index + WireFormat.OFFSET_EPOCH);
             if (message.get(index + WireFormat.OFFSET_TYPE) == FrameType.RECORD.getCode()
                     && readConnection.isReceivedAckedOnRead() && readConnection.isStreamEpoch(frameEpoch)
-                    && replicaSessions.acksOnReceipt(lane, FrameDecoder.recordStreamKey(message, index + WireFormat.RECORD_BODY_OFFSET))) {
+                    && replicaStreams.acksOnReceipt(lane, FrameDecoder.recordStreamKey(message, index + WireFormat.RECORD_BODY_OFFSET))) {
                 lastReceivedOffset = FrameDecoder.recordLogOffset(message, index);
                 lastReceivedEpoch = frameEpoch;
             }

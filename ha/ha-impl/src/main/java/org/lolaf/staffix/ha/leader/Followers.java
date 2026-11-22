@@ -17,7 +17,7 @@ package org.lolaf.staffix.ha.leader;
 
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.idling.IdleStrategy;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.ha.wire.StreamReplicationMode;
 
 import java.util.Arrays;
 import java.util.List;
@@ -60,7 +60,7 @@ public final class Followers {
     }
 
     /**
-     * The strategy a session's {@code SYNC} sends wait on, woken by {@link #wakeWaiters()}.
+     * The strategy a stream's {@code SYNC} sends wait on, woken by {@link #wakeWaiters()}.
      */
     public synchronized void addWaiter(IdleStrategy idle) {
         IdleStrategy[] added = Arrays.copyOf(waiters, waiters.length + 1);
@@ -97,13 +97,13 @@ public final class Followers {
     }
 
     /**
-     * Whether a follower holds every replicated session: each of its lanes streaming and in sync, one lane in sync
+     * Whether a follower holds every replicated stream: each of its lanes streaming and in sync, one lane in sync
      * not being enough. Any thread.
      *
-     * @param sessionCount the sessions the leader replicates
+     * @param streamCount the streams the leader replicates
      */
-    public boolean isAnyFollowerInSync(int sessionCount, int lanes) {
-        return countFollowers(lanes, connection -> connection.isLaneInSync(sessionCount)) > 0;
+    public boolean isAnyFollowerInSync(int streamCount, int lanes) {
+        return countFollowers(lanes, connection -> connection.isLaneInSync(streamCount)) > 0;
     }
 
     /**
@@ -166,26 +166,26 @@ public final class Followers {
     }
 
     /**
-     * Announces the session again to every follower, its replication mode having changed to or from {@code NONE}.
+     * Announces the stream again to every follower, its replication mode having changed to or from {@code NONE}.
      */
-    public void reannounce(int sessionKey) {
+    public void reannounce(int streamKey) {
         for (FollowerConnection connection : connections) {
-            connection.reannounce(sessionKey);
+            connection.reannounce(streamKey);
         }
     }
 
     /**
-     * Sends the session again by snapshot to every follower holding a copy of it.
+     * Sends the stream again by snapshot to every follower holding a copy of it.
      */
-    public void resync(int sessionKey) {
+    public void resync(int streamKey) {
         for (FollowerConnection connection : connections) {
-            connection.resync(sessionKey);
+            connection.resync(streamKey);
         }
     }
 
 
     /**
-     * Waits until every follower in sync for the session received or applied the event at {@code offset}, as its mode
+     * Waits until every follower in sync for the stream received or applied the event at {@code offset}, as its mode
      * asks. A follower falling out of sync stops being waited for, and with none left the wait ends at once. A follower
      * a wait timed out on is not waited for again until it applies what it missed, so a hung follower costs one
      * timeout, not one per send. Allocates nothing.
@@ -193,17 +193,17 @@ public final class Followers {
      * @param mode         {@code SYNC_RECEIVED} or {@code SYNC_APPLIED}
      * @param timeoutNanos 0 to wait as long as a follower is in sync
      */
-    public Ack awaitAck(int sessionKey, long offset, ReplicationMode mode, long timeoutNanos, IdleStrategy idle) {
-        boolean received = mode == ReplicationMode.SYNC_RECEIVED;
+    public Ack awaitAck(int streamKey, long offset, StreamReplicationMode mode, long timeoutNanos, IdleStrategy idle) {
+        boolean received = mode == StreamReplicationMode.SYNC_RECEIVED;
         long startNanos = timeoutNanos == 0 ? 0 : System.nanoTime();
-        Ack ack = ackOf(sessionKey, offset, received, timeoutNanos, startNanos);
+        Ack ack = ackOf(streamKey, offset, received, timeoutNanos, startNanos);
         if (ack != null) {
             return ack;
         }
         idle.reset();
         waiting.incrementAndGet();
         try {
-            while ((ack = ackOf(sessionKey, offset, received, timeoutNanos, startNanos)) == null) {
+            while ((ack = ackOf(streamKey, offset, received, timeoutNanos, startNanos)) == null) {
                 idle.idle();
             }
             return ack;
@@ -216,12 +216,12 @@ public final class Followers {
     /**
      * @return null while it waits on
      */
-    private @Nullable Ack ackOf(int sessionKey, long offset, boolean received, long timeoutNanos, long startNanos) {
+    private @Nullable Ack ackOf(int streamKey, long offset, boolean received, long timeoutNanos, long startNanos) {
         boolean anyInSync = false;
         boolean anyWaitedFor = false;
         boolean acked = true;
         for (FollowerConnection connection : connections) {
-            if (connection.isSessionInSync(sessionKey)) {
+            if (connection.isStreamInSync(streamKey)) {
                 anyInSync = true;
                 if (!connection.isAckOverdue()) {
                     anyWaitedFor = true;
@@ -240,7 +240,7 @@ public final class Followers {
         }
         if (timeoutNanos != 0 && System.nanoTime() - startNanos >= timeoutNanos) {
             for (FollowerConnection connection : connections) {
-                if (connection.isSessionInSync(sessionKey) && ackedOffset(connection, received) < offset) {
+                if (connection.isStreamInSync(streamKey) && ackedOffset(connection, received) < offset) {
                     connection.ackOverdue(offset);
                 }
             }

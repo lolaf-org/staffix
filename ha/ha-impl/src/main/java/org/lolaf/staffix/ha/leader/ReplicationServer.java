@@ -29,7 +29,7 @@ import org.lolaf.betty.api.ss.SelectStrategy;
 import org.lolaf.betty.api.stats.IOBufferPoolStats;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
-import org.lolaf.staffix.api.time.Clock;
+import org.lolaf.staffix.ha.spi.ReplicationClock;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
@@ -71,7 +71,7 @@ public final class ReplicationServer {
     private final Supplier<IdleStrategy> senderIdleStrategy;
     private final SelectStrategy selectStrategy;
     private final ReplicationStats stats;
-    private final Clock clock;
+    private final ReplicationClock clock;
     private final KeyExchange keyExchange;
     private IOWorkersGroup ioWorkers;
     private Server server;

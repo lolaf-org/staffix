@@ -19,7 +19,7 @@ import java.util.Arrays;
 
 /**
  * Where each of the leader's lanes stands on this follower, kept across connections so a reconnection resumes: the
- * last event written, the last applied but not written yet, and whether its stream has announced every session. A
+ * last event written, the last applied but not written yet, and whether its connection has announced every stream. A
  * lane's offsets are those of its own log. A lane's position is written by its own thread only; the last written and
  * the announcing are read by any. Allocates nothing but on a lane count change.
  */
@@ -35,7 +35,7 @@ final class LanePositions {
 
     /**
      * A lane's position is kept while the count does not change. A lane added is announcing: a WELCOME named it, so
-     * the leader has sessions for it this follower has not heard of.
+     * the leader has streams for it this follower has not heard of.
      */
     synchronized void setCount(int lanes) {
         Position[] current = positions;
@@ -84,12 +84,12 @@ final class LanePositions {
         position.announcing = true;
     }
 
-    void sessionsAnnounced(int lane) {
+    void streamsAnnounced(int lane) {
         positions[lane].announcing = false;
     }
 
     /**
-     * Whether a lane's stream has not announced all its sessions yet. Allocates nothing.
+     * Whether a lane's connection has not announced all its streams yet. Allocates nothing.
      */
     boolean isAnnouncing(int lane) {
         return position(lane).announcing;
@@ -105,7 +105,7 @@ final class LanePositions {
     }
 
     /**
-     * @param acksOnReceipt the event's session is acknowledged as received
+     * @param acksOnReceipt the event's stream is acknowledged as received
      */
     void applied(int lane, long epoch, long offset, boolean acksOnReceipt) {
         Position position = positions[lane];

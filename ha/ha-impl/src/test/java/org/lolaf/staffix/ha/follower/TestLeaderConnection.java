@@ -322,7 +322,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         read(fragment(96, 0, 5, "9=5\u0001", MIDDLE), fragment(128, 0, 5, "35=D\u000110=000\u0001", LAST));
 
         assertThat(engine.store(MAIN).writes).containsExactly("message 5 " + MESSAGE);
-        assertThat(replicaSessions.getLastAppliedOffset(0)).isEqualTo(128);
+        assertThat(replicaStreams.getLastAppliedOffset(0)).isEqualTo(128);
     }
 
     @Test
@@ -384,7 +384,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), notResumed);
         assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
-        assertThat(replicaSessions.getLastAppliedOffset(0)).as("nothing left to resume from").isEqualTo(-1);
+        assertThat(replicaStreams.getLastAppliedOffset(0)).as("nothing left to resume from").isEqualTo(-1);
     }
 
     @Test

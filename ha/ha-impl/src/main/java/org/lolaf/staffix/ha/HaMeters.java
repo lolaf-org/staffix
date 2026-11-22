@@ -98,10 +98,10 @@ class HaMeters {
                 + " in sync.", Map.of("reason", "no_follower"), () -> sum(ha, ReplicatedSession::getNoFollowerSends));
         stats.ackLatencyTimers((followerId, lane) -> meters.getTimer(FOLLOWER_ACK_LATENCY, "A follower's round trip over"
                 + " a replication lane, from a batch of writes sent to its ack, sampled once per round trip, whatever the"
-                + " sessions' replication modes.", followerTags(followerId, lane)));
+                + " sessions' replication modes.", followerTags(followerId, lane))::record);
         stats.lagTimers((followerId, lane) -> meters.getTimer(FOLLOWER_LAG, "How far a follower is behind on a"
                 + " replication lane: from a write to the lane's log to the follower's ack of it, sampled once per round"
-                + " trip.", followerTags(followerId, lane)));
+                + " trip.", followerTags(followerId, lane))::record);
         meters.getGauge("ha.follower.lag.pending", "Milliseconds the most behind follower has not applied a write for,"
                 + " 0 when every follower is caught up: it keeps growing while a follower is stalled.", Map.of(), () -> {
             long now = System.nanoTime();

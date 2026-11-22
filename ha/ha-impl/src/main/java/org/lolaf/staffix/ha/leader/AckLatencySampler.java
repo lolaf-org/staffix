@@ -16,7 +16,7 @@
 package org.lolaf.staffix.ha.leader;
 
 import lombok.RequiredArgsConstructor;
-import org.lolaf.staffix.api.monitoring.Timer;
+import org.lolaf.staffix.ha.spi.LatencyRecorder;
 
 import java.util.concurrent.TimeUnit;
 
@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 final class AckLatencySampler {
 
-    private final Timer timer;
+    private final LatencyRecorder recorder;
     private volatile long sampledOffset = -1;
     private long sentNanos;
 
@@ -45,7 +45,7 @@ final class AckLatencySampler {
     void onAck(long appliedOffset) {
         long offset = sampledOffset;
         if (offset >= 0 && appliedOffset >= offset) {
-            timer.record(System.nanoTime() - sentNanos, TimeUnit.NANOSECONDS);
+            recorder.record(System.nanoTime() - sentNanos, TimeUnit.NANOSECONDS);
             sampledOffset = -1;
         }
     }

@@ -19,7 +19,7 @@ import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The follower's answer to a {@link FrameType#STREAM}: whether it replicates the session, and why not.
+ * The follower's answer to a {@link FrameType#STREAM}: whether it replicates the stream, and why not.
  */
 @Getter
 public enum StreamAnswer {
@@ -35,19 +35,19 @@ public enum StreamAnswer {
      */
     UNKNOWN_STORAGE(2),
     /**
-     * The follower has no settings for this session.
+     * The follower's configuration does not know the stream.
      */
     UNKNOWN_STREAM(3),
     /**
-     * The follower replicates the session but misses part of its history: it needs a snapshot to be in sync.
+     * The follower replicates the stream but misses part of its history: it needs a snapshot to be in sync.
      */
     SNAPSHOT_NEEDED(4),
     /**
-     * The leader announced the session with replication mode {@code NONE}: its settings stopped its replication.
+     * The leader announced the stream with replication mode {@code NONE}: its configuration stopped replicating it.
      */
     NOT_REPLICATED(5),
     /**
-     * The follower's settings give the session another replication mode than the leader's: a configuration error.
+     * The follower's configuration gives the stream another replication mode than the leader's: a configuration error.
      */
     MODE_MISMATCH(6);
 
@@ -58,7 +58,7 @@ public enum StreamAnswer {
     }
 
     /**
-     * The follower would replicate the session but cannot: a problem to fix, unlike an answer the leader expects.
+     * The follower would replicate the stream but cannot: a problem to fix, unlike an answer the leader expects.
      */
     public boolean isRefusal() {
         return this == SHARED_STORAGE || this == UNKNOWN_STORAGE || this == UNKNOWN_STREAM || this == MODE_MISMATCH;

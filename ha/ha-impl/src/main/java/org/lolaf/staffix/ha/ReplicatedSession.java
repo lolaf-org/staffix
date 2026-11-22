@@ -25,13 +25,16 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.leader.Followers;
+import org.lolaf.staffix.ha.spi.LeaderStream;
+import org.lolaf.staffix.ha.spi.SnapshotSource;
+import org.lolaf.staffix.ha.wire.StreamReplicationMode;
 
 /**
  * A replicated session as the leader knows it: the key its events carry in the log and on the wire.
  */
 @Slf4j
 @Getter
-public final class ReplicatedSession {
+public final class ReplicatedSession implements LeaderStream {
 
     private final int key;
     private final FixSessionId fixSessionId;
@@ -75,8 +78,25 @@ public final class ReplicatedSession {
     /**
      * False once built with replication mode {@code NONE}, until built with another.
      */
+    @Override
     public boolean isReplicated() {
         return config.getReplicationMode() != ReplicationMode.NONE;
+    }
+
+    @Override
+    public StreamReplicationMode getStreamReplicationMode() {
+        return StreamReplicationMode.from(config.getReplicationMode().getCode());
+    }
+
+    @Override
+    public @Nullable String getStorageIdentity() {
+        return config.getStorageIdentity();
+    }
+
+    @Override
+    public SnapshotSource newSnapshotSource() {
+        Config current = config;
+        return new FixSessionSnapshotSource(current.getStore(), current.getUnencryptedMessageTypes());
     }
 
     /**

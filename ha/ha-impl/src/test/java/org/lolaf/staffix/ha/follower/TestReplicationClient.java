@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.follower;
 
+import org.lolaf.staffix.ha.ReplicaSessions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.Parameter;
@@ -35,7 +36,7 @@ import org.lolaf.staffix.ha.leader.ReplicationServer;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
 import org.lolaf.staffix.ha.leader.SlowFollowers;
 import org.lolaf.staffix.ha.wire.StreamAnswer;
-import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.ha.spi.TestingReplicationClock;
 import org.lolaf.staffix.tests.TestPorts;
 
 import java.net.InetSocketAddress;
@@ -87,14 +88,14 @@ class TestReplicationClient {
     private ReplicatingStore twoLanesOther;
 
     private static ReplicationServer server(InetSocketAddress address, ReplicationFixEngineHa leader) {
-        return server(address, leader, new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())));
+        return server(address, leader, new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())));
     }
 
     private static ReplicationServer server(InetSocketAddress address, ReplicationFixEngineHa leader,
                                                   ReplicationStats stats) {
         return new ReplicationServer(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
                 () -> EPOCH, "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE, BackoffIdleStrategy::new,
-                new WakeupSelectStrategy(10), stats, new TestingClock(), TestingKeyExchanges.CLEAR);
+                new WakeupSelectStrategy(10), stats, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
     }
 
     /**
@@ -121,7 +122,7 @@ class TestReplicationClient {
         this.follower = new RecordingEngine().with(MAIN);
         this.replicaSessions = new ReplicaSessions(follower);
         this.leaderStore = leader.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
-        this.twoLanesStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
+        this.twoLanesStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()));
         leaderStore.storeNextIncomingSeqNum(1);
         server.start();
     }
@@ -136,7 +137,7 @@ class TestReplicationClient {
     }
 
     private void connect(InetSocketAddress address, int maxFrameBytes) {
-        client = new ReplicationClient(address, replicaSessions, () -> EPOCH, "follower-b", maxFrameBytes, Duration.ofMillis(50),
+        client = new ReplicationClient(address, replicaSessions.getStreams(), () -> EPOCH, "follower-b", maxFrameBytes, Duration.ofMillis(50),
                 new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1), TestingKeyExchanges.CLEAR);
         client.start();
     }
@@ -158,12 +159,12 @@ class TestReplicationClient {
         syncReceivedServer.start();
         connect(syncReceivedAddress, maxFrameBytes);
         await().until(() -> !syncReceivedLeader.getFollowers().connections().isEmpty()
-                && syncReceivedLeader.getFollowers().connections().get(0).isSessionInSync(0));
+                && syncReceivedLeader.getFollowers().connections().get(0).isStreamInSync(0));
         return syncReceivedLeader.getFollowers().connections().get(0);
     }
 
     private FollowerConnection inSync() {
-        await().until(() -> !leader.getFollowers().connections().isEmpty() && leader.getFollowers().connections().get(0).isSessionInSync(0));
+        await().until(() -> !leader.getFollowers().connections().isEmpty() && leader.getFollowers().connections().get(0).isStreamInSync(0));
         return leader.getFollowers().connections().get(0);
     }
 
@@ -314,7 +315,7 @@ class TestReplicationClient {
         leaderStore.awaitReplicated();
 
         assertThat(follower.store(MAIN).writes).isEmpty();
-        assertThat(leader.getFollowers().connections().get(0).isSessionInSync(0)).isFalse();
+        assertThat(leader.getFollowers().connections().get(0).isStreamInSync(0)).isFalse();
         assertThat(leader.getSessions().get(0).getUnacknowledgedSends()).as("sent without waiting")
                 .isEqualTo(unacknowledged + 1);
     }

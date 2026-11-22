@@ -48,14 +48,29 @@ public enum StreamReplicationMode {
     private final byte code;
 
     /**
+     * Allocates nothing, unlike a search of {@code values()}.
+     *
      * @throws IllegalArgumentException for a code no mode has
      */
     public static StreamReplicationMode from(byte code) {
-        for (StreamReplicationMode mode : values()) {
-            if (mode.code == code) {
-                return mode;
-            }
+        switch (code) {
+            case 0:
+                return NONE;
+            case 1:
+                return ASYNC;
+            case 2:
+                return SYNC_APPLIED;
+            case 3:
+                return SYNC_RECEIVED;
+            default:
+                throw new IllegalArgumentException("Unknown replication mode code " + code);
         }
-        throw new IllegalArgumentException("Unknown replication mode code " + code);
+    }
+
+    /**
+     * Whether a write waits for the follower.
+     */
+    public boolean isSync() {
+        return this == SYNC_RECEIVED || this == SYNC_APPLIED;
     }
 }

@@ -42,7 +42,7 @@ import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.RecordingHandler;
-import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.ha.spi.TestingReplicationClock;
 import org.lolaf.staffix.tests.TestPorts;
 
 import java.net.InetSocketAddress;
@@ -74,7 +74,7 @@ class TestReplicationServer {
         this.address = new InetSocketAddress("localhost", TestPorts.findFree());
         this.server = new ReplicationServer(address, ha.getReplicationLogs(), ha.getSessions(), ha.getFollowers(), () -> EPOCH,
                 "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE,
-                BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock(), TestingKeyExchanges.CLEAR);
+                BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         this.received = new RecordingHandler();
     }
 

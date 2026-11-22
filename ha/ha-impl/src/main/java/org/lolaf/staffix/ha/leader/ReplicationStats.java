@@ -17,7 +17,7 @@ package org.lolaf.staffix.ha.leader;
 
 import lombok.Getter;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.api.monitoring.Timer;
+import org.lolaf.staffix.ha.spi.LatencyRecorder;
 
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
@@ -34,8 +34,8 @@ public final class ReplicationStats {
     private final AtomicLong snapshotMessages = new AtomicLong();
     private final AtomicLong sendWaits = new AtomicLong();
     private final AtomicLong sendBuffersAllocated = new AtomicLong();
-    private volatile BiFunction<String, Integer, Timer> ackLatencyTimers = (followerId, lane) -> Timer.VoidTimer.getInstance();
-    private volatile BiFunction<String, Integer, Timer> lagTimers = (followerId, lane) -> Timer.VoidTimer.getInstance();
+    private volatile BiFunction<String, Integer, LatencyRecorder> ackLatencyTimers = (followerId, lane) -> LatencyRecorder.NONE;
+    private volatile BiFunction<String, Integer, LatencyRecorder> lagTimers = (followerId, lane) -> LatencyRecorder.NONE;
 
     public ReplicationStats(SlowFollowers slowFollowers) {
         this.slowFollowers = slowFollowers;
@@ -45,11 +45,11 @@ public final class ReplicationStats {
      * Where the connections time their followers' round trips, by follower node id and lane, once the engine's meters
      * exist.
      */
-    public void ackLatencyTimers(BiFunction<String, Integer, Timer> timers) {
+    public void ackLatencyTimers(BiFunction<String, Integer, LatencyRecorder> timers) {
         ackLatencyTimers = timers;
     }
 
-    Timer ackLatency(String followerId, int lane) {
+    LatencyRecorder ackLatency(String followerId, int lane) {
         return ackLatencyTimers.apply(followerId, lane);
     }
 
@@ -57,11 +57,11 @@ public final class ReplicationStats {
      * Where the connections time how far their followers are behind, by follower node id and lane, once the engine's
      * meters exist.
      */
-    public void lagTimers(BiFunction<String, Integer, Timer> timers) {
+    public void lagTimers(BiFunction<String, Integer, LatencyRecorder> timers) {
         lagTimers = timers;
     }
 
-    Timer lag(String followerId, int lane) {
+    LatencyRecorder lag(String followerId, int lane) {
         return lagTimers.apply(followerId, lane);
     }
 

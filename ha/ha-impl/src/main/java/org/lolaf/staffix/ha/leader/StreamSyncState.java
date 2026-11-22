@@ -16,10 +16,10 @@
 package org.lolaf.staffix.ha.leader;
 
 /**
- * Where a session stands on one follower, as the leader knows it. A session the follower refuses, its storage shared
+ * Where a stream stands on one follower, as the leader knows it. A stream the follower refuses, its storage shared
  * with the leader's included, is {@link #NOT_REPLICATED}.
  */
-public enum SessionSyncState {
+public enum StreamSyncState {
     ANNOUNCED,
     SNAPSHOT_PENDING,
     SNAPSHOT_SENT,

@@ -23,11 +23,7 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
-import org.lolaf.staffix.api.ha.HaStatus;
-import org.lolaf.staffix.api.monitoring.Timer;
-import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.ha.EncryptionMode;
-import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
@@ -35,6 +31,10 @@ import org.lolaf.staffix.ha.encryption.Negotiation;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
+import org.lolaf.staffix.ha.spi.LeaderStream;
+import org.lolaf.staffix.ha.spi.LeaderStreams;
+import org.lolaf.staffix.ha.spi.LatencyRecorder;
+import org.lolaf.staffix.ha.spi.ReplicationClock;
 import org.lolaf.staffix.ha.wire.*;
 
 import java.nio.ByteBuffer;
@@ -78,7 +78,8 @@ public final class FollowerConnection implements FrameHandler {
      * Opened by the HELLO, holding the lane's appends back until the connection closes; null before it.
      */
     private volatile ReplicationLog.@Nullable Reader reader;
-    private final ReplicatedSessions sessions;
+    private final LeaderStreams streams;
+    private final SessionSettingsDigests settingsDigests;
     /**
      * This node's current election epoch, stamped on every frame it sends; read once per batch, so a batch carries one.
      */
@@ -91,15 +92,15 @@ public final class FollowerConnection implements FrameHandler {
     private volatile int lane;
     private final IdleStrategy senderIdle;
     private final ReplicationStats stats;
-    private final SessionSyncs syncs;
+    private final StreamSyncs syncs;
     private final BatchBuffers batches;
     private final SnapshotSender snapshots;
     /**
-     * Keys of sessions already announced whose replication mode changed since.
+     * Keys of streams already announced whose replication mode changed since.
      */
     private final Queue<Integer> reannouncements;
     private final Consumer<Runnable> senderLauncher;
-    private final Clock clock;
+    private final ReplicationClock clock;
     private final KeyExchange keyExchange;
     /**
      * This connection's keys once both peers encrypt, null on a clear one; IO thread until the stream starts.
@@ -137,7 +138,7 @@ public final class FollowerConnection implements FrameHandler {
     @Getter
     private volatile long receivedOffset;
     /**
-     * What the follower said of itself in its last ACK; {@link #isSessionInSync(int)} relies on the leader's own account.
+     * What the follower said of itself in its last ACK; {@link #isStreamInSync(int)} relies on the leader's own account.
      */
     @Getter
     private volatile boolean reportedInSync;
@@ -173,7 +174,7 @@ public final class FollowerConnection implements FrameHandler {
     private volatile @Nullable PendingClose pendingClose;
     private final AtomicBoolean closeSent;
     /**
-     * The next session key to announce, every key below it announced; sender thread only.
+     * The next stream key to announce, every key below it announced; sender thread only.
      */
     private int nextToAnnounce;
     /**
@@ -181,7 +182,7 @@ public final class FollowerConnection implements FrameHandler {
      * thread only.
      */
     private int firstPassAnnounced;
-    private boolean sessionsAnnounced;
+    private boolean streamsAnnounced;
     /**
      * The last generation of session settings digests sent whole, and how far the one being sent has gone; sender thread only.
      */
@@ -212,8 +213,8 @@ public final class FollowerConnection implements FrameHandler {
     FollowerConnection(IOSession ioSession, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier nodeEpoch,
                        String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
                        int snapshotChunkBytes, IdleStrategy senderIdle, ReplicationStats stats,
-                       Consumer<Runnable> senderLauncher, Clock clock, KeyExchange keyExchange) {
-        this.syncs = new SessionSyncs();
+                       Consumer<Runnable> senderLauncher, ReplicationClock clock, KeyExchange keyExchange) {
+        this.syncs = new StreamSyncs();
         this.reannouncements = new ConcurrentLinkedQueue<>();
         this.frameCipher = FrameCipher.CLEAR;
         this.answerOpener = FrameCipher.CLEAR;
@@ -225,12 +226,13 @@ public final class FollowerConnection implements FrameHandler {
         this.sentOffset = -1;
         this.lastSentEventOffset = -1;
         this.filledEventOffset = -1;
-        this.ackLatency = new AckLatencySampler(Timer.VoidTimer.getInstance());
-        this.lag = new LagSampler(Timer.VoidTimer.getInstance());
+        this.ackLatency = new AckLatencySampler(LatencyRecorder.NONE);
+        this.lag = new LagSampler(LatencyRecorder.NONE);
         this.ioSession = ioSession;
         this.address = String.valueOf(ioSession.getSocketAddress());
         this.logs = logs;
-        this.sessions = sessions;
+        this.streams = sessions;
+        this.settingsDigests = sessions.getSettingsDigests();
         this.nodeEpoch = nodeEpoch;
         this.leaderId = leaderId;
         this.heartbeatIntervalNanos = heartbeatInterval.toNanos();
@@ -243,7 +245,7 @@ public final class FollowerConnection implements FrameHandler {
         this.keyExchange = keyExchange;
         this.batches = new BatchBuffers(ioSession, sendBuffers,
                 WireFormat.bufferBytes(maxRecordFrameBytes + WireFormat.TAG_BYTES), stats);
-        this.snapshots = new SnapshotSender(this, sessions, syncs, batches, stats, nodeEpoch, maxRecordFrameBytes,
+        this.snapshots = new SnapshotSender(this, streams, syncs, batches, stats, nodeEpoch, maxRecordFrameBytes,
                 snapshotChunkBytes);
     }
 
@@ -260,8 +262,8 @@ public final class FollowerConnection implements FrameHandler {
             close(CloseReason.VERSION_MISMATCH, "leader speaks version " + WireFormat.VERSION + ", follower " + version);
             return;
         }
-        if (applicationId != sessions.getApplicationId()) {
-            close(CloseReason.APPLICATION_MISMATCH, "leader replicates application " + Integer.toHexString(sessions.getApplicationId())
+        if (applicationId != streams.getApplicationId()) {
+            close(CloseReason.APPLICATION_MISMATCH, "leader replicates application " + Integer.toHexString(streams.getApplicationId())
                     + ", follower " + Integer.toHexString(applicationId));
             return;
         }
@@ -313,7 +315,7 @@ public final class FollowerConnection implements FrameHandler {
         byte[] leaderNonce = keyExchange.newNonce();
         long resumeOffset = resumed ? reader.getOffset() : WireFormat.NO_RESUME;
         ByteBuffer frame = ioSession.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
-        int length = FrameEncoder.welcome(frame.clear(), 0, currentEpoch, sessions.getApplicationId(), leaderId,
+        int length = FrameEncoder.welcome(frame.clear(), 0, currentEpoch, streams.getApplicationId(), leaderId,
                 resumeOffset, logs.count(),
                 keyExchange.getMode(), leaderNonce);
         if (encrypted) {
@@ -398,11 +400,11 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * The follower holds everything of the session up to its last ack, so a {@code SYNC} send of the session waits
+     * The follower holds everything of the stream up to its last ack, so a {@code SYNC} send of the stream waits
      * for its ack. Allocates nothing.
      */
-    public boolean isSessionInSync(int sessionKey) {
-        return state == State.STREAMING && syncs.get(sessionKey) == SessionSyncState.IN_SYNC;
+    public boolean isStreamInSync(int streamKey) {
+        return state == State.STREAMING && syncs.get(streamKey) == StreamSyncState.IN_SYNC;
     }
 
     boolean isAckOverdue() {
@@ -419,62 +421,61 @@ public final class FollowerConnection implements FrameHandler {
         }
     }
 
-    public @Nullable SessionSyncState getSyncState(int sessionKey) {
-        return syncs.get(sessionKey);
+    public @Nullable StreamSyncState getSyncState(int streamKey) {
+        return syncs.get(streamKey);
     }
 
     @Override
-    public void onStreamAnswer(long epoch, int sessionKey, StreamAnswer answer) {
-        if (syncs.get(sessionKey) == null) {
-            close(CloseReason.PROTOCOL_ERROR, "a STREAM_ANSWER for stream key " + sessionKey + ", never announced");
+    public void onStreamAnswer(long epoch, int streamKey, StreamAnswer answer) {
+        if (syncs.get(streamKey) == null) {
+            close(CloseReason.PROTOCOL_ERROR, "a STREAM_ANSWER for stream key " + streamKey + ", never announced");
             return;
         }
-        syncs.answered(sessionKey, answer);
+        syncs.answered(streamKey, answer);
         switch (answer) {
             case REPLICATING:
-                syncs.set(sessionKey, SessionSyncState.IN_SYNC);
+                syncs.set(streamKey, StreamSyncState.IN_SYNC);
                 break;
             case SNAPSHOT_NEEDED:
-                syncs.set(sessionKey, SessionSyncState.SNAPSHOT_PENDING);
+                syncs.set(streamKey, StreamSyncState.SNAPSHOT_PENDING);
                 snapshots.request();
                 break;
             case NOT_REPLICATED:
-                syncs.set(sessionKey, SessionSyncState.NOT_REPLICATED);
+                syncs.set(streamKey, StreamSyncState.NOT_REPLICATED);
                 break;
             default:
-                syncs.set(sessionKey, SessionSyncState.NOT_REPLICATED);
-                ReplicatedSession session = sessions.get(sessionKey);
-                log.warn("Follower {} does not replicate FIX session {} {}: {}", followerId, session.getFixSessionType(),
-                        session.getFixSessionId(), answer);
+                syncs.set(streamKey, StreamSyncState.NOT_REPLICATED);
+                log.warn("Follower {} does not replicate stream {}: {}", followerId,
+                        streams.get(streamKey).getStreamName(), answer);
         }
     }
 
     /**
-     * Sends the session again by snapshot, which resets the follower's copy first. Only a copy the follower holds is
-     * replaced: a session it refuses or is still catching up on is left as it is.
+     * Sends the stream again by snapshot, which resets the follower's copy first. Only a copy the follower holds is
+     * replaced: a stream it refuses or is still catching up on is left as it is.
      */
-    void resync(int sessionKey) {
-        if (carries(sessionKey) && syncs.getAnswer(sessionKey) == StreamAnswer.REPLICATING
-                && syncs.compareAndSet(sessionKey, SessionSyncState.IN_SYNC, SessionSyncState.SNAPSHOT_PENDING)) {
+    void resync(int streamKey) {
+        if (carries(streamKey) && syncs.getAnswer(streamKey) == StreamAnswer.REPLICATING
+                && syncs.compareAndSet(streamKey, StreamSyncState.IN_SYNC, StreamSyncState.SNAPSHOT_PENDING)) {
             snapshots.request();
         }
     }
 
-    public @Nullable StreamAnswer getStreamAnswer(int sessionKey) {
-        return syncs.getAnswer(sessionKey);
+    public @Nullable StreamAnswer getStreamAnswer(int streamKey) {
+        return syncs.getAnswer(streamKey);
     }
 
     /**
-     * @param sessionCount the sessions the leader replicates, every one of which the follower must hold to be in sync
+     * @param streamCount the streams the leader replicates, every one of which the follower must hold to be in sync
      */
-    public HaStatus.FollowerConnection getStatus(int sessionCount) {
-        return HaStatus.FollowerConnection.builder()
+    public FollowerLaneStatus getStatus(int streamCount) {
+        return FollowerLaneStatus.builder()
                 .nodeId(followerId)
                 .lane(lane)
                 .address(address)
                 .connected(isConnected())
-                .inSync(isLaneInSync(sessionCount))
-                .snapshotInProgress(syncs.isSnapshotInProgress(sessionCount))
+                .inSync(isLaneInSync(streamCount))
+                .snapshotInProgress(syncs.isSnapshotInProgress(streamCount))
                 .unsentBytes(getUnsentBytes())
                 .lagMillis(TimeUnit.NANOSECONDS.toMillis(getLagNanos(System.nanoTime())))
                 .cipher(isEncrypted() ? keyExchange.describeCipher() : null)
@@ -493,11 +494,11 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * @param sessionCount the sessions the leader replicates, every one of which the follower must hold
+     * @param streamCount the streams the leader replicates, every one of which the follower must hold
      */
-    public boolean isLaneInSync(int sessionCount) {
-        for (int key = 0; key < sessionCount; key++) {
-            if (carries(key) && !isSessionInSync(key) && sessions.get(key).isReplicated()) {
+    public boolean isLaneInSync(int streamCount) {
+        for (int key = 0; key < streamCount; key++) {
+            if (carries(key) && !isStreamInSync(key) && streams.get(key).isReplicated()) {
                 return false;
             }
         }
@@ -505,10 +506,10 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * Whether the session is replicated over this lane, rather than another of the follower's.
+     * Whether the stream is replicated over this lane, rather than another of the follower's.
      */
-    public boolean carries(int sessionKey) {
-        return logs.laneOf(sessionKey) == lane;
+    public boolean carries(int streamKey) {
+        return logs.laneOf(streamKey) == lane;
     }
 
     /**
@@ -527,8 +528,8 @@ public final class FollowerConnection implements FrameHandler {
 
     /**
      * Fills {@code dst} from index 0, up to its limit, once streaming, with what the follower has not received: the
-     * sessions it does not know yet, then events until the next one does not fit. An event of a session registered
-     * after this fill began is left for the next one, behind that session's announcement.
+     * streams it does not know yet, then events until the next one does not fit. An event of a stream registered
+     * after this fill began is left for the next one, behind that stream's announcement.
      *
      * @return the bytes filled
      */
@@ -553,7 +554,7 @@ public final class FollowerConnection implements FrameHandler {
 
     private int fillBatchUpToLimit(ByteBuffer dst) {
         lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getRecordOffset(), appliedOffset);
-        int filled = announceSessions(dst);
+        int filled = announceStreams(dst);
         filled += fillSessionSettingsDigests(dst, filled);
         long currentEpoch = nodeEpoch.getAsLong();
         while (state == State.STREAMING && dst.limit() - filled >= WireFormat.RECORD_BODY_OFFSET) {
@@ -562,12 +563,12 @@ public final class FollowerConnection implements FrameHandler {
             if (body < 0) {
                 break;
             }
-            int sessionKey = FrameDecoder.recordStreamKey(dst, bodyIndex);
-            if (sessionKey >= nextToAnnounce) {
+            int streamKey = FrameDecoder.recordStreamKey(dst, bodyIndex);
+            if (streamKey >= nextToAnnounce) {
                 reader.unread();
                 break;
             }
-            if (snapshots.isOf(sessionKey)) {
+            if (snapshots.isOf(streamKey)) {
                 if ((FrameDecoder.recordFlags(dst, bodyIndex) & WireFormat.RESET) == 0) {
                     continue;
                 }
@@ -585,34 +586,34 @@ public final class FollowerConnection implements FrameHandler {
         return filled;
     }
 
-    private int announceSessions(ByteBuffer dst) {
+    private int announceStreams(ByteBuffer dst) {
         int filled = 0;
         long currentEpoch = nodeEpoch.getAsLong();
-        while (nextToAnnounce < sessions.count()) {
+        while (nextToAnnounce < streams.count()) {
             if (carries(nextToAnnounce)) {
-                int bytes = sessionFrame(dst, filled, currentEpoch, sessions.get(nextToAnnounce));
+                int bytes = streamFrame(dst, filled, currentEpoch, streams.get(nextToAnnounce));
                 if (bytes == 0) {
                     return filled;
                 }
                 filled += bytes;
-                if (!sessionsAnnounced) {
+                if (!streamsAnnounced) {
                     firstPassAnnounced++;
                 }
             }
             nextToAnnounce++;
         }
-        if (!sessionsAnnounced) {
+        if (!streamsAnnounced) {
             if (dst.limit() - filled < FrameEncoder.fixedBytes(FrameType.STREAMS_ANNOUNCED)) {
                 return filled;
             }
             filled += frameCipher.seal(dst, filled, FrameEncoder.streamsAnnounced(dst, filled, currentEpoch, firstPassAnnounced));
-            sessionsAnnounced = true;
+            streamsAnnounced = true;
         }
         Integer key;
         while ((key = reannouncements.peek()) != null) {
             // a key not announced yet goes out with its current mode once it is
             if (key < nextToAnnounce && carries(key)) {
-                int bytes = sessionFrame(dst, filled, currentEpoch, sessions.get(key));
+                int bytes = streamFrame(dst, filled, currentEpoch, streams.get(key));
                 if (bytes == 0) {
                     return filled;
                 }
@@ -627,10 +628,10 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * On lane 0 only, as they concern the node and not a lane's sessions. Resumes on the next fill when they do not all fit.
+     * On lane 0 only, as they concern the node and not a lane's streams. Resumes on the next fill when they do not all fit.
      */
     private int fillSessionSettingsDigests(ByteBuffer dst, int index) {
-        SessionSettingsDigests.Published published = sessions.getSettingsDigests().getPublished();
+        SessionSettingsDigests.Published published = settingsDigests.getPublished();
         if (lane != 0 || published.getGeneration() == sentDigestsGeneration) {
             return 0;
         }
@@ -662,23 +663,23 @@ public final class FollowerConnection implements FrameHandler {
     /**
      * @return the bytes written, 0 when the frame does not fit
      */
-    private int sessionFrame(ByteBuffer dst, int index, long currentEpoch, ReplicatedSession session) {
-        String name = session.getStreamName();
-        ReplicatedSession.Config config = session.getConfig();
-        if (dst.limit() - index < FrameEncoder.bytesWith(FrameType.STREAM, name, config.getStorageIdentity())) {
+    private int streamFrame(ByteBuffer dst, int index, long currentEpoch, LeaderStream stream) {
+        String name = stream.getStreamName();
+        String storageIdentity = stream.getStorageIdentity();
+        if (dst.limit() - index < FrameEncoder.bytesWith(FrameType.STREAM, name, storageIdentity)) {
             return 0;
         }
-        syncs.set(session.getKey(), SessionSyncState.ANNOUNCED);
-        return frameCipher.seal(dst, index, FrameEncoder.stream(dst, index, currentEpoch, session.getKey(),
-                StreamReplicationMode.from(config.getReplicationMode().getCode()), name, config.getStorageIdentity()));
+        syncs.set(stream.getKey(), StreamSyncState.ANNOUNCED);
+        return frameCipher.seal(dst, index, FrameEncoder.stream(dst, index, currentEpoch, stream.getKey(),
+                stream.getStreamReplicationMode(), name, storageIdentity));
     }
 
     /**
-     * The session's replication mode changed: the follower stops holding it, catches up, or checks its own settings
+     * The stream's replication mode changed: the follower stops holding it, catches up, or checks its own settings
      * agree.
      */
-    void reannounce(int sessionKey) {
-        reannouncements.add(sessionKey);
+    void reannounce(int streamKey) {
+        reannouncements.add(streamKey);
     }
 
     /**
@@ -799,7 +800,7 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * For a leader stopping cleanly, its sessions already stopped: waits for every event of the log to be sent, then
+     * For a leader stopping cleanly, its writers already stopped: waits for every event of the log to be sent, then
      * closes with {@link CloseReason#SHUTDOWN}. Arriving after them on the same connection, it tells the follower it
      * holds everything, so the follower takes over without moving its seqnums ahead. Returns once the follower hung up
      * on it, so it has read it before leadership moves. When the deadline passes first, the connection is dropped.
@@ -815,21 +816,21 @@ public final class FollowerConnection implements FrameHandler {
         handingOver = true;
         boolean senderStopped = deadline.waitAsLongAs(() -> senderRunning);
         if (!sentAll || !senderStopped) {
-            log.warn("Follower {} was not sent every event before the deadline: it will take over with its seqnums moved ahead",
+            log.warn("Follower {} was not sent every record before the deadline: it will not take over as handed over",
                     followerId);
             markClosed();
             ioSession.stop(Deadline.immediate());
             return false;
         }
         if (!requestClose(PendingClose.thenAwaitHangUp(CloseReason.SHUTDOWN,
-                "the leader stopped cleanly, every event was sent"))) {
+                "the leader stopped cleanly, every record was sent"))) {
             return false;
         }
         boolean read = deadline.waitAsLongAs(() -> !followerHungUp);
         ioSession.stop(Deadline.of(CLOSE_FLUSH));
         if (!read) {
-            log.warn("Follower {} did not hang up on the hand over before the deadline: it may take over with its seqnums moved"
-                    + " ahead", followerId);
+            log.warn("Follower {} did not hang up on the hand over before the deadline: it may not take over as handed over",
+                    followerId);
         }
         return read;
     }

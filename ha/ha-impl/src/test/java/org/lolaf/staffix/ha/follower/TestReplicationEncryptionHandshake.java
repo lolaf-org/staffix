@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.follower;
 
+import org.lolaf.staffix.ha.ReplicaSessions;
 import com.github.valfirst.slf4jtest.LoggingEvent;
 import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -38,7 +39,7 @@ import org.lolaf.staffix.ha.leader.ReplicationServer;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
 import org.lolaf.staffix.ha.leader.SlowFollowers;
 import org.lolaf.staffix.tests.TestPorts;
-import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.ha.spi.TestingReplicationClock;
 import org.slf4j.event.Level;
 
 import java.net.InetSocketAddress;
@@ -99,10 +100,10 @@ class TestReplicationEncryptionHandshake {
         server = new ReplicationServer(address, leader.getReplicationLogs(), leader.getSessions(), leader.getFollowers(),
                 () -> EPOCH, leaderId, Duration.ofMillis(100), Duration.ofSeconds(5), 4, Integer.MAX_VALUE,
                 BackoffIdleStrategy::new, new WakeupSelectStrategy(10),
-                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), new TestingClock(),
+                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), new TestingReplicationClock(),
                 leaderExchange);
         server.start();
-        client = new ReplicationClient(address, replicaSessions, () -> EPOCH, followerId,
+        client = new ReplicationClient(address, replicaSessions.getStreams(), () -> EPOCH, followerId,
                 leader.getReplicationLogs().get(0).getMaxRecordFrameBytes(), Duration.ofMillis(50),
                 new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1),
                 followerExchange);
@@ -114,7 +115,7 @@ class TestReplicationEncryptionHandshake {
      * The session in sync, then a message and one longer than a cipher's chunk, both written on the follower.
      */
     private void awaitReplicated() {
-        await().until(() -> leader.getFollowers().connections().stream().anyMatch(connection -> connection.isSessionInSync(0)));
+        await().until(() -> leader.getFollowers().connections().stream().anyMatch(connection -> connection.isStreamInSync(0)));
         String longOrder = ORDER + "x".repeat(20_000);
         leaderStore.storeMessageSent(MessageType.of("D", false), 1, ByteBuffer.wrap(ORDER.getBytes(StandardCharsets.US_ASCII)));
         leaderStore.storeMessageSent(MessageType.of("D", false), 2, ByteBuffer.wrap(longOrder.getBytes(StandardCharsets.US_ASCII)));
@@ -173,7 +174,7 @@ class TestReplicationEncryptionHandshake {
                 assertThat(events(LeaderConnection.class, leaderEnd, Level.ERROR)).extracting(LoggingEvent::getFormattedMessage)
                         .anyMatch(message -> message.contains(outcome));
             });
-            assertThat(leader.getFollowers().connections()).noneMatch(connection -> connection.isSessionInSync(0));
+            assertThat(leader.getFollowers().connections()).noneMatch(connection -> connection.isStreamInSync(0));
             assertThat(events(LeaderConnection.class, leaderEnd, Level.INFO)).as("the follower never counted the lane connected")
                     .extracting(LoggingEvent::getFormattedMessage).noneMatch(message -> message.startsWith("Following leader"));
             return;

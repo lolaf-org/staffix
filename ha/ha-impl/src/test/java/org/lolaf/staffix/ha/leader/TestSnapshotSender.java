@@ -29,7 +29,7 @@ import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.StreamAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
-import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.ha.spi.TestingReplicationClock;
 import org.mockito.ArgumentCaptor;
 
 import java.nio.ByteBuffer;
@@ -70,10 +70,10 @@ class TestSnapshotSender extends FollowerConnectionHarness {
             connection.resync(key);
         }
 
-        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_PENDING);
-        assertThat(connection.isSessionInSync(0)).as("not waited for until the snapshot lands").isFalse();
-        assertThat(connection.getSyncState(1)).as("refused").isEqualTo(SessionSyncState.NOT_REPLICATED);
-        assertThat(connection.getSyncState(2)).isEqualTo(SessionSyncState.NOT_REPLICATED);
+        assertThat(connection.getSyncState(0)).isEqualTo(StreamSyncState.SNAPSHOT_PENDING);
+        assertThat(connection.isStreamInSync(0)).as("not waited for until the snapshot lands").isFalse();
+        assertThat(connection.getSyncState(1)).as("refused").isEqualTo(StreamSyncState.NOT_REPLICATED);
+        assertThat(connection.getSyncState(2)).isEqualTo(StreamSyncState.NOT_REPLICATED);
         sent.frames.clear();
         snapshot();
         assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
@@ -108,7 +108,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
                 "SNAPSHOT_RECORD epoch=7 key=0 seq=12 message=twelve",
                 "SNAPSHOT_END epoch=7 key=0 count=2 nextIn=21 nextOut=13");
         verify(local).find(eq(1L), eq(12L), any(StoreMessagesConsumer.class));
-        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_SENT);
+        assertThat(connection.getSyncState(0)).isEqualTo(StreamSyncState.SNAPSHOT_SENT);
         assertThat(stats.getSnapshots()).isEqualTo(1);
         assertThat(stats.getSnapshotMessages()).isEqualTo(2);
     }
@@ -172,7 +172,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         int chunkBytes = 4 << 10;
         connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofMillis(100), Duration.ZERO, 4, chunkBytes, new BackoffIdleStrategy(), stats, loop -> {
-        }, new TestingClock(), TestingKeyExchanges.CLEAR);
+        }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
         connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
@@ -193,7 +193,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     void aSnapshotReadsTheStoreOnlyAboutAsFarAsEachChunkSends() {
         connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofMillis(100), Duration.ZERO, 4, 4 << 10, new BackoffIdleStrategy(), stats, loop -> {
-        }, new TestingClock(), TestingKeyExchanges.CLEAR);
+        }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         FixSessionMessagesStore store = storeHolding(1_001L);
         ha.replicatingStore(settings("main"), store, new RecordingProbes());
         connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
@@ -336,7 +336,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
 
         assertThat(sent.frames).isEmpty();
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
-        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_PENDING);
+        assertThat(connection.getSyncState(0)).isEqualTo(StreamSyncState.SNAPSHOT_PENDING);
         verify(local, never()).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
 
         when(local.isStarted()).thenReturn(true);
@@ -344,7 +344,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
             snapshot();
             assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
         });
-        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_SENT);
+        assertThat(connection.getSyncState(0)).isEqualTo(StreamSyncState.SNAPSHOT_SENT);
     }
 
     @Test
@@ -364,6 +364,6 @@ class TestSnapshotSender extends FollowerConnectionHarness {
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
         assertThat(sent.frames).anyMatch(frame -> frame.startsWith("CLOSE epoch=7 SNAPSHOT_FAILED"));
-        assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_PENDING);
+        assertThat(connection.getSyncState(0)).isEqualTo(StreamSyncState.SNAPSHOT_PENDING);
     }
 }

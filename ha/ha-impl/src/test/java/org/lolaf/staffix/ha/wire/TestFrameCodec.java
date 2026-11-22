@@ -128,7 +128,7 @@ class TestFrameCodec {
     }
 
     @Test
-    void sessionsAnnounced() {
+    void streamsAnnounced() {
         ByteBuffer buffer = buffer(false);
         int length = FrameEncoder.streamsAnnounced(buffer, 0, 7, 3);
 

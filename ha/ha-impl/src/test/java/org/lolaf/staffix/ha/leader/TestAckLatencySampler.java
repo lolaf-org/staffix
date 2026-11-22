@@ -16,7 +16,6 @@
 package org.lolaf.staffix.ha.leader;
 
 import org.junit.jupiter.api.Test;
-import org.lolaf.staffix.api.monitoring.Timer;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -27,20 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TestAckLatencySampler {
 
     private final List<Long> recorded = new CopyOnWriteArrayList<>();
-    private final AckLatencySampler sampler = new AckLatencySampler(new Timer() {
-        @Override
-        public void start() {
-        }
-
-        @Override
-        public void stop() {
-        }
-
-        @Override
-        public void record(long duration, TimeUnit unit) {
-            recorded.add(unit.toNanos(duration));
-        }
-    });
+    private final AckLatencySampler sampler = new AckLatencySampler((duration, unit) -> recorded.add(unit.toNanos(duration)));
 
     @Test
     void anAckBeforeTheSampledEventRecordsNothing() {

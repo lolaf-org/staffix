@@ -21,62 +21,62 @@ import org.lolaf.staffix.ha.wire.StreamAnswer;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
- * A lane's sessions on one follower, by session key: where each stands, and what the follower last answered for it,
+ * A lane's streams on one follower, by stream key: where each stands, and what the follower last answered for it,
  * which keeps a refusal's reason. Written by the connection's IO and sender threads, read by any; only growing
  * allocates.
  */
-final class SessionSyncs {
+final class StreamSyncs {
 
     private static final int INITIAL_CAPACITY = 16;
 
-    private volatile AtomicReferenceArray<SessionSyncState> states = new AtomicReferenceArray<>(INITIAL_CAPACITY);
+    private volatile AtomicReferenceArray<StreamSyncState> states = new AtomicReferenceArray<>(INITIAL_CAPACITY);
     private volatile AtomicReferenceArray<StreamAnswer> answers = new AtomicReferenceArray<>(INITIAL_CAPACITY);
 
     /**
-     * Null for a session not announced to the follower.
+     * Null for a stream not announced to the follower.
      */
-    @Nullable SessionSyncState get(int sessionKey) {
-        AtomicReferenceArray<SessionSyncState> current = states;
-        return sessionKey < current.length() ? current.get(sessionKey) : null;
+    @Nullable StreamSyncState get(int streamKey) {
+        AtomicReferenceArray<StreamSyncState> current = states;
+        return streamKey < current.length() ? current.get(streamKey) : null;
     }
 
     /**
-     * Null until the follower answered the session's announcement.
+     * Null until the follower answered the stream's announcement.
      */
-    @Nullable StreamAnswer getAnswer(int sessionKey) {
+    @Nullable StreamAnswer getAnswer(int streamKey) {
         AtomicReferenceArray<StreamAnswer> current = answers;
-        return sessionKey < current.length() ? current.get(sessionKey) : null;
+        return streamKey < current.length() ? current.get(streamKey) : null;
     }
 
-    synchronized void set(int sessionKey, SessionSyncState state) {
-        growFor(sessionKey);
-        states.set(sessionKey, state);
+    synchronized void set(int streamKey, StreamSyncState state) {
+        growFor(streamKey);
+        states.set(streamKey, state);
     }
 
-    synchronized boolean compareAndSet(int sessionKey, SessionSyncState expected, SessionSyncState state) {
-        AtomicReferenceArray<SessionSyncState> current = states;
-        return sessionKey < current.length() && current.compareAndSet(sessionKey, expected, state);
+    synchronized boolean compareAndSet(int streamKey, StreamSyncState expected, StreamSyncState state) {
+        AtomicReferenceArray<StreamSyncState> current = states;
+        return streamKey < current.length() && current.compareAndSet(streamKey, expected, state);
     }
 
-    synchronized void answered(int sessionKey, StreamAnswer answer) {
-        growFor(sessionKey);
-        answers.set(sessionKey, answer);
+    synchronized void answered(int streamKey, StreamAnswer answer) {
+        growFor(streamKey);
+        answers.set(streamKey, answer);
     }
 
-    boolean isSnapshotInProgress(int sessionCount) {
-        for (int key = 0; key < sessionCount; key++) {
-            SessionSyncState state = get(key);
-            if (state == SessionSyncState.SNAPSHOT_PENDING || state == SessionSyncState.SNAPSHOT_SENT) {
+    boolean isSnapshotInProgress(int streamCount) {
+        for (int key = 0; key < streamCount; key++) {
+            StreamSyncState state = get(key);
+            if (state == StreamSyncState.SNAPSHOT_PENDING || state == StreamSyncState.SNAPSHOT_SENT) {
                 return true;
             }
         }
         return false;
     }
 
-    private void growFor(int sessionKey) {
+    private void growFor(int streamKey) {
         int capacity = states.length();
-        if (sessionKey >= capacity) {
-            int grown = Math.max(sessionKey + 1, capacity * 2);
+        if (streamKey >= capacity) {
+            int grown = Math.max(streamKey + 1, capacity * 2);
             states = copy(states, grown);
             answers = copy(answers, grown);
         }

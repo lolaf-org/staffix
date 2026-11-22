@@ -27,7 +27,6 @@ import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.ss.SelectStrategy;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
-import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -43,7 +42,7 @@ import java.util.function.Supplier;
 
 /**
  * The follower's connections to the leader, one per replication lane the leader announces, each made again whenever
- * it drops through a new {@link LeaderConnection} on the same {@link ReplicaSessions}. Lane 0 connects first; its
+ * it drops through a new {@link LeaderConnection} on the same {@link ReplicaStreams}. Lane 0 connects first; its
  * WELCOME, or any lane's, says how many the leader has, and the others are opened or closed to match. Each lane has its
  * own IO thread, so the lanes are applied in parallel.
  */
@@ -53,7 +52,7 @@ public final class ReplicationClient {
     private static final Duration LANE_STOP = Duration.ofSeconds(1);
 
     private final InetSocketAddress leaderAddress;
-    private final ReplicaSessions replicaSessions;
+    private final ReplicaStreams replicaStreams;
     private final LongSupplier nodeEpoch;
     private final String nodeId;
     private final int maxFrameBytes;
@@ -72,7 +71,7 @@ public final class ReplicationClient {
      *                           threads
      * @param checkInterval      see {@link org.lolaf.staffix.ha.ReplicationHaSettings#getFollowerCheckInterval()}
      */
-    public ReplicationClient(InetSocketAddress leaderAddress, ReplicaSessions replicaSessions, LongSupplier nodeEpoch,
+    public ReplicationClient(InetSocketAddress leaderAddress, ReplicaStreams replicaStreams, LongSupplier nodeEpoch,
                              String nodeId, int maxFrameBytes, Duration connectionRetry, SelectStrategy selectStrategy,
                              int storeWriterThreads, Supplier<IdleStrategy> storeWriterIdleStrategy, Duration checkInterval,
                              KeyExchange keyExchange) {
@@ -82,7 +81,7 @@ public final class ReplicationClient {
                 : new StoreWriterThreads(storeWriterThreads, storeWriterIdleStrategy, nodeId);
         this.selectStrategy = selectStrategy;
         this.leaderAddress = leaderAddress;
-        this.replicaSessions = replicaSessions;
+        this.replicaStreams = replicaStreams;
         this.nodeEpoch = nodeEpoch;
         this.nodeId = nodeId;
         this.maxFrameBytes = maxFrameBytes + WireFormat.TAG_BYTES;
@@ -97,7 +96,7 @@ public final class ReplicationClient {
 
     /**
      * Stops reading, then waits, within the deadline, for each lane to write what it read: an event acknowledged as
-     * received is written before a promotion starts the sessions.
+     * received is written before a promotion hands the streams over.
      */
     public void stop(Deadline deadline) {
         LaneClient[] stopping;
@@ -118,7 +117,7 @@ public final class ReplicationClient {
      * Called on the IO thread of a lane below the count, so it never stops its caller.
      */
     private synchronized void lanesAnnounced(int lanes) {
-        replicaSessions.setLanes(lanes);
+        replicaStreams.setLanes(lanes);
         LaneClient[] current = laneClients;
         if (stopped || lanes == current.length) {
             return;
@@ -142,9 +141,9 @@ public final class ReplicationClient {
         return lane < current.length ? current[lane].connection : null;
     }
 
-    public HaStatus.Leader getStatus() {
+    public LeaderStatus getStatus() {
         LeaderConnection first = getConnection(0);
-        return HaStatus.Leader.builder()
+        return LeaderStatus.builder()
                 .leaderId(first == null ? null : first.getLeaderId())
                 .address(String.valueOf(leaderAddress))
                 .connected(isConnected())
@@ -168,7 +167,7 @@ public final class ReplicationClient {
     }
 
     public boolean isInSync() {
-        return isConnected() && replicaSessions.isInSync();
+        return isConnected() && replicaStreams.isInSync();
     }
 
     /**
@@ -201,7 +200,7 @@ public final class ReplicationClient {
             this.decoder = new FrameDecoder(maxFrameBytes);
             this.lane = lane;
             this.writeQueue = storeWriterThreads == null ? null
-                    : new LaneWriteQueue(lane, maxFrameBytes, replicaSessions, storeWriterThreads.forLane(lane));
+                    : new LaneWriteQueue(lane, maxFrameBytes, replicaStreams, storeWriterThreads.forLane(lane));
             String id = "staffix-ha-follower-" + lane;
             ioWorkers = IOWorkersGroupSettings.builder().id(id)
                     .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
@@ -238,7 +237,7 @@ public final class ReplicationClient {
             boolean writtenByStoreWriter = writeQueue != null;
             AnswerSender answers = writtenByStoreWriter ?
                     new ThroughNetworkThreadAnswerSender(session) : new OnNetworkThreadAnswerSender(session);
-            LeaderConnection connected = new LeaderConnection(session, replicaSessions, nodeEpoch, nodeId, lane,
+            LeaderConnection connected = new LeaderConnection(session, replicaStreams, nodeEpoch, nodeId, lane,
                     ReplicationClient.this::lanesAnnounced, checkIntervalNanos, answers, writtenByStoreWriter, keyExchange);
             session.setAttachment(connected);
             connection = connected;

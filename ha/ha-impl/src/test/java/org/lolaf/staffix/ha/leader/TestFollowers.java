@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
+import org.lolaf.staffix.ha.wire.StreamReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.ReplicatedSessions;
@@ -35,7 +36,7 @@ import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.wire.StreamAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
-import org.lolaf.staffix.tests.TestingClock;
+import org.lolaf.staffix.ha.spi.TestingReplicationClock;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -86,8 +87,8 @@ class TestFollowers {
         IOSession ioSession = mock(IOSession.class);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerConnection connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
-                Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
-        }, new TestingClock(), TestingKeyExchanges.CLEAR);
+                Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), loop -> {
+        }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.fillBatch(ByteBuffer.allocate(1 << 16));
         connection.onStreamAnswer(EPOCH, KEY, StreamAnswer.REPLICATING);
@@ -98,18 +99,18 @@ class TestFollowers {
 
     @Test
     void withoutAFollowerInSyncTheWaitEndsAtOnceEvenWithoutATimeout() {
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
 
         inSyncFollower(0).onStreamAnswer(EPOCH, KEY, StreamAnswer.SNAPSHOT_NEEDED);
 
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
     }
 
     @Test
     void anEventTheFollowerAppliedNeedsNoWait() {
         inSyncFollower(offset);
 
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
     }
 
     @Test
@@ -117,28 +118,28 @@ class TestFollowers {
         inSyncFollower(0);
 
         long start = System.nanoTime();
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, TimeUnit.MILLISECONDS.toNanos(20), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, TimeUnit.MILLISECONDS.toNanos(20), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
         assertThat(System.nanoTime() - start).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(20));
     }
 
     @Test
     void aFollowerAWaitTimedOutOnIsNotWaitedForAgainUntilItAppliesWhatItMissed() {
         FollowerConnection follower = inSyncFollower(0);
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, TimeUnit.MILLISECONDS.toNanos(20), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, TimeUnit.MILLISECONDS.toNanos(20), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
 
-        assertThat(CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy())))
+        assertThat(CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy())))
                 .as("no second wait, even without a timeout").succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.TIMED_OUT);
 
         follower.onAck(EPOCH, offset, true, 0);
 
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
     }
 
     @Test
     void theWaitEndsWhenTheFollowerAcks() {
         FollowerConnection follower = inSyncFollower(0);
 
-        CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy()));
+        CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy()));
         follower.onAck(EPOCH, offset, true, 0);
 
         assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.ACKED);
@@ -150,7 +151,7 @@ class TestFollowers {
 
         follower.onReceived(EPOCH, offset);
 
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_RECEIVED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_RECEIVED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
     }
 
     @Test
@@ -159,7 +160,7 @@ class TestFollowers {
 
         follower.onReceived(EPOCH, offset);
 
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, TimeUnit.MILLISECONDS.toNanos(20), idle))
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, TimeUnit.MILLISECONDS.toNanos(20), idle))
                 .isEqualTo(Followers.Ack.TIMED_OUT);
     }
 
@@ -169,7 +170,7 @@ class TestFollowers {
 
         follower.onAck(EPOCH, offset, true, 0);
 
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_RECEIVED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_RECEIVED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
     }
 
     @Test
@@ -179,7 +180,7 @@ class TestFollowers {
         IdleStrategy parking = new BackoffIdleStrategy(0, 0, parkNanos, parkNanos);
         followers.addWaiter(parking);
         CompletableFuture<Followers.Ack> ack = new CompletableFuture<>();
-        Thread waiter = new Thread(() -> ack.complete(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, parking)));
+        Thread waiter = new Thread(() -> ack.complete(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, parking)));
         waiter.start();
         await().until(() -> waiter.getState() == Thread.State.TIMED_WAITING);
 
@@ -193,7 +194,7 @@ class TestFollowers {
     void aFollowerDisconnectingReleasesTheWait() {
         FollowerConnection follower = inSyncFollower(0);
 
-        CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy()));
+        CompletableFuture<Followers.Ack> ack = CompletableFuture.supplyAsync(() -> followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, new BackoffIdleStrategy()));
         follower.disconnected();
 
         assertThat(ack).succeedsWithin(Duration.ofSeconds(5)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
@@ -230,16 +231,16 @@ class TestFollowers {
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerConnection connectionOfMain = new FollowerConnection(ioSession, twoLanes.getReplicationLogs(), twoLanes.getSessions(),
                 () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
-                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
-        }, new TestingClock(), TestingKeyExchanges.CLEAR);
+                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), loop -> {
+        }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         connectionOfMain.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connectionOfMain.fillBatch(ByteBuffer.allocate(1 << 16));
         connectionOfMain.onStreamAnswer(EPOCH, 0, StreamAnswer.REPLICATING);
         connectionOfMain.onAck(EPOCH, twoLanes.getReplicationLogs().get(0).getTailOffset(), true, 0);
         followers.add(connectionOfMain);
 
-        assertThat(followers.awaitAck(0, 0, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
-        assertThat(followers.awaitAck(1, 0, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).as("other's lane is not connected")
+        assertThat(followers.awaitAck(0, 0, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.ACKED);
+        assertThat(followers.awaitAck(1, 0, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).as("other's lane is not connected")
                 .isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
     }
 
@@ -266,8 +267,8 @@ class TestFollowers {
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerConnection connection = new FollowerConnection(ioSession, twoLanes.getReplicationLogs(), twoLanes.getSessions(),
                 () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
-                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
-        }, new TestingClock(), TestingKeyExchanges.CLEAR);
+                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), loop -> {
+        }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower", EPOCH, -1, lane, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.fillBatch(ByteBuffer.allocate(1 << 16));
         followers.add(connection);
@@ -279,17 +280,17 @@ class TestFollowers {
         inSyncFollower(offset);
         inSyncFollower(0);
 
-        assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, TimeUnit.MILLISECONDS.toNanos(1), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
+        assertThat(followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, TimeUnit.MILLISECONDS.toNanos(1), idle)).isEqualTo(Followers.Ack.TIMED_OUT);
     }
 
     @Test
     void waitingAllocatesNothing() {
         inSyncFollower(offset);
-        followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle);
+        followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle);
 
         long before = AllocatedBytes.ofCurrentThread();
         for (int i = 0; i < 100_000; i++) {
-            followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle);
+            followers.awaitAck(KEY, offset, StreamReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle);
         }
 
         assertThat(AllocatedBytes.ofCurrentThread() - before).as("less than a byte per wait").isLessThan(100_000);

@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.follower;
 
+import org.lolaf.staffix.ha.ReplicaSessions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -43,8 +44,15 @@ class TestReplicaSessions {
             .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.NONE).build())
             .build();
 
-    private final RecordingEngine engine = new RecordingEngine().with(REPLICATED).with(SHARED).with(NOT_REPLICATED);
-    private final ReplicaSessions replicaSessions = new ReplicaSessions(engine);
+    private final RecordingEngine engine;
+    private final ReplicaSessions replicaSessions;
+    private final ReplicaStreams streams;
+
+    TestReplicaSessions() {
+        this.engine = new RecordingEngine().with(REPLICATED).with(SHARED).with(NOT_REPLICATED);
+        this.replicaSessions = new ReplicaSessions(engine);
+        this.streams = replicaSessions.getStreams();
+    }
 
     @Test
     void promotionMovesTheOutgoingSeqNumOfEveryReplicatedSessionAhead() {
@@ -121,8 +129,8 @@ class TestReplicaSessions {
         engine.batchingStores = batchingStore;
         bind(0, REPLICATED.getFixSessionType(), REPLICATED.getFixSessionId().toString(), ReplicationMode.ASYNC, "leader-storage");
         snapshotBegin(0, 0, 1, 1);
-        replicaSessions.snapshotRecord(0, 0, StoreEventType.STORE_MESSAGE.getCode(), (byte) 0, 4, text("four"), 0, 4);
-        replicaSessions.snapshotRecord(0, 0, StoreEventType.STORE_MESSAGE.getCode(), (byte) 0, 5, text("five"), 0, 4);
+        streams.snapshotRecord(0, 0, StoreEventType.STORE_MESSAGE.getCode(), (byte) 0, 4, text("four"), 0, 4);
+        streams.snapshotRecord(0, 0, StoreEventType.STORE_MESSAGE.getCode(), (byte) 0, 5, text("five"), 0, 4);
         snapshotEnd(0, 0, 2, 1, 6);
         RecordingEngine.RecordingStore store = engine.store(REPLICATED);
         store.writes.clear();
@@ -131,7 +139,7 @@ class TestReplicaSessions {
         storeMessage(6, "six");
         apply(0, 1, 3, 0, StoreEventType.RESET_SEQ_NUM, 1, text(""), 0, 0, (byte) 0);
         storeMessage(1, "one");
-        replicaSessions.writeApplied(0);
+        streams.writeApplied(0);
 
         assertThat(store.writes).containsExactly(batchingStore
                 ? new String[]{"batch 6 six", "outgoing 7", "reset", "batch 1 one", "outgoing 2"}
@@ -155,9 +163,7 @@ class TestReplicaSessions {
     }
 
     /**
-     * What the network thread asks of a lane on every read, before acknowledging it. Both sessions replicated: a
-     * session not replicated has the {@link NoStore}, whose inherited default methods Mockito instruments once another
-     * test mocks the store interface, and its check then allocates.
+     * What the network thread asks of a lane on every read, before acknowledging it.
      */
     @Test
     void endingAReadAllocatesNothing() {
@@ -180,30 +186,30 @@ class TestReplicaSessions {
     }
 
     private long endRead() {
-        replicaSessions.writeApplied(0);
-        boolean idle = replicaSessions.isLaneInSync(0) && !replicaSessions.hasSessionsToBindAgain(0);
-        return idle ? 1 + replicaSessions.getPendingWrites(0) : 0;
+        streams.writeApplied(0);
+        boolean idle = streams.isLaneInSync(0) && !streams.hasStreamsToBindAgain(0);
+        return idle ? 1 + streams.getPendingWrites(0) : 0;
     }
 
     private StreamAnswer bind(int key, FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
                               String leaderStorageIdentity) {
-        return replicaSessions.bind(key, new TypedSessionId(fixSessionType, fixSessionId).toStreamName(),
+        return streams.bind(key, new TypedSessionId(fixSessionType, fixSessionId).toStreamName(),
                 StreamReplicationMode.from(leaderMode.getCode()), leaderStorageIdentity);
     }
 
     private boolean snapshotBegin(int lane, int key, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        return replicaSessions.snapshotBegin(lane, key, TestingFrameEncoder.seqNums(nextIncomingSeqNum, nextOutgoingSeqNum),
+        return streams.snapshotBegin(lane, key, TestingFrameEncoder.seqNums(nextIncomingSeqNum, nextOutgoingSeqNum),
                 0, 2 * Long.BYTES);
     }
 
     private boolean snapshotEnd(int lane, int key, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        return replicaSessions.snapshotEnd(lane, key, messageCount,
+        return streams.snapshotEnd(lane, key, messageCount,
                 TestingFrameEncoder.seqNums(nextIncomingSeqNum, nextOutgoingSeqNum), 0, 2 * Long.BYTES);
     }
 
     private boolean apply(int lane, long epoch, long offset, int key, StoreEventType eventType, long seqNum,
                           ByteBuffer message, int messageStart, int messageLength, byte fragmentFlags) {
-        return replicaSessions.apply(lane, epoch, offset, key, eventType.getCode(), fragmentFlags, seqNum, message,
+        return streams.apply(lane, epoch, offset, key, eventType.getCode(), fragmentFlags, seqNum, message,
                 messageStart, messageLength);
     }
 }

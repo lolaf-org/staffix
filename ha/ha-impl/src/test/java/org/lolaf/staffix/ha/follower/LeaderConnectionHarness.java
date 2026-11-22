@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.follower;
 
+import org.lolaf.staffix.ha.ReplicaSessions;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
@@ -50,6 +51,7 @@ abstract class LeaderConnectionHarness {
     final RecordingHandler sent;
     final RecordingEngine engine;
     final ReplicaSessions replicaSessions;
+    final ReplicaStreams replicaStreams;
     final LeaderConnection connection;
     private final FrameDecoder sentDecoder;
     private FrameCipher sentOpener;
@@ -63,6 +65,7 @@ abstract class LeaderConnectionHarness {
         this.sentOpener = FrameCipher.CLEAR;
         this.engine = new RecordingEngine().with(MAIN);
         this.replicaSessions = new ReplicaSessions(engine);
+        this.replicaStreams = replicaSessions.getStreams();
         this.connection = newConnection(0, 0);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         doAnswer(invocation -> {
@@ -214,7 +217,7 @@ abstract class LeaderConnectionHarness {
     private LeaderConnection newConnection(int lane, long checkIntervalNanos, KeyExchange keyExchange,
                                            boolean receivedAckedByNetworkThread) {
         latestKeyExchange = keyExchange;
-        latest = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", lane, replicaSessions::setLanes,
+        latest = new LeaderConnection(ioSession, replicaStreams, () -> EPOCH, "follower-b", lane, replicaStreams::setLanes,
                 checkIntervalNanos, new OnNetworkThreadAnswerSender(ioSession), receivedAckedByNetworkThread, keyExchange);
         sentOpener = FrameCipher.CLEAR;
         return latest;

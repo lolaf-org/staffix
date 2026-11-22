@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.follower;
+package org.lolaf.staffix.ha;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -48,7 +48,7 @@ public final class SessionSettingsComparison {
     @Getter
     private volatile List<SessionSettingsDifference> differences = List.of();
 
-    SessionSettingsComparison(EngineAccess engine) {
+    public SessionSettingsComparison(EngineAccess engine) {
         this.engine = engine;
         this.applier = new SessionSettingsApplier(engine);
     }
@@ -58,12 +58,12 @@ public final class SessionSettingsComparison {
                 .fixSessionId(key.getSession().getFixSessionId()).kind(kind).build();
     }
 
-    synchronized void onDigest(int generation, Digest digest) {
+    public synchronized void onDigest(int generation, Digest digest) {
         receive(generation);
         receiving.put(digest.storedSession(), digest);
     }
 
-    synchronized void onDigestsComplete(int generation, int count) {
+    public synchronized void onDigestsComplete(int generation, int count) {
         receive(generation);
         if (receiving.size() == count) {
             leaders = new HashMap<>(receiving);

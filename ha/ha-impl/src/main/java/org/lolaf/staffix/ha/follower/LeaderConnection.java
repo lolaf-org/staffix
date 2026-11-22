@@ -37,7 +37,7 @@ import java.util.function.ObjIntConsumer;
 
 /**
  * One connection to the leader, for one of its replication lanes: the handshake, then the leader's frames for the
- * lane's sessions applied to the {@link ReplicaSessions}, all on the connection's IO thread. Every frame read is
+ * lane's streams applied to the {@link ReplicaStreams}, all on the connection's IO thread. Every frame read is
  * acknowledged at the end of the read, so a {@code SYNC} send on the leader waits one round trip, not a timer.
  *
  * <p>A frame from another epoch than the leader's WELCOME closes the connection: the leader it came from is not the
@@ -51,7 +51,7 @@ public final class LeaderConnection implements FrameHandler {
      * Fits an {@link ThroughNetworkThreadAnswerSender} frame, at three bytes a character.
      */
     private final IOSession ioSession;
-    private final ReplicaSessions replicaSessions;
+    private final ReplicaStreams replicaStreams;
     /**
      * This node's current election epoch, sent in its HELLO and CLOSE; a WELCOME of an older epoch is refused.
      */
@@ -97,8 +97,8 @@ public final class LeaderConnection implements FrameHandler {
     private boolean pendingWritesRead;
     private long pendingWritesReadNanos;
     private boolean ackedInSync;
-    private int sessionFramesBeforeAnnounced;
-    private boolean sessionsAnnounced;
+    private int streamFramesBeforeAnnounced;
+    private boolean streamsAnnounced;
 
     /**
      * @param lanesAnnounced               told the leader's lane count from its WELCOME, before the stream starts
@@ -106,10 +106,10 @@ public final class LeaderConnection implements FrameHandler {
      * @param receivedAckedByNetworkThread the network thread acknowledges events as received as it reads them, a store
      *                                     writer thread writing them
      */
-    LeaderConnection(IOSession ioSession, ReplicaSessions replicaSessions, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
+    LeaderConnection(IOSession ioSession, ReplicaStreams replicaStreams, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
                      long checkIntervalNanos, AnswerSender answers, boolean receivedAckedByNetworkThread,
                      KeyExchange keyExchange) {
-        this.sendBoundAnswer = (answer, sessionKey) -> sendStreamAnswer(sessionKey, answer);
+        this.sendBoundAnswer = (answer, streamKey) -> sendStreamAnswer(streamKey, answer);
         this.frameCipher = FrameCipher.CLEAR;
         this.followerNonce = new byte[WireFormat.NONCE_BYTES];
         this.state = State.AWAITING_WELCOME;
@@ -118,7 +118,7 @@ public final class LeaderConnection implements FrameHandler {
         this.receivedAckedByNetworkThread = receivedAckedByNetworkThread;
         this.checkIntervalNanos = checkIntervalNanos;
         this.ioSession = ioSession;
-        this.replicaSessions = replicaSessions;
+        this.replicaStreams = replicaStreams;
         this.nodeEpoch = nodeEpoch;
         this.nodeId = nodeId;
         this.lane = lane;
@@ -128,8 +128,8 @@ public final class LeaderConnection implements FrameHandler {
     void hello() {
         followerNonce = keyExchange.newNonce();
         ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
-        int length = FrameEncoder.hello(frame, 0, nodeEpoch.getAsLong(), replicaSessions.getApplicationId(), nodeId,
-                replicaSessions.getLastAppliedEpoch(lane), replicaSessions.getLastAppliedOffset(lane), lane,
+        int length = FrameEncoder.hello(frame, 0, nodeEpoch.getAsLong(), replicaStreams.getApplicationId(), nodeId,
+                replicaStreams.getLastAppliedEpoch(lane), replicaStreams.getLastAppliedOffset(lane), lane,
                 keyExchange.getMode(), followerNonce);
         sentHelloBytes = FrameDecoder.bytes(frame, 0, length);
         answers.send(frame, length);
@@ -170,9 +170,9 @@ public final class LeaderConnection implements FrameHandler {
             close(CloseReason.VERSION_MISMATCH, "follower speaks version " + WireFormat.VERSION + ", leader " + version);
             return;
         }
-        if (applicationId != replicaSessions.getApplicationId()) {
+        if (applicationId != replicaStreams.getApplicationId()) {
             close(CloseReason.APPLICATION_MISMATCH, "follower replicates application "
-                    + Integer.toHexString(replicaSessions.getApplicationId()) + ", leader " + Integer.toHexString(applicationId));
+                    + Integer.toHexString(replicaStreams.getApplicationId()) + ", leader " + Integer.toHexString(applicationId));
             return;
         }
         long currentEpoch = nodeEpoch.getAsLong();
@@ -209,7 +209,7 @@ public final class LeaderConnection implements FrameHandler {
     private void startStreaming() {
         lanesAnnounced.accept(streamLanes);
         boolean resumed = streamResumeOffset != WireFormat.NO_RESUME;
-        replicaSessions.streamStarted(lane, resumed);
+        replicaStreams.streamStarted(lane, resumed);
         state = State.STREAMING;
         ackDue = true;
         if (encryptionKeys != null) {
@@ -242,15 +242,15 @@ public final class LeaderConnection implements FrameHandler {
         if (!acceptsFrame(epoch)) {
             return;
         }
-        if (!replicaSessions.carries(lane, streamKey)) {
+        if (!replicaStreams.carries(lane, streamKey)) {
             close(CloseReason.PROTOCOL_ERROR, "stream key " + streamKey + " on lane " + lane + " of "
-                    + replicaSessions.getLanes());
+                    + replicaStreams.getLanes());
             return;
         }
-        if (!sessionsAnnounced) {
-            sessionFramesBeforeAnnounced++;
+        if (!streamsAnnounced) {
+            streamFramesBeforeAnnounced++;
         }
-        sendStreamAnswer(streamKey, replicaSessions.bind(streamKey, streamName, replicationMode, storageIdentity));
+        sendStreamAnswer(streamKey, replicaStreams.bind(streamKey, streamName, replicationMode, storageIdentity));
     }
 
     @Override
@@ -258,37 +258,37 @@ public final class LeaderConnection implements FrameHandler {
         if (!acceptsFrame(epoch)) {
             return;
         }
-        if (sessionsAnnounced) {
+        if (streamsAnnounced) {
             close(CloseReason.PROTOCOL_ERROR, "a second STREAMS_ANNOUNCED");
             return;
         }
-        if (announcedCount != sessionFramesBeforeAnnounced) {
-            close(CloseReason.PROTOCOL_ERROR, "STREAMS_ANNOUNCED counts " + announcedCount + " sessions, "
-                    + sessionFramesBeforeAnnounced + " were announced");
+        if (announcedCount != streamFramesBeforeAnnounced) {
+            close(CloseReason.PROTOCOL_ERROR, "STREAMS_ANNOUNCED counts " + announcedCount + " streams, "
+                    + streamFramesBeforeAnnounced + " were announced");
             return;
         }
-        sessionsAnnounced = true;
-        replicaSessions.sessionsAnnounced(lane);
+        streamsAnnounced = true;
+        replicaStreams.streamsAnnounced(lane);
         ackDue = true;
     }
 
     @Override
     public void onSessionSettingsDigest(long epoch, int generation, SessionSettingsDigests.Digest digest) {
         if (acceptsFrame(epoch)) {
-            replicaSessions.getSettingsComparison().onDigest(generation, digest);
+            replicaStreams.getSettingsComparison().onDigest(generation, digest);
         }
     }
 
     @Override
     public void onSessionSettingsDigestsComplete(long epoch, int generation, int digestCount) {
         if (acceptsFrame(epoch)) {
-            replicaSessions.getSettingsComparison().onDigestsComplete(generation, digestCount);
+            replicaStreams.getSettingsComparison().onDigestsComplete(generation, digestCount);
         }
     }
 
-    private void sendStreamAnswer(int sessionKey, StreamAnswer answer) {
+    private void sendStreamAnswer(int streamKey, StreamAnswer answer) {
         ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.STREAM_ANSWER));
-        answers.send(frame, FrameEncoder.streamAnswer(frame, 0, streamEpoch, sessionKey, answer));
+        answers.send(frame, FrameEncoder.streamAnswer(frame, 0, streamEpoch, streamKey, answer));
     }
 
     @Override
@@ -297,7 +297,7 @@ public final class LeaderConnection implements FrameHandler {
         if (!acceptsFrame(epoch)) {
             return;
         }
-        if (!replicaSessions.apply(lane, epoch, logOffset, streamKey, contentType, flags, position, buffer, payloadIndex,
+        if (!replicaStreams.apply(lane, epoch, logOffset, streamKey, contentType, flags, position, buffer, payloadIndex,
                 payloadLength)) {
             close(CloseReason.PROTOCOL_ERROR, "a RECORD for stream key " + streamKey
                     + " never announced on this lane, or a fragment out of its payload");
@@ -317,7 +317,7 @@ public final class LeaderConnection implements FrameHandler {
     public void onClose(long epoch, CloseReason reason, String text) {
         if (reason == CloseReason.SHUTDOWN && state == State.STREAMING && epoch == streamEpoch) {
             log.info("Leader {} stopped cleanly and handed over: {}", leaderName(), text);
-            replicaSessions.handedOver(lane);
+            replicaStreams.handedOver(lane);
         } else if (reason == CloseReason.RETRY_LATER) {
             log.info("Leader {} holds this follower off: {}", leaderName(), text);
         } else if (reason.isEncryptionRefusal()) {
@@ -401,33 +401,33 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     private void writeAndAck() {
-        long received = replicaSessions.takeReceivedToAck(lane);
-        if (state == State.STREAMING && received > replicaSessions.getLastAppliedOffset(lane)) {
+        long received = replicaStreams.takeReceivedToAck(lane);
+        if (state == State.STREAMING && received > replicaStreams.getLastAppliedOffset(lane)) {
             if (!isReceivedAckedOnRead()) {
                 ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.RECEIVED));
                 answers.send(frame, FrameEncoder.received(frame, 0, streamEpoch, received));
             }
             long receivedSentNanos = System.nanoTime();
-            replicaSessions.writeApplied(lane);
-            replicaSessions.getReceivedWriteLatency().record(System.nanoTime() - receivedSentNanos, TimeUnit.NANOSECONDS);
+            replicaStreams.writeApplied(lane);
+            replicaStreams.getReceivedWriteLatency().record(System.nanoTime() - receivedSentNanos, TimeUnit.NANOSECONDS);
         } else {
-            replicaSessions.writeApplied(lane);
+            replicaStreams.writeApplied(lane);
         }
         if (state == State.STREAMING) {
-            bindSessionsAgain();
+            bindStreamsAgain();
         }
         if (!ackDue || state != State.STREAMING) {
             return;
         }
         ackDue = false;
-        boolean inSync = replicaSessions.isLaneInSync(lane);
+        boolean inSync = replicaStreams.isLaneInSync(lane);
         ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.ACK));
-        answers.send(frame, FrameEncoder.ack(frame, 0, streamEpoch, replicaSessions.getLastAppliedOffset(lane), inSync,
+        answers.send(frame, FrameEncoder.ack(frame, 0, streamEpoch, replicaStreams.getLastAppliedOffset(lane), inSync,
                 pendingWrites(inSync)));
     }
 
     /**
-     * At most once a check interval, as it asks every session's store, and at once on turning in sync, when the leader
+     * At most once a check interval, as it asks every stream's sink, and at once on turning in sync, when the leader
      * starts to trust it.
      */
     private long pendingWrites(boolean inSync) {
@@ -436,22 +436,22 @@ public final class LeaderConnection implements FrameHandler {
             pendingWritesRead = true;
             ackedInSync = inSync;
             pendingWritesReadNanos = now;
-            pendingWrites = replicaSessions.getPendingWrites(lane);
+            pendingWrites = replicaStreams.getPendingWrites(lane);
         }
         return pendingWrites;
     }
 
     /**
-     * At most once a check interval: the engine's sessions are listed to find them, and a
+     * At most once a check interval: the binder looks each stream up, and a
      * refusal is rare.
      */
-    private void bindSessionsAgain() {
+    private void bindStreamsAgain() {
         long now = System.nanoTime();
-        if (now - rebindCheckedNanos < checkIntervalNanos || !replicaSessions.hasSessionsToBindAgain(lane)) {
+        if (now - rebindCheckedNanos < checkIntervalNanos || !replicaStreams.hasStreamsToBindAgain(lane)) {
             return;
         }
         rebindCheckedNanos = now;
-        replicaSessions.bindAgain(lane, sendBoundAnswer);
+        replicaStreams.bindAgain(lane, sendBoundAnswer);
     }
 
     /**
@@ -476,7 +476,7 @@ public final class LeaderConnection implements FrameHandler {
     @Override
     public void onSnapshotBegin(long epoch, int streamKey, long snapshotOffset, ByteBuffer buffer, int stateIndex,
                                 int stateLength) {
-        if (acceptsFrame(epoch) && !replicaSessions.snapshotBegin(lane, streamKey, buffer, stateIndex, stateLength)) {
+        if (acceptsFrame(epoch) && !replicaStreams.snapshotBegin(lane, streamKey, buffer, stateIndex, stateLength)) {
             close(CloseReason.PROTOCOL_ERROR, "a snapshot of stream key " + streamKey + ", not replicated here");
         }
     }
@@ -484,7 +484,7 @@ public final class LeaderConnection implements FrameHandler {
     @Override
     public void onSnapshotRecord(long epoch, int streamKey, byte contentType, byte flags, long position,
                                  ByteBuffer buffer, int payloadIndex, int payloadLength) {
-        if (acceptsFrame(epoch) && !replicaSessions.snapshotRecord(lane, streamKey, contentType, flags, position, buffer,
+        if (acceptsFrame(epoch) && !replicaStreams.snapshotRecord(lane, streamKey, contentType, flags, position, buffer,
                 payloadIndex, payloadLength)) {
             close(CloseReason.PROTOCOL_ERROR, "a snapshot record of stream key " + streamKey
                     + " not replicated here, or a fragment out of its payload");
@@ -501,7 +501,7 @@ public final class LeaderConnection implements FrameHandler {
         if (!acceptsFrame(epoch)) {
             return;
         }
-        if (!replicaSessions.snapshotEnd(lane, streamKey, recordCount, buffer, stateIndex, stateLength)) {
+        if (!replicaStreams.snapshotEnd(lane, streamKey, recordCount, buffer, stateIndex, stateLength)) {
             close(CloseReason.PROTOCOL_ERROR, "a snapshot of stream key " + streamKey + " that does not end with "
                     + recordCount + " records received");
             return;
