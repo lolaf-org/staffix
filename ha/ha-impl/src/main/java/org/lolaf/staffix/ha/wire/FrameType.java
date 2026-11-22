@@ -29,7 +29,7 @@ import org.jspecify.annotations.Nullable;
  *                                       then the node id
  * WELCOME           leader to follower  magic 4, version 2, leader id length 2, resume offset 8, lane count 2,
  *                                       encryption mode 1, reserved 5, nonce 16; then the leader id
- * KEY_CONFIRMATION         follower to leader  HMAC-SHA256 32 of the HELLO and WELCOME, when both peers encrypt
+ * KEY_CONFIRMATION  follower to leader  HMAC-SHA256 32 of the HELLO and WELCOME, when both peers encrypt
  * SESSION           leader to follower  session key 4, session type 1, replication mode 1, session id length 2,
  *                                       storage identity length 2; then the session id, then the identity
  * SESSION_ANSWER    follower to leader  session key 4, answer 1

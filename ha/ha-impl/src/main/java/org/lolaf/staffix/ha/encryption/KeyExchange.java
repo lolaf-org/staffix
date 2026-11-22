@@ -22,6 +22,7 @@ import org.lolaf.staffix.ha.wire.WireFormat;
 
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -37,9 +38,12 @@ import java.util.Objects;
  */
 public final class KeyExchange {
 
+    private static final String LABEL_PREFIX = "staffix-ha ";
     private static final byte[] NO_NONCE = new byte[WireFormat.NONCE_BYTES];
-    private static final byte[] CONFIRMATION_LABEL = "staffix-ha key confirmation v1".getBytes(StandardCharsets.UTF_8);
-    private static final String STAFFIX_HA = "staffix-ha ";
+    private static final byte[] CONFIRMATION_LABEL = (LABEL_PREFIX + "key confirmation v1")
+            .getBytes(StandardCharsets.UTF_8);
+    private static final int MAC_KEY_BYTES = 32;
+    private static final int IV_BYTES = 16;
 
     private final ReplicationEncryptionSettings settings;
     private final SecureRandom random;
@@ -70,6 +74,14 @@ public final class KeyExchange {
     }
 
     /**
+     * An AEAD needs a new nonce on every frame, so a new parameter spec and init in the JCE whatever the provider,
+     * where a stream cipher is initialised once per connection.
+     */
+    public boolean allocatesOnEveryFrame() {
+        return settings.getMode() != EncryptionMode.DISABLED && !settings.isStreamCipher();
+    }
+
+    /**
      * Zeros when this node does not encrypt.
      */
     public byte[] newNonce() {
@@ -96,7 +108,8 @@ public final class KeyExchange {
         byte[] salt = ByteBuffer.allocate(followerNonce.length + leaderNonce.length).put(followerNonce).put(leaderNonce)
                 .array();
         byte[] prk = KeyDerivation.extract(salt, Objects.requireNonNull(settings.getSecret(), "secret"));
-        return new ConnectionEncryptionKeys(KeyDerivation.expand(prk, "staffix-ha key confirmation", WireFormat.KEY_CONFIRMATION_BYTES),
+        return new ConnectionEncryptionKeys(
+                KeyDerivation.expand(prk, LABEL_PREFIX + "key confirmation", WireFormat.KEY_CONFIRMATION_BYTES),
                 direction(prk, "leader-to-follower"), direction(prk, "follower-to-leader"));
     }
 
@@ -139,11 +152,12 @@ public final class KeyExchange {
         try {
             Cipher cipher = provider == null ? Cipher.getInstance(settings.getCipher())
                     : Cipher.getInstance(settings.getCipher(), provider);
+            SecretKeySpec key = new SecretKeySpec(keys.getCipherKey(), settings.getKeyAlgorithm());
             if (settings.isStreamCipher()) {
-                return new StreamFrameCipher(cipher, mode, keys.getCipherKey(), keys.getIv(),
+                return new StreamFrameCipher(cipher, mode, key, keys.getIv(),
                         FrameMac.of(settings.getMac(), provider, keys.getMacKey()), StreamFrameCipher.SEGMENT_BYTES);
             }
-            return new AeadFrameCipher(cipher, mode, keys.getCipherKey(), keys.getIv());
+            return new AeadFrameCipher(cipher, mode, key, keys.getIv());
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("The settings validated " + describeCipher() + ", which now fails", e);
         }
@@ -151,8 +165,8 @@ public final class KeyExchange {
 
     private ConnectionEncryptionKeys.DirectionKeys direction(byte[] prk, String direction) {
         return new ConnectionEncryptionKeys.DirectionKeys(
-                KeyDerivation.expand(prk, STAFFIX_HA + direction + " cipher", settings.getKeyBits() / Byte.SIZE),
-                KeyDerivation.expand(prk, STAFFIX_HA + direction + " mac", 32),
-                KeyDerivation.expand(prk, STAFFIX_HA + direction + " iv", 16));
+                KeyDerivation.expand(prk, LABEL_PREFIX + direction + " cipher", settings.getKeyBits() / Byte.SIZE),
+                KeyDerivation.expand(prk, LABEL_PREFIX + direction + " mac", MAC_KEY_BYTES),
+                KeyDerivation.expand(prk, LABEL_PREFIX + direction + " iv", IV_BYTES));
     }
 }

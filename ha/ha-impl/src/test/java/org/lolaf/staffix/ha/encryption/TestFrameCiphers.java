@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.wire.FrameCipher;
+import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -62,6 +63,29 @@ class TestFrameCiphers {
         opener = exchange.newOpener(keys.getLeaderToFollower());
     }
 
+    private void streamCiphers(String cipher, ConnectionEncryptionKeys.DirectionKeys keys, long segmentBytes)
+            throws Exception {
+        SecretKeySpec key = new SecretKeySpec(keys.getCipherKey(), cipher.startsWith("AES")
+                ? ReplicationEncryptionSettings.AES : ReplicationEncryptionSettings.CHACHA20);
+        sealer = new StreamFrameCipher(Cipher.getInstance(cipher), Cipher.ENCRYPT_MODE, key, keys.getIv(),
+                FrameMac.of("HmacSHA256", null, keys.getMacKey()), segmentBytes);
+        opener = new StreamFrameCipher(Cipher.getInstance(cipher), Cipher.DECRYPT_MODE, key, keys.getIv(),
+                FrameMac.of("HmacSHA256", null, keys.getMacKey()), segmentBytes);
+    }
+
+    /**
+     * The encrypted bytes of the same message sealed twice in a row, as the second frame of the direction.
+     */
+    private byte[][] sealedTwice() {
+        ByteBuffer frames = buffer(false);
+        byte[][] encrypted = new byte[2][];
+        for (int i = 0; i < 2; i++) {
+            sealer.seal(frames, 0, storeEvent(frames, 0, MESSAGE, false));
+            encrypted[i] = FrameDecoder.bytes(frames, EVENT_FIXED_BYTES, MESSAGE.length());
+        }
+        return encrypted;
+    }
+
     private static ByteBuffer buffer(boolean direct) {
         return direct ? ByteBuffer.allocateDirect(1 << 16) : ByteBuffer.allocate(1 << 16);
     }
@@ -72,21 +96,13 @@ class TestFrameCiphers {
                 StoreEventType.STORE_MESSAGE, 42, Hashing.hash("D"), bytes, 0, bytes.remaining(), (byte) 0);
         int length = FrameEncoder.storeEventHeader(out, index, 7, 1_000, body);
         if (unencrypted) {
-            FrameEncoder.markUnencryptedMessage(out, index);
+            FrameEncoder.markStoreEventUnencrypted(out, index);
         }
         return length;
     }
 
-    private static byte[] bytes(ByteBuffer buffer, int index, int length) {
-        byte[] bytes = new byte[length];
-        for (int i = 0; i < length; i++) {
-            bytes[i] = buffer.get(index + i);
-        }
-        return bytes;
-    }
-
     private static String text(ByteBuffer buffer, int index, int length) {
-        return new String(bytes(buffer, index, length), StandardCharsets.US_ASCII);
+        return new String(FrameDecoder.bytes(buffer, index, length), StandardCharsets.US_ASCII);
     }
 
     @ParameterizedTest(name = "{0} {1} {2}, direct {3}")
@@ -104,17 +120,17 @@ class TestFrameCiphers {
         ciphers(cipher, keyBits, mac);
         ByteBuffer frames = buffer(direct);
         int length = storeEvent(frames, 0, MESSAGE, false);
-        byte[] clear = bytes(frames, 0, length);
+        byte[] clear = FrameDecoder.bytes(frames, 0, length);
 
         int sealed = sealer.seal(frames, 0, length);
 
         assertThat(sealed).isEqualTo(length + WireFormat.TAG_BYTES);
         assertThat(frames.getInt(WireFormat.OFFSET_LENGTH)).isEqualTo(sealed);
-        assertThat(bytes(frames, 4, EVENT_FIXED_BYTES - 4)).as("the fixed fields").isEqualTo(bytes(ByteBuffer.wrap(clear), 4, EVENT_FIXED_BYTES - 4));
+        assertThat(FrameDecoder.bytes(frames, 4, EVENT_FIXED_BYTES - 4)).as("the fixed fields").isEqualTo(FrameDecoder.bytes(ByteBuffer.wrap(clear), 4, EVENT_FIXED_BYTES - 4));
         assertThat(text(frames, EVENT_FIXED_BYTES, MESSAGE.length())).doesNotContain("8=FIX").doesNotContain("SENDER");
 
         assertThat(opener.open(frames, 0, sealed)).isEqualTo(length);
-        assertThat(bytes(frames, 4, length - 4)).isEqualTo(bytes(ByteBuffer.wrap(clear), 4, length - 4));
+        assertThat(FrameDecoder.bytes(frames, 4, length - 4)).isEqualTo(FrameDecoder.bytes(ByteBuffer.wrap(clear), 4, length - 4));
     }
 
     @ParameterizedTest
@@ -137,7 +153,7 @@ class TestFrameCiphers {
     void flippingAnyBitOfAnAuthenticatedFrameButItsTypeFailsItsTag(String cipher) {
         ByteBuffer frames = buffer(false);
         int length = storeEvent(frames, 0, MESSAGE, false);
-        byte[] clear = bytes(frames, 0, length);
+        byte[] clear = FrameDecoder.bytes(frames, 0, length);
         for (int index = 0; index < length + WireFormat.TAG_BYTES; index++) {
             if (index == WireFormat.OFFSET_TYPE) {
                 // another type is another frame, refused by its own decoding or the next authenticated frame's tag
@@ -174,7 +190,7 @@ class TestFrameCiphers {
         ByteBuffer frames = buffer(true);
         int length = storeEvent(frames, 0, MESSAGE, false);
         int sealed = sealer.seal(frames, 0, length);
-        byte[] onTheWire = bytes(frames, 0, sealed);
+        byte[] onTheWire = FrameDecoder.bytes(frames, 0, sealed);
         opener.open(frames, 0, sealed);
 
         ByteBuffer replayed = ByteBuffer.wrap(onTheWire);
@@ -229,10 +245,7 @@ class TestFrameCiphers {
         KeyExchange exchange = TestingKeyExchanges.of(EncryptionMode.REQUIRED, TestingKeyExchanges.SECRET, cipher);
         ConnectionEncryptionKeys.DirectionKeys keys = exchange.deriveKeys(exchange.newNonce(), exchange.newNonce())
                 .getLeaderToFollower();
-        sealer = new StreamFrameCipher(Cipher.getInstance(cipher), Cipher.ENCRYPT_MODE, keys.getCipherKey(),
-                keys.getIv(), FrameMac.of("HmacSHA256", null, keys.getMacKey()), 50);
-        opener = new StreamFrameCipher(Cipher.getInstance(cipher), Cipher.DECRYPT_MODE, keys.getCipherKey(),
-                keys.getIv(), FrameMac.of("HmacSHA256", null, keys.getMacKey()), 50);
+        streamCiphers(cipher, keys, 50);
         ByteBuffer frames = buffer(true);
         for (int frame = 0; frame < 5; frame++) {
             int length = storeEvent(frames, 0, MESSAGE + frame, false);
@@ -243,6 +256,28 @@ class TestFrameCiphers {
 
             assertThat(text(frames, EVENT_FIXED_BYTES, MESSAGE.length() + 1)).isEqualTo(MESSAGE + frame);
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/GCM/NoPadding", "ChaCha20-Poly1305", "AES/CTR/NoPadding", "ChaCha20"})
+    void theSameMessageSealedTwiceEncryptsDifferently(String cipher) {
+        ciphers(cipher, 256, "HmacSHA256");
+
+        byte[][] encrypted = sealedTwice();
+
+        assertThat(encrypted[1]).as("a nonce or keystream used twice").isNotEqualTo(encrypted[0]);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/CTR/NoPadding", "ChaCha20"})
+    void eachSegmentRunsItsOwnKeystream(String cipher) throws Exception {
+        KeyExchange exchange = TestingKeyExchanges.of(EncryptionMode.REQUIRED, TestingKeyExchanges.SECRET, cipher);
+        streamCiphers(cipher, exchange.deriveKeys(exchange.newNonce(), exchange.newNonce()).getLeaderToFollower(),
+                MESSAGE.length());
+
+        byte[][] encrypted = sealedTwice();
+
+        assertThat(encrypted[1]).as("the second segment's keystream is the first's").isNotEqualTo(encrypted[0]);
     }
 
     @Test

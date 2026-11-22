@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.encryption;
 
+import lombok.Value;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
@@ -47,10 +48,10 @@ abstract class FrameMac {
             "HmacSHA3-384", new Digest("SHA3-384", 104),
             "HmacSHA3-512", new Digest("SHA3-512", 72));
 
-    final byte[] frameNumber;
+    private final byte[] frameNumberBytes;
 
     FrameMac() {
-        this.frameNumber = new byte[Long.BYTES];
+        this.frameNumberBytes = new byte[Long.BYTES];
     }
 
     /**
@@ -60,7 +61,8 @@ abstract class FrameMac {
         Digest digest = HMAC_DIGESTS.get(algorithm);
         if (digest != null) {
             try {
-                return new DigestHmac(digest.messageDigest(provider), digest.messageDigest(provider), digest.blockBytes, key);
+                return new DigestHmac(digest.messageDigest(provider), digest.messageDigest(provider),
+                        digest.getBlockBytes(), key);
             } catch (NoSuchAlgorithmException e) {
                 // the provider has the MAC without its digest
             }
@@ -70,7 +72,17 @@ abstract class FrameMac {
         return new JceMac(mac);
     }
 
-    abstract void start(long frame);
+    final void start(long frameNumber) {
+        startTag();
+        FrameBytes.putLong(frameNumberBytes, 0, frameNumber);
+        update(frameNumberBytes, 0, Long.BYTES);
+    }
+
+    /**
+     * Before the frame number, what every tag starts with.
+     */
+    void startTag() {
+    }
 
     abstract void update(byte[] bytes, int offset, int length);
 
@@ -79,14 +91,10 @@ abstract class FrameMac {
      */
     abstract void finish(byte[] tag);
 
-    private static final class Digest {
-        private final String name;
-        private final int blockBytes;
-
-        Digest(String name, int blockBytes) {
-            this.name = name;
-            this.blockBytes = blockBytes;
-        }
+    @Value
+    private static class Digest {
+        String name;
+        int blockBytes;
 
         MessageDigest messageDigest(@Nullable String provider) throws GeneralSecurityException {
             return provider == null ? MessageDigest.getInstance(name) : MessageDigest.getInstance(name, provider);
@@ -122,10 +130,8 @@ abstract class FrameMac {
         }
 
         @Override
-        void start(long frame) {
+        void startTag() {
             inner.update(innerPad);
-            FrameBytes.putLong(frameNumber, 0, frame);
-            inner.update(frameNumber);
         }
 
         @Override
@@ -158,12 +164,6 @@ abstract class FrameMac {
         JceMac(Mac mac) {
             this.mac = mac;
             this.full = new byte[mac.getMacLength()];
-        }
-
-        @Override
-        void start(long frame) {
-            FrameBytes.putLong(frameNumber, 0, frame);
-            mac.update(frameNumber);
         }
 
         @Override

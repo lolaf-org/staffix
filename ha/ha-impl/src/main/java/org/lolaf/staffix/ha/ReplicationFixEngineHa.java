@@ -120,7 +120,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         settings.validate();
         this.settings = settings;
         this.keyExchange = new KeyExchange(settings.getEncryption());
-        logAllocatingCipher(settings.getEncryption(), keyExchange);
+        logAllocatingCipher(keyExchange);
         this.replicationLogs = new ReplicationLogs(settings.getReplicationLanes(), settings.getLogCapacity());
         this.sessions = new ReplicatedSessions();
         this.followers = new Followers();
@@ -128,12 +128,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         this.settingsListeners = new ArrayList<>();
     }
 
-    /**
-     * An AEAD needs a new nonce on every frame, so a new parameter spec and a new init in the JCE: it allocates on
-     * every frame whatever the provider, where a stream cipher is initialised once per connection.
-     */
-    private static void logAllocatingCipher(ReplicationEncryptionSettings encryption, KeyExchange keyExchange) {
-        if (encryption.getMode() != EncryptionMode.DISABLED && !encryption.isStreamCipher()) {
+    private static void logAllocatingCipher(KeyExchange keyExchange) {
+        if (keyExchange.allocatesOnEveryFrame()) {
             log.info("HA replication cipher {} allocates on every frame, inside the JCE (a new nonce takes a new cipher "
                     + "init): replication adds garbage collections. AES/CTR/NoPadding with HmacSHA256 allocates nothing; "
                     + "see \"Encrypting the replication\" in the high availability docs", keyExchange.describeCipher());

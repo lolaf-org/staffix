@@ -130,7 +130,7 @@ class TestReplicationEncryptionHandshake {
 
         awaitReplicated();
 
-        assertThat(leader.getFollowers().connections().get(0).getEncryptionKeys()).isNotNull();
+        assertThat(leader.getFollowers().connections().get(0).isEncrypted()).isTrue();
     }
 
     @AfterEach
@@ -182,8 +182,8 @@ class TestReplicationEncryptionHandshake {
         FollowerConnection leaderSide = leader.getFollowers().connections().get(0);
         LeaderConnection followerSide = client.getConnection(0);
         boolean encrypted = outcome.equals("ENCRYPTED");
-        assertThat(leaderSide.getEncryptionKeys() != null).as("the leader encrypts").isEqualTo(encrypted);
-        assertThat(followerSide.getEncryptionKeys() != null).as("the follower encrypts").isEqualTo(encrypted);
+        assertThat(leaderSide.isEncrypted()).as("the leader encrypts").isEqualTo(encrypted);
+        assertThat(followerSide.isEncrypted()).as("the follower encrypts").isEqualTo(encrypted);
         assertThat(events(FollowerConnection.class, followerId, Level.ERROR)).as("an error on the leader")
                 .hasSize(outcome.equals("CLEAR_LEADER_ERROR") ? 1 : 0);
         assertThat(events(LeaderConnection.class, leaderId, Level.ERROR)).as("an error on the follower")

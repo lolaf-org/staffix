@@ -234,7 +234,7 @@ class TestFrameCodec {
     void aMessageFlaggedUnencryptedOnAClearConnectionIsRefused() {
         ByteBuffer buffer = buffer(false);
         int event = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
-        FrameEncoder.markUnencryptedMessage(buffer, 0);
+        FrameEncoder.markStoreEventUnencrypted(buffer, 0);
         int snapshot = FrameEncoder.snapshotMessage(buffer, event, 7, 3, 42, WireFormat.NO_MESSAGE_TYPE, message(), 0,
                 MESSAGE.length, WireFormat.UNENCRYPTED_MESSAGE);
 
@@ -252,7 +252,7 @@ class TestFrameCodec {
         FrameCipher opener = exchange.newOpener(keys.getLeaderToFollower());
         ByteBuffer buffer = buffer(true);
         int event = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
-        FrameEncoder.markUnencryptedMessage(buffer, 0);
+        FrameEncoder.markStoreEventUnencrypted(buffer, 0);
         event = sealer.seal(buffer, 0, event);
         int snapshot = sealer.seal(buffer, event, FrameEncoder.snapshotMessage(buffer, event, 7, 3, 42,
                 WireFormat.NO_MESSAGE_TYPE, message(), 0, MESSAGE.length,

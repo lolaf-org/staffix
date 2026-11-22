@@ -36,6 +36,12 @@ import java.util.List;
 @Builder(toBuilder = true)
 public class ReplicationEncryptionSettings {
 
+    /**
+     * The key algorithms of {@link #getKeyAlgorithm()}.
+     */
+    public static final String AES = "AES";
+    public static final String CHACHA20 = "ChaCha20";
+
     private static final int MIN_SECRET_BYTES = 16;
     private static final int MIN_MAC_BYTES = 16;
 
@@ -57,8 +63,8 @@ public class ReplicationEncryptionSettings {
     /**
      * A JCE transformation, spelled exactly: a stream cipher ({@code AES/CTR/NoPadding}, {@code ChaCha20})
      * authenticated by {@link #getMac() mac}, or an AEAD ({@code AES/GCM/NoPadding}, {@code ChaCha20-Poly1305}),
-     * which authenticates itself. The default, AES-CTR, allocates nothing per frame, where the JDK's AEADs allocate on every one; GCM
-     * is faster only for messages of a kilobyte or more.
+     * which authenticates itself. The default, AES-CTR, allocates nothing per frame, where the JDK's AEADs allocate on
+     * every one; GCM is faster only for messages of a kilobyte or more.
      */
     @Builder.Default
     String cipher = "AES/CTR/NoPadding";
@@ -81,6 +87,13 @@ public class ReplicationEncryptionSettings {
      */
     @Nullable
     String provider;
+
+    /**
+     * The algorithm of {@link #getCipher() cipher}'s key, {@link #AES} or {@link #CHACHA20}.
+     */
+    public String getKeyAlgorithm() {
+        return cipher.startsWith("AES/") ? AES : CHACHA20;
+    }
 
     /**
      * Whether {@link #getCipher() cipher} is a stream cipher, authenticated by {@link #getMac() mac}, rather than an AEAD.
@@ -117,7 +130,7 @@ public class ReplicationEncryptionSettings {
     }
 
     private void validateKeyBits() {
-        List<Integer> allowed = cipher.startsWith("AES/") ? List.of(128, 192, 256) : List.of(256);
+        List<Integer> allowed = AES.equals(getKeyAlgorithm()) ? List.of(128, 192, 256) : List.of(256);
         if (!allowed.contains(keyBits)) {
             throw new IllegalArgumentException("encryption.keyBits must be one of " + allowed + " for " + cipher
                     + ", got " + keyBits);

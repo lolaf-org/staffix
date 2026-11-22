@@ -83,7 +83,8 @@ public final class ReplicatedSessions {
     }
 
     private void cacheUnencryptedMessageTypes(int key, ReplicatedSession.Config config) {
-        UnencryptedMessageTypes[] cached = Arrays.copyOf(unencryptedMessageTypes, Math.max(unencryptedMessageTypes.length, key + 1));
+        UnencryptedMessageTypes[] cached = Arrays.copyOf(unencryptedMessageTypes,
+                Math.max(unencryptedMessageTypes.length, key + 1));
         cached[key] = config.getUnencryptedMessageTypes();
         unencryptedMessageTypes = cached;
     }

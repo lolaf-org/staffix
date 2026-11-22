@@ -314,8 +314,7 @@ final class SnapshotSender {
                 return false;
             }
             int messageTypeHash = MessageTypeHash.of(message, message.position(), messageLength);
-            int unencrypted = cipher.getTagBytes() > 0 && sessions.isUnencrypted(sessionKey, messageTypeHash)
-                    ? WireFormat.UNENCRYPTED_MESSAGE : 0;
+            int unencrypted = connection.sendsUnencrypted(sessionKey, messageTypeHash) ? WireFormat.UNENCRYPTED_MESSAGE : 0;
             int from = 0;
             do {
                 int length = Math.min(maxFragmentLength, messageLength - from);

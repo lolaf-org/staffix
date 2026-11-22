@@ -31,6 +31,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreException;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
@@ -60,6 +61,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
@@ -104,7 +106,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
      * Streams to a follower that confirmed its keys, the sessions registered so far announced.
      */
     private void streamingEncrypted() {
-        streamingEncrypted("AES/GCM/NoPadding");
+        streamingEncrypted(TestingKeyExchanges.CIPHER);
     }
 
     private void streamingEncrypted(String cipher) {
@@ -140,15 +142,9 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
      */
     private byte[] followerConfirmation(KeyExchange follower, byte[] followerNonce) {
         byte[] leaderNonce = sent.lastNonce;
-        ByteBuffer hello = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.HELLO, "follower-b"));
-        int helloLength = FrameEncoder.hello(hello, 0, EPOCH, "follower-b", 0, -1, 0, EncryptionMode.REQUIRED, followerNonce);
-        ByteBuffer welcome = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.WELCOME, "leader-a"));
-        int welcomeLength = FrameEncoder.welcome(welcome, 0, EPOCH, "leader-a", WireFormat.NO_RESUME, 1,
+        byte[] helloBytes = FrameEncoder.helloBytes(EPOCH, "follower-b", 0, -1, 0, EncryptionMode.REQUIRED, followerNonce);
+        byte[] welcomeBytes = FrameEncoder.welcomeBytes(EPOCH, "leader-a", WireFormat.NO_RESUME, 1,
                 EncryptionMode.REQUIRED, leaderNonce);
-        byte[] helloBytes = new byte[helloLength];
-        hello.get(helloBytes);
-        byte[] welcomeBytes = new byte[welcomeLength];
-        welcome.get(welcomeBytes);
         return follower.confirm(follower.deriveKeys(followerNonce, leaderNonce), helloBytes, welcomeBytes);
     }
 
@@ -212,14 +208,14 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
         assertThat(sent.frames).anyMatch(frame -> frame.startsWith("SESSION "));
         assertThat(connectionLog.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
-                .contains("Replicating encrypted to follower follower-b lane 0, AES/GCM/NoPadding 256");
+                .contains("Replicating encrypted to follower follower-b lane 0, AES/CTR/NoPadding 256 HmacSHA256");
     }
 
     @Test
     void aKeyConfirmationOfAnotherSecretClosesWithKeyMismatch() {
         leaderEncryption(EncryptionMode.REQUIRED);
         KeyExchange follower = TestingKeyExchanges.of(EncryptionMode.REQUIRED, "another-secret-entirely",
-                "AES/GCM/NoPadding");
+                TestingKeyExchanges.CIPHER);
         byte[] followerNonce = follower.newNonce();
         hello(EncryptionMode.REQUIRED, followerNonce);
 
@@ -227,8 +223,20 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
         assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 KEY_MISMATCH the follower's secret or cipher "
-                + "differ from this leader's AES/GCM/NoPadding 256");
+                + "differ from this leader's AES/CTR/NoPadding 256 HmacSHA256");
         assertThat(errors()).isEqualTo(1);
+    }
+
+    @Test
+    void aSecondKeyConfirmationWhileStreamingIsAProtocolError() {
+        replicated("main");
+        streamingEncrypted();
+
+        connection.onKeyConfirmation(EPOCH, new byte[WireFormat.KEY_CONFIRMATION_BYTES]);
+
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString()
+                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR a KEY_CONFIRMATION on a connection not waiting for one");
     }
 
     @Test
@@ -334,6 +342,56 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     }
 
     @Test
+    void aSnapshotFailingMidwaySendsWhatItSealedBeforeItsClose() {
+        FixSessionMessagesStore local = startedStore();
+        when(local.getIncomingSeqNum()).thenReturn(1L);
+        when(local.getOutgoingSeqNum()).thenReturn(3L);
+        doAnswer(invocation -> {
+            StoreMessagesConsumer consumer = invocation.getArgument(2);
+            consumer.onMessage(1, ascii(ORDER_TEXT));
+            throw new StoreException("storage down");
+        }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
+        ha.replicatingStore(sessionSettings("main"), local, new RecordingProbes());
+        streamingEncrypted();
+
+        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        snapshot();
+
+        assertThat(sent.frames).as("opened in order, the CLOSE included")
+                .filteredOn(frame -> frame.startsWith("SNAPSHOT_MESSAGE")).hasSize(1);
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 SNAPSHOT_FAILED");
+    }
+
+    @Test
+    void aCloseWhileTheSenderSnapshotsIsSealedAfterWhatTheSnapshotSealed() {
+        FixSessionMessagesStore local = startedStore();
+        when(local.getIncomingSeqNum()).thenReturn(1L);
+        when(local.getOutgoingSeqNum()).thenReturn(3L);
+        doAnswer(invocation -> {
+            StoreMessagesConsumer consumer = invocation.getArgument(2);
+            consumer.onMessage(1, ascii(ORDER_TEXT));
+            connection.close(CloseReason.PROTOCOL_ERROR, "closed mid-snapshot");
+            consumer.onMessage(2, ascii(ORDER_TEXT));
+            return null;
+        }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
+        ha.replicatingStore(sessionSettings("main"), local, new RecordingProbes());
+        keyExchange = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+        connection = senderRunningConnection();
+        KeyExchange follower = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+        byte[] followerNonce = follower.newNonce();
+        hello(EncryptionMode.REQUIRED, followerNonce);
+        connection.onKeyConfirmation(EPOCH, followerConfirmation(follower, followerNonce));
+        await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
+
+        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+
+        await().ignoreExceptions().untilAsserted(() -> assertThat(sent.frames).last().asString()
+                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR closed mid-snapshot"));
+        assertThat(sent.frames).as("opened in order, the CLOSE included")
+                .anyMatch(frame -> frame.startsWith("SNAPSHOT_MESSAGE"));
+    }
+
+    @Test
     void aClearConnectionSendsEveryTypeAsItIsWithoutTheUnencryptedFlag() {
         ReplicatingStore quotes = session("quotes", "S");
         hello(EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
@@ -420,30 +478,33 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         new FrameDecoder(1024).decode(frames, 0, frames.limit(), connection, connection.getAnswerOpener());
     }
 
-    @Test
-    void aCloseOnceStreamingIsSealedAfterTheLastBatch() {
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/CTR/NoPadding", "AES/GCM/NoPadding"})
+    void aCloseOnceStreamingIsSealedAfterTheLastBatch(String cipher) {
         replicated("main");
-        streamingEncrypted();
+        streamingEncrypted(cipher);
 
         connection.close(CloseReason.PROTOCOL_ERROR, "test");
 
         assertThat(sent.frames).last().asString().isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR test");
     }
 
-    @Test
-    void anAckWithoutItsTagIsRefusedOnceTheKeysAreConfirmed() {
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/CTR/NoPadding", "AES/GCM/NoPadding"})
+    void anAckWithoutItsTagIsRefusedOnceTheKeysAreConfirmed(String cipher) {
         replicated("main");
-        streamingEncrypted();
+        streamingEncrypted(cipher);
 
         assertThatThrownBy(() -> read(ack(null, 1_000))).isInstanceOf(WireFormatException.class);
 
         assertThat(connection.getAppliedOffset()).isEqualTo(-1);
     }
 
-    @Test
-    void aReplayedAckFailsItsTag() {
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/CTR/NoPadding", "AES/GCM/NoPadding"})
+    void aReplayedAckFailsItsTag(String cipher) {
         replicated("main");
-        streamingEncrypted();
+        streamingEncrypted(cipher);
         ByteBuffer acked = ack(keyExchange.newSealer(connection.getEncryptionKeys().getFollowerToLeader()), 0);
         read(acked.duplicate());
         assertThat(connection.getAppliedOffset()).isZero();

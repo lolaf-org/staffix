@@ -36,9 +36,9 @@ public final class ThroughNetworkThreadAnswerSender implements AnswerSender, Byt
     private static final int KEY_CONFIRMATION = 1;
 
     private final IOSession ioSession;
-    private final ByteRingBuffer answers = ByteRingBufferFactory.queue(CAPACITY);
-    private final ByteBuffer answer = ByteBuffer.allocate(answers.getMaxPayloadLength());
-    private final AtomicBoolean sendScheduled = new AtomicBoolean();
+    private final ByteRingBuffer answers;
+    private final ByteBuffer answer;
+    private final AtomicBoolean sendScheduled;
     /**
      * Network thread only, from the answer after the KEY_CONFIRMATION.
      */
@@ -49,6 +49,9 @@ public final class ThroughNetworkThreadAnswerSender implements AnswerSender, Byt
     private volatile FrameCipher nextSealer;
 
     ThroughNetworkThreadAnswerSender(IOSession ioSession) {
+        this.answers = ByteRingBufferFactory.queue(CAPACITY);
+        this.answer = ByteBuffer.allocate(answers.getMaxPayloadLength());
+        this.sendScheduled = new AtomicBoolean();
         this.ioSession = ioSession;
         this.sealer = FrameCipher.CLEAR;
         this.nextSealer = FrameCipher.CLEAR;

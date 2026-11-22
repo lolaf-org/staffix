@@ -15,6 +15,8 @@
  */
 package org.lolaf.staffix.ha.encryption;
 
+import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
+
 import javax.crypto.Cipher;
 import javax.crypto.ShortBufferException;
 import javax.crypto.spec.ChaCha20ParameterSpec;
@@ -43,11 +45,16 @@ final class StreamFrameCipher extends SealingFrameCipher {
     private final int mode;
     private final SecretKeySpec key;
     private final byte[] iv;
-    private final boolean chaCha20;
+    private final boolean aes;
     private final FrameMac mac;
     private final long segmentBytes;
     private final byte[] in;
     private final byte[] out;
+    /**
+     * Where a chunk's encrypted bytes are once {@link #crypt} ran, the MAC going over the bytes as on the wire:
+     * {@link #out} when sealing, {@link #in} when opening.
+     */
+    private final byte[] ciphertext;
     private final byte[] tag;
     private final byte[] receivedTag;
     private long segment;
@@ -55,18 +62,20 @@ final class StreamFrameCipher extends SealingFrameCipher {
 
     /**
      * @param mode {@link Cipher#ENCRYPT_MODE} to seal, {@link Cipher#DECRYPT_MODE} to open
+     * @param key  AES for AES-CTR, ChaCha20 for ChaCha20
      * @param iv   the direction's, which each segment's IV starts from
      */
-    StreamFrameCipher(Cipher cipher, int mode, byte[] key, byte[] iv, FrameMac mac, long segmentBytes)
+    StreamFrameCipher(Cipher cipher, int mode, SecretKeySpec key, byte[] iv, FrameMac mac, long segmentBytes)
             throws GeneralSecurityException {
         this.in = new byte[CHUNK_BYTES];
         this.out = new byte[CHUNK_BYTES];
+        this.ciphertext = mode == Cipher.ENCRYPT_MODE ? out : in;
         this.tag = new byte[TAG_BYTES];
         this.receivedTag = new byte[TAG_BYTES];
         this.cipher = cipher;
         this.mode = mode;
-        this.chaCha20 = cipher.getAlgorithm().startsWith("ChaCha20");
-        this.key = new SecretKeySpec(key, chaCha20 ? "ChaCha20" : "AES");
+        this.key = key;
+        this.aes = ReplicationEncryptionSettings.AES.equals(key.getAlgorithm());
         this.iv = iv.clone();
         this.mac = mac;
         this.segmentBytes = segmentBytes;
@@ -74,8 +83,28 @@ final class StreamFrameCipher extends SealingFrameCipher {
     }
 
     @Override
-    void seal(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frame) {
-        mac.start(frame);
+    void seal(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frameNumber) {
+        cryptAndMac(frames, frameIndex, clearBytes, contentLength, frameNumber);
+        FrameBytes.put(frames, frameIndex + contentLength, tag, 0, TAG_BYTES);
+    }
+
+    /**
+     * Decrypts as it authenticates, in one pass: a frame whose tag fails is never dispatched, and closes the
+     * connection.
+     */
+    @Override
+    boolean open(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frameNumber) {
+        cryptAndMac(frames, frameIndex, clearBytes, contentLength, frameNumber);
+        FrameBytes.get(frames, frameIndex + contentLength, receivedTag, 0, TAG_BYTES);
+        return MessageDigest.isEqual(tag, receivedTag);
+    }
+
+    /**
+     * Runs the keystream over the frame's bytes past {@code clearBytes}, in place, chunk by chunk, and MACs the
+     * frame as it is on the wire into {@link #tag}.
+     */
+    private void cryptAndMac(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frameNumber) {
+        mac.start(frameNumber);
         int encryptFrom = frameIndex + clearBytes;
         int end = frameIndex + contentLength;
         for (int index = frameIndex; index < end; ) {
@@ -85,38 +114,12 @@ final class StreamFrameCipher extends SealingFrameCipher {
             mac.update(in, 0, clear);
             if (clear < chunk) {
                 crypt(clear, chunk - clear);
-                mac.update(out, clear, chunk - clear);
+                mac.update(ciphertext, clear, chunk - clear);
                 FrameBytes.put(frames, index + clear, out, clear, chunk - clear);
             }
             index += chunk;
         }
         mac.finish(tag);
-        FrameBytes.put(frames, end, tag, 0, TAG_BYTES);
-    }
-
-    /**
-     * Decrypts as it authenticates, in one pass: a frame whose tag fails is never dispatched, and closes the
-     * connection.
-     */
-    @Override
-    boolean open(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frame) {
-        mac.start(frame);
-        int encryptFrom = frameIndex + clearBytes;
-        int end = frameIndex + contentLength;
-        for (int index = frameIndex; index < end; ) {
-            int chunk = Math.min(CHUNK_BYTES, end - index);
-            FrameBytes.get(frames, index, in, 0, chunk);
-            mac.update(in, 0, chunk);
-            int clear = Math.max(0, Math.min(chunk, encryptFrom - index));
-            if (clear < chunk) {
-                crypt(clear, chunk - clear);
-                FrameBytes.put(frames, index + clear, out, clear, chunk - clear);
-            }
-            index += chunk;
-        }
-        mac.finish(tag);
-        FrameBytes.get(frames, end, receivedTag, 0, TAG_BYTES);
-        return MessageDigest.isEqual(tag, receivedTag);
     }
 
     /**
@@ -155,15 +158,15 @@ final class StreamFrameCipher extends SealingFrameCipher {
      * only has to differ between segments.
      */
     private AlgorithmParameterSpec segmentParameters(long number) {
-        if (chaCha20) {
-            byte[] nonce = new byte[12];
-            System.arraycopy(iv, 0, nonce, 0, nonce.length);
-            FrameBytes.xorLong(nonce, 4, number);
-            return new ChaCha20ParameterSpec(nonce, 0);
+        if (aes) {
+            byte[] counterBlock = new byte[16];
+            System.arraycopy(iv, 0, counterBlock, 0, Long.BYTES);
+            FrameBytes.xorLong(counterBlock, 0, number);
+            return new IvParameterSpec(counterBlock);
         }
-        byte[] counterBlock = new byte[16];
-        System.arraycopy(iv, 0, counterBlock, 0, Long.BYTES);
-        FrameBytes.xorLong(counterBlock, 0, number);
-        return new IvParameterSpec(counterBlock);
+        byte[] nonce = new byte[12];
+        System.arraycopy(iv, 0, nonce, 0, nonce.length);
+        FrameBytes.xorLong(nonce, 4, number);
+        return new ChaCha20ParameterSpec(nonce, 0);
     }
 }

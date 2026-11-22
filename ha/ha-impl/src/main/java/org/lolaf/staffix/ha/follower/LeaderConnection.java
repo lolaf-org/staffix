@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.follower;
 
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -70,7 +71,7 @@ public final class LeaderConnection implements FrameHandler {
     /**
      * This connection's keys once both peers encrypt, null on a clear one.
      */
-    @Getter
+    @Getter(AccessLevel.PACKAGE)
     private volatile @Nullable ConnectionEncryptionKeys encryptionKeys;
     /**
      * Opens the leader's frames once both peers encrypt; the thread applying them only.
@@ -132,10 +133,7 @@ public final class LeaderConnection implements FrameHandler {
         ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
         int length = FrameEncoder.hello(frame, 0, nodeEpoch.getAsLong(), nodeId, replicaSessions.getLastAppliedEpoch(lane),
                 replicaSessions.getLastAppliedOffset(lane), lane, keyExchange.getMode(), followerNonce);
-        sentHelloBytes = new byte[length];
-        for (int i = 0; i < length; i++) {
-            sentHelloBytes[i] = frame.get(i);
-        }
+        sentHelloBytes = FrameDecoder.bytes(frame, 0, length);
         answers.send(frame, length);
     }
 
@@ -145,6 +143,13 @@ public final class LeaderConnection implements FrameHandler {
      */
     boolean isReceivedAckedOnRead() {
         return receivedAckedByNetworkThread && encryptionKeys == null;
+    }
+
+    /**
+     * Streaming encrypted, the leader having accepted the keys.
+     */
+    public boolean isEncrypted() {
+        return state == State.STREAMING && encryptionKeys != null;
     }
 
     /**
@@ -217,10 +222,8 @@ public final class LeaderConnection implements FrameHandler {
     private void confirmKeys(long epoch, String leaderId, long resumeOffset, int lanes, EncryptionMode leaderMode,
                              byte[] leaderNonce) {
         ConnectionEncryptionKeys keys = keyExchange.deriveKeys(followerNonce, leaderNonce);
-        ByteBuffer welcomeFrame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
-        int welcomeLength = FrameEncoder.welcome(welcomeFrame, 0, epoch, leaderId, resumeOffset, lanes, leaderMode, leaderNonce);
-        byte[] receivedWelcomeBytes = new byte[welcomeLength];
-        welcomeFrame.get(receivedWelcomeBytes);
+        byte[] receivedWelcomeBytes = FrameEncoder.welcomeBytes(epoch, leaderId, resumeOffset, lanes, leaderMode,
+                leaderNonce);
         byte[] confirmation = keyExchange.confirm(keys, sentHelloBytes, receivedWelcomeBytes);
         frameCipher = keyExchange.newOpener(keys.getLeaderToFollower());
         encryptionKeys = keys;

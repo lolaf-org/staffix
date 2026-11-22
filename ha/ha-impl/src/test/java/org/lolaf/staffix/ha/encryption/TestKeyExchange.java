@@ -108,7 +108,8 @@ class TestKeyExchange {
 
     @Test
     void theCipherNamedIsWhatThePeersMustShare() {
-        assertThat(TestingKeyExchanges.of(REQUIRED).describeCipher()).isEqualTo("AES/GCM/NoPadding 256");
+        assertThat(TestingKeyExchanges.of(REQUIRED, TestingKeyExchanges.SECRET, "AES/GCM/NoPadding").describeCipher())
+                .isEqualTo("AES/GCM/NoPadding 256");
         assertThat(TestingKeyExchanges.of(REQUIRED, TestingKeyExchanges.SECRET, "AES/CTR/NoPadding").describeCipher())
                 .isEqualTo("AES/CTR/NoPadding 256 HmacSHA256");
     }

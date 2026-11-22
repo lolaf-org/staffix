@@ -110,11 +110,32 @@ public class FrameEncoder {
     }
 
     /**
+     * The HELLO {@link #hello} encodes, as bytes: what the KEY_CONFIRMATION covers.
+     */
+    public static byte[] helloBytes(long epoch, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
+                                    EncryptionMode encryptionMode, byte[] nonce) {
+        ByteBuffer frame = ByteBuffer.allocate(bytesWith(FrameType.HELLO, nodeId));
+        int length = hello(frame, 0, epoch, nodeId, lastAppliedEpoch, lastAppliedOffset, lane, encryptionMode, nonce);
+        return FrameDecoder.bytes(frame, 0, length);
+    }
+
+    /**
+     * The WELCOME {@link #welcome} encodes, as bytes: what the KEY_CONFIRMATION covers.
+     */
+    public static byte[] welcomeBytes(long epoch, String leaderId, long resumeOffset, int lanes,
+                                      EncryptionMode encryptionMode, byte[] nonce) {
+        ByteBuffer frame = ByteBuffer.allocate(bytesWith(FrameType.WELCOME, leaderId));
+        int length = welcome(frame, 0, epoch, leaderId, resumeOffset, lanes, encryptionMode, nonce);
+        return FrameDecoder.bytes(frame, 0, length);
+    }
+
+    /**
      * @param confirmation {@link WireFormat#KEY_CONFIRMATION_BYTES} bytes
      */
     public static int keyConfirmation(ByteBuffer out, int index, long epoch, byte[] confirmation) {
         if (confirmation.length != WireFormat.KEY_CONFIRMATION_BYTES) {
-            throw new IllegalArgumentException("A key confirmation is " + WireFormat.KEY_CONFIRMATION_BYTES + " bytes, got " + confirmation.length);
+            throw new IllegalArgumentException("A key confirmation is " + WireFormat.KEY_CONFIRMATION_BYTES + " bytes, got "
+                    + confirmation.length);
         }
         int length = header(out, index, FrameType.KEY_CONFIRMATION, 0, epoch, 0);
         putBytes(out, index + HEADER_BYTES, confirmation);
@@ -239,7 +260,7 @@ public class FrameEncoder {
      * Flags the message of the {@link FrameType#STORE_EVENT} at {@code frameIndex} as sent unencrypted, on an
      * encrypted connection only.
      */
-    public static void markUnencryptedMessage(ByteBuffer out, int frameIndex) {
+    public static void markStoreEventUnencrypted(ByteBuffer out, int frameIndex) {
         int flagsIndex = frameIndex + WireFormat.OFFSET_STORE_EVENT_FRAGMENT_FLAGS;
         out.put(flagsIndex, (byte) (out.get(flagsIndex) | WireFormat.UNENCRYPTED_MESSAGE));
     }

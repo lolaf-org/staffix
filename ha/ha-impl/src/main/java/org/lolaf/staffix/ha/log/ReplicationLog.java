@@ -40,8 +40,9 @@ public class ReplicationLog {
 
     private static final ByteTranslator<StoreEventRecord> ENCODE = (buffer, index, length, storeEventRecord) ->
             FrameEncoder.storeEventBody(buffer, index, storeEventRecord.getSessionKey(), storeEventRecord.getEventType(),
-                    storeEventRecord.getSequenceNumber(), storeEventRecord.getMessageTypeHash(), storeEventRecord.getMessage(), storeEventRecord.getFragmentIndex(),
-                    storeEventRecord.getFragmentLength(), storeEventRecord.getFragmentFlags());
+                    storeEventRecord.getSequenceNumber(), storeEventRecord.getMessageTypeHash(), storeEventRecord.getMessage(),
+                    storeEventRecord.getFragmentIndex(), storeEventRecord.getFragmentLength(),
+                    storeEventRecord.getFragmentFlags());
 
     private final BroadcastByteRingBuffer ring;
     private final List<Reader> readers;

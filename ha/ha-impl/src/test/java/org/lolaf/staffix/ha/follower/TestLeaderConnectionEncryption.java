@@ -20,6 +20,8 @@ import com.github.valfirst.slf4jtest.TestLogger;
 import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -82,12 +84,12 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
     /**
      * Encrypted, the session announced and complete by snapshot, so a clean hand over would hand it over.
      */
-    private FrameCipher streamingInSync(LeaderConnection encrypting) {
-        return streamingInSync(encrypting, MAIN);
+    private FrameCipher streamingInSync(LeaderConnection encrypting, String cipher) {
+        return streamingInSync(encrypting, MAIN, cipher);
     }
 
-    private FrameCipher streamingInSync(LeaderConnection encrypting, FixSessionSettings settings) {
-        KeyExchange leader = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+    private FrameCipher streamingInSync(LeaderConnection encrypting, FixSessionSettings settings, String cipher) {
+        KeyExchange leader = required(cipher);
         encrypting.hello();
         byte[] leaderNonce = leader.newNonce();
         FrameCipher sealer = leaderSealer(leader, leaderNonce);
@@ -97,6 +99,10 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
                 sealed(sealer, (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1)));
         assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.STREAMING);
         return sealer;
+    }
+
+    private static KeyExchange required(String cipher) {
+        return TestingKeyExchanges.of(EncryptionMode.REQUIRED, TestingKeyExchanges.SECRET, cipher);
     }
 
     private boolean handedOver() {
@@ -161,7 +167,7 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.STREAMING);
         assertThat(sent.frames).last().asString().startsWith("ACK epoch=7");
         assertThat(connectionLog.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
-                .contains("Following leader leader-a encrypted on lane 0, AES/GCM/NoPadding 256");
+                .contains("Following leader leader-a encrypted on lane 0, AES/CTR/NoPadding 256 HmacSHA256");
     }
 
     @Test
@@ -213,10 +219,11 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(errors()).isEqualTo(1);
     }
 
-    @Test
-    void aFrameFailingItsTagClosesTheConnectionAndIsNeverApplied() {
-        KeyExchange leader = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
-        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/CTR/NoPadding", "AES/GCM/NoPadding"})
+    void aFrameFailingItsTagClosesTheConnectionAndIsNeverApplied(String cipher) {
+        KeyExchange leader = required(cipher);
+        LeaderConnection encrypting = newConnection(required(cipher));
         encrypting.hello();
         byte[] leaderNonce = leader.newNonce();
         FrameCipher sealer = leaderSealer(leader, leaderNonce);
@@ -237,20 +244,22 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(engine.store(MAIN).writes).noneMatch(write -> write.startsWith("message 2"));
     }
 
-    @Test
-    void anAuthenticShutdownHandsTheSessionOver() {
-        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
-        FrameCipher sealer = streamingInSync(encrypting);
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/CTR/NoPadding", "AES/GCM/NoPadding"})
+    void anAuthenticShutdownHandsTheSessionOver(String cipher) {
+        LeaderConnection encrypting = newConnection(required(cipher));
+        FrameCipher sealer = streamingInSync(encrypting, cipher);
 
         read(encrypting, sealed(sealer, close(CloseReason.SHUTDOWN)));
 
         assertThat(handedOver()).isTrue();
     }
 
-    @Test
-    void aShutdownWithoutItsTagHandsNothingOver() {
-        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
-        streamingInSync(encrypting);
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/CTR/NoPadding", "AES/GCM/NoPadding"})
+    void aShutdownWithoutItsTagHandsNothingOver(String cipher) {
+        LeaderConnection encrypting = newConnection(required(cipher));
+        streamingInSync(encrypting, cipher);
 
         read(encrypting, close(CloseReason.SHUTDOWN));
 
@@ -258,10 +267,11 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
     }
 
-    @Test
-    void aShutdownAfterADroppedFrameFailsItsTagAndHandsNothingOver() {
-        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
-        FrameCipher sealer = streamingInSync(encrypting);
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/CTR/NoPadding", "AES/GCM/NoPadding"})
+    void aShutdownAfterADroppedFrameFailsItsTagAndHandsNothingOver(String cipher) {
+        LeaderConnection encrypting = newConnection(required(cipher));
+        FrameCipher sealer = streamingInSync(encrypting, cipher);
         writeFrames(sealed(sealer, event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 1, MESSAGE)));
 
         read(encrypting, sealed(sealer, close(CloseReason.SHUTDOWN)));
@@ -279,7 +289,7 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(newStoreWriterConnection(TestingKeyExchanges.CLEAR).isReceivedAckedOnRead())
                 .as("in clear, the network thread acknowledges what it reads").isTrue();
         LeaderConnection encrypting = newStoreWriterConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
-        FrameCipher sealer = streamingInSync(encrypting, syncReceived);
+        FrameCipher sealer = streamingInSync(encrypting, syncReceived, TestingKeyExchanges.CIPHER);
         assertThat(encrypting.isReceivedAckedOnRead()).as("encrypted, it does not").isFalse();
 
         read(encrypting, sealed(sealer, event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 1, MESSAGE)));
@@ -287,11 +297,12 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(sent.frames).contains("RECEIVED epoch=7 received=0");
     }
 
-    @Test
-    void theAnswersAfterTheKeyConfirmationAreSealed() {
-        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+    @ParameterizedTest
+    @ValueSource(strings = {"AES/CTR/NoPadding", "AES/GCM/NoPadding"})
+    void theAnswersAfterTheKeyConfirmationAreSealed(String cipher) {
+        LeaderConnection encrypting = newConnection(required(cipher));
 
-        streamingInSync(encrypting);
+        streamingInSync(encrypting, cipher);
 
         assertThat(sent.frames).as("opened as the leader opens them").contains("SESSION_ANSWER epoch=7 key=0 REPLICATING");
     }

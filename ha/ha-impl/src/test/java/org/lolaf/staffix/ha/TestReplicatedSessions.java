@@ -65,6 +65,16 @@ class TestReplicatedSessions {
     }
 
     @Test
+    void aSessionNoLongerReplicatedKeepsTheCachedTypesInStepWithItsConfig() {
+        ReplicatedSession session = register(FixSessionType.INITIATOR, "S");
+
+        session.update(session.getConfig().notReplicated());
+
+        assertThat(session.getConfig().getUnencryptedMessageTypes().isUnencrypted(Hashing.hash("S"))).isTrue();
+        assertThat(sessions.isUnencrypted(0, Hashing.hash("S"))).isTrue();
+    }
+
+    @Test
     void anIdConfiguredOnBothSidesIsTwoSessions() {
         ReplicatedSession initiator = register(FixSessionType.INITIATOR);
         ReplicatedSession acceptor = register(FixSessionType.ACCEPTOR);

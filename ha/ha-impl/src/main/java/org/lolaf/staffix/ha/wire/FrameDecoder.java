@@ -80,7 +80,7 @@ public class FrameDecoder {
         }
         int flags = in.get(index + WireFormat.OFFSET_FLAGS);
         long epoch = in.getLong(index + WireFormat.OFFSET_EPOCH);
-        dispatch(in, index + HEADER_BYTES, type, flags, epoch, variableBytes, contentLength != length, handler);
+        dispatch(in, index + HEADER_BYTES, type, flags, epoch, variableBytes, opener.getTagBytes() != 0, handler);
         return length;
     }
 
@@ -306,7 +306,10 @@ public class FrameDecoder {
         }
     }
 
-    private static byte[] bytes(ByteBuffer in, int index, int length) {
+    /**
+     * A copy of {@code length} bytes from {@code index}, leaving the buffer's position alone.
+     */
+    public static byte[] bytes(ByteBuffer in, int index, int length) {
         byte[] bytes = new byte[length];
         for (int i = 0; i < length; i++) {
             bytes[i] = in.get(index + i);

@@ -15,27 +15,27 @@
  */
 package org.lolaf.staffix.ha.encryption;
 
+import lombok.experimental.UtilityClass;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
-import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.charset.StandardCharsets;
 
 /**
- * Key exchanges for the tests: one not encrypting, the nonce it sends, and encrypting ones.
+ * Key exchanges for the tests: one not encrypting, the nonce it sends, and encrypting ones, by default with the
+ * engine's default cipher.
  */
-public final class TestingKeyExchanges {
+@UtilityClass
+public class TestingKeyExchanges {
 
     public static final KeyExchange CLEAR = new KeyExchange(ReplicationEncryptionSettings.builder().build());
-    public static final byte[] NO_NONCE = new byte[WireFormat.NONCE_BYTES];
+    public static final byte[] NO_NONCE = CLEAR.newNonce();
+    public static final String CIPHER = ReplicationEncryptionSettings.builder().build().getCipher();
 
     public static final String SECRET = "a-secret-of-the-pair";
 
-    private TestingKeyExchanges() {
-    }
-
     public static KeyExchange of(EncryptionMode mode) {
-        return of(mode, SECRET, "AES/GCM/NoPadding");
+        return of(mode, SECRET, CIPHER);
     }
 
     public static KeyExchange of(EncryptionMode mode, String secret, String cipher) {

@@ -27,8 +27,8 @@ import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.api.time.Clock;
-import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
@@ -105,7 +105,7 @@ public final class FollowerConnection implements FrameHandler {
     /**
      * This connection's keys once both peers encrypt, null on a clear one; IO thread until the stream starts.
      */
-    @Getter
+    @Getter(AccessLevel.PACKAGE)
     private volatile @Nullable ConnectionEncryptionKeys encryptionKeys;
     /**
      * The HELLO and WELCOME of an encrypted connection, which its KEY_CONFIRMATION covers; IO thread only.
@@ -312,9 +312,9 @@ public final class FollowerConnection implements FrameHandler {
         int length = FrameEncoder.welcome(frame.clear(), 0, currentEpoch, leaderId, resumeOffset, logs.count(),
                 keyExchange.getMode(), leaderNonce);
         if (encrypted) {
-            receivedHelloBytes = helloAsSent(epoch, nodeId, lastAppliedEpoch, lastAppliedOffset, lane, followerMode,
-                    followerNonce);
-            sentWelcomeBytes = copy(frame, length);
+            receivedHelloBytes = FrameEncoder.helloBytes(epoch, nodeId, lastAppliedEpoch, lastAppliedOffset, lane,
+                    followerMode, followerNonce);
+            sentWelcomeBytes = FrameDecoder.bytes(frame, 0, length);
             ConnectionEncryptionKeys keys = keyExchange.deriveKeys(followerNonce, leaderNonce);
             frameCipher = keyExchange.newSealer(keys.getLeaderToFollower());
             encryptionKeys = keys;
@@ -345,20 +345,6 @@ public final class FollowerConnection implements FrameHandler {
             log.info("Replicating encrypted to follower {} lane {}, {}", followerId, lane, keyExchange.describeCipher());
             senderIdle.wakeup();
         }
-    }
-
-    private static byte[] helloAsSent(long epoch, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
-                                      EncryptionMode mode, byte[] nonce) {
-        ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
-        return copy(frame, FrameEncoder.hello(frame, 0, epoch, nodeId, lastAppliedEpoch, lastAppliedOffset, lane, mode, nonce));
-    }
-
-    private static byte[] copy(ByteBuffer frame, int length) {
-        byte[] bytes = new byte[length];
-        for (int i = 0; i < length; i++) {
-            bytes[i] = frame.get(i);
-        }
-        return bytes;
     }
 
     /**
@@ -535,6 +521,14 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
+     * Whether a message of the session goes unencrypted, as its {@code unencryptedMessageTypes} asks: on an encrypted
+     * connection only. Sender thread.
+     */
+    boolean sendsUnencrypted(int sessionKey, int messageTypeHash) {
+        return frameCipher.getTagBytes() != 0 && sessions.isUnencrypted(sessionKey, messageTypeHash);
+    }
+
+    /**
      * Fills {@code dst} from index 0, up to its limit, once streaming, with what the follower has not received: the
      * sessions it does not know yet, then events until the next one does not fit. An event of a session registered
      * after this fill began is left for the next one, behind that session's announcement.
@@ -551,7 +545,7 @@ public final class FollowerConnection implements FrameHandler {
         dst.limit(limit - frameCipher.getTagBytes());
         try {
             int filled = fillBatchUpToLimit(dst);
-            if (filled > 0 && !streamStarted) {
+            if (filled > 0) {
                 streamStarted = true;
             }
             return filled;
@@ -565,8 +559,6 @@ public final class FollowerConnection implements FrameHandler {
         int filled = announceSessions(dst);
         filled += fillSessionSettingsDigests(dst, filled);
         long currentEpoch = nodeEpoch.getAsLong();
-        boolean encrypted = frameCipher.getTagBytes() > 0;
-        filledEventOffset = -1;
         while (state == State.STREAMING && dst.limit() - filled >= WireFormat.STORE_EVENT_BODY_OFFSET) {
             int bodyIndex = filled + WireFormat.STORE_EVENT_BODY_OFFSET;
             int body = reader.readInto(dst, bodyIndex);
@@ -590,8 +582,8 @@ public final class FollowerConnection implements FrameHandler {
             filledEventOffset = reader.getEventOffset();
             lag.onEventRead(filledEventOffset, reader.getOffset());
             int frameLength = FrameEncoder.storeEventHeader(dst, filled, currentEpoch, filledEventOffset, body);
-            if (encrypted && sessions.isUnencrypted(sessionKey, FrameDecoder.storeEventMessageTypeHash(dst, bodyIndex))) {
-                FrameEncoder.markUnencryptedMessage(dst, filled);
+            if (sendsUnencrypted(sessionKey, FrameDecoder.storeEventMessageTypeHash(dst, bodyIndex))) {
+                FrameEncoder.markStoreEventUnencrypted(dst, filled);
             }
             filled += frameCipher.seal(dst, filled, frameLength);
         }
@@ -739,13 +731,14 @@ public final class FollowerConnection implements FrameHandler {
         senderIdle.reset();
         lastSendNanos = clock.nanoTime();
         lastAckNanos = lastSendNanos;
+        long startedNanos = lastSendNanos;
         while (state != State.CLOSED && !handingOver) {
             if (state == State.DROPPED_AS_TOO_SLOW) {
                 closeDropped();
                 break;
             }
             if (state == State.AWAITING_KEY_CONFIRMATION) {
-                if (stallTimeoutNanos > 0 && clock.nanoTime() - lastAckNanos > stallTimeoutNanos) {
+                if (stallTimeoutNanos > 0 && clock.nanoTime() - startedNanos > stallTimeoutNanos) {
                     close(CloseReason.PROTOCOL_ERROR, "no KEY_CONFIRMATION within "
                             + TimeUnit.NANOSECONDS.toMillis(stallTimeoutNanos) + " ms");
                     break;
@@ -834,7 +827,8 @@ public final class FollowerConnection implements FrameHandler {
             ioSession.stop(Deadline.immediate());
             return false;
         }
-        if (!requestClose(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent", false)) {
+        if (!requestClose(PendingClose.thenAwaitHangUp(CloseReason.SHUTDOWN,
+                "the leader stopped cleanly, every event was sent"))) {
             return false;
         }
         boolean read = deadline.waitAsLongAs(() -> !followerHungUp);
@@ -854,12 +848,10 @@ public final class FollowerConnection implements FrameHandler {
      * @return false when the connection was already closed, and nothing sent
      */
     boolean close(CloseReason reason, String text) {
-        return requestClose(reason, text, true);
+        return requestClose(PendingClose.thenStop(reason, text));
     }
 
-    private boolean requestClose(CloseReason reason, String text, boolean stopAfter) {
-        String shortText = FrameEncoder.closeText(text);
-        PendingClose closing = new PendingClose(reason, shortText, stopAfter);
+    private boolean requestClose(PendingClose closing) {
         // recorded before the mark: a sender leaving its loop on the mark finds it
         if (!PENDING_CLOSE.compareAndSet(this, null, closing)) {
             return false;
@@ -868,7 +860,7 @@ public final class FollowerConnection implements FrameHandler {
             PENDING_CLOSE.compareAndSet(this, closing, null);
             return false;
         }
-        logClose(reason, shortText);
+        logClose(closing.getReason(), closing.getText());
         if (senderRunning) {
             senderIdle.wakeup();
         } else {
@@ -888,7 +880,8 @@ public final class FollowerConnection implements FrameHandler {
             return;
         }
         FrameCipher sealer = streamStarted ? frameCipher : FrameCipher.CLEAR;
-        ByteBuffer frame = ioSession.borrow(FrameEncoder.bytesWith(FrameType.CLOSE, closing.getText()) + sealer.getTagBytes());
+        ByteBuffer frame = ioSession.borrow(FrameEncoder.bytesWith(FrameType.CLOSE, closing.getText())
+                + sealer.getTagBytes());
         int length = FrameEncoder.close(frame.clear(), 0, nodeEpoch.getAsLong(), closing.getReason(), closing.getText());
         ioSession.send(BatchBuffers.written(frame, sealer.seal(frame, 0, length)), true);
         if (closing.isStopAfter()) {
@@ -956,7 +949,18 @@ public final class FollowerConnection implements FrameHandler {
     private static class PendingClose {
         CloseReason reason;
         String text;
+        /**
+         * Stop the connection once the CLOSE is sent, rather than wait for the follower to hang up as a hand over does.
+         */
         boolean stopAfter;
+
+        static PendingClose thenStop(CloseReason reason, String text) {
+            return new PendingClose(reason, FrameEncoder.closeText(text), true);
+        }
+
+        static PendingClose thenAwaitHangUp(CloseReason reason, String text) {
+            return new PendingClose(reason, FrameEncoder.closeText(text), false);
+        }
     }
 
     public enum State {

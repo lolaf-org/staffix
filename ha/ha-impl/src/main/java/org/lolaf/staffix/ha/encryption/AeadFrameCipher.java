@@ -15,6 +15,8 @@
  */
 package org.lolaf.staffix.ha.encryption;
 
+import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
+
 import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
@@ -39,7 +41,7 @@ final class AeadFrameCipher extends SealingFrameCipher {
     private final Cipher cipher;
     private final int mode;
     private final SecretKeySpec key;
-    private final boolean gcm;
+    private final boolean aes;
     private final byte[] iv;
     private final byte[] nonce;
     private byte[] in;
@@ -47,25 +49,26 @@ final class AeadFrameCipher extends SealingFrameCipher {
 
     /**
      * @param mode {@link Cipher#ENCRYPT_MODE} to seal, {@link Cipher#DECRYPT_MODE} to open
+     * @param key  AES for GCM, ChaCha20 for ChaCha20-Poly1305
      * @param iv   the direction's, whose first 12 bytes each frame's nonce starts from
      */
-    AeadFrameCipher(Cipher cipher, int mode, byte[] key, byte[] iv) {
+    AeadFrameCipher(Cipher cipher, int mode, SecretKeySpec key, byte[] iv) {
         this.nonce = new byte[NONCE_BYTES];
         this.in = new byte[INITIAL_BYTES];
         this.out = new byte[INITIAL_BYTES];
         this.cipher = cipher;
         this.mode = mode;
-        this.gcm = cipher.getAlgorithm().startsWith("AES");
-        this.key = new SecretKeySpec(key, gcm ? "AES" : "ChaCha20");
+        this.key = key;
+        this.aes = ReplicationEncryptionSettings.AES.equals(key.getAlgorithm());
         this.iv = iv.clone();
     }
 
     @Override
-    void seal(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frame) {
+    void seal(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frameNumber) {
         ensureCapacity(contentLength + TAG_BYTES);
         FrameBytes.get(frames, frameIndex, in, 0, contentLength);
         try {
-            start(frame);
+            start(frameNumber);
             cipher.updateAAD(in, 0, clearBytes);
             int sealed = cipher.doFinal(in, clearBytes, contentLength - clearBytes, out, 0);
             FrameBytes.put(frames, frameIndex + clearBytes, out, 0, sealed);
@@ -75,11 +78,11 @@ final class AeadFrameCipher extends SealingFrameCipher {
     }
 
     @Override
-    boolean open(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frame) {
+    boolean open(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frameNumber) {
         ensureCapacity(contentLength + TAG_BYTES);
         FrameBytes.get(frames, frameIndex, in, 0, contentLength + TAG_BYTES);
         try {
-            start(frame);
+            start(frameNumber);
             cipher.updateAAD(in, 0, clearBytes);
             int opened = cipher.doFinal(in, clearBytes, contentLength - clearBytes + TAG_BYTES, out, 0);
             FrameBytes.put(frames, frameIndex + clearBytes, out, 0, opened);
@@ -91,12 +94,11 @@ final class AeadFrameCipher extends SealingFrameCipher {
         }
     }
 
-    private void start(long frame) throws GeneralSecurityException {
+    private void start(long frameNumber) throws GeneralSecurityException {
         System.arraycopy(iv, 0, nonce, 0, NONCE_BYTES);
-        FrameBytes.xorLong(nonce, NONCE_BYTES - Long.BYTES, frame);
-        AlgorithmParameterSpec parameters = gcm
-                ? new GCMParameterSpec(TAG_BYTES * Byte.SIZE, nonce)
-                : new IvParameterSpec(nonce);
+        FrameBytes.xorLong(nonce, NONCE_BYTES - Long.BYTES, frameNumber);
+        AlgorithmParameterSpec parameters = aes
+                ? new GCMParameterSpec(TAG_BYTES * Byte.SIZE, nonce) : new IvParameterSpec(nonce);
         cipher.init(mode, key, parameters);
     }
 

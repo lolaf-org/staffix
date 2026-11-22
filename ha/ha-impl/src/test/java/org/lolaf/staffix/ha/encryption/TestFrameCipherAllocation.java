@@ -148,7 +148,7 @@ class TestFrameCipherAllocation {
                 seq, Hashing.hash("D"), message, 0, message.remaining(), (byte) 0);
         int length = FrameEncoder.storeEventHeader(frames, 0, 7, seq, body);
         if (unencrypted) {
-            FrameEncoder.markUnencryptedMessage(frames, 0);
+            FrameEncoder.markStoreEventUnencrypted(frames, 0);
         }
         return length;
     }

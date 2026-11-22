@@ -241,7 +241,6 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         append(StoreEventType.STORE_MESSAGE, outgoingSeqNum, messageTypeHash, message);
     }
 
-
     @Override
     public void find(long startSequenceNumber, long stopSequenceNumber, StoreMessagesConsumer consumer) {
         store.find(startSequenceNumber, stopSequenceNumber, consumer);

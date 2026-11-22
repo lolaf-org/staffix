@@ -30,7 +30,7 @@ abstract class SealingFrameCipher implements FrameCipher {
     /**
      * Frames sealed or opened so far in this direction.
      */
-    private long frames;
+    private long nextFrameNumber;
 
     /**
      * The bytes of the frame authenticated but not encrypted: its header and fixed payload, or all of it for an
@@ -59,7 +59,7 @@ abstract class SealingFrameCipher implements FrameCipher {
         FrameType type = type(frames, frameIndex);
         int sealedLength = frameLength + TAG_BYTES;
         frames.putInt(frameIndex + WireFormat.OFFSET_LENGTH, sealedLength);
-        seal(frames, frameIndex, clearBytes(frames, frameIndex, type, frameLength), frameLength, this.frames++);
+        seal(frames, frameIndex, clearBytes(frames, frameIndex, type, frameLength), frameLength, nextFrameNumber++);
         return sealedLength;
     }
 
@@ -70,7 +70,8 @@ abstract class SealingFrameCipher implements FrameCipher {
         if (contentLength < WireFormat.HEADER_BYTES + type.getFixedPayloadBytes()) {
             throw new WireFormatException(type + " of " + frameLength + " bytes is shorter than its fixed part and tag");
         }
-        if (!open(frames, frameIndex, clearBytes(frames, frameIndex, type, contentLength), contentLength, this.frames++)) {
+        int clearBytes = clearBytes(frames, frameIndex, type, contentLength);
+        if (!open(frames, frameIndex, clearBytes, contentLength, nextFrameNumber++)) {
             throw new WireFormatException(type + " fails its authentication tag");
         }
         return contentLength;
@@ -79,11 +80,11 @@ abstract class SealingFrameCipher implements FrameCipher {
     /**
      * Encrypts the frame's bytes past {@code clearBytes} in place and writes the tag after {@code contentLength}.
      */
-    abstract void seal(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frame);
+    abstract void seal(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frameNumber);
 
     /**
      * @return whether the tag after {@code contentLength} verifies; the bytes past {@code clearBytes} are then
      * decrypted in place
      */
-    abstract boolean open(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frame);
+    abstract boolean open(ByteBuffer frames, int frameIndex, int clearBytes, int contentLength, long frameNumber);
 }

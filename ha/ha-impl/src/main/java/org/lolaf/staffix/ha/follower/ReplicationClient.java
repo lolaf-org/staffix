@@ -178,8 +178,7 @@ public final class ReplicationClient {
         LaneClient[] current = laneClients;
         for (LaneClient laneClient : current) {
             LeaderConnection connection = laneClient.connection;
-            if (connection == null || connection.getState() != LeaderConnection.State.STREAMING
-                    || connection.getEncryptionKeys() == null) {
+            if (connection == null || !connection.isEncrypted()) {
                 return false;
             }
         }
