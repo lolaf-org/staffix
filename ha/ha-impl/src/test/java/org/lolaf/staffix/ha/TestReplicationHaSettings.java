@@ -21,8 +21,10 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TestReplicationHaSettings {
@@ -121,5 +123,15 @@ class TestReplicationHaSettings {
 
         assertThatThrownBy(settings::validate).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("encryption.secret");
+    }
+
+    @Test
+    void encryptionIsDisabledByDefaultAndItsSecretNeverShown() {
+        String secret = "s3cr3t-0123456789";
+        ReplicationEncryptionSettings encryption = ReplicationEncryptionSettings.builder().mode(EncryptionMode.REQUIRED)
+                .secret(secret.getBytes(StandardCharsets.UTF_8)).build();
+
+        assertThat(ReplicationHaSettings.builder().build().getEncryption().getMode()).isEqualTo(EncryptionMode.DISABLED);
+        assertThat(ReplicationHaSettings.builder().encryption(encryption).toString()).doesNotContain(secret);
     }
 }

@@ -15,19 +15,20 @@
  */
 package org.lolaf.staffix.ha.replication.follower;
 
+import org.lolaf.staffix.ha.FixFrames;
+import org.lolaf.staffix.ha.RecordingEngine;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.replication.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.replication.wire.CloseReason;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class TestSessionBinder extends LeaderConnectionHarness {
+class TestSessionBinder extends FixLeaderConnectionHarness {
 
     @Test
     void aSessionConfiguredHereIsReplicatedIntoItsOwnStartedStoreOnceASnapshotFillsIt() {
@@ -111,7 +112,7 @@ class TestSessionBinder extends LeaderConnectionHarness {
 
     @Test
     void aSessionTheLeaderCannotIdentifyIsRefused() {
-        read(welcome(EPOCH, WireFormat.NO_RESUME), (out, index) -> TestingFrameEncoder.stream(out, index, EPOCH, 0,
+        read(welcome(EPOCH, WireFormat.NO_RESUME), (out, index) -> FixFrames.stream(out, index, EPOCH, 0,
                 MAIN.getFixSessionType(), ReplicationMode.ASYNC, MAIN.getFixSessionId().toString(), null));
 
         assertThat(sent.frames).first().isEqualTo("STREAM_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");

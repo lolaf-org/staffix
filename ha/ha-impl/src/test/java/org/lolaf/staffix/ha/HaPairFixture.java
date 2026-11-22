@@ -22,8 +22,6 @@ import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings.ReplicationHaSettingsBuilder;
-import org.lolaf.staffix.ha.replication.follower.RecordingEngine;
-import org.lolaf.staffix.ha.replication.follower.RecordingProbes;
 import org.lolaf.staffix.tests.TestPorts;
 
 import java.io.IOException;

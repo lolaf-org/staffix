@@ -15,9 +15,9 @@
  */
 package org.lolaf.staffix.ha.replication.follower;
 
+import org.lolaf.staffix.ha.FixFrames;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.replication.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
 
 import java.util.List;
@@ -26,7 +26,7 @@ import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class TestStoreWrites extends LeaderConnectionHarness {
+class TestStoreWrites extends FixLeaderConnectionHarness {
 
     @Test
     void storeEventsAreAppliedInOrderAndAcknowledgedOncePerRead() {
@@ -156,7 +156,7 @@ class TestStoreWrites extends LeaderConnectionHarness {
         read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"));
         assertThat(lostWrites()).isEqualTo(1);
 
-        read((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13));
+        read((out, index) -> FixFrames.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13));
 
         assertThat(lostWrites()).isZero();
     }

@@ -18,8 +18,7 @@ package org.lolaf.staffix.ha;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
-import org.lolaf.staffix.ha.replication.follower.RecordingEngine;
-import org.lolaf.staffix.ha.replication.follower.RecordingEngine.RecordingStore;
+import org.lolaf.staffix.ha.RecordingEngine.RecordingStore;
 
 import java.util.List;
 

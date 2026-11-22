@@ -19,7 +19,6 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.replication.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.replication.wire.WireFormatException;
 
 import java.nio.ByteBuffer;
@@ -59,6 +58,6 @@ class TestFixSessionReplica {
                 .isInstanceOf(WireFormatException.class);
         assertThatThrownBy(() -> replica.apply((byte) 9, 1, payload, 0, 0)).isInstanceOf(WireFormatException.class)
                 .hasMessage("Unknown store event type 9");
-        replica.snapshotEnd(TestingFrameEncoder.seqNums(4, 5), 0, 2 * Long.BYTES);
+        replica.snapshotEnd(FixFrames.seqNums(4, 5), 0, 2 * Long.BYTES);
     }
 }

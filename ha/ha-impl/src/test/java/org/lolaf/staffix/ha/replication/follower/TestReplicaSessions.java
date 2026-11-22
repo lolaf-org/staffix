@@ -15,6 +15,8 @@
  */
 package org.lolaf.staffix.ha.replication.follower;
 
+import org.lolaf.staffix.ha.FixFrames;
+import org.lolaf.staffix.ha.RecordingEngine;
 import org.lolaf.staffix.ha.ReplicaSessions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
@@ -28,7 +30,6 @@ import org.lolaf.staffix.ha.TypedSessionId;
 import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.wire.StreamAnswer;
 import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
-import org.lolaf.staffix.ha.replication.wire.TestingFrameEncoder;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -198,13 +199,13 @@ class TestReplicaSessions {
     }
 
     private boolean snapshotBegin(int lane, int key, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        return streams.snapshotBegin(lane, key, TestingFrameEncoder.seqNums(nextIncomingSeqNum, nextOutgoingSeqNum),
+        return streams.snapshotBegin(lane, key, FixFrames.seqNums(nextIncomingSeqNum, nextOutgoingSeqNum),
                 0, 2 * Long.BYTES);
     }
 
     private boolean snapshotEnd(int lane, int key, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
         return streams.snapshotEnd(lane, key, messageCount,
-                TestingFrameEncoder.seqNums(nextIncomingSeqNum, nextOutgoingSeqNum), 0, 2 * Long.BYTES);
+                FixFrames.seqNums(nextIncomingSeqNum, nextOutgoingSeqNum), 0, 2 * Long.BYTES);
     }
 
     private boolean apply(int lane, long epoch, long offset, int key, StoreEventType eventType, long seqNum,
