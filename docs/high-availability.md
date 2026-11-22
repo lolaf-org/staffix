@@ -405,7 +405,7 @@ mode, so a new secret goes through clear, one node back to `DISABLED` beside a `
 
 - **The default allocates nothing per message**, on every JDK from 11, so encryption adds no garbage collection. The AEADs allocate on each frame, an acknowledgement included, in the JDK itself: about 1 KiB for
   `AES/GCM/NoPadding`, 1.2 to 3.5 KiB for `ChaCha20-Poly1305`, which also holds twice the message to decrypt it up to
-  JDK 21.
+  JDK 21. A node set with one says so at start, in an INFO naming the allocation-free default.
 - **For large messages, AES-GCM is faster.** Measured with `HaFrameCipherBenchmark` (in `benchmarks`) on a laptop
   CPU with AES-NI, JDK 21, encrypting one message on the leader, in µs:
 
