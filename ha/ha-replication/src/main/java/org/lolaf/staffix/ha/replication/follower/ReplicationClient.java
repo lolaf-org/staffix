@@ -202,7 +202,7 @@ public final class ReplicationClient {
             this.lane = lane;
             this.writeQueue = storeWriterThreads == null ? null
                     : new LaneWriteQueue(lane, maxFrameBytes, replicaStreams, storeWriterThreads.forLane(lane));
-            String id = "staffix-ha-follower-" + lane;
+            String id = "replication-follower-" + lane;
             ioWorkers = IOWorkersGroupSettings.builder().id(id)
                     .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
                     .build().newInstance();

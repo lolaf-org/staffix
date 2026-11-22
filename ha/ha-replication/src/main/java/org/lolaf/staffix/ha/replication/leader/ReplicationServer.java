@@ -78,18 +78,18 @@ public final class ReplicationServer {
     private volatile boolean handedOver;
 
     private static void launchSender(Runnable loop) {
-        Thread thread = new Thread(loop, "staffix-ha-sender");
+        Thread thread = new Thread(loop, "replication-sender");
         thread.setDaemon(true);
         thread.start();
     }
 
     public void start() {
-        ioWorkers = IOWorkersGroupSettings.builder().id("staffix-ha-leader")
+        ioWorkers = IOWorkersGroupSettings.builder().id("replication-leader")
                 .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy)
                         .ioThreadCount(logs.count()).build())
                 .build().newInstance();
         server = ServerBuilder.builder()
-                .id("staffix-ha-leader")
+                .id("replication-leader")
                 .bindAddress(bindAddress)
                 .ioWorkersGroup(ioWorkers)
                 .ioSettings(IOSettings.builder()

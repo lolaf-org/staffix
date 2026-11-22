@@ -32,7 +32,7 @@ final class StoreWriterThreads {
     StoreWriterThreads(int count, Supplier<IdleStrategy> idleStrategy, String nodeId) {
         threads = new StoreWriterThread[count];
         for (int i = 0; i < count; i++) {
-            threads[i] = new StoreWriterThread(idleStrategy.get(), "staffix-ha-store-writer-" + nodeId + "-" + i);
+            threads[i] = new StoreWriterThread(idleStrategy.get(), "replication-store-writer-" + nodeId + "-" + i);
         }
     }
 

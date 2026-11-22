@@ -23,16 +23,17 @@ import java.time.Duration;
 
 /**
  * How long an append waits for a follower a whole log behind before the log drops it: backing off, since the wait
- * holds a FIX IO thread. Carries one thread's state, so each appender has its own.
+ * holds the application's appending thread. Carries one thread's state, so each appender has its own.
  */
 public final class LogFullWait implements RetryStrategy {
 
     private final long timeoutNanos;
-    private final IdleStrategy idle = new BackoffIdleStrategy();
+    private final IdleStrategy idle;
     private long startNanos;
 
     public LogFullWait(Duration timeout) {
         this.timeoutNanos = timeout.toNanos();
+        this.idle = new BackoffIdleStrategy();
     }
 
     @Override

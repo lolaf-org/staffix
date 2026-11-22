@@ -166,7 +166,7 @@ public interface FrameHandler {
 
     /**
      * The sender's last frame before it disconnects. A {@link CloseReason#SHUTDOWN} from the leader tells the follower
-     * it was sent every event, so it takes over without moving its seqnums ahead.
+     * it was sent every event, so it takes over knowing it lost no write.
      */
     default void onClose(long epoch, CloseReason reason, String text) {
         throw unexpected(FrameType.CLOSE);

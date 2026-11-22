@@ -757,7 +757,7 @@ public final class FollowerConnection implements FrameHandler {
     /**
      * For a leader stopping cleanly, its writers already stopped: waits for every event of the log to be sent, then
      * closes with {@link CloseReason#SHUTDOWN}. Arriving after them on the same connection, it tells the follower it
-     * holds everything, so the follower takes over without moving its seqnums ahead. Returns once the follower hung up
+     * holds everything, so the follower takes over knowing it lost no write. Returns once the follower hung up
      * on it, so it has read it before leadership moves. When the deadline passes first, the connection is dropped.
      *
      * @return whether the follower read it
