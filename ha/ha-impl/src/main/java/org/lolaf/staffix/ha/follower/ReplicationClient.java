@@ -172,7 +172,7 @@ public final class ReplicationClient {
     }
 
     /**
-     * Every lane the leader announced is streaming sealed.
+     * Every lane the leader announced is streaming encrypted.
      */
     public boolean isEncrypted() {
         LaneClient[] current = laneClients;

@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Sealing and opening frames with each supported cipher: what is encrypted, what stays readable, and that no byte of a
- * sealed frame nor its place in the stream can change unnoticed.
+ * authenticated frame nor its place in the stream can change unnoticed.
  */
 class TestFrameCiphers {
 
@@ -134,13 +134,13 @@ class TestFrameCiphers {
 
     @ParameterizedTest
     @ValueSource(strings = {"AES/GCM/NoPadding", "ChaCha20-Poly1305", "AES/CTR/NoPadding", "ChaCha20"})
-    void flippingAnyBitOfASealedFrameButItsTypeFailsItsTag(String cipher) {
+    void flippingAnyBitOfAnAuthenticatedFrameButItsTypeFailsItsTag(String cipher) {
         ByteBuffer frames = buffer(false);
         int length = storeEvent(frames, 0, MESSAGE, false);
         byte[] clear = bytes(frames, 0, length);
         for (int index = 0; index < length + WireFormat.TAG_BYTES; index++) {
             if (index == WireFormat.OFFSET_TYPE) {
-                // another type is another frame, refused by its own decoding or the next sealed frame's tag
+                // another type is another frame, refused by its own decoding or the next authenticated frame's tag
                 continue;
             }
             ciphers(cipher, 256, "HmacSHA256");
@@ -258,7 +258,7 @@ class TestFrameCiphers {
     }
 
     @Test
-    void aSealedFrameTooShortForItsTagIsRefused() {
+    void anAuthenticatedFrameTooShortForItsTagIsRefused() {
         ciphers("AES/CTR/NoPadding", 256, "HmacSHA256");
         ByteBuffer frames = buffer(true);
         int length = storeEvent(frames, 0, "", false);

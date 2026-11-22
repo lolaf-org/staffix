@@ -50,8 +50,8 @@ import org.jspecify.annotations.Nullable;
  * SESSIONS_ANNOUNCED leader to follower  announced count 4, reserved 4
  * </pre>
  *
- * <p>The {@link #isSealed() sealed} types are the ones carrying data. The others go without a tag; since a frame's
- * length counts its tag, sealing more types changes no layout.
+ * <p>The {@link #isAuthenticated() authenticated} types are the ones carrying data. The others go without a tag; since
+ * a frame's length counts its tag, authenticating more types changes no layout.
  */
 @Getter
 public enum FrameType {
@@ -84,14 +84,14 @@ public enum FrameType {
     private final int code;
     private final int fixedPayloadBytes;
     /**
-     * On an encrypted connection, the frame ends with a tag and its variable part is encrypted.
+     * On an encrypted connection, the frame ends with a tag, and its variable part is encrypted.
      */
-    private final boolean sealed;
+    private final boolean authenticated;
 
-    FrameType(int code, int fixedPayloadBytes, boolean sealed) {
+    FrameType(int code, int fixedPayloadBytes, boolean authenticated) {
         this.code = code;
         this.fixedPayloadBytes = fixedPayloadBytes;
-        this.sealed = sealed;
+        this.authenticated = authenticated;
     }
 
     /**

@@ -207,7 +207,7 @@ public final class LeaderConnection implements FrameHandler {
      * Sent before anything else this connection answers, so the leader verifies it before it streams.
      */
     private void confirmKeys(long epoch, String leaderId, long resumeOffset, int lanes, EncryptionMode leaderMode,
-                           byte[] leaderNonce) {
+                             byte[] leaderNonce) {
         ConnectionEncryptionKeys keys = keyExchange.deriveKeys(followerNonce, leaderNonce);
         ByteBuffer welcomeFrame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
         int welcomeLength = FrameEncoder.welcome(welcomeFrame, 0, epoch, leaderId, resumeOffset, lanes, leaderMode, leaderNonce);
@@ -517,10 +517,6 @@ public final class LeaderConnection implements FrameHandler {
 
     public enum State {
         AWAITING_WELCOME,
-        /**
-         * Encrypted: the KEY_CONFIRMATION is sent, and the lane is not connected until the leader's first frame shows
-         * it verified it.
-         */
         AWAITING_KEY_ACCEPTANCE,
         STREAMING,
         CLOSED

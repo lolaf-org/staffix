@@ -18,11 +18,11 @@ package org.lolaf.staffix.ha.wire;
 import java.nio.ByteBuffer;
 
 /**
- * Seals the frames of one direction of a connection, or opens them, in place. A {@link FrameType#isSealed() sealed}
- * frame gets a {@link WireFormat#TAG_BYTES} tag after its content, counted in its length, over every byte of it and its
- * place in the direction's sequence of sealed frames, so a frame altered, replayed, dropped or reordered fails it. Its
- * variable part is encrypted, but for a message flagged {@link WireFormat#UNENCRYPTED_MESSAGE}. Other frames pass as
- * they are.
+ * Seals the frames of one direction of a connection, or opens them, in place. Sealing an
+ * {@link FrameType#isAuthenticated() authenticated} frame appends a {@link WireFormat#TAG_BYTES} tag, counted in its
+ * length, over every byte of it and its place in the direction's authenticated frames, so a frame altered, replayed,
+ * dropped or reordered fails it; it also encrypts the variable part, unless the message is flagged
+ * {@link WireFormat#UNENCRYPTED_MESSAGE}. Opening verifies the tag and decrypts. Other frames pass as they are.
  *
  * <p>One thread at a time, in the order the frames are sent: each instance counts the frames it sealed or opened.
  */

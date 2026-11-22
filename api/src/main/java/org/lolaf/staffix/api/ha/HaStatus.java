@@ -143,8 +143,8 @@ public class HaStatus {
          */
         long lagMillis;
         /**
-         * What seals the lane: the cipher, its key size and, for a stream cipher, its MAC. Null while the lane is not
-         * connected or replicates in clear.
+         * What encrypts and authenticates the lane: the cipher, its key size and, for a stream cipher, its MAC. Null
+         * while the lane is not connected or replicates in clear.
          */
         @Nullable String cipher;
     }
@@ -207,8 +207,8 @@ public class HaStatus {
          */
         boolean inSync;
         /**
-         * What seals every lane: the cipher, its key size and, for a stream cipher, its MAC. Null while a lane is not
-         * connected or replicates in clear.
+         * What encrypts and authenticates every lane: the cipher, its key size and, for a stream cipher, its MAC. Null
+         * while a lane is not connected or replicates in clear.
          */
         @Nullable String cipher;
     }

@@ -30,8 +30,8 @@ import lombok.experimental.UtilityClass;
  *     16     -  payload, per frame type
  * </pre>
  *
- * <p>On an encrypted connection, a frame of a {@link FrameType#isSealed() sealed} type ends with a
- * {@link #TAG_BYTES} tag authenticating all of it, its variable part encrypted; see {@link FrameCipher}.
+ * <p>On an encrypted connection, a frame of an {@link FrameType#isAuthenticated() authenticated} type ends with a
+ * {@link #TAG_BYTES} tag over all of it, its variable part encrypted; see {@link FrameCipher}.
  *
  * <p>Big-endian throughout, {@link java.nio.ByteBuffer}'s default, so nothing calls {@code order()}. Strings are
  * UTF-8, preceded by their length in an unsigned short.
@@ -112,7 +112,7 @@ public class WireFormat {
     public static final int KEY_CONFIRMATION_BYTES = 32;
 
     /**
-     * The tag ending a sealed frame, whatever the cipher.
+     * The tag ending an authenticated frame, whatever the cipher.
      */
     public static final int TAG_BYTES = 16;
 

@@ -473,7 +473,7 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * Streaming sealed, the follower having confirmed the keys.
+     * Streaming encrypted, the follower having confirmed the keys.
      */
     public boolean isEncrypted() {
         return isConnected() && encryptionKeys != null;

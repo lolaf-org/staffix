@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 /**
- * Each node's status names what seals its lanes, and a node preferring encryption alerts while a lane is in clear.
+ * Each node's status names what encrypts its lanes, and a node preferring encryption alerts while a lane is in clear.
  */
 @ParameterizedClass
 @ValueSource(booleans = {false, true})

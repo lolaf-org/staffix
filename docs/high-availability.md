@@ -377,11 +377,11 @@ In Spring Boot, `staffix.ha-replication.encryption.mode` and `.secret`; see [Spr
   no follower.
 - **Only `REQUIRED` stops an attacker on the network.** Under `PREFERRED`, one who rewrites the connection's opening
   to say the other node has encryption disabled gets the replication in clear. `PREFERRED` is for the rollout.
-- **Every encrypted frame is also authenticated**: one altered, replayed or reordered closes the connection, and the
-  follower reconnects. The frames the protocol runs on (acknowledgements, heartbeats, the bounds of a snapshot) carry
-  sequence numbers and offsets but no message, and are neither encrypted nor authenticated: an attacker on the network
-  could forge one, for instance acknowledging a `SYNC` send the follower never received. Keep the replication on a
-  network you control.
+- **The frames carrying data are authenticated as well as encrypted**: one altered, replayed or reordered closes the
+  connection, and the follower reconnects. The frames the protocol runs on (acknowledgements, heartbeats, the bounds
+  of a snapshot) carry sequence numbers and offsets but no message, and are neither encrypted nor authenticated: an
+  attacker on the network could forge one, for instance acknowledging a `SYNC` send the follower never received. Keep
+  the replication on a network you control.
 
 **Rolling it out on a running pair**, without stopping the sessions:
 

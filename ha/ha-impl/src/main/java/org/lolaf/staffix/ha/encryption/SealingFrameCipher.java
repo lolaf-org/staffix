@@ -21,15 +21,15 @@ import org.lolaf.staffix.ha.wire.*;
 import java.nio.ByteBuffer;
 
 /**
- * What every cipher family shares: which frames are sealed, which of their bytes are encrypted, and the count of
- * frames that makes each tag depend on its place in the stream.
+ * The cipher of an encrypted connection, as opposed to {@link FrameCipher#CLEAR}: which frames are authenticated, which
+ * of their bytes are encrypted, and the count of frames that makes each tag depend on its place in the stream.
  */
 abstract class SealingFrameCipher implements FrameCipher {
 
     static final int TAG_BYTES = WireFormat.TAG_BYTES;
 
     /**
-     * Frames sealed or opened so far in this direction.
+     * Authenticated frames sealed or opened so far in this direction.
      */
     private long frames;
 
@@ -42,9 +42,9 @@ abstract class SealingFrameCipher implements FrameCipher {
                 ? contentLength : WireFormat.HEADER_BYTES + type.getFixedPayloadBytes();
     }
 
-    private static @Nullable FrameType sealedType(ByteBuffer frames, int frameIndex) {
+    private static @Nullable FrameType authenticatedType(ByteBuffer frames, int frameIndex) {
         FrameType type = FrameType.forCode(frames.get(frameIndex + WireFormat.OFFSET_TYPE));
-        return type != null && type.isSealed() ? type : null;
+        return type != null && type.isAuthenticated() ? type : null;
     }
 
     @Override
@@ -54,7 +54,7 @@ abstract class SealingFrameCipher implements FrameCipher {
 
     @Override
     public final int seal(ByteBuffer frames, int frameIndex, int frameLength) {
-        FrameType type = sealedType(frames, frameIndex);
+        FrameType type = authenticatedType(frames, frameIndex);
         if (type == null) {
             return frameLength;
         }
@@ -66,7 +66,7 @@ abstract class SealingFrameCipher implements FrameCipher {
 
     @Override
     public final int open(ByteBuffer frames, int frameIndex, int frameLength) {
-        FrameType type = sealedType(frames, frameIndex);
+        FrameType type = authenticatedType(frames, frameIndex);
         if (type == null) {
             return frameLength;
         }

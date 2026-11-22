@@ -1304,8 +1304,8 @@ components:
         cipher:
           type: string
           description: >-
-            What seals the lane: the cipher, its key size and, for a stream cipher, its MAC, such as
-            "AES/CTR/NoPadding 256 HmacSHA256". Absent while the lane is not connected or replicates in clear.
+            What encrypts and authenticates the lane: the cipher, its key size and, for a stream cipher, its MAC,
+            such as "AES/CTR/NoPadding 256 HmacSHA256". Absent while the lane is not connected or replicates in clear.
     HaSessionSettingsDifference:
       type: object
       required: [store, fixSessionType, fixSessionId, kind]
@@ -1356,8 +1356,8 @@ components:
         cipher:
           type: string
           description: >-
-            What seals every lane: the cipher, its key size and, for a stream cipher, its MAC. Absent while a lane is
-            not connected or replicates in clear.
+            What encrypts and authenticates every lane: the cipher, its key size and, for a stream cipher, its MAC.
+            Absent while a lane is not connected or replicates in clear.
     HaSession:
       type: object
       required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, unencryptedMessageTypes, inSync,
