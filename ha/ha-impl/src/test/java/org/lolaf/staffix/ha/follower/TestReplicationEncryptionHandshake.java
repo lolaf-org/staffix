@@ -174,6 +174,8 @@ class TestReplicationEncryptionHandshake {
                         .anyMatch(message -> message.contains(outcome));
             });
             assertThat(leader.getFollowers().connections()).noneMatch(connection -> connection.isSessionInSync(0));
+            assertThat(events(LeaderConnection.class, leaderEnd, Level.INFO)).as("the follower never counted the lane connected")
+                    .extracting(LoggingEvent::getFormattedMessage).noneMatch(message -> message.startsWith("Following leader"));
             return;
         }
         awaitReplicated();

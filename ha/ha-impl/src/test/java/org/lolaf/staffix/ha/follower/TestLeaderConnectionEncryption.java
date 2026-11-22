@@ -95,8 +95,9 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
 
         read(encrypting, welcome(EncryptionMode.REQUIRED, leaderNonce));
 
-        assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.STREAMING);
+        assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.AWAITING_KEY_ACCEPTANCE);
         assertThat(encrypting.getEncryptionKeys()).isNotNull();
+        assertThat(sent.frames).hasSize(2);
         assertThat(sent.frames.get(1)).isEqualTo("KEY_CONFIRMATION epoch=7 bytes=32");
         ByteBuffer hello = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.HELLO, "follower-b"));
         int helloLength = FrameEncoder.hello(hello, 0, EPOCH, "follower-b", replicaSessions.getLastAppliedEpoch(0),
@@ -106,7 +107,35 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(leader.confirms(leader.deriveKeys(followerNonce, leaderNonce), bytes(hello, helloLength),
                 bytes(welcome, welcomeLength), sent.lastKeyConfirmation)).as("the leader verifies it").isTrue();
         assertThat(connectionLog.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
+                .noneMatch(message -> message.startsWith("Following leader"));
+    }
+
+    @Test
+    void anEncryptedLaneStreamsOnTheLeadersFirstFrameAfterTheKeyConfirmation() {
+        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+        encrypting.hello();
+        read(encrypting, welcome(EncryptionMode.REQUIRED, TestingKeyExchanges.of(EncryptionMode.REQUIRED).newNonce()));
+
+        read(encrypting, heartbeat());
+
+        assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.STREAMING);
+        assertThat(sent.frames).last().asString().startsWith("ACK epoch=7");
+        assertThat(connectionLog.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
                 .contains("Following leader leader-a encrypted on lane 0, AES/GCM/NoPadding 256");
+    }
+
+    @Test
+    void anEncryptedLaneTheLeaderRefusesTheKeysOfIsNeverConnected() {
+        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+        encrypting.hello();
+        read(encrypting, welcome(EncryptionMode.REQUIRED, TestingKeyExchanges.of(EncryptionMode.REQUIRED).newNonce()));
+
+        read(encrypting, close(CloseReason.KEY_MISMATCH));
+
+        assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(connectionLog.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
+                .noneMatch(message -> message.startsWith("Following leader"));
+        assertThat(errors()).isEqualTo(1);
     }
 
     @Test

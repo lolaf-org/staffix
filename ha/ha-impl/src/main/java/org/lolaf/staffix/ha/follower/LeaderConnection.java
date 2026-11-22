@@ -90,6 +90,8 @@ public final class LeaderConnection implements FrameHandler {
      * are stamped with it.
      */
     private volatile long streamEpoch;
+    private int streamLanes;
+    private long streamResumeOffset;
     private boolean ackDue;
     private boolean applyFailed;
     private long rebindCheckedNanos;
@@ -142,7 +144,8 @@ public final class LeaderConnection implements FrameHandler {
      * this lane follows.
      */
     boolean isStreamEpoch(long epoch) {
-        return state == State.STREAMING && epoch == streamEpoch;
+        State current = state;
+        return (current == State.STREAMING || current == State.AWAITING_KEY_ACCEPTANCE) && epoch == streamEpoch;
     }
 
     @Override
@@ -172,20 +175,32 @@ public final class LeaderConnection implements FrameHandler {
                     + ", the leader's " + leaderMode);
             return;
         }
+        streamEpoch = epoch;
+        streamLanes = lanes;
+        streamResumeOffset = resumeOffset;
         if (negotiation == Negotiation.ENCRYPTED) {
             confirmKeys(epoch, leaderId, resumeOffset, lanes, leaderMode, leaderNonce);
-        } else if (negotiation == Negotiation.CLEAR_AGAINST_PREFERENCE) {
+            state = State.AWAITING_KEY_ACCEPTANCE;
+            return;
+        }
+        if (negotiation == Negotiation.CLEAR_AGAINST_PREFERENCE) {
             log.error("Following leader {} in clear on lane {}: this follower prefers encryption, the leader has it "
                     + "disabled", leaderId, lane);
         }
-        streamEpoch = epoch;
-        lanesAnnounced.accept(lanes);
-        boolean resumed = resumeOffset != WireFormat.NO_RESUME;
+        startStreaming();
+    }
+
+    private void startStreaming() {
+        lanesAnnounced.accept(streamLanes);
+        boolean resumed = streamResumeOffset != WireFormat.NO_RESUME;
         replicaSessions.streamStarted(lane, resumed);
         state = State.STREAMING;
         ackDue = true;
-        log.info("Following leader {} at epoch {} on lane {} of {}, {}", leaderId, epoch, lane, lanes,
-                resumed ? "resuming at offset " + resumeOffset : "from its log tail, needing a snapshot");
+        if (encryptionKeys != null) {
+            log.info("Following leader {} encrypted on lane {}, {}", leaderId, lane, keyExchange.describeCipher());
+        }
+        log.info("Following leader {} at epoch {} on lane {} of {}, {}", leaderId, streamEpoch, lane, streamLanes,
+                resumed ? "resuming at offset " + streamResumeOffset : "from its log tail, needing a snapshot");
     }
 
     /**
@@ -204,7 +219,6 @@ public final class LeaderConnection implements FrameHandler {
         sentHelloBytes = null;
         ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.KEY_CONFIRMATION));
         answers.send(frame, FrameEncoder.keyConfirmation(frame, 0, nodeEpoch.getAsLong(), confirmation));
-        log.info("Following leader {} encrypted on lane {}, {}", leaderId, lane, keyExchange.describeCipher());
     }
 
     @Override
@@ -416,14 +430,21 @@ public final class LeaderConnection implements FrameHandler {
         replicaSessions.bindAgain(lane, sendBoundAnswer);
     }
 
+    /**
+     * The leader's first frame after a KEY_CONFIRMATION starts the stream: it sends none before it verified it.
+     */
     private boolean acceptsFrame(long epoch) {
-        if (state != State.STREAMING) {
+        State current = state;
+        if (current != State.STREAMING && current != State.AWAITING_KEY_ACCEPTANCE) {
             close(CloseReason.PROTOCOL_ERROR, "a frame before WELCOME");
             return false;
         }
         if (epoch != streamEpoch) {
             close(CloseReason.STALE_EPOCH, "a frame of epoch " + epoch + " in a stream of epoch " + streamEpoch);
             return false;
+        }
+        if (current == State.AWAITING_KEY_ACCEPTANCE) {
+            startStreaming();
         }
         return true;
     }
@@ -496,6 +517,11 @@ public final class LeaderConnection implements FrameHandler {
 
     public enum State {
         AWAITING_WELCOME,
+        /**
+         * Encrypted: the KEY_CONFIRMATION is sent, and the lane is not connected until the leader's first frame shows
+         * it verified it.
+         */
+        AWAITING_KEY_ACCEPTANCE,
         STREAMING,
         CLOSED
     }

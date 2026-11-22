@@ -101,7 +101,7 @@ public final class ReplicationClient {
      */
     public void stop(Deadline deadline) {
         LaneClient[] stopping;
-        // not held while stopping: a store writer thread applying a WELCOME takes it in lanesAnnounced
+        // not held while stopping: a store writer thread starting a stream takes it in lanesAnnounced
         synchronized (this) {
             stopped = true;
             stopping = laneClients;
