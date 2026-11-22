@@ -15,16 +15,27 @@
  */
 package org.lolaf.staffix.ha.follower;
 
+import org.lolaf.staffix.ha.wire.FrameCipher;
+
 import java.nio.ByteBuffer;
 
 /**
- * How a {@link LeaderConnection}'s answers to the leader reach its connection: a frame is encoded from index 0 of the buffer claimed, then
- * sent.
+ * How a {@link LeaderConnection}'s answers reach the leader: a frame is encoded from index 0 of the buffer claimed, then
+ * sent. Whichever thread answers, the network thread seals and sends every answer, so they are sealed in the order the
+ * leader opens them.
  */
 interface AnswerSender {
 
     ByteBuffer claim(int bytes);
 
+    /**
+     * Sends the frame, sealed once the KEY_CONFIRMATION went.
+     */
     void send(ByteBuffer frame, int length);
 
+    /**
+     * Sends the KEY_CONFIRMATION as it is, and seals every answer after it with {@code sealer}: the leader opens the
+     * follower's frames only once it verified the confirmation.
+     */
+    void sendKeyConfirmation(ByteBuffer frame, int length, FrameCipher sealer);
 }

@@ -111,6 +111,11 @@ abstract class FollowerConnectionHarness {
         this.opener = FrameCipher.CLEAR;
         senderClock.toAdvanceableTime(Instant.parse("2026-11-01T10:00:00Z"), 0);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
+        // as betty on the IO thread, which every caller here stands for
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(0).run();
+            return null;
+        }).when(ioSession).processTask(any(Runnable.class), any());
         doAnswer(invocation -> {
             ByteBuffer frames = invocation.getArgument(0);
             decodeAll(frames.duplicate().flip());
@@ -179,10 +184,9 @@ abstract class FollowerConnectionHarness {
         frames.duplicate().get(bytes);
         sentBytes.add(bytes);
         FrameDecoder decoder = new FrameDecoder(ha.getReplicationLogs().get(0).getMaxEventFrameBytes() + WireFormat.TAG_BYTES);
-        FrameCipher opener = opener();
         int index = frames.position();
         int consumed;
-        while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, sent, opener)) > 0) {
+        while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, sent, openerOf(frames, index))) > 0) {
             recordTypeHash(frames, index);
             index += consumed;
         }
@@ -190,6 +194,20 @@ abstract class FollowerConnectionHarness {
 
     private ConnectionEncryptionKeys openedKeys;
     private FrameCipher opener;
+    private boolean leaderAccepted;
+
+    /**
+     * As the follower: the WELCOME clear, and a CLOSE before the leader's first sealed frame, a refusal.
+     */
+    private synchronized FrameCipher openerOf(ByteBuffer frames, int index) {
+        FrameCipher keyed = opener();
+        int type = frames.get(index + WireFormat.OFFSET_TYPE);
+        if (type == FrameType.WELCOME.getCode() || type == FrameType.CLOSE.getCode() && !leaderAccepted) {
+            return FrameCipher.CLEAR;
+        }
+        leaderAccepted = keyed != FrameCipher.CLEAR;
+        return keyed;
+    }
 
     /**
      * The follower's, one per connection, since it counts the frames it opens.
@@ -198,6 +216,7 @@ abstract class FollowerConnectionHarness {
         ConnectionEncryptionKeys keys = connection.getEncryptionKeys();
         if (keys != openedKeys) {
             openedKeys = keys;
+            leaderAccepted = false;
             opener = keys == null ? FrameCipher.CLEAR : keyExchange.newOpener(keys.getLeaderToFollower());
         }
         return opener;

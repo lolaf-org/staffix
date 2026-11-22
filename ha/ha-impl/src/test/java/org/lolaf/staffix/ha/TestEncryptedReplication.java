@@ -150,6 +150,20 @@ class TestEncryptedReplication extends HaPairFixture {
     }
 
     @Test
+    void anEncryptedSwitchoverHandsTheSessionsOverWithoutMovingThemAhead() {
+        a = encrypting("a", EncryptionMode.REQUIRED);
+        b = encrypting("b", EncryptionMode.REQUIRED);
+        startPairInSync();
+        replicates(a, b, 1);
+        a.store.storeNextIncomingSeqNum(7);
+
+        switchOver(a, b, 4);
+
+        assertThat(b.engine.store(MAIN).writes).as("the authenticated SHUTDOWN accepted").contains("incoming 7")
+                .doesNotContain("outgoing 10001");
+    }
+
+    @Test
     void theRolloutFromClearToRequiredKeepsReplicatingThroughout() {
         startPairInSync();
         replicates(a, b, 1);

@@ -377,11 +377,12 @@ In Spring Boot, `staffix.ha-replication.encryption.mode` and `.secret`; see [Spr
   no follower.
 - **Only `REQUIRED` stops an attacker on the network.** Under `PREFERRED`, one who rewrites the connection's opening
   to say the other node has encryption disabled gets the replication in clear. `PREFERRED` is for the rollout.
-- **The frames carrying data are authenticated as well as encrypted**: one altered, replayed or reordered closes the
-  connection, and the follower reconnects. The frames the protocol runs on (acknowledgements, heartbeats, the bounds
-  of a snapshot) carry sequence numbers and offsets but no message, and are neither encrypted nor authenticated: an
-  attacker on the network could forge one, for instance acknowledging a `SYNC` send the follower never received. Keep
-  the replication on a network you control.
+- **Every frame after the connection's opening is authenticated**, the acknowledgements, the heartbeats and the
+  hand over of a clean stop included: one forged, altered, replayed, dropped or reordered closes the connection, and
+  the follower reconnects. An attacker on the network can cut the replication, which the alerts report, but cannot
+  acknowledge a `SYNC` send the follower never received, nor have a follower take over without moving its seqnums
+  ahead. Only the refusals of the opening go unauthenticated, as the two nodes have no agreed keys yet: forging one
+  refuses the connection, nothing more.
 
 **Rolling it out on a running pair**, without stopping the sessions:
 
@@ -402,8 +403,9 @@ mode, so a new secret goes through clear, one node back to `DISABLED` beside a `
 | `mac` | `HmacSHA256` | The JCE MAC of `AES/CTR/NoPadding` and `ChaCha20`, making tags of 16 bytes or more |
 | `provider` | the JVM's | A JCE provider to take the cipher and MAC from, installed by the application |
 
-- **The default allocates nothing per message**, on every JDK from 11, so encryption adds no garbage collection. The AEADs allocate on each message, in the JDK itself: about 1 KiB for `AES/GCM/NoPadding`, 1.2 to
-  3.5 KiB for `ChaCha20-Poly1305`, which also holds twice the message to decrypt it up to JDK 21.
+- **The default allocates nothing per message**, on every JDK from 11, so encryption adds no garbage collection. The AEADs allocate on each frame, an acknowledgement included, in the JDK itself: about 1 KiB for
+  `AES/GCM/NoPadding`, 1.2 to 3.5 KiB for `ChaCha20-Poly1305`, which also holds twice the message to decrypt it up to
+  JDK 21.
 - **For large messages, AES-GCM is faster.** Measured with `HaFrameCipherBenchmark` (in `benchmarks`) on a laptop
   CPU with AES-NI, JDK 21, encrypting one message on the leader, in µs:
 
@@ -417,8 +419,9 @@ mode, so a new secret goes through clear, one node back to `DISABLED` beside a `
   (`provider` `AmazonCorrettoCryptoProvider`) allocates 128 B a message against the JDK's 1 KiB: the choice when
   most messages are a kilobyte or more, at the price of a native library to ship. ChaCha20 is slower than AES on any
   CPU with AES-NI, and Bouncy Castle slower than the JDK.
-- **On a `SYNC` round trip, encryption costs about 1 µs** with the default and 2 µs with AES-GCM, with every thread
-  busy spinning ([Latency](#latency)); with the defaults, it is lost in the wake-ups. Spinning, the JDK's AES-GCM
+- **On a `SYNC` round trip, encryption costs about 2 µs** with the default and 3.5 µs with AES-GCM, with every
+  thread busy spinning ([Latency](#latency)); with the defaults, it is lost in the wake-ups. Authenticating the
+  follower's acknowledgement accounts for 0.5 µs of it, its RECEIVED as much again under `SYNC_RECEIVED`. Spinning, the JDK's AES-GCM
   showed in the tail through its garbage collections: 3 ms at p99.9, where the default stayed under 60 µs.
 
 **A session can leave some of its messages unencrypted**, with `unencryptedMessageTypes` in its `highAvailability`

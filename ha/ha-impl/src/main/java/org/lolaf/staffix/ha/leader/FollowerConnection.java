@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.leader;
 
 import lombok.AccessLevel;
 import lombok.Getter;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.betty.api.io.IOSession;
@@ -45,6 +46,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -64,6 +66,8 @@ public final class FollowerConnection implements FrameHandler {
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     private static final AtomicReferenceFieldUpdater<FollowerConnection, State> STATE =
             AtomicReferenceFieldUpdater.newUpdater(FollowerConnection.class, State.class, "state");
+    private static final AtomicReferenceFieldUpdater<FollowerConnection, PendingClose> PENDING_CLOSE =
+            AtomicReferenceFieldUpdater.newUpdater(FollowerConnection.class, PendingClose.class, "pendingClose");
     private final IOSession ioSession;
     private final String address;
     private final ReplicationLogs logs;
@@ -113,6 +117,11 @@ public final class FollowerConnection implements FrameHandler {
      */
     @Getter(AccessLevel.PACKAGE)
     private FrameCipher frameCipher;
+    /**
+     * Opens the follower's frames once its KEY_CONFIRMATION verified; IO thread only.
+     */
+    @Getter(AccessLevel.PACKAGE)
+    private FrameCipher answerOpener;
     @Getter
     private volatile State state;
     private volatile boolean followerHungUp;
@@ -154,6 +163,16 @@ public final class FollowerConnection implements FrameHandler {
     private boolean recoveringFromTooSlow;
     private volatile boolean handingOver;
     private volatile boolean senderRunning;
+    /**
+     * The sender sealed a frame, and every frame it seals is sent: the follower then opens every later one, the CLOSE
+     * included.
+     */
+    private volatile boolean streamStarted;
+    /**
+     * Recorded by the first close; the IO thread sends it once the sender stopped, sealed after the sender's last frame.
+     */
+    private volatile @Nullable PendingClose pendingClose;
+    private final AtomicBoolean closeSent;
     /**
      * The next session key to announce, every key below it announced; sender thread only.
      */
@@ -198,6 +217,8 @@ public final class FollowerConnection implements FrameHandler {
         this.syncs = new SessionSyncs();
         this.reannouncements = new ConcurrentLinkedQueue<>();
         this.frameCipher = FrameCipher.CLEAR;
+        this.answerOpener = FrameCipher.CLEAR;
+        this.closeSent = new AtomicBoolean();
         this.state = State.AWAITING_HELLO;
         this.appliedOffset = -1;
         this.receivedOffset = -1;
@@ -319,6 +340,7 @@ public final class FollowerConnection implements FrameHandler {
         }
         receivedHelloBytes = null;
         sentWelcomeBytes = null;
+        answerOpener = keyExchange.newOpener(keys.getFollowerToLeader());
         if (STATE.compareAndSet(this, State.AWAITING_KEY_CONFIRMATION, State.STREAMING)) {
             log.info("Replicating encrypted to follower {} lane {}, {}", followerId, lane, keyExchange.describeCipher());
             senderIdle.wakeup();
@@ -528,7 +550,11 @@ public final class FollowerConnection implements FrameHandler {
         // every frame then fits with its tag after it
         dst.limit(limit - frameCipher.getTagBytes());
         try {
-            return fillBatchUpToLimit(dst);
+            int filled = fillBatchUpToLimit(dst);
+            if (filled > 0 && !streamStarted) {
+                streamStarted = true;
+            }
+            return filled;
         } finally {
             dst.limit(limit);
         }
@@ -703,6 +729,9 @@ public final class FollowerConnection implements FrameHandler {
             sendLoop();
         } finally {
             senderRunning = false;
+            if (pendingClose != null) {
+                sendPendingCloseOnIoThread();
+            }
         }
     }
 
@@ -757,7 +786,8 @@ public final class FollowerConnection implements FrameHandler {
         if (filled == 0 && state == State.STREAMING) {
             filled = heartbeatIfDue(batch, clock.nanoTime());
         }
-        if (filled == 0 || state != State.STREAMING) {
+        // sent even once closed: a sealed frame left out would fail the CLOSE's tag
+        if (filled == 0) {
             batches.keep(batch);
             return false;
         }
@@ -804,7 +834,7 @@ public final class FollowerConnection implements FrameHandler {
             ioSession.stop(Deadline.immediate());
             return false;
         }
-        if (!sendClose(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent")) {
+        if (!requestClose(CloseReason.SHUTDOWN, "the leader stopped cleanly, every event was sent", false)) {
             return false;
         }
         boolean read = deadline.waitAsLongAs(() -> !followerHungUp);
@@ -818,23 +848,55 @@ public final class FollowerConnection implements FrameHandler {
 
     /**
      * Sends a CLOSE and disconnects, the connection flushing it first. Any thread; only the first close of the
-     * connection does it.
+     * connection does it. The IO thread sends it once the sender stopped, the sender leaving its loop at its next turn,
+     * so it is sealed in order after the sender's last frame.
      *
      * @return false when the connection was already closed, and nothing sent
      */
     boolean close(CloseReason reason, String text) {
-        if (!sendClose(reason, text)) {
+        return requestClose(reason, text, true);
+    }
+
+    private boolean requestClose(CloseReason reason, String text, boolean stopAfter) {
+        String shortText = FrameEncoder.closeText(text);
+        PendingClose closing = new PendingClose(reason, shortText, stopAfter);
+        // recorded before the mark: a sender leaving its loop on the mark finds it
+        if (!PENDING_CLOSE.compareAndSet(this, null, closing)) {
             return false;
         }
-        ioSession.stop(Deadline.of(CLOSE_FLUSH));
+        if (!markClosed()) {
+            PENDING_CLOSE.compareAndSet(this, closing, null);
+            return false;
+        }
+        logClose(reason, shortText);
+        if (senderRunning) {
+            senderIdle.wakeup();
+        } else {
+            sendPendingCloseOnIoThread();
+        }
         return true;
     }
 
-    private boolean sendClose(CloseReason reason, String text) {
-        if (!markClosed()) {
-            return false;
+    private void sendPendingCloseOnIoThread() {
+        ioSession.processTask(this::sendPendingClose, (task, refusedOnceDisconnected) -> {
+        });
+    }
+
+    private void sendPendingClose() {
+        PendingClose closing = pendingClose;
+        if (closing == null || !closeSent.compareAndSet(false, true)) {
+            return;
         }
-        String shortText = FrameEncoder.closeText(text);
+        FrameCipher sealer = streamStarted ? frameCipher : FrameCipher.CLEAR;
+        ByteBuffer frame = ioSession.borrow(FrameEncoder.bytesWith(FrameType.CLOSE, closing.getText()) + sealer.getTagBytes());
+        int length = FrameEncoder.close(frame.clear(), 0, nodeEpoch.getAsLong(), closing.getReason(), closing.getText());
+        ioSession.send(BatchBuffers.written(frame, sealer.seal(frame, 0, length)), true);
+        if (closing.isStopAfter()) {
+            ioSession.stop(Deadline.of(CLOSE_FLUSH));
+        }
+    }
+
+    private void logClose(CloseReason reason, String shortText) {
         if (reason == CloseReason.SHUTDOWN || reason == CloseReason.RETRY_LATER) {
             log.info("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, shortText);
         } else if (reason.isEncryptionRefusal()) {
@@ -842,11 +904,6 @@ public final class FollowerConnection implements FrameHandler {
         } else {
             log.warn("Closing the replication stream to follower {} lane {}: {} {}", followerId, lane, reason, shortText);
         }
-        // not borrowed: a close comes from the sender as well as the IO thread, and the pool takes one borrower
-        ByteBuffer frame = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.CLOSE, shortText));
-        int length = FrameEncoder.close(frame, 0, nodeEpoch.getAsLong(), reason, shortText);
-        ioSession.send(BatchBuffers.written(frame, length), false);
-        return true;
     }
 
     /**
@@ -893,6 +950,13 @@ public final class FollowerConnection implements FrameHandler {
             opened.close();
         }
         return true;
+    }
+
+    @Value
+    private static class PendingClose {
+        CloseReason reason;
+        String text;
+        boolean stopAfter;
     }
 
     public enum State {

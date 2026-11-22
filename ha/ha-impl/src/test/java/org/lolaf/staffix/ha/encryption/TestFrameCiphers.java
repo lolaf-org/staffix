@@ -184,7 +184,7 @@ class TestFrameCiphers {
 
     @ParameterizedTest
     @ValueSource(strings = {"AES/GCM/NoPadding", "ChaCha20-Poly1305", "AES/CTR/NoPadding", "ChaCha20"})
-    void framesOfEveryDataTypeLongerThanAChunkRoundTripAmongControlFramesLeftAsTheyAre(String cipher) {
+    void framesOfEveryTypeLongerThanAChunkRoundTripAControlFrameAuthenticatedButReadable(String cipher) {
         ciphers(cipher, 256, "HmacSHA256");
         ByteBuffer frames = buffer(true);
         String longMessage = MESSAGE + "x".repeat(20_000);
@@ -194,10 +194,9 @@ class TestFrameCiphers {
         index += sealer.seal(frames, index, lengths[0]);
         int heartbeat = index;
         lengths[1] = FrameEncoder.heartbeat(frames, index, 7, 99);
-        byte[] heartbeatBytes = bytes(frames, index, lengths[1]);
-        assertThat(sealer.seal(frames, index, lengths[1])).isEqualTo(lengths[1]);
-        assertThat(bytes(frames, index, lengths[1])).isEqualTo(heartbeatBytes);
-        index += lengths[1];
+        assertThat(sealer.seal(frames, index, lengths[1])).isEqualTo(lengths[1] + WireFormat.TAG_BYTES);
+        assertThat(frames.getLong(index + WireFormat.HEADER_BYTES)).as("its log tail offset, readable").isEqualTo(99);
+        index += lengths[1] + WireFormat.TAG_BYTES;
         lengths[2] = FrameEncoder.session(frames, index, 7, 3, FixSessionType.INITIATOR, ReplicationMode.SYNC_APPLIED,
                 "default.main:VERSION_44:SENDER->TARGET", "storage");
         int session = index;
@@ -214,8 +213,8 @@ class TestFrameCiphers {
         assertThat(text(frames, EVENT_FIXED_BYTES, longMessage.length())).isEqualTo(longMessage);
         index += lengths[0] + WireFormat.TAG_BYTES;
         assertThat(index).isEqualTo(heartbeat);
-        assertThat(opener.open(frames, index, lengths[1])).isEqualTo(lengths[1]);
-        index += lengths[1];
+        assertThat(opener.open(frames, index, lengths[1] + WireFormat.TAG_BYTES)).isEqualTo(lengths[1]);
+        index += lengths[1] + WireFormat.TAG_BYTES;
         assertThat(opener.open(frames, index, lengths[2] + WireFormat.TAG_BYTES)).isEqualTo(lengths[2]);
         assertThat(text(frames, session, lengths[2])).contains("default.main:VERSION_44:SENDER->TARGET");
         index += lengths[2] + WireFormat.TAG_BYTES;

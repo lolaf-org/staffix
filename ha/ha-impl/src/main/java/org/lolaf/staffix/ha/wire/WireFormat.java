@@ -30,8 +30,10 @@ import lombok.experimental.UtilityClass;
  *     16     -  payload, per frame type
  * </pre>
  *
- * <p>On an encrypted connection, a frame of an {@link FrameType#isAuthenticated() authenticated} type ends with a
- * {@link #TAG_BYTES} tag over all of it, its variable part encrypted; see {@link FrameCipher}.
+ * <p>On an encrypted connection, every frame after the handshake ends with a {@link #TAG_BYTES} tag over all of it,
+ * its variable part encrypted; see {@link FrameCipher}. The follower's frames from the one after its KEY_CONFIRMATION;
+ * the leader's from the first it sends once it verified it, a refusal before then going without, since the keys may
+ * differ.
  *
  * <p>Big-endian throughout, {@link java.nio.ByteBuffer}'s default, so nothing calls {@code order()}. Strings are
  * UTF-8, preceded by their length in an unsigned short.

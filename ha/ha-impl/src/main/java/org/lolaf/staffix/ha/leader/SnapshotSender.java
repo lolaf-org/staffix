@@ -200,6 +200,8 @@ final class SnapshotSender {
             }
             copyChunk();
             if (!connection.isConnected()) {
+                // sent even once closed: a sealed frame left out would fail the CLOSE's tag
+                writer.flush();
                 return;
             }
             if (!writer.stopped) {
@@ -213,6 +215,7 @@ final class SnapshotSender {
         } catch (RuntimeException e) {
             log.warn("Snapshot of FIX session {} {} failed", session.getFixSessionType(), session.getFixSessionId(), e);
             int failedKey = sessionKey;
+            writer.flush();
             cancel();
             syncs.compareAndSet(failedKey, SessionSyncState.SNAPSHOT_SENT, SessionSyncState.SNAPSHOT_PENDING);
             connection.close(CloseReason.SNAPSHOT_FAILED, "FIX session " + session.getFixSessionId() + ": " + e.getMessage());

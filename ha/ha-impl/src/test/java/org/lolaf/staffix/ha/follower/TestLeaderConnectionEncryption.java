@@ -20,6 +20,10 @@ import com.github.valfirst.slf4jtest.TestLogger;
 import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.lolaf.staffix.api.ha.HaSessionStatus;
+import org.lolaf.staffix.api.session.FixSession.FixSessionType;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
@@ -68,6 +72,39 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         return (out, index) -> sealer.seal(out, index, frame.applyAsInt(out, index));
     }
 
+    /**
+     * The leader's sealer for the connection's last HELLO.
+     */
+    private FrameCipher leaderSealer(KeyExchange leader, byte[] leaderNonce) {
+        return leader.newSealer(leader.deriveKeys(sent.lastNonce, leaderNonce).getLeaderToFollower());
+    }
+
+    /**
+     * Encrypted, the session announced and complete by snapshot, so a clean hand over would hand it over.
+     */
+    private FrameCipher streamingInSync(LeaderConnection encrypting) {
+        return streamingInSync(encrypting, MAIN);
+    }
+
+    private FrameCipher streamingInSync(LeaderConnection encrypting, FixSessionSettings settings) {
+        KeyExchange leader = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
+        encrypting.hello();
+        byte[] leaderNonce = leader.newNonce();
+        FrameCipher sealer = leaderSealer(leader, leaderNonce);
+        read(encrypting, welcome(EncryptionMode.REQUIRED, leaderNonce), sealed(sealer, session(0, settings)),
+                sealed(sealer, announced(1)),
+                sealed(sealer, (out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1)),
+                sealed(sealer, (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1)));
+        assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.STREAMING);
+        return sealer;
+    }
+
+    private boolean handedOver() {
+        HaSessionStatus.HaSessionStatusBuilder status = HaSessionStatus.builder();
+        replicaSessions.describe(FixSessionType.INITIATOR, MAIN.getFixSessionId().toString(), status);
+        return status.build().isHandedOver();
+    }
+
     private long errors() {
         return connectionLog.getLoggingEvents().stream().filter(event -> event.getLevel() == Level.ERROR).count();
     }
@@ -112,11 +149,14 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
 
     @Test
     void anEncryptedLaneStreamsOnTheLeadersFirstFrameAfterTheKeyConfirmation() {
+        KeyExchange leader = TestingKeyExchanges.of(EncryptionMode.REQUIRED);
         LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
         encrypting.hello();
-        read(encrypting, welcome(EncryptionMode.REQUIRED, TestingKeyExchanges.of(EncryptionMode.REQUIRED).newNonce()));
+        byte[] leaderNonce = leader.newNonce();
+        FrameCipher sealer = leaderSealer(leader, leaderNonce);
+        read(encrypting, welcome(EncryptionMode.REQUIRED, leaderNonce));
 
-        read(encrypting, heartbeat());
+        read(encrypting, sealed(sealer, heartbeat()));
 
         assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.STREAMING);
         assertThat(sent.frames).last().asString().startsWith("ACK epoch=7");
@@ -179,10 +219,11 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
         encrypting.hello();
         byte[] leaderNonce = leader.newNonce();
-        FrameCipher sealer = leader.newSealer(leader.deriveKeys(sent.lastNonce, leaderNonce).getLeaderToFollower());
-        read(encrypting, welcome(EncryptionMode.REQUIRED, leaderNonce), sealed(sealer, session(0, MAIN)), announced(1),
-                (out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1),
+        FrameCipher sealer = leaderSealer(leader, leaderNonce);
+        read(encrypting, welcome(EncryptionMode.REQUIRED, leaderNonce), sealed(sealer, session(0, MAIN)),
+                sealed(sealer, announced(1)),
+                sealed(sealer, (out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1)),
+                sealed(sealer, (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1)),
                 sealed(sealer, event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 1, MESSAGE)));
         assertThat(engine.store(MAIN).writes).contains("message 1 " + MESSAGE);
         ByteBuffer tampered = writeFrames(sealed(sealer, event(EPOCH, 100, 0, StoreEventType.STORE_MESSAGE, 2, MESSAGE)));
@@ -194,5 +235,64 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(sent.frames).last().asString()
                 .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR STORE_EVENT fails its authentication tag");
         assertThat(engine.store(MAIN).writes).noneMatch(write -> write.startsWith("message 2"));
+    }
+
+    @Test
+    void anAuthenticShutdownHandsTheSessionOver() {
+        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+        FrameCipher sealer = streamingInSync(encrypting);
+
+        read(encrypting, sealed(sealer, close(CloseReason.SHUTDOWN)));
+
+        assertThat(handedOver()).isTrue();
+    }
+
+    @Test
+    void aShutdownWithoutItsTagHandsNothingOver() {
+        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+        streamingInSync(encrypting);
+
+        read(encrypting, close(CloseReason.SHUTDOWN));
+
+        assertThat(handedOver()).isFalse();
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
+    }
+
+    @Test
+    void aShutdownAfterADroppedFrameFailsItsTagAndHandsNothingOver() {
+        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+        FrameCipher sealer = streamingInSync(encrypting);
+        writeFrames(sealed(sealer, event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 1, MESSAGE)));
+
+        read(encrypting, sealed(sealer, close(CloseReason.SHUTDOWN)));
+
+        assertThat(handedOver()).isFalse();
+        assertThat(sent.frames).last().asString()
+                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR CLOSE fails its authentication tag");
+    }
+
+    @Test
+    void withAStoreWriterThreadAnEncryptedConnectionAcknowledgesReceiptOnceTheTagVerified() {
+        FixSessionSettings syncReceived = MAIN.toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                .replicationMode(ReplicationMode.SYNC_RECEIVED).build()).build();
+        engine.replace(syncReceived);
+        assertThat(newStoreWriterConnection(TestingKeyExchanges.CLEAR).isReceivedAckedOnRead())
+                .as("in clear, the network thread acknowledges what it reads").isTrue();
+        LeaderConnection encrypting = newStoreWriterConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+        FrameCipher sealer = streamingInSync(encrypting, syncReceived);
+        assertThat(encrypting.isReceivedAckedOnRead()).as("encrypted, it does not").isFalse();
+
+        read(encrypting, sealed(sealer, event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 1, MESSAGE)));
+
+        assertThat(sent.frames).contains("RECEIVED epoch=7 received=0");
+    }
+
+    @Test
+    void theAnswersAfterTheKeyConfirmationAreSealed() {
+        LeaderConnection encrypting = newConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+
+        streamingInSync(encrypting);
+
+        assertThat(sent.frames).as("opened as the leader opens them").contains("SESSION_ANSWER epoch=7 key=0 REPLICATING");
     }
 }

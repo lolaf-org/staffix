@@ -140,6 +140,14 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     /**
+     * With a store writer thread the network thread acknowledges an event as received as it reads it, but not on an
+     * encrypted connection: the writer thread then does, once the event's tag verified.
+     */
+    boolean isReceivedAckedOnRead() {
+        return receivedAckedByNetworkThread && encryptionKeys == null;
+    }
+
+    /**
      * Whether an event of this epoch read now can be acknowledged as received: the stream it belongs to is the one
      * this lane follows.
      */
@@ -218,7 +226,8 @@ public final class LeaderConnection implements FrameHandler {
         encryptionKeys = keys;
         sentHelloBytes = null;
         ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.KEY_CONFIRMATION));
-        answers.send(frame, FrameEncoder.keyConfirmation(frame, 0, nodeEpoch.getAsLong(), confirmation));
+        answers.sendKeyConfirmation(frame, FrameEncoder.keyConfirmation(frame, 0, nodeEpoch.getAsLong(), confirmation),
+                keyExchange.newSealer(keys.getFollowerToLeader()));
     }
 
     @Override
@@ -342,7 +351,7 @@ public final class LeaderConnection implements FrameHandler {
         }
         try {
             int consumed;
-            while ((consumed = decoder.decode(frames, index, limit - index, this, frameCipher)) > 0) {
+            while ((consumed = decoder.decode(frames, index, limit - index, this, openerOf(frames, index, limit))) > 0) {
                 index += consumed;
             }
             return index;
@@ -353,6 +362,15 @@ public final class LeaderConnection implements FrameHandler {
             failed(CloseReason.APPLY_FAILED, e.toString());
         }
         return limit;
+    }
+
+    /**
+     * Until the leader accepts the keys, it seals nothing: a refusal comes as a clear CLOSE.
+     */
+    private FrameCipher openerOf(ByteBuffer frames, int index, int limit) {
+        boolean closeBeforeAcceptance = state == State.AWAITING_KEY_ACCEPTANCE && limit - index > WireFormat.OFFSET_TYPE
+                && frames.get(index + WireFormat.OFFSET_TYPE) == FrameType.CLOSE.getCode();
+        return closeBeforeAcceptance ? FrameCipher.CLEAR : frameCipher;
     }
 
     /**
@@ -379,7 +397,7 @@ public final class LeaderConnection implements FrameHandler {
     private void writeAndAck() {
         long received = replicaSessions.takeReceivedToAck(lane);
         if (state == State.STREAMING && received > replicaSessions.getLastAppliedOffset(lane)) {
-            if (!receivedAckedByNetworkThread) {
+            if (!isReceivedAckedOnRead()) {
                 ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.RECEIVED));
                 answers.send(frame, FrameEncoder.received(frame, 0, streamEpoch, received));
             }

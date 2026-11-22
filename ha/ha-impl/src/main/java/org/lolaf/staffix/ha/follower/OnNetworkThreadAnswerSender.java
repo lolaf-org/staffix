@@ -15,26 +15,38 @@
  */
 package org.lolaf.staffix.ha.follower;
 
-import lombok.RequiredArgsConstructor;
 import org.lolaf.betty.api.io.IOSession;
+import org.lolaf.staffix.ha.wire.FrameCipher;
+import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 
 /**
  * On the connection's network thread, straight into a buffer of betty's pool.
  */
-@RequiredArgsConstructor
 public final class OnNetworkThreadAnswerSender implements AnswerSender {
 
     private final IOSession ioSession;
+    private FrameCipher sealer;
+
+    public OnNetworkThreadAnswerSender(IOSession ioSession) {
+        this.ioSession = ioSession;
+        this.sealer = FrameCipher.CLEAR;
+    }
 
     @Override
     public ByteBuffer claim(int bytes) {
-        return ioSession.borrow(bytes);
+        return ioSession.borrow(bytes + WireFormat.TAG_BYTES);
     }
 
     @Override
     public void send(ByteBuffer frame, int length) {
-        ioSession.send(frame.clear().position(length), true);
+        ioSession.send(frame.clear().position(sealer.seal(frame, 0, length)), true);
+    }
+
+    @Override
+    public void sendKeyConfirmation(ByteBuffer frame, int length, FrameCipher sealer) {
+        send(frame, length);
+        this.sealer = sealer;
     }
 }

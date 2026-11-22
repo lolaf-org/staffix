@@ -175,7 +175,7 @@ public final class ReplicationServer {
             int index = message.position();
             try {
                 int consumed;
-                while ((consumed = decoder.decode(message, index, message.limit() - index, connection)) > 0) {
+                while ((consumed = decoder.decode(message, index, message.limit() - index, connection, connection.getAnswerOpener())) > 0) {
                     index += consumed;
                 }
             } catch (WireFormatException e) {

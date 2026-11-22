@@ -51,17 +51,23 @@ abstract class LeaderConnectionHarness {
     final RecordingEngine engine;
     final ReplicaSessions replicaSessions;
     final LeaderConnection connection;
+    private final FrameDecoder sentDecoder;
+    private FrameCipher sentOpener;
+    private KeyExchange latestKeyExchange;
+    private LeaderConnection latest;
 
     LeaderConnectionHarness() {
         this.ioSession = mock(IOSession.class);
         this.sent = new RecordingHandler();
+        this.sentDecoder = new FrameDecoder(1 << 20);
+        this.sentOpener = FrameCipher.CLEAR;
         this.engine = new RecordingEngine().with(MAIN);
         this.replicaSessions = new ReplicaSessions(engine);
         this.connection = newConnection(0, 0);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         doAnswer(invocation -> {
             ByteBuffer frames = invocation.getArgument(0);
-            decode(frames.duplicate().flip(), sent);
+            decodeSent(frames.duplicate().flip());
             return null;
         }).when(ioSession).send(any(ByteBuffer.class), anyBoolean());
     }
@@ -71,6 +77,20 @@ abstract class LeaderConnectionHarness {
         int index = frames.position();
         int consumed;
         while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, handler)) > 0) {
+            index += consumed;
+        }
+    }
+
+    /**
+     * As the leader reads them: every frame after the KEY_CONFIRMATION opened.
+     */
+    private void decodeSent(ByteBuffer frames) {
+        int index = frames.position();
+        int consumed;
+        while (index < frames.limit() && (consumed = sentDecoder.decode(frames, index, frames.limit() - index, sent, sentOpener)) > 0) {
+            if (frames.get(index + WireFormat.OFFSET_TYPE) == FrameType.KEY_CONFIRMATION.getCode()) {
+                sentOpener = latestKeyExchange.newOpener(latest.getEncryptionKeys().getFollowerToLeader());
+            }
             index += consumed;
         }
     }
@@ -174,16 +194,31 @@ abstract class LeaderConnectionHarness {
     }
 
     private LeaderConnection newConnection(int lane, long checkIntervalNanos) {
-        return newConnection(lane, checkIntervalNanos, TestingKeyExchanges.CLEAR);
+        return newConnection(lane, checkIntervalNanos, TestingKeyExchanges.CLEAR, false);
     }
 
     LeaderConnection newConnection(KeyExchange keyExchange) {
-        return newConnection(0, TimeUnit.SECONDS.toNanos(1), keyExchange);
+        return newConnection(0, TimeUnit.SECONDS.toNanos(1), keyExchange, false);
+    }
+
+    /**
+     * As with a store writer thread, whose network thread acknowledges what it reads as received.
+     */
+    LeaderConnection newStoreWriterConnection(KeyExchange keyExchange) {
+        return newConnection(0, TimeUnit.SECONDS.toNanos(1), keyExchange, true);
     }
 
     private LeaderConnection newConnection(int lane, long checkIntervalNanos, KeyExchange keyExchange) {
-        return new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", lane, replicaSessions::setLanes,
-                checkIntervalNanos, new OnNetworkThreadAnswerSender(ioSession), false, keyExchange);
+        return newConnection(lane, checkIntervalNanos, keyExchange, false);
+    }
+
+    private LeaderConnection newConnection(int lane, long checkIntervalNanos, KeyExchange keyExchange,
+                                           boolean receivedAckedByNetworkThread) {
+        latestKeyExchange = keyExchange;
+        latest = new LeaderConnection(ioSession, replicaSessions, () -> EPOCH, "follower-b", lane, replicaSessions::setLanes,
+                checkIntervalNanos, new OnNetworkThreadAnswerSender(ioSession), receivedAckedByNetworkThread, keyExchange);
+        sentOpener = FrameCipher.CLEAR;
+        return latest;
     }
 
     long lostWrites() {

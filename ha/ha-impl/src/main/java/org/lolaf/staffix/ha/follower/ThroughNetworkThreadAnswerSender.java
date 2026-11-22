@@ -19,6 +19,8 @@ import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.rb.ByteFrameHandler;
 import org.lolaf.ringos.rb.ByteRingBuffer;
 import org.lolaf.ringos.rb.ByteRingBufferFactory;
+import org.lolaf.staffix.ha.wire.FrameCipher;
+import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -30,14 +32,32 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class ThroughNetworkThreadAnswerSender implements AnswerSender, ByteFrameHandler, Runnable {
 
     private static final int CAPACITY = 64 << 10;
+    private static final int ANSWER = 0;
+    private static final int KEY_CONFIRMATION = 1;
 
     private final IOSession ioSession;
     private final ByteRingBuffer answers = ByteRingBufferFactory.queue(CAPACITY);
     private final ByteBuffer answer = ByteBuffer.allocate(answers.getMaxPayloadLength());
     private final AtomicBoolean sendScheduled = new AtomicBoolean();
+    /**
+     * Network thread only, from the answer after the KEY_CONFIRMATION.
+     */
+    private FrameCipher sealer;
+    /**
+     * Set by the store writer thread before it queues the KEY_CONFIRMATION.
+     */
+    private volatile FrameCipher nextSealer;
 
     ThroughNetworkThreadAnswerSender(IOSession ioSession) {
         this.ioSession = ioSession;
+        this.sealer = FrameCipher.CLEAR;
+        this.nextSealer = FrameCipher.CLEAR;
+    }
+
+    @Override
+    public void sendKeyConfirmation(ByteBuffer frame, int length, FrameCipher sealer) {
+        nextSealer = sealer;
+        queue(KEY_CONFIRMATION, frame, length);
     }
 
     @Override
@@ -51,7 +71,11 @@ public final class ThroughNetworkThreadAnswerSender implements AnswerSender, Byt
 
     @Override
     public void send(ByteBuffer frame, int length) {
-        while (!answers.write(0, frame, 0, length)) {
+        queue(ANSWER, frame, length);
+    }
+
+    private void queue(int type, ByteBuffer frame, int length) {
+        while (!answers.write(type, frame, 0, length)) {
             scheduleSend();
             Thread.onSpinWait();
         }
@@ -77,10 +101,13 @@ public final class ThroughNetworkThreadAnswerSender implements AnswerSender, Byt
 
     @Override
     public void onFrame(int type, ByteBuffer buffer, int index, int length) {
-        ByteBuffer frame = ioSession.borrow(length);
+        ByteBuffer frame = ioSession.borrow(length + WireFormat.TAG_BYTES);
         for (int i = 0; i < length; i++) {
             frame.put(i, buffer.get(index + i));
         }
-        ioSession.send(frame.position(length), true);
+        ioSession.send(frame.position(sealer.seal(frame, 0, length)), true);
+        if (type == KEY_CONFIRMATION) {
+            sealer = nextSealer;
+        }
     }
 }

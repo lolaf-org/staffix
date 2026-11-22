@@ -15,21 +15,20 @@
  */
 package org.lolaf.staffix.ha.encryption;
 
-import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.ha.wire.*;
 
 import java.nio.ByteBuffer;
 
 /**
- * The cipher of an encrypted connection, as opposed to {@link FrameCipher#CLEAR}: which frames are authenticated, which
- * of their bytes are encrypted, and the count of frames that makes each tag depend on its place in the stream.
+ * The cipher of an encrypted connection, as opposed to {@link FrameCipher#CLEAR}: which bytes of a frame are encrypted,
+ * and the count of frames that makes each tag depend on its place in the stream.
  */
 abstract class SealingFrameCipher implements FrameCipher {
 
     static final int TAG_BYTES = WireFormat.TAG_BYTES;
 
     /**
-     * Authenticated frames sealed or opened so far in this direction.
+     * Frames sealed or opened so far in this direction.
      */
     private long frames;
 
@@ -42,9 +41,12 @@ abstract class SealingFrameCipher implements FrameCipher {
                 ? contentLength : WireFormat.HEADER_BYTES + type.getFixedPayloadBytes();
     }
 
-    private static @Nullable FrameType authenticatedType(ByteBuffer frames, int frameIndex) {
+    private static FrameType type(ByteBuffer frames, int frameIndex) {
         FrameType type = FrameType.forCode(frames.get(frameIndex + WireFormat.OFFSET_TYPE));
-        return type != null && type.isAuthenticated() ? type : null;
+        if (type == null) {
+            throw new WireFormatException("Unknown frame type " + (frames.get(frameIndex + WireFormat.OFFSET_TYPE) & 0xFF));
+        }
+        return type;
     }
 
     @Override
@@ -54,10 +56,7 @@ abstract class SealingFrameCipher implements FrameCipher {
 
     @Override
     public final int seal(ByteBuffer frames, int frameIndex, int frameLength) {
-        FrameType type = authenticatedType(frames, frameIndex);
-        if (type == null) {
-            return frameLength;
-        }
+        FrameType type = type(frames, frameIndex);
         int sealedLength = frameLength + TAG_BYTES;
         frames.putInt(frameIndex + WireFormat.OFFSET_LENGTH, sealedLength);
         seal(frames, frameIndex, clearBytes(frames, frameIndex, type, frameLength), frameLength, this.frames++);
@@ -66,10 +65,7 @@ abstract class SealingFrameCipher implements FrameCipher {
 
     @Override
     public final int open(ByteBuffer frames, int frameIndex, int frameLength) {
-        FrameType type = authenticatedType(frames, frameIndex);
-        if (type == null) {
-            return frameLength;
-        }
+        FrameType type = type(frames, frameIndex);
         int contentLength = frameLength - TAG_BYTES;
         if (contentLength < WireFormat.HEADER_BYTES + type.getFixedPayloadBytes()) {
             throw new WireFormatException(type + " of " + frameLength + " bytes is shorter than its fixed part and tag");

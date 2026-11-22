@@ -19,6 +19,7 @@ import com.github.valfirst.slf4jtest.LoggingEvent;
 import lombok.extern.slf4j.Slf4j;
 import com.github.valfirst.slf4jtest.TestLogger;
 import com.github.valfirst.slf4jtest.TestLoggerFactory;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -41,10 +42,14 @@ import org.lolaf.staffix.ha.encryption.JceAeadAllocation;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.wire.CloseReason;
+import org.lolaf.staffix.ha.wire.FrameCipher;
+import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.SessionAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.wire.WireFormatException;
 import org.slf4j.event.Level;
 
 import javax.crypto.Cipher;
@@ -54,6 +59,7 @@ import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
@@ -396,5 +402,53 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
             }
         }
         return filled + connection.fillBatch(batch);
+    }
+
+    /**
+     * An ACK of {@code appliedOffset} as the follower sends it, sealed by {@code sealer} unless null.
+     */
+    private static ByteBuffer ack(@Nullable FrameCipher sealer, long appliedOffset) {
+        ByteBuffer frame = ByteBuffer.allocate(64);
+        int length = FrameEncoder.ack(frame, 0, EPOCH, appliedOffset, true, 0);
+        return frame.limit(sealer == null ? length : sealer.seal(frame, 0, length));
+    }
+
+    /**
+     * As the leader reads the follower's frames.
+     */
+    private void read(ByteBuffer frames) {
+        new FrameDecoder(1024).decode(frames, 0, frames.limit(), connection, connection.getAnswerOpener());
+    }
+
+    @Test
+    void aCloseOnceStreamingIsSealedAfterTheLastBatch() {
+        replicated("main");
+        streamingEncrypted();
+
+        connection.close(CloseReason.PROTOCOL_ERROR, "test");
+
+        assertThat(sent.frames).last().asString().isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR test");
+    }
+
+    @Test
+    void anAckWithoutItsTagIsRefusedOnceTheKeysAreConfirmed() {
+        replicated("main");
+        streamingEncrypted();
+
+        assertThatThrownBy(() -> read(ack(null, 1_000))).isInstanceOf(WireFormatException.class);
+
+        assertThat(connection.getAppliedOffset()).isEqualTo(-1);
+    }
+
+    @Test
+    void aReplayedAckFailsItsTag() {
+        replicated("main");
+        streamingEncrypted();
+        ByteBuffer acked = ack(keyExchange.newSealer(connection.getEncryptionKeys().getFollowerToLeader()), 0);
+        read(acked.duplicate());
+        assertThat(connection.getAppliedOffset()).isZero();
+
+        assertThatThrownBy(() -> read(acked.duplicate())).isInstanceOf(WireFormatException.class)
+                .hasMessage("ACK fails its authentication tag");
     }
 }

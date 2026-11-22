@@ -45,8 +45,9 @@ could mean.
   store's `engineIdOverride` lets the two nodes read the same rows.
 - **The replication between the two high availability nodes can be encrypted**, with a secret they share:
   `ReplicationHaSettings.encryption`, or `staffix.ha-replication.encryption.*` in Spring Boot. The messages, the
-  sessions' identities and their settings are encrypted and authenticated, and a wrong secret refuses the connection
-  rather than fall back to clear. `REQUIRED` refuses a node that does not encrypt; `PREFERRED` accepts it in clear, with
+  sessions' identities and their settings are encrypted, every exchange between the nodes is authenticated (an
+  acknowledgement cannot be forged to release a `SYNC` send), and a wrong secret refuses the connection rather than
+  fall back to clear. `REQUIRED` refuses a node that does not encrypt; `PREFERRED` accepts it in clear, with
   an error and the `ha-encryption` warning, so a running pair moves to encryption one node at a time. AES-CTR with
   HMAC-SHA256 by default, which allocates nothing per message; AES-GCM, ChaCha20 and another JCE provider can be
   chosen. A session can leave some message types unencrypted, its quotes for instance, with
