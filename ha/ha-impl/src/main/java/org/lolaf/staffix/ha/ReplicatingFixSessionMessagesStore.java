@@ -26,12 +26,12 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.leader.Followers;
-import org.lolaf.staffix.ha.log.LogFullWait;
-import org.lolaf.staffix.ha.log.ReplicationLog;
-import org.lolaf.staffix.ha.log.LogRecord;
-import org.lolaf.staffix.ha.wire.StreamReplicationMode;
-import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.replication.leader.Followers;
+import org.lolaf.staffix.ha.replication.log.LogFullWait;
+import org.lolaf.staffix.ha.replication.log.ReplicationLog;
+import org.lolaf.staffix.ha.replication.log.LogRecord;
+import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.util.Optional;

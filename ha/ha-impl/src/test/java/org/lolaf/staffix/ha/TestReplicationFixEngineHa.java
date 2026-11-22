@@ -28,9 +28,9 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
-import org.lolaf.staffix.ha.follower.RecordingEngine;
-import org.lolaf.staffix.ha.follower.RecordingMeters;
-import org.lolaf.staffix.ha.follower.RecordingProbes;
+import org.lolaf.staffix.ha.replication.follower.RecordingEngine;
+import org.lolaf.staffix.ha.replication.follower.RecordingMeters;
+import org.lolaf.staffix.ha.replication.follower.RecordingProbes;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;

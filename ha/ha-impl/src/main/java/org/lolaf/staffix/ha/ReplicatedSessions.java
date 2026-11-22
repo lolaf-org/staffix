@@ -20,8 +20,8 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.spi.LeaderStream;
-import org.lolaf.staffix.ha.spi.LeaderStreams;
+import org.lolaf.staffix.ha.replication.spi.LeaderStream;
+import org.lolaf.staffix.ha.replication.spi.LeaderStreams;
 
 import java.util.EnumMap;
 import java.util.HashMap;

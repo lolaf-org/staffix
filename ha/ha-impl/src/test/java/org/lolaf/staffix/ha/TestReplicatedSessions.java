@@ -24,7 +24,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.lolaf.staffix.ha.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
 
 import java.util.List;
 

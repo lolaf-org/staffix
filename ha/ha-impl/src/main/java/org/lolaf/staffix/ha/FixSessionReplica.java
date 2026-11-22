@@ -22,8 +22,8 @@ import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.spi.ReplicaSink;
-import org.lolaf.staffix.ha.wire.WireFormatException;
+import org.lolaf.staffix.ha.replication.spi.ReplicaSink;
+import org.lolaf.staffix.ha.replication.wire.WireFormatException;
 
 import java.nio.ByteBuffer;
 

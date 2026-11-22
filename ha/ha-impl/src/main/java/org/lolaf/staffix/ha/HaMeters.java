@@ -22,9 +22,9 @@ import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.monitoring.MetersContext;
 import org.lolaf.staffix.api.monitoring.Timer;
-import org.lolaf.staffix.ha.follower.ReplicationClient;
-import org.lolaf.staffix.ha.leader.FollowerConnection;
-import org.lolaf.staffix.ha.leader.ReplicationStats;
+import org.lolaf.staffix.ha.replication.follower.ReplicationClient;
+import org.lolaf.staffix.ha.replication.leader.FollowerConnection;
+import org.lolaf.staffix.ha.replication.leader.ReplicationStats;
 
 import java.util.Map;
 import java.util.concurrent.TimeUnit;

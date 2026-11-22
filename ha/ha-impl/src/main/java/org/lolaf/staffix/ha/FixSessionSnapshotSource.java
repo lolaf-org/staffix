@@ -19,8 +19,8 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.spi.SnapshotSource;
-import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
+import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 

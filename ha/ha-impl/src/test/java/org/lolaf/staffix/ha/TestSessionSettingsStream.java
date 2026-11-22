@@ -21,10 +21,10 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.lolaf.staffix.ha.leader.Followers;
-import org.lolaf.staffix.ha.log.LogFullWait;
-import org.lolaf.staffix.ha.log.ReplicationLog;
-import org.lolaf.staffix.ha.spi.SnapshotSource;
+import org.lolaf.staffix.ha.replication.leader.Followers;
+import org.lolaf.staffix.ha.replication.log.LogFullWait;
+import org.lolaf.staffix.ha.replication.log.ReplicationLog;
+import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;

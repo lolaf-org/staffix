@@ -18,7 +18,7 @@ package org.lolaf.staffix.ha;
 import lombok.experimental.UtilityClass;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
-import org.lolaf.staffix.ha.wire.WireFormatException;
+import org.lolaf.staffix.ha.replication.wire.WireFormatException;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

@@ -30,10 +30,12 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings.ReplicationHaSettingsBuilder;
-import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
-import org.lolaf.staffix.ha.follower.RecordingEngine;
-import org.lolaf.staffix.ha.follower.RecordingEngine.RecordingStore;
-import org.lolaf.staffix.ha.follower.RecordingProbes;
+import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.follower.RecordingEngine;
+import org.lolaf.staffix.ha.replication.follower.RecordingEngine.RecordingStore;
+import org.lolaf.staffix.ha.replication.follower.RecordingProbes;
 import org.lolaf.staffix.tests.TestPorts;
 
 import java.io.ByteArrayOutputStream;

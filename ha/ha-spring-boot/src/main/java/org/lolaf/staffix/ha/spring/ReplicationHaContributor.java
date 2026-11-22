@@ -21,7 +21,7 @@ import org.lolaf.ringos.idling.BusySpinIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
-import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.spring.boot.spi.HaSettingsContributor;
 

@@ -18,6 +18,8 @@ package org.lolaf.staffix.ha;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
 
 import java.time.Duration;
 
@@ -110,5 +112,14 @@ class TestReplicationHaSettings {
 
         assertThatThrownBy(settings::validate).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("switchoverMaxPendingWrites");
+    }
+
+    @Test
+    void theEngineSettingsCheckTheirEncryption() {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder()
+                .encryption(ReplicationEncryptionSettings.builder().mode(EncryptionMode.PREFERRED).build()).build();
+
+        assertThatThrownBy(settings::validate).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("encryption.secret");
     }
 }

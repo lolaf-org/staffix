@@ -19,8 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
-import org.lolaf.staffix.ha.wire.WireFormatException;
+import org.lolaf.staffix.ha.replication.wire.TestingFrameEncoder;
+import org.lolaf.staffix.ha.replication.wire.WireFormatException;
 
 import java.nio.ByteBuffer;
 

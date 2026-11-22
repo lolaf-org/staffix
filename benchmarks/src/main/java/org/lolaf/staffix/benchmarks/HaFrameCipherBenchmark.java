@@ -17,12 +17,12 @@ package org.lolaf.staffix.benchmarks;
 
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.benchmarks.impl.HaParams;
-import org.lolaf.staffix.ha.EncryptionMode;
-import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
-import org.lolaf.staffix.ha.encryption.KeyExchange;
-import org.lolaf.staffix.ha.wire.FrameCipher;
-import org.lolaf.staffix.ha.wire.FrameEncoder;
-import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
+import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
+import org.lolaf.staffix.ha.replication.wire.FrameCipher;
+import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
+import org.lolaf.staffix.ha.replication.wire.WireFormat;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;

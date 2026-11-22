@@ -21,7 +21,7 @@ import org.lolaf.staffix.api.ha.HaStatus.SessionSettingsDifference;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
-import org.lolaf.staffix.ha.wire.WireFormatException;
+import org.lolaf.staffix.ha.replication.wire.WireFormatException;
 
 import java.nio.ByteBuffer;
 import java.util.List;

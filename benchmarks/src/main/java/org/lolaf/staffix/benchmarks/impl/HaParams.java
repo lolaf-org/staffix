@@ -20,8 +20,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
-import org.lolaf.staffix.ha.EncryptionMode;
-import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
 
 import java.io.File;
 import java.net.MalformedURLException;

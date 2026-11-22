@@ -24,10 +24,10 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.leader.Followers;
-import org.lolaf.staffix.ha.spi.LeaderStream;
-import org.lolaf.staffix.ha.spi.SnapshotSource;
-import org.lolaf.staffix.ha.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.leader.Followers;
+import org.lolaf.staffix.ha.replication.spi.LeaderStream;
+import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
+import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
 
 /**
  * A replicated session as the leader knows it: the key its events carry in the log and on the wire.

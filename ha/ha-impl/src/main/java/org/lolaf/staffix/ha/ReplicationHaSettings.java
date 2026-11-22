@@ -27,6 +27,7 @@ import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.HaSettings;
 import org.lolaf.staffix.api.ha.LeaderElectionSettings;
+import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;

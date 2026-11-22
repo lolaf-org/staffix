@@ -24,12 +24,12 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
 import org.lolaf.staffix.ha.SessionSettingsDigests.StoredSession;
-import org.lolaf.staffix.ha.leader.Followers;
-import org.lolaf.staffix.ha.log.LogRecord;
-import org.lolaf.staffix.ha.log.ReplicationLog;
-import org.lolaf.staffix.ha.spi.LeaderStream;
-import org.lolaf.staffix.ha.spi.SnapshotSource;
-import org.lolaf.staffix.ha.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.leader.Followers;
+import org.lolaf.staffix.ha.replication.log.LogRecord;
+import org.lolaf.staffix.ha.replication.log.ReplicationLog;
+import org.lolaf.staffix.ha.replication.spi.LeaderStream;
+import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
+import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
