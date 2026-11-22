@@ -18,7 +18,6 @@ package org.lolaf.staffix.ha;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
-import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.util.List;
 
@@ -50,6 +49,6 @@ class TestUnencryptedMessageTypes {
 
         assertThat(unencrypted.isUnencrypted(Hashing.hash("D"))).isTrue();
         assertThat(unencrypted.isUnencrypted(Hashing.hash("A"))).as("Logon carries the password").isFalse();
-        assertThat(unencrypted.isUnencrypted(WireFormat.NO_MESSAGE_TYPE)).as("an untyped message").isFalse();
+        assertThat(unencrypted.isUnencrypted(UnencryptedMessageTypes.NO_MESSAGE_TYPE)).as("an untyped message").isFalse();
     }
 }

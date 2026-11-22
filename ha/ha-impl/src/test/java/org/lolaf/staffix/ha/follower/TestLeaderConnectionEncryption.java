@@ -30,6 +30,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameCipher;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
@@ -61,7 +62,7 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> welcome(EncryptionMode leaderMode, byte[] leaderNonce) {
-        return (out, index) -> FrameEncoder.welcome(out, index, EPOCH, "leader-a", WireFormat.NO_RESUME, 1, leaderMode,
+        return (out, index) -> TestingFrameEncoder.welcome(out, index, EPOCH, "leader-a", WireFormat.NO_RESUME, 1, leaderMode,
                 leaderNonce);
     }
 
@@ -95,8 +96,8 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         FrameCipher sealer = leaderSealer(leader, leaderNonce);
         read(encrypting, welcome(EncryptionMode.REQUIRED, leaderNonce), sealed(sealer, session(0, settings)),
                 sealed(sealer, announced(1)),
-                sealed(sealer, (out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1)),
-                sealed(sealer, (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1)));
+                sealed(sealer, (out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1)),
+                sealed(sealer, (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1)));
         assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.STREAMING);
         return sealer;
     }
@@ -143,7 +144,7 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         assertThat(sent.frames).hasSize(2);
         assertThat(sent.frames.get(1)).isEqualTo("KEY_CONFIRMATION epoch=7 bytes=32");
         ByteBuffer hello = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.HELLO, "follower-b"));
-        int helloLength = FrameEncoder.hello(hello, 0, EPOCH, "follower-b", replicaSessions.getLastAppliedEpoch(0),
+        int helloLength = TestingFrameEncoder.hello(hello, 0, EPOCH, "follower-b", replicaSessions.getLastAppliedEpoch(0),
                 replicaSessions.getLastAppliedOffset(0), 0, EncryptionMode.PREFERRED, followerNonce);
         ByteBuffer welcome = ByteBuffer.allocate(FrameEncoder.bytesWith(FrameType.WELCOME, "leader-a"));
         int welcomeLength = welcome(EncryptionMode.REQUIRED, leaderNonce).applyAsInt(welcome, 0);
@@ -229,8 +230,8 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
         FrameCipher sealer = leaderSealer(leader, leaderNonce);
         read(encrypting, welcome(EncryptionMode.REQUIRED, leaderNonce), sealed(sealer, session(0, MAIN)),
                 sealed(sealer, announced(1)),
-                sealed(sealer, (out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1)),
-                sealed(sealer, (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1)),
+                sealed(sealer, (out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1)),
+                sealed(sealer, (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1)),
                 sealed(sealer, event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 1, MESSAGE)));
         assertThat(engine.store(MAIN).writes).contains("message 1 " + MESSAGE);
         ByteBuffer tampered = writeFrames(sealed(sealer, event(EPOCH, 100, 0, StoreEventType.STORE_MESSAGE, 2, MESSAGE)));
@@ -240,7 +241,7 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
 
         assertThat(encrypting.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(sent.frames).last().asString()
-                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR STORE_EVENT fails its authentication tag");
+                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR RECORD fails its authentication tag");
         assertThat(engine.store(MAIN).writes).noneMatch(write -> write.startsWith("message 2"));
     }
 
@@ -304,6 +305,6 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
 
         streamingInSync(encrypting, cipher);
 
-        assertThat(sent.frames).as("opened as the leader opens them").contains("SESSION_ANSWER epoch=7 key=0 REPLICATING");
+        assertThat(sent.frames).as("opened as the leader opens them").contains("STREAM_ANSWER epoch=7 key=0 REPLICATING");
     }
 }

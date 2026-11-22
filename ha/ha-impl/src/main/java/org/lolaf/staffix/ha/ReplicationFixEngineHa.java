@@ -151,7 +151,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             followers.reannounce(session.getKey());
         }
         probes.add(HaProbes.sessionProbe(session, followers));
-        return new ReplicatingFixSessionMessagesStore(store, replicationLogs.forSession(session.getKey()),
+        return new ReplicatingFixSessionMessagesStore(store, replicationLogs.forStream(session.getKey()),
                 new LogFullWait(settings.getLogFullTimeout()),
                 session, followers, syncReceivedAckLatency, syncAppliedAckLatency, settings.getSyncAckIdleStrategy().get(),
                 started -> promotionJumps.jumpOnStart(sessionSettings, started));
@@ -462,7 +462,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             log.warn("Node {} follows at epoch {} but has no address for its leader", settings.getNodeId(), electionEpoch);
         } else {
             client = new ReplicationClient(leader, replicaSessions, election::getEpoch, settings.getNodeId(),
-                    replicationLogs.getMaxEventFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get(),
+                    replicationLogs.getMaxRecordFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get(),
                     settings.getFollowerStoreWriterThreads(), settings.getFollowerStoreWriterIdleStrategy(),
                     settings.getFollowerCheckInterval(), keyExchange);
             client.start();

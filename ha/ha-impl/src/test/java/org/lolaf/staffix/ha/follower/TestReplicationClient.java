@@ -34,7 +34,7 @@ import org.lolaf.staffix.ha.leader.FollowerConnection;
 import org.lolaf.staffix.ha.leader.ReplicationServer;
 import org.lolaf.staffix.ha.leader.ReplicationStats;
 import org.lolaf.staffix.ha.leader.SlowFollowers;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 import org.lolaf.staffix.tests.TestingClock;
 import org.lolaf.staffix.tests.TestPorts;
 
@@ -132,7 +132,7 @@ class TestReplicationClient {
     }
 
     private void connect(InetSocketAddress address) {
-        connect(address, leader.getReplicationLogs().get(0).getMaxEventFrameBytes());
+        connect(address, leader.getReplicationLogs().get(0).getMaxRecordFrameBytes());
     }
 
     private void connect(InetSocketAddress address, int maxFrameBytes) {
@@ -188,7 +188,7 @@ class TestReplicationClient {
      */
     @Test
     void aStopWaitsForTheWriteOfWhatWasAcknowledgedAsReceived() {
-        FollowerConnection connection = followSyncReceived(leader.getReplicationLogs().get(0).getMaxEventFrameBytes());
+        FollowerConnection connection = followSyncReceived(leader.getReplicationLogs().get(0).getMaxRecordFrameBytes());
         CountDownLatch writeHeld = new CountDownLatch(1);
         follower.store(MAIN).incomingWritesHeld = writeHeld;
 
@@ -211,7 +211,7 @@ class TestReplicationClient {
      */
     @Test
     void aStopWaitingForTheStoreWriterLeavesTheClientLockFree() {
-        FollowerConnection connection = followSyncReceived(leader.getReplicationLogs().get(0).getMaxEventFrameBytes());
+        FollowerConnection connection = followSyncReceived(leader.getReplicationLogs().get(0).getMaxRecordFrameBytes());
         CountDownLatch writeHeld = new CountDownLatch(1);
         follower.store(MAIN).incomingWritesHeld = writeHeld;
 
@@ -237,7 +237,7 @@ class TestReplicationClient {
     @Test
     void aStoreWriterThreadLeavesTheNetworkThreadAcknowledgingAsReceivedWhatItHasNotWrittenYet() {
         assumeTrue(storeWriterThreads > 0, "the network thread writes itself otherwise");
-        FollowerConnection connection = followSyncReceived(leader.getReplicationLogs().get(0).getMaxEventFrameBytes());
+        FollowerConnection connection = followSyncReceived(leader.getReplicationLogs().get(0).getMaxRecordFrameBytes());
         CountDownLatch writeHeld = new CountDownLatch(1);
         follower.store(MAIN).incomingWritesHeld = writeHeld;
 
@@ -307,7 +307,7 @@ class TestReplicationClient {
         follower.nextStorageIdentity = leader.getSessions().get(0).getConfig().getStorageIdentity();
         connect();
         await().until(() -> !leader.getFollowers().connections().isEmpty()
-                && leader.getFollowers().connections().get(0).getSessionAnswer(0) == SessionAnswer.SHARED_STORAGE);
+                && leader.getFollowers().connections().get(0).getStreamAnswer(0) == StreamAnswer.SHARED_STORAGE);
         long unacknowledged = leader.getSessions().get(0).getUnacknowledgedSends();
 
         leaderStore.storeNextOutgoingSeqNum(2);

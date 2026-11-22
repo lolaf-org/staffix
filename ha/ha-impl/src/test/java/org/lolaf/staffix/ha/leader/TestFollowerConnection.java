@@ -19,17 +19,20 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.api.monitoring.Timer;
+import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
+import org.lolaf.staffix.ha.TypedSessionId;
 import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
 import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.ha.wire.WireFormatException;
 import org.lolaf.staffix.tests.TestingClock;
@@ -69,7 +72,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
             sender[0] = new Thread(loop);
             sender[0].start();
         }, new TestingClock(), TestingKeyExchanges.CLEAR);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
         main.storeNextIncomingSeqNum(1);
         await().until(() -> batchesSent.get() == 2);
@@ -87,7 +90,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         connection = connectionStallingAfter(Duration.ofMillis(100), sender);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
         main.storeNextIncomingSeqNum(1);
         await().until(() -> batchesSent.get() == 2);
@@ -107,7 +110,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         connection = connectionStallingAfter(Duration.ofMillis(100), sender);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         try {
             await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
             for (int seq = 1; seq <= 10; seq++) {
@@ -130,7 +133,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         FixSessionMessagesStore main = replicated("main");
         Thread[] sender = new Thread[1];
         connection = connectionStallingAfter(Duration.ofMillis(100), sender);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         try {
             await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
             senderClock.advance(Duration.ofMillis(300));
@@ -160,7 +163,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
                 Duration.ofNanos(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop, new TestingClock(), TestingKeyExchanges.CLEAR);
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         for (int seq = 2; seq < 200; seq++) {
             store.storeNextIncomingSeqNum(seq);
         }
@@ -177,7 +180,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         FixSessionMessagesStore main = replicated("main");
         connection = senderRunningConnection();
         holdingWrites = true;
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         try {
             await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
             for (int seq = 1; seq <= 3; seq++) {
@@ -211,7 +214,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aWriteHeldBackByTheWriteWatermarkIsASendWaitButTheWatermarkAloneIsNot() {
         FixSessionMessagesStore main = replicated("main");
         connection = senderRunningConnection();
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         try {
             await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
 
@@ -234,11 +237,11 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
         connection = senderRunningConnection(4 << 10);
         holdingWrites = true;
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         try {
             await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
 
-            connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+            connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
 
             await().until(() -> stats.getSendWaits() == 1);
             assertThat(batchesSent.get()).as("all four in flight").isEqualTo(4);
@@ -249,7 +252,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
 
     @Test
     void anAckTellsWhatTheFollowerHasYetToStore() {
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         connection.onAck(EPOCH, 0, true, 7);
 
@@ -260,31 +263,31 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aFreshFollowerIsStreamedFromTheLogTail() {
         replicated("main").storeNextIncomingSeqNum(5);
 
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
         assertThat(connection.getFollowerId()).isEqualTo("follower-b");
         assertThat(sent.frames).containsExactly(
                 "WELCOME epoch=7 version=1 leader=leader-a resume=-1 lanes=1",
-                "SESSION epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
-                "SESSIONS_ANNOUNCED epoch=7 count=1");
+                "STREAM epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
+                "STREAMS_ANNOUNCED epoch=7 count=1");
     }
 
     @Test
     void theFirstAnnouncementEndsWithTheCountOfSessionsItAnnouncedOverAsManyBatchesAsItTakes() {
         replicated("main").storeNextIncomingSeqNum(5);
         replicated("other").storeNextIncomingSeqNum(6);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
-        fill(FrameEncoder.bytesWith(FrameType.SESSION, SESSION));
-        assertThat(sent.frames).last().asString().startsWith("SESSION epoch=7 key=0 ");
+        fill(FrameEncoder.bytesWith(FrameType.STREAM, new TypedSessionId(FixSessionType.INITIATOR, SESSION).toStreamName()));
+        assertThat(sent.frames).last().asString().startsWith("STREAM epoch=7 key=0 ");
         fill();
 
-        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("SESSION")).containsExactly(
-                "SESSION epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
-                "SESSION epoch=7 key=1 INITIATOR SYNC_APPLIED id=default.other:VERSION_44:SENDER->TARGET identity=null",
-                "SESSIONS_ANNOUNCED epoch=7 count=2");
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("STREAM")).containsExactly(
+                "STREAM epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
+                "STREAM epoch=7 key=1 INITIATOR SYNC_APPLIED id=default.other:VERSION_44:SENDER->TARGET identity=null",
+                "STREAMS_ANNOUNCED epoch=7 count=2");
     }
 
     @Test
@@ -292,12 +295,12 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).replicationLanes(2).build());
         connection = connection();
         replicated("main").storeNextIncomingSeqNum(5);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 1, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 1, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         fill();
 
         assertThat(sent.frames).containsExactly("WELCOME epoch=7 version=1 leader=leader-a resume=-1 lanes=2",
-                "SESSIONS_ANNOUNCED epoch=7 count=0");
+                "STREAMS_ANNOUNCED epoch=7 count=0");
     }
 
     @Test
@@ -306,7 +309,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection = connection();
         FixSessionMessagesStore main = replicated("main");
         FixSessionMessagesStore other = replicated("other");
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 1, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 1, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         main.storeNextIncomingSeqNum(5);
         other.storeNextIncomingSeqNum(6);
 
@@ -315,8 +318,8 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         assertThat(ha.getReplicationLogs().get(0).getTailOffset()).as("main, key 0").isPositive();
         assertThat(sent.frames).hasSize(4);
         assertThat(sent.frames.get(0)).endsWith("lanes=2");
-        assertThat(sent.frames.get(1)).startsWith("SESSION epoch=7 key=1 ");
-        assertThat(sent.frames.get(2)).isEqualTo("SESSIONS_ANNOUNCED epoch=7 count=1");
+        assertThat(sent.frames.get(1)).startsWith("STREAM epoch=7 key=1 ");
+        assertThat(sent.frames.get(2)).isEqualTo("STREAMS_ANNOUNCED epoch=7 count=1");
         assertThat(sent.frames.get(3)).contains("key=1 STORE_INCOMING_SEQ_NUM seq=6");
         assertThat(connection.carries(0)).isFalse();
         assertThat(connection.carries(1)).isTrue();
@@ -328,10 +331,10 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection = connection();
         replicated("main");
         replicated("other");
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 1, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 1, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
 
-        connection.onSessionAnswer(EPOCH, 1, SessionAnswer.REPLICATING);
+        connection.onStreamAnswer(EPOCH, 1, StreamAnswer.REPLICATING);
 
         assertThat(connection.isLaneInSync(2)).as("main is another lane's").isTrue();
     }
@@ -346,16 +349,16 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         long second = third / 2;
         store.storeNextIncomingSeqNum(7);
 
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
         assertThat(sent.frames).containsExactly(
                 "WELCOME epoch=7 version=1 leader=leader-a resume=" + second + " lanes=1",
-                "SESSION epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
-                "SESSIONS_ANNOUNCED epoch=7 count=1",
-                "STORE_EVENT epoch=7 offset=" + second + " key=0 STORE_INCOMING_SEQ_NUM seq=6 message=",
-                "STORE_EVENT epoch=7 offset=" + third + " key=0 STORE_INCOMING_SEQ_NUM seq=7 message=");
+                "STREAM epoch=7 key=0 INITIATOR SYNC_APPLIED id=" + SESSION + " identity=null",
+                "STREAMS_ANNOUNCED epoch=7 count=1",
+                "RECORD epoch=7 offset=" + second + " key=0 STORE_INCOMING_SEQ_NUM seq=6 message=",
+                "RECORD epoch=7 offset=" + third + " key=0 STORE_INCOMING_SEQ_NUM seq=7 message=");
     }
 
     @Test
@@ -367,7 +370,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
             store.storeNextIncomingSeqNum(seq);
         }
 
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
         assertThat(sent.frames).first().asString().contains("resume=-1 ");
@@ -381,12 +384,12 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         stats = new ReplicationStats(new SlowFollowers(Duration.ofSeconds(1), clock));
         stats.droppedTooSlow("follower-b", 0);
         connection = connection();
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
 
         clock.advance(Duration.ofSeconds(1));
         connection = connection();
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
         assertThat(sent.frames).last().asString().startsWith("WELCOME");
@@ -396,22 +399,31 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aFollowerOfAnEarlierEpochIsNotResumed() {
         replicated("main").storeNextIncomingSeqNum(5);
 
-        connection.onHello(EPOCH - 1, WireFormat.VERSION, "follower-b", EPOCH - 1, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH - 1, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH - 1, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         assertThat(sent.frames).first().asString().contains("resume=-1 ");
     }
 
     @Test
     void aFollowerOpeningALanePastTheCountIsClosed() {
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 1, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 1, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 NO_SUCH_LANE");
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
     }
 
     @Test
+    void aFollowerOfAnotherApplicationIsClosed() {
+        connection.onHello(EPOCH, WireFormat.VERSION, 0x41505031, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+
+        assertThat(sent.frames).singleElement().asString()
+                .isEqualTo("CLOSE epoch=7 APPLICATION_MISMATCH leader replicates application 53464958, follower 41505031");
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
+    }
+
+    @Test
     void aFollowerOfAnotherVersionIsClosed() {
-        connection.onHello(EPOCH, WireFormat.VERSION + 1, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION + 1, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 VERSION_MISMATCH");
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
@@ -420,7 +432,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
 
     @Test
     void aLeaderBehindItsFollowersEpochClosesTheStreamAsStale() {
-        connection.onHello(EPOCH + 1, WireFormat.VERSION, "follower-b", EPOCH + 1, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH + 1, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH + 1, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 STALE_EPOCH");
     }
@@ -440,7 +452,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
                 new TestingClock(), TestingKeyExchanges.CLEAR);
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         for (int seq = 2; seq < 200; seq++) {
             store.storeNextIncomingSeqNum(seq);
         }
@@ -451,7 +463,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         sender[0].run();
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
-        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("STORE_EVENT"));
+        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("RECORD"));
         assertThat(sent.frames).filteredOn(frame -> frame.startsWith("CLOSE")).singleElement().asString()
                 .startsWith("CLOSE epoch=7 TOO_SLOW");
         assertThat(stats.getDroppedTooSlow()).isEqualTo(1);
@@ -463,7 +475,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
                 .logFullTimeout(Duration.ofMinutes(1)).build());
         connection = connection();
         FixSessionMessagesStore store = replicated("main");
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         CountDownLatch written = new CountDownLatch(1);
         Thread writer = new Thread(() -> {
             for (int seq = 1; seq < 200; seq++) {
@@ -481,7 +493,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         fill();
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
-        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("STORE_EVENT")).hasSize(199);
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("RECORD")).hasSize(199);
     }
 
     @Test
@@ -490,7 +502,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         stats.droppedTooSlow("follower-b", 0);
         connection = connection();
 
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 RETRY_LATER");
@@ -502,7 +514,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         stats.droppedTooSlow("follower-b", 0);
         connection = connection();
 
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.onAck(EPOCH, -1, true, 0);
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
@@ -514,7 +526,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         ha = engine(1024);
         connection = connection();
         FixSessionMessagesStore store = replicated("main");
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.disconnected();
 
         for (int seq = 1; seq < 200; seq++) {
@@ -535,7 +547,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
                 .logFullTimeout(Duration.ofSeconds(30)).build());
         connection = connection();
         FixSessionMessagesStore store = replicated("main");
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         connection.onClose(EPOCH, CloseReason.SHUTDOWN, "the follower stops");
 
@@ -551,14 +563,14 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aBatchTakesEventsUntilTheNextDoesNotFitWhichStartsTheNextBatch() {
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(1);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
         for (int seq = 2; seq <= 4; seq++) {
             store.storeNextIncomingSeqNum(seq);
         }
 
-        fill(3 * TestingFrameEncoder.storeEventBytes(0) - 1);
+        fill(3 * TestingFrameEncoder.recordBytes(0) - 1);
 
         assertThat(sent.frames).hasSize(2);
         assertThat(sent.frames.get(0)).contains("seq=2");
@@ -574,7 +586,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aSessionAppearingMidStreamIsAnnouncedBeforeItsFirstEvent() {
         FixSessionMessagesStore main = replicated("main");
         main.storeNextIncomingSeqNum(1);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
 
@@ -582,14 +594,14 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         fill();
 
         assertThat(sent.frames).hasSize(2);
-        assertThat(sent.frames.get(0)).isEqualTo("SESSION epoch=7 key=1 INITIATOR SYNC_APPLIED id=default.other:VERSION_44:SENDER->TARGET identity=null");
+        assertThat(sent.frames.get(0)).isEqualTo("STREAM epoch=7 key=1 INITIATOR SYNC_APPLIED id=default.other:VERSION_44:SENDER->TARGET identity=null");
         assertThat(sent.frames.get(1)).contains("key=1 STORE_OUTGOING_SEQ_NUM seq=3");
     }
 
     @Test
     void aHeartbeatCarriesTheLogTailOnceAnIntervalPassedWithoutSending() {
         replicated("main").storeNextIncomingSeqNum(1);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         sent.frames.clear();
         ByteBuffer batch = ByteBuffer.allocate(256);
 
@@ -605,7 +617,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         Timer lagTimer = mock(Timer.class);
         stats.lagTimers((followerId, connection) -> lagTimer);
         FixSessionMessagesStore store = replicated("main");
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         long first = ha.getReplicationLogs().get(0).getTailOffset();
         store.storeNextIncomingSeqNum(5);
         fill();
@@ -638,7 +650,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aCleanHandOverClosesWithShutdownOnceEveryEventIsSent() {
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(5);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         store.storeNextIncomingSeqNum(6);
         fill();
         followerHangsUpOnClose();
@@ -653,7 +665,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aHandOverTheFollowerDoesNotHangUpOnBeforeTheDeadlineFails() {
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(5);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
 
         assertThat(connection.handOver(Deadline.of(Duration.ofMillis(50)))).isFalse();
@@ -677,7 +689,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aFollowerNotSentEveryEventBeforeTheDeadlineIsDroppedWithoutShutdown() {
         FixSessionMessagesStore store = replicated("main");
         store.storeNextIncomingSeqNum(5);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         store.storeNextIncomingSeqNum(6);
 
         assertThat(connection.handOver(Deadline.of(Duration.ofMillis(50)))).isFalse();
@@ -694,7 +706,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     @Test
     void aConnectionClosesOnceWhicheverThreadsCloseIt() {
         replicated("main").storeNextIncomingSeqNum(5);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
 
         assertThat(connection.close(CloseReason.STALLED, "no ack")).isTrue();
@@ -707,7 +719,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
 
     @Test
     void aCloseTextTooLongForTheWireIsCut() {
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         String tooLong = "aCloseTextTooLongForTheWireIsCut é ".repeat(2_000);
 
@@ -721,7 +733,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     @Test
     void aFollowerClosedForAnotherReasonIsNotDroppedAsTooSlowToo() {
         replicated("main").storeNextIncomingSeqNum(5);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.close(CloseReason.PROTOCOL_ERROR, "a bad frame");
 
         connection.droppedAsTooSlow();
@@ -737,7 +749,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     @Test
     void aShutdownOnAConnectionAlreadyGoneTellsNobody() {
         replicated("main").storeNextIncomingSeqNum(5);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         connection.disconnected();
 
@@ -750,12 +762,12 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aSessionIsInSyncOnceTheFollowerSaysItReplicatesIt() {
         replicated("main").storeNextIncomingSeqNum(5);
         assertThat(connection.isSessionInSync(0)).as("before its hello").isFalse();
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.ANNOUNCED);
         assertThat(connection.isSessionInSync(0)).as("announced").isFalse();
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.REPLICATING);
 
         assertThat(connection.isSessionInSync(0)).isTrue();
         assertThat(connection.isSessionInSync(1)).as("another session").isFalse();
@@ -764,10 +776,10 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     @Test
     void aSessionTheFollowerDoesNotReplicateIsNeverInSync() {
         replicated("main").storeNextIncomingSeqNum(5);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.UNKNOWN_SESSION);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.UNKNOWN_STREAM);
 
         assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.NOT_REPLICATED);
         assertThat(connection.isSessionInSync(0)).isFalse();
@@ -776,23 +788,23 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     @Test
     void aSessionNoLongerReplicatedIsAnnouncedAgainAndLeftOutOfTheFollowersSync() {
         replicated("main").storeNextIncomingSeqNum(5);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.REPLICATING);
 
         ha.onSessionNotReplicated(settings("main"));
         connection.reannounce(0);
         fill();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.NOT_REPLICATED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.NOT_REPLICATED);
 
-        assertThat(sent.frames).endsWith("SESSION epoch=7 key=0 INITIATOR NONE id=" + SESSION + " identity=null");
+        assertThat(sent.frames).endsWith("STREAM epoch=7 key=0 INITIATOR NONE id=" + SESSION + " identity=null");
         assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.NOT_REPLICATED);
         assertThat(connection.isLaneInSync(1)).as("a session not replicated is not waited for").isTrue();
     }
 
     @Test
     void aStatusForASessionNeverAnnouncedClosesTheStream() {
-        connection.onSessionAnswer(EPOCH, 3, SessionAnswer.REPLICATING);
+        connection.onStreamAnswer(EPOCH, 3, StreamAnswer.REPLICATING);
 
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
     }

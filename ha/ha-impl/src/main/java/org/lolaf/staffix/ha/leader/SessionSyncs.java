@@ -16,7 +16,7 @@
 package org.lolaf.staffix.ha.leader;
 
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
@@ -30,7 +30,7 @@ final class SessionSyncs {
     private static final int INITIAL_CAPACITY = 16;
 
     private volatile AtomicReferenceArray<SessionSyncState> states = new AtomicReferenceArray<>(INITIAL_CAPACITY);
-    private volatile AtomicReferenceArray<SessionAnswer> answers = new AtomicReferenceArray<>(INITIAL_CAPACITY);
+    private volatile AtomicReferenceArray<StreamAnswer> answers = new AtomicReferenceArray<>(INITIAL_CAPACITY);
 
     /**
      * Null for a session not announced to the follower.
@@ -43,8 +43,8 @@ final class SessionSyncs {
     /**
      * Null until the follower answered the session's announcement.
      */
-    @Nullable SessionAnswer getAnswer(int sessionKey) {
-        AtomicReferenceArray<SessionAnswer> current = answers;
+    @Nullable StreamAnswer getAnswer(int sessionKey) {
+        AtomicReferenceArray<StreamAnswer> current = answers;
         return sessionKey < current.length() ? current.get(sessionKey) : null;
     }
 
@@ -58,7 +58,7 @@ final class SessionSyncs {
         return sessionKey < current.length() && current.compareAndSet(sessionKey, expected, state);
     }
 
-    synchronized void answered(int sessionKey, SessionAnswer answer) {
+    synchronized void answered(int sessionKey, StreamAnswer answer) {
         growFor(sessionKey);
         answers.set(sessionKey, answer);
     }

@@ -15,9 +15,6 @@
  */
 package org.lolaf.staffix.ha.wire;
 
-import org.lolaf.staffix.api.session.FixSession.FixSessionType;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
-import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.EncryptionMode;
 
 import java.nio.ByteBuffer;
@@ -31,48 +28,50 @@ class CountingHandler implements FrameHandler {
     long checksum;
 
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
-                        EncryptionMode encryptionMode, byte[] nonce) {
+    public void onHello(long epoch, int version, int applicationId, String nodeId, long lastAppliedEpoch,
+                        long lastAppliedOffset, int lane, EncryptionMode encryptionMode, byte[] nonce) {
         frames++;
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes,
+    public void onWelcome(long epoch, int version, int applicationId, String leaderId, long resumeOffset, int lanes,
                           EncryptionMode encryptionMode, byte[] nonce) {
         frames++;
     }
 
     @Override
-    public void onSession(long epoch, int sessionKey, FixSessionType fixSessionType, ReplicationMode replicationMode,
-                          String fixSessionId, String storageIdentity) {
+    public void onStream(long epoch, int streamKey, StreamReplicationMode replicationMode, String streamName,
+                         String storageIdentity) {
         frames++;
     }
 
     @Override
-    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer answer) {
+    public void onStreamAnswer(long epoch, int streamKey, StreamAnswer answer) {
         frames++;
     }
 
     @Override
-    public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                             ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
+    public void onRecord(long epoch, long logOffset, int streamKey, byte contentType, byte flags, long position,
+                         ByteBuffer buffer, int payloadIndex, int payloadLength) {
         frames++;
-        checksum += epoch + logOffset + sessionKey + eventType.getCode() + sequenceNumber + buffer.get(messageIndex) + messageLength;
+        checksum += epoch + logOffset + streamKey + contentType + flags + position + buffer.get(payloadIndex) + payloadLength;
     }
 
     @Override
-    public void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        frames++;
-    }
-
-    @Override
-    public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                                  int messageLength, byte fragmentFlags) {
+    public void onSnapshotBegin(long epoch, int streamKey, long snapshotOffset, ByteBuffer buffer, int stateIndex,
+                                int stateLength) {
         frames++;
     }
 
     @Override
-    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+    public void onSnapshotRecord(long epoch, int streamKey, byte contentType, byte flags, long position,
+                                 ByteBuffer buffer, int payloadIndex, int payloadLength) {
+        frames++;
+    }
+
+    @Override
+    public void onSnapshotEnd(long epoch, int streamKey, int recordCount, ByteBuffer buffer, int stateIndex,
+                              int stateLength) {
         frames++;
     }
 

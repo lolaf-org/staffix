@@ -19,7 +19,6 @@ import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
@@ -45,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TestFrameCipherAllocation {
 
     private static final int MEASURED = JceAeadAllocation.MEASURED;
-    private static final int CLEAR_BYTES = WireFormat.HEADER_BYTES + FrameType.STORE_EVENT.getFixedPayloadBytes();
+    private static final int CLEAR_BYTES = WireFormat.HEADER_BYTES + FrameType.RECORD.getFixedPayloadBytes();
 
     private final ByteBuffer frames;
     private final OpenedCount opened;
@@ -144,13 +143,10 @@ class TestFrameCipherAllocation {
     }
 
     private int storeEvent(long seq) {
-        int body = FrameEncoder.storeEventBody(frames, WireFormat.STORE_EVENT_BODY_OFFSET, 3, StoreEventType.STORE_MESSAGE,
-                seq, Hashing.hash("D"), message, 0, message.remaining(), (byte) 0);
-        int length = FrameEncoder.storeEventHeader(frames, 0, 7, seq, body);
-        if (unencrypted) {
-            FrameEncoder.markStoreEventUnencrypted(frames, 0);
-        }
-        return length;
+        int body = FrameEncoder.recordBody(frames, WireFormat.RECORD_BODY_OFFSET, 3,
+                StoreEventType.STORE_MESSAGE.getCode(), unencrypted ? WireFormat.PLAINTEXT : 0, seq, message, 0,
+                message.remaining());
+        return FrameEncoder.recordHeader(frames, 0, 7, seq, body);
     }
 
     @Value
@@ -169,8 +165,8 @@ class TestFrameCipherAllocation {
         }
 
         @Override
-        public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                                 ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
+        public void onRecord(long epoch, long logOffset, int streamKey, byte contentType, byte flags, long position,
+                             ByteBuffer buffer, int payloadIndex, int payloadLength) {
             frames++;
         }
     }

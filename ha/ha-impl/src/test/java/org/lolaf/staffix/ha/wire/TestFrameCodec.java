@@ -41,6 +41,7 @@ class TestFrameCodec {
 
     private static final int MAX_FRAME_BYTES = 4096;
     private static final byte[] MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001".getBytes(StandardCharsets.US_ASCII);
+    private static final byte CONTENT_TYPE = StoreEventType.STORE_MESSAGE.getCode();
 
     private final FrameDecoder decoder;
     private final RecordingHandler handler;
@@ -65,7 +66,7 @@ class TestFrameCodec {
     @Test
     void hello() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 3, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        int length = TestingFrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 3, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         decodeWhole(buffer, 0, length);
 
@@ -76,8 +77,8 @@ class TestFrameCodec {
     void anEncryptingHelloAndWelcomeCarryTheModeAndTheNonce() {
         ByteBuffer buffer = buffer(false);
         byte[] nonce = TestingKeyExchanges.of(EncryptionMode.REQUIRED).newNonce();
-        int hello = FrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 3, EncryptionMode.REQUIRED, nonce);
-        int welcome = FrameEncoder.welcome(buffer, hello, 7, "node-a", 99, 4, EncryptionMode.PREFERRED, nonce);
+        int hello = TestingFrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 3, EncryptionMode.REQUIRED, nonce);
+        int welcome = TestingFrameEncoder.welcome(buffer, hello, 7, "node-a", 99, 4, EncryptionMode.PREFERRED, nonce);
 
         decodeWhole(buffer, 0, hello);
         assertThat(handler.lastNonce).isEqualTo(nonce);
@@ -105,7 +106,7 @@ class TestFrameCodec {
     @Test
     void anUnknownEncryptionModeIsRefused() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 3, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        int length = TestingFrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 3, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         buffer.put(WireFormat.HEADER_BYTES + 26, (byte) 9);
 
         assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))
@@ -129,11 +130,11 @@ class TestFrameCodec {
     @Test
     void sessionsAnnounced() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.sessionsAnnounced(buffer, 0, 7, 3);
+        int length = FrameEncoder.streamsAnnounced(buffer, 0, 7, 3);
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("SESSIONS_ANNOUNCED epoch=7 count=3");
+        assertThat(handler.frames).containsExactly("STREAMS_ANNOUNCED epoch=7 count=3");
     }
 
     @Test
@@ -150,7 +151,7 @@ class TestFrameCodec {
     @Test
     void welcome() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.welcome(buffer, 0, 7, "node-a", WireFormat.NO_RESUME, 4, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        int length = TestingFrameEncoder.welcome(buffer, 0, 7, "node-a", WireFormat.NO_RESUME, 4, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         decodeWhole(buffer, 0, length);
 
@@ -160,23 +161,23 @@ class TestFrameCodec {
     @Test
     void sessionWithAStorageIdentity() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.session(buffer, 0, 7, 3, FixSessionType.INITIATOR, ReplicationMode.SYNC_APPLIED,
+        int length = TestingFrameEncoder.stream(buffer, 0, 7, 3, FixSessionType.INITIATOR, ReplicationMode.SYNC_APPLIED,
                 "default.main:VERSION_44:SENDER->TARGET", "jdbc-postgres-1");
 
         decodeWhole(buffer, 0, length);
 
         assertThat(handler.frames).containsExactly(
-                "SESSION epoch=7 key=3 INITIATOR SYNC_APPLIED id=default.main:VERSION_44:SENDER->TARGET identity=jdbc-postgres-1");
+                "STREAM epoch=7 key=3 INITIATOR SYNC_APPLIED id=default.main:VERSION_44:SENDER->TARGET identity=jdbc-postgres-1");
     }
 
     @Test
     void sessionWithoutAStorageIdentityIsToldApartFromAnEmptyOne() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.session(buffer, 0, 7, 3, FixSessionType.ACCEPTOR, ReplicationMode.ASYNC, "s", null);
+        int length = TestingFrameEncoder.stream(buffer, 0, 7, 3, FixSessionType.ACCEPTOR, ReplicationMode.ASYNC, "s", null);
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("SESSION epoch=7 key=3 ACCEPTOR ASYNC id=s identity=null");
+        assertThat(handler.frames).containsExactly("STREAM epoch=7 key=3 ACCEPTOR ASYNC id=s identity=null");
     }
 
     @ParameterizedTest
@@ -184,21 +185,21 @@ class TestFrameCodec {
     void everyReplicationModeAndSessionTypeRoundTrips(ReplicationMode mode) {
         for (FixSessionType type : FixSessionType.values()) {
             ByteBuffer buffer = buffer(false);
-            int length = FrameEncoder.session(buffer, 0, 7, 3, type, mode, "s", null);
+            int length = TestingFrameEncoder.stream(buffer, 0, 7, 3, type, mode, "s", null);
 
             decodeWhole(buffer, 0, length);
         }
 
         assertThat(handler.frames).containsExactly(
-                "SESSION epoch=7 key=3 INITIATOR " + mode + " id=s identity=null",
-                "SESSION epoch=7 key=3 ACCEPTOR " + mode + " id=s identity=null");
+                "STREAM epoch=7 key=3 INITIATOR " + mode + " id=s identity=null",
+                "STREAM epoch=7 key=3 ACCEPTOR " + mode + " id=s identity=null");
     }
 
     @Test
     void anUnknownReplicationModeIsRefused() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.session(buffer, 0, 7, 3, FixSessionType.ACCEPTOR, ReplicationMode.SYNC_APPLIED, "s", null);
-        buffer.put(WireFormat.HEADER_BYTES + 5, (byte) 9);
+        int length = TestingFrameEncoder.stream(buffer, 0, 7, 3, FixSessionType.ACCEPTOR, ReplicationMode.SYNC_APPLIED, "s", null);
+        buffer.put(WireFormat.HEADER_BYTES + 4, (byte) 9);
 
         assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))
                 .isInstanceOf(WireFormatException.class).hasMessage("Unknown replication mode code 9");
@@ -207,11 +208,11 @@ class TestFrameCodec {
     @Test
     void sessionAnswer() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.sessionAnswer(buffer, 0, 7, 3, SessionAnswer.SHARED_STORAGE);
+        int length = FrameEncoder.streamAnswer(buffer, 0, 7, 3, StreamAnswer.SHARED_STORAGE);
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("SESSION_ANSWER epoch=7 key=3 SHARED_STORAGE");
+        assertThat(handler.frames).containsExactly("STREAM_ANSWER epoch=7 key=3 SHARED_STORAGE");
     }
 
     @ParameterizedTest
@@ -219,29 +220,35 @@ class TestFrameCodec {
     void storeEventCarriesTheMessageAndLeavesItsBufferAlone(boolean direct) {
         ByteBuffer buffer = buffer(direct);
         ByteBuffer message = message();
-        int length = TestingFrameEncoder.storeEvent(buffer, 100, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message);
+        int length = TestingFrameEncoder.record(buffer, 100, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message);
 
         decodeWhole(buffer, 100, length);
 
-        assertThat(length).isEqualTo(TestingFrameEncoder.storeEventBytes(MESSAGE.length));
+        assertThat(length).isEqualTo(TestingFrameEncoder.recordBytes(MESSAGE.length));
         assertThat(message.position()).isZero();
         assertThat(buffer.position()).isZero();
-        assertThat(handler.frames).containsExactly("STORE_EVENT epoch=7 offset=4096 key=3 STORE_MESSAGE seq=42 message="
+        assertThat(handler.frames).containsExactly("RECORD epoch=7 offset=4096 key=3 STORE_MESSAGE seq=42 message="
                 + new String(MESSAGE, StandardCharsets.US_ASCII));
     }
 
     @Test
-    void aMessageFlaggedUnencryptedOnAClearConnectionIsRefused() {
+    void aPlaintextFlagOnAClearConnectionIsIgnored() {
         ByteBuffer buffer = buffer(false);
-        int event = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
-        FrameEncoder.markStoreEventUnencrypted(buffer, 0);
-        int snapshot = FrameEncoder.snapshotMessage(buffer, event, 7, 3, 42, WireFormat.NO_MESSAGE_TYPE, message(), 0,
-                MESSAGE.length, WireFormat.UNENCRYPTED_MESSAGE);
+        int record = plaintextRecord(buffer, 0, (byte) 0);
+        int snapshot = FrameEncoder.snapshotRecord(buffer, record, 7, 3, CONTENT_TYPE, WireFormat.PLAINTEXT, 42,
+                message(), 0, MESSAGE.length);
 
-        assertThatThrownBy(() -> decoder.decode(buffer, 0, event, handler)).isInstanceOf(WireFormatException.class)
-                .hasMessage("STORE_EVENT flagged unencrypted on a clear connection");
-        assertThatThrownBy(() -> decoder.decode(buffer, event, snapshot, handler)).isInstanceOf(WireFormatException.class)
-                .hasMessage("SNAPSHOT_MESSAGE flagged unencrypted on a clear connection");
+        decoder.decode(buffer, 0, record, handler);
+        decoder.decode(buffer, record, snapshot, handler);
+
+        assertThat(handler.frames).extracting(frame -> frame.substring(0, frame.indexOf(" message=")))
+                .containsExactly("RECORD epoch=7 offset=4096 key=3 STORE_MESSAGE seq=42", "SNAPSHOT_RECORD epoch=7 key=3 seq=42");
+    }
+
+    private static int plaintextRecord(ByteBuffer buffer, int index, byte flags) {
+        int body = FrameEncoder.recordBody(buffer, index + WireFormat.RECORD_BODY_OFFSET, 3, CONTENT_TYPE,
+                (byte) (WireFormat.PLAINTEXT | flags), 42, message(), 0, MESSAGE.length);
+        return FrameEncoder.recordHeader(buffer, index, 7, 4096, body);
     }
 
     @Test
@@ -251,50 +258,46 @@ class TestFrameCodec {
         FrameCipher sealer = exchange.newSealer(keys.getLeaderToFollower());
         FrameCipher opener = exchange.newOpener(keys.getLeaderToFollower());
         ByteBuffer buffer = buffer(true);
-        int event = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
-        FrameEncoder.markStoreEventUnencrypted(buffer, 0);
-        event = sealer.seal(buffer, 0, event);
-        int snapshot = sealer.seal(buffer, event, FrameEncoder.snapshotMessage(buffer, event, 7, 3, 42,
-                WireFormat.NO_MESSAGE_TYPE, message(), 0, MESSAGE.length,
-                (byte) (WireFormat.UNENCRYPTED_MESSAGE | WireFormat.MORE_FRAGMENTS)));
+        int event = sealer.seal(buffer, 0, plaintextRecord(buffer, 0, WireFormat.RESET));
+        int snapshot = sealer.seal(buffer, event, FrameEncoder.snapshotRecord(buffer, event, 7, 3, CONTENT_TYPE,
+                (byte) (WireFormat.PLAINTEXT | WireFormat.MORE_FRAGMENTS), 42, message(), 0, MESSAGE.length));
         List<Byte> flags = new ArrayList<>();
         FrameHandler flagsHandler = new FrameHandler() {
             @Override
-            public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType,
-                                     long sequenceNumber, ByteBuffer in, int messageIndex, int messageLength,
-                                     byte fragmentFlags) {
-                flags.add(fragmentFlags);
+            public void onRecord(long epoch, long logOffset, int streamKey, byte contentType, byte recordFlags,
+                                 long position, ByteBuffer in, int payloadIndex, int payloadLength) {
+                flags.add(recordFlags);
             }
 
             @Override
-            public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer in,
-                                          int messageIndex, int messageLength, byte fragmentFlags) {
-                flags.add(fragmentFlags);
+            public void onSnapshotRecord(long epoch, int streamKey, byte contentType, byte recordFlags, long position,
+                                         ByteBuffer in, int payloadIndex, int payloadLength) {
+                flags.add(recordFlags);
             }
         };
 
         assertThat(decoder.decode(buffer, 0, event, flagsHandler, opener)).isEqualTo(event);
         assertThat(decoder.decode(buffer, event, snapshot, flagsHandler, opener)).isEqualTo(snapshot);
 
-        assertThat(flags).containsExactly((byte) 0, WireFormat.MORE_FRAGMENTS);
+        assertThat(flags).containsExactly(WireFormat.RESET, WireFormat.MORE_FRAGMENTS);
     }
 
     @Test
     void storeEventWithoutAMessage() {
         ByteBuffer buffer = buffer(false);
-        int length = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 18, null);
+        int length = TestingFrameEncoder.record(buffer, 0, 7, 4096, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 18, null);
 
         decodeWhole(buffer, 0, length);
 
-        assertThat(handler.frames).containsExactly("STORE_EVENT epoch=7 offset=4096 key=3 STORE_INCOMING_SEQ_NUM seq=18 message=");
+        assertThat(handler.frames).containsExactly("RECORD epoch=7 offset=4096 key=3 STORE_INCOMING_SEQ_NUM seq=18 message=");
     }
 
     @Test
     void snapshot() {
         ByteBuffer buffer = buffer(false);
-        int begin = FrameEncoder.snapshotBegin(buffer, 0, 7, 3, 8192, 19, 43);
-        int message = TestingFrameEncoder.snapshotMessage(buffer, begin, 7, 3, 42, message());
-        int end = FrameEncoder.snapshotEnd(buffer, begin + message, 7, 3, 1, 20, 44);
+        int begin = TestingFrameEncoder.snapshotBegin(buffer, 0, 7, 3, 8192, 19, 43);
+        int message = TestingFrameEncoder.snapshotRecord(buffer, begin, 7, 3, 42, message());
+        int end = TestingFrameEncoder.snapshotEnd(buffer, begin + message, 7, 3, 1, 20, 44);
 
         decodeWhole(buffer, 0, begin);
         decodeWhole(buffer, begin, message);
@@ -302,7 +305,7 @@ class TestFrameCodec {
 
         assertThat(handler.frames).containsExactly(
                 "SNAPSHOT_BEGIN epoch=7 key=3 snapshotOffset=8192 nextIn=19 nextOut=43",
-                "SNAPSHOT_MESSAGE epoch=7 key=3 seq=42 message=" + new String(MESSAGE, StandardCharsets.US_ASCII),
+                "SNAPSHOT_RECORD epoch=7 key=3 seq=42 message=" + new String(MESSAGE, StandardCharsets.US_ASCII),
                 "SNAPSHOT_END epoch=7 key=3 count=1 nextIn=20 nextOut=44");
     }
 
@@ -392,31 +395,92 @@ class TestFrameCodec {
     @Test
     void aPeerThatIsNotAReplicationEndpointIsRefused() {
         ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        int length = TestingFrameEncoder.hello(buffer, 0, 7, "node-b", 6, 1234, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         buffer.putInt(WireFormat.HEADER_BYTES, 0x47455420);
 
         assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))
-                .isInstanceOf(WireFormatException.class).hasMessageContaining("Not a staffix replication peer");
+                .isInstanceOf(WireFormatException.class).hasMessageContaining("Not a replication peer");
     }
 
     @Test
     void aMessageLengthDisagreeingWithTheFrameLengthIsRefused() {
         ByteBuffer buffer = buffer(false);
-        int length = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
-        buffer.putInt(WireFormat.HEADER_BYTES + 28, MESSAGE.length + 1);
+        int length = TestingFrameEncoder.record(buffer, 0, 7, 4096, 3, StoreEventType.STORE_MESSAGE, 42, message());
+        buffer.putInt(WireFormat.RECORD_BODY_OFFSET + 16, MESSAGE.length + 1);
 
         assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))
                 .isInstanceOf(WireFormatException.class).hasMessageContaining("declares");
     }
 
     @Test
-    void anUnknownStoreEventTypeIsRefused() {
+    void helloAndWelcomeCarryTheApplication() {
         ByteBuffer buffer = buffer(false);
-        int length = TestingFrameEncoder.storeEvent(buffer, 0, 7, 4096, 3, StoreEventType.RESET_SEQ_NUM, 0, null);
-        buffer.put(WireFormat.HEADER_BYTES + 12, (byte) 9);
+        int hello = FrameEncoder.hello(buffer, 0, 7, 0x41505031, "node-b", 6, 1234, 3, EncryptionMode.DISABLED,
+                TestingKeyExchanges.NO_NONCE);
+        int welcome = FrameEncoder.welcome(buffer, hello, 7, 0x41505031, "node-a", 99, 2, EncryptionMode.DISABLED,
+                TestingKeyExchanges.NO_NONCE);
 
-        assertThatThrownBy(() -> decoder.decode(buffer, 0, length, handler))
-                .isInstanceOf(WireFormatException.class).hasMessage("Unknown store event type 9");
+        decodeWhole(buffer, 0, hello);
+        decodeWhole(buffer, hello, welcome);
+
+        assertThat(handler.frames).containsExactly(
+                "HELLO epoch=7 version=1 application=41505031 node=node-b lastEpoch=6 lastOffset=1234 lane=3",
+                "WELCOME epoch=7 version=1 application=41505031 leader=node-a resume=99 lanes=2");
+    }
+
+    @Test
+    void aStreamNameAStateAndAContentTypeAreTheApplicationsAndHandedOverUntouched() {
+        ByteBuffer buffer = buffer(false);
+        ByteBuffer state = ByteBuffer.wrap("abc".getBytes(StandardCharsets.US_ASCII));
+        int stream = FrameEncoder.stream(buffer, 0, 7, 3, StreamReplicationMode.SYNC_RECEIVED, "any name at all", null);
+        int begin = FrameEncoder.snapshotBegin(buffer, stream, 7, 3, 64, state, 0, 3);
+        int end = FrameEncoder.snapshotEnd(buffer, stream + begin, 7, 3, 0, state, 0, 0);
+        int body = FrameEncoder.recordBody(buffer, stream + begin + end + WireFormat.RECORD_BODY_OFFSET, 3, (byte) 0xC9,
+                (byte) 0, 5, null, 0, 0);
+        int record = FrameEncoder.recordHeader(buffer, stream + begin + end, 7, 128, body);
+        List<String> seen = new ArrayList<>();
+        FrameHandler application = new FrameHandler() {
+            @Override
+            public void onStream(long epoch, int streamKey, StreamReplicationMode replicationMode, String streamName,
+                                 String storageIdentity) {
+                seen.add(replicationMode + " " + streamName);
+            }
+
+            @Override
+            public void onSnapshotBegin(long epoch, int streamKey, long snapshotOffset, ByteBuffer in, int stateIndex,
+                                        int stateLength) {
+                seen.add("state " + new String(FrameDecoder.bytes(in, stateIndex, stateLength), StandardCharsets.US_ASCII));
+            }
+
+            @Override
+            public void onSnapshotEnd(long epoch, int streamKey, int recordCount, ByteBuffer in, int stateIndex,
+                                      int stateLength) {
+                seen.add("state of " + stateLength);
+            }
+
+            @Override
+            public void onRecord(long epoch, long logOffset, int streamKey, byte contentType, byte flags, long position,
+                                 ByteBuffer in, int payloadIndex, int payloadLength) {
+                seen.add("content type " + (contentType & 0xFF) + " position " + position);
+            }
+        };
+
+        int index = 0;
+        for (int length : new int[]{stream, begin, end, record}) {
+            assertThat(decoder.decode(buffer, index, length, application)).isEqualTo(length);
+            index += length;
+        }
+
+        assertThat(seen).containsExactly("SYNC_RECEIVED any name at all", "state abc", "state of 0",
+                "content type 201 position 5");
+    }
+
+    @Test
+    void aStateLongerThanItsLengthCanSayIsRefused() {
+        ByteBuffer state = ByteBuffer.allocate(WireFormat.MAX_STATE_BYTES + 1);
+
+        assertThatThrownBy(() -> FrameEncoder.snapshotBegin(ByteBuffer.allocate(1 << 17), 0, 7, 3, 64, state, 0,
+                state.capacity())).isInstanceOf(IllegalArgumentException.class);
     }
 
     /**
@@ -445,7 +509,7 @@ class TestFrameCodec {
     }
 
     private void encodeAndDecodeFrequentFrames(ByteBuffer buffer, ByteBuffer message, CountingHandler counting, long i) {
-        int event = TestingFrameEncoder.storeEvent(buffer, 0, 7, i, 3, StoreEventType.STORE_MESSAGE, i, message);
+        int event = TestingFrameEncoder.record(buffer, 0, 7, i, 3, StoreEventType.STORE_MESSAGE, i, message);
         int ack = FrameEncoder.ack(buffer, event, 7, i, true, 0);
         int heartbeat = FrameEncoder.heartbeat(buffer, event + ack, 7, i);
         int decoded = 0;

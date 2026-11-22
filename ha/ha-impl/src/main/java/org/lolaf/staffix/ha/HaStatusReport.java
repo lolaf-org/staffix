@@ -27,7 +27,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.ha.follower.ReplicationClient;
 import org.lolaf.staffix.ha.leader.FollowerConnection;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -124,10 +124,10 @@ final class HaStatusReport {
         boolean inSync = false;
         String refusal = null;
         for (FollowerConnection connection : ha.getFollowers().connections()) {
-            SessionAnswer answer = connection.getSessionAnswer(session.getKey());
+            StreamAnswer answer = connection.getStreamAnswer(session.getKey());
             inSync |= connection.isSessionInSync(session.getKey());
             if (answer != null && answer.isRefusal()) {
-                refusal = answer.name();
+                refusal = NotReplicatedReason.of(answer);
             }
         }
         status.inSync(inSync)

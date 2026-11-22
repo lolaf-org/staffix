@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.WireFormat;
@@ -33,7 +34,7 @@ class TestSessionBinder extends LeaderConnectionHarness {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
 
         assertThat(engine.store(MAIN).started).isTrue();
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED", "ACK epoch=7 applied=-1 inSync=false");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED", "ACK epoch=7 applied=-1 inSync=false");
     }
 
     @Test
@@ -46,7 +47,7 @@ class TestSessionBinder extends LeaderConnectionHarness {
         read(event(EPOCH, 0, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
 
         assertThat(engine.store(late).started).isTrue();
-        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=3 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=3 SNAPSHOT_NEEDED");
     }
 
     @Test
@@ -57,7 +58,7 @@ class TestSessionBinder extends LeaderConnectionHarness {
 
         assertThat(engine.stores).isEmpty();
         assertThat(sent.frames).as("a session it should hold is missing, so it is not in sync")
-                .containsExactly("SESSION_ANSWER epoch=7 key=3 UNKNOWN_SESSION", "ACK epoch=7 applied=0 inSync=false");
+                .containsExactly("STREAM_ANSWER epoch=7 key=3 UNKNOWN_STREAM", "ACK epoch=7 applied=0 inSync=false");
     }
 
     @Test
@@ -68,14 +69,14 @@ class TestSessionBinder extends LeaderConnectionHarness {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, sync));
 
         assertThat(engine.store(MAIN)).as("no store opened").isNull();
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 MODE_MISMATCH", "ACK epoch=7 applied=-1 inSync=false");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 MODE_MISMATCH", "ACK epoch=7 applied=-1 inSync=false");
         sent.frames.clear();
 
         engine.replace(sync);
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
 
         assertThat(engine.store(sync).started).isTrue();
-        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
     }
 
     @Test
@@ -85,7 +86,7 @@ class TestSessionBinder extends LeaderConnectionHarness {
 
         assertThat(engine.store(MAIN).started).isFalse();
         assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=false");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=false");
     }
 
     @Test
@@ -105,15 +106,15 @@ class TestSessionBinder extends LeaderConnectionHarness {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
 
         assertThat(engine.store(MAIN).started).isFalse();
-        assertThat(sent.frames).first().isEqualTo("SESSION_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
+        assertThat(sent.frames).first().isEqualTo("STREAM_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
     }
 
     @Test
     void aSessionTheLeaderCannotIdentifyIsRefused() {
-        read(welcome(EPOCH, WireFormat.NO_RESUME), (out, index) -> FrameEncoder.session(out, index, EPOCH, 0,
+        read(welcome(EPOCH, WireFormat.NO_RESUME), (out, index) -> TestingFrameEncoder.stream(out, index, EPOCH, 0,
                 MAIN.getFixSessionType(), ReplicationMode.ASYNC, MAIN.getFixSessionId().toString(), null));
 
-        assertThat(sent.frames).first().isEqualTo("SESSION_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
+        assertThat(sent.frames).first().isEqualTo("STREAM_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
     }
 
     @Test
@@ -126,7 +127,7 @@ class TestSessionBinder extends LeaderConnectionHarness {
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), next);
 
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
         assertThat(engine.store(MAIN).started).isTrue();
     }
 }

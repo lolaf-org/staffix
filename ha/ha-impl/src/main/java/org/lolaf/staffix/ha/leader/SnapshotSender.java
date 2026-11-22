@@ -21,6 +21,8 @@ import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
+import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.MessageTypeHash;
 import org.lolaf.staffix.ha.ReplicatedSession;
 import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.wire.CloseReason;
@@ -50,6 +52,10 @@ final class SnapshotSender {
     private static final int INITIAL_FIND_SPAN = 64;
     private static final int MAX_FIND_SPAN = 1 << 20;
     private static final long STORE_RETRY_NANOS = Duration.ofMillis(10).toNanos();
+    /**
+     * A FIX session's state: its next incoming and outgoing seqnums.
+     */
+    private static final int STATE_BYTES = 2 * Long.BYTES;
 
     private final FollowerConnection connection;
     private final ReplicatedSessions sessions;
@@ -57,7 +63,7 @@ final class SnapshotSender {
     private final BatchBuffers batches;
     private final ReplicationStats stats;
     private final LongSupplier nodeEpoch;
-    private final int maxEventFrameBytes;
+    private final int maxRecordFrameBytes;
     private final int chunkBytes;
     private final ChunkWriter writer;
     private final IdleStrategy roomWait;
@@ -96,7 +102,7 @@ final class SnapshotSender {
      * @param chunkBytes the most bytes sent between two live batches, at most a batch
      */
     SnapshotSender(FollowerConnection connection, ReplicatedSessions sessions, SessionSyncs syncs, BatchBuffers batches,
-                   ReplicationStats stats, LongSupplier nodeEpoch, int maxEventFrameBytes, int chunkBytes) {
+                   ReplicationStats stats, LongSupplier nodeEpoch, int maxRecordFrameBytes, int chunkBytes) {
         this.writer = new ChunkWriter();
         this.roomWait = new BackoffIdleStrategy();
         this.retryAtNanos = Long.MAX_VALUE;
@@ -107,7 +113,7 @@ final class SnapshotSender {
         this.batches = batches;
         this.stats = stats;
         this.nodeEpoch = nodeEpoch;
-        this.maxEventFrameBytes = maxEventFrameBytes;
+        this.maxRecordFrameBytes = maxRecordFrameBytes;
         this.chunkBytes = Math.min(chunkBytes, batches.getBatchBytes());
     }
 
@@ -280,8 +286,11 @@ final class SnapshotSender {
         private int filled;
         private boolean stopped;
 
+        private final ByteBuffer state;
+
         private ChunkWriter() {
             this.cipher = FrameCipher.CLEAR;
+            this.state = ByteBuffer.allocate(STATE_BYTES);
         }
 
         void start(long epoch) {
@@ -293,9 +302,13 @@ final class SnapshotSender {
         }
 
         void begin() {
-            room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_BEGIN));
+            room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_BEGIN) + STATE_BYTES);
             filled += cipher.seal(batch, filled, FrameEncoder.snapshotBegin(batch, filled, currentEpoch, sessionKey,
-                    snapshotOffset, nextIncomingSeqNum, nextOutgoingSeqNum));
+                    snapshotOffset, state(), 0, STATE_BYTES));
+        }
+
+        private ByteBuffer state() {
+            return state.putLong(0, nextIncomingSeqNum).putLong(Long.BYTES, nextOutgoingSeqNum);
         }
 
         /**
@@ -305,24 +318,25 @@ final class SnapshotSender {
         @Override
         public boolean onMessage(long seqNum, ByteBuffer message) {
             int messageLength = message.remaining();
-            int maxFragmentLength = maxEventFrameBytes - FrameEncoder.snapshotMessageBytes(0);
+            int maxFragmentLength = maxRecordFrameBytes - FrameEncoder.snapshotRecordBytes(0);
             int fragments = Math.max(1, (messageLength + maxFragmentLength - 1) / maxFragmentLength);
-            int fragmentBytes = FrameEncoder.snapshotMessageBytes(0) + cipher.getTagBytes();
+            int fragmentBytes = FrameEncoder.snapshotRecordBytes(0) + cipher.getTagBytes();
             if (!whole && filled > 0 && chunkBytes - filled < fragments * fragmentBytes + messageLength) {
                 next = seqNum;
                 stopped = true;
                 return false;
             }
-            int messageTypeHash = MessageTypeHash.of(message, message.position(), messageLength);
-            int unencrypted = connection.sendsUnencrypted(sessionKey, messageTypeHash) ? WireFormat.UNENCRYPTED_MESSAGE : 0;
+            int plaintext = sessions.isUnencrypted(sessionKey, MessageTypeHash.of(message, message.position(), messageLength))
+                    ? WireFormat.PLAINTEXT : 0;
             int from = 0;
             do {
                 int length = Math.min(maxFragmentLength, messageLength - from);
                 int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0)
-                        | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0) | unencrypted;
-                room(FrameEncoder.snapshotMessageBytes(length));
-                filled += cipher.seal(batch, filled, FrameEncoder.snapshotMessage(batch, filled, currentEpoch, sessionKey,
-                        seqNum, messageTypeHash, message, message.position() + from, length, (byte) flags));
+                        | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0) | plaintext;
+                room(FrameEncoder.snapshotRecordBytes(length));
+                filled += cipher.seal(batch, filled, FrameEncoder.snapshotRecord(batch, filled, currentEpoch, sessionKey,
+                        StoreEventType.STORE_MESSAGE.getCode(), (byte) flags, seqNum, message, message.position() + from,
+                        length));
                 from += length;
             } while (from < messageLength && connection.isConnected());
             messageCount++;
@@ -331,9 +345,9 @@ final class SnapshotSender {
         }
 
         void end() {
-            room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_END));
+            room(FrameEncoder.fixedBytes(FrameType.SNAPSHOT_END) + STATE_BYTES);
             filled += cipher.seal(batch, filled, FrameEncoder.snapshotEnd(batch, filled, currentEpoch, sessionKey,
-                    messageCount, nextIncomingSeqNum, nextOutgoingSeqNum));
+                    messageCount, state(), 0, STATE_BYTES));
             flush();
         }
 

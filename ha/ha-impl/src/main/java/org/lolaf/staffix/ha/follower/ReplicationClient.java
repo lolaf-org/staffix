@@ -67,7 +67,7 @@ public final class ReplicationClient {
 
     /**
      * @param maxFrameBytes      the largest frame the leader sends before its tag, see
-     *                           {@link org.lolaf.staffix.ha.log.ReplicationLog#getMaxEventFrameBytes()}
+     *                           {@link org.lolaf.staffix.ha.log.ReplicationLog#getMaxRecordFrameBytes()}
      * @param storeWriterThreads threads writing what the lanes read into the stores, 0 to write on the lanes' network
      *                           threads
      * @param checkInterval      see {@link org.lolaf.staffix.ha.ReplicationHaSettings#getFollowerCheckInterval()}

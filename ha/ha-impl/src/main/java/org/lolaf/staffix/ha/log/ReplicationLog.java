@@ -27,33 +27,32 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * The store events of every replicated session of an engine, in the order they happened, in one off-heap ring.
+ * The records of every replicated stream of a lane, in the order they were appended, in one off-heap ring.
  *
- * <p>Each event is held as a {@link FrameEncoder#storeEventBody store event body}; a sender adds the header and the
- * event's offset, its position in the log, when it sends it. Appending allocates nothing, and waits only while a
+ * <p>Each record is held as a {@link FrameEncoder#recordBody record body}; a sender adds the header and the
+ * record's offset, its position in the log, when it sends it. Appending allocates nothing, and waits only while a
  * reader is a whole log behind: past the appender's retry strategy, the log drops the slowest reader, telling its
  * owner, and writes over what it had not read.
  */
 public class ReplicationLog {
 
-    static final int STORE_EVENT = 0;
+    static final int RECORD = 0;
 
-    private static final ByteTranslator<StoreEventRecord> ENCODE = (buffer, index, length, storeEventRecord) ->
-            FrameEncoder.storeEventBody(buffer, index, storeEventRecord.getSessionKey(), storeEventRecord.getEventType(),
-                    storeEventRecord.getSequenceNumber(), storeEventRecord.getMessageTypeHash(), storeEventRecord.getMessage(),
-                    storeEventRecord.getFragmentIndex(), storeEventRecord.getFragmentLength(),
-                    storeEventRecord.getFragmentFlags());
+    private static final ByteTranslator<LogRecord> ENCODE = (buffer, index, length, logRecord) ->
+            FrameEncoder.recordBody(buffer, index, logRecord.getStreamKey(), logRecord.getContentType(),
+                    (byte) (logRecord.getFlags() | logRecord.getFragmentFlags()), logRecord.getPosition(),
+                    logRecord.getPayload(), logRecord.getFragmentIndex(), logRecord.getFragmentLength());
 
     private final BroadcastByteRingBuffer ring;
     private final List<Reader> readers;
     /**
-     * The longest message an event can carry, in fragments past {@link #getMaxFragmentLength()}: half the log, so the
-     * other half still holds the events a follower had not read when it was written.
+     * The longest payload a record can carry, in fragments past {@link #getMaxFragmentLength()}: half the log, so the
+     * other half still holds the records a follower had not read when it was written.
      */
     @Getter
-    private final int maxMessageLength;
+    private final int maxPayloadLength;
     /**
-     * The longest message one event carries whole, the ring's largest frame.
+     * The longest payload one record carries whole, the ring's largest frame.
      */
     @Getter
     private final int maxFragmentLength;
@@ -68,52 +67,51 @@ public class ReplicationLog {
     public ReplicationLog(int capacity) {
         this.readers = new CopyOnWriteArrayList<>();
         this.ring = ByteRingBufferFactory.broadcast(capacity, ProducerType.MULTI);
-        this.maxMessageLength = ring.getCapacity() / 2;
-        this.maxFragmentLength = ring.getMaxPayloadLength() - FrameEncoder.storeEventBodyBytes(0);
+        this.maxPayloadLength = ring.getCapacity() / 2;
+        this.maxFragmentLength = ring.getMaxPayloadLength() - FrameEncoder.recordBodyBytes(0);
     }
 
     /**
-     * The longest STORE_EVENT frame this log can produce, which a follower's receive buffer must hold with a
+     * The longest RECORD frame this log can produce, which a follower's receive buffer must hold with a
      * {@link WireFormat#TAG_BYTES tag}.
      */
-    public int getMaxEventFrameBytes() {
-        return WireFormat.STORE_EVENT_BODY_OFFSET + FrameEncoder.storeEventBodyBytes(maxFragmentLength);
+    public int getMaxRecordFrameBytes() {
+        return WireFormat.RECORD_BODY_OFFSET + FrameEncoder.recordBodyBytes(maxFragmentLength);
     }
 
     /**
-     * Any thread; the events of one session must be appended by one thread at a time, in their order. A message
-     * longer than {@link #getMaxFragmentLength()} is appended as consecutive fragments, other sessions' events
+     * Any thread; the records of one stream must be appended by one thread at a time, in their order. A payload
+     * longer than {@link #getMaxFragmentLength()} is appended as consecutive fragments, other streams' records
      * possibly between them. Allocates nothing.
      *
-     * @param storeEventRecord the event
-     * @param logFullWait      how long to wait for a reader a whole log behind, the appending thread's own
-     * @return the offset of the event, or of the message's last fragment
-     * @throws IllegalArgumentException for a message longer than {@link #getMaxMessageLength()}
+     * @param logFullWait how long to wait for a reader a whole log behind, the appending thread's own
+     * @return the offset of the record, or of the payload's last fragment
+     * @throws IllegalArgumentException for a payload longer than {@link #getMaxPayloadLength()}
      */
-    public long append(StoreEventRecord storeEventRecord, RetryStrategy logFullWait) {
-        int messageLength = storeEventRecord.messageLength();
-        if (messageLength <= maxFragmentLength) {
-            return write(storeEventRecord, logFullWait);
+    public long append(LogRecord logRecord, RetryStrategy logFullWait) {
+        int payloadLength = logRecord.payloadLength();
+        if (payloadLength <= maxFragmentLength) {
+            return write(logRecord, logFullWait);
         }
-        if (messageLength > maxMessageLength) {
-            throw new IllegalArgumentException("A message of " + messageLength + " bytes exceeds the "
-                    + maxMessageLength + " a replication log of " + ring.getCapacity() + " bytes can hold");
+        if (payloadLength > maxPayloadLength) {
+            throw new IllegalArgumentException("A payload of " + payloadLength + " bytes exceeds the "
+                    + maxPayloadLength + " a replication log of " + ring.getCapacity() + " bytes can hold");
         }
-        int start = storeEventRecord.getMessage().position();
+        int start = logRecord.getPayload().position();
         long offset = -1;
-        for (int from = 0; from < messageLength; from += maxFragmentLength) {
-            int length = Math.min(maxFragmentLength, messageLength - from);
-            int flags = (from + length < messageLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
-            offset = write(storeEventRecord.fragment(start + from, length, (byte) flags), logFullWait);
+        for (int from = 0; from < payloadLength; from += maxFragmentLength) {
+            int length = Math.min(maxFragmentLength, payloadLength - from);
+            int flags = (from + length < payloadLength ? WireFormat.MORE_FRAGMENTS : 0) | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0);
+            offset = write(logRecord.fragment(start + from, length, (byte) flags), logFullWait);
         }
         return offset;
     }
 
-    private long write(StoreEventRecord storeEventRecord, RetryStrategy logFullWait) {
-        int length = FrameEncoder.storeEventBodyBytes(storeEventRecord.getFragmentLength());
+    private long write(LogRecord logRecord, RetryStrategy logFullWait) {
+        int length = FrameEncoder.recordBodyBytes(logRecord.getFragmentLength());
         long dropsBefore = drops;
         long offset;
-        while ((offset = ring.writeRetrying(STORE_EVENT, length, ENCODE, storeEventRecord, logFullWait)) == BroadcastByteRingBuffer.GATED) {
+        while ((offset = ring.writeRetrying(RECORD, length, ENCODE, logRecord, logFullWait)) == BroadcastByteRingBuffer.GATED) {
             dropSlowestReader(dropsBefore);
             // dropSlowestReader can modify drops
             dropsBefore = drops;
@@ -149,7 +147,7 @@ public class ReplicationLog {
     }
 
     /**
-     * The offset the next event will take.
+     * The offset the next record will take.
      */
     public long getTailOffset() {
         return ring.getTailPosition();
@@ -187,10 +185,10 @@ public class ReplicationLog {
         }
 
         /**
-         * Copies the next event's body into {@code dst}, checked whole.
+         * Copies the next record's body into {@code dst}, checked whole.
          *
-         * @return the body's length, or a negative value with the reader left where it was: no event past it, the
-         * next one larger than the room left in {@code dst}, or, once it was closed, events overwritten
+         * @return the body's length, or a negative value with the reader left where it was: no record past it, the
+         * next one larger than the room left in {@code dst}, or, once it was closed, records overwritten
          */
         public int readInto(ByteBuffer dst, int dstIndex) {
             int body = byteRingReader.readInto(dst, dstIndex);
@@ -199,23 +197,23 @@ public class ReplicationLog {
         }
 
         /**
-         * The offset of the event last read.
+         * The offset of the record last read.
          */
-        public long getEventOffset() {
+        public long getRecordOffset() {
             return byteRingReader.getFramePosition();
         }
 
         /**
-         * The offset of the next event to read.
+         * The offset of the next record to read.
          */
         public long getOffset() {
             return byteRingReader.getPosition();
         }
 
         /**
-         * Resumes from an event's offset, for a follower reconnecting.
+         * Resumes from a record's offset, for a follower reconnecting.
          *
-         * @return false, and the reader left where it was, when that event is no longer in the log
+         * @return false, and the reader left where it was, when that record is no longer in the log
          */
         public boolean seek(long offset) {
             boolean moved = byteRingReader.seek(offset);
@@ -229,8 +227,8 @@ public class ReplicationLog {
         }
 
         /**
-         * Steps back to the event last read, so the next read returns it again: one a sender cannot send yet. Appends
-         * keep that event until the reader is closed.
+         * Steps back to the record last read, so the next read returns it again: one a sender cannot send yet. Appends
+         * keep that record until the reader is closed.
          */
         public void unread() {
             byteRingReader.unread();

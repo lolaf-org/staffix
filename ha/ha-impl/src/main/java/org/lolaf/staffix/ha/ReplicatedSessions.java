@@ -37,6 +37,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class ReplicatedSessions {
 
     /**
+     * Identifies FIX session streams in HELLO and WELCOME, so a peer replicating another application is refused:
+     * 'SFIX'.
+     */
+    public static final int APPLICATION_ID = 0x53464958;
+
+    /**
      * Carried here as every connection already has the sessions it announces.
      */
     @Getter
@@ -95,6 +101,10 @@ public final class ReplicatedSessions {
      */
     public boolean isUnencrypted(int key, int messageTypeHash) {
         return unencryptedMessageTypes[key].isUnencrypted(messageTypeHash);
+    }
+
+    public int getApplicationId() {
+        return APPLICATION_ID;
     }
 
     /**

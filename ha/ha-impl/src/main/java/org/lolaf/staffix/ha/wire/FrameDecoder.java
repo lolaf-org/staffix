@@ -19,8 +19,6 @@ import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
 import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
-import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -80,27 +78,26 @@ public class FrameDecoder {
         }
         int flags = in.get(index + WireFormat.OFFSET_FLAGS);
         long epoch = in.getLong(index + WireFormat.OFFSET_EPOCH);
-        dispatch(in, index + HEADER_BYTES, type, flags, epoch, variableBytes, opener.getTagBytes() != 0, handler);
+        dispatch(in, index + HEADER_BYTES, type, flags, epoch, variableBytes, handler);
         return length;
     }
 
     /**
-     * Whether the frame at {@code frameIndex} is a STORE_EVENT or SNAPSHOT_MESSAGE flagged
-     * {@link WireFormat#UNENCRYPTED_MESSAGE}.
+     * Whether the frame at {@code frameIndex} is a RECORD or SNAPSHOT_RECORD flagged {@link WireFormat#PLAINTEXT}.
      */
-    public static boolean isUnencryptedMessage(ByteBuffer in, int frameIndex, FrameType type) {
+    public static boolean isPlaintext(ByteBuffer in, int frameIndex, FrameType type) {
         switch (type) {
-            case STORE_EVENT:
-                return (in.get(frameIndex + WireFormat.OFFSET_STORE_EVENT_FRAGMENT_FLAGS) & WireFormat.UNENCRYPTED_MESSAGE) != 0;
-            case SNAPSHOT_MESSAGE:
-                return (in.get(frameIndex + WireFormat.OFFSET_FLAGS) & WireFormat.UNENCRYPTED_MESSAGE) != 0;
+            case RECORD:
+                return (in.get(frameIndex + WireFormat.OFFSET_RECORD_FLAGS) & WireFormat.PLAINTEXT) != 0;
+            case SNAPSHOT_RECORD:
+                return (in.get(frameIndex + HEADER_BYTES + WireFormat.RECORD_BODY_FLAGS) & WireFormat.PLAINTEXT) != 0;
             default:
                 return false;
         }
     }
 
     private static void dispatch(ByteBuffer in, int p, FrameType type, int flags, long epoch, int variableBytes,
-                                 boolean authenticated, FrameHandler handler) {
+                                 FrameHandler handler) {
         switch (type) {
             case HELLO:
                 decodeHello(in, p, epoch, variableBytes, handler);
@@ -112,23 +109,23 @@ public class FrameDecoder {
                 checkVariableBytes(FrameType.KEY_CONFIRMATION, 0, variableBytes);
                 handler.onKeyConfirmation(epoch, bytes(in, p, WireFormat.KEY_CONFIRMATION_BYTES));
                 break;
-            case SESSION:
-                decodeSession(in, p, flags, epoch, variableBytes, handler);
+            case STREAM:
+                decodeStream(in, p, flags, epoch, variableBytes, handler);
                 break;
-            case SESSION_ANSWER:
-                decodeSessionAnswer(in, p, epoch, handler);
+            case STREAM_ANSWER:
+                decodeStreamAnswer(in, p, epoch, handler);
                 break;
-            case STORE_EVENT:
-                decodeStoreEvent(in, p, epoch, variableBytes, authenticated, handler);
+            case RECORD:
+                decodeRecord(in, p, epoch, variableBytes, handler);
                 break;
             case SNAPSHOT_BEGIN:
-                handler.onSnapshotBegin(epoch, in.getInt(p), in.getLong(p + 8), in.getLong(p + 16), in.getLong(p + 24));
+                decodeSnapshotBegin(in, p, epoch, variableBytes, handler);
                 break;
-            case SNAPSHOT_MESSAGE:
-                decodeSnapshotMessage(in, p, flags, epoch, variableBytes, authenticated, handler);
+            case SNAPSHOT_RECORD:
+                decodeSnapshotRecord(in, p, epoch, variableBytes, handler);
                 break;
             case SNAPSHOT_END:
-                handler.onSnapshotEnd(epoch, in.getInt(p), in.getInt(p + 4), in.getLong(p + 8), in.getLong(p + 16));
+                decodeSnapshotEnd(in, p, epoch, variableBytes, handler);
                 break;
             case ACK:
                 handler.onAck(epoch, in.getLong(p), (flags & WireFormat.FLAG_IN_SYNC) != 0, in.getLong(p + 8));
@@ -145,8 +142,8 @@ public class FrameDecoder {
             case SESSION_SETTINGS_DIGESTS_COMPLETE:
                 handler.onSessionSettingsDigestsComplete(epoch, in.getInt(p), in.getInt(p + 4));
                 break;
-            case SESSIONS_ANNOUNCED:
-                handler.onSessionsAnnounced(epoch, in.getInt(p));
+            case STREAMS_ANNOUNCED:
+                handler.onStreamsAnnounced(epoch, in.getInt(p));
                 break;
             case CLOSE:
                 decodeClose(in, p, epoch, variableBytes, handler);
@@ -159,26 +156,25 @@ public class FrameDecoder {
     private static void decodeHello(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
         checkMagic(in, p);
         String nodeId = string(in, p + 48, unsignedShort(in, p + 6), variableBytes, FrameType.HELLO);
-        handler.onHello(epoch, in.getShort(p + 4), nodeId, in.getLong(p + 8), in.getLong(p + 16), unsignedShort(in, p + 24),
-                encryptionMode(in.get(p + 26)), bytes(in, p + 32, WireFormat.NONCE_BYTES));
+        handler.onHello(epoch, in.getShort(p + 4), in.getInt(p + 28), nodeId, in.getLong(p + 8), in.getLong(p + 16),
+                unsignedShort(in, p + 24), encryptionMode(in.get(p + 26)), bytes(in, p + 32, WireFormat.NONCE_BYTES));
     }
 
     private static void decodeWelcome(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
         checkMagic(in, p);
         String leaderId = string(in, p + 40, unsignedShort(in, p + 6), variableBytes, FrameType.WELCOME);
-        handler.onWelcome(epoch, in.getShort(p + 4), leaderId, in.getLong(p + 8), unsignedShort(in, p + 16),
-                encryptionMode(in.get(p + 18)), bytes(in, p + 24, WireFormat.NONCE_BYTES));
+        handler.onWelcome(epoch, in.getShort(p + 4), in.getInt(p + 20), leaderId, in.getLong(p + 8),
+                unsignedShort(in, p + 16), encryptionMode(in.get(p + 18)), bytes(in, p + 24, WireFormat.NONCE_BYTES));
     }
 
-    private static void decodeSession(ByteBuffer in, int p, int flags, long epoch, int variableBytes, FrameHandler handler) {
-        int idLength = unsignedShort(in, p + 6);
+    private static void decodeStream(ByteBuffer in, int p, int flags, long epoch, int variableBytes, FrameHandler handler) {
+        int nameLength = unsignedShort(in, p + 6);
         int identityLength = unsignedShort(in, p + 8);
-        checkVariableBytes(FrameType.SESSION, idLength + identityLength, variableBytes);
+        checkVariableBytes(FrameType.STREAM, nameLength + identityLength, variableBytes);
         String identity = (flags & WireFormat.FLAG_STORAGE_IDENTITY) != 0
-                ? utf8Str(in, p + 10 + idLength, identityLength)
+                ? utf8Str(in, p + 10 + nameLength, identityLength)
                 : null;
-        handler.onSession(epoch, in.getInt(p), fixSessionType(in.get(p + 4)), replicationMode(in.get(p + 5)),
-                utf8Str(in, p + 10, idLength), identity);
+        handler.onStream(epoch, in.getInt(p), replicationMode(in.get(p + 4)), utf8Str(in, p + 10, nameLength), identity);
     }
 
     private static void decodeSessionSettingsDigest(ByteBuffer in, int p, int flags, long epoch, int variableBytes, FrameHandler handler) {
@@ -199,70 +195,68 @@ public class FrameDecoder {
                         (flags & WireFormat.FLAG_SESSION_REMOVED) != 0));
     }
 
-    private static void decodeSessionAnswer(ByteBuffer in, int p, long epoch, FrameHandler handler) {
-        SessionAnswer answer = SessionAnswer.forCode(in.get(p + 4));
+    private static void decodeStreamAnswer(ByteBuffer in, int p, long epoch, FrameHandler handler) {
+        StreamAnswer answer = StreamAnswer.forCode(in.get(p + 4));
         if (answer == null) {
-            throw new WireFormatException("Unknown session answer " + in.get(p + 4));
+            throw new WireFormatException("Unknown stream answer " + in.get(p + 4));
         }
-        handler.onSessionAnswer(epoch, in.getInt(p), answer);
+        handler.onStreamAnswer(epoch, in.getInt(p), answer);
     }
 
     /**
-     * Reads the log offset of the {@link FrameType#STORE_EVENT} at {@code frameIndex} without decoding the frame.
+     * Reads the log offset of the {@link FrameType#RECORD} at {@code frameIndex} without decoding the frame.
      */
-    public static long storeEventLogOffset(ByteBuffer in, int frameIndex) {
+    public static long recordLogOffset(ByteBuffer in, int frameIndex) {
         return in.getLong(frameIndex + HEADER_BYTES);
     }
 
     /**
-     * Reads the session key of the store event body at {@code bodyIndex}, which is
-     * {@link WireFormat#STORE_EVENT_BODY_OFFSET} bytes into its frame.
+     * Reads the stream key of the record body at {@code bodyIndex}, which is {@link WireFormat#RECORD_BODY_OFFSET}
+     * bytes into its frame.
      */
-    public static int storeEventSessionKey(ByteBuffer in, int bodyIndex) {
+    public static int recordStreamKey(ByteBuffer in, int bodyIndex) {
         return in.getInt(bodyIndex);
     }
 
     /**
-     * Reads the {@link StoreEventType} code of the store event body at {@code bodyIndex}.
+     * Reads the flags of the record body at {@code bodyIndex}.
      */
-    public static byte storeEventTypeCode(ByteBuffer in, int bodyIndex) {
-        return in.get(bodyIndex + Integer.BYTES);
+    public static byte recordFlags(ByteBuffer in, int bodyIndex) {
+        return in.get(bodyIndex + WireFormat.RECORD_BODY_FLAGS);
+    }
+
+    private static void decodeRecord(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+        int body = p + Long.BYTES;
+        int payloadLength = in.getInt(body + 16);
+        checkVariableBytes(FrameType.RECORD, payloadLength, variableBytes);
+        handler.onRecord(epoch, in.getLong(p), recordStreamKey(in, body), in.get(body + 4), flags(in, body),
+                in.getLong(body + 8), in, body + 24, payloadLength);
+    }
+
+    private static void decodeSnapshotBegin(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+        int stateLength = unsignedShort(in, p + 6);
+        checkVariableBytes(FrameType.SNAPSHOT_BEGIN, stateLength, variableBytes);
+        handler.onSnapshotBegin(epoch, in.getInt(p), in.getLong(p + 8), in, p + 16, stateLength);
+    }
+
+    private static void decodeSnapshotRecord(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+        int payloadLength = in.getInt(p + 16);
+        checkVariableBytes(FrameType.SNAPSHOT_RECORD, payloadLength, variableBytes);
+        handler.onSnapshotRecord(epoch, recordStreamKey(in, p), in.get(p + 4), flags(in, p), in.getLong(p + 8), in,
+                p + 24, payloadLength);
+    }
+
+    private static void decodeSnapshotEnd(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
+        int stateLength = unsignedShort(in, p + 10);
+        checkVariableBytes(FrameType.SNAPSHOT_END, stateLength, variableBytes);
+        handler.onSnapshotEnd(epoch, in.getInt(p), in.getInt(p + 4), in, p + 12, stateLength);
     }
 
     /**
-     * Reads the MsgType(35) hash of the store event body at {@code bodyIndex}.
+     * Without {@link WireFormat#PLAINTEXT}, which the opener already obeyed.
      */
-    public static int storeEventMessageTypeHash(ByteBuffer in, int bodyIndex) {
-        return in.getInt(bodyIndex + 16);
-    }
-
-    private static void decodeStoreEvent(ByteBuffer in, int p, long epoch, int variableBytes, boolean authenticated,
-                                         FrameHandler handler) {
-        int frame = p - HEADER_BYTES;
-        int body = frame + WireFormat.STORE_EVENT_BODY_OFFSET;
-        int messageLength = in.getInt(p + 28);
-        checkVariableBytes(FrameType.STORE_EVENT, messageLength, variableBytes);
-        handler.onStoreEvent(epoch, storeEventLogOffset(in, frame), storeEventSessionKey(in, body),
-                eventType(storeEventTypeCode(in, body)), in.getLong(p + 16), in, p + 32, messageLength,
-                fragmentFlags(FrameType.STORE_EVENT, in.get(p + 13), authenticated));
-    }
-
-    private static void decodeSnapshotMessage(ByteBuffer in, int p, int flags, long epoch, int variableBytes,
-                                              boolean authenticated, FrameHandler handler) {
-        int messageLength = in.getInt(p + 4);
-        checkVariableBytes(FrameType.SNAPSHOT_MESSAGE, messageLength, variableBytes);
-        handler.onSnapshotMessage(epoch, in.getInt(p), in.getLong(p + 8), in, p + 24, messageLength,
-                fragmentFlags(FrameType.SNAPSHOT_MESSAGE, (byte) flags, authenticated));
-    }
-
-    /**
-     * Without {@link WireFormat#UNENCRYPTED_MESSAGE}, which the opener already obeyed.
-     */
-    private static byte fragmentFlags(FrameType type, byte flags, boolean authenticated) {
-        if ((flags & WireFormat.UNENCRYPTED_MESSAGE) != 0 && !authenticated) {
-            throw new WireFormatException(type + " flagged unencrypted on a clear connection");
-        }
-        return (byte) (flags & ~WireFormat.UNENCRYPTED_MESSAGE);
+    private static byte flags(ByteBuffer in, int bodyIndex) {
+        return (byte) (recordFlags(in, bodyIndex) & ~WireFormat.PLAINTEXT);
     }
 
     private static void decodeClose(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {
@@ -272,21 +266,13 @@ public class FrameDecoder {
 
     private static void checkMagic(ByteBuffer in, int p) {
         if (in.getInt(p) != WireFormat.MAGIC) {
-            throw new WireFormatException("Not a staffix replication peer: magic " + Integer.toHexString(in.getInt(p)));
+            throw new WireFormatException("Not a replication peer: magic " + Integer.toHexString(in.getInt(p)));
         }
     }
 
     private static void checkVariableBytes(FrameType type, int declared, int actual) {
         if (declared != actual) {
             throw new WireFormatException(type + " declares " + declared + " bytes of content but carries " + actual);
-        }
-    }
-
-    private static StoreEventType eventType(byte code) {
-        try {
-            return StoreEventType.from(code);
-        } catch (IllegalStateException e) {
-            throw new WireFormatException("Unknown store event type " + code);
         }
     }
 
@@ -317,10 +303,10 @@ public class FrameDecoder {
         return bytes;
     }
 
-    private static ReplicationMode replicationMode(byte code) {
+    private static StreamReplicationMode replicationMode(byte code) {
         try {
-            return ReplicationMode.from(code);
-        } catch (IllegalStateException e) {
+            return StreamReplicationMode.from(code);
+        } catch (IllegalArgumentException e) {
             throw new WireFormatException(e.getMessage());
         }
     }

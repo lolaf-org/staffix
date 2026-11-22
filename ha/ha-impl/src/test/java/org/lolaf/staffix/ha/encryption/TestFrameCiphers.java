@@ -19,12 +19,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameCipher;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
@@ -49,7 +49,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TestFrameCiphers {
 
     private static final String MESSAGE = "8=FIX.4.4\u00019=12\u000135=D\u000149=SENDER\u000110=000\u0001";
-    private static final int EVENT_FIXED_BYTES = WireFormat.HEADER_BYTES + FrameType.STORE_EVENT.getFixedPayloadBytes();
+    private static final int EVENT_FIXED_BYTES = WireFormat.HEADER_BYTES + FrameType.RECORD.getFixedPayloadBytes();
 
     private FrameCipher sealer;
     private FrameCipher opener;
@@ -92,13 +92,10 @@ class TestFrameCiphers {
 
     private static int storeEvent(ByteBuffer out, int index, String message, boolean unencrypted) {
         ByteBuffer bytes = ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII));
-        int body = FrameEncoder.storeEventBody(out, index + WireFormat.STORE_EVENT_BODY_OFFSET, 3,
-                StoreEventType.STORE_MESSAGE, 42, Hashing.hash("D"), bytes, 0, bytes.remaining(), (byte) 0);
-        int length = FrameEncoder.storeEventHeader(out, index, 7, 1_000, body);
-        if (unencrypted) {
-            FrameEncoder.markStoreEventUnencrypted(out, index);
-        }
-        return length;
+        int body = FrameEncoder.recordBody(out, index + WireFormat.RECORD_BODY_OFFSET, 3,
+                StoreEventType.STORE_MESSAGE.getCode(), unencrypted ? WireFormat.PLAINTEXT : 0, 42, bytes, 0,
+                bytes.remaining());
+        return FrameEncoder.recordHeader(out, index, 7, 1_000, body);
     }
 
     private static String text(ByteBuffer buffer, int index, int length) {
@@ -145,7 +142,7 @@ class TestFrameCiphers {
         frames.put(EVENT_FIXED_BYTES + 12, (byte) 'F');
 
         assertThatThrownBy(() -> opener.open(frames, 0, sealed)).isInstanceOf(WireFormatException.class)
-                .hasMessage("STORE_EVENT fails its authentication tag");
+                .hasMessage("RECORD fails its authentication tag");
     }
 
     @ParameterizedTest
@@ -213,14 +210,13 @@ class TestFrameCiphers {
         assertThat(sealer.seal(frames, index, lengths[1])).isEqualTo(lengths[1] + WireFormat.TAG_BYTES);
         assertThat(frames.getLong(index + WireFormat.HEADER_BYTES)).as("its log tail offset, readable").isEqualTo(99);
         index += lengths[1] + WireFormat.TAG_BYTES;
-        lengths[2] = FrameEncoder.session(frames, index, 7, 3, FixSessionType.INITIATOR, ReplicationMode.SYNC_APPLIED,
+        lengths[2] = TestingFrameEncoder.stream(frames, index, 7, 3, FixSessionType.INITIATOR, ReplicationMode.SYNC_APPLIED,
                 "default.main:VERSION_44:SENDER->TARGET", "storage");
         int session = index;
         index += sealer.seal(frames, index, lengths[2]);
         assertThat(text(frames, session, lengths[2])).doesNotContain("SENDER");
         ByteBuffer snapshotBytes = ByteBuffer.wrap(MESSAGE.getBytes(StandardCharsets.US_ASCII));
-        lengths[3] = FrameEncoder.snapshotMessage(frames, index, 7, 3, 42, Hashing.hash("D"), snapshotBytes, 0,
-                snapshotBytes.remaining(), (byte) 0);
+        lengths[3] = TestingFrameEncoder.snapshotRecord(frames, index, 7, 3, 42, snapshotBytes);
         index += sealer.seal(frames, index, lengths[3]);
         int end = index;
 
@@ -298,7 +294,7 @@ class TestFrameCiphers {
         int length = storeEvent(frames, 0, "", false);
 
         assertThatThrownBy(() -> opener.open(frames, 0, length)).isInstanceOf(WireFormatException.class)
-                .hasMessage("STORE_EVENT of " + length + " bytes is shorter than its fixed part and tag");
+                .hasMessage("RECORD of " + length + " bytes is shorter than its fixed part and tag");
     }
 
     @ParameterizedTest(name = "{0}, key of {1} bytes")

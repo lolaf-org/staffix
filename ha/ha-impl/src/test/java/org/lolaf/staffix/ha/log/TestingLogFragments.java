@@ -16,23 +16,34 @@
 package org.lolaf.staffix.ha.log;
 
 import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
 
 /**
- * Appends one fragment of a message, so a test interleaves the fragments of one session's message with another's
- * events, as concurrent appends do.
+ * Appends store events as the FIX side does, or one fragment of a message, so a test interleaves the fragments of one
+ * session's message with another's events, as concurrent appends do.
  */
 @UtilityClass
 public class TestingLogFragments {
 
-    public static void appendFragment(ReplicationLog log, int sessionKey, long seqNum, int messageTypeHash,
-                                      ByteBuffer fragment, byte fragmentFlags) {
-        StoreEventRecord record = new StoreEventRecord()
-                .set(sessionKey, StoreEventType.STORE_MESSAGE, seqNum, messageTypeHash, fragment)
+    public static void appendFragment(ReplicationLog log, int streamKey, long seqNum, byte flags, ByteBuffer fragment,
+                                      byte fragmentFlags) {
+        LogRecord record = new LogRecord()
+                .set(streamKey, StoreEventType.STORE_MESSAGE.getCode(), flags, seqNum, fragment)
                 .fragment(fragment.position(), fragment.remaining(), fragmentFlags);
         log.append(record, new LogFullWait(Duration.ofSeconds(1)));
+    }
+
+    /**
+     * A store event as the FIX side appends it: its type's code as content type, its seqnum as position.
+     */
+    public static LogRecord storeEvent(LogRecord record, int streamKey, StoreEventType eventType, long seqNum,
+                                       @Nullable ByteBuffer message) {
+        byte flags = eventType == StoreEventType.RESET_SEQ_NUM ? WireFormat.RESET : 0;
+        return record.set(streamKey, eventType.getCode(), flags, seqNum, message);
     }
 }

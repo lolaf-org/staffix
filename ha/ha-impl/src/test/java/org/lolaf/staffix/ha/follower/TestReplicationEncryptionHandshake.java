@@ -103,7 +103,7 @@ class TestReplicationEncryptionHandshake {
                 leaderExchange);
         server.start();
         client = new ReplicationClient(address, replicaSessions, () -> EPOCH, followerId,
-                leader.getReplicationLogs().get(0).getMaxEventFrameBytes(), Duration.ofMillis(50),
+                leader.getReplicationLogs().get(0).getMaxRecordFrameBytes(), Duration.ofMillis(50),
                 new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1),
                 followerExchange);
         client.start();

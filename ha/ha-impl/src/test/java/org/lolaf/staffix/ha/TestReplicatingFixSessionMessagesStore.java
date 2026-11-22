@@ -21,7 +21,6 @@ import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.msg.MessageType;
-import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
@@ -54,7 +53,7 @@ class TestReplicatingFixSessionMessagesStore {
     private final ReplicationLog.Reader reader;
     private final ConsumingStore local;
     private final ByteBuffer event;
-    private int lastEventTypeHash;
+    private byte lastEventFlags;
 
     TestReplicatingFixSessionMessagesStore() {
         this.ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder().logCapacity(1 << 16).build());
@@ -77,15 +76,15 @@ class TestReplicatingFixSessionMessagesStore {
     }
 
     /**
-     * The next event in the log as "key type seq message", its MsgType hash kept in {@link #lastEventTypeHash}.
+     * The next event in the log as "key type seq message", its record flags kept in {@link #lastEventFlags}.
      */
     private String nextEvent() {
         int length = reader.readInto(event, 0);
         if (length < 0) {
             return "none";
         }
-        lastEventTypeHash = FrameDecoder.storeEventMessageTypeHash(event, 0);
-        byte[] text = new byte[event.getInt(20)];
+        lastEventFlags = FrameDecoder.recordFlags(event, 0);
+        byte[] text = new byte[event.getInt(16)];
         for (int i = 0; i < text.length; i++) {
             text[i] = event.get(24 + i);
         }
@@ -106,6 +105,7 @@ class TestReplicatingFixSessionMessagesStore {
         assertThat(nextEvent()).isEqualTo("0 2 7 ");
         assertThat(nextEvent()).isEqualTo("0 1 3 ");
         assertThat(nextEvent()).isEqualTo("0 3 0 ");
+        assertThat(lastEventFlags).as("a reset ends a snapshot in progress").isEqualTo(WireFormat.RESET);
         assertThat(nextEvent()).isEqualTo("none");
     }
 
@@ -155,7 +155,7 @@ class TestReplicatingFixSessionMessagesStore {
     void aMessageTooLongForTheLogIsStoredLocallyOnlyAndAlerts() {
         RecordingProbes probes = new RecordingProbes();
         FixSessionMessagesStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR), local, probes);
-        ByteBuffer tooLong = ByteBuffer.allocate(ha.getReplicationLogs().get(0).getMaxMessageLength() + 1);
+        ByteBuffer tooLong = ByteBuffer.allocate(ha.getReplicationLogs().get(0).getMaxPayloadLength() + 1);
 
         store.storeMessageSent(5, tooLong);
 
@@ -187,13 +187,15 @@ class TestReplicatingFixSessionMessagesStore {
 
         assertThat(local.calls).containsExactly("message 5");
         assertThat(nextEvent()).isEqualTo("0 0 5 " + MESSAGE);
-        assertThat(lastEventTypeHash).isEqualTo(Hashing.hash("D"));
         assertThat(nextEvent()).as("logged once").isEqualTo("none");
     }
 
     @Test
-    void aMessageIsLoggedWithTheHashOfItsTypeAndAnEventWithoutOneWithNone() {
-        ReplicatingStore store = syncStore();
+    void aMessageOfAnUnencryptedTypeIsLoggedPlaintextAndAnUntypedOneOrAnEventWithoutOneIsNot() {
+        ReplicatingStore store = ha.replicatingStore(session("main", FixSessionType.INITIATOR).toBuilder()
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.ASYNC)
+                        .unencryptedMessageTypes(List.of("D")).build())
+                .build(), local, new RecordingProbes());
 
         store.storeMessageSent(NEW_ORDER, 5, message());
         store.storeMessageSent(6, message());
@@ -201,11 +203,11 @@ class TestReplicatingFixSessionMessagesStore {
 
         assertThat(local.calls).containsExactly("message 5", "message 6", "outgoing 8");
         assertThat(nextEvent()).isEqualTo("0 0 5 " + MESSAGE);
-        assertThat(lastEventTypeHash).isEqualTo(Hashing.hash("D"));
+        assertThat(lastEventFlags).isEqualTo(WireFormat.PLAINTEXT);
         assertThat(nextEvent()).isEqualTo("0 0 6 " + MESSAGE);
-        assertThat(lastEventTypeHash).as("untyped").isEqualTo(WireFormat.NO_MESSAGE_TYPE);
+        assertThat(lastEventFlags).as("untyped").isZero();
         assertThat(nextEvent()).isEqualTo("0 2 8 ");
-        assertThat(lastEventTypeHash).isEqualTo(WireFormat.NO_MESSAGE_TYPE);
+        assertThat(lastEventFlags).isZero();
     }
 
     @Test

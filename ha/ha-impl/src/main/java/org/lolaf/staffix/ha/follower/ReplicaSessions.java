@@ -30,7 +30,12 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.PromotionSeqNumJumps;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.ReplicatedSessions;
+import org.lolaf.staffix.ha.TypedSessionId;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
+import org.lolaf.staffix.ha.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.wire.WireFormatException;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -201,8 +206,12 @@ public final class ReplicaSessions {
      * connection, its storage being readable by then perhaps. One the leader no longer replicates, or with another
      * replication mode here, has its store closed, and is caught up again by snapshot once both agree it is replicated.
      */
-    synchronized SessionAnswer bind(int key, FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
-                                    @Nullable String leaderStorageIdentity) {
+    synchronized StreamAnswer bind(int key, String streamName, StreamReplicationMode leaderStreamMode,
+                                   @Nullable String leaderStorageIdentity) {
+        TypedSessionId session = sessionOf(streamName);
+        FixSessionType fixSessionType = session.getFixSessionType();
+        String fixSessionId = session.getFixSessionId();
+        ReplicationMode leaderMode = ReplicationMode.from(leaderStreamMode.getCode());
         ReplicaSession current = key < sessionsByKey.length ? sessionsByKey[key] : null;
         if (current != null && current.matches(fixSessionType, fixSessionId) && current.isReplicated()
                 && leaderMode != ReplicationMode.NONE && leaderMode == binder.modeHere(fixSessionType, fixSessionId)) {
@@ -213,25 +222,33 @@ public final class ReplicaSessions {
         if (current != null) {
             current.stop(Deadline.unlimited());
         }
-        SessionAnswer answer = put(key, binder.open(fixSessionType, fixSessionId, leaderMode, leaderStorageIdentity));
-        if (answer == SessionAnswer.NOT_REPLICATED) {
+        StreamAnswer answer = put(key, binder.open(fixSessionType, fixSessionId, leaderMode, leaderStorageIdentity));
+        if (answer == StreamAnswer.NOT_REPLICATED) {
             log.info("FIX session {} {} is not replicated: the leader's settings do not ask for it", fixSessionType, fixSessionId);
-        } else if (answer == SessionAnswer.SHARED_STORAGE) {
+        } else if (answer == StreamAnswer.SHARED_STORAGE) {
             log.error("FIX session {} {} is not replicated here: its storage is the leader's own (the same database, "
                     + "schema and table prefix, or the same directory); give each node its own", fixSessionType, fixSessionId);
-        } else if (answer == SessionAnswer.MODE_MISMATCH) {
+        } else if (answer == StreamAnswer.MODE_MISMATCH) {
             log.error("FIX session {} {} is not replicated here: the leader's settings give it replication mode {}, this "
                     + "node's {}", fixSessionType, fixSessionId, leaderMode, binder.modeHere(fixSessionType, fixSessionId));
-        } else if (answer != SessionAnswer.SNAPSHOT_NEEDED) {
+        } else if (answer != StreamAnswer.SNAPSHOT_NEEDED) {
             log.warn("FIX session {} {} is not replicated here: {}", fixSessionType, fixSessionId, answer);
         }
         return answer;
     }
 
+    private static TypedSessionId sessionOf(String streamName) {
+        try {
+            return TypedSessionId.ofStreamName(streamName);
+        } catch (IllegalArgumentException e) {
+            throw new WireFormatException(e.getMessage());
+        }
+    }
+
     /**
      * Republishes the array, so a thread reading the sessions of another lane sees the one put.
      */
-    private SessionAnswer put(int key, ReplicaSession session) {
+    private StreamAnswer put(int key, ReplicaSession session) {
         ReplicaSession[] sessions = sessionsByKey;
         if (key >= sessions.length) {
             sessions = Arrays.copyOf(sessions, Math.max(key + 1, sessions.length * 2));
@@ -257,14 +274,14 @@ public final class ReplicaSessions {
      *
      * @param onBound told each key of the lane bound now, with its answer for the leader
      */
-    synchronized void bindAgain(int lane, ObjIntConsumer<SessionAnswer> onBound) {
+    synchronized void bindAgain(int lane, ObjIntConsumer<StreamAnswer> onBound) {
         int lanes = positions.count();
         for (int key = lane; key < sessionsByKey.length; key += lanes) {
             ReplicaSession refused = sessionsByKey[key];
             if (refused == null || !refused.isRefusedUntilSettingsChange() || !binder.settingsHereNowAgree(refused)) {
                 continue;
             }
-            SessionAnswer answer = put(key, binder.open(refused.getFixSessionType(), refused.getFixSessionId(),
+            StreamAnswer answer = put(key, binder.open(refused.getFixSessionType(), refused.getFixSessionId(),
                     refused.getLeaderMode(), refused.getLeaderStorageIdentity()));
             log.info("FIX session {} {} is now configured here as on the leader: {}", refused.getFixSessionType(),
                     refused.getFixSessionId(), answer);
@@ -278,12 +295,15 @@ public final class ReplicaSessions {
 
 
     /**
+     * A record's content type is its {@link StoreEventType} code, its position the event's seqnum.
+     *
      * @return false for a key the leader never bound, or of another lane
      */
-    boolean apply(int lane, long epoch, long offset, int key, StoreEventType eventType, long seqNum,
-                  ByteBuffer receiveBuffer, int messageStart, int messageLength, byte fragmentFlags) {
+    boolean apply(int lane, long epoch, long offset, int key, byte contentType, byte flags, long seqNum,
+                  ByteBuffer receiveBuffer, int messageStart, int messageLength) {
         ReplicaSession session = session(lane, key);
-        if (session == null || !session.apply(eventType, seqNum, receiveBuffer, messageStart, messageLength, fragmentFlags)) {
+        if (session == null || !session.apply(eventType(contentType), seqNum, receiveBuffer, messageStart, messageLength,
+                fragmentFlags(flags))) {
             return false;
         }
         positions.applied(lane, epoch, offset, session.getLeaderMode() == ReplicationMode.SYNC_RECEIVED);
@@ -293,27 +313,61 @@ public final class ReplicaSessions {
     /**
      * @return false for a key the leader never bound, of another lane, or not replicated here
      */
-    boolean snapshotBegin(int lane, int key, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+    boolean snapshotBegin(int lane, int key, ByteBuffer state, int stateIndex, int stateLength) {
         ReplicaSession session = replicatedSession(lane, key);
         if (session == null) {
             return false;
         }
-        session.snapshotBegin(nextIncomingSeqNum, nextOutgoingSeqNum);
+        checkState(stateLength);
+        session.snapshotBegin(state.getLong(stateIndex), state.getLong(stateIndex + Long.BYTES));
         return true;
     }
 
-    boolean snapshotMessage(int lane, int key, long seqNum, ByteBuffer receiveBuffer, int messageStart,
-                            int messageLength, byte fragmentFlags) {
+    boolean snapshotRecord(int lane, int key, byte contentType, byte flags, long seqNum, ByteBuffer receiveBuffer,
+                           int messageStart, int messageLength) {
+        if (eventType(contentType) != StoreEventType.STORE_MESSAGE) {
+            throw new WireFormatException("A snapshot of a FIX session carries messages only, got " + eventType(contentType));
+        }
         ReplicaSession session = replicatedSession(lane, key);
-        return session != null && session.snapshotMessage(seqNum, receiveBuffer, messageStart, messageLength, fragmentFlags);
+        return session != null && session.snapshotMessage(seqNum, receiveBuffer, messageStart, messageLength,
+                fragmentFlags(flags));
     }
 
     /**
      * @return false when the session is unknown or the count is not what was received
      */
-    boolean snapshotEnd(int lane, int key, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+    boolean snapshotEnd(int lane, int key, int messageCount, ByteBuffer state, int stateIndex, int stateLength) {
         ReplicaSession session = replicatedSession(lane, key);
-        return session != null && session.snapshotEnd(messageCount, nextIncomingSeqNum, nextOutgoingSeqNum);
+        if (session == null) {
+            return false;
+        }
+        checkState(stateLength);
+        return session.snapshotEnd(messageCount, state.getLong(stateIndex), state.getLong(stateIndex + Long.BYTES));
+    }
+
+    /**
+     * A FIX session's state is its next incoming and outgoing seqnums.
+     */
+    private static void checkState(int stateLength) {
+        if (stateLength != 2 * Long.BYTES) {
+            throw new WireFormatException("A FIX session's snapshot state is " + 2 * Long.BYTES + " bytes, got " + stateLength);
+        }
+    }
+
+    private static StoreEventType eventType(byte contentType) {
+        try {
+            return StoreEventType.from(contentType);
+        } catch (IllegalStateException e) {
+            throw new WireFormatException("Unknown store event type " + contentType);
+        }
+    }
+
+    private static byte fragmentFlags(byte flags) {
+        return (byte) (flags & (WireFormat.MORE_FRAGMENTS | WireFormat.CONTINUED_FRAGMENT));
+    }
+
+    public int getApplicationId() {
+        return ReplicatedSessions.APPLICATION_ID;
     }
 
     /**

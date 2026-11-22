@@ -20,10 +20,15 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.wire.CloseReason;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.WireFormat;
+
+import java.nio.ByteBuffer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,11 +55,43 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     }
 
     @Test
+    void aLeaderOfAnotherApplicationClosesTheStream() {
+        decode(writeFrames((out, index) -> FrameEncoder.welcome(out, index, EPOCH, 0x41505031, "leader-a",
+                WireFormat.NO_RESUME, 1, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE)), connection);
+
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString()
+                .isEqualTo("CLOSE epoch=7 APPLICATION_MISMATCH follower replicates application 53464958, leader 41505031");
+    }
+
+    @Test
+    void aRecordOfAContentTypeNoStoreEventHasClosesTheStream() {
+        streaming();
+        read((out, index) -> {
+            int body = FrameEncoder.recordBody(out, index + WireFormat.RECORD_BODY_OFFSET, 0, (byte) 9, (byte) 0, 1, null, 0, 0);
+            return FrameEncoder.recordHeader(out, index, EPOCH, 64, body);
+        });
+
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString().isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR Unknown store event type 9");
+    }
+
+    @Test
+    void aSnapshotStateThatIsNotTwoSeqNumsClosesTheStream() {
+        streaming();
+        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, ByteBuffer.allocate(3), 0, 3));
+
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(sent.frames).last().asString()
+                .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR A FIX session's snapshot state is 16 bytes, got 3");
+    }
+
+    @Test
     void aSessionOfAnotherLaneClosesTheStream() {
         read(welcome(EPOCH, WireFormat.NO_RESUME, 2), session(1, MAIN));
 
         assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
-        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR session key 1 on lane 0 of 2");
+        assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR stream key 1 on lane 0 of 2");
     }
 
     @Test
@@ -112,8 +149,8 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     @Test
     void aResumedStreamIsNotInSyncUntilItsSessionsAreAnnouncedAgain() {
         streaming();
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 22, 14));
+        read((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+                (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 22, 14));
         assertThat(replicaSessions.isInSync()).isTrue();
         LeaderConnection next = newConnection(0);
 
@@ -184,8 +221,8 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         engine.store(MAIN).pendingWrites = 7;
         sent.frames.clear();
 
-        checkingHourly.read(writeFrames((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 22, 14)), new FrameDecoder(1 << 20));
+        checkingHourly.read(writeFrames((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+                (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 22, 14)), new FrameDecoder(1 << 20));
 
         assertThat(sent.frames).last().isEqualTo("ACK epoch=7 applied=-1 inSync=true pending=7");
     }
@@ -219,15 +256,15 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     void aSnapshotResetsTheStoreThenFillsItAndPutsTheSessionInSync() {
         streaming();
 
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+        read((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
                 snapshotMessage(11, "eleven"),
                 snapshotMessage(12, "twelve"),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2, 22, 14));
+                (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2, 22, 14));
 
         assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13", "message 11 eleven",
                 "message 12 twelve", "incoming 22", "outgoing 14");
         assertThat(replicaSessions.isInSync()).isTrue();
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 REPLICATING", "ACK epoch=7 applied=-1 inSync=true");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 REPLICATING", "ACK epoch=7 applied=-1 inSync=true");
     }
 
     @Test
@@ -235,15 +272,15 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         engine.batchingStores = true;
         streaming();
 
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+        read((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
                 snapshotMessage(11, "eleven"),
                 snapshotMessage(12, "twelve"));
         read(snapshotFragment(13, "thir", FIRST), snapshotFragment(13, "teen", LAST),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 3, 22, 14));
+                (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 3, 22, 14));
 
         assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13",
                 "batch 11 eleven, 12 twelve", "batch 13 thirteen", "incoming 22", "outgoing 14");
-        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=0 REPLICATING");
+        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=0 REPLICATING");
     }
 
     @Test
@@ -251,11 +288,11 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         engine.batchingStores = true;
         streaming();
 
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+        read((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
                 snapshotMessage(11, "eleven"),
                 event(EPOCH, 600, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 22, null),
                 snapshotMessage(12, "twelve"),
-                (out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 700, 21, 13),
+                (out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 700, 21, 13),
                 snapshotMessage(13, "thirteen"));
 
         assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13",
@@ -266,9 +303,9 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     void aSnapshotEndingWithAnotherCountThanReceivedIsAProtocolError() {
         streaming();
 
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
+        read((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 21, 13),
                 snapshotMessage(11, "eleven"),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2, 21, 13));
+                (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 2, 21, 13));
 
         assertThat(replicaSessions.isInSync()).isFalse();
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
@@ -292,13 +329,13 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     void aSnapshotMessageInFragmentsIsStoredOnceAndCountedOnce() {
         streaming();
 
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 6),
+        read((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 6),
                 snapshotFragment(5, "8=FIX.4.4\u0001", FIRST), snapshotFragment(5, "9=5\u000135=D\u0001", MIDDLE),
                 snapshotFragment(5, "10=000\u0001", LAST),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 1, 1, 6));
+                (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 1, 1, 6));
 
         assertThat(engine.store(MAIN).writes).contains("message 5 " + MESSAGE);
-        assertThat(sent.frames).contains("SESSION_ANSWER epoch=7 key=0 REPLICATING");
+        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=0 REPLICATING");
     }
 
     @Test
@@ -326,7 +363,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, 0), session(0, MAIN)), resumed);
 
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
         decode(writeFrames(fragment(64, 0, 5, "9=5", LAST)), resumed);
         assertThat(engine.store(MAIN).writes).as("the rest of a message alone is not applied").noneMatch(w -> w.startsWith("message"));
     }
@@ -334,19 +371,19 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     @Test
     void aResumedStreamKeepsTheSessionsCompleteAndOneThatDidNotResumeLosesThem() {
         streaming();
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
+        read((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
+                (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
         LeaderConnection resumed = newConnection(0);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), resumed);
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 REPLICATING");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 REPLICATING");
 
         LeaderConnection notResumed = newConnection(0);
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), notResumed);
-        assertThat(sent.frames).containsExactly("SESSION_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
         assertThat(replicaSessions.getLastAppliedOffset(0)).as("nothing left to resume from").isEqualTo(-1);
     }
 

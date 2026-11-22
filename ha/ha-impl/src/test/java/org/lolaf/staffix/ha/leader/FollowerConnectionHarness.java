@@ -72,9 +72,9 @@ abstract class FollowerConnectionHarness {
     final IOSession ioSession;
     final RecordingHandler sent;
     /**
-     * The MsgType(35) hash of each STORE_EVENT and SNAPSHOT_MESSAGE sent, which the follower does not read.
+     * The MsgType(35) hash of each RECORD and SNAPSHOT_RECORD sent, which the follower does not read.
      */
-    final List<Integer> sentTypeHashes;
+    final List<Boolean> sentPlaintext;
     /**
      * Every byte sent, as it went on the socket.
      */
@@ -98,7 +98,7 @@ abstract class FollowerConnectionHarness {
     FollowerConnectionHarness() {
         this.ioSession = mock(IOSession.class);
         this.sent = new RecordingHandler();
-        this.sentTypeHashes = new CopyOnWriteArrayList<>();
+        this.sentPlaintext = new CopyOnWriteArrayList<>();
         this.sentBytes = new CopyOnWriteArrayList<>();
         this.stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock()));
         this.unwrittenBatches = new ConcurrentLinkedQueue<>();
@@ -183,11 +183,11 @@ abstract class FollowerConnectionHarness {
         byte[] bytes = new byte[frames.remaining()];
         frames.duplicate().get(bytes);
         sentBytes.add(bytes);
-        FrameDecoder decoder = new FrameDecoder(ha.getReplicationLogs().get(0).getMaxEventFrameBytes() + WireFormat.TAG_BYTES);
+        FrameDecoder decoder = new FrameDecoder(ha.getReplicationLogs().get(0).getMaxRecordFrameBytes() + WireFormat.TAG_BYTES);
         int index = frames.position();
         int consumed;
         while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, sent, openerOf(frames, index))) > 0) {
-            recordTypeHash(frames, index);
+            recordPlaintext(frames, index);
             index += consumed;
         }
     }
@@ -237,12 +237,10 @@ abstract class FollowerConnectionHarness {
         return false;
     }
 
-    private void recordTypeHash(ByteBuffer frames, int frameIndex) {
-        int type = frames.get(frameIndex + WireFormat.OFFSET_TYPE);
-        if (type == FrameType.STORE_EVENT.getCode()) {
-            sentTypeHashes.add(FrameDecoder.storeEventMessageTypeHash(frames, frameIndex + WireFormat.STORE_EVENT_BODY_OFFSET));
-        } else if (type == FrameType.SNAPSHOT_MESSAGE.getCode()) {
-            sentTypeHashes.add(frames.getInt(frameIndex + WireFormat.HEADER_BYTES + 16));
+    private void recordPlaintext(ByteBuffer frames, int frameIndex) {
+        FrameType type = FrameType.forCode(frames.get(frameIndex + WireFormat.OFFSET_TYPE));
+        if (type == FrameType.RECORD || type == FrameType.SNAPSHOT_RECORD) {
+            sentPlaintext.add(FrameDecoder.isPlaintext(frames, frameIndex, type));
         }
     }
 
@@ -323,7 +321,7 @@ abstract class FollowerConnectionHarness {
     }
 
     List<Long> snapshotSeqNums() {
-        return sent.frames.stream().filter(frame -> frame.startsWith("SNAPSHOT_MESSAGE"))
+        return sent.frames.stream().filter(frame -> frame.startsWith("SNAPSHOT_RECORD"))
                 .map(frame -> Long.parseLong(frame.replaceAll(".* seq=(\\d+) .*", "$1"))).collect(Collectors.toList());
     }
 }

@@ -21,9 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.api.session.FixSession.FixSessionType;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
-import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
@@ -66,7 +63,7 @@ public final class LeaderConnection implements FrameHandler {
     private final AnswerSender answers;
     private final boolean receivedAckedByNetworkThread;
     private final long checkIntervalNanos;
-    private final ObjIntConsumer<SessionAnswer> sendBoundAnswer;
+    private final ObjIntConsumer<StreamAnswer> sendBoundAnswer;
     private final KeyExchange keyExchange;
     /**
      * This connection's keys once both peers encrypt, null on a clear one.
@@ -112,7 +109,7 @@ public final class LeaderConnection implements FrameHandler {
     LeaderConnection(IOSession ioSession, ReplicaSessions replicaSessions, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
                      long checkIntervalNanos, AnswerSender answers, boolean receivedAckedByNetworkThread,
                      KeyExchange keyExchange) {
-        this.sendBoundAnswer = (answer, sessionKey) -> sendSessionAnswer(sessionKey, answer);
+        this.sendBoundAnswer = (answer, sessionKey) -> sendStreamAnswer(sessionKey, answer);
         this.frameCipher = FrameCipher.CLEAR;
         this.followerNonce = new byte[WireFormat.NONCE_BYTES];
         this.state = State.AWAITING_WELCOME;
@@ -131,8 +128,9 @@ public final class LeaderConnection implements FrameHandler {
     void hello() {
         followerNonce = keyExchange.newNonce();
         ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
-        int length = FrameEncoder.hello(frame, 0, nodeEpoch.getAsLong(), nodeId, replicaSessions.getLastAppliedEpoch(lane),
-                replicaSessions.getLastAppliedOffset(lane), lane, keyExchange.getMode(), followerNonce);
+        int length = FrameEncoder.hello(frame, 0, nodeEpoch.getAsLong(), replicaSessions.getApplicationId(), nodeId,
+                replicaSessions.getLastAppliedEpoch(lane), replicaSessions.getLastAppliedOffset(lane), lane,
+                keyExchange.getMode(), followerNonce);
         sentHelloBytes = FrameDecoder.bytes(frame, 0, length);
         answers.send(frame, length);
     }
@@ -162,7 +160,7 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes,
+    public void onWelcome(long epoch, int version, int applicationId, String leaderId, long resumeOffset, int lanes,
                           EncryptionMode leaderMode, byte[] leaderNonce) {
         if (state != State.AWAITING_WELCOME) {
             close(CloseReason.PROTOCOL_ERROR, "a second WELCOME");
@@ -170,6 +168,11 @@ public final class LeaderConnection implements FrameHandler {
         }
         if (version != WireFormat.VERSION) {
             close(CloseReason.VERSION_MISMATCH, "follower speaks version " + WireFormat.VERSION + ", leader " + version);
+            return;
+        }
+        if (applicationId != replicaSessions.getApplicationId()) {
+            close(CloseReason.APPLICATION_MISMATCH, "follower replicates application "
+                    + Integer.toHexString(replicaSessions.getApplicationId()) + ", leader " + Integer.toHexString(applicationId));
             return;
         }
         long currentEpoch = nodeEpoch.getAsLong();
@@ -192,7 +195,7 @@ public final class LeaderConnection implements FrameHandler {
         streamLanes = lanes;
         streamResumeOffset = resumeOffset;
         if (negotiation == Negotiation.ENCRYPTED) {
-            confirmKeys(epoch, leaderId, resumeOffset, lanes, leaderMode, leaderNonce);
+            confirmKeys(epoch, applicationId, leaderId, resumeOffset, lanes, leaderMode, leaderNonce);
             state = State.AWAITING_KEY_ACCEPTANCE;
             return;
         }
@@ -219,11 +222,11 @@ public final class LeaderConnection implements FrameHandler {
     /**
      * Sent before anything else this connection answers, so the leader verifies it before it streams.
      */
-    private void confirmKeys(long epoch, String leaderId, long resumeOffset, int lanes, EncryptionMode leaderMode,
-                             byte[] leaderNonce) {
+    private void confirmKeys(long epoch, int applicationId, String leaderId, long resumeOffset, int lanes,
+                             EncryptionMode leaderMode, byte[] leaderNonce) {
         ConnectionEncryptionKeys keys = keyExchange.deriveKeys(followerNonce, leaderNonce);
-        byte[] receivedWelcomeBytes = FrameEncoder.welcomeBytes(epoch, leaderId, resumeOffset, lanes, leaderMode,
-                leaderNonce);
+        byte[] receivedWelcomeBytes = FrameEncoder.welcomeBytes(epoch, applicationId, leaderId, resumeOffset, lanes,
+                leaderMode, leaderNonce);
         byte[] confirmation = keyExchange.confirm(keys, sentHelloBytes, receivedWelcomeBytes);
         frameCipher = keyExchange.newOpener(keys.getLeaderToFollower());
         encryptionKeys = keys;
@@ -234,33 +237,33 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     @Override
-    public void onSession(long epoch, int sessionKey, FixSessionType fixSessionType, ReplicationMode replicationMode,
-                          String fixSessionId, @Nullable String storageIdentity) {
+    public void onStream(long epoch, int streamKey, StreamReplicationMode replicationMode, String streamName,
+                         @Nullable String storageIdentity) {
         if (!acceptsFrame(epoch)) {
             return;
         }
-        if (!replicaSessions.carries(lane, sessionKey)) {
-            close(CloseReason.PROTOCOL_ERROR, "session key " + sessionKey + " on lane " + lane + " of "
+        if (!replicaSessions.carries(lane, streamKey)) {
+            close(CloseReason.PROTOCOL_ERROR, "stream key " + streamKey + " on lane " + lane + " of "
                     + replicaSessions.getLanes());
             return;
         }
         if (!sessionsAnnounced) {
             sessionFramesBeforeAnnounced++;
         }
-        sendSessionAnswer(sessionKey, replicaSessions.bind(sessionKey, fixSessionType, fixSessionId, replicationMode, storageIdentity));
+        sendStreamAnswer(streamKey, replicaSessions.bind(streamKey, streamName, replicationMode, storageIdentity));
     }
 
     @Override
-    public void onSessionsAnnounced(long epoch, int announcedCount) {
+    public void onStreamsAnnounced(long epoch, int announcedCount) {
         if (!acceptsFrame(epoch)) {
             return;
         }
         if (sessionsAnnounced) {
-            close(CloseReason.PROTOCOL_ERROR, "a second SESSIONS_ANNOUNCED");
+            close(CloseReason.PROTOCOL_ERROR, "a second STREAMS_ANNOUNCED");
             return;
         }
         if (announcedCount != sessionFramesBeforeAnnounced) {
-            close(CloseReason.PROTOCOL_ERROR, "SESSIONS_ANNOUNCED counts " + announcedCount + " sessions, "
+            close(CloseReason.PROTOCOL_ERROR, "STREAMS_ANNOUNCED counts " + announcedCount + " sessions, "
                     + sessionFramesBeforeAnnounced + " were announced");
             return;
         }
@@ -283,21 +286,21 @@ public final class LeaderConnection implements FrameHandler {
         }
     }
 
-    private void sendSessionAnswer(int sessionKey, SessionAnswer answer) {
-        ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.SESSION_ANSWER));
-        answers.send(frame, FrameEncoder.sessionAnswer(frame, 0, streamEpoch, sessionKey, answer));
+    private void sendStreamAnswer(int sessionKey, StreamAnswer answer) {
+        ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.STREAM_ANSWER));
+        answers.send(frame, FrameEncoder.streamAnswer(frame, 0, streamEpoch, sessionKey, answer));
     }
 
     @Override
-    public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                             ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
+    public void onRecord(long epoch, long logOffset, int streamKey, byte contentType, byte flags, long position,
+                         ByteBuffer buffer, int payloadIndex, int payloadLength) {
         if (!acceptsFrame(epoch)) {
             return;
         }
-        if (!replicaSessions.apply(lane, epoch, logOffset, sessionKey, eventType, sequenceNumber, buffer, messageIndex, messageLength,
-                fragmentFlags)) {
-            close(CloseReason.PROTOCOL_ERROR, "a STORE_EVENT for session key " + sessionKey
-                    + " never announced on this lane, or a fragment out of its message");
+        if (!replicaSessions.apply(lane, epoch, logOffset, streamKey, contentType, flags, position, buffer, payloadIndex,
+                payloadLength)) {
+            close(CloseReason.PROTOCOL_ERROR, "a RECORD for stream key " + streamKey
+                    + " never announced on this lane, or a fragment out of its payload");
             return;
         }
         ackDue = true;
@@ -471,37 +474,39 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     @Override
-    public void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        if (acceptsFrame(epoch) && !replicaSessions.snapshotBegin(lane, sessionKey, nextIncomingSeqNum, nextOutgoingSeqNum)) {
-            close(CloseReason.PROTOCOL_ERROR, "a snapshot of session key " + sessionKey + ", not replicated here");
+    public void onSnapshotBegin(long epoch, int streamKey, long snapshotOffset, ByteBuffer buffer, int stateIndex,
+                                int stateLength) {
+        if (acceptsFrame(epoch) && !replicaSessions.snapshotBegin(lane, streamKey, buffer, stateIndex, stateLength)) {
+            close(CloseReason.PROTOCOL_ERROR, "a snapshot of stream key " + streamKey + ", not replicated here");
         }
     }
 
     @Override
-    public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                                  int messageLength, byte fragmentFlags) {
-        if (acceptsFrame(epoch) && !replicaSessions.snapshotMessage(lane, sessionKey, sequenceNumber, buffer, messageIndex, messageLength,
-                fragmentFlags)) {
-            close(CloseReason.PROTOCOL_ERROR, "a snapshot message of session key " + sessionKey
-                    + " not replicated here, or a fragment out of its message");
+    public void onSnapshotRecord(long epoch, int streamKey, byte contentType, byte flags, long position,
+                                 ByteBuffer buffer, int payloadIndex, int payloadLength) {
+        if (acceptsFrame(epoch) && !replicaSessions.snapshotRecord(lane, streamKey, contentType, flags, position, buffer,
+                payloadIndex, payloadLength)) {
+            close(CloseReason.PROTOCOL_ERROR, "a snapshot record of stream key " + streamKey
+                    + " not replicated here, or a fragment out of its payload");
         }
     }
 
     /**
-     * Tells the leader the session is now in sync, which is when its {@code SYNC} sends start waiting for this
+     * Tells the leader the stream is now in sync, which is when its {@code SYNC} writes start waiting for this
      * follower.
      */
     @Override
-    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+    public void onSnapshotEnd(long epoch, int streamKey, int recordCount, ByteBuffer buffer, int stateIndex,
+                              int stateLength) {
         if (!acceptsFrame(epoch)) {
             return;
         }
-        if (!replicaSessions.snapshotEnd(lane, sessionKey, messageCount, nextIncomingSeqNum, nextOutgoingSeqNum)) {
-            close(CloseReason.PROTOCOL_ERROR, "a snapshot of session key " + sessionKey + " that does not end with "
-                    + messageCount + " messages received");
+        if (!replicaSessions.snapshotEnd(lane, streamKey, recordCount, buffer, stateIndex, stateLength)) {
+            close(CloseReason.PROTOCOL_ERROR, "a snapshot of stream key " + streamKey + " that does not end with "
+                    + recordCount + " records received");
             return;
         }
-        sendSessionAnswer(sessionKey, SessionAnswer.REPLICATING);
+        sendStreamAnswer(streamKey, StreamAnswer.REPLICATING);
         ackDue = true;
     }
 

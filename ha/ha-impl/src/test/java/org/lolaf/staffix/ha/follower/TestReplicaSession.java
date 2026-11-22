@@ -20,7 +20,7 @@ import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -55,7 +55,7 @@ class TestReplicaSession {
 
     @Test
     void aSessionNotReplicatedHasNoPendingWrites() {
-        ReplicaSession session = ReplicaSession.notReplicated(FixSessionType.ACCEPTOR, "alpha", ReplicationMode.NONE, SessionAnswer.NOT_REPLICATED);
+        ReplicaSession session = ReplicaSession.notReplicated(FixSessionType.ACCEPTOR, "alpha", ReplicationMode.NONE, StreamAnswer.NOT_REPLICATED);
 
         assertThat(pendingWritesOf(session)).isZero();
     }

@@ -49,45 +49,48 @@ public class WireFormat {
     public static final int HEADER_BYTES = 16;
 
     /**
-     * Where the body of a {@link FrameType#STORE_EVENT} starts: past the header and the log offset.
+     * Where the body of a {@link FrameType#RECORD} starts: past the header and the log offset.
      */
-    public static final int STORE_EVENT_BODY_OFFSET = HEADER_BYTES + Long.BYTES;
+    public static final int RECORD_BODY_OFFSET = HEADER_BYTES + Long.BYTES;
 
     /**
-     * Set in the fragment flags of a {@link FrameType#STORE_EVENT}, or the header flags of a
-     * {@link FrameType#SNAPSHOT_MESSAGE}, when more fragments of its message follow. A message longer than a frame is
-     * sent as consecutive frames of its session: the first with this bit, the middle ones with both, the last with
-     * {@link #CONTINUED_FRAGMENT} alone, so a last fragment never reads as a whole message.
+     * Where a record body's flags are, from the body's start.
+     */
+    public static final int RECORD_BODY_FLAGS = 5;
+
+    /**
+     * Where a {@link FrameType#RECORD}'s flags are in its frame.
+     */
+    public static final int OFFSET_RECORD_FLAGS = RECORD_BODY_OFFSET + RECORD_BODY_FLAGS;
+
+    /**
+     * Set in a record's flags when more fragments of its payload follow. A payload longer than a frame is sent as
+     * consecutive records of its stream: the first with this bit, the middle ones with both, the last with
+     * {@link #CONTINUED_FRAGMENT} alone, so a last fragment never reads as a whole payload.
      */
     public static final byte MORE_FRAGMENTS = 0x01;
 
     /**
-     * Set on every fragment but a message's first, as {@link #MORE_FRAGMENTS}.
+     * Set on every fragment but a payload's first, as {@link #MORE_FRAGMENTS}.
      */
     public static final byte CONTINUED_FRAGMENT = 0x02;
 
     /**
-     * Set beside the fragment flags, on an encrypted connection only, when the message is sent unencrypted, as its
-     * session's {@code unencryptedMessageTypes} asks: the frame is still authenticated, this bit included.
+     * The application lets the record's payload go unencrypted on an encrypted connection; the frame is still
+     * authenticated, this bit included. Meaningless on a clear connection, where nothing is encrypted.
      */
-    public static final byte UNENCRYPTED_MESSAGE = 0x04;
+    public static final byte PLAINTEXT = 0x04;
 
     /**
-     * Where a {@link FrameType#STORE_EVENT}'s fragment flags are in its frame.
+     * The stream starts over with this record: a snapshot of the stream in progress ends before it.
      */
-    public static final int OFFSET_STORE_EVENT_FRAGMENT_FLAGS = STORE_EVENT_BODY_OFFSET + 5;
+    public static final byte RESET = 0x08;
 
     /**
-     * The MsgType(35) hash of a {@link FrameType#STORE_EVENT} carrying no message, or whose message's type the leader
-     * does not know.
+     * Opens {@link FrameType#HELLO} and {@link FrameType#WELCOME}, so a peer that is not a replication endpoint is
+     * refused before anything else is read: 'REPL'.
      */
-    public static final int NO_MESSAGE_TYPE = 0;
-
-    /**
-     * Opens {@link FrameType#HELLO} and {@link FrameType#WELCOME}, so a peer that is not a staffix replication
-     * endpoint is refused before anything else is read: 'SFHA'.
-     */
-    public static final int MAGIC = 0x53464841;
+    public static final int MAGIC = 0x5245504C;
 
     /**
      * Bumped only for an incompatible layout change; a peer of another version is closed, never guessed at.
@@ -96,11 +99,16 @@ public class WireFormat {
 
     /**
      * {@link FrameType#WELCOME}'s resume offset when the follower's position is no longer in the leader's log, so
-     * every session is caught up by snapshot.
+     * every stream is caught up by snapshot.
      */
     public static final long NO_RESUME = -1;
 
     public static final int MAX_STRING_BYTES = 0xFFFF;
+
+    /**
+     * The longest stream state a snapshot carries, its length being an unsigned short.
+     */
+    public static final int MAX_STATE_BYTES = 0xFFFF;
 
     /**
      * The random nonce of {@link FrameType#HELLO} and {@link FrameType#WELCOME}, zeros from a peer that does not
@@ -119,7 +127,7 @@ public class WireFormat {
     public static final int TAG_BYTES = 16;
 
     /**
-     * {@link FrameType#SESSION}: the leader's store has a storage identity.
+     * {@link FrameType#STREAM}: the leader's store has a storage identity.
      */
     public static final int FLAG_STORAGE_IDENTITY = 0x01;
 

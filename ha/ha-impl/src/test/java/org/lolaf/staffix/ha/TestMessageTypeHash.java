@@ -13,11 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.leader;
+package org.lolaf.staffix.ha;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.serde.Hashing;
-import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -43,7 +42,7 @@ class TestMessageTypeHash {
 
         assertThat(MessageTypeHash.of(message, 4, message.limit() - 4)).as("value ending the range")
                 .isEqualTo(Hashing.hash("D"));
-        assertThat(MessageTypeHash.of(message, 4, 14)).as("cut before tag 35").isEqualTo(WireFormat.NO_MESSAGE_TYPE);
+        assertThat(MessageTypeHash.of(message, 4, 14)).as("cut before tag 35").isEqualTo(UnencryptedMessageTypes.NO_MESSAGE_TYPE);
     }
 
     @Test
@@ -57,6 +56,6 @@ class TestMessageTypeHash {
     void bytesWithoutMsgTypeHaveNone() {
         ByteBuffer message = bytes("not a FIX message");
 
-        assertThat(MessageTypeHash.of(message, 0, message.limit())).isEqualTo(WireFormat.NO_MESSAGE_TYPE);
+        assertThat(MessageTypeHash.of(message, 0, message.limit())).isEqualTo(UnencryptedMessageTypes.NO_MESSAGE_TYPE);
     }
 }

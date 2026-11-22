@@ -100,7 +100,7 @@ abstract class LeaderConnectionHarness {
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset, int lanes) {
-        return (out, index) -> FrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, lanes, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        return (out, index) -> TestingFrameEncoder.welcome(out, index, epoch, "leader-a", resumeOffset, lanes, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings) {
@@ -108,40 +108,39 @@ abstract class LeaderConnectionHarness {
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings, String leaderStorageIdentity) {
-        return (out, index) -> FrameEncoder.session(out, index, EPOCH, key, settings.getFixSessionType(),
+        return (out, index) -> TestingFrameEncoder.stream(out, index, EPOCH, key, settings.getFixSessionType(),
                 settings.getHighAvailability().getReplicationMode(), settings.getFixSessionId().toString(), leaderStorageIdentity);
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> announced(int count) {
-        return (out, index) -> FrameEncoder.sessionsAnnounced(out, index, EPOCH, count);
+        return (out, index) -> FrameEncoder.streamsAnnounced(out, index, EPOCH, count);
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
                                                       String message) {
-        return (out, index) -> TestingFrameEncoder.storeEvent(out, index, epoch, offset, key, type, seq,
+        return (out, index) -> TestingFrameEncoder.record(out, index, epoch, offset, key, type, seq,
                 message == null ? null : ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> fragment(long offset, int key, long seq, String text, int flags) {
         return (out, index) -> {
             ByteBuffer message = ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));
-            int body = FrameEncoder.storeEventBody(out, index + WireFormat.STORE_EVENT_BODY_OFFSET, key,
-                    StoreEventType.STORE_MESSAGE, seq, WireFormat.NO_MESSAGE_TYPE, message, 0, message.remaining(),
-                    (byte) flags);
-            return FrameEncoder.storeEventHeader(out, index, EPOCH, offset, body);
+            int body = FrameEncoder.recordBody(out, index + WireFormat.RECORD_BODY_OFFSET, key,
+                    StoreEventType.STORE_MESSAGE.getCode(), (byte) flags, seq, message, 0, message.remaining());
+            return FrameEncoder.recordHeader(out, index, EPOCH, offset, body);
         };
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> snapshotFragment(long seq, String text, int flags) {
         return (out, index) -> {
             ByteBuffer message = ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII));
-            return FrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq, WireFormat.NO_MESSAGE_TYPE, message, 0,
-                    message.remaining(), (byte) flags);
+            return FrameEncoder.snapshotRecord(out, index, EPOCH, 0, StoreEventType.STORE_MESSAGE.getCode(),
+                    (byte) flags, seq, message, 0, message.remaining());
         };
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> snapshotMessage(long seq, String message) {
-        return (out, index) -> TestingFrameEncoder.snapshotMessage(out, index, EPOCH, 0, seq,
+        return (out, index) -> TestingFrameEncoder.snapshotRecord(out, index, EPOCH, 0, seq,
                 ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
     }
 
@@ -228,8 +227,8 @@ abstract class LeaderConnectionHarness {
     }
 
     void complete() {
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
-                (out, index) -> FrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
+        read((out, index) -> TestingFrameEncoder.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
+                (out, index) -> TestingFrameEncoder.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
         engine.store(MAIN).writes.clear();
     }
 }

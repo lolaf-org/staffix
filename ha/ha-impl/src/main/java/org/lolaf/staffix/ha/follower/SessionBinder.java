@@ -22,7 +22,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 
 import java.util.Optional;
 
@@ -42,22 +42,22 @@ final class SessionBinder {
     ReplicaSession open(FixSessionType fixSessionType, String fixSessionId, ReplicationMode leaderMode,
                         @Nullable String leaderStorageIdentity) {
         if (leaderMode == ReplicationMode.NONE) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, leaderMode, SessionAnswer.NOT_REPLICATED);
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, leaderMode, StreamAnswer.NOT_REPLICATED);
         }
         FixSessionSettings settings = findSettings(fixSessionType, fixSessionId).orElse(null);
         if (settings == null) {
-            return ReplicaSession.refused(fixSessionType, fixSessionId, leaderMode, SessionAnswer.UNKNOWN_SESSION, leaderStorageIdentity);
+            return ReplicaSession.refused(fixSessionType, fixSessionId, leaderMode, StreamAnswer.UNKNOWN_STREAM, leaderStorageIdentity);
         }
         if (settings.getHighAvailability().getReplicationMode() != leaderMode) {
-            return ReplicaSession.refused(fixSessionType, fixSessionId, leaderMode, SessionAnswer.MODE_MISMATCH, leaderStorageIdentity);
+            return ReplicaSession.refused(fixSessionType, fixSessionId, leaderMode, StreamAnswer.MODE_MISMATCH, leaderStorageIdentity);
         }
         FixSessionMessagesStore store = engine.openStore(settings);
         String storageIdentity = store.getStorageIdentity().orElse(null);
         if (storageIdentity == null || leaderStorageIdentity == null) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, leaderMode, SessionAnswer.UNKNOWN_STORAGE);
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, leaderMode, StreamAnswer.UNKNOWN_STORAGE);
         }
         if (storageIdentity.equals(leaderStorageIdentity)) {
-            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, leaderMode, SessionAnswer.SHARED_STORAGE);
+            return ReplicaSession.notReplicated(fixSessionType, fixSessionId, leaderMode, StreamAnswer.SHARED_STORAGE);
         }
         store.start();
         return ReplicaSession.replicated(fixSessionType, fixSessionId, leaderMode, store);
@@ -68,7 +68,7 @@ final class SessionBinder {
      */
     boolean settingsHereNowAgree(ReplicaSession refused) {
         return findSettings(refused.getFixSessionType(), refused.getFixSessionId())
-                .filter(settings -> refused.getNotReplicatedAnswer() == SessionAnswer.UNKNOWN_SESSION
+                .filter(settings -> refused.getNotReplicatedAnswer() == StreamAnswer.UNKNOWN_STREAM
                         || settings.getHighAvailability().getReplicationMode() == refused.getLeaderMode())
                 .isPresent();
     }

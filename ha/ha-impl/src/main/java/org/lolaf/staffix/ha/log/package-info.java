@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /**
- * The replication log: the store events of the replicated sessions, in the order they happened, until the follower
+ * The replication log: the records of the replicated streams, in the order they were appended, until the follower
  * has them.
  */
 package org.lolaf.staffix.ha.log;

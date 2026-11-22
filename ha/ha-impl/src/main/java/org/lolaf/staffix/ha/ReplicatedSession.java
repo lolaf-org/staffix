@@ -36,6 +36,7 @@ public final class ReplicatedSession {
     private final int key;
     private final FixSessionId fixSessionId;
     private final FixSessionType fixSessionType;
+    private final String streamName;
     /**
      * Replaced whole each time the session is built, so a reader on another thread never sees half of an update.
      */
@@ -63,6 +64,7 @@ public final class ReplicatedSession {
         this.key = key;
         this.fixSessionId = fixSessionId;
         this.fixSessionType = fixSessionType;
+        this.streamName = new TypedSessionId(fixSessionType, fixSessionId.toString()).toStreamName();
         this.config = config;
     }
 

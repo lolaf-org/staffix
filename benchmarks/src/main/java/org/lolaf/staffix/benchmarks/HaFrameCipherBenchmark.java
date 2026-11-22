@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.benchmarks;
 
-import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.benchmarks.impl.HaParams;
 import org.lolaf.staffix.ha.EncryptionMode;
@@ -62,7 +61,6 @@ public class HaFrameCipherBenchmark {
     HaParams.MessageSize messageSize;
 
     private final ByteBuffer frames;
-    private final int messageTypeHash;
     private ByteBuffer message;
     private FrameCipher sealer;
     private FrameCipher opener;
@@ -70,7 +68,6 @@ public class HaFrameCipherBenchmark {
 
     public HaFrameCipherBenchmark() {
         this.frames = ByteBuffer.allocateDirect(64 * 1024);
-        this.messageTypeHash = Hashing.hash("S");
         this.sealer = FrameCipher.CLEAR;
         this.opener = FrameCipher.CLEAR;
         this.sequenceNumber = 0;
@@ -99,8 +96,8 @@ public class HaFrameCipherBenchmark {
 
     private int storeEvent() {
         long seq = ++sequenceNumber;
-        int body = FrameEncoder.storeEventBody(frames, WireFormat.STORE_EVENT_BODY_OFFSET, 0, StoreEventType.STORE_MESSAGE,
-                seq, messageTypeHash, message, 0, message.capacity(), (byte) 0);
-        return FrameEncoder.storeEventHeader(frames, 0, 1, seq, body);
+        int body = FrameEncoder.recordBody(frames, WireFormat.RECORD_BODY_OFFSET, 0,
+                StoreEventType.STORE_MESSAGE.getCode(), (byte) 0, seq, message, 0, message.capacity());
+        return FrameEncoder.recordHeader(frames, 0, 1, seq, body);
     }
 }

@@ -26,13 +26,14 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
+import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationFixEngineHa;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.AllocatedBytes;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.tests.TestingClock;
 
@@ -87,9 +88,9 @@ class TestFollowers {
         FollowerConnection connection = new FollowerConnection(ioSession, ha.getReplicationLogs(), ha.getSessions(), () -> EPOCH, "leader-a",
                 Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         }, new TestingClock(), TestingKeyExchanges.CLEAR);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.fillBatch(ByteBuffer.allocate(1 << 16));
-        connection.onSessionAnswer(EPOCH, KEY, SessionAnswer.REPLICATING);
+        connection.onStreamAnswer(EPOCH, KEY, StreamAnswer.REPLICATING);
         connection.onAck(EPOCH, appliedOffset, true, 0);
         followers.add(connection);
         return connection;
@@ -99,7 +100,7 @@ class TestFollowers {
     void withoutAFollowerInSyncTheWaitEndsAtOnceEvenWithoutATimeout() {
         assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
 
-        inSyncFollower(0).onSessionAnswer(EPOCH, KEY, SessionAnswer.SNAPSHOT_NEEDED);
+        inSyncFollower(0).onStreamAnswer(EPOCH, KEY, StreamAnswer.SNAPSHOT_NEEDED);
 
         assertThat(followers.awaitAck(KEY, offset, ReplicationMode.SYNC_APPLIED, NO_TIMEOUT, idle)).isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
     }
@@ -231,9 +232,9 @@ class TestFollowers {
                 () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         }, new TestingClock(), TestingKeyExchanges.CLEAR);
-        connectionOfMain.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connectionOfMain.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connectionOfMain.fillBatch(ByteBuffer.allocate(1 << 16));
-        connectionOfMain.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
+        connectionOfMain.onStreamAnswer(EPOCH, 0, StreamAnswer.REPLICATING);
         connectionOfMain.onAck(EPOCH, twoLanes.getReplicationLogs().get(0).getTailOffset(), true, 0);
         followers.add(connectionOfMain);
 
@@ -250,11 +251,11 @@ class TestFollowers {
         twoLanes.replicatingStore(syncSession("other"), mock(FixSessionMessagesStore.class), new RecordingProbes());
         FollowerConnection laneOfMain = laneConnection(twoLanes, 0);
         FollowerConnection laneOfOther = laneConnection(twoLanes, 1);
-        laneOfMain.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
+        laneOfMain.onStreamAnswer(EPOCH, 0, StreamAnswer.REPLICATING);
 
         assertThat(followers.isAnyFollowerInSync(2, 2)).as("other's lane still catching up").isFalse();
 
-        laneOfOther.onSessionAnswer(EPOCH, 1, SessionAnswer.REPLICATING);
+        laneOfOther.onStreamAnswer(EPOCH, 1, StreamAnswer.REPLICATING);
 
         assertThat(followers.isAnyFollowerInSync(2, 2)).isTrue();
         assertThat(followers.countFollowers(2, FollowerConnection::isConnected)).isEqualTo(1);
@@ -267,7 +268,7 @@ class TestFollowers {
                 () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingClock())), loop -> {
         }, new TestingClock(), TestingKeyExchanges.CLEAR);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower", EPOCH, -1, lane, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower", EPOCH, -1, lane, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.fillBatch(ByteBuffer.allocate(1 << 16));
         followers.add(connection);
         return connection;

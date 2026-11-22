@@ -29,7 +29,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.leader.Followers;
 import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLog;
-import org.lolaf.staffix.ha.log.StoreEventRecord;
+import org.lolaf.staffix.ha.log.LogRecord;
 import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
@@ -43,7 +43,8 @@ import java.util.function.Consumer;
  *
  * <p>Relies on the engine's guarantees: the store it wraps never throws a storage failure, and the writes come from
  * the session's thread one at a time, which is what keeps the log in the order the writes were applied and lets one
- * {@link StoreEventRecord} serve them all.
+ * {@link LogRecord} serve them all. A store event is a record whose content type is its {@link StoreEventType} code,
+ * and whose position is its seqnum.
  */
 @Slf4j
 final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
@@ -53,7 +54,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     private final LogFullWait logFullWait;
     private final ReplicatedSession session;
     private final Followers followers;
-    private final StoreEventRecord storeEventRecord;
+    private final LogRecord logRecord;
     private final IdleStrategy ackIdle;
     private final ReplicatedAhead replicatedAhead;
     private final Timer syncReceivedAckLatency;
@@ -77,7 +78,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         this.logFullWait = logFullWait;
         this.session = session;
         this.followers = followers;
-        this.storeEventRecord = new StoreEventRecord();
+        this.logRecord = new LogRecord();
         this.ackIdle = ackIdle;
         this.replicatedAhead = new ReplicatedAhead();
         this.syncReceivedAckLatency = syncReceivedAckLatency;
@@ -95,7 +96,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (messageType.isStorable() && !store.filter(messageType, message)) {
             append(StoreEventType.STORE_MESSAGE, outgoingSeqNum, messageType.codeHash(), message);
         } else {
-            append(StoreEventType.STORE_OUTGOING_SEQ_NUM, outgoingSeqNum + 1, WireFormat.NO_MESSAGE_TYPE, null);
+            append(StoreEventType.STORE_OUTGOING_SEQ_NUM, outgoingSeqNum + 1, UnencryptedMessageTypes.NO_MESSAGE_TYPE, null);
         }
         replicatedAhead.add(outgoingSeqNum);
     }
@@ -181,7 +182,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     public void resetSequenceNumbers() {
         store.resetSequenceNumbers();
         replicatedAhead.clear();
-        append(StoreEventType.RESET_SEQ_NUM, 0, WireFormat.NO_MESSAGE_TYPE, null);
+        append(StoreEventType.RESET_SEQ_NUM, 0, UnencryptedMessageTypes.NO_MESSAGE_TYPE, null);
     }
 
     @Override
@@ -202,7 +203,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void storeNextIncomingSeqNum(long nextIncomingSeqNum) {
         store.storeNextIncomingSeqNum(nextIncomingSeqNum);
-        append(StoreEventType.STORE_INCOMING_SEQ_NUM, nextIncomingSeqNum, WireFormat.NO_MESSAGE_TYPE, null);
+        append(StoreEventType.STORE_INCOMING_SEQ_NUM, nextIncomingSeqNum, UnencryptedMessageTypes.NO_MESSAGE_TYPE, null);
     }
 
     @Override
@@ -211,7 +212,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (replicatedAhead.remove(nextOutgoingSeqNum - 1)) {
             return;
         }
-        append(StoreEventType.STORE_OUTGOING_SEQ_NUM, nextOutgoingSeqNum, WireFormat.NO_MESSAGE_TYPE, null);
+        append(StoreEventType.STORE_OUTGOING_SEQ_NUM, nextOutgoingSeqNum, UnencryptedMessageTypes.NO_MESSAGE_TYPE, null);
     }
 
     /**
@@ -227,7 +228,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      */
     @Override
     public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
-        storeMessageSent(outgoingSeqNum, WireFormat.NO_MESSAGE_TYPE, message);
+        storeMessageSent(outgoingSeqNum, UnencryptedMessageTypes.NO_MESSAGE_TYPE, message);
     }
 
     private void storeMessageSent(long outgoingSeqNum, int messageTypeHash, ByteBuffer message) {
@@ -253,8 +254,8 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      */
     private void append(StoreEventType eventType, long sequenceNumber, int messageTypeHash, @Nullable ByteBuffer message) {
         try {
-            lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber,
-                    messageTypeHash, message), logFullWait);
+            lastAppendedOffset = replicationLog.append(logRecord.set(session.getKey(), eventType.getCode(),
+                    flags(eventType, messageTypeHash), sequenceNumber, message), logFullWait);
             followers.wakeSenders();
         } catch (IllegalArgumentException e) {
             session.recordUnreplicatedEvent();
@@ -262,6 +263,13 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
                             + "replicate messages this long", session.getFixSessionType(), session.getFixSessionId(), eventType,
                     sequenceNumber, e.getMessage());
         }
+    }
+
+    private byte flags(StoreEventType eventType, int messageTypeHash) {
+        if (eventType == StoreEventType.RESET_SEQ_NUM) {
+            return WireFormat.RESET;
+        }
+        return session.getConfig().getUnencryptedMessageTypes().isUnencrypted(messageTypeHash) ? WireFormat.PLAINTEXT : 0;
     }
 
     /**

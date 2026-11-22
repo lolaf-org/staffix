@@ -21,7 +21,7 @@ import java.nio.ByteBuffer;
  * Seals the frames of one direction of a connection, or opens them, in place. Sealing a frame appends a
  * {@link WireFormat#TAG_BYTES} tag, counted in its length, over every byte of it and its place in the direction's
  * frames, so a frame altered, replayed, dropped or reordered fails it; it also encrypts the variable part, unless the
- * message is flagged {@link WireFormat#UNENCRYPTED_MESSAGE}. Opening verifies the tag and decrypts.
+ * message is flagged {@link WireFormat#PLAINTEXT}. Opening verifies the tag and decrypts.
  *
  * <p>One thread at a time, in the order the frames are sent: each instance counts the frames it sealed or opened.
  */

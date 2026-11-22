@@ -19,10 +19,10 @@ import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The follower's answer to a {@link FrameType#SESSION}: whether it replicates the session, and why not.
+ * The follower's answer to a {@link FrameType#STREAM}: whether it replicates the session, and why not.
  */
 @Getter
-public enum SessionAnswer {
+public enum StreamAnswer {
 
     REPLICATING(0),
     /**
@@ -37,7 +37,7 @@ public enum SessionAnswer {
     /**
      * The follower has no settings for this session.
      */
-    UNKNOWN_SESSION(3),
+    UNKNOWN_STREAM(3),
     /**
      * The follower replicates the session but misses part of its history: it needs a snapshot to be in sync.
      */
@@ -53,7 +53,7 @@ public enum SessionAnswer {
 
     private final int code;
 
-    SessionAnswer(int code) {
+    StreamAnswer(int code) {
         this.code = code;
     }
 
@@ -61,13 +61,13 @@ public enum SessionAnswer {
      * The follower would replicate the session but cannot: a problem to fix, unlike an answer the leader expects.
      */
     public boolean isRefusal() {
-        return this == SHARED_STORAGE || this == UNKNOWN_STORAGE || this == UNKNOWN_SESSION || this == MODE_MISMATCH;
+        return this == SHARED_STORAGE || this == UNKNOWN_STORAGE || this == UNKNOWN_STREAM || this == MODE_MISMATCH;
     }
 
     /**
      * @return the answer, or null for an unknown code
      */
-    public static @Nullable SessionAnswer forCode(int code) {
+    public static @Nullable StreamAnswer forCode(int code) {
         switch (code) {
             case 0:
                 return REPLICATING;
@@ -76,7 +76,7 @@ public enum SessionAnswer {
             case 2:
                 return UNKNOWN_STORAGE;
             case 3:
-                return UNKNOWN_SESSION;
+                return UNKNOWN_STREAM;
             case 4:
                 return SNAPSHOT_NEEDED;
             case 5:

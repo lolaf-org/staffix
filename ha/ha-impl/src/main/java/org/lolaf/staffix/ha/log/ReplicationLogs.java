@@ -17,7 +17,7 @@ package org.lolaf.staffix.ha.log;
 
 /**
  * The leader's replication lanes, each with its own log, so a snapshot or a slow follower on one lane holds back only
- * the sessions of that lane. A session belongs to lane {@code key % count}, keys being given out in registration
+ * the streams of that lane. A stream belongs to lane {@code key % count}, keys being given out in registration
  * order.
  */
 public final class ReplicationLogs {
@@ -45,19 +45,19 @@ public final class ReplicationLogs {
         return logs[lane];
     }
 
-    public int laneOf(int sessionKey) {
-        return sessionKey % logs.length;
+    public int laneOf(int streamKey) {
+        return streamKey % logs.length;
     }
 
-    public ReplicationLog forSession(int sessionKey) {
-        return logs[laneOf(sessionKey)];
+    public ReplicationLog forStream(int streamKey) {
+        return logs[laneOf(streamKey)];
     }
 
     /**
      * The same for every lane, whose logs all have one capacity.
      */
-    public int getMaxEventFrameBytes() {
-        return logs[0].getMaxEventFrameBytes();
+    public int getMaxRecordFrameBytes() {
+        return logs[0].getMaxRecordFrameBytes();
     }
 
     /**

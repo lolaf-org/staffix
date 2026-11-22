@@ -18,15 +18,12 @@ package org.lolaf.staffix.ha.wire;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.api.session.FixSession.FixSessionType;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
-import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 
 import java.nio.ByteBuffer;
 
 /**
- * Receives decoded frames as primitives, so the frequent ones allocate nothing. A message is handed over as a range
- * of the receive buffer, valid only for the duration of the call.
+ * Receives decoded frames as primitives, so the frequent ones allocate nothing. A payload or a state is handed over
+ * as a range of the receive buffer, valid only for the duration of the call.
  *
  * <p>Every method gets the sender's epoch: fencing a deposed leader applies to every frame alike. A frame the handler
  * does not take, one of the other direction's, is refused: by default every method throws {@link WireFormatException}.
@@ -40,22 +37,25 @@ public interface FrameHandler {
      *                          leader resumes after it when its log still holds it in the same epoch
      * @param lane              which of the leader's lanes this connection carries, 0 for the first, the one that
      *                          learns how many there are
+     * @param applicationId     what the follower replicates, which must be the leader's: two applications' streams
+     *                          do not mix
      * @param encryptionMode    the follower's, which with the leader's decides whether the connection encrypts
      * @param nonce             the follower's random part of this connection's keys, zeros when it does not encrypt
      */
-    default void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
-                         EncryptionMode encryptionMode, byte[] nonce) {
+    default void onHello(long epoch, int version, int applicationId, String nodeId, long lastAppliedEpoch,
+                         long lastAppliedOffset, int lane, EncryptionMode encryptionMode, byte[] nonce) {
         throw unexpected(FrameType.HELLO);
     }
 
     /**
-     * @param resumeOffset where the stream resumes, or {@link WireFormat#NO_RESUME} when every session is caught up
+     * @param resumeOffset where the stream resumes, or {@link WireFormat#NO_RESUME} when every stream is caught up
      *                     by snapshot
-     * @param lanes        how many lanes the leader splits its sessions over; the follower opens the others
+     * @param lanes        how many lanes the leader splits its streams over; the follower opens the others
+     * @param applicationId  the leader's, as in {@link #onHello}
      * @param encryptionMode the leader's, as in {@link #onHello}
      * @param nonce          the leader's, as in {@link #onHello}
      */
-    default void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes,
+    default void onWelcome(long epoch, int version, int applicationId, String leaderId, long resumeOffset, int lanes,
                            EncryptionMode encryptionMode, byte[] nonce) {
         throw unexpected(FrameType.WELCOME);
     }
@@ -69,13 +69,13 @@ public interface FrameHandler {
     }
 
     /**
-     * Binds a session key, used by every later frame about the session, to the session's id.
+     * Binds a stream key, used by every later frame about the stream, to the stream's name.
      *
-     * @param fixSessionId the id's {@link org.lolaf.staffix.api.session.FixSessionId#toString() full form}
+     * @param streamName the application's name for the stream, which the follower finds its own copy by
      */
-    default void onSession(long epoch, int sessionKey, FixSessionType fixSessionType, ReplicationMode replicationMode,
-                   String fixSessionId, @Nullable String storageIdentity) {
-        throw unexpected(FrameType.SESSION);
+    default void onStream(long epoch, int streamKey, StreamReplicationMode replicationMode, String streamName,
+                          @Nullable String storageIdentity) {
+        throw unexpected(FrameType.STREAM);
     }
 
     /**
@@ -90,62 +90,66 @@ public interface FrameHandler {
     }
 
     /**
-     * Every session the leader replicated when the stream started has been announced: until then, the follower cannot
-     * tell a session it lacks from one not announced yet.
+     * Every stream the leader replicated when the connection started has been announced: until then, the follower
+     * cannot tell a stream it lacks from one not announced yet.
      */
-    default void onSessionsAnnounced(long epoch, int announcedCount) {
-        throw unexpected(FrameType.SESSIONS_ANNOUNCED);
+    default void onStreamsAnnounced(long epoch, int announcedCount) {
+        throw unexpected(FrameType.STREAMS_ANNOUNCED);
     }
 
     /**
-     * The follower's answer to a {@code SESSION}, and again whenever the session's state on the follower changes, as
+     * The follower's answer to a {@code STREAM}, and again whenever the stream's state on the follower changes, as
      * when a snapshot completes it.
      */
-    default void onSessionAnswer(long epoch, int sessionKey, SessionAnswer answer) {
-        throw unexpected(FrameType.SESSION_ANSWER);
+    default void onStreamAnswer(long epoch, int streamKey, StreamAnswer answer) {
+        throw unexpected(FrameType.STREAM_ANSWER);
     }
 
     /**
-     * @param logOffset     the event's position in the leader's replication log
-     * @param fragmentFlags {@link WireFormat#MORE_FRAGMENTS} and {@link WireFormat#CONTINUED_FRAGMENT}, zero for a
-     *                      whole event
+     * @param logOffset   the record's position in the leader's replication log
+     * @param contentType the application's, telling what the payload holds
+     * @param flags       {@link WireFormat#MORE_FRAGMENTS}, {@link WireFormat#CONTINUED_FRAGMENT} and
+     *                    {@link WireFormat#RESET}; zero for a whole record
+     * @param position    the record's place in its stream, increasing between two resets
      */
-    default void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                      ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
-        throw unexpected(FrameType.STORE_EVENT);
+    default void onRecord(long epoch, long logOffset, int streamKey, byte contentType, byte flags, long position,
+                          ByteBuffer buffer, int payloadIndex, int payloadLength) {
+        throw unexpected(FrameType.RECORD);
     }
 
     /**
-     * @param snapshotOffset the log offset the snapshot starts at; the session's events after it come through the snapshot
-     *                  until its end, and through the stream again after that
+     * @param snapshotOffset the log offset the snapshot starts at; the stream's records after it come through the
+     *                       snapshot until its end, and through the log again after that
+     * @param stateIndex     where the stream's state starts in {@code buffer}, the application's to resume from
      */
-    default void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+    default void onSnapshotBegin(long epoch, int streamKey, long snapshotOffset, ByteBuffer buffer, int stateIndex,
+                                 int stateLength) {
         throw unexpected(FrameType.SNAPSHOT_BEGIN);
     }
 
     /**
-     * @param fragmentFlags as for {@link #onStoreEvent}, from the frame's header: a snapshot carries a message longer
-     *                      than a frame as consecutive fragments
+     * As {@link #onRecord}: a snapshot carries a payload longer than a frame as consecutive fragments too.
      */
-    default void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                           int messageLength, byte fragmentFlags) {
-        throw unexpected(FrameType.SNAPSHOT_MESSAGE);
+    default void onSnapshotRecord(long epoch, int streamKey, byte contentType, byte flags, long position,
+                                  ByteBuffer buffer, int payloadIndex, int payloadLength) {
+        throw unexpected(FrameType.SNAPSHOT_RECORD);
     }
 
     /**
-     * @param messageCount       the messages the snapshot carried, a fragmented one counted once: the follower checks
-     *                           it received them all
-     * @param nextIncomingSeqNum the session's seqnums when the snapshot caught up with its store, which supersede the
-     *                           ones of {@link #onSnapshotBegin}
+     * @param recordCount the records the snapshot carried, a fragmented one counted once: the follower checks it
+     *                    received them all
+     * @param stateIndex  as for {@link #onSnapshotBegin}: the stream's state when the snapshot caught up with it,
+     *                    which supersedes the one it began with
      */
-    default void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
+    default void onSnapshotEnd(long epoch, int streamKey, int recordCount, ByteBuffer buffer, int stateIndex,
+                               int stateLength) {
         throw unexpected(FrameType.SNAPSHOT_END);
     }
 
     /**
      * @param appliedOffset the offset of the last event the follower applied, which releases the {@code SYNC} sends
      *                      waiting for it
-     * @param inSync        whether the follower holds every session the leader replicates
+     * @param inSync        whether the follower holds every stream the leader replicates
      * @param pendingWrites what the follower's stores for this lane have yet to store, as of the last second or so
      */
     default void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites) {

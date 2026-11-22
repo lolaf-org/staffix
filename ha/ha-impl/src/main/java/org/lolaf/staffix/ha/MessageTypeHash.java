@@ -13,12 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.leader;
+package org.lolaf.staffix.ha;
 
 import lombok.experimental.UtilityClass;
 import org.lolaf.staffix.api.fields.CoreFields;
 import org.lolaf.staffix.api.serde.Hashing;
-import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 
@@ -27,16 +26,16 @@ import java.nio.ByteBuffer;
  * every FIX message, so the scan stops within its first few bytes.
  */
 @UtilityClass
-class MessageTypeHash {
+public class MessageTypeHash {
 
     private static final byte EQUALS = '=';
     private static final byte THREE = '3';
     private static final byte FIVE = '5';
 
     /**
-     * @return {@link WireFormat#NO_MESSAGE_TYPE} for bytes holding no MsgType(35)
+     * @return {@link UnencryptedMessageTypes#NO_MESSAGE_TYPE} for bytes holding no MsgType(35)
      */
-    static int of(ByteBuffer message, int start, int length) {
+    public static int of(ByteBuffer message, int start, int length) {
         int end = start + length;
         for (int i = start; i + 3 < end; i++) {
             if (message.get(i) == CoreFields.FIELD_SEPARATOR_BYTE
@@ -49,6 +48,6 @@ class MessageTypeHash {
                 return Hashing.hash(message, valueStart, valueEnd - valueStart);
             }
         }
-        return WireFormat.NO_MESSAGE_TYPE;
+        return UnencryptedMessageTypes.NO_MESSAGE_TYPE;
     }
 }

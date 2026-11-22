@@ -21,7 +21,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 
 /**
  * A session by type and id, as one id may be configured as an initiator and as an acceptor. The id is its text, as the
- * replication stream carries it.
+ * replication carries it in the session's stream name.
  */
 @Value
 public class TypedSessionId {
@@ -31,5 +31,23 @@ public class TypedSessionId {
 
     public static TypedSessionId of(FixSessionSettings settings) {
         return new TypedSessionId(settings.getFixSessionType(), settings.getFixSessionId().toString());
+    }
+
+    /**
+     * @throws IllegalArgumentException for a name {@link #toStreamName()} did not make
+     */
+    public static TypedSessionId ofStreamName(String streamName) {
+        int space = streamName.indexOf(' ');
+        if (space < 0) {
+            throw new IllegalArgumentException("Not a FIX session stream: " + streamName);
+        }
+        return new TypedSessionId(FixSessionType.valueOf(streamName.substring(0, space)), streamName.substring(space + 1));
+    }
+
+    /**
+     * The type first, since an id may hold a space.
+     */
+    public String toStreamName() {
+        return fixSessionType.name() + ' ' + fixSessionId;
     }
 }

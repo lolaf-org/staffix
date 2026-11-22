@@ -28,7 +28,7 @@ import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.ha.follower.ReplicationClient;
 import org.lolaf.staffix.ha.leader.FollowerConnection;
 import org.lolaf.staffix.ha.leader.Followers;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -241,10 +241,10 @@ class HaProbes {
             List<FollowerConnection> connections = followers.connections();
             for (int i = 0; i < connections.size(); i++) {
                 FollowerConnection connection = connections.get(i);
-                SessionAnswer answer = connection.getSessionAnswer(session.getKey());
+                StreamAnswer answer = connection.getStreamAnswer(session.getKey());
                 if (answer != null && answer.isRefusal()) {
                     problems = add(problems,
-                            "follower " + connection.getFollowerId() + " refuses to replicate it: " + answer);
+                            "follower " + connection.getFollowerId() + " refuses to replicate it: " + NotReplicatedReason.of(answer));
                 }
             }
             long now = nanoClock.getAsLong();

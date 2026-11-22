@@ -37,7 +37,7 @@ abstract class SealingFrameCipher implements FrameCipher {
      * unencrypted message.
      */
     private static int clearBytes(ByteBuffer frames, int frameIndex, FrameType type, int contentLength) {
-        return FrameDecoder.isUnencryptedMessage(frames, frameIndex, type)
+        return FrameDecoder.isPlaintext(frames, frameIndex, type)
                 ? contentLength : WireFormat.HEADER_BYTES + type.getFixedPayloadBytes();
     }
 

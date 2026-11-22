@@ -15,10 +15,10 @@
  */
 package org.lolaf.staffix.ha.wire;
 
-import org.lolaf.staffix.api.session.FixSession.FixSessionType;
-import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.EncryptionMode;
+import org.lolaf.staffix.ha.ReplicatedSessions;
+import org.lolaf.staffix.ha.TypedSessionId;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -52,19 +52,27 @@ public class RecordingHandler implements FrameHandler {
     public byte[] lastKeyConfirmation;
 
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
-                        EncryptionMode encryptionMode, byte[] nonce) {
+    public void onHello(long epoch, int version, int applicationId, String nodeId, long lastAppliedEpoch,
+                        long lastAppliedOffset, int lane, EncryptionMode encryptionMode, byte[] nonce) {
         lastNonce = nonce;
-        frames.add("HELLO epoch=" + epoch + " version=" + version + " node=" + nodeId + " lastEpoch=" + lastAppliedEpoch
-                + " lastOffset=" + lastAppliedOffset + " lane=" + lane + encryption(encryptionMode, nonce));
+        frames.add("HELLO epoch=" + epoch + " version=" + version + application(applicationId) + " node=" + nodeId
+                + " lastEpoch=" + lastAppliedEpoch + " lastOffset=" + lastAppliedOffset + " lane=" + lane
+                + encryption(encryptionMode, nonce));
     }
 
     @Override
-    public void onWelcome(long epoch, int version, String leaderId, long resumeOffset, int lanes,
+    public void onWelcome(long epoch, int version, int applicationId, String leaderId, long resumeOffset, int lanes,
                           EncryptionMode encryptionMode, byte[] nonce) {
         lastNonce = nonce;
-        frames.add("WELCOME epoch=" + epoch + " version=" + version + " leader=" + leaderId + " resume=" + resumeOffset
-                + " lanes=" + lanes + encryption(encryptionMode, nonce));
+        frames.add("WELCOME epoch=" + epoch + " version=" + version + application(applicationId) + " leader=" + leaderId
+                + " resume=" + resumeOffset + " lanes=" + lanes + encryption(encryptionMode, nonce));
+    }
+
+    /**
+     * Nothing for FIX sessions, so the frames of the tests replicating them read as they always did.
+     */
+    private static String application(int applicationId) {
+        return applicationId == ReplicatedSessions.APPLICATION_ID ? "" : " application=" + Integer.toHexString(applicationId);
     }
 
     @Override
@@ -83,11 +91,15 @@ public class RecordingHandler implements FrameHandler {
         return " encryption=" + encryptionMode + " nonce=" + (Arrays.equals(nonce, new byte[nonce.length]) ? "zeros" : "random");
     }
 
+    /**
+     * A FIX session's stream, as its type and id.
+     */
     @Override
-    public void onSession(long epoch, int sessionKey, FixSessionType fixSessionType, ReplicationMode replicationMode,
-                          String fixSessionId, String storageIdentity) {
-        frames.add("SESSION epoch=" + epoch + " key=" + sessionKey + " " + fixSessionType + " " + replicationMode
-                + " id=" + fixSessionId + " identity=" + storageIdentity);
+    public void onStream(long epoch, int streamKey, StreamReplicationMode replicationMode, String streamName,
+                         String storageIdentity) {
+        TypedSessionId session = TypedSessionId.ofStreamName(streamName);
+        frames.add("STREAM epoch=" + epoch + " key=" + streamKey + " " + session.getFixSessionType() + " " + replicationMode
+                + " id=" + session.getFixSessionId() + " identity=" + storageIdentity);
     }
 
     @Override
@@ -102,43 +114,62 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSessionsAnnounced(long epoch, int announcedCount) {
-        frames.add("SESSIONS_ANNOUNCED epoch=" + epoch + " count=" + announcedCount);
+    public void onStreamsAnnounced(long epoch, int announcedCount) {
+        frames.add("STREAMS_ANNOUNCED epoch=" + epoch + " count=" + announcedCount);
     }
 
     @Override
-    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer answer) {
-        frames.add("SESSION_ANSWER epoch=" + epoch + " key=" + sessionKey + " " + answer);
+    public void onStreamAnswer(long epoch, int streamKey, StreamAnswer answer) {
+        frames.add("STREAM_ANSWER epoch=" + epoch + " key=" + streamKey + " " + answer);
+    }
+
+    /**
+     * A FIX store event, as its type and seqnum.
+     */
+    @Override
+    public void onRecord(long epoch, long logOffset, int streamKey, byte contentType, byte flags, long position,
+                         ByteBuffer buffer, int payloadIndex, int payloadLength) {
+        frames.add("RECORD epoch=" + epoch + " offset=" + logOffset + " key=" + streamKey + " "
+                + StoreEventType.from(contentType) + " seq=" + position + " message="
+                + text(buffer, payloadIndex, payloadLength) + flags(flags));
+    }
+
+    /**
+     * A FIX session's state, as its next seqnums.
+     */
+    @Override
+    public void onSnapshotBegin(long epoch, int streamKey, long snapshotOffset, ByteBuffer buffer, int stateIndex,
+                                int stateLength) {
+        frames.add("SNAPSHOT_BEGIN epoch=" + epoch + " key=" + streamKey + " snapshotOffset=" + snapshotOffset
+                + state(buffer, stateIndex, stateLength));
     }
 
     @Override
-    public void onStoreEvent(long epoch, long logOffset, int sessionKey, StoreEventType eventType, long sequenceNumber,
-                             ByteBuffer buffer, int messageIndex, int messageLength, byte fragmentFlags) {
-        frames.add("STORE_EVENT epoch=" + epoch + " offset=" + logOffset + " key=" + sessionKey + " " + eventType
-                + " seq=" + sequenceNumber + " message=" + text(buffer, messageIndex, messageLength)
-                + ((fragmentFlags & WireFormat.CONTINUED_FRAGMENT) != 0 ? " continued" : "")
-                + ((fragmentFlags & WireFormat.MORE_FRAGMENTS) != 0 ? " more" : ""));
+    public void onSnapshotRecord(long epoch, int streamKey, byte contentType, byte flags, long position,
+                                 ByteBuffer buffer, int payloadIndex, int payloadLength) {
+        String type = contentType == StoreEventType.STORE_MESSAGE.getCode() ? "" : " " + StoreEventType.from(contentType);
+        frames.add("SNAPSHOT_RECORD epoch=" + epoch + " key=" + streamKey + type + " seq=" + position + " message="
+                + text(buffer, payloadIndex, payloadLength) + flags(flags));
     }
 
     @Override
-    public void onSnapshotBegin(long epoch, int sessionKey, long snapshotOffset, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        frames.add("SNAPSHOT_BEGIN epoch=" + epoch + " key=" + sessionKey + " snapshotOffset=" + snapshotOffset + " nextIn=" + nextIncomingSeqNum
-                + " nextOut=" + nextOutgoingSeqNum);
+    public void onSnapshotEnd(long epoch, int streamKey, int recordCount, ByteBuffer buffer, int stateIndex,
+                              int stateLength) {
+        frames.add("SNAPSHOT_END epoch=" + epoch + " key=" + streamKey + " count=" + recordCount
+                + state(buffer, stateIndex, stateLength));
     }
 
-    @Override
-    public void onSnapshotMessage(long epoch, int sessionKey, long sequenceNumber, ByteBuffer buffer, int messageIndex,
-                                  int messageLength, byte fragmentFlags) {
-        frames.add("SNAPSHOT_MESSAGE epoch=" + epoch + " key=" + sessionKey + " seq=" + sequenceNumber + " message="
-                + text(buffer, messageIndex, messageLength)
-                + ((fragmentFlags & WireFormat.CONTINUED_FRAGMENT) != 0 ? " continued" : "")
-                + ((fragmentFlags & WireFormat.MORE_FRAGMENTS) != 0 ? " more" : ""));
+    private static String flags(byte flags) {
+        return ((flags & WireFormat.CONTINUED_FRAGMENT) != 0 ? " continued" : "")
+                + ((flags & WireFormat.MORE_FRAGMENTS) != 0 ? " more" : "")
+                + ((flags & WireFormat.RESET) != 0 ? " reset" : "");
     }
 
-    @Override
-    public void onSnapshotEnd(long epoch, int sessionKey, int messageCount, long nextIncomingSeqNum, long nextOutgoingSeqNum) {
-        frames.add("SNAPSHOT_END epoch=" + epoch + " key=" + sessionKey + " count=" + messageCount + " nextIn="
-                + nextIncomingSeqNum + " nextOut=" + nextOutgoingSeqNum);
+    private static String state(ByteBuffer buffer, int index, int length) {
+        if (length != 2 * Long.BYTES) {
+            return " state=" + length + " bytes";
+        }
+        return " nextIn=" + buffer.getLong(index) + " nextOut=" + buffer.getLong(index + Long.BYTES);
     }
 
     @Override

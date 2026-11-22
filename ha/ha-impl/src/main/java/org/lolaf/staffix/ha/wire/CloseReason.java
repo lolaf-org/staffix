@@ -65,11 +65,15 @@ public enum CloseReason {
      */
     ENCRYPTION_REQUIRED(11),
     /**
+     * The peers replicate different applications' streams.
+     */
+    APPLICATION_MISMATCH(12),
+    /**
      * Any other code, from a newer peer; kept rather than refused so the close is still reported.
      */
     UNKNOWN(0xFFFF);
 
-    private static final CloseReason[] BY_CODE = new CloseReason[ENCRYPTION_REQUIRED.code + 1];
+    private static final CloseReason[] BY_CODE = new CloseReason[APPLICATION_MISMATCH.code + 1];
 
     static {
         for (CloseReason reason : values()) {

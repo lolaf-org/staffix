@@ -17,15 +17,17 @@ package org.lolaf.staffix.ha.leader;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
-import org.lolaf.staffix.api.serde.Hashing;
+import org.lolaf.staffix.api.session.FixSessionSettings;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreException;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
+import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.tests.TestingClock;
 import org.mockito.ArgumentCaptor;
@@ -58,11 +60,11 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         replicated("main").storeNextIncomingSeqNum(5);
         replicated("shared").storeNextIncomingSeqNum(6);
         replicated("refused").storeNextIncomingSeqNum(7);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.REPLICATING);
-        connection.onSessionAnswer(EPOCH, 1, SessionAnswer.SHARED_STORAGE);
-        connection.onSessionAnswer(EPOCH, 2, SessionAnswer.UNKNOWN_SESSION);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.REPLICATING);
+        connection.onStreamAnswer(EPOCH, 1, StreamAnswer.SHARED_STORAGE);
+        connection.onStreamAnswer(EPOCH, 2, StreamAnswer.UNKNOWN_STREAM);
 
         for (int key = 0; key < 3; key++) {
             connection.resync(key);
@@ -89,19 +91,21 @@ class TestSnapshotSender extends FollowerConnectionHarness {
             consumer.onMessage(12, ByteBuffer.wrap("twelve".getBytes(StandardCharsets.US_ASCII)));
             return null;
         }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
-        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        ha.replicatingStore(settings("main").toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(ReplicationMode.SYNC_APPLIED).unencryptedMessageTypes(List.of("S")).build()).build(),
+                local, new RecordingProbes()).storeNextIncomingSeqNum(20);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         snapshot();
 
         long snapshotOffset = ha.getReplicationLogs().get(0).getTailOffset();
         assertThat(sent.frames).containsExactly(
                 "SNAPSHOT_BEGIN epoch=7 key=0 snapshotOffset=" + snapshotOffset + " nextIn=21 nextOut=13",
-                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=11 message=eleven",
-                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=twelve",
+                "SNAPSHOT_RECORD epoch=7 key=0 seq=11 message=eleven",
+                "SNAPSHOT_RECORD epoch=7 key=0 seq=12 message=twelve",
                 "SNAPSHOT_END epoch=7 key=0 count=2 nextIn=21 nextOut=13");
         verify(local).find(eq(1L), eq(12L), any(StoreMessagesConsumer.class));
         assertThat(connection.getSyncState(0)).isEqualTo(SessionSyncState.SNAPSHOT_SENT);
@@ -110,8 +114,8 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     }
 
     @Test
-    void aSnapshotMessageCarriesTheHashOfTheMsgTypeInItsBytesOnEveryFragment() {
-        int fragment = ha.getReplicationLogs().get(0).getMaxEventFrameBytes() - FrameEncoder.snapshotMessageBytes(0);
+    void aSnapshotMessageOfAnUnencryptedTypeIsFlaggedPlaintextOnEveryFragment() {
+        int fragment = ha.getReplicationLogs().get(0).getMaxRecordFrameBytes() - FrameEncoder.snapshotRecordBytes(0);
         String quote = "8=FIX.4.4\u00019=5\u000135=S\u0001" + "x".repeat(2 * fragment) + "\u000110=000\u0001";
         FixSessionMessagesStore local = startedStore();
         when(local.getIncomingSeqNum()).thenReturn(21L);
@@ -122,26 +126,26 @@ class TestSnapshotSender extends FollowerConnectionHarness {
             consumer.onMessage(12, ByteBuffer.wrap("no type".getBytes(StandardCharsets.US_ASCII)));
             return null;
         }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
-        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        ha.replicatingStore(settings("main").toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(ReplicationMode.SYNC_APPLIED).unencryptedMessageTypes(List.of("S")).build()).build(),
+                local, new RecordingProbes()).storeNextIncomingSeqNum(20);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
-        sentTypeHashes.clear();
+        sentPlaintext.clear();
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         snapshot();
 
-        assertThat(sentTypeHashes).as("three fragments, then the untyped message").hasSize(4);
-        assertThat(sentTypeHashes.subList(0, 3)).containsOnly(Hashing.hash("S"));
-        assertThat(sentTypeHashes).last().isEqualTo(WireFormat.NO_MESSAGE_TYPE);
+        assertThat(sentPlaintext).as("three fragments, then the untyped message").containsExactly(true, true, true, false);
     }
 
     @Test
     void aSnapshotGoesInChunksBetweenTheBatchesOfTheOtherSessionsAndSkipsItsOwnEvents() {
         FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
         FixSessionMessagesStore other = replicated("other");
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         sent.frames.clear();
 
         connection.startPendingSnapshot();
@@ -170,16 +174,16 @@ class TestSnapshotSender extends FollowerConnectionHarness {
                 Duration.ofMillis(100), Duration.ZERO, 4, chunkBytes, new BackoffIdleStrategy(), stats, loop -> {
         }, new TestingClock(), TestingKeyExchanges.CLEAR);
         ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         connection.startPendingSnapshot();
         connection.sendSnapshotChunk();
         sent.frames.clear();
 
         connection.sendSnapshotChunk();
 
-        int messageFrameBytes = FrameEncoder.snapshotMessageBytes(MESSAGE_BYTES);
+        int messageFrameBytes = FrameEncoder.snapshotRecordBytes(MESSAGE_BYTES);
         assertThat(snapshotSeqNums()).hasSize(chunkBytes / messageFrameBytes);
         snapshot();
         assertThat(sent.frames).last().isEqualTo("SNAPSHOT_END epoch=7 key=0 count=1000 nextIn=21 nextOut=1001");
@@ -192,9 +196,9 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         }, new TestingClock(), TestingKeyExchanges.CLEAR);
         FixSessionMessagesStore store = storeHolding(1_001L);
         ha.replicatingStore(settings("main"), store, new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
 
         snapshot();
 
@@ -212,9 +216,9 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     @Test
     void aSnapshotEndsWithTheRoundThatCaughtUpWithTheSessionWrites() {
         ha.replicatingStore(settings("main"), storeHolding(1_001L, 1_011L), new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         sent.frames.clear();
 
         snapshot();
@@ -226,9 +230,9 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     @Test
     void aSnapshotNotCatchingUpSendsItsLastRoundWhole() {
         ha.replicatingStore(settings("main"), storeHolding(1_001L, 3_001L), new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         connection.startPendingSnapshot();
         while (snapshotSeqNums().size() < 1_000) {
             connection.sendSnapshotChunk();
@@ -246,9 +250,9 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     @Test
     void aResetOfTheSessionEndsItsSnapshotAndIsSentAfterItsEnd() {
         FixSessionMessagesStore main = ha.replicatingStore(settings("main"), storeHolding(1_001L), new RecordingProbes());
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         connection.startPendingSnapshot();
         connection.sendSnapshotChunk();
         sent.frames.clear();
@@ -266,7 +270,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
 
     @Test
     void aSnapshotCarriesAMessageLongerThanAFrameInFragmentsAndCountsItOnce() {
-        int fragment = ha.getReplicationLogs().get(0).getMaxEventFrameBytes() - FrameEncoder.snapshotMessageBytes(0);
+        int fragment = ha.getReplicationLogs().get(0).getMaxRecordFrameBytes() - FrameEncoder.snapshotRecordBytes(0);
         String x = "x".repeat(fragment);
         String y = "y".repeat(fragment);
         FixSessionMessagesStore local = startedStore();
@@ -277,18 +281,20 @@ class TestSnapshotSender extends FollowerConnectionHarness {
             consumer.onMessage(12, ByteBuffer.wrap((x + y + "zzz").getBytes(StandardCharsets.US_ASCII)));
             return null;
         }).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
-        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        ha.replicatingStore(settings("main").toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(ReplicationMode.SYNC_APPLIED).unencryptedMessageTypes(List.of("S")).build()).build(),
+                local, new RecordingProbes()).storeNextIncomingSeqNum(20);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         snapshot();
 
         assertThat(sent.frames).filteredOn(frame -> !frame.startsWith("SNAPSHOT_BEGIN")).containsExactly(
-                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=" + x + " more",
-                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=" + y + " continued more",
-                "SNAPSHOT_MESSAGE epoch=7 key=0 seq=12 message=zzz continued",
+                "SNAPSHOT_RECORD epoch=7 key=0 seq=12 message=" + x + " more",
+                "SNAPSHOT_RECORD epoch=7 key=0 seq=12 message=" + y + " continued more",
+                "SNAPSHOT_RECORD epoch=7 key=0 seq=12 message=zzz continued",
                 "SNAPSHOT_END epoch=7 key=0 count=1 nextIn=21 nextOut=13");
     }
 
@@ -296,11 +302,13 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     void aSnapshotCopiesEveryMessageTheStoreKeeps() {
         FixSessionMessagesStore local = startedStore();
         when(local.getOutgoingSeqNum()).thenReturn(1_001L);
-        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        ha.replicatingStore(settings("main").toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(ReplicationMode.SYNC_APPLIED).unencryptedMessageTypes(List.of("S")).build()).build(),
+                local, new RecordingProbes()).storeNextIncomingSeqNum(20);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         snapshot();
 
         ArgumentCaptor<Long> starts = ArgumentCaptor.forClass(Long.class);
@@ -316,11 +324,13 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     void aSessionWhoseStoreIsNotStartedYetIsSnapshotOnceItIs() {
         FixSessionMessagesStore local = mock(FixSessionMessagesStore.class);
         when(local.getOutgoingSeqNum()).thenReturn(5L);
-        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        ha.replicatingStore(settings("main").toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(ReplicationMode.SYNC_APPLIED).unencryptedMessageTypes(List.of("S")).build()).build(),
+                local, new RecordingProbes()).storeNextIncomingSeqNum(20);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
 
         snapshot();
 
@@ -342,12 +352,14 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         FixSessionMessagesStore local = startedStore();
         when(local.getOutgoingSeqNum()).thenReturn(5L);
         doThrow(new StoreException("storage down")).when(local).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
-        ha.replicatingStore(settings("main"), local, new RecordingProbes()).storeNextIncomingSeqNum(20);
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        ha.replicatingStore(settings("main").toBuilder().highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(ReplicationMode.SYNC_APPLIED).unencryptedMessageTypes(List.of("S")).build()).build(),
+                local, new RecordingProbes()).storeNextIncomingSeqNum(20);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         snapshot();
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);

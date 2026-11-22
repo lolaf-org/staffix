@@ -33,11 +33,12 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreException;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
+import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.follower.RecordingProbes;
 import org.lolaf.staffix.ha.log.LogFullWait;
 import org.lolaf.staffix.ha.log.ReplicationLog;
-import org.lolaf.staffix.ha.log.StoreEventRecord;
+import org.lolaf.staffix.ha.log.LogRecord;
 import org.lolaf.staffix.ha.log.TestingLogFragments;
 import org.lolaf.staffix.ha.encryption.JceAeadAllocation;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
@@ -48,7 +49,7 @@ import org.lolaf.staffix.ha.wire.FrameCipher;
 import org.lolaf.staffix.ha.wire.FrameDecoder;
 import org.lolaf.staffix.ha.wire.FrameEncoder;
 import org.lolaf.staffix.ha.wire.FrameType;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.wire.StreamAnswer;
 import org.lolaf.staffix.ha.wire.WireFormat;
 import org.lolaf.staffix.ha.wire.WireFormatException;
 import org.slf4j.event.Level;
@@ -130,7 +131,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     }
 
     private void hello(EncryptionMode followerMode, byte[] followerNonce) {
-        connection.onHello(EPOCH, WireFormat.VERSION, "follower-b", 0, -1, 0, followerMode, followerNonce);
+        connection.onHello(EPOCH, WireFormat.VERSION, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, followerMode, followerNonce);
     }
 
     private long errors() {
@@ -142,8 +143,8 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
      */
     private byte[] followerConfirmation(KeyExchange follower, byte[] followerNonce) {
         byte[] leaderNonce = sent.lastNonce;
-        byte[] helloBytes = FrameEncoder.helloBytes(EPOCH, "follower-b", 0, -1, 0, EncryptionMode.REQUIRED, followerNonce);
-        byte[] welcomeBytes = FrameEncoder.welcomeBytes(EPOCH, "leader-a", WireFormat.NO_RESUME, 1,
+        byte[] helloBytes = FrameEncoder.helloBytes(EPOCH, ReplicatedSessions.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.REQUIRED, followerNonce);
+        byte[] welcomeBytes = FrameEncoder.welcomeBytes(EPOCH, ReplicatedSessions.APPLICATION_ID, "leader-a", WireFormat.NO_RESUME, 1,
                 EncryptionMode.REQUIRED, leaderNonce);
         return follower.confirm(follower.deriveKeys(followerNonce, leaderNonce), helloBytes, welcomeBytes);
     }
@@ -206,7 +207,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         fill();
 
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
-        assertThat(sent.frames).anyMatch(frame -> frame.startsWith("SESSION "));
+        assertThat(sent.frames).anyMatch(frame -> frame.startsWith("STREAM "));
         assertThat(connectionLog.getLoggingEvents()).extracting(LoggingEvent::getFormattedMessage)
                 .contains("Replicating encrypted to follower follower-b lane 0, AES/CTR/NoPadding 256 HmacSHA256");
     }
@@ -274,7 +275,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         main.storeMessageSent(ORDER, 1, ascii(ORDER_TEXT));
         fill();
 
-        assertThat(sent.frames).anyMatch(frame -> frame.startsWith("SESSION ") && frame.contains(SESSION));
+        assertThat(sent.frames).anyMatch(frame -> frame.startsWith("STREAM ") && frame.contains(SESSION));
         assertThat(sent.frames).last().asString().endsWith("seq=1 message=" + ORDER_TEXT);
         assertThat(sentBytesContain("SENDER")).as("the session id on the socket").isFalse();
         assertThat(sentBytesContain("8=FIX")).as("a message on the socket").isFalse();
@@ -289,7 +290,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         quotes.storeMessageSent(ORDER, 2, ascii(ORDER_TEXT));
         fill();
 
-        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("STORE_EVENT")).extracting(frame -> frame.substring(frame.indexOf("seq=")))
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("RECORD")).extracting(frame -> frame.substring(frame.indexOf("seq=")))
                 .containsExactly("seq=1 message=" + QUOTE_TEXT, "seq=2 message=" + ORDER_TEXT);
         assertThat(sentBytesContain("quote-text")).isTrue();
         assertThat(sentBytesContain("order-text")).isFalse();
@@ -301,14 +302,14 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         ReplicatingStore orders = session("orders");
         streamingEncrypted();
 
-        TestingLogFragments.appendFragment(ha.getReplicationLogs().get(0), 0, 1, Hashing.hash("S"), ascii("quote-part-one"),
+        TestingLogFragments.appendFragment(ha.getReplicationLogs().get(0), 0, 1, WireFormat.PLAINTEXT, ascii("quote-part-one"),
                 WireFormat.MORE_FRAGMENTS);
         orders.storeMessageSent(ORDER, 1, ascii(ORDER_TEXT));
-        TestingLogFragments.appendFragment(ha.getReplicationLogs().get(0), 0, 1, Hashing.hash("S"), ascii("quote-part-two"),
+        TestingLogFragments.appendFragment(ha.getReplicationLogs().get(0), 0, 1, WireFormat.PLAINTEXT, ascii("quote-part-two"),
                 WireFormat.CONTINUED_FRAGMENT);
         fill();
 
-        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("STORE_EVENT")).extracting(frame -> frame.substring(frame.indexOf("key=")))
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("RECORD")).extracting(frame -> frame.substring(frame.indexOf("key=")))
                 .containsExactly("key=0 STORE_MESSAGE seq=1 message=quote-part-one more",
                         "key=1 STORE_MESSAGE seq=1 message=" + ORDER_TEXT,
                         "key=0 STORE_MESSAGE seq=1 message=quote-part-two continued");
@@ -331,10 +332,10 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         ha.replicatingStore(sessionSettings("quotes", "S"), local, new RecordingProbes());
         streamingEncrypted();
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         snapshot();
 
-        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("SNAPSHOT_MESSAGE"))
+        assertThat(sent.frames).filteredOn(frame -> frame.startsWith("SNAPSHOT_RECORD"))
                 .extracting(frame -> frame.substring(frame.indexOf("seq=")))
                 .containsExactly("seq=1 message=" + QUOTE_TEXT, "seq=2 message=" + ORDER_TEXT);
         assertThat(sentBytesContain("quote-text")).isTrue();
@@ -354,11 +355,11 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         ha.replicatingStore(sessionSettings("main"), local, new RecordingProbes());
         streamingEncrypted();
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         snapshot();
 
         assertThat(sent.frames).as("opened in order, the CLOSE included")
-                .filteredOn(frame -> frame.startsWith("SNAPSHOT_MESSAGE")).hasSize(1);
+                .filteredOn(frame -> frame.startsWith("SNAPSHOT_RECORD")).hasSize(1);
         assertThat(sent.frames).last().asString().startsWith("CLOSE epoch=7 SNAPSHOT_FAILED");
     }
 
@@ -383,12 +384,12 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         connection.onKeyConfirmation(EPOCH, followerConfirmation(follower, followerNonce));
         await().alias("the session's announcement").until(() -> batchesSent.get() == 1);
 
-        connection.onSessionAnswer(EPOCH, 0, SessionAnswer.SNAPSHOT_NEEDED);
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
 
         await().ignoreExceptions().untilAsserted(() -> assertThat(sent.frames).last().asString()
                 .isEqualTo("CLOSE epoch=7 PROTOCOL_ERROR closed mid-snapshot"));
         assertThat(sent.frames).as("opened in order, the CLOSE included")
-                .anyMatch(frame -> frame.startsWith("SNAPSHOT_MESSAGE"));
+                .anyMatch(frame -> frame.startsWith("SNAPSHOT_RECORD"));
     }
 
     @Test
@@ -415,7 +416,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     void fillingABatchWithAnAeadAllocatesNoMoreThanTheJceItself(String cipher) {
         double allocated = fillBytesPerEvent(cipher);
         double jce = JceAeadAllocation.bytesPerFrame(cipher, Cipher.ENCRYPT_MODE,
-                WireFormat.HEADER_BYTES + FrameType.STORE_EVENT.getFixedPayloadBytes(), FILLED_MESSAGE_BYTES);
+                WireFormat.HEADER_BYTES + FrameType.RECORD.getFixedPayloadBytes(), FILLED_MESSAGE_BYTES);
 
         assertThat(allocated).as("bytes per event filled, the JCE's %s", jce)
                 .isLessThan(jce + JceAeadAllocation.JIT_SLACK_BYTES);
@@ -433,7 +434,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
             streamingEncrypted(cipher);
         }
         ReplicationLog replicationLog = ha.getReplicationLogs().get(0);
-        StoreEventRecord record = new StoreEventRecord();
+        LogRecord record = new LogRecord();
         LogFullWait wait = new LogFullWait(Duration.ofSeconds(1));
         ByteBuffer message = ByteBuffer.wrap(new byte[FILLED_MESSAGE_BYTES]);
         ByteBuffer batch = ByteBuffer.allocateDirect(1 << 16);
@@ -450,11 +451,11 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         return perEvent;
     }
 
-    private long appendAndFill(ReplicationLog replicationLog, StoreEventRecord record, LogFullWait wait, ByteBuffer message,
+    private long appendAndFill(ReplicationLog replicationLog, LogRecord record, LogFullWait wait, ByteBuffer message,
                                ByteBuffer batch, long firstSeq, int events) {
         long filled = 0;
         for (long seq = firstSeq; seq < firstSeq + events; seq++) {
-            replicationLog.append(record.set(0, StoreEventType.STORE_MESSAGE, seq, ORDER_HASH, message), wait);
+            replicationLog.append(TestingLogFragments.storeEvent(record, 0, StoreEventType.STORE_MESSAGE, seq, message), wait);
             if (seq % EVENTS_PER_BATCH == EVENTS_PER_BATCH - 1) {
                 filled += connection.fillBatch(batch);
             }

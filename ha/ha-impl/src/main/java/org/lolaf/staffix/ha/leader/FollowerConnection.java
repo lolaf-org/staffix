@@ -25,7 +25,6 @@ import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.monitoring.Timer;
-import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.api.time.Clock;
 import org.lolaf.staffix.ha.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicatedSession;
@@ -87,7 +86,7 @@ public final class FollowerConnection implements FrameHandler {
     private final String leaderId;
     private final long heartbeatIntervalNanos;
     private final long stallTimeoutNanos;
-    private final int maxEventFrameBytes;
+    private final int maxRecordFrameBytes;
     @Getter
     private volatile int lane;
     private final IdleStrategy senderIdle;
@@ -178,7 +177,7 @@ public final class FollowerConnection implements FrameHandler {
      */
     private int nextToAnnounce;
     /**
-     * The SESSION frames of the stream's first announcement pass, and whether its SESSIONS_ANNOUNCED went out; sender
+     * The STREAM frames of the connection's first announcement pass, and whether its STREAMS_ANNOUNCED went out; sender
      * thread only.
      */
     private int firstPassAnnounced;
@@ -236,21 +235,21 @@ public final class FollowerConnection implements FrameHandler {
         this.leaderId = leaderId;
         this.heartbeatIntervalNanos = heartbeatInterval.toNanos();
         this.stallTimeoutNanos = stallTimeout.toNanos();
-        this.maxEventFrameBytes = logs.getMaxEventFrameBytes();
+        this.maxRecordFrameBytes = logs.getMaxRecordFrameBytes();
         this.senderIdle = senderIdle;
         this.stats = stats;
         this.senderLauncher = senderLauncher;
         this.clock = clock;
         this.keyExchange = keyExchange;
         this.batches = new BatchBuffers(ioSession, sendBuffers,
-                WireFormat.bufferBytes(maxEventFrameBytes + WireFormat.TAG_BYTES), stats);
-        this.snapshots = new SnapshotSender(this, sessions, syncs, batches, stats, nodeEpoch, maxEventFrameBytes,
+                WireFormat.bufferBytes(maxRecordFrameBytes + WireFormat.TAG_BYTES), stats);
+        this.snapshots = new SnapshotSender(this, sessions, syncs, batches, stats, nodeEpoch, maxRecordFrameBytes,
                 snapshotChunkBytes);
     }
 
     @Override
-    public void onHello(long epoch, int version, String nodeId, long lastAppliedEpoch, long lastAppliedOffset, int lane,
-                        EncryptionMode followerMode, byte[] followerNonce) {
+    public void onHello(long epoch, int version, int applicationId, String nodeId, long lastAppliedEpoch,
+                        long lastAppliedOffset, int lane, EncryptionMode followerMode, byte[] followerNonce) {
         followerId = nodeId;
         long currentEpoch = nodeEpoch.getAsLong();
         if (state != State.AWAITING_HELLO) {
@@ -259,6 +258,11 @@ public final class FollowerConnection implements FrameHandler {
         }
         if (version != WireFormat.VERSION) {
             close(CloseReason.VERSION_MISMATCH, "leader speaks version " + WireFormat.VERSION + ", follower " + version);
+            return;
+        }
+        if (applicationId != sessions.getApplicationId()) {
+            close(CloseReason.APPLICATION_MISMATCH, "leader replicates application " + Integer.toHexString(sessions.getApplicationId())
+                    + ", follower " + Integer.toHexString(applicationId));
             return;
         }
         if (epoch > currentEpoch) {
@@ -309,10 +313,11 @@ public final class FollowerConnection implements FrameHandler {
         byte[] leaderNonce = keyExchange.newNonce();
         long resumeOffset = resumed ? reader.getOffset() : WireFormat.NO_RESUME;
         ByteBuffer frame = ioSession.borrow(FrameEncoder.bytesWith(FrameType.WELCOME, leaderId));
-        int length = FrameEncoder.welcome(frame.clear(), 0, currentEpoch, leaderId, resumeOffset, logs.count(),
+        int length = FrameEncoder.welcome(frame.clear(), 0, currentEpoch, sessions.getApplicationId(), leaderId,
+                resumeOffset, logs.count(),
                 keyExchange.getMode(), leaderNonce);
         if (encrypted) {
-            receivedHelloBytes = FrameEncoder.helloBytes(epoch, nodeId, lastAppliedEpoch, lastAppliedOffset, lane,
+            receivedHelloBytes = FrameEncoder.helloBytes(epoch, applicationId, nodeId, lastAppliedEpoch, lastAppliedOffset, lane,
                     followerMode, followerNonce);
             sentWelcomeBytes = FrameDecoder.bytes(frame, 0, length);
             ConnectionEncryptionKeys keys = keyExchange.deriveKeys(followerNonce, leaderNonce);
@@ -354,7 +359,7 @@ public final class FollowerConnection implements FrameHandler {
         if (lastAppliedOffset < 0 || !reader.seek(lastAppliedOffset)) {
             return false;
         }
-        ByteBuffer skipped = ByteBuffer.allocate(maxEventFrameBytes);
+        ByteBuffer skipped = ByteBuffer.allocate(maxRecordFrameBytes);
         return reader.readInto(skipped, 0) >= 0;
     }
 
@@ -419,9 +424,9 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     @Override
-    public void onSessionAnswer(long epoch, int sessionKey, SessionAnswer answer) {
+    public void onStreamAnswer(long epoch, int sessionKey, StreamAnswer answer) {
         if (syncs.get(sessionKey) == null) {
-            close(CloseReason.PROTOCOL_ERROR, "a SESSION_ANSWER for session key " + sessionKey + ", never announced");
+            close(CloseReason.PROTOCOL_ERROR, "a STREAM_ANSWER for stream key " + sessionKey + ", never announced");
             return;
         }
         syncs.answered(sessionKey, answer);
@@ -449,13 +454,13 @@ public final class FollowerConnection implements FrameHandler {
      * replaced: a session it refuses or is still catching up on is left as it is.
      */
     void resync(int sessionKey) {
-        if (carries(sessionKey) && syncs.getAnswer(sessionKey) == SessionAnswer.REPLICATING
+        if (carries(sessionKey) && syncs.getAnswer(sessionKey) == StreamAnswer.REPLICATING
                 && syncs.compareAndSet(sessionKey, SessionSyncState.IN_SYNC, SessionSyncState.SNAPSHOT_PENDING)) {
             snapshots.request();
         }
     }
 
-    public @Nullable SessionAnswer getSessionAnswer(int sessionKey) {
+    public @Nullable StreamAnswer getStreamAnswer(int sessionKey) {
         return syncs.getAnswer(sessionKey);
     }
 
@@ -521,14 +526,6 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * Whether a message of the session goes unencrypted, as its {@code unencryptedMessageTypes} asks: on an encrypted
-     * connection only. Sender thread.
-     */
-    boolean sendsUnencrypted(int sessionKey, int messageTypeHash) {
-        return frameCipher.getTagBytes() != 0 && sessions.isUnencrypted(sessionKey, messageTypeHash);
-    }
-
-    /**
      * Fills {@code dst} from index 0, up to its limit, once streaming, with what the follower has not received: the
      * sessions it does not know yet, then events until the next one does not fit. An event of a session registered
      * after this fill began is left for the next one, behind that session's announcement.
@@ -555,23 +552,23 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     private int fillBatchUpToLimit(ByteBuffer dst) {
-        lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getEventOffset(), appliedOffset);
+        lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getRecordOffset(), appliedOffset);
         int filled = announceSessions(dst);
         filled += fillSessionSettingsDigests(dst, filled);
         long currentEpoch = nodeEpoch.getAsLong();
-        while (state == State.STREAMING && dst.limit() - filled >= WireFormat.STORE_EVENT_BODY_OFFSET) {
-            int bodyIndex = filled + WireFormat.STORE_EVENT_BODY_OFFSET;
+        while (state == State.STREAMING && dst.limit() - filled >= WireFormat.RECORD_BODY_OFFSET) {
+            int bodyIndex = filled + WireFormat.RECORD_BODY_OFFSET;
             int body = reader.readInto(dst, bodyIndex);
             if (body < 0) {
                 break;
             }
-            int sessionKey = FrameDecoder.storeEventSessionKey(dst, bodyIndex);
+            int sessionKey = FrameDecoder.recordStreamKey(dst, bodyIndex);
             if (sessionKey >= nextToAnnounce) {
                 reader.unread();
                 break;
             }
             if (snapshots.isOf(sessionKey)) {
-                if (FrameDecoder.storeEventTypeCode(dst, bodyIndex) != StoreEventType.RESET_SEQ_NUM.getCode()) {
+                if ((FrameDecoder.recordFlags(dst, bodyIndex) & WireFormat.RESET) == 0) {
                     continue;
                 }
                 // left for the stream, after the snapshot's end
@@ -579,12 +576,9 @@ public final class FollowerConnection implements FrameHandler {
                 reader.unread();
                 break;
             }
-            filledEventOffset = reader.getEventOffset();
+            filledEventOffset = reader.getRecordOffset();
             lag.onEventRead(filledEventOffset, reader.getOffset());
-            int frameLength = FrameEncoder.storeEventHeader(dst, filled, currentEpoch, filledEventOffset, body);
-            if (sendsUnencrypted(sessionKey, FrameDecoder.storeEventMessageTypeHash(dst, bodyIndex))) {
-                FrameEncoder.markStoreEventUnencrypted(dst, filled);
-            }
+            int frameLength = FrameEncoder.recordHeader(dst, filled, currentEpoch, filledEventOffset, body);
             filled += frameCipher.seal(dst, filled, frameLength);
         }
         sentOffset = reader.getOffset();
@@ -608,10 +602,10 @@ public final class FollowerConnection implements FrameHandler {
             nextToAnnounce++;
         }
         if (!sessionsAnnounced) {
-            if (dst.limit() - filled < FrameEncoder.fixedBytes(FrameType.SESSIONS_ANNOUNCED)) {
+            if (dst.limit() - filled < FrameEncoder.fixedBytes(FrameType.STREAMS_ANNOUNCED)) {
                 return filled;
             }
-            filled += frameCipher.seal(dst, filled, FrameEncoder.sessionsAnnounced(dst, filled, currentEpoch, firstPassAnnounced));
+            filled += frameCipher.seal(dst, filled, FrameEncoder.streamsAnnounced(dst, filled, currentEpoch, firstPassAnnounced));
             sessionsAnnounced = true;
         }
         Integer key;
@@ -669,14 +663,14 @@ public final class FollowerConnection implements FrameHandler {
      * @return the bytes written, 0 when the frame does not fit
      */
     private int sessionFrame(ByteBuffer dst, int index, long currentEpoch, ReplicatedSession session) {
-        String id = session.getFixSessionId().toString();
+        String name = session.getStreamName();
         ReplicatedSession.Config config = session.getConfig();
-        if (dst.limit() - index < FrameEncoder.bytesWith(FrameType.SESSION, id, config.getStorageIdentity())) {
+        if (dst.limit() - index < FrameEncoder.bytesWith(FrameType.STREAM, name, config.getStorageIdentity())) {
             return 0;
         }
         syncs.set(session.getKey(), SessionSyncState.ANNOUNCED);
-        return frameCipher.seal(dst, index, FrameEncoder.session(dst, index, currentEpoch, session.getKey(),
-                session.getFixSessionType(), config.getReplicationMode(), id, config.getStorageIdentity()));
+        return frameCipher.seal(dst, index, FrameEncoder.stream(dst, index, currentEpoch, session.getKey(),
+                StreamReplicationMode.from(config.getReplicationMode().getCode()), name, config.getStorageIdentity()));
     }
 
     /**
