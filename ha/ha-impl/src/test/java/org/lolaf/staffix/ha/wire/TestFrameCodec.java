@@ -114,20 +114,6 @@ class TestFrameCodec {
     }
 
     @Test
-    void sessionSettingsDigestAndItsEnd() {
-        ByteBuffer buffer = buffer(false);
-        int digest = FrameEncoder.sessionSettingsDigest(buffer, 0, 7, 2,
-                new org.lolaf.staffix.ha.SessionSettingsDigests.Digest("files", FixSessionType.ACCEPTOR, "s", "abc", "file:1", "{}", false));
-        int end = FrameEncoder.sessionSettingsDigestsComplete(buffer, digest, 7, 2, 1);
-
-        decodeWhole(buffer, 0, digest);
-        decodeWhole(buffer, digest, end);
-
-        assertThat(handler.frames).containsExactly("SESSION_SETTINGS_DIGEST epoch=7 generation=2 store=files ACCEPTOR id=s value=abc identity=file:1 document={}",
-                "SESSION_SETTINGS_DIGESTS_COMPLETE epoch=7 generation=2 count=1");
-    }
-
-    @Test
     void streamsAnnounced() {
         ByteBuffer buffer = buffer(false);
         int length = FrameEncoder.streamsAnnounced(buffer, 0, 7, 3);
@@ -135,17 +121,6 @@ class TestFrameCodec {
         decodeWhole(buffer, 0, length);
 
         assertThat(handler.frames).containsExactly("STREAMS_ANNOUNCED epoch=7 count=3");
-    }
-
-    @Test
-    void aSessionRemovedOnTheLeaderIsFlagged() {
-        ByteBuffer buffer = buffer(false);
-        int length = FrameEncoder.sessionSettingsDigest(buffer, 0, 7, 2,
-                new org.lolaf.staffix.ha.SessionSettingsDigests.Digest("files", FixSessionType.ACCEPTOR, "s", "", "file:1", "", true));
-
-        decodeWhole(buffer, 0, length);
-
-        assertThat(handler.frames).singleElement().satisfies(frame -> assertThat(frame).endsWith("removed"));
     }
 
     @Test

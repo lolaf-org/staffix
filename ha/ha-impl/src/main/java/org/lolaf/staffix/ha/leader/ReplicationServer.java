@@ -30,7 +30,7 @@ import org.lolaf.betty.api.stats.IOBufferPoolStats;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.ha.spi.ReplicationClock;
-import org.lolaf.staffix.ha.ReplicatedSessions;
+import org.lolaf.staffix.ha.spi.LeaderStreams;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
 import org.lolaf.staffix.ha.wire.CloseReason;
@@ -60,7 +60,7 @@ public final class ReplicationServer {
 
     private final InetSocketAddress bindAddress;
     private final ReplicationLogs logs;
-    private final ReplicatedSessions sessions;
+    private final LeaderStreams streams;
     private final Followers followers;
     private final LongSupplier nodeEpoch;
     private final String leaderId;
@@ -163,7 +163,7 @@ public final class ReplicationServer {
                 session.stop(Deadline.immediate());
                 return;
             }
-            FollowerConnection connection = new FollowerConnection(session, logs, sessions, nodeEpoch, leaderId, heartbeatInterval, stallTimeout,
+            FollowerConnection connection = new FollowerConnection(session, logs, streams, nodeEpoch, leaderId, heartbeatInterval, stallTimeout,
                     sendBuffers, snapshotChunkBytes, senderIdleStrategy.get(), stats, ReplicationServer::launchSender, clock, keyExchange);
             session.setAttachment(connection);
             followers.add(connection);

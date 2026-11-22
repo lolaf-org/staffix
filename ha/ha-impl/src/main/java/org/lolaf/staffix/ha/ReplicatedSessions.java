@@ -15,24 +15,25 @@
  */
 package org.lolaf.staffix.ha;
 
-import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.staffix.ha.spi.LeaderStream;
 import org.lolaf.staffix.ha.spi.LeaderStreams;
 
-import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.IntFunction;
 
 /**
- * The engine's replicated sessions, each with a key that stays its own for the life of the engine, across the
- * restarts that rebuild a session. Keys are dense from 0, in the order sessions were first registered.
+ * The engine's replicated streams, its FIX sessions and its own, each with a key that stays its own for the life of the
+ * engine, across the restarts that rebuild a session. Keys are dense from 0, in the order streams were first
+ * registered.
  */
 public final class ReplicatedSessions implements LeaderStreams {
 
@@ -43,21 +44,16 @@ public final class ReplicatedSessions implements LeaderStreams {
     public static final int APPLICATION_ID = 0x53464958;
 
     /**
-     * Carried here as every connection already has the sessions it announces.
-     */
-    @Getter
-    private final SessionSettingsDigests settingsDigests;
-
-    /**
      * By type first, as one id may be configured as an initiator and as an acceptor: two sessions.
      */
     private final Map<FixSessionType, Map<FixSessionId, ReplicatedSession>> byTypeAndId;
-    private final List<ReplicatedSession> byKey;
+    private final List<LeaderStream> byKey;
+    private final List<ReplicatedSession> sessions;
 
     public ReplicatedSessions() {
-        this.settingsDigests = new SessionSettingsDigests();
         this.byTypeAndId = new EnumMap<>(FixSessionType.class);
         this.byKey = new CopyOnWriteArrayList<>();
+        this.sessions = new CopyOnWriteArrayList<>();
         for (FixSessionType fixSessionType : FixSessionType.values()) {
             byTypeAndId.put(fixSessionType, new HashMap<>());
         }
@@ -74,9 +70,18 @@ public final class ReplicatedSessions implements LeaderStreams {
             known.update(config);
             return known;
         }
-        // built with its config before it is listed, so a sender never finds it without one
-        ReplicatedSession added = new ReplicatedSession(byKey.size(), settings.getFixSessionId(), settings.getFixSessionType(), config);
+        ReplicatedSession added = add(key -> new ReplicatedSession(key, settings.getFixSessionId(), settings.getFixSessionType(), config));
         byId.put(settings.getFixSessionId(), added);
+        sessions.add(added);
+        return added;
+    }
+
+    /**
+     * Registers a stream of the engine's own, at the next key.
+     */
+    synchronized <T extends LeaderStream> T add(IntFunction<T> newStream) {
+        // built before it is listed, so a sender never finds it half made
+        T added = newStream.apply(byKey.size());
         byKey.add(added);
         return added;
     }
@@ -87,7 +92,7 @@ public final class ReplicatedSessions implements LeaderStreams {
     }
 
     @Override
-    public ReplicatedSession get(int key) {
+    public LeaderStream get(int key) {
         return byKey.get(key);
     }
 
@@ -103,7 +108,10 @@ public final class ReplicatedSessions implements LeaderStreams {
         return byKey.size();
     }
 
-    public Collection<ReplicatedSession> all() {
-        return byKey;
+    /**
+     * The FIX sessions, by key.
+     */
+    public List<ReplicatedSession> all() {
+        return sessions;
     }
 }

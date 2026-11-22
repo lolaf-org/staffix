@@ -21,7 +21,6 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.ha.SessionSettingsComparison;
 import org.lolaf.staffix.ha.spi.LatencyRecorder;
 import org.lolaf.staffix.ha.spi.ReplicaBinder;
 import org.lolaf.staffix.ha.wire.StreamAnswer;
@@ -51,23 +50,17 @@ public final class ReplicaStreams {
     private final LanePositions positions;
     private volatile ReplicaStream[] streamsByKey;
     /**
-     * Reached through here by the lane 0 connection receiving the leader's digests; leaves with them.
-     */
-    @Getter
-    private final SessionSettingsComparison settingsComparison;
-    /**
      * Times a read's writes after its records were acknowledged as received.
      */
     @Getter(AccessLevel.PACKAGE)
     @Setter
     private LatencyRecorder receivedWriteLatency;
 
-    public ReplicaStreams(ReplicaBinder binder, SessionSettingsComparison settingsComparison) {
+    public ReplicaStreams(ReplicaBinder binder) {
         this.positions = new LanePositions();
         this.streamsByKey = new ReplicaStream[16];
         this.receivedWriteLatency = LatencyRecorder.NONE;
         this.binder = binder;
-        this.settingsComparison = settingsComparison;
     }
 
     public int getApplicationId() {

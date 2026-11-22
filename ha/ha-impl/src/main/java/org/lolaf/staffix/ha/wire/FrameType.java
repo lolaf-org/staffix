@@ -42,10 +42,6 @@ import org.jspecify.annotations.Nullable;
  * RECEIVED           follower to leader  received offset 8
  * HEARTBEAT          leader to follower  log tail offset 8
  * CLOSE              either way          reason 2, text length 2; then the text
- * SESSION_SETTINGS_DIGEST leader to follower  generation 4, session type 1, reserved 1, store length 2,
- *                                        session id length 2, digest length 2, store identity length 2,
- *                                        document length 2; then the store, session id, digest, identity and document
- * SESSION_SETTINGS_DIGESTS_COMPLETE      leader to follower  generation 4, digest count 4
  * STREAMS_ANNOUNCED  leader to follower  announced count 4, reserved 4
  * </pre>
  *
@@ -72,10 +68,8 @@ public enum FrameType {
     HEARTBEAT(10, 8),
     CLOSE(11, 4),
     RECEIVED(12, 8),
-    SESSION_SETTINGS_DIGEST(13, 16),
-    SESSION_SETTINGS_DIGESTS_COMPLETE(14, 8),
-    STREAMS_ANNOUNCED(15, 8),
-    KEY_CONFIRMATION(16, 32);
+    STREAMS_ANNOUNCED(13, 8),
+    KEY_CONFIRMATION(14, 32);
 
     private static final FrameType[] BY_CODE = new FrameType[256];
 

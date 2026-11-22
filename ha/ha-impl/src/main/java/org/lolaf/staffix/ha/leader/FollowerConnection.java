@@ -24,11 +24,9 @@ import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.ha.EncryptionMode;
-import org.lolaf.staffix.ha.ReplicatedSessions;
 import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.encryption.Negotiation;
-import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.lolaf.staffix.ha.log.ReplicationLog;
 import org.lolaf.staffix.ha.log.ReplicationLogs;
 import org.lolaf.staffix.ha.spi.LeaderStream;
@@ -40,7 +38,6 @@ import org.lolaf.staffix.ha.wire.*;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -79,7 +76,6 @@ public final class FollowerConnection implements FrameHandler {
      */
     private volatile ReplicationLog.@Nullable Reader reader;
     private final LeaderStreams streams;
-    private final SessionSettingsDigests settingsDigests;
     /**
      * This node's current election epoch, stamped on every frame it sends; read once per batch, so a batch carries one.
      */
@@ -183,12 +179,6 @@ public final class FollowerConnection implements FrameHandler {
      */
     private int firstPassAnnounced;
     private boolean streamsAnnounced;
-    /**
-     * The last generation of session settings digests sent whole, and how far the one being sent has gone; sender thread only.
-     */
-    private int sentDigestsGeneration;
-    private int sendingDigestsGeneration;
-    private int nextDigest;
     private long lastSendNanos;
     private long lastSentEventOffset;
     /**
@@ -210,7 +200,7 @@ public final class FollowerConnection implements FrameHandler {
      * @param clock              what the stall timeout and the heartbeat interval are measured on
      * @param stallTimeout       also how long a follower may take to send its KEY_CONFIRMATION; zero waits for ever
      */
-    FollowerConnection(IOSession ioSession, ReplicationLogs logs, ReplicatedSessions sessions, LongSupplier nodeEpoch,
+    FollowerConnection(IOSession ioSession, ReplicationLogs logs, LeaderStreams streams, LongSupplier nodeEpoch,
                        String leaderId, Duration heartbeatInterval, Duration stallTimeout, int sendBuffers,
                        int snapshotChunkBytes, IdleStrategy senderIdle, ReplicationStats stats,
                        Consumer<Runnable> senderLauncher, ReplicationClock clock, KeyExchange keyExchange) {
@@ -231,8 +221,7 @@ public final class FollowerConnection implements FrameHandler {
         this.ioSession = ioSession;
         this.address = String.valueOf(ioSession.getSocketAddress());
         this.logs = logs;
-        this.streams = sessions;
-        this.settingsDigests = sessions.getSettingsDigests();
+        this.streams = streams;
         this.nodeEpoch = nodeEpoch;
         this.leaderId = leaderId;
         this.heartbeatIntervalNanos = heartbeatInterval.toNanos();
@@ -555,7 +544,6 @@ public final class FollowerConnection implements FrameHandler {
     private int fillBatchUpToLimit(ByteBuffer dst) {
         lag.onFill(replicationLog.getTailOffset(), reader.getOffset(), reader.getRecordOffset(), appliedOffset);
         int filled = announceStreams(dst);
-        filled += fillSessionSettingsDigests(dst, filled);
         long currentEpoch = nodeEpoch.getAsLong();
         while (state == State.STREAMING && dst.limit() - filled >= WireFormat.RECORD_BODY_OFFSET) {
             int bodyIndex = filled + WireFormat.RECORD_BODY_OFFSET;
@@ -625,39 +613,6 @@ public final class FollowerConnection implements FrameHandler {
             reannouncements.poll();
         }
         return filled;
-    }
-
-    /**
-     * On lane 0 only, as they concern the node and not a lane's streams. Resumes on the next fill when they do not all fit.
-     */
-    private int fillSessionSettingsDigests(ByteBuffer dst, int index) {
-        SessionSettingsDigests.Published published = settingsDigests.getPublished();
-        if (lane != 0 || published.getGeneration() == sentDigestsGeneration) {
-            return 0;
-        }
-        if (published.getGeneration() != sendingDigestsGeneration) {
-            sendingDigestsGeneration = published.getGeneration();
-            nextDigest = 0;
-        }
-        long currentEpoch = nodeEpoch.getAsLong();
-        int filled = index;
-        List<SessionSettingsDigests.Digest> digests = published.getDigests();
-        for (; nextDigest < digests.size(); nextDigest++) {
-            SessionSettingsDigests.Digest digest = digests.get(nextDigest);
-            if (dst.limit() - filled < FrameEncoder.bytesWith(FrameType.SESSION_SETTINGS_DIGEST, digest.getStore(), digest.getFixSessionId(),
-                    digest.getValue(), digest.getStoreIdentity(), digest.getDocument())) {
-                return filled - index;
-            }
-            filled += frameCipher.seal(dst, filled,
-                    FrameEncoder.sessionSettingsDigest(dst, filled, currentEpoch, sendingDigestsGeneration, digest));
-        }
-        if (dst.limit() - filled < FrameEncoder.fixedBytes(FrameType.SESSION_SETTINGS_DIGESTS_COMPLETE)) {
-            return filled - index;
-        }
-        filled += frameCipher.seal(dst, filled, FrameEncoder.sessionSettingsDigestsComplete(dst, filled, currentEpoch,
-                sendingDigestsGeneration, digests.size()));
-        sentDigestsGeneration = sendingDigestsGeneration;
-        return filled - index;
     }
 
     /**

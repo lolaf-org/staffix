@@ -72,6 +72,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final ReplicatedSessions sessions;
     @Getter
     private final Followers followers;
+    /**
+     * Registered on the first start, which publishes the settings.
+     */
+    private volatile @Nullable SessionSettingsStream settingsStream;
     private final LateTimer syncReceivedAckLatency;
     private final LateTimer syncAppliedAckLatency;
     private final LateTimer receivedWriteLatency;
@@ -296,6 +300,10 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                     + " have no address for this node, " + settings.getNodeId());
         }
         requireReplicableSettingsStores();
+        if (settingsStream == null) {
+            settingsStream = sessions.add(key -> new SessionSettingsStream(key, replicationLogs.forStream(key),
+                    new LogFullWait(settings.getLogFullTimeout()), followers));
+        }
         engine.getFixSessionsSettingsStores().forEach(this::listenTo);
         settingsChanged();
         election = settings.getLeaderElection().instance();
@@ -420,7 +428,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     }
 
     private void settingsChanged() {
-        sessions.getSettingsDigests().publish(engine.getFixSessionsSettingsStores(), this::isReplicated);
+        settingsStream.publish(engine.getFixSessionsSettingsStores(), this::isReplicated);
         replicaSessions.getSettingsComparison().compare();
     }
 
@@ -584,13 +592,13 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
         @Override
         public void onAddedSession(FixSessionSettings settings) {
-            sessions.getSettingsDigests().onAdded(store, settings);
+            settingsStream.onAdded(store, settings);
             settingsChanged();
         }
 
         @Override
         public void onRemovedSession(FixSessionSettings settings) {
-            sessions.getSettingsDigests().onRemoved(store, settings);
+            settingsStream.onRemoved(store, settings);
             stopReplicating(settings);
             settingsChanged();
         }

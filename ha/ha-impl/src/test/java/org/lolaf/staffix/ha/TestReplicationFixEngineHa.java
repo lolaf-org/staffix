@@ -237,7 +237,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         a.ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
 
         await().until(() -> b.engine.store(MAIN) != replicaStore && b.ha.getSessionStatuses().get(0).isInSync());
-        assertThat(a.engine.meters.read("ha.snapshots")).as("b caught up twice").isEqualTo(2);
+        assertThat(a.engine.meters.read("ha.snapshots")).as("b caught up twice, and the settings once").isEqualTo(3);
     }
 
     @Test
@@ -296,7 +296,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         assertThat(leader.read("ha.epoch")).isEqualTo(3);
         assertThat(leader.read("ha.leadership.valid")).isEqualTo(1);
         assertThat(leader.read("ha.followers.connected")).isEqualTo(1);
-        assertThat(leader.read("ha.snapshots")).as("b caught up by snapshot").isEqualTo(1);
+        assertThat(leader.read("ha.snapshots")).as("b caught up by snapshot, the session and the settings").isEqualTo(2);
         assertThat(leader.read("ha.replica.connected")).isZero();
         await().until(() -> follower.read("ha.replica.in.sync") == 1);
         assertThat(follower.read("ha.role")).isEqualTo(1);
@@ -427,7 +427,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
         a.ha.resync();
 
-        await().until(() -> a.engine.meters.read("ha.snapshots") == 2 && a.engine.meters.read("ha.followers.in.sync") == 1);
+        await().until(() -> a.engine.meters.read("ha.snapshots") == 4 && a.engine.meters.read("ha.followers.in.sync") == 1);
         assertThat(b.engine.store(MAIN).writes).as("reset once per snapshot").filteredOn("reset"::equals).hasSize(2);
     }
 
@@ -437,7 +437,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
         a.ha.resync(MAIN.getFixSessionId(), MAIN.getFixSessionType());
 
-        await().until(() -> a.engine.meters.read("ha.snapshots") == 2);
+        await().until(() -> a.engine.meters.read("ha.snapshots") == 3);
         assertThatThrownBy(() -> a.ha.resync(MAIN.getFixSessionId(), FixSessionType.INITIATOR))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("is not replicated");
     }

@@ -16,7 +16,6 @@
 package org.lolaf.staffix.ha.wire;
 
 import org.lolaf.staffix.ha.EncryptionMode;
-import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.jspecify.annotations.Nullable;
 
 import java.nio.ByteBuffer;
@@ -76,17 +75,6 @@ public interface FrameHandler {
     default void onStream(long epoch, int streamKey, StreamReplicationMode replicationMode, String streamName,
                           @Nullable String storageIdentity) {
         throw unexpected(FrameType.STREAM);
-    }
-
-    /**
-     * One session's settings digest, of the generation's list ended by {@link #onSessionSettingsDigestsComplete}.
-     */
-    default void onSessionSettingsDigest(long epoch, int generation, SessionSettingsDigests.Digest digest) {
-        throw unexpected(FrameType.SESSION_SETTINGS_DIGEST);
-    }
-
-    default void onSessionSettingsDigestsComplete(long epoch, int generation, int digestCount) {
-        throw unexpected(FrameType.SESSION_SETTINGS_DIGESTS_COMPLETE);
     }
 
     /**

@@ -290,15 +290,15 @@ class TestReplicatingFixSessionMessagesStore {
                 .build(), local, new RecordingProbes());
 
         store.awaitReplicated();
-        assertThat(ha.getSessions().get(0).getUnacknowledgedSends()).as("nothing written yet").isZero();
+        assertThat(ha.getSessions().all().get(0).getUnacknowledgedSends()).as("nothing written yet").isZero();
 
         store.storeNextOutgoingSeqNum(2);
         store.awaitReplicated();
         store.storeNextOutgoingSeqNum(3);
         store.awaitReplicated();
 
-        assertThat(ha.getSessions().get(0).getUnacknowledgedSends()).isEqualTo(2);
-        assertThat(ha.getSessions().get(0).isLastSendUnacknowledged()).isTrue();
+        assertThat(ha.getSessions().all().get(0).getUnacknowledgedSends()).isEqualTo(2);
+        assertThat(ha.getSessions().all().get(0).isLastSendUnacknowledged()).isTrue();
     }
 
     @Test

@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
 
 /**
  * What this follower holds of the leader's FIX sessions: their replicated streams, and what a FIX session needs on top
- * of them, its status and its seqnums on taking over.
+ * of them, its status and its seqnums on taking over; and the leader's session settings, compared with this node's.
  */
 @Slf4j
 public final class ReplicaSessions {
@@ -47,7 +47,7 @@ public final class ReplicaSessions {
     public ReplicaSessions(EngineAccess engine) {
         this.engine = engine;
         this.settingsComparison = new SessionSettingsComparison(engine);
-        this.streams = new ReplicaStreams(new FixSessionBinder(engine), settingsComparison);
+        this.streams = new ReplicaStreams(new FixSessionBinder(engine, new SessionSettingsReplica(settingsComparison)));
     }
 
     public boolean isInSync() {
@@ -117,7 +117,7 @@ public final class ReplicaSessions {
     }
 
     /**
-     * Every sink is a session's, {@link FixSessionBinder} binding them all.
+     * Only for a FIX session's stream, {@link FixSessionBinder} binding them all.
      */
     private static FixSessionReplica replica(ReplicaStream stream) {
         return (FixSessionReplica) stream.getSink();

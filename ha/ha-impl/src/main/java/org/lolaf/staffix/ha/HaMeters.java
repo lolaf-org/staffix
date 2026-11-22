@@ -113,8 +113,8 @@ class HaMeters {
         });
         meters.getCounter("ha.follower.too.slow", "Follower lanes dropped for reading the replication log so slowly that a "
                 + "write waited the log full timeout for them.", Map.of(), stats::getDroppedTooSlow);
-        meters.getCounter("ha.snapshots", "Session snapshots sent to followers catching up.", Map.of(), stats::getSnapshots);
-        meters.getCounter("ha.snapshot.messages", "Messages copied by the snapshots sent to followers.", Map.of(),
+        meters.getCounter("ha.snapshots", "Snapshots sent to followers catching up: of a session, or of the session settings once per connection.", Map.of(), stats::getSnapshots);
+        meters.getCounter("ha.snapshot.messages", "Messages and session settings copied by the snapshots sent to followers.", Map.of(),
                 stats::getSnapshotMessages);
         meters.getCounter("ha.follower.send.waits", "Times the leader had writes for a follower and could not send them:"
                 + " every send buffer in flight, or the connection's write limit reached. Growing steadily on a healthy"

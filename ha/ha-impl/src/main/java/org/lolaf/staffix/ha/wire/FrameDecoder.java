@@ -16,9 +16,7 @@
 package org.lolaf.staffix.ha.wire;
 
 import org.lolaf.staffix.ha.EncryptionMode;
-import org.lolaf.staffix.ha.SessionSettingsDigests;
 import lombok.RequiredArgsConstructor;
-import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -136,12 +134,6 @@ public class FrameDecoder {
             case HEARTBEAT:
                 handler.onHeartbeat(epoch, in.getLong(p));
                 break;
-            case SESSION_SETTINGS_DIGEST:
-                decodeSessionSettingsDigest(in, p, flags, epoch, variableBytes, handler);
-                break;
-            case SESSION_SETTINGS_DIGESTS_COMPLETE:
-                handler.onSessionSettingsDigestsComplete(epoch, in.getInt(p), in.getInt(p + 4));
-                break;
             case STREAMS_ANNOUNCED:
                 handler.onStreamsAnnounced(epoch, in.getInt(p));
                 break;
@@ -175,24 +167,6 @@ public class FrameDecoder {
                 ? utf8Str(in, p + 10 + nameLength, identityLength)
                 : null;
         handler.onStream(epoch, in.getInt(p), replicationMode(in.get(p + 4)), utf8Str(in, p + 10, nameLength), identity);
-    }
-
-    private static void decodeSessionSettingsDigest(ByteBuffer in, int p, int flags, long epoch, int variableBytes, FrameHandler handler) {
-        int storeLength = unsignedShort(in, p + 6);
-        int idLength = unsignedShort(in, p + 8);
-        int digestLength = unsignedShort(in, p + 10);
-        int identityLength = unsignedShort(in, p + 12);
-        int documentLength = unsignedShort(in, p + 14);
-        checkVariableBytes(FrameType.SESSION_SETTINGS_DIGEST, storeLength + idLength + digestLength + identityLength + documentLength, variableBytes);
-        int variable = p + 16;
-        String store = utf8Str(in, variable, storeLength);
-        String id = utf8Str(in, variable += storeLength, idLength);
-        String digest = utf8Str(in, variable += idLength, digestLength);
-        String identity = utf8Str(in, variable += digestLength, identityLength);
-        String document = utf8Str(in, variable + identityLength, documentLength);
-        handler.onSessionSettingsDigest(epoch, in.getInt(p),
-                new SessionSettingsDigests.Digest(store, fixSessionType(in.get(p + 4)), id, digest, identity, document,
-                        (flags & WireFormat.FLAG_SESSION_REMOVED) != 0));
     }
 
     private static void decodeStreamAnswer(ByteBuffer in, int p, long epoch, FrameHandler handler) {
@@ -273,14 +247,6 @@ public class FrameDecoder {
     private static void checkVariableBytes(FrameType type, int declared, int actual) {
         if (declared != actual) {
             throw new WireFormatException(type + " declares " + declared + " bytes of content but carries " + actual);
-        }
-    }
-
-    private static FixSessionType fixSessionType(byte code) {
-        try {
-            return FixSessionType.from(code);
-        } catch (IllegalStateException e) {
-            throw new WireFormatException(e.getMessage());
         }
     }
 

@@ -31,13 +31,15 @@ import java.util.Optional;
 
 /**
  * Decides, from this node's own settings, how the follower holds a session the leader announces, and opens the store
- * of one it replicates. The engine's settings are listed for each, a session being announced rarely.
+ * of one it replicates. The engine's settings are listed for each, a session being announced rarely. The
+ * {@link SessionSettingsStream} is always replicated, into the settings comparison.
  */
 @Slf4j
 @RequiredArgsConstructor
 public final class FixSessionBinder implements ReplicaBinder {
 
     private final EngineAccess engine;
+    private final SessionSettingsReplica settingsReplica;
 
     @Override
     public int getApplicationId() {
@@ -50,6 +52,9 @@ public final class FixSessionBinder implements ReplicaBinder {
      */
     @Override
     public Binding bind(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
+        if (SessionSettingsStream.STREAM_NAME.equals(streamName)) {
+            return Binding.replicated(settingsReplica);
+        }
         TypedSessionId session = sessionOf(streamName);
         FixSessionType fixSessionType = session.getFixSessionType();
         String fixSessionId = session.getFixSessionId();
@@ -79,6 +84,9 @@ public final class FixSessionBinder implements ReplicaBinder {
 
     @Override
     public @Nullable StreamReplicationMode modeHere(String streamName) {
+        if (SessionSettingsStream.STREAM_NAME.equals(streamName)) {
+            return StreamReplicationMode.ASYNC;
+        }
         return findSettings(sessionOf(streamName)).map(FixSessionBinder::modeOf).orElse(null);
     }
 

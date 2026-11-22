@@ -22,7 +22,6 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.ha.EncryptionMode;
-import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.lolaf.staffix.ha.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.encryption.KeyExchange;
 import org.lolaf.staffix.ha.encryption.Negotiation;
@@ -270,20 +269,6 @@ public final class LeaderConnection implements FrameHandler {
         streamsAnnounced = true;
         replicaStreams.streamsAnnounced(lane);
         ackDue = true;
-    }
-
-    @Override
-    public void onSessionSettingsDigest(long epoch, int generation, SessionSettingsDigests.Digest digest) {
-        if (acceptsFrame(epoch)) {
-            replicaStreams.getSettingsComparison().onDigest(generation, digest);
-        }
-    }
-
-    @Override
-    public void onSessionSettingsDigestsComplete(long epoch, int generation, int digestCount) {
-        if (acceptsFrame(epoch)) {
-            replicaStreams.getSettingsComparison().onDigestsComplete(generation, digestCount);
-        }
     }
 
     private void sendStreamAnswer(int streamKey, StreamAnswer answer) {

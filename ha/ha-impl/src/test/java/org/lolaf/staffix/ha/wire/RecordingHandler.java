@@ -103,17 +103,6 @@ public class RecordingHandler implements FrameHandler {
     }
 
     @Override
-    public void onSessionSettingsDigest(long epoch, int generation, org.lolaf.staffix.ha.SessionSettingsDigests.Digest digest) {
-        frames.add("SESSION_SETTINGS_DIGEST epoch=" + epoch + " generation=" + generation + " store=" + digest.getStore() + " "
-                + digest.getFixSessionType() + " id=" + digest.getFixSessionId() + " value=" + digest.getValue() + " identity=" + digest.getStoreIdentity() + " document=" + digest.getDocument() + (digest.isRemoved() ? " removed" : ""));
-    }
-
-    @Override
-    public void onSessionSettingsDigestsComplete(long epoch, int generation, int digestCount) {
-        frames.add("SESSION_SETTINGS_DIGESTS_COMPLETE epoch=" + epoch + " generation=" + generation + " count=" + digestCount);
-    }
-
-    @Override
     public void onStreamsAnnounced(long epoch, int announcedCount) {
         frames.add("STREAMS_ANNOUNCED epoch=" + epoch + " count=" + announcedCount);
     }

@@ -16,7 +16,6 @@
 package org.lolaf.staffix.ha.wire;
 
 import org.lolaf.staffix.ha.EncryptionMode;
-import org.lolaf.staffix.ha.SessionSettingsDigests;
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 
@@ -157,39 +156,6 @@ public class FrameEncoder {
         out.putShort(p + 8, (short) identity.length);
         putBytes(out, p + 10, name);
         putBytes(out, p + 10 + name.length, identity);
-        return length;
-    }
-
-    public static int sessionSettingsDigest(ByteBuffer out, int index, long epoch, int generation, SessionSettingsDigests.Digest digest) {
-        byte[] store = utf8(digest.getStore());
-        byte[] id = utf8(digest.getFixSessionId());
-        byte[] value = utf8(digest.getValue());
-        byte[] identity = utf8(digest.getStoreIdentity());
-        byte[] document = utf8(digest.getDocument());
-        int length = header(out, index, FrameType.SESSION_SETTINGS_DIGEST, digest.isRemoved() ? WireFormat.FLAG_SESSION_REMOVED : 0, epoch,
-                store.length + id.length + value.length + identity.length + document.length);
-        int p = index + HEADER_BYTES;
-        out.putInt(p, generation);
-        out.put(p + 4, digest.getFixSessionType().getCode());
-        out.put(p + 5, (byte) 0);
-        out.putShort(p + 6, (short) store.length);
-        out.putShort(p + 8, (short) id.length);
-        out.putShort(p + 10, (short) value.length);
-        out.putShort(p + 12, (short) identity.length);
-        out.putShort(p + 14, (short) document.length);
-        int variable = p + 16;
-        putBytes(out, variable, store);
-        putBytes(out, variable += store.length, id);
-        putBytes(out, variable += id.length, value);
-        putBytes(out, variable += value.length, identity);
-        putBytes(out, variable + identity.length, document);
-        return length;
-    }
-
-    public static int sessionSettingsDigestsComplete(ByteBuffer out, int index, long epoch, int generation, int digestCount) {
-        int length = header(out, index, FrameType.SESSION_SETTINGS_DIGESTS_COMPLETE, 0, epoch, 0);
-        out.putInt(index + HEADER_BYTES, generation);
-        out.putInt(index + HEADER_BYTES + 4, digestCount);
         return length;
     }
 

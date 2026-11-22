@@ -300,23 +300,23 @@ class TestReplicationClient {
         leaderStore.awaitReplicated();
 
         assertThat(follower.store(MAIN).writes).endsWith("outgoing 2");
-        assertThat(leader.getSessions().get(0).getUnacknowledgedSends()).isZero();
+        assertThat(leader.getSessions().all().get(0).getUnacknowledgedSends()).isZero();
     }
 
     @Test
     void aSessionWhoseStorageTheFollowerSharesIsRefusedAndNotWaitedFor() {
-        follower.nextStorageIdentity = leader.getSessions().get(0).getConfig().getStorageIdentity();
+        follower.nextStorageIdentity = leader.getSessions().all().get(0).getConfig().getStorageIdentity();
         connect();
         await().until(() -> !leader.getFollowers().connections().isEmpty()
                 && leader.getFollowers().connections().get(0).getStreamAnswer(0) == StreamAnswer.SHARED_STORAGE);
-        long unacknowledged = leader.getSessions().get(0).getUnacknowledgedSends();
+        long unacknowledged = leader.getSessions().all().get(0).getUnacknowledgedSends();
 
         leaderStore.storeNextOutgoingSeqNum(2);
         leaderStore.awaitReplicated();
 
         assertThat(follower.store(MAIN).writes).isEmpty();
         assertThat(leader.getFollowers().connections().get(0).isStreamInSync(0)).isFalse();
-        assertThat(leader.getSessions().get(0).getUnacknowledgedSends()).as("sent without waiting")
+        assertThat(leader.getSessions().all().get(0).getUnacknowledgedSends()).as("sent without waiting")
                 .isEqualTo(unacknowledged + 1);
     }
 

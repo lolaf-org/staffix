@@ -62,9 +62,9 @@ final class HaStatusReport {
                 .switchoverMaxDuration(settings.switchoverMaxDuration())
                 .monitoringInstanceId(settings.getMonitoringInstanceId());
         if (role == Role.LEADER) {
-            int sessionCount = ha.getSessions().count();
+            int streamCount = ha.getSessions().count();
             for (FollowerConnection connection : ha.getFollowers().connections()) {
-                status.followerConnection(followerConnection(connection.getStatus(sessionCount)));
+                status.followerConnection(followerConnection(connection.getStatus(streamCount)));
             }
             ha.getStats().getSlowFollowers().notBackInSync().forEach(dropped -> status.droppedFollower(droppedFollower(dropped)));
         }

@@ -103,6 +103,6 @@ class TestReplicatedSessions {
     }
 
     private boolean isUnencrypted(int key, int messageTypeHash) {
-        return sessions.get(key).getConfig().getUnencryptedMessageTypes().isUnencrypted(messageTypeHash);
+        return sessions.all().get(key).getConfig().getUnencryptedMessageTypes().isUnencrypted(messageTypeHash);
     }
 }

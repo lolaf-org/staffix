@@ -20,7 +20,6 @@ import lombok.Setter;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.ha.HaStatus.SessionSettingsDifference;
-import org.lolaf.staffix.ha.SessionSettingsDigests;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
 import org.lolaf.staffix.ha.SessionSettingsDigests.StoredSession;
 
@@ -31,26 +30,33 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * How this node's session settings differ from the leader's, as of the leader's last digests and this node's stores now.
+ * How this node's session settings differ from the leader's, as of the leader's settings stream and this node's stores
+ * now. The leader's set is whole once a snapshot of the stream ends, and is kept current by its records after it.
  */
 public final class SessionSettingsComparison {
 
     private final EngineAccess engine;
     private final SessionSettingsApplier applier;
-    private final Map<StoredSession, Digest> receiving = new HashMap<>();
-    private int receivingGeneration;
+    /**
+     * What the snapshot in progress copied so far, which replaces {@link #leaders} at its end.
+     */
+    private final Map<StoredSession, Digest> copying;
+    private boolean snapshotInProgress;
     private @Nullable Map<StoredSession, Digest> leaders;
     /**
      * Where the leader's documents are applied: a store write must not hold up the lane's network thread.
      */
     @Setter
-    private Consumer<Runnable> applyExecutor = Runnable::run;
+    private Consumer<Runnable> applyExecutor;
     @Getter
-    private volatile List<SessionSettingsDifference> differences = List.of();
+    private volatile List<SessionSettingsDifference> differences;
 
     public SessionSettingsComparison(EngineAccess engine) {
         this.engine = engine;
         this.applier = new SessionSettingsApplier(engine);
+        this.copying = new HashMap<>();
+        this.applyExecutor = Runnable::run;
+        this.differences = List.of();
     }
 
     private static SessionSettingsDifference difference(StoredSession key, SessionSettingsDifference.Kind kind) {
@@ -58,28 +64,42 @@ public final class SessionSettingsComparison {
                 .fixSessionId(key.getSession().getFixSessionId()).kind(kind).build();
     }
 
-    public synchronized void onDigest(int generation, Digest digest) {
-        receive(generation);
-        receiving.put(digest.storedSession(), digest);
+    synchronized void snapshotBegin() {
+        snapshotInProgress = true;
+        copying.clear();
     }
 
-    public synchronized void onDigestsComplete(int generation, int count) {
-        receive(generation);
-        if (receiving.size() == count) {
-            leaders = new HashMap<>(receiving);
+    synchronized void snapshotEnd() {
+        if (!snapshotInProgress) {
+            return;
+        }
+        snapshotInProgress = false;
+        leaders = new HashMap<>(copying);
+        copying.clear();
+        compare();
+        List<Digest> received = List.copyOf(leaders.values());
+        applyExecutor.accept(() -> applyIfStillFollowing(received));
+    }
+
+    /**
+     * Ignored before a first snapshot, which brings it.
+     */
+    synchronized void onDigest(Digest digest) {
+        if (snapshotInProgress) {
+            copying.put(digest.storedSession(), digest);
+        } else if (leaders != null) {
+            leaders.put(digest.storedSession(), digest);
             compare();
-            List<Digest> received = List.copyOf(receiving.values());
+            List<Digest> received = List.of(digest);
             applyExecutor.accept(() -> applyIfStillFollowing(received));
         }
     }
 
-    /**
-     * A new generation drops what was received of the one before, which the leader replaced before sending it whole.
-     */
-    private void receive(int generation) {
-        if (generation != receivingGeneration) {
-            receivingGeneration = generation;
-            receiving.clear();
+    synchronized void onForgotten(StoredSession session) {
+        if (snapshotInProgress) {
+            copying.remove(session);
+        } else if (leaders != null && leaders.remove(session) != null) {
+            compare();
         }
     }
 
@@ -122,6 +142,8 @@ public final class SessionSettingsComparison {
      * This node leads now: there is no leader to differ from.
      */
     public synchronized void clear() {
+        snapshotInProgress = false;
+        copying.clear();
         leaders = null;
         differences = List.of();
     }
