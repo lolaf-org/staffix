@@ -4,18 +4,8 @@ if [ -n "$JAVA_HOME" ]; then
 else
   JAVA="java"
 fi
-CPUS="${BENCHMARK_CPUS:-6-11}"
 RTT_CPUS="${BENCHMARK_RTT_CPUS:-6-11,18-23}"
 JAVA_MAJOR=$("$JAVA" -XshowSettings:properties -version 2>&1 | awk -F'= ' '/java.specification.version/ {print $2}')
-for PROVIDER in \
-    "PROVIDER_JDK CLEAR,AES_GCM_128,AES_GCM_256,CHACHA20_POLY1305,AES_CTR_HMAC_SHA256,CHACHA20_HMAC_SHA256" \
-    "PROVIDER_CORRETTO AES_GCM_128,AES_GCM_256" \
-    "PROVIDER_BC AES_GCM_128,AES_GCM_256,CHACHA20_POLY1305,CHACHA20_HMAC_SHA256" \
-    "PROVIDER_BC_LTS AES_GCM_128,AES_GCM_256,CHACHA20_POLY1305"; do
-  set -- $PROVIDER
-  taskset -c "$CPUS" "$JAVA" -jar target/benchmarks.jar -rf json -prof gc HaFrameCipherBenchmark -p provider="$1" -p encryption="$2"
-  mv jmh-result.json "results/jmh-result-HaFrameCipherBenchmark-$1-jdk${JAVA_MAJOR}-${DATE}.json"
-done
 if [ "$JAVA_MAJOR" -lt 17 ]; then
   exit 0
 fi
