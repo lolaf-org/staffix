@@ -18,15 +18,15 @@ package org.lolaf.staffix.ha.replication.encryption;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.lolaf.staffix.ha.replication.encryption.EncryptionMode.DISABLED;
-import static org.lolaf.staffix.ha.replication.encryption.EncryptionMode.PREFERRED;
-import static org.lolaf.staffix.ha.replication.encryption.EncryptionMode.REQUIRED;
+import static org.lolaf.staffix.ha.replication.EncryptionMode.DISABLED;
+import static org.lolaf.staffix.ha.replication.EncryptionMode.PREFERRED;
+import static org.lolaf.staffix.ha.replication.EncryptionMode.REQUIRED;
 
 class TestKeyExchange {
 

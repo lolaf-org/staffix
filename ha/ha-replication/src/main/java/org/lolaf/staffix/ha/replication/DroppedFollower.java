@@ -22,9 +22,6 @@ import org.jspecify.annotations.Nullable;
 import java.time.Instant;
 
 /**
- * A follower lane dropped for reading the log so slowly that a write waited the log full timeout for it.
- */
-/**
  * A follower's lane dropped as too slow and not back in sync since.
  */
 @Value

@@ -23,14 +23,14 @@ import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.TestingFrameEncoder;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
-import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
+import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.replication.wire.FrameCipher;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
 import org.lolaf.staffix.ha.replication.wire.FrameType;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
-import org.lolaf.staffix.ha.replication.wire.WireFormatException;
+import org.lolaf.staffix.ha.replication.spi.WireFormatException;
 
 import javax.crypto.Cipher;
 import javax.crypto.Mac;

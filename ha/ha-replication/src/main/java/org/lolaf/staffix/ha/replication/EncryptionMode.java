@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.encryption;
+package org.lolaf.staffix.ha.replication;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;

@@ -15,5 +15,8 @@
  */
 /**
  * The leader's side of replication: the server its follower connects to, and what streams the log to it.
+ *
+ * <p>Internal: an application goes through {@link org.lolaf.staffix.ha.replication.ReplicationNode}; these types are
+ * public for the node and the library's other packages only.
  */
 package org.lolaf.staffix.ha.replication.leader;

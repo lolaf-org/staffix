@@ -15,13 +15,14 @@
  */
 package org.lolaf.staffix.ha.replication.follower;
 
+import org.lolaf.staffix.ha.replication.spi.WireFormatException;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
 import org.lolaf.staffix.ha.replication.encryption.Negotiation;
@@ -45,7 +46,7 @@ import java.util.function.ObjIntConsumer;
  * one this stream follows.
  */
 @Slf4j
-public final class LeaderConnection implements FrameHandler {
+final class LeaderConnection implements FrameHandler {
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     /**

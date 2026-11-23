@@ -16,8 +16,8 @@
 package org.lolaf.staffix.ha.replication.encryption;
 
 import lombok.experimental.UtilityClass;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
-import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
+import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
 
 import java.nio.charset.StandardCharsets;
 

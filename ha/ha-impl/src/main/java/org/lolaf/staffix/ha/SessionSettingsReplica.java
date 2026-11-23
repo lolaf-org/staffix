@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
 import org.lolaf.staffix.ha.replication.spi.ReplicaSink;
-import org.lolaf.staffix.ha.replication.wire.WireFormatException;
+import org.lolaf.staffix.ha.replication.spi.WireFormatException;
 
 import java.nio.ByteBuffer;
 

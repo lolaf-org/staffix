@@ -15,5 +15,8 @@
  */
 /**
  * The frames a leader and its follower exchange over TCP.
+ *
+ * <p>Internal: an application goes through {@link org.lolaf.staffix.ha.replication.ReplicationNode}; these types are
+ * public for the node and the library's other packages only.
  */
 package org.lolaf.staffix.ha.replication.wire;

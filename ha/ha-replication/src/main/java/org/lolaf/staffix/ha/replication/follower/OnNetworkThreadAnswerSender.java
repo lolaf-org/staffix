@@ -24,7 +24,7 @@ import java.nio.ByteBuffer;
 /**
  * On the connection's network thread, straight into a buffer of betty's pool.
  */
-public final class OnNetworkThreadAnswerSender implements AnswerSender {
+final class OnNetworkThreadAnswerSender implements AnswerSender {
 
     private final IOSession ioSession;
     private FrameCipher sealer;

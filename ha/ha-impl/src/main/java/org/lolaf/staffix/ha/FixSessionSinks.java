@@ -24,7 +24,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.ha.replication.spi.ReplicaSinks;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
-import org.lolaf.staffix.ha.replication.wire.WireFormatException;
+import org.lolaf.staffix.ha.replication.spi.WireFormatException;
 
 import java.util.Optional;
 

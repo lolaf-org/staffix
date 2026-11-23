@@ -57,13 +57,13 @@ public final class Followers {
     /**
      * The strategy a stream's {@code SYNC} sends wait on, woken by {@link #wakeWaiters()}.
      */
-    public synchronized void addWaiter(IdleStrategy idle) {
+    synchronized void addWaiter(IdleStrategy idle) {
         IdleStrategy[] added = Arrays.copyOf(waiters, waiters.length + 1);
         added[waiters.length] = idle;
         waiters = added;
     }
 
-    public synchronized void removeWaiter(IdleStrategy idle) {
+    synchronized void removeWaiter(IdleStrategy idle) {
         waiters = Arrays.stream(waiters).filter(other -> other != idle).toArray(IdleStrategy[]::new);
     }
 
@@ -81,7 +81,7 @@ public final class Followers {
     /**
      * After a write to the log: wakes the senders parked waiting for one.
      */
-    public void wakeSenders() {
+    void wakeSenders() {
         for (FollowerConnection connection : connections) {
             connection.wakeSender();
         }
@@ -188,7 +188,7 @@ public final class Followers {
      * @param mode         {@code SYNC_RECEIVED} or {@code SYNC_APPLIED}
      * @param timeoutNanos 0 to wait as long as a follower is in sync
      */
-    public Ack awaitAck(int streamKey, long offset, StreamReplicationMode mode, long timeoutNanos, IdleStrategy idle) {
+    Ack awaitAck(int streamKey, long offset, StreamReplicationMode mode, long timeoutNanos, IdleStrategy idle) {
         boolean received = mode == StreamReplicationMode.SYNC_RECEIVED;
         long startNanos = timeoutNanos == 0 ? 0 : System.nanoTime();
         Ack ack = ackOf(streamKey, offset, received, timeoutNanos, startNanos);

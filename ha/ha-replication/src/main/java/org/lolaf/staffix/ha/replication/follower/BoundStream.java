@@ -32,7 +32,7 @@ import java.nio.ByteBuffer;
  * One of the leader's streams as this follower holds it: its sink, none when it is not replicated here, and how far a
  * snapshot and the log brought it.
  */
-public final class BoundStream implements ReplicaStream {
+final class BoundStream implements ReplicaStream {
 
     @Getter
     private final String streamName;

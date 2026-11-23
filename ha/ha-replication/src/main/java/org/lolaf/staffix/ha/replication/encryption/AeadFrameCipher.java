@@ -15,7 +15,7 @@
  */
 package org.lolaf.staffix.ha.replication.encryption;
 
-import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
 
 import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;

@@ -24,7 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.log.LogFullWait;
@@ -44,7 +44,7 @@ import org.lolaf.staffix.ha.replication.wire.FrameType;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
-import org.lolaf.staffix.ha.replication.wire.WireFormatException;
+import org.lolaf.staffix.ha.replication.spi.WireFormatException;
 import org.slf4j.event.Level;
 
 import javax.crypto.Cipher;

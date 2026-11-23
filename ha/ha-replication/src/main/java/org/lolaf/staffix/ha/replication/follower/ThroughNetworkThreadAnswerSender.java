@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * From a sink writer thread: betty's pool is the network thread's alone, so the answers queue here and a task on that
  * thread sends them, scheduled at most once at a time.
  */
-public final class ThroughNetworkThreadAnswerSender implements AnswerSender, ByteFrameHandler, Runnable {
+final class ThroughNetworkThreadAnswerSender implements AnswerSender, ByteFrameHandler, Runnable {
 
     private static final int CAPACITY = 64 << 10;
     private static final int ANSWER = 0;

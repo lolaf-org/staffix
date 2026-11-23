@@ -17,7 +17,7 @@ package org.lolaf.staffix.ha.replication.wire;
 
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
 

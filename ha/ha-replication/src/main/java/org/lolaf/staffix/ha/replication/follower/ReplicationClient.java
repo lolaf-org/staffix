@@ -138,7 +138,7 @@ public final class ReplicationClient {
     /**
      * The lane's connection to the leader now, null between connections or for a lane not opened.
      */
-    public @Nullable LeaderConnection getConnection(int lane) {
+    @Nullable LeaderConnection getConnection(int lane) {
         LaneClient[] current = laneClients;
         return lane < current.length ? current[lane].connection : null;
     }

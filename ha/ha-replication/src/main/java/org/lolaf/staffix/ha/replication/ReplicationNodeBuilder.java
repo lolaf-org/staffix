@@ -23,7 +23,6 @@ import org.lolaf.betty.api.ss.SelectStrategy;
 import org.lolaf.betty.api.ss.WakeupSelectStrategy;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
-import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.replication.spi.LeaderStreams;
 import org.lolaf.staffix.ha.replication.spi.ReplicaSinks;
 import org.lolaf.staffix.ha.replication.spi.ReplicationClock;

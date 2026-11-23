@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.ha.replication.ReplicaStream;
 import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 import org.lolaf.staffix.ha.replication.spi.ReplicaSinks;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
@@ -80,14 +81,14 @@ public final class FollowerStreams {
         return key % positions.count() == lane;
     }
 
-    public long getLastAppliedEpoch(int lane) {
+    long getLastAppliedEpoch(int lane) {
         return positions.getLastAppliedEpoch(lane);
     }
 
     /**
      * The offset in the lane's log of the last record written, -1 for none.
      */
-    public long getLastAppliedOffset(int lane) {
+    long getLastAppliedOffset(int lane) {
         return positions.getLastAppliedOffset(lane);
     }
 
@@ -343,7 +344,7 @@ public final class FollowerStreams {
     /**
      * Null for a stream the leader never announced. Any thread.
      */
-    public @Nullable BoundStream find(String streamName) {
+    public @Nullable ReplicaStream find(String streamName) {
         for (BoundStream stream : streamsByKey) {
             if (stream != null && stream.getStreamName().equals(streamName)) {
                 return stream;

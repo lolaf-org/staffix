@@ -41,8 +41,8 @@ import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySe
 import org.lolaf.staffix.fix44.encoders.EmailEncoder;
 import org.lolaf.staffix.fix44.fields.Subject;
 import org.lolaf.staffix.fix44.msg.MessageTypes;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
-import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
+import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.ha.primos.PrimosLeaderElectionSettings;
 import org.lolaf.staffix.stores.messages.file.FileMessageStoreSettings;

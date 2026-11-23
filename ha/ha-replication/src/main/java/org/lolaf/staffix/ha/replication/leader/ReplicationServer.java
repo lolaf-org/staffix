@@ -36,7 +36,7 @@ import org.lolaf.staffix.ha.replication.log.ReplicationLogs;
 import org.lolaf.staffix.ha.replication.wire.CloseReason;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
-import org.lolaf.staffix.ha.replication.wire.WireFormatException;
+import org.lolaf.staffix.ha.replication.spi.WireFormatException;
 
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;

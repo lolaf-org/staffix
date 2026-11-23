@@ -15,7 +15,8 @@
  */
 package org.lolaf.staffix.ha.replication.wire;
 
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.spi.WireFormatException;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
 import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;

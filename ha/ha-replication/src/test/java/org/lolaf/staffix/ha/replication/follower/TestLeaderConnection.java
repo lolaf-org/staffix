@@ -17,7 +17,8 @@ package org.lolaf.staffix.ha.replication.follower;
 
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.ReplicaStream;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.journal.JournalCopy;
 import org.lolaf.staffix.ha.replication.wire.CloseReason;
@@ -212,7 +213,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     void aReconnectionKeepsTheSinkAndResumesAfterTheLastRecord() {
         streaming();
         read(record(EPOCH, 0, 0, 3, "three"));
-        BoundStream stream = followerStreams.find(MAIN);
+        ReplicaStream stream = followerStreams.find(MAIN);
 
         LeaderConnection next = newConnection(0);
         sent.frames.clear();

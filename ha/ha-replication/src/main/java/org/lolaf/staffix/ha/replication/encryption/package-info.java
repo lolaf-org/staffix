@@ -13,14 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.wire;
-
 /**
- * Bytes that are not a valid frame. The stream cannot be resynchronised after one, so the connection is closed.
+ * Encrypting and authenticating the frames: the keys each connection derives from the shared secret, and the
+ * ciphers that seal and open its frames, as {@link org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings}
+ * ask.
+ *
+ * <p>Internal: an application goes through {@link org.lolaf.staffix.ha.replication.ReplicationNode}; these types are
+ * public for the node and the library's other packages only.
  */
-public class WireFormatException extends RuntimeException {
-
-    public WireFormatException(String message) {
-        super(message);
-    }
-}
+package org.lolaf.staffix.ha.replication.encryption;

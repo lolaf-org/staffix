@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.IdleStrategy;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
 import org.lolaf.staffix.ha.replication.encryption.Negotiation;
@@ -413,7 +413,7 @@ public final class FollowerConnection implements FrameHandler {
         }
     }
 
-    public @Nullable StreamSyncState getSyncState(int streamKey) {
+    @Nullable StreamSyncState getSyncState(int streamKey) {
         return syncs.get(streamKey);
     }
 

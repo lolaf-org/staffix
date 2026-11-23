@@ -25,7 +25,7 @@ import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
-import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.DroppedFollower;
 import org.lolaf.staffix.ha.replication.FollowerLaneStatus;
 import org.lolaf.staffix.ha.replication.FollowersView;

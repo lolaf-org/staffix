@@ -19,7 +19,7 @@ package org.lolaf.staffix.ha.replication.leader;
  * Where a stream stands on one follower, as the leader knows it. A stream the follower refuses, its storage shared
  * with the leader's included, is {@link #NOT_REPLICATED}.
  */
-public enum StreamSyncState {
+enum StreamSyncState {
     ANNOUNCED,
     SNAPSHOT_PENDING,
     SNAPSHOT_SENT,

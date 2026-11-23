@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.replication.encryption;
 
+import org.lolaf.staffix.ha.replication.spi.WireFormatException;
 import org.lolaf.staffix.ha.replication.wire.*;
 
 import java.nio.ByteBuffer;

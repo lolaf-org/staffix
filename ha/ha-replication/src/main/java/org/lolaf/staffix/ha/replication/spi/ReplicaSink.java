@@ -24,9 +24,9 @@ import java.nio.ByteBuffer;
  * which starts the copy over. A payload or a state is lent as a range of the receive buffer, which is put back as it
  * was. Writes may be kept until {@link #writePending()}, which the follower calls before it acknowledges them.
  *
- * <p>One lane thread at a time. A method throws {@link org.lolaf.staffix.ha.replication.wire.WireFormatException} for what it
- * cannot make sense of, which the follower takes as the leader's error; any other exception as its own failure to
- * apply, after which it reconnects to resume past the last record written.
+ * <p>One lane thread at a time. A method throws {@link WireFormatException} for what it cannot make sense of, which
+ * the follower takes as the leader's error; any other exception as its own failure to apply, after which it
+ * reconnects to resume past the last record written.
  */
 public interface ReplicaSink {
 

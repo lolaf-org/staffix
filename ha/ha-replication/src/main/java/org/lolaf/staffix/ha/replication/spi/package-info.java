@@ -15,6 +15,6 @@
  */
 /**
  * What an application implements for its data to be replicated: its streams as the leader announces and snapshots
- * them, how a follower binds and applies them, and the clock and recorders the replication reads and feeds.
+ * them, the sinks a follower applies them into, and the clock and recorders the replication reads and feeds.
  */
 package org.lolaf.staffix.ha.replication.spi;

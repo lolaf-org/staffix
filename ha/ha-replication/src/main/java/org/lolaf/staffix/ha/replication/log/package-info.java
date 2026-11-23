@@ -16,5 +16,8 @@
 /**
  * The replication log: the records of the replicated streams, in the order they were appended, until the follower
  * has them.
+ *
+ * <p>Internal: an application goes through {@link org.lolaf.staffix.ha.replication.ReplicationNode}; these types are
+ * public for the node and the library's other packages only.
  */
 package org.lolaf.staffix.ha.replication.log;

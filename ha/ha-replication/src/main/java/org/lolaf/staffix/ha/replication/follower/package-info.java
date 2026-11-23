@@ -16,5 +16,8 @@
 /**
  * The follower's side of replication: the connection to the leader, and the sinks it applies the leader's streams
  * into until it takes over.
+ *
+ * <p>Internal: an application goes through {@link org.lolaf.staffix.ha.replication.ReplicationNode}; these types are
+ * public for the node and the library's other packages only.
  */
 package org.lolaf.staffix.ha.replication.follower;

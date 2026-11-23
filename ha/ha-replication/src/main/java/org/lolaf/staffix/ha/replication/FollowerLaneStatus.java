@@ -20,9 +20,6 @@ import lombok.Value;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One follower's connection for one lane, as its leader sees it.
- */
-/**
  * One lane of a follower, as its leader sees it.
  */
 @Value
