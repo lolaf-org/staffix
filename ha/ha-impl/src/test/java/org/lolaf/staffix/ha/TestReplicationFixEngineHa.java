@@ -28,9 +28,6 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
-import org.lolaf.staffix.ha.follower.RecordingEngine;
-import org.lolaf.staffix.ha.follower.RecordingMeters;
-import org.lolaf.staffix.ha.follower.RecordingProbes;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -237,7 +234,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         a.ha.replicatingStore(MAIN, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
 
         await().until(() -> b.engine.store(MAIN) != replicaStore && b.ha.getSessionStatuses().get(0).isInSync());
-        assertThat(a.engine.meters.read("ha.snapshots")).as("b caught up twice").isEqualTo(2);
+        assertThat(a.engine.meters.read("ha.snapshots")).as("b caught up twice, and the settings once").isEqualTo(3);
     }
 
     @Test
@@ -296,7 +293,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         assertThat(leader.read("ha.epoch")).isEqualTo(3);
         assertThat(leader.read("ha.leadership.valid")).isEqualTo(1);
         assertThat(leader.read("ha.followers.connected")).isEqualTo(1);
-        assertThat(leader.read("ha.snapshots")).as("b caught up by snapshot").isEqualTo(1);
+        assertThat(leader.read("ha.snapshots")).as("b caught up by snapshot, the session and the settings").isEqualTo(2);
         assertThat(leader.read("ha.replica.connected")).isZero();
         await().until(() -> follower.read("ha.replica.in.sync") == 1);
         assertThat(follower.read("ha.role")).isEqualTo(1);
@@ -351,7 +348,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
         leads(leader, follower);
 
-        assertThat(follower.ha.getReplicaSessions().getLanes()).isEqualTo(2);
+        assertThat(follower.ha.getNode().leader().getLanes()).isEqualTo(2);
         assertThat(leader.ha.getStatus().getFollowerConnections()).extracting(HaStatus.FollowerConnection::getLane).containsExactlyInAnyOrder(0, 1);
     }
 
@@ -427,7 +424,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
         a.ha.resync();
 
-        await().until(() -> a.engine.meters.read("ha.snapshots") == 2 && a.engine.meters.read("ha.followers.in.sync") == 1);
+        await().until(() -> a.engine.meters.read("ha.snapshots") == 4 && a.engine.meters.read("ha.followers.in.sync") == 1);
         assertThat(b.engine.store(MAIN).writes).as("reset once per snapshot").filteredOn("reset"::equals).hasSize(2);
     }
 
@@ -437,7 +434,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
         a.ha.resync(MAIN.getFixSessionId(), MAIN.getFixSessionType());
 
-        await().until(() -> a.engine.meters.read("ha.snapshots") == 2);
+        await().until(() -> a.engine.meters.read("ha.snapshots") == 3);
         assertThatThrownBy(() -> a.ha.resync(MAIN.getFixSessionId(), FixSessionType.INITIATOR))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("is not replicated");
     }
@@ -534,7 +531,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         try {
             a.store.storeNextIncomingSeqNum(7);
             ByteBuffer message = ByteBuffer.allocate(4096);
-            for (int seq = 1; a.ha.getStats().getDroppedTooSlow() == 0; seq++) {
+            for (int seq = 1; a.ha.getNode().followers().getDroppedTooSlow() == 0; seq++) {
                 assertThat(seq).as("messages written before the follower was dropped").isLessThan(100_000);
                 a.store.storeMessageSent(seq, message.clear());
             }
@@ -556,7 +553,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     void aLeaderAlertsUntilAFollowerIsConnectedAndInSync() {
         a.election.elect(Role.LEADER, 3, "a");
         a.start();
-        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
+        await().until(() -> a.ha.getRole() == Role.LEADER);
 
         assertThat(HaProbes.followersEvaluator(a.ha).evaluate()).hasValueSatisfying(alert -> {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
@@ -663,6 +660,18 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
         assertThat(ha.isStarted()).isTrue();
         ha.stop(Deadline.of(Duration.ofSeconds(2)));
+    }
+
+    @Test
+    void aNodeItsPeersGiveNoAddressIsRefused() {
+        ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
+                .nodeId("c").peer("a", addressA)
+                .leaderElection(FakeLeaderElection.Settings.builder().election(new FakeLeaderElection()).build())
+                .build());
+
+        assertThatThrownBy(() -> ha.bind(new RecordingEngine()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Replication high availability peers [a] have no address for this node, c");
     }
 
     private ReplicationFixEngineHa naming(String settingsStore, RecordingEngine engine) {

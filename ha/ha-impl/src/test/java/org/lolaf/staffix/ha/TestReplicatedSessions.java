@@ -24,7 +24,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.lolaf.staffix.ha.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
 
 import java.util.List;
 
@@ -55,23 +55,13 @@ class TestReplicatedSessions {
     void eachSessionsUnencryptedMessageTypesAreTheOnesItWasLastBuiltWith() {
         register(FixSessionType.INITIATOR, "S");
         register(FixSessionType.ACCEPTOR);
-        assertThat(sessions.isUnencrypted(0, Hashing.hash("S"))).isTrue();
-        assertThat(sessions.isUnencrypted(1, Hashing.hash("S"))).isFalse();
+        assertThat(isUnencrypted(0, Hashing.hash("S"))).isTrue();
+        assertThat(isUnencrypted(1, Hashing.hash("S"))).isFalse();
 
         register(FixSessionType.INITIATOR, "X");
 
-        assertThat(sessions.isUnencrypted(0, Hashing.hash("S"))).isFalse();
-        assertThat(sessions.isUnencrypted(0, Hashing.hash("X"))).isTrue();
-    }
-
-    @Test
-    void aSessionNoLongerReplicatedKeepsTheCachedTypesInStepWithItsConfig() {
-        ReplicatedSession session = register(FixSessionType.INITIATOR, "S");
-
-        session.update(session.getConfig().notReplicated());
-
-        assertThat(session.getConfig().getUnencryptedMessageTypes().isUnencrypted(Hashing.hash("S"))).isTrue();
-        assertThat(sessions.isUnencrypted(0, Hashing.hash("S"))).isTrue();
+        assertThat(isUnencrypted(0, Hashing.hash("S"))).isFalse();
+        assertThat(isUnencrypted(0, Hashing.hash("X"))).isTrue();
     }
 
     @Test
@@ -110,5 +100,9 @@ class TestReplicatedSessions {
         }
 
         assertThat(AllocatedBytes.ofCurrentThread() - before).as("less than a byte per find").isLessThan(100_000);
+    }
+
+    private boolean isUnencrypted(int key, int messageTypeHash) {
+        return sessions.all().get(key).getConfig().getUnencryptedMessageTypes().isUnencrypted(messageTypeHash);
     }
 }

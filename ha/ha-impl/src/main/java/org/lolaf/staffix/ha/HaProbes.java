@@ -25,14 +25,19 @@ import org.lolaf.staffix.api.alerting.Probes;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
-import org.lolaf.staffix.ha.follower.ReplicationClient;
-import org.lolaf.staffix.ha.leader.FollowerConnection;
-import org.lolaf.staffix.ha.leader.Followers;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
+import org.lolaf.staffix.ha.replication.DroppedFollower;
+import org.lolaf.staffix.ha.replication.FollowerLaneStatus;
+import org.lolaf.staffix.ha.replication.FollowersView;
+import org.lolaf.staffix.ha.replication.LeaderStatus;
+import org.lolaf.staffix.ha.replication.LeaderView;
+import org.lolaf.staffix.ha.replication.ReplicationNode;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
@@ -83,7 +88,7 @@ class HaProbes {
         probes.add(Probe.builder().name(name).description(description).evaluator(evaluator.withRaiseDelay(RAISE_DELAY)).build());
     }
 
-    static Probe sessionProbe(ReplicatedSession session, Followers followers) {
+    static Probe sessionProbe(ReplicatedSession session, FollowersView followers) {
         return Probe.builder()
                 .name(REPLICATION)
                 .description("While leading: SYNC sends the follower did not ack in time, messages longer than half the"
@@ -102,9 +107,8 @@ class HaProbes {
             List<String> stalled = new ArrayList<>();
             long thresholdMillis = ha.getSettings().getFollowerLagAlertThreshold().toMillis();
             boolean anyConnected = false;
-            int lanes = ha.getReplicationLogs().count();
-            for (FollowerConnection connection : ha.getFollowers().connections()) {
-                HaStatus.FollowerConnection follower = connection.getStatus(ha.getSessions().count());
+            int lanes = ha.getNode().getLanes();
+            for (FollowerLaneStatus follower : ha.getNode().followers().getLaneStatuses()) {
                 anyConnected |= follower.isConnected();
                 String name = laneName(follower.getNodeId(), follower.getLane(), lanes);
                 if (follower.isConnected() && follower.getLagMillis() > thresholdMillis) {
@@ -131,7 +135,7 @@ class HaProbes {
     }
 
     private static Optional<Alert> droppedTooSlowAlert(ReplicationFixEngineHa ha, int lanes) {
-        List<HaStatus.DroppedFollower> dropped = ha.getStats().getSlowFollowers().notBackInSync();
+        List<DroppedFollower> dropped = ha.getNode().followers().getDroppedFollowers();
         if (dropped.isEmpty()) {
             return Optional.empty();
         }
@@ -153,15 +157,16 @@ class HaProbes {
             if (ha.getRole() != Role.FOLLOWER) {
                 return Optional.empty();
             }
-            ReplicationClient client = ha.getClient();
-            if (client == null) {
+            LeaderView leader = ha.getNode().leader();
+            LeaderStatus status = leader.getStatus();
+            if (status == null) {
                 return Optional.of(Alert.major("No address for the leader, " + leaderId(ha) + ", to replicate from"));
             }
-            if (!client.isConnected()) {
-                return Optional.of(Alert.major("Not connected to the leader " + client.getStatus().getAddress()
+            if (!status.isConnected()) {
+                return Optional.of(Alert.major("Not connected to the leader " + status.getAddress()
                         + " for " + RAISE_DELAY.toSeconds() + " s"));
             }
-            return client.isInSync() ? Optional.empty()
+            return status.isInSync() ? Optional.empty()
                     : Optional.of(Alert.warning("Connected to the leader, but not holding every replicated session in full"));
         };
     }
@@ -186,21 +191,21 @@ class HaProbes {
             if (ha.getRole() == Role.LEADER) {
                 return clearFollowersAlert(ha);
             }
-            ReplicationClient client = ha.getClient();
-            if (ha.getRole() != Role.FOLLOWER || client == null || !client.isConnected() || client.isEncrypted()) {
+            LeaderStatus status = ha.getNode().leader().getStatus();
+            if (ha.getRole() != Role.FOLLOWER || status == null || !status.isConnected() || status.getCipher() != null) {
                 return Optional.empty();
             }
-            return Optional.of(Alert.warning("Following the leader " + client.getStatus().getLeaderId()
+            return Optional.of(Alert.warning("Following the leader " + status.getLeaderId()
                     + " in clear: this node prefers encryption, the leader has it disabled"));
         };
     }
 
     private static Optional<Alert> clearFollowersAlert(ReplicationFixEngineHa ha) {
-        int lanes = ha.getReplicationLogs().count();
+        ReplicationNode node = ha.getNode();
         List<String> clear = new ArrayList<>();
-        for (FollowerConnection connection : ha.getFollowers().connections()) {
-            if (connection.isConnected() && !connection.isEncrypted()) {
-                clear.add(laneName(connection.getFollowerId(), connection.getLane(), lanes));
+        for (FollowerLaneStatus follower : node.followers().getLaneStatuses()) {
+            if (follower.isConnected() && follower.getCipher() == null) {
+                clear.add(laneName(follower.getNodeId(), follower.getLane(), node.getLanes()));
             }
         }
         return clear.isEmpty() ? Optional.empty() : Optional.of(Alert.warning("Replicating in clear to follower "
@@ -231,21 +236,16 @@ class HaProbes {
     static class SessionReplicationEvaluator implements ProbeEvaluator {
 
         ReplicatedSession session;
-        Followers followers;
+        FollowersView followers;
         LongSupplier nanoClock;
         long expiryNanos;
 
         @Override
         public Optional<Alert> evaluate() {
             List<String> problems = null;
-            List<FollowerConnection> connections = followers.connections();
-            for (int i = 0; i < connections.size(); i++) {
-                FollowerConnection connection = connections.get(i);
-                SessionAnswer answer = connection.getSessionAnswer(session.getKey());
-                if (answer != null && answer.isRefusal()) {
-                    problems = add(problems,
-                            "follower " + connection.getFollowerId() + " refuses to replicate it: " + answer);
-                }
+            for (Map.Entry<String, StreamAnswer> refusal : followers.getStreamRefusals(session.getKey()).entrySet()) {
+                problems = add(problems, "follower " + refusal.getKey() + " refuses to replicate it: "
+                        + NotReplicatedReason.of(refusal.getValue()));
             }
             long now = nanoClock.getAsLong();
             if (session.getTimedOutSends() > 0 && now - session.getLastTimedOutNanos() < expiryNanos) {

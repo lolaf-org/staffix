@@ -24,18 +24,22 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.leader.Followers;
+import org.lolaf.staffix.ha.replication.StreamWriter;
+import org.lolaf.staffix.ha.replication.spi.LeaderStream;
+import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 /**
  * A replicated session as the leader knows it: the key its events carry in the log and on the wire.
  */
 @Slf4j
 @Getter
-public final class ReplicatedSession {
+public final class ReplicatedSession implements LeaderStream {
 
     private final int key;
     private final FixSessionId fixSessionId;
     private final FixSessionType fixSessionType;
+    private final String streamName;
     /**
      * Replaced whole each time the session is built, so a reader on another thread never sees half of an update.
      */
@@ -63,6 +67,7 @@ public final class ReplicatedSession {
         this.key = key;
         this.fixSessionId = fixSessionId;
         this.fixSessionType = fixSessionType;
+        this.streamName = new TypedSessionId(fixSessionType, fixSessionId.toString()).toStreamName();
         this.config = config;
     }
 
@@ -73,24 +78,41 @@ public final class ReplicatedSession {
     /**
      * False once built with replication mode {@code NONE}, until built with another.
      */
+    @Override
     public boolean isReplicated() {
         return config.getReplicationMode() != ReplicationMode.NONE;
+    }
+
+    @Override
+    public StreamReplicationMode getStreamReplicationMode() {
+        return StreamReplicationMode.from(config.getReplicationMode().getCode());
+    }
+
+    @Override
+    public @Nullable String getStorageIdentity() {
+        return config.getStorageIdentity();
+    }
+
+    @Override
+    public SnapshotSource newSnapshotSource() {
+        Config current = config;
+        return new FixSessionSnapshotSource(current.getStore(), current.getUnencryptedMessageTypes());
     }
 
     /**
      * From the session's thread only, after each {@code SYNC} send. Logs the change from acknowledged to not and back,
      * never each send.
      */
-    void recordAck(Followers.Ack ack) {
+    void recordAck(StreamWriter.Ack ack) {
         boolean wasUnacknowledged = lastSendUnacknowledged;
-        if (ack == Followers.Ack.ACKED) {
+        if (ack == StreamWriter.Ack.ACKED) {
             if (wasUnacknowledged) {
                 lastSendUnacknowledged = false;
                 log.info("FIX session {} {} sends are acknowledged by the follower again", fixSessionType, fixSessionId);
             }
             return;
         }
-        if (ack == Followers.Ack.TIMED_OUT) {
+        if (ack == StreamWriter.Ack.TIMED_OUT) {
             lastTimedOutNanos = System.nanoTime();
             timedOutSends++;
         } else {

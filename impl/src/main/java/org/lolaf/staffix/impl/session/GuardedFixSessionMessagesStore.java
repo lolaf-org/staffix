@@ -253,9 +253,12 @@ public class GuardedFixSessionMessagesStore implements FixMessagesStore.FixSessi
         return started;
     }
 
+    /**
+     * False from the start of a stop, when finds are refused, rather than once the store underneath stopped.
+     */
     @Override
     public boolean isStarted() {
-        return fixSessionMessagesStore.isStarted();
+        return readable && fixSessionMessagesStore.isStarted();
     }
 
     private boolean skipped() {

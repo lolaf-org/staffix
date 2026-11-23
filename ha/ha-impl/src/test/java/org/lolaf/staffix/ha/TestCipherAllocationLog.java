@@ -22,9 +22,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.lolaf.staffix.ha.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.EncryptionMode;
+import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
 import org.slf4j.event.Level;
 
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -48,7 +51,9 @@ class TestCipherAllocationLog {
     }
 
     private static void engine(ReplicationEncryptionSettings encryption) {
-        new ReplicationFixEngineHa(ReplicationHaSettings.builder().encryption(encryption).build());
+        new ReplicationFixEngineHa(ReplicationHaSettings.builder().nodeId("a")
+                .peer("a", new InetSocketAddress("localhost", 0)).encryption(encryption).build())
+                .bind(new RecordingEngine());
     }
 
     private static ReplicationEncryptionSettings encryption(String cipher) {

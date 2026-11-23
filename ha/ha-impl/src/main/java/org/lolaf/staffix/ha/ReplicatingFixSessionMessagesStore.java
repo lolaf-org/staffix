@@ -18,7 +18,6 @@ package org.lolaf.staffix.ha;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.Timer;
@@ -26,11 +25,9 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.leader.Followers;
-import org.lolaf.staffix.ha.log.LogFullWait;
-import org.lolaf.staffix.ha.log.ReplicationLog;
-import org.lolaf.staffix.ha.log.StoreEventRecord;
-import org.lolaf.staffix.ha.wire.WireFormat;
+import org.lolaf.staffix.ha.replication.StreamWriter;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -43,18 +40,15 @@ import java.util.function.Consumer;
  *
  * <p>Relies on the engine's guarantees: the store it wraps never throws a storage failure, and the writes come from
  * the session's thread one at a time, which is what keeps the log in the order the writes were applied and lets one
- * {@link StoreEventRecord} serve them all.
+ * {@link StreamWriter} serve them all. A store event is a record whose content type is its {@link StoreEventType} code,
+ * and whose position is its seqnum.
  */
 @Slf4j
 final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
 
     private final FixSessionMessagesStore store;
-    private final ReplicationLog replicationLog;
-    private final LogFullWait logFullWait;
+    private final StreamWriter writer;
     private final ReplicatedSession session;
-    private final Followers followers;
-    private final StoreEventRecord storeEventRecord;
-    private final IdleStrategy ackIdle;
     private final ReplicatedAhead replicatedAhead;
     private final Timer syncReceivedAckLatency;
     private final Timer syncAppliedAckLatency;
@@ -67,18 +61,13 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      *                               it came; {@code syncAppliedAckLatency} the same for {@code SYNC_APPLIED}
      * @param onStarted              given this store once started, before the session writes, so what it writes is replicated
      */
-    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog,
-                                       LogFullWait logFullWait, ReplicatedSession session, Followers followers,
-                                       Timer syncReceivedAckLatency, Timer syncAppliedAckLatency, IdleStrategy ackIdle,
-                                       Consumer<FixSessionMessagesStore> onStarted) {
+    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, StreamWriter writer,
+                                       ReplicatedSession session, Timer syncReceivedAckLatency,
+                                       Timer syncAppliedAckLatency, Consumer<FixSessionMessagesStore> onStarted) {
         this.lastAppendedOffset = -1;
         this.store = store;
-        this.replicationLog = replicationLog;
-        this.logFullWait = logFullWait;
+        this.writer = writer;
         this.session = session;
-        this.followers = followers;
-        this.storeEventRecord = new StoreEventRecord();
-        this.ackIdle = ackIdle;
         this.replicatedAhead = new ReplicatedAhead();
         this.syncReceivedAckLatency = syncReceivedAckLatency;
         this.syncAppliedAckLatency = syncAppliedAckLatency;
@@ -95,7 +84,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (messageType.isStorable() && !store.filter(messageType, message)) {
             append(StoreEventType.STORE_MESSAGE, outgoingSeqNum, messageType.codeHash(), message);
         } else {
-            append(StoreEventType.STORE_OUTGOING_SEQ_NUM, outgoingSeqNum + 1, WireFormat.NO_MESSAGE_TYPE, null);
+            append(StoreEventType.STORE_OUTGOING_SEQ_NUM, outgoingSeqNum + 1, UnencryptedMessageTypes.NO_MESSAGE_TYPE, null);
         }
         replicatedAhead.add(outgoingSeqNum);
     }
@@ -105,9 +94,10 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (lastAppendedOffset >= 0) {
             long startNanos = System.nanoTime();
             ReplicatedSession.Config config = session.getConfig();
-            Followers.Ack ack = followers.awaitAck(session.getKey(), lastAppendedOffset, config.getReplicationMode(),
-                    config.getReplicationAckTimeoutNanos(), ackIdle);
-            if (ack == Followers.Ack.ACKED) {
+            StreamWriter.Ack ack = writer.awaitAck(lastAppendedOffset,
+                    StreamReplicationMode.from(config.getReplicationMode().getCode()),
+                    config.getReplicationAckTimeoutNanos());
+            if (ack == StreamWriter.Ack.ACKED) {
                 long waitedNanos = System.nanoTime() - startNanos;
                 Timer engineTimer = config.getReplicationMode() == ReplicationMode.SYNC_RECEIVED ? syncReceivedAckLatency
                         : syncAppliedAckLatency;
@@ -130,14 +120,13 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public FixSessionMessagesStore start() {
         store.start();
-        followers.addWaiter(ackIdle);
         onStarted.accept(this);
         return this;
     }
 
     @Override
     public FixSessionMessagesStore stop(Deadline stopDeadline) {
-        followers.removeWaiter(ackIdle);
+        writer.close();
         store.stop(stopDeadline);
         return this;
     }
@@ -181,7 +170,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     public void resetSequenceNumbers() {
         store.resetSequenceNumbers();
         replicatedAhead.clear();
-        append(StoreEventType.RESET_SEQ_NUM, 0, WireFormat.NO_MESSAGE_TYPE, null);
+        append(StoreEventType.RESET_SEQ_NUM, 0, UnencryptedMessageTypes.NO_MESSAGE_TYPE, null);
     }
 
     @Override
@@ -202,7 +191,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public void storeNextIncomingSeqNum(long nextIncomingSeqNum) {
         store.storeNextIncomingSeqNum(nextIncomingSeqNum);
-        append(StoreEventType.STORE_INCOMING_SEQ_NUM, nextIncomingSeqNum, WireFormat.NO_MESSAGE_TYPE, null);
+        append(StoreEventType.STORE_INCOMING_SEQ_NUM, nextIncomingSeqNum, UnencryptedMessageTypes.NO_MESSAGE_TYPE, null);
     }
 
     @Override
@@ -211,7 +200,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (replicatedAhead.remove(nextOutgoingSeqNum - 1)) {
             return;
         }
-        append(StoreEventType.STORE_OUTGOING_SEQ_NUM, nextOutgoingSeqNum, WireFormat.NO_MESSAGE_TYPE, null);
+        append(StoreEventType.STORE_OUTGOING_SEQ_NUM, nextOutgoingSeqNum, UnencryptedMessageTypes.NO_MESSAGE_TYPE, null);
     }
 
     /**
@@ -227,7 +216,7 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      */
     @Override
     public void storeMessageSent(long outgoingSeqNum, ByteBuffer message) {
-        storeMessageSent(outgoingSeqNum, WireFormat.NO_MESSAGE_TYPE, message);
+        storeMessageSent(outgoingSeqNum, UnencryptedMessageTypes.NO_MESSAGE_TYPE, message);
     }
 
     private void storeMessageSent(long outgoingSeqNum, int messageTypeHash, ByteBuffer message) {
@@ -252,16 +241,25 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      * brings the follower's seqnums back in line.
      */
     private void append(StoreEventType eventType, long sequenceNumber, int messageTypeHash, @Nullable ByteBuffer message) {
+        int messageIndex = message == null ? 0 : message.position();
+        int messageLength = message == null ? 0 : message.remaining();
         try {
-            lastAppendedOffset = replicationLog.append(storeEventRecord.set(session.getKey(), eventType, sequenceNumber,
-                    messageTypeHash, message), logFullWait);
-            followers.wakeSenders();
+            lastAppendedOffset = writer.append(eventType.getCode(), flag(eventType, messageTypeHash), sequenceNumber,
+                    message, messageIndex, messageLength);
         } catch (IllegalArgumentException e) {
             session.recordUnreplicatedEvent();
             log.error("FIX session {} {} {} {} not replicated, its follower will not have it: {}. Raise logCapacity to "
                             + "replicate messages this long", session.getFixSessionType(), session.getFixSessionId(), eventType,
                     sequenceNumber, e.getMessage());
         }
+    }
+
+    private RecordFlag flag(StoreEventType eventType, int messageTypeHash) {
+        if (eventType == StoreEventType.RESET_SEQ_NUM) {
+            return RecordFlag.RESET;
+        }
+        return session.getConfig().getUnencryptedMessageTypes().isUnencrypted(messageTypeHash) 
+                ? RecordFlag.PLAINTEXT : RecordFlag.NONE;
     }
 
     /**

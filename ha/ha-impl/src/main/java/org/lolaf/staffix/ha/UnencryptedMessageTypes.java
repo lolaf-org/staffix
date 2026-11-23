@@ -20,7 +20,6 @@ import lombok.ToString;
 import org.lolaf.staffix.api.msg.CoreMessageType;
 import org.lolaf.staffix.api.serde.Hashing;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
-import org.lolaf.staffix.ha.wire.WireFormat;
 
 import java.util.Arrays;
 import java.util.List;
@@ -32,6 +31,11 @@ import java.util.List;
 @EqualsAndHashCode
 @ToString
 public final class UnencryptedMessageTypes {
+
+    /**
+     * The MsgType(35) hash of a message whose type is not known, which is never sent unencrypted.
+     */
+    public static final int NO_MESSAGE_TYPE = 0;
 
     static final UnencryptedMessageTypes NONE = new UnencryptedMessageTypes(false, new int[0]);
 
@@ -63,7 +67,7 @@ public final class UnencryptedMessageTypes {
      * False for a message of unknown type and for a Logon, whatever the settings say.
      */
     public boolean isUnencrypted(int messageTypeHash) {
-        if (messageTypeHash == WireFormat.NO_MESSAGE_TYPE || messageTypeHash == LOGON) {
+        if (messageTypeHash == NO_MESSAGE_TYPE || messageTypeHash == LOGON) {
             return false;
         }
         return all || Arrays.binarySearch(hashes, messageTypeHash) >= 0;

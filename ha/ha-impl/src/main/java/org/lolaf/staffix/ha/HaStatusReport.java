@@ -25,11 +25,14 @@ import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
-import org.lolaf.staffix.ha.follower.ReplicationClient;
-import org.lolaf.staffix.ha.leader.FollowerConnection;
-import org.lolaf.staffix.ha.wire.SessionAnswer;
+import org.lolaf.staffix.ha.replication.DroppedFollower;
+import org.lolaf.staffix.ha.replication.FollowerLaneStatus;
+import org.lolaf.staffix.ha.replication.FollowersView;
+import org.lolaf.staffix.ha.replication.LeaderStatus;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -59,15 +62,13 @@ final class HaStatusReport {
                 .switchoverMaxDuration(settings.switchoverMaxDuration())
                 .monitoringInstanceId(settings.getMonitoringInstanceId());
         if (role == Role.LEADER) {
-            int sessionCount = ha.getSessions().count();
-            for (FollowerConnection connection : ha.getFollowers().connections()) {
-                status.followerConnection(connection.getStatus(sessionCount));
-            }
-            status.droppedFollowers(ha.getStats().getSlowFollowers().notBackInSync());
+            FollowersView followers = ha.getNode().followers();
+            followers.getLaneStatuses().forEach(lane -> status.followerConnection(followerConnection(lane)));
+            followers.getDroppedFollowers().forEach(dropped -> status.droppedFollower(droppedFollower(dropped)));
         }
-        ReplicationClient client = ha.getClient();
-        if (role == Role.FOLLOWER && client != null) {
-            status.leader(client.getStatus());
+        LeaderStatus leader = role == Role.FOLLOWER ? ha.getNode().leader().getStatus() : null;
+        if (leader != null) {
+            status.leader(leader(leader));
         }
         if (role == Role.FOLLOWER) {
             status.sessionSettingsDifferences(ha.getReplicaSessions().getSettingsComparison().getDifferences());
@@ -121,19 +122,47 @@ final class HaStatusReport {
         if (session == null) {
             return;
         }
-        boolean inSync = false;
-        String refusal = null;
-        for (FollowerConnection connection : ha.getFollowers().connections()) {
-            SessionAnswer answer = connection.getSessionAnswer(session.getKey());
-            inSync |= connection.isSessionInSync(session.getKey());
-            if (answer != null && answer.isRefusal()) {
-                refusal = answer.name();
-            }
-        }
+        FollowersView followers = ha.getNode().followers();
+        boolean inSync = followers.isStreamInSync(session.getKey());
+        Collection<StreamAnswer> refusals = followers.getStreamRefusals(session.getKey()).values();
+        String refusal = refusals.isEmpty() ? null : NotReplicatedReason.of(refusals.iterator().next());
         status.inSync(inSync)
                 .notReplicatedReason(inSync ? null : refusal)
                 .lastSendUnacknowledged(session.isLastSendUnacknowledged())
                 .unacknowledgedSends(session.getUnacknowledgedSends())
                 .lostWrites(session.getConfig().getStore().getLostWrites());
+    }
+
+    private static HaStatus.FollowerConnection followerConnection(FollowerLaneStatus lane) {
+        return HaStatus.FollowerConnection.builder()
+                .nodeId(lane.getNodeId())
+                .lane(lane.getLane())
+                .address(lane.getAddress())
+                .connected(lane.isConnected())
+                .inSync(lane.isInSync())
+                .snapshotInProgress(lane.isSnapshotInProgress())
+                .unsentBytes(lane.getUnsentBytes())
+                .lagMillis(lane.getLagMillis())
+                .cipher(lane.getCipher())
+                .build();
+    }
+
+    private static HaStatus.DroppedFollower droppedFollower(DroppedFollower dropped) {
+        return HaStatus.DroppedFollower.builder()
+                .nodeId(dropped.getNodeId())
+                .lane(dropped.getLane())
+                .droppedAt(dropped.getDroppedAt())
+                .heldOffUntil(dropped.getHeldOffUntil())
+                .build();
+    }
+
+    private static HaStatus.Leader leader(LeaderStatus leader) {
+        return HaStatus.Leader.builder()
+                .leaderId(leader.getLeaderId())
+                .address(leader.getAddress())
+                .connected(leader.isConnected())
+                .inSync(leader.isInSync())
+                .cipher(leader.getCipher())
+                .build();
     }
 }

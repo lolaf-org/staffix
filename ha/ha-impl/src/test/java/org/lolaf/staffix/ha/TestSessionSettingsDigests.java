@@ -67,13 +67,4 @@ class TestSessionSettingsDigests {
         assertThat(digest(session(Duration.ofSeconds(1)).toBuilder().placeholders(Map.of(POINTER, "${env:A}")).build()))
                 .isNotEqualTo(digest(session(Duration.ofSeconds(1)).toBuilder().placeholders(Map.of(POINTER, "${env:B}")).build()));
     }
-
-    @Test
-    void nothingIsPublishedUntilAsked() {
-        SessionSettingsDigests digests = new SessionSettingsDigests();
-
-        assertThat(digests.getPublished().getGeneration()).isZero();
-        digests.publish(List.of(), store -> true);
-        assertThat(digests.getPublished().getGeneration()).isEqualTo(1);
-    }
 }

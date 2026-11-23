@@ -39,6 +39,11 @@
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-replication</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-ha-impl</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -360,6 +365,11 @@
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
             <artifactId>staffix-fix-conformance-tests</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lolaf.staffix</groupId>
+            <artifactId>staffix-ha-integration-tests</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

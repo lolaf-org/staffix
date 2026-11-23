@@ -19,28 +19,29 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.ha.HaProbes.SessionReplicationEvaluator;
-import org.lolaf.staffix.ha.follower.RecordingEngine;
-import org.lolaf.staffix.ha.leader.Followers;
+import org.lolaf.staffix.ha.replication.StreamWriter;
+import org.lolaf.staffix.ha.replication.FollowersView;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class TestHaProbes {
 
     private final ReplicatedSession session = new ReplicatedSessions().register(
             RecordingEngine.session("main", FixSessionType.ACCEPTOR), new RecordingEngine.RecordingStore());
     private final AtomicLong elapsedNanos = new AtomicLong();
-    private final SessionReplicationEvaluator evaluator = new SessionReplicationEvaluator(session, new Followers(),
+    private final SessionReplicationEvaluator evaluator = new SessionReplicationEvaluator(session, mock(FollowersView.class),
             () -> System.nanoTime() + elapsedNanos.get(), Duration.ofMinutes(5).toNanos());
 
     @Test
     void aTimedOutSyncSendAlertsUntilNoneFollowsForTheExpiry() {
         assertThat(evaluator.evaluate()).isEmpty();
 
-        session.recordAck(Followers.Ack.TIMED_OUT);
-        session.recordAck(Followers.Ack.TIMED_OUT);
+        session.recordAck(StreamWriter.Ack.TIMED_OUT);
+        session.recordAck(StreamWriter.Ack.TIMED_OUT);
 
         assertThat(evaluator.evaluate()).hasValueSatisfying(alert -> {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
@@ -52,7 +53,7 @@ class TestHaProbes {
 
     @Test
     void aSendWithNoFollowerInSyncIsLeftToTheNodesProbe() {
-        session.recordAck(Followers.Ack.NO_FOLLOWER_IN_SYNC);
+        session.recordAck(StreamWriter.Ack.NO_FOLLOWER_IN_SYNC);
 
         assertThat(evaluator.evaluate()).isEmpty();
     }

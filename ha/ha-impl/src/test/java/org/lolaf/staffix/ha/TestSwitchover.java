@@ -64,7 +64,7 @@ class TestSwitchover extends HaPairFixture {
     void aFollowerReconnectingBeforeTheLeaderStopsListeningKeepsItsHandOver() {
         startPairInSync();
 
-        assertThat(a.ha.getServer().handOver(Deadline.of(Duration.ofSeconds(2)))).isTrue();
+        assertThat(a.ha.getNode().handOver(Deadline.of(Duration.ofSeconds(2)))).isTrue();
 
         await().until(() -> isHandedOver(b));
         await().alias("b reconnects every 50 ms").during(Duration.ofMillis(300)).until(() -> isHandedOver(b));
@@ -116,7 +116,7 @@ class TestSwitchover extends HaPairFixture {
     private void bHasLeftToStore(long pendingWrites) {
         await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
         b.engine.store(MAIN).pendingWrites = pendingWrites;
-        await().until(() -> a.ha.getFollowers().getPendingWrites() == pendingWrites);
+        await().until(() -> a.ha.getNode().followers().getPendingWrites() == pendingWrites);
     }
 
     private void bStoresAllAfter(Duration delay) {
