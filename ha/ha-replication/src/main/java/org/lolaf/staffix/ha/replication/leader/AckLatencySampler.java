@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.ha.replication.leader;
 
-import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 
 import java.util.concurrent.TimeUnit;
@@ -25,12 +24,16 @@ import java.util.concurrent.TimeUnit;
  * covers every record before it, so timing them all would need a queue, while one sample per round trip is enough for
  * the latency's distribution. Sampled by the sender thread, recorded by the connection's IO thread; allocates nothing.
  */
-@RequiredArgsConstructor
 final class AckLatencySampler {
 
     private final LatencyRecorder recorder;
-    private volatile long sampledOffset = -1;
+    private volatile long sampledOffset;
     private long sentNanos;
+
+    AckLatencySampler(LatencyRecorder recorder) {
+        this.recorder = recorder;
+        this.sampledOffset = -1;
+    }
 
     /**
      * Samples the record unless one is still waiting for its ack.

@@ -26,12 +26,14 @@ final class OneByOneStoreWrites implements StoreWrites {
 
     private final FixSessionMessagesStore store;
     private final LostWrites lostWrites;
-    private long nextIncomingSeqNum = -1;
-    private long nextOutgoingSeqNum = -1;
+    private long nextIncomingSeqNum;
+    private long nextOutgoingSeqNum;
 
     OneByOneStoreWrites(FixSessionMessagesStore store, LostWrites lostWrites) {
         this.store = store;
         this.lostWrites = lostWrites;
+        this.nextIncomingSeqNum = -1;
+        this.nextOutgoingSeqNum = -1;
     }
 
     @Override

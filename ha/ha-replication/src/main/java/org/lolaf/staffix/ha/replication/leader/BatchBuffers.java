@@ -37,7 +37,7 @@ final class BatchBuffers {
     private final int batchBytes;
     private final ReplicationStats stats;
     private final RingBuffer<ByteBuffer> writtenBatches;
-    private final MessageSentCallback<ByteBuffer> batchWritten = this::batchWritten;
+    private final MessageSentCallback<ByteBuffer> batchWritten;
     /**
      * The batch last written, handed back with the next: betty restores its position and limit once the callback
      * returns, which would land on a sender already filling it. IO thread only.
@@ -61,6 +61,7 @@ final class BatchBuffers {
         this.batchBytes = batchBytes;
         this.stats = stats;
         this.writtenBatches = RingBufferFactory.build(RingBufferFactory.AccessType.SINGLE_CONSUMER_SINGLE_PRODUCER, count);
+        this.batchWritten = this::batchWritten;
     }
 
     /**

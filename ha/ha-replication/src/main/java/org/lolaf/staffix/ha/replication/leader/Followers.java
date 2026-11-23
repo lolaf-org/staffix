@@ -33,10 +33,17 @@ public final class Followers {
     private static final FollowerConnection[] NONE = new FollowerConnection[0];
     private static final IdleStrategy[] NO_WAITERS = new IdleStrategy[0];
 
-    private volatile FollowerConnection[] connections = NONE;
-    private volatile List<FollowerConnection> connectionList = List.of();
-    private volatile IdleStrategy[] waiters = NO_WAITERS;
-    private final AtomicInteger waiting = new AtomicInteger();
+    private volatile FollowerConnection[] connections;
+    private volatile List<FollowerConnection> connectionList;
+    private volatile IdleStrategy[] waiters;
+    private final AtomicInteger waiting;
+
+    public Followers() {
+        this.connections = NONE;
+        this.connectionList = List.of();
+        this.waiters = NO_WAITERS;
+        this.waiting = new AtomicInteger();
+    }
 
     synchronized void add(FollowerConnection connection) {
         FollowerConnection[] added = Arrays.copyOf(connections, connections.length + 1);

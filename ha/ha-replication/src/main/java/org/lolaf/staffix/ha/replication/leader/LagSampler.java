@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.ha.replication.leader;
 
-import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 
 import java.util.concurrent.TimeUnit;
@@ -25,19 +24,24 @@ import java.util.concurrent.TimeUnit;
  * one sample at a time, as {@link AckLatencySampler} does. Unlike a timer, the pending sample's age keeps growing while
  * the follower applies nothing. Sampled by the sender thread, recorded by the connection's IO thread; allocates nothing.
  */
-@RequiredArgsConstructor
 final class LagSampler {
 
     private static final long NONE = -1;
 
     private final LatencyRecorder recorder;
-    private long sampledTail = NONE;
+    private long sampledTail;
     private volatile long sampledNanos;
     /**
      * The start offset of the record ending at or past the sampled tail, which acks name; {@link #NONE} until read.
      */
-    private volatile long targetOffset = NONE;
+    private volatile long targetOffset;
     private volatile boolean pending;
+
+    LagSampler(LatencyRecorder recorder) {
+        this.recorder = recorder;
+        this.sampledTail = NONE;
+        this.targetOffset = NONE;
+    }
 
     /**
      * A fill starting: samples the log's tail unless a sample is pending or nothing was written since the last one.

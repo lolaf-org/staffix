@@ -50,13 +50,13 @@ final class LaneWriteQueue implements SinkWriterThreads.WriteQueue, ByteFrameHan
     private final FollowerStreams followerStreams;
     private final SinkWriterThreads.SinkWriterThread thread;
     private final ByteRingBuffer queue;
-    private final Queue<LeaderConnection> connectedLeaders = new ConcurrentLinkedQueue<>();
+    private final Queue<LeaderConnection> connectedLeaders;
     private final FrameDecoder writerDecoder;
     private volatile boolean writing;
     /**
      * The last record acknowledged as received; network thread only.
      */
-    private long receivedOffsetAcked = -1;
+    private long receivedOffsetAcked;
     /**
      * The connection the writer applies the frames to, from the last connection it took; writer thread only.
      */
@@ -75,7 +75,9 @@ final class LaneWriteQueue implements SinkWriterThreads.WriteQueue, ByteFrameHan
         this.followerStreams = followerStreams;
         this.thread = thread;
         this.queue = ByteRingBufferFactory.queue(queueCapacity(maxFrameBytes));
+        this.connectedLeaders = new ConcurrentLinkedQueue<>();
         this.writerDecoder = new FrameDecoder(maxFrameBytes);
+        this.receivedOffsetAcked = -1;
         thread.add(this);
     }
 

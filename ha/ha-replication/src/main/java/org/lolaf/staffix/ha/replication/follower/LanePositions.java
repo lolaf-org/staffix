@@ -27,7 +27,11 @@ final class LanePositions {
 
     private static final Position NOTHING_APPLIED = new Position();
 
-    private volatile Position[] positions = {new Position()};
+    private volatile Position[] positions;
+
+    LanePositions() {
+        this.positions = new Position[] {new Position()};
+    }
 
     int count() {
         return positions.length;
@@ -130,10 +134,15 @@ final class LanePositions {
 
     private static final class Position {
         private volatile long lastAppliedEpoch;
-        private volatile long lastAppliedOffset = -1;
+        private volatile long lastAppliedOffset;
         private volatile boolean announcing;
         private long pendingEpoch;
-        private long pendingOffset = -1;
+        private long pendingOffset;
         private boolean receivedToAck;
+
+        private Position() {
+            this.lastAppliedOffset = -1;
+            this.pendingOffset = -1;
+        }
     }
 }

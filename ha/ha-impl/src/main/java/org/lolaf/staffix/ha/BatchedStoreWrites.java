@@ -29,14 +29,17 @@ final class BatchedStoreWrites implements StoreWrites {
     private static final int MAX_MESSAGES = 256;
     private final BatchingFixSessionMessagesStore store;
     private final LostWrites lostWrites;
-    private final SentFixMessage[] messages = new SentFixMessage[MAX_MESSAGES];
+    private final SentFixMessage[] messages;
     private int messageCount;
-    private long nextIncomingSeqNum = -1;
-    private long nextOutgoingSeqNum = -1;
+    private long nextIncomingSeqNum;
+    private long nextOutgoingSeqNum;
 
     BatchedStoreWrites(BatchingFixSessionMessagesStore store, LostWrites lostWrites) {
         this.store = store;
         this.lostWrites = lostWrites;
+        this.messages = new SentFixMessage[MAX_MESSAGES];
+        this.nextIncomingSeqNum = -1;
+        this.nextOutgoingSeqNum = -1;
     }
 
     @Override
@@ -121,7 +124,11 @@ final class BatchedStoreWrites implements StoreWrites {
     private static final class CopiedMessage implements SentFixMessage {
 
         private long seqNum;
-        private ByteBuffer message = ByteBuffer.allocate(256);
+        private ByteBuffer message;
+
+        CopiedMessage() {
+            this.message = ByteBuffer.allocate(256);
+        }
 
         /**
          * The message is lent as a range of {@code receiveBuffer}, which is put back as it was.

@@ -27,18 +27,23 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class ReplicationStats {
 
-    private final AtomicLong droppedTooSlow = new AtomicLong();
+    private final AtomicLong droppedTooSlow;
     @Getter
     private final SlowFollowers slowFollowers;
-    private final AtomicLong snapshots = new AtomicLong();
-    private final AtomicLong snapshotRecords = new AtomicLong();
-    private final AtomicLong sendWaits = new AtomicLong();
-    private final AtomicLong sendBuffersAllocated = new AtomicLong();
+    private final AtomicLong snapshots;
+    private final AtomicLong snapshotRecords;
+    private final AtomicLong sendWaits;
+    private final AtomicLong sendBuffersAllocated;
     private final ReplicationMetrics metrics;
 
     public ReplicationStats(SlowFollowers slowFollowers, ReplicationMetrics metrics) {
         this.slowFollowers = slowFollowers;
         this.metrics = metrics;
+        this.droppedTooSlow = new AtomicLong();
+        this.snapshots = new AtomicLong();
+        this.snapshotRecords = new AtomicLong();
+        this.sendWaits = new AtomicLong();
+        this.sendBuffersAllocated = new AtomicLong();
     }
 
     LatencyRecorder ackLatency(String followerId, int lane) {

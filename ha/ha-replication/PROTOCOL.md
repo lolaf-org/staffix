@@ -103,8 +103,8 @@ payload length 4, reserved 4.
   | 11 | `ENCRYPTION_REQUIRED` | either: one requires encryption, the other has it disabled |
   | 12 | `APPLICATION_MISMATCH` | either: another application id |
 
-  A peer reports a code it does not know rather than refusing the frame. The text is at most 1024 characters, for the
-  logs.
+  A code the peer does not know reads as `UNKNOWN` (0xFFFF, never sent) rather than refusing the frame. The text is at
+  most 1024 characters, for the logs.
 
 ## Connecting
 

@@ -39,11 +39,11 @@ public final class PromotionSeqNumJumps {
     /**
      * The promotion each session last jumped for, by type and id.
      */
-    private final Map<TypedSessionId, Long> jumpedFor = new ConcurrentHashMap<>();
+    private final Map<TypedSessionId, Long> jumpedFor;
     /**
      * A session outside these was created under this leadership: the old leader never ran it.
      */
-    private volatile Set<TypedSessionId> configuredAtPromotion = Set.of();
+    private volatile Set<TypedSessionId> configuredAtPromotion;
     /**
      * 0 while this node does not lead.
      */
@@ -55,6 +55,8 @@ public final class PromotionSeqNumJumps {
 
     PromotionSeqNumJumps(long jump) {
         this.jump = jump;
+        this.jumpedFor = new ConcurrentHashMap<>();
+        this.configuredAtPromotion = Set.of();
     }
 
     /**

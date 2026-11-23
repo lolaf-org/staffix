@@ -66,11 +66,13 @@ final class SinkWriterThreads {
 
         private final IdleStrategy idle;
         private final Thread thread;
-        private volatile WriteQueue[] writeQueues = NONE;
-        private volatile boolean running = true;
+        private volatile WriteQueue[] writeQueues;
+        private volatile boolean running;
 
         SinkWriterThread(IdleStrategy idle, String name) {
             this.idle = idle;
+            this.writeQueues = NONE;
+            this.running = true;
             this.thread = new Thread(this, name);
             thread.setDaemon(true);
             thread.start();
