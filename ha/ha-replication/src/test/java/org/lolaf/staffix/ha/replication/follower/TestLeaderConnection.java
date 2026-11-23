@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.ha.replication.ReplicaStream;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.journal.JournalCopy;
 import org.lolaf.staffix.ha.replication.wire.CloseReason;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;

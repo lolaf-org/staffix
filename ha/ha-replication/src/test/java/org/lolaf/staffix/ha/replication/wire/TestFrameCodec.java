@@ -15,6 +15,9 @@
  */
 package org.lolaf.staffix.ha.replication.wire;
 
+import org.lolaf.staffix.ha.replication.journal.Journal;
+import org.lolaf.staffix.ha.replication.testkit.AllocatedBytes;
+import org.lolaf.staffix.ha.replication.testkit.RecordingHandler;
 import org.lolaf.staffix.ha.replication.spi.WireFormatException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
@@ -30,7 +33,7 @@ import java.util.List;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
@@ -50,7 +53,7 @@ class TestFrameCodec {
 
     TestFrameCodec() {
         this.decoder = new FrameDecoder(MAX_FRAME_BYTES);
-        this.handler = new RecordingHandler();
+        this.handler = new RecordingHandler(Journal.APPLICATION_ID);
     }
 
     private static ByteBuffer buffer(boolean direct) {

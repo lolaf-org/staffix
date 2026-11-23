@@ -144,7 +144,7 @@ public final class FollowerStreams {
     /**
      * {@link #isInSync()} for the streams of one lane. Allocates nothing.
      */
-    public boolean isLaneInSync(int lane) {
+    boolean isLaneInSync(int lane) {
         return !positions.isAnnouncing(lane) && !anyOf(lane, BoundStream::isOutOfSync);
     }
 
@@ -191,7 +191,7 @@ public final class FollowerStreams {
      * replicates, or with another mode here, has its sink stopped, and is caught up again by snapshot once both agree
      * it is replicated.
      */
-    public synchronized StreamAnswer bind(int key, String streamName, StreamReplicationMode leaderMode,
+    synchronized StreamAnswer bind(int key, String streamName, StreamReplicationMode leaderMode,
                                    @Nullable String leaderStorageIdentity) {
         BoundStream current = key < streamsByKey.length ? streamsByKey[key] : null;
         if (current != null && current.getStreamName().equals(streamName) && current.isReplicated()
@@ -233,7 +233,7 @@ public final class FollowerStreams {
     /**
      * What the sinks of the lane's streams have accepted and not written yet. Allocates nothing.
      */
-    public long getPendingWrites(int lane) {
+    long getPendingWrites(int lane) {
         return sumOf(lane, BoundStream::getPendingWrites);
     }
 
@@ -264,14 +264,14 @@ public final class FollowerStreams {
                 || here == refused.getLeaderMode());
     }
 
-    public boolean hasStreamsToBindAgain(int lane) {
+    boolean hasStreamsToBindAgain(int lane) {
         return anyOf(lane, BoundStream::isRefusedUntilConfigurationChange);
     }
 
     /**
      * @return false for a key the leader never bound, or of another lane
      */
-    public boolean apply(int lane, long epoch, long offset, int key, byte contentType, byte flags, long position,
+    boolean apply(int lane, long epoch, long offset, int key, byte contentType, byte flags, long position,
                   ByteBuffer receiveBuffer, int payloadIndex, int payloadLength) {
         BoundStream stream = stream(lane, key);
         if (stream == null || !stream.apply(contentType, position, receiveBuffer, payloadIndex, payloadLength,
@@ -285,7 +285,7 @@ public final class FollowerStreams {
     /**
      * @return false for a key the leader never bound, of another lane, or not replicated here
      */
-    public boolean snapshotBegin(int lane, int key, ByteBuffer state, int stateIndex, int stateLength) {
+    boolean snapshotBegin(int lane, int key, ByteBuffer state, int stateIndex, int stateLength) {
         BoundStream stream = replicatedStream(lane, key);
         if (stream == null) {
             return false;
@@ -294,7 +294,7 @@ public final class FollowerStreams {
         return true;
     }
 
-    public boolean snapshotRecord(int lane, int key, byte contentType, byte flags, long position, ByteBuffer receiveBuffer,
+    boolean snapshotRecord(int lane, int key, byte contentType, byte flags, long position, ByteBuffer receiveBuffer,
                            int payloadIndex, int payloadLength) {
         BoundStream stream = replicatedStream(lane, key);
         return stream != null && stream.snapshotRecord(contentType, position, receiveBuffer, payloadIndex,
@@ -304,7 +304,7 @@ public final class FollowerStreams {
     /**
      * @return false when the stream is unknown or the count is not what was received
      */
-    public boolean snapshotEnd(int lane, int key, int recordCount, ByteBuffer state, int stateIndex, int stateLength) {
+    boolean snapshotEnd(int lane, int key, int recordCount, ByteBuffer state, int stateIndex, int stateLength) {
         BoundStream stream = replicatedStream(lane, key);
         return stream != null && stream.snapshotEnd(recordCount, state, stateIndex, stateLength);
     }
@@ -317,7 +317,7 @@ public final class FollowerStreams {
      * Writes what the frames of a lane's read left pending, before it is acknowledged, then counts their records
      * applied: a write failing leaves them unapplied, so a reconnection resumes before them.
      */
-    public void writeApplied(int lane) {
+    void writeApplied(int lane) {
         forEachOf(lane, BoundStream::writePending);
         positions.written(lane);
     }

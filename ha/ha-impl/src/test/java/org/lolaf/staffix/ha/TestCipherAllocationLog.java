@@ -24,7 +24,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import org.slf4j.event.Level;
 
 import java.net.InetSocketAddress;

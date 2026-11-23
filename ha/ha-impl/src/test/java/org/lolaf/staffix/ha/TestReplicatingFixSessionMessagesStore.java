@@ -31,7 +31,7 @@ import org.lolaf.staffix.api.monitoring.Timer;
 import org.lolaf.staffix.ha.replication.FollowersView;
 import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
-import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.replication.testkit.AllocatedBytes;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

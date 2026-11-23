@@ -15,16 +15,17 @@
  */
 package org.lolaf.staffix.ha.replication.log;
 
+import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.ringos.idling.RetryStrategy;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
-import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.replication.testkit.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
-import org.lolaf.staffix.ha.replication.wire.RecordingHandler;
+import org.lolaf.staffix.ha.replication.testkit.RecordingHandler;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.nio.ByteBuffer;
@@ -58,7 +59,7 @@ class TestReplicationLog {
         this.record = new LogRecord();
         this.wait = new LogFullWait(Duration.ofSeconds(1));
         this.frame = ByteBuffer.allocateDirect(CAPACITY);
-        this.handler = new RecordingHandler();
+        this.handler = new RecordingHandler(Journal.APPLICATION_ID);
     }
 
     private static ByteBuffer message(String text) {

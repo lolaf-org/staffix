@@ -16,7 +16,7 @@
 package org.lolaf.staffix.ha.replication.encryption;
 
 import lombok.experimental.UtilityClass;
-import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.replication.testkit.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import javax.crypto.Cipher;

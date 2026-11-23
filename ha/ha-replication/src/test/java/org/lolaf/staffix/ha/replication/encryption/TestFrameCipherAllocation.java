@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.replication.encryption;
 
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -23,7 +24,7 @@ import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
-import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.replication.testkit.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.wire.FrameCipher;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;

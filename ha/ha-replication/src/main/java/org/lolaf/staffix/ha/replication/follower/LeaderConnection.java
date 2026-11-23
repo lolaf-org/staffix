@@ -138,7 +138,7 @@ public final class LeaderConnection implements FrameHandler {
     /**
      * This connection's keys once both peers encrypt, null on a clear one.
      */
-    public @Nullable ConnectionEncryptionKeys getEncryptionKeys() {
+    @Nullable ConnectionEncryptionKeys getEncryptionKeys() {
         return keyAgreement.getKeys();
     }
 

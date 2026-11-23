@@ -13,13 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.wire;
+package org.lolaf.staffix.ha.replication.testkit;
 
 import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.wire.CloseReason;
+import org.lolaf.staffix.ha.replication.wire.FrameHandler;
+import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -28,15 +30,20 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Records each frame as one line, so a test compares every field at once. Streams, records and states read as the
- * {@link Journal}'s, text; an application replicating other ones overrides how they read.
+ * Records each frame as one line, so a test compares every field at once. Streams, records and states read as text;
+ * an application replicating other ones overrides how they read.
  */
 public class RecordingHandler implements FrameHandler {
 
     public final List<String> frames;
+    private final int applicationId;
 
-    public RecordingHandler() {
+    /**
+     * @param applicationId left out of the HELLO and WELCOME lines, so a test's own frames read shorter
+     */
+    public RecordingHandler(int applicationId) {
         this.frames = new ArrayList<>();
+        this.applicationId = applicationId;
     }
 
     protected static String text(ByteBuffer buffer, int index, int length) {
@@ -70,15 +77,8 @@ public class RecordingHandler implements FrameHandler {
                 + " resume=" + resumeOffset + " lanes=" + lanes + encryption(encryptionMode, nonce));
     }
 
-    /**
-     * Nothing for the application the frames come from, so its tests' frames read shorter.
-     */
-    private String application(int applicationId) {
-        return applicationId == applicationId() ? "" : " application=" + Integer.toHexString(applicationId);
-    }
-
-    protected int applicationId() {
-        return Journal.APPLICATION_ID;
+    private String application(int frameApplicationId) {
+        return frameApplicationId == applicationId ? "" : " application=" + Integer.toHexString(frameApplicationId);
     }
 
     @Override

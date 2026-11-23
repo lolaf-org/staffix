@@ -18,7 +18,7 @@ package org.lolaf.staffix.ha.replication.leader;
 import org.lolaf.staffix.ha.replication.DroppedFollower;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
-import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
+import org.lolaf.staffix.ha.replication.testkit.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.spi.TestingReplicationClock;
 
 import java.time.Duration;

@@ -22,7 +22,7 @@ import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 
 import java.nio.charset.StandardCharsets;
 

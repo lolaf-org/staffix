@@ -21,7 +21,7 @@ import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;

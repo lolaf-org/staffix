@@ -29,13 +29,13 @@ import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.TestingPorts;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
 import org.lolaf.staffix.ha.replication.wire.FrameType;
-import org.lolaf.staffix.ha.replication.wire.RecordingHandler;
+import org.lolaf.staffix.ha.replication.testkit.RecordingHandler;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.replication.spi.TestingReplicationClock;
@@ -69,7 +69,7 @@ class TestReplicationServer {
         this.server = new ReplicationServer(address, journal.getLogs(), journal, journal.getFollowers(), () -> EPOCH,
                 "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE,
                 BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE), new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
-        this.received = new RecordingHandler();
+        this.received = new RecordingHandler(Journal.APPLICATION_ID);
     }
 
     private JournalStream replicated() {

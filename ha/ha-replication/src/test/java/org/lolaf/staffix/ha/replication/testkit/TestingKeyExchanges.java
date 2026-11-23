@@ -13,11 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.encryption;
+package org.lolaf.staffix.ha.replication.testkit;
 
 import lombok.experimental.UtilityClass;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
 
 import java.nio.charset.StandardCharsets;
 

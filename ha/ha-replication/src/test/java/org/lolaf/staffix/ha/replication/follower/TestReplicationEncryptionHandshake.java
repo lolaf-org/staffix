@@ -28,7 +28,7 @@ import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.TestingPorts;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.leader.FollowerConnection;
 import org.lolaf.staffix.ha.replication.leader.ReplicationServer;
 import org.lolaf.staffix.ha.replication.leader.ReplicationStats;

@@ -24,7 +24,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.wire.CloseReason;
 import org.lolaf.staffix.ha.replication.wire.FrameCipher;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
@@ -62,11 +62,6 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
     private static ToIntBiFunction<ByteBuffer, Integer> welcome(EncryptionMode leaderMode, byte[] leaderNonce) {
         return (out, index) -> TestingFrameEncoder.welcome(out, index, EPOCH, "leader-a", WireFormat.NO_RESUME, 1, leaderMode,
                 leaderNonce);
-    }
-
-    @SafeVarargs
-    private static void read(LeaderConnection connection, ToIntBiFunction<ByteBuffer, Integer>... frames) {
-        connection.read(writeFrames(frames), new FrameDecoder(1 << 20));
     }
 
     private static ToIntBiFunction<ByteBuffer, Integer> sealed(FrameCipher sealer, ToIntBiFunction<ByteBuffer, Integer> frame) {

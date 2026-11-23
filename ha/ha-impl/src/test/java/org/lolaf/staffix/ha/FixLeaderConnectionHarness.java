@@ -15,91 +15,47 @@
  */
 package org.lolaf.staffix.ha;
 
-import org.lolaf.staffix.ha.replication.follower.LeaderConnection;
-import org.lolaf.staffix.ha.replication.follower.FollowerStreams;
-import org.lolaf.staffix.ha.replication.follower.OnNetworkThreadAnswerSender;
-import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
-import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
-import org.lolaf.staffix.ha.replication.wire.*;
+import org.lolaf.staffix.ha.replication.follower.FollowerStreams;
+import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
+import org.lolaf.staffix.ha.replication.testkit.AbstractLeaderConnectionHarness;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
+import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.TimeUnit;
 import java.util.function.ToIntBiFunction;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
 /**
- * A leader connection over a mocked IO session replicating into FIX sessions, fed the frames a leader would send.
+ * A leader connection replicating into FIX sessions.
  */
-abstract class FixLeaderConnectionHarness {
+abstract class FixLeaderConnectionHarness extends AbstractLeaderConnectionHarness {
 
-    static final long EPOCH = 7;
     static final FixSessionSettings MAIN = RecordingEngine.session("main", FixSessionType.INITIATOR);
-    static final int FIRST = WireFormat.MORE_FRAGMENTS;
-    static final int MIDDLE = WireFormat.MORE_FRAGMENTS | WireFormat.CONTINUED_FRAGMENT;
-    static final int LAST = WireFormat.CONTINUED_FRAGMENT;
     static final String MESSAGE = "8=FIX.4.4\u00019=5\u000135=D\u000110=000\u0001";
 
-    final IOSession ioSession;
-    final RecordingHandler sent;
     final RecordingEngine engine;
     final ReplicaSessions replicaSessions;
-    final FollowerStreams followerStreams;
-    final LeaderConnection connection;
-    private final FrameDecoder sentDecoder;
-    private FrameCipher sentOpener;
-    private KeyExchange latestKeyExchange;
-    private LeaderConnection latest;
 
     FixLeaderConnectionHarness() {
-        this.ioSession = mock(IOSession.class);
-        this.sent = new FixRecordingHandler();
-        this.sentDecoder = new FrameDecoder(1 << 20);
-        this.sentOpener = FrameCipher.CLEAR;
-        this.engine = new RecordingEngine().with(MAIN);
-        SessionSettingsComparison settingsComparison = new SessionSettingsComparison(engine);
-        this.followerStreams = new FollowerStreams(new FixSessionSinks(engine, settingsComparison), LatencyRecorder.NONE);
+        this(new RecordingEngine().with(MAIN));
+    }
+
+    private FixLeaderConnectionHarness(RecordingEngine engine) {
+        this(engine, new SessionSettingsComparison(engine));
+    }
+
+    private FixLeaderConnectionHarness(RecordingEngine engine, SessionSettingsComparison settingsComparison) {
+        super(new FollowerStreams(new FixSessionSinks(engine, settingsComparison), LatencyRecorder.NONE),
+                new FixRecordingHandler());
+        this.engine = engine;
         this.replicaSessions = new ReplicaSessions(engine, settingsComparison, new FollowerStreamsView(followerStreams));
-        this.connection = newConnection(0, 0);
-        when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
-        doAnswer(invocation -> {
-            ByteBuffer frames = invocation.getArgument(0);
-            decodeSent(frames.duplicate().flip());
-            return null;
-        }).when(ioSession).send(any(ByteBuffer.class), anyBoolean());
-    }
-
-    static void decode(ByteBuffer frames, FrameHandler handler) {
-        FrameDecoder decoder = new FrameDecoder(1 << 20);
-        int index = frames.position();
-        int consumed;
-        while (index < frames.limit() && (consumed = decoder.decode(frames, index, frames.limit() - index, handler)) > 0) {
-            index += consumed;
-        }
-    }
-
-    /**
-     * As the leader reads them: every frame after the KEY_CONFIRMATION opened.
-     */
-    private void decodeSent(ByteBuffer frames) {
-        int index = frames.position();
-        int consumed;
-        while (index < frames.limit() && (consumed = sentDecoder.decode(frames, index, frames.limit() - index, sent, sentOpener)) > 0) {
-            if (frames.get(index + WireFormat.OFFSET_TYPE) == FrameType.KEY_CONFIRMATION.getCode()) {
-                sentOpener = latestKeyExchange.newOpener(latest.getEncryptionKeys().getFollowerToLeader());
-            }
-            index += consumed;
-        }
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset) {
@@ -117,10 +73,6 @@ abstract class FixLeaderConnectionHarness {
     static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings, String leaderStorageIdentity) {
         return (out, index) -> FixFrames.stream(out, index, EPOCH, key, settings.getFixSessionType(),
                 settings.getHighAvailability().getReplicationMode(), settings.getFixSessionId().toString(), leaderStorageIdentity);
-    }
-
-    static ToIntBiFunction<ByteBuffer, Integer> announced(int count) {
-        return (out, index) -> FrameEncoder.streamsAnnounced(out, index, EPOCH, count);
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> event(long epoch, long offset, int key, StoreEventType type, long seq,
@@ -151,32 +103,6 @@ abstract class FixLeaderConnectionHarness {
                 ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII)));
     }
 
-    static ToIntBiFunction<ByteBuffer, Integer> heartbeat() {
-        return (out, index) -> FrameEncoder.heartbeat(out, index, EPOCH, 0);
-    }
-
-    static ToIntBiFunction<ByteBuffer, Integer> close(CloseReason reason) {
-        return (out, index) -> FrameEncoder.close(out, index, EPOCH, reason, "test");
-    }
-
-    @SafeVarargs
-    static ByteBuffer writeFrames(ToIntBiFunction<ByteBuffer, Integer>... frames) {
-        ByteBuffer buffer = ByteBuffer.allocate(1 << 16);
-        int length = 0;
-        for (ToIntBiFunction<ByteBuffer, Integer> frame : frames) {
-            length += frame.applyAsInt(buffer, length);
-        }
-        return buffer.limit(length);
-    }
-
-    /**
-     * Hands the connection the frames written by each encoder in one read, as the client does.
-     */
-    @SafeVarargs
-    final void read(ToIntBiFunction<ByteBuffer, Integer>... frames) {
-        connection.read(writeFrames(frames), new FrameDecoder(1 << 20));
-    }
-
     void streaming() {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN), announced(1));
         sent.frames.clear();
@@ -189,42 +115,6 @@ abstract class FixLeaderConnectionHarness {
         engine.replace(syncReceived);
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, syncReceived), announced(1));
         sent.frames.clear();
-    }
-
-    LeaderConnection checkingHourly() {
-        return newConnection(0, TimeUnit.HOURS.toNanos(1));
-    }
-
-    LeaderConnection newConnection(int lane) {
-        return newConnection(lane, TimeUnit.SECONDS.toNanos(1));
-    }
-
-    private LeaderConnection newConnection(int lane, long checkIntervalNanos) {
-        return newConnection(lane, checkIntervalNanos, TestingKeyExchanges.CLEAR, false);
-    }
-
-    LeaderConnection newConnection(KeyExchange keyExchange) {
-        return newConnection(0, TimeUnit.SECONDS.toNanos(1), keyExchange, false);
-    }
-
-    /**
-     * As with a store writer thread, whose network thread acknowledges what it reads as received.
-     */
-    LeaderConnection newStoreWriterConnection(KeyExchange keyExchange) {
-        return newConnection(0, TimeUnit.SECONDS.toNanos(1), keyExchange, true);
-    }
-
-    private LeaderConnection newConnection(int lane, long checkIntervalNanos, KeyExchange keyExchange) {
-        return newConnection(lane, checkIntervalNanos, keyExchange, false);
-    }
-
-    private LeaderConnection newConnection(int lane, long checkIntervalNanos, KeyExchange keyExchange,
-                                           boolean receivedAckedByNetworkThread) {
-        latestKeyExchange = keyExchange;
-        latest = new LeaderConnection(ioSession, followerStreams, () -> EPOCH, "follower-b", lane, followerStreams::setLanes,
-                checkIntervalNanos, new OnNetworkThreadAnswerSender(ioSession), receivedAckedByNetworkThread, keyExchange);
-        sentOpener = FrameCipher.CLEAR;
-        return latest;
     }
 
     long lostWrites() {

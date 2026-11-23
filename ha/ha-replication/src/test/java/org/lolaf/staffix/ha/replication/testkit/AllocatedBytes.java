@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.wire;
+package org.lolaf.staffix.ha.replication.testkit;
 
 import lombok.experimental.UtilityClass;
 

@@ -18,7 +18,7 @@ package org.lolaf.staffix.ha.replication.leader;
 import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 import org.lolaf.staffix.ha.replication.wire.FrameType;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -30,7 +30,7 @@ import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.FrameCipher;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
-import org.lolaf.staffix.ha.replication.wire.RecordingHandler;
+import org.lolaf.staffix.ha.replication.testkit.RecordingHandler;
 import org.lolaf.staffix.ha.replication.spi.TestingReplicationClock;
 
 import java.nio.ByteBuffer;
@@ -89,7 +89,7 @@ abstract class FollowerConnectionHarness {
 
     FollowerConnectionHarness() {
         this.ioSession = mock(IOSession.class);
-        this.sent = new RecordingHandler();
+        this.sent = new RecordingHandler(Journal.APPLICATION_ID);
         this.sentPlaintext = new CopyOnWriteArrayList<>();
         this.sentBytes = new CopyOnWriteArrayList<>();
         this.stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE);

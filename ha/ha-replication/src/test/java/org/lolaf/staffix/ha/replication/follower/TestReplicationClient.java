@@ -27,7 +27,7 @@ import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.TestingPorts;
-import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.lolaf.staffix.ha.replication.journal.JournalCopy;
 import org.lolaf.staffix.ha.replication.journal.JournalReplica;
