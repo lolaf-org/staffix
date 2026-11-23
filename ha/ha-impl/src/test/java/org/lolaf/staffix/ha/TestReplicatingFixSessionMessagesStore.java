@@ -28,10 +28,10 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.api.monitoring.Timer;
-import org.lolaf.staffix.ha.replication.FollowersView;
-import org.lolaf.staffix.ha.replication.StreamWriter;
-import org.lolaf.staffix.ha.replication.spi.RecordFlag;
-import org.lolaf.staffix.ha.replication.testkit.AllocatedBytes;
+import org.lolaf.replicos.FollowersView;
+import org.lolaf.replicos.StreamWriter;
+import org.lolaf.replicos.spi.RecordFlag;
+import org.lolaf.replicos.testkit.AllocatedBytes;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

@@ -23,7 +23,8 @@ one on your machine, with a witness and a counterparty, to kill and restart by h
   leads. Session actions sent to it through the admin API (logon, reset, send a message) are refused with a clear
   message (HTTP 409), since running one there would put the session up on both nodes.
 - **The leader replicates each write as it makes it**, per session, in the mode the session asks for (see below). The
-  follower acknowledges what it applied.
+  follower acknowledges what it applied. The replication itself is [replicos](https://github.com/lolaf-org/replicos),
+  a library of its own: each replicated session, and the session settings, are one of its streams.
 - **A follower that connects late, or lost the stream, catches up**: from where it left off when the leader still holds
   those writes, else by a snapshot of each session (its sequence numbers and every message its store keeps). A snapshot
   goes in chunks between the other sessions' writes, so they keep replicating, and their `SYNC` sends keep flowing,
@@ -406,7 +407,7 @@ mode, so a new secret goes through clear, one node back to `DISABLED` beside a `
 - **The default allocates nothing per message**, on every JDK from 11, so encryption adds no garbage collection. The AEADs allocate on each frame, an acknowledgement included, in the JDK itself: about 1 KiB for
   `AES/GCM/NoPadding`, 1.2 to 3.5 KiB for `ChaCha20-Poly1305`, which also holds twice the message to decrypt it up to
   JDK 21. A node set with one says so at start, in an INFO naming the allocation-free default.
-- **For large messages, AES-GCM is faster.** Measured with `HaFrameCipherBenchmark` (in `benchmarks`) on a laptop
+- **For large messages, AES-GCM is faster.** Measured with replicos' `FrameCipherBenchmark` on a laptop
   CPU with AES-NI, JDK 21, encrypting one message on the leader, in µs:
 
   | message | AES-CTR + HmacSHA256 | JDK AES-GCM 256 | Corretto AES-GCM 256 |
@@ -453,9 +454,9 @@ decide, as it is the one encrypting.
 ## Watching it
 
 - **Meters** (`ha.*`): role, epoch, followers connected and in sync, unsent bytes, how far each follower is behind,
-  `SYNC` sends that went out unacknowledged, snapshots, followers dropped as too slow, and the acknowledgement round
-  trip per follower and lane; see
-  [Monitoring](monitoring.md).
+  `SYNC` sends that went out unacknowledged, snapshots, followers dropped as too slow, writes held by a full log, the
+  acknowledgement round trip and the catch-up time per follower and lane, connections closed by reason, and on the
+  follower its reconnections and what it received; see [Monitoring](monitoring.md).
 - **Probes**: the node's (`ha-followers`, `ha-leader-connection`, `ha-leadership`, `ha-session-settings`, `ha-encryption`)
   and each replicated session's (`ha-replication`); see [Alerting](alerting.md).
 - **Status**: `GET v1/ha` and `GET v1/ha/sessions` say who leads, whether the follower holds each session and how far

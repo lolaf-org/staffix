@@ -314,6 +314,29 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         await().until(() -> leader.read("ha.follower.lag.pending") == 0);
     }
 
+    @Test
+    void theMetersCountWhatTheReplicationDidOverTheNodesLife() {
+        ReplicatingStore store = a.ha.replicatingStore(untilAcked(MAIN), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        startPairInSync();
+        RecordingMeters leader = a.engine.meters;
+        RecordingMeters follower = b.engine.meters;
+        await().until(() -> leader.recordings(HaMeters.FOLLOWER_CATCH_UP, Map.of("follower", "b", "lane", "0")) == 1);
+        double received = follower.read("ha.replica.received");
+        double events = follower.read("ha.replica.received.events");
+
+        store.storeNextIncomingSeqNum(7);
+        store.awaitReplicated();
+
+        await().until(() -> follower.read("ha.replica.received.events") > events);
+        assertThat(follower.read("ha.replica.received")).isGreaterThan(received);
+        assertThat(follower.read("ha.replica.snapshots")).as("the session and the settings").isEqualTo(2);
+        assertThat(follower.read("ha.replica.reconnects")).isZero();
+        assertThat(leader.read("ha.log.full.waits")).isZero();
+        assertThat(leader.recordings(HaMeters.LOG_FULL_WAIT, Map.of("lane", "0"))).isZero();
+        assertThat(leader.read("ha.follower.closes", Map.of("reason", "too_slow"))).isZero();
+        assertThat(follower.read("ha.replica.closes", Map.of("reason", "disconnected"))).isZero();
+    }
+
     private Node node(String nodeId, int replicationLanes) {
         return new Node(nodeId, new RecordingEngine().with(MAIN).with(OTHER), Duration.ofMillis(50), replicationLanes).withOther();
     }

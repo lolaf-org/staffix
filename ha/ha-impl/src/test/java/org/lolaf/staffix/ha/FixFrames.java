@@ -20,11 +20,11 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.spi.RecordFlag;
-import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
-import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
-import org.lolaf.staffix.ha.replication.wire.WireFormat;
+import org.lolaf.replicos.EncryptionMode;
+import org.lolaf.replicos.spi.RecordFlag;
+import org.lolaf.replicos.wire.FrameEncoder;
+import org.lolaf.replicos.spi.StreamReplicationMode;
+import org.lolaf.replicos.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 

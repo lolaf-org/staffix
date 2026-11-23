@@ -21,7 +21,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
+import org.lolaf.replicos.spi.SnapshotSource;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;

@@ -22,15 +22,21 @@ import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.monitoring.FixEngineMonitoringContext;
 import org.lolaf.staffix.api.monitoring.MetersContext;
 import org.lolaf.staffix.api.monitoring.Timer;
-import org.lolaf.staffix.ha.replication.FollowersView;
-import org.lolaf.staffix.ha.replication.LeaderView;
-import org.lolaf.staffix.ha.replication.ReplicationNode;
-import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
-import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
+import org.lolaf.replicos.FollowersView;
+import org.lolaf.replicos.LeaderView;
+import org.lolaf.replicos.ReplicationNode;
+import org.lolaf.replicos.spi.LatencyRecorder;
+import org.lolaf.replicos.spi.ReplicationMetrics;
+import org.lolaf.replicos.wire.CloseCounts;
+import org.lolaf.replicos.wire.CloseReason;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import java.util.function.ToLongFunction;
 
@@ -47,6 +53,8 @@ class HaMeters {
     static final String SESSION_SYNC_ACK_LATENCY = "ha.session.sync.ack.latency";
     static final String FOLLOWER_ACK_LATENCY = "ha.follower.ack.latency";
     static final String FOLLOWER_LAG = "ha.follower.lag";
+    static final String FOLLOWER_CATCH_UP = "ha.follower.catch.up";
+    static final String LOG_FULL_WAIT = "ha.log.full.wait";
 
     /**
      * The timers recorded on the replication's hot paths, which the engine binds late.
@@ -56,6 +64,10 @@ class HaMeters {
         Timer syncReceivedAckLatency;
         Timer syncAppliedAckLatency;
         Timer receivedWriteLatency;
+        /**
+         * By lane.
+         */
+        List<Timer> logFullWaits;
         ReplicationMetrics followerTimers;
     }
 
@@ -66,23 +78,49 @@ class HaMeters {
         return new Timers(syncAckLatency(meters, "sync_received"), syncAckLatency(meters, "sync_applied"),
                 meters.getTimer(REPLICA_RECEIVED_WRITE_LATENCY, "How long this follower took to write a read's events to"
                         + " its store after acknowledging them as received: the window in which a SYNC_RECEIVED send is"
-                        + " held in its memory only.", Map.of()), followerTimers(meters));
+                        + " held in its memory only.", Map.of()), logFullWaits(meters, ha.getNode().getLanes()),
+                followerTimers(meters));
+    }
+
+    /**
+     * Records into {@code timer}, in nanoseconds.
+     */
+    static LatencyRecorder recorder(Timer timer) {
+        return durationInNanos -> timer.record(durationInNanos, TimeUnit.NANOSECONDS);
+    }
+
+    private static List<Timer> logFullWaits(FixEngineMonitoringContext meters, int lanes) {
+        List<Timer> timers = new ArrayList<>(lanes);
+        for (int lane = 0; lane < lanes; lane++) {
+            timers.add(meters.getTimer(LOG_FULL_WAIT, "How long a write waited for a follower a whole replication log"
+                    + " behind, before the log full timeout drops it: the time the writing session thread was held.",
+                    Map.of("lane", String.valueOf(lane))));
+        }
+        return timers;
     }
 
     private static ReplicationMetrics followerTimers(FixEngineMonitoringContext meters) {
         return new ReplicationMetrics() {
             @Override
             public LatencyRecorder followerAckLatency(String followerId, int lane) {
-                return meters.getTimer(FOLLOWER_ACK_LATENCY, "A follower's round trip over a replication lane, from a"
-                        + " batch of writes sent to its ack, sampled once per round trip, whatever the sessions'"
-                        + " replication modes.", followerTags(followerId, lane))::record;
+                return recorder(meters.getTimer(FOLLOWER_ACK_LATENCY, "A follower's round trip over a replication lane,"
+                        + " from a batch of writes sent to its ack, sampled once per round trip, whatever the sessions'"
+                        + " replication modes.", followerTags(followerId, lane)));
             }
 
             @Override
             public LatencyRecorder followerLag(String followerId, int lane) {
-                return meters.getTimer(FOLLOWER_LAG, "How far a follower is behind on a replication lane: from a write"
-                        + " to the lane's log to the follower's ack of it, sampled once per round trip.",
-                        followerTags(followerId, lane))::record;
+                return recorder(meters.getTimer(FOLLOWER_LAG, "How far a follower is behind on a replication lane:"
+                        + " from a write to the lane's log to the follower's ack of it, sampled once per round trip.",
+                        followerTags(followerId, lane)));
+            }
+
+            @Override
+            public LatencyRecorder followerCatchUp(String followerId, int lane) {
+                return recorder(meters.getTimer(FOLLOWER_CATCH_UP, "How long a follower took, from connecting a"
+                        + " replication lane, to hold every session of the lane in sync, snapshots included: how long a"
+                        + " failover to it would have lost writes. Once per connection.",
+                        followerTags(followerId, lane)));
             }
         };
     }
@@ -127,6 +165,11 @@ class HaMeters {
                 + " network, sendBuffers is too small.", Map.of(), followers::getSendWaits);
         meters.getCounter("ha.follower.send.buffers.allocated", "Send buffers allocated because the pool had none free."
                 + " Should always be 0: any other value is a bug.", Map.of(), followers::getSendBuffersAllocated);
+        meters.getCounter("ha.log.full.waits", "Writes that found the replication log full and waited for a follower a"
+                + " whole log behind: a follower falling behind before the log full timeout drops it.", Map.of(),
+                followers::getLogFullWaits);
+        registerCloses(meters, "ha.follower.closes", "Follower lane connections closed, by the reason either side gave,"
+                + " or disconnected without one.", followers::getCloses);
     }
 
     private static void registerFollowerMeters(FixEngineMonitoringContext meters, ReplicationFixEngineHa ha) {
@@ -134,6 +177,35 @@ class HaMeters {
                 () -> following(ha, LeaderView::isConnected));
         meters.getGauge("ha.replica.in.sync", "1 while this follower holds every replicated session in full.", Map.of(),
                 () -> following(ha, LeaderView::isInSync));
+        LeaderView leader = ha.getNode().leader();
+        meters.getCounter("ha.replica.reconnects", "Replication lane connections made again to a leader after one"
+                + " dropped.", Map.of(), leader::getReconnects);
+        meters.getCounter("ha.replica.received", "Bytes received from leaders: its rate is the replication's throughput"
+                + " on this follower.", Map.of(), leader::getBytesReceived);
+        meters.getCounter("ha.replica.received.events", "Store events received from leaders, outside snapshots.",
+                Map.of(), leader::getRecordsReceived);
+        meters.getCounter("ha.replica.snapshots", "Snapshots received to catch up: of a session, or of the session"
+                + " settings.", Map.of(), leader::getSnapshots);
+        meters.getCounter("ha.replica.snapshot.messages", "Messages and session settings the snapshots received copied.",
+                Map.of(), leader::getSnapshotRecords);
+        registerCloses(meters, "ha.replica.closes", "Replication lane connections to a leader closed, by the reason either"
+                + " side gave, or disconnected without one.", leader::getCloses);
+    }
+
+    /**
+     * One counter per close reason the protocol defines, read from the node's counts at each export.
+     */
+    private static void registerCloses(FixEngineMonitoringContext meters, String id, String description,
+                                       Supplier<Map<String, Long>> closes) {
+        List<String> reasons = new ArrayList<>();
+        for (CloseReason reason : CloseReason.values()) {
+            reasons.add(reason.name());
+        }
+        reasons.add(CloseCounts.DISCONNECTED);
+        for (String reason : reasons) {
+            meters.getCounter(id, description, Map.of("reason", reason.toLowerCase(Locale.ROOT)),
+                    () -> closes.get().getOrDefault(reason, 0L));
+        }
     }
 
     private static Timer syncAckLatency(FixEngineMonitoringContext meters, String mode) {

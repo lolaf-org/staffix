@@ -116,7 +116,14 @@ apply to, and all but the timers are read at export, so they cost the session th
 | `ha.follower.too.slow`, `ha.snapshots`, `ha.snapshot.messages` | followers dropped for reading the log so slowly that a write waited `logFullTimeout` for them, snapshots sent (of a session, or of the session settings once per follower connection), messages and session settings they copied |
 | `ha.follower.send.waits` | times the leader had writes for a follower and could not send them, every send buffer being in flight or the connection's write limit reached; growing steadily while the network is healthy means `sendBuffers` is too small |
 | `ha.follower.send.buffers.allocated` | send buffers allocated because the pool had none free; should always be 0, any other value is a bug |
+| `ha.follower.catch.up` | how long a follower took, from connecting a lane to holding every session of it in sync, snapshots included: how long a failover to it would have lost writes; tagged `follower` and `lane`, once per connection |
+| `ha.log.full.waits`, `ha.log.full.wait` | writes that found the replication log full and waited for a follower a whole log behind, and how long each waited, tagged `lane`: the session thread was held that long, up to `logFullTimeout` |
+| `ha.follower.closes` | follower lane connections closed, tagged `reason`: a close reason of the [protocol](https://github.com/lolaf-org/replicos/blob/main/docs/protocol.md) in lower case, such as `too_slow` or `stalled`, or `disconnected` for a connection lost without one |
 | `ha.replica.connected`, `ha.replica.in.sync` | on a follower: streaming its leader's writes, and holding every replicated session |
+| `ha.replica.reconnects` | on a follower: lane connections made again to a leader after one dropped |
+| `ha.replica.received`, `ha.replica.received.events` | on a follower: bytes received from leaders, and store events outside snapshots |
+| `ha.replica.snapshots`, `ha.replica.snapshot.messages` | on a follower: snapshots received to catch up, and the messages and session settings they copied |
+| `ha.replica.closes` | on a follower: lane connections to a leader closed, tagged `reason` as `ha.follower.closes` |
 | `ha.replica.received.write.latency` | on a follower: how long it took to write a read's events to its store after acknowledging them as received, the window in which a `SYNC_RECEIVED` send is held in its memory only |
 
 A session with `highAvailability.syncAckLatencyEnabled` also gets `ha.session.sync.ack.latency` in its own meters,

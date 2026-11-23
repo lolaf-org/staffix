@@ -50,7 +50,7 @@ import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.application.factories.simple.SimpleApplicationFactorySettings;
 import org.lolaf.staffix.benchmarks.fix44.encoders.QuoteRequestEncoder;
 import org.lolaf.staffix.benchmarks.fix44.msg.MessageTypes;
-import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
+import org.lolaf.replicos.ReplicationEncryptionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.lolaf.staffix.stores.messages.memory.MemoryMessageStoreSettings;
 import org.lolaf.staffix.stores.sessions.memory.MemorySessionsSettingsStoreSettings;

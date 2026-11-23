@@ -20,9 +20,9 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-ha-replication</artifactId>
-            <version>${project.version}</version>
+            <groupId>org.lolaf.replicos</groupId>
+            <artifactId>replicos</artifactId>
+            <version>${replicos.version}</version>
         </dependency>
         <dependency>
             <groupId>org.lolaf.staffix</groupId>
@@ -57,10 +57,9 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>org.lolaf.staffix</groupId>
-            <artifactId>staffix-ha-replication</artifactId>
-            <version>${project.version}</version>
-            <classifier>tests</classifier>
+            <groupId>org.lolaf.replicos</groupId>
+            <artifactId>replicos-testkit</artifactId>
+            <version>${replicos.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>

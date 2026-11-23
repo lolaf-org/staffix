@@ -20,9 +20,9 @@ import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.ha.HaStatus;
-import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
-import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
+import org.lolaf.replicos.EncryptionMode;
+import org.lolaf.replicos.ReplicationEncryptionSettings;
+import org.lolaf.replicos.testkit.TestingKeyExchanges;
 
 import java.nio.charset.StandardCharsets;
 

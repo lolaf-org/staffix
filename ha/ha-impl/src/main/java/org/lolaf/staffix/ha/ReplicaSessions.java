@@ -25,8 +25,8 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.replication.LeaderView;
-import org.lolaf.staffix.ha.replication.ReplicaStream;
+import org.lolaf.replicos.LeaderView;
+import org.lolaf.replicos.ReplicaStream;
 
 import java.util.List;
 import java.util.stream.Collectors;

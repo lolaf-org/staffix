@@ -30,9 +30,9 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.ha.ReplicationHaSettings.ReplicationHaSettingsBuilder;
-import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
-import org.lolaf.staffix.ha.replication.testkit.TestingKeyExchanges;
+import org.lolaf.replicos.EncryptionMode;
+import org.lolaf.replicos.ReplicationEncryptionSettings;
+import org.lolaf.replicos.testkit.TestingKeyExchanges;
 import org.lolaf.staffix.ha.RecordingEngine.RecordingStore;
 import org.lolaf.staffix.tests.TestPorts;
 

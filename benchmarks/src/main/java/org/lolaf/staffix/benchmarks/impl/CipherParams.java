@@ -15,12 +15,11 @@
  */
 package org.lolaf.staffix.benchmarks.impl;
 
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
+import org.lolaf.replicos.EncryptionMode;
+import org.lolaf.replicos.ReplicationEncryptionSettings;
 
 import java.io.File;
 import java.net.MalformedURLException;
@@ -33,7 +32,7 @@ import java.security.Security;
 
 /**
  * The replication's encryption parameter values, named so that a result's label reads on its own, as {@link HaParams}.
- * Nothing of FIX: shared by the cipher benchmarks and the HA pair's.
+ * Nothing of FIX; the replication's own cipher benchmarks are replicos'.
  */
 @UtilityClass
 public class CipherParams {
@@ -105,15 +104,5 @@ public class CipherParams {
                 throw new GeneralSecurityException("Cannot load the provider " + providerClass + " from " + file, e);
             }
         }
-    }
-
-    @Getter
-    @RequiredArgsConstructor
-    public enum MessageSize {
-        MESSAGE_200_B(200),
-        MESSAGE_1_KIB(1024),
-        MESSAGE_16_KIB(16 * 1024);
-
-        private final int bytes;
     }
 }

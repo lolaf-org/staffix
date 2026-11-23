@@ -31,9 +31,11 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.replication.ReplicationNode;
-import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
-import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
+import org.lolaf.replicos.FollowerSettings;
+import org.lolaf.replicos.LeaderSettings;
+import org.lolaf.replicos.ReplicationNode;
+import org.lolaf.replicos.spi.LatencyRecorder;
+import org.lolaf.replicos.spi.ReplicationMetrics;
 
 import java.util.ArrayList;
 import java.net.InetSocketAddress;
@@ -106,7 +108,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         this.syncReceivedAckLatency = new LateTimer();
         this.syncAppliedAckLatency = new LateTimer();
         this.receivedWriteLatency = new LateTimer();
-        this.followerTimers = new LateMetrics(receivedWriteLatency);
+        this.followerTimers = new LateMetrics(receivedWriteLatency, settings.getReplicationLanes());
         this.statusReport = new HaStatusReport(this);
         this.switchover = new Switchover(this);
         this.role = Role.UNKNOWN;
@@ -182,24 +184,28 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         settingsComparison.setApplyExecutor(this::onRoleThread);
         ReplicationNode built = ReplicationNode.builder()
                 .nodeId(settings.getNodeId())
-                .bindAddress(ownAddress())
-                .streamsToReplicate(sessions)
-                .replicaSinks(new FixSessionSinks(engine, settingsComparison))
-                .lanes(settings.getReplicationLanes())
+                .leader(LeaderSettings.builder()
+                        .bindAddress(ownAddress())
+                        .streams(sessions)
+                        .lanes(settings.getReplicationLanes())
+                        .logFullTimeout(settings.getLogFullTimeout())
+                        .slowFollowerHoldOff(settings.getSlowFollowerHoldOff())
+                        .heartbeatInterval(settings.getHeartbeatInterval())
+                        .followerStallTimeout(settings.getFollowerStallTimeout())
+                        .sendBuffers(settings.getSendBuffers())
+                        .snapshotChunkBytes(settings.getSnapshotChunkBytes())
+                        .senderIdleStrategy(settings.getSenderIdleStrategy())
+                        .ackIdleStrategy(settings.getSyncAckIdleStrategy())
+                        .build())
+                .follower(FollowerSettings.builder()
+                        .sinks(new FixSessionSinks(engine, settingsComparison))
+                        .reconnectInterval(settings.getReconnectInterval())
+                        .checkInterval(settings.getFollowerCheckInterval())
+                        .sinkWriterThreads(settings.getFollowerStoreWriterThreads())
+                        .sinkWriterIdleStrategy(settings.getFollowerStoreWriterIdleStrategy())
+                        .build())
                 .logCapacity(settings.getLogCapacity())
                 .encryption(settings.getEncryption())
-                .logFullTimeout(settings.getLogFullTimeout())
-                .slowFollowerHoldOff(settings.getSlowFollowerHoldOff())
-                .heartbeatInterval(settings.getHeartbeatInterval())
-                .followerStallTimeout(settings.getFollowerStallTimeout())
-                .sendBuffers(settings.getSendBuffers())
-                .snapshotChunkBytes(settings.getSnapshotChunkBytes())
-                .senderIdleStrategy(settings.getSenderIdleStrategy())
-                .ackIdleStrategy(settings.getSyncAckIdleStrategy())
-                .reconnectInterval(settings.getReconnectInterval())
-                .followerCheckInterval(settings.getFollowerCheckInterval())
-                .sinkWriterThreads(settings.getFollowerStoreWriterThreads())
-                .sinkWriterIdleStrategy(settings.getFollowerStoreWriterIdleStrategy())
                 .selectStrategy(settings.getSelectStrategy())
                 .clock(new EngineReplicationClock(engine.getClock()))
                 .metrics(followerTimers)
@@ -329,7 +335,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             syncReceivedAckLatency.target = timers.getSyncReceivedAckLatency();
             syncAppliedAckLatency.target = timers.getSyncAppliedAckLatency();
             receivedWriteLatency.target = timers.getReceivedWriteLatency();
-            followerTimers.target = timers.getFollowerTimers();
+            followerTimers.bind(timers);
         }
         if (settings.getAlertsPublisherInstanceId() != null) {
             HaProbes.register(engine.probes(HaProbes.COMPONENT, settings.getAlertsPublisherInstanceId(), this::isStarted), this);
@@ -532,16 +538,28 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
 
     /**
      * Gives the replication the meters' timers, which exist only once started: each connection asks for its own as it
-     * connects, the received writes' timer is asked for once and records through its late target.
+     * connects; the received writes' and log full waits' timers are asked for once and record through their late target.
      */
     private static final class LateMetrics implements ReplicationMetrics {
 
-        private final Timer receivedWriteLatency;
+        private final LatencyRecorder receivedWriteLatency;
+        private final LateTimer[] logFullWaits;
         private volatile ReplicationMetrics target;
 
-        private LateMetrics(Timer receivedWriteLatency) {
-            this.receivedWriteLatency = receivedWriteLatency;
+        private LateMetrics(Timer receivedWriteLatency, int lanes) {
+            this.receivedWriteLatency = HaMeters.recorder(receivedWriteLatency);
+            this.logFullWaits = new LateTimer[lanes];
+            for (int lane = 0; lane < lanes; lane++) {
+                logFullWaits[lane] = new LateTimer();
+            }
             this.target = ReplicationMetrics.NONE;
+        }
+
+        void bind(HaMeters.Timers timers) {
+            for (int lane = 0; lane < logFullWaits.length; lane++) {
+                logFullWaits[lane].target = timers.getLogFullWaits().get(lane);
+            }
+            target = timers.getFollowerTimers();
         }
 
         @Override
@@ -555,8 +573,18 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
 
         @Override
+        public LatencyRecorder followerCatchUp(String followerId, int lane) {
+            return target.followerCatchUp(followerId, lane);
+        }
+
+        @Override
+        public LatencyRecorder logFullWait(int lane) {
+            return HaMeters.recorder(logFullWaits[lane]);
+        }
+
+        @Override
         public LatencyRecorder receivedWriteLatency() {
-            return receivedWriteLatency::record;
+            return receivedWriteLatency;
         }
     }
 

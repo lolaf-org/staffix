@@ -18,8 +18,8 @@ package org.lolaf.staffix.ha;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.lolaf.staffix.ha.replication.EncryptionMode;
-import org.lolaf.staffix.ha.replication.ReplicationEncryptionSettings;
+import org.lolaf.replicos.EncryptionMode;
+import org.lolaf.replicos.ReplicationEncryptionSettings;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;

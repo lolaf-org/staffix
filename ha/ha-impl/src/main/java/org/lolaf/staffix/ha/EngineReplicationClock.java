@@ -17,7 +17,7 @@ package org.lolaf.staffix.ha;
 
 import lombok.RequiredArgsConstructor;
 import org.lolaf.staffix.api.time.Clock;
-import org.lolaf.staffix.ha.replication.spi.ReplicationClock;
+import org.lolaf.replicos.spi.ReplicationClock;
 
 import java.time.Instant;
 

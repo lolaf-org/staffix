@@ -18,7 +18,7 @@ package org.lolaf.staffix.ha.spring;
 import lombok.Data;
 import lombok.ToString;
 import org.lolaf.staffix.api.metadata.ConfiguresComponent;
-import org.lolaf.staffix.ha.replication.EncryptionMode;
+import org.lolaf.replicos.EncryptionMode;
 import org.lolaf.staffix.ha.ReplicationHaSettings;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

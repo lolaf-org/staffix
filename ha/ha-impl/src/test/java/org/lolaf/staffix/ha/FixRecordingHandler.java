@@ -16,8 +16,8 @@
 package org.lolaf.staffix.ha;
 
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.replication.testkit.RecordingHandler;
-import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
+import org.lolaf.replicos.testkit.RecordingHandler;
+import org.lolaf.replicos.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 

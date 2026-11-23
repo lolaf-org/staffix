@@ -18,8 +18,8 @@ package org.lolaf.staffix.ha;
 import lombok.RequiredArgsConstructor;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
-import org.lolaf.staffix.ha.replication.spi.ReplicaSink;
-import org.lolaf.staffix.ha.replication.spi.WireFormatException;
+import org.lolaf.replicos.spi.ReplicaSink;
+import org.lolaf.replicos.spi.WireFormatException;
 
 import java.nio.ByteBuffer;
 

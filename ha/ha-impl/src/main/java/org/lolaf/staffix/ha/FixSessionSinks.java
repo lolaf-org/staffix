@@ -21,10 +21,10 @@ import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.replication.spi.ReplicaSinks;
-import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
-import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
-import org.lolaf.staffix.ha.replication.spi.WireFormatException;
+import org.lolaf.replicos.spi.ReplicaSinks;
+import org.lolaf.replicos.spi.StreamAnswer;
+import org.lolaf.replicos.spi.StreamReplicationMode;
+import org.lolaf.replicos.spi.WireFormatException;
 
 import java.util.Optional;
 

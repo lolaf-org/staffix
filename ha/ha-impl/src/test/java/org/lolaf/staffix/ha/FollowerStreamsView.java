@@ -15,12 +15,14 @@
  */
 package org.lolaf.staffix.ha;
 
-import org.lolaf.staffix.ha.replication.follower.FollowerStreams;
+import org.lolaf.replicos.follower.FollowerStreams;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.ha.replication.LeaderStatus;
-import org.lolaf.staffix.ha.replication.LeaderView;
-import org.lolaf.staffix.ha.replication.ReplicaStream;
+import org.lolaf.replicos.LeaderStatus;
+import org.lolaf.replicos.LeaderView;
+import org.lolaf.replicos.ReplicaStream;
+
+import java.util.Map;
 
 /**
  * What a test's own {@link FollowerStreams} hold, as a node following no leader shows it.
@@ -63,5 +65,35 @@ final class FollowerStreamsView implements LeaderView {
     @Override
     public @Nullable ReplicaStream getStream(String streamName) {
         return streams.find(streamName);
+    }
+
+    @Override
+    public long getReconnects() {
+        return streams.getStats().getReconnects();
+    }
+
+    @Override
+    public long getBytesReceived() {
+        return streams.getStats().getBytesReceived();
+    }
+
+    @Override
+    public long getRecordsReceived() {
+        return streams.getStats().getRecordsReceived();
+    }
+
+    @Override
+    public long getSnapshots() {
+        return streams.getStats().getSnapshots();
+    }
+
+    @Override
+    public long getSnapshotRecords() {
+        return streams.getStats().getSnapshotRecords();
+    }
+
+    @Override
+    public Map<String, Long> getCloses() {
+        return streams.getStats().getCloses().toMap();
     }
 }

@@ -16,7 +16,6 @@
     <artifactId>staffix-ha-parent</artifactId>
 
     <modules>
-        <module>ha-replication</module>
         <module>ha-impl</module>
         <module>ha-primos</module>
         <module>ha-spring-boot</module>

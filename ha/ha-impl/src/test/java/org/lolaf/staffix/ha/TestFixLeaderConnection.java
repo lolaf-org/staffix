@@ -15,15 +15,15 @@
  */
 package org.lolaf.staffix.ha;
 
-import org.lolaf.staffix.ha.replication.follower.LeaderConnection;
+import org.lolaf.replicos.follower.LeaderConnection;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.replication.wire.CloseReason;
-import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
-import org.lolaf.staffix.ha.replication.wire.WireFormat;
+import org.lolaf.replicos.wire.CloseReason;
+import org.lolaf.replicos.wire.FrameEncoder;
+import org.lolaf.replicos.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 

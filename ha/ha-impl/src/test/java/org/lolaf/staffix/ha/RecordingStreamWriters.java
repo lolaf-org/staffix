@@ -18,9 +18,9 @@ package org.lolaf.staffix.ha;
 import lombok.Getter;
 import lombok.Setter;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.ha.replication.StreamWriter;
-import org.lolaf.staffix.ha.replication.spi.RecordFlag;
-import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
+import org.lolaf.replicos.StreamWriter;
+import org.lolaf.replicos.spi.RecordFlag;
+import org.lolaf.replicos.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

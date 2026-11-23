@@ -15,10 +15,10 @@
  */
 package org.lolaf.staffix.ha;
 
-import org.lolaf.staffix.ha.replication.follower.LeaderConnection;
+import org.lolaf.replicos.follower.LeaderConnection;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
+import org.lolaf.replicos.wire.FrameEncoder;
 
 import java.util.List;
 import java.util.function.ToIntBiFunction;

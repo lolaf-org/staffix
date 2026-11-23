@@ -23,8 +23,8 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
-import org.lolaf.staffix.ha.replication.wire.WireFormat;
+import org.lolaf.replicos.spi.StreamAnswer;
+import org.lolaf.replicos.wire.WireFormat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

@@ -36,7 +36,8 @@ could mean.
   the others drops its sessions a fencing margin (50 ms by default) before the other engine can be elected. Two
   engines sharing one database or directory are detected and not replicated into. Modules `staffix-ha-impl`,
   `staffix-ha-primos`, `staffix-ha-spring-boot` and `staffix-ha-primos-spring-boot`; see [High availability](docs/high-availability.md),
-  including what it does not do.
+  including what it does not do. The replication itself is [replicos](https://github.com/lolaf-org/replicos), a
+  library of its own that `staffix-ha-impl` depends on.
 - **Session settings reach both nodes of a high availability pair.** A session added, changed or removed on the leader
   reaches the follower, with a store per node or one both share, and `${...}` placeholders stay expressions. It is on by
   default: `sessionSettingsReplicated` turns it off and `replicatedSettingsStores` restricts it. Changes through the
@@ -54,8 +55,9 @@ could mean.
   `highAvailability.unencryptedMessageTypes`. The status names the cipher of each replication lane. See
   [Encrypting the replication](docs/high-availability.md#encrypting-the-replication).
 - **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
-  switchover, maintenance mode and a re-sync of the follower; it publishes `ha.*` meters and alerts when the follower
-  is missing, out of sync, behind, or dropped for being too slow.
+  switchover, maintenance mode and a re-sync of the follower; it publishes `ha.*` meters, among them how long a
+  follower takes to catch up, how long writes waited on a full replication log and the connections closed by reason,
+  and alerts when the follower is missing, out of sync, behind, or dropped for being too slow.
 - **The engine's own components have meters and probes**, beside the sessions': a monitoring manager that supports
   it (Micrometer's does) publishes engine meters, listed by the HTTP admin API's `GET engine/meters`, and their probes
   are listed and cleared under `engine/{component}/probes`, or through JMX.

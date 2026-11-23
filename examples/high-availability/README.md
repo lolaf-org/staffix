@@ -57,8 +57,8 @@ node-2        ReplicationFixEngineHa - Node 2 is now FOLLOWER at epoch 1, follow
 counterparty  Counterparty - Gap in the gateway's MsgSeqNum: asked for 1 to 10000 again
 counterparty  Counterparty - Logged on
 counterparty  Counterparty - Gap 1 to 10000 filled
-node-2        LeaderConnection - Following leader 1 at epoch 1, from its log tail, needing a snapshot
-node-1        FollowerConnection - Snapshot of FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT sent to follower 2: 0 messages
+node-2        LeaderConnection - Following leader 1 through /127.0.0.1:17101 at epoch 1 on lane 0 of 1, from its log tail, needing a snapshot
+node-1        SnapshotSender - Snapshot of stream ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT sent to follower 2: 0 records
 counterparty  Counterparty - request 1 answered by node 1
 ```
 
@@ -107,9 +107,9 @@ The pair already has a leader, so it follows it and is caught up by snapshot:
 
 ```
 node-1        ReplicationFixEngineHa - Node 1 is now FOLLOWER at epoch 2, following /127.0.0.1:17102
-node-2        FollowerConnection - Follower 1 connected at epoch 2, needing a snapshot
-node-1        LeaderConnection - Following leader 2 at epoch 2, from its log tail, needing a snapshot
-node-2        FollowerConnection - Snapshot of FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT sent to follower 1: 15 messages
+node-2        FollowerConnection - Follower 1 connected lane 0 of 1 at epoch 2, needing a snapshot
+node-1        LeaderConnection - Following leader 2 through /127.0.0.1:17102 at epoch 2 on lane 0 of 1, from its log tail, needing a snapshot
+node-2        SnapshotSender - Snapshot of stream ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT sent to follower 1: 15 records
 ```
 
 The counterparty sees nothing of it.
@@ -127,8 +127,8 @@ no gap:
 ```
 counterparty  Counterparty - Logged out: FIX server stop
 node-2        HaNode - Node 2: logged out, FIX server stop
-node-2        FollowerConnection - Closing the replication stream to follower 1: SHUTDOWN the leader stopped cleanly, every event was sent
-node-1        LeaderConnection - Leader 2 stopped cleanly and handed over: the leader stopped cleanly, every event was sent
+node-2        FollowerConnection - Closing the replication stream to follower 1 lane 0: SHUTDOWN the leader stopped cleanly, every record was sent
+node-1        LeaderConnection - Leader 2 stopped cleanly and handed over: the leader stopped cleanly, every record was sent
 node-1        ReplicaSessions - FIX session ACCEPTOR default.ha:VERSION_44:GATEWAY->CLIENT taken over where the old leader cleanly left it
 node-1        ReplicationFixEngineHa - Node 1 is now LEADER at epoch 3
 counterparty  Counterparty - Logged on

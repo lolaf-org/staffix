@@ -19,8 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.ha.HaProbes.SessionReplicationEvaluator;
-import org.lolaf.staffix.ha.replication.StreamWriter;
-import org.lolaf.staffix.ha.replication.FollowersView;
+import org.lolaf.replicos.StreamWriter;
+import org.lolaf.replicos.FollowersView;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
