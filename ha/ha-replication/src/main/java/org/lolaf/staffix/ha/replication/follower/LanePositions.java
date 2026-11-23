@@ -63,7 +63,7 @@ final class LanePositions {
     }
 
     /**
-     * See {@link ReplicaSessions#takeReceivedToAck(int)}.
+     * See {@link FollowerStreams#takeReceivedToAck(int)}.
      */
     long takeReceivedToAck(int lane) {
         Position position = position(lane);
