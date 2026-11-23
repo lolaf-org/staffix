@@ -15,7 +15,7 @@
  */
 package org.lolaf.staffix.benchmarks;
 
-import org.lolaf.staffix.benchmarks.impl.HaParams;
+import org.lolaf.staffix.benchmarks.impl.CipherParams;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
@@ -52,9 +52,9 @@ import java.util.concurrent.TimeUnit;
 public class HaControlFrameCipherBenchmark {
 
     @Param({"CLEAR", "AES_GCM_256", "AES_CTR_HMAC_SHA256", "CHACHA20_HMAC_SHA256"})
-    HaParams.Encryption encryption;
+    CipherParams.Encryption encryption;
     @Param({"PROVIDER_JDK"})
-    HaParams.CryptoProvider provider;
+    CipherParams.CryptoProvider provider;
 
     private final ByteBuffer frames;
     private FrameCipher sealer;

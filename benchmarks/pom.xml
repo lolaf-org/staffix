@@ -358,7 +358,7 @@
                         </goals>
                         <configuration>
                             <!-- Not dependencies: both Bouncy Castle jars hold the same classes, so
-                                 HaParams.CryptoProvider loads each in a class loader of its own. -->
+                                 CipherParams.CryptoProvider loads each in a class loader of its own. -->
                             <outputDirectory>${project.build.directory}/providers</outputDirectory>
                             <artifactItems>
                                 <artifactItem>

@@ -147,11 +147,11 @@ public class HaPair {
      * encrypted lane only authenticates the sessions' messages.
      */
     @Param({"CLEAR"})
-    HaParams.Encryption encryption;
+    CipherParams.Encryption encryption;
     @Param({"ENCRYPTED_MESSAGES"})
     HaParams.MessageEncryption messageEncryption;
     @Param({"PROVIDER_JDK"})
-    HaParams.CryptoProvider provider;
+    CipherParams.CryptoProvider provider;
 
     /**
      * Which of the replication's threads busy spin, each one more core.

@@ -138,11 +138,11 @@ public class HaLoad {
      * encrypted lane only authenticates the sessions' messages.
      */
     @Param({"CLEAR"})
-    HaParams.Encryption encryption;
+    CipherParams.Encryption encryption;
     @Param({"ENCRYPTED_MESSAGES"})
     HaParams.MessageEncryption messageEncryption;
     @Param({"PROVIDER_JDK"})
-    HaParams.CryptoProvider provider;
+    CipherParams.CryptoProvider provider;
 
     private final List<Runnable> stops = new ArrayList<>();
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();

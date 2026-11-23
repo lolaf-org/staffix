@@ -15,8 +15,7 @@
  */
 package org.lolaf.staffix.benchmarks;
 
-import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.benchmarks.impl.HaParams;
+import org.lolaf.staffix.benchmarks.impl.CipherParams;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
@@ -41,7 +40,7 @@ import java.security.GeneralSecurityException;
 import java.util.concurrent.TimeUnit;
 
 /**
- * One store event frame sealed as the leader's sender does, and sealed then opened as the follower does, on a direct
+ * One record frame sealed as the leader's sender does, and sealed then opened as the follower does, on a direct
  * buffer like the replication's: per cipher, JCE provider and message size. {@code CLEAR} is the frame's encoding alone,
  * which every other figure includes. Not every provider has every cipher: run each provider with its own {@code -p}.
  */
@@ -54,11 +53,16 @@ import java.util.concurrent.TimeUnit;
 public class HaFrameCipherBenchmark {
 
     @Param({"CLEAR", "AES_GCM_128", "AES_GCM_256", "CHACHA20_POLY1305", "AES_CTR_HMAC_SHA256", "CHACHA20_HMAC_SHA256"})
-    HaParams.Encryption encryption;
+    CipherParams.Encryption encryption;
     @Param({"PROVIDER_JDK"})
-    HaParams.CryptoProvider provider;
+    CipherParams.CryptoProvider provider;
     @Param({"MESSAGE_200_B", "MESSAGE_1_KIB", "MESSAGE_16_KIB"})
-    HaParams.MessageSize messageSize;
+    CipherParams.MessageSize messageSize;
+
+    /**
+     * Never read by the replication: any of the application's bytes.
+     */
+    private static final byte CONTENT_TYPE = 0;
 
     private final ByteBuffer frames;
     private ByteBuffer message;
@@ -86,18 +90,18 @@ public class HaFrameCipherBenchmark {
 
     @Benchmark
     public int seal() {
-        return sealer.seal(frames, 0, storeEvent());
+        return sealer.seal(frames, 0, record());
     }
 
     @Benchmark
     public int sealAndOpen() {
-        return opener.open(frames, 0, sealer.seal(frames, 0, storeEvent()));
+        return opener.open(frames, 0, sealer.seal(frames, 0, record()));
     }
 
-    private int storeEvent() {
+    private int record() {
         long seq = ++sequenceNumber;
         int body = FrameEncoder.recordBody(frames, WireFormat.RECORD_BODY_OFFSET, 0,
-                StoreEventType.STORE_MESSAGE.getCode(), (byte) 0, seq, message, 0, message.capacity());
+                CONTENT_TYPE, (byte) 0, seq, message, 0, message.capacity());
         return FrameEncoder.recordHeader(frames, 0, 1, seq, body);
     }
 }
