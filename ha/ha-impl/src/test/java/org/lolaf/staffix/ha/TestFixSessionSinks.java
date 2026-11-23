@@ -13,15 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.follower;
+package org.lolaf.staffix.ha;
 
+import org.lolaf.staffix.ha.replication.follower.LeaderConnection;
 import org.junit.jupiter.api.Test;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.staffix.ha.FixFrames;
-import org.lolaf.staffix.ha.RecordingEngine;
 import org.lolaf.staffix.ha.replication.wire.CloseReason;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 

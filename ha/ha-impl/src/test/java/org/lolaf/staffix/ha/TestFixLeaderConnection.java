@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.follower;
+package org.lolaf.staffix.ha;
 
-import org.lolaf.staffix.ha.FixFrames;
-import org.lolaf.staffix.ha.RecordingEngine;
+import org.lolaf.staffix.ha.replication.follower.LeaderConnection;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;

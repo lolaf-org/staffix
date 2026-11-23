@@ -24,7 +24,7 @@ import java.nio.ByteBuffer;
  * sent. Whichever thread answers, the network thread seals and sends every answer, so they are sealed in the order the
  * leader opens them.
  */
-interface AnswerSender {
+public interface AnswerSender {
 
     ByteBuffer claim(int bytes);
 

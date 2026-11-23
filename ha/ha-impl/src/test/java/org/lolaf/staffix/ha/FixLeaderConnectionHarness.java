@@ -13,14 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.follower;
+package org.lolaf.staffix.ha;
 
-import org.lolaf.staffix.ha.FixFrames;
-import org.lolaf.staffix.ha.FixRecordingHandler;
-import org.lolaf.staffix.ha.RecordingEngine;
-import org.lolaf.staffix.ha.FixSessionSinks;
-import org.lolaf.staffix.ha.ReplicaSessions;
-import org.lolaf.staffix.ha.SessionSettingsComparison;
+import org.lolaf.staffix.ha.replication.follower.LeaderConnection;
+import org.lolaf.staffix.ha.replication.follower.FollowerStreams;
+import org.lolaf.staffix.ha.replication.follower.OnNetworkThreadAnswerSender;
 import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.staffix.api.ha.HaSessionStatus;

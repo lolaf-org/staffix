@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.follower;
+package org.lolaf.staffix.ha;
 
+import org.lolaf.staffix.ha.replication.follower.FollowerStreams;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.ha.replication.LeaderStatus;

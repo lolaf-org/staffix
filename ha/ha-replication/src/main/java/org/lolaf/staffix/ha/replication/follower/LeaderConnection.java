@@ -46,7 +46,7 @@ import java.util.function.ObjIntConsumer;
  * one this stream follows.
  */
 @Slf4j
-final class LeaderConnection implements FrameHandler {
+public final class LeaderConnection implements FrameHandler {
 
     private static final Duration CLOSE_FLUSH = Duration.ofSeconds(1);
     /**
@@ -99,7 +99,7 @@ final class LeaderConnection implements FrameHandler {
      * @param receivedAckedByNetworkThread the network thread acknowledges records as received as it reads them, a sink
      *                                     writer thread writing them
      */
-    LeaderConnection(IOSession ioSession, FollowerStreams followerStreams, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
+    public LeaderConnection(IOSession ioSession, FollowerStreams followerStreams, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
                      long checkIntervalNanos, AnswerSender answers, boolean receivedAckedByNetworkThread,
                      KeyExchange keyExchange) {
         this.sendBoundAnswer = (answer, streamKey) -> sendStreamAnswer(streamKey, answer);
@@ -118,7 +118,7 @@ final class LeaderConnection implements FrameHandler {
         this.lanesAnnounced = lanesAnnounced;
     }
 
-    void hello() {
+    public void hello() {
         ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
         int length = FrameEncoder.hello(frame, 0, nodeEpoch.getAsLong(), followerStreams.getApplicationId(), nodeId,
                 followerStreams.getLastAppliedEpoch(lane), followerStreams.getLastAppliedOffset(lane), lane,
@@ -138,7 +138,7 @@ final class LeaderConnection implements FrameHandler {
     /**
      * This connection's keys once both peers encrypt, null on a clear one.
      */
-    @Nullable ConnectionEncryptionKeys getEncryptionKeys() {
+    public @Nullable ConnectionEncryptionKeys getEncryptionKeys() {
         return keyAgreement.getKeys();
     }
 
@@ -317,7 +317,7 @@ final class LeaderConnection implements FrameHandler {
      * stream: the frames after it in the read are dropped, and the follower reconnects to resume after the last record
      * it applied rather than carrying on past a gap.
      */
-    void read(ByteBuffer message, FrameDecoder decoder) {
+    public void read(ByteBuffer message, FrameDecoder decoder) {
         int end = apply(message, message.position(), message.limit(), decoder);
         if (applyFailed) {
             message.position(message.limit());

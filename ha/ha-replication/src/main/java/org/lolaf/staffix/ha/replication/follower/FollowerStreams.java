@@ -73,7 +73,7 @@ public final class FollowerStreams {
     /**
      * The leader's lane count, from its WELCOME. A lane's position is kept while the count does not change.
      */
-    void setLanes(int lanes) {
+    public void setLanes(int lanes) {
         positions.setCount(lanes);
     }
 
@@ -81,14 +81,14 @@ public final class FollowerStreams {
         return key % positions.count() == lane;
     }
 
-    long getLastAppliedEpoch(int lane) {
+    public long getLastAppliedEpoch(int lane) {
         return positions.getLastAppliedEpoch(lane);
     }
 
     /**
      * The offset in the lane's log of the last record written, -1 for none.
      */
-    long getLastAppliedOffset(int lane) {
+    public long getLastAppliedOffset(int lane) {
         return positions.getLastAppliedOffset(lane);
     }
 
@@ -144,7 +144,7 @@ public final class FollowerStreams {
     /**
      * {@link #isInSync()} for the streams of one lane. Allocates nothing.
      */
-    boolean isLaneInSync(int lane) {
+    public boolean isLaneInSync(int lane) {
         return !positions.isAnnouncing(lane) && !anyOf(lane, BoundStream::isOutOfSync);
     }
 
@@ -191,7 +191,7 @@ public final class FollowerStreams {
      * replicates, or with another mode here, has its sink stopped, and is caught up again by snapshot once both agree
      * it is replicated.
      */
-    synchronized StreamAnswer bind(int key, String streamName, StreamReplicationMode leaderMode,
+    public synchronized StreamAnswer bind(int key, String streamName, StreamReplicationMode leaderMode,
                                    @Nullable String leaderStorageIdentity) {
         BoundStream current = key < streamsByKey.length ? streamsByKey[key] : null;
         if (current != null && current.getStreamName().equals(streamName) && current.isReplicated()
@@ -233,7 +233,7 @@ public final class FollowerStreams {
     /**
      * What the sinks of the lane's streams have accepted and not written yet. Allocates nothing.
      */
-    long getPendingWrites(int lane) {
+    public long getPendingWrites(int lane) {
         return sumOf(lane, BoundStream::getPendingWrites);
     }
 
@@ -264,14 +264,14 @@ public final class FollowerStreams {
                 || here == refused.getLeaderMode());
     }
 
-    boolean hasStreamsToBindAgain(int lane) {
+    public boolean hasStreamsToBindAgain(int lane) {
         return anyOf(lane, BoundStream::isRefusedUntilConfigurationChange);
     }
 
     /**
      * @return false for a key the leader never bound, or of another lane
      */
-    boolean apply(int lane, long epoch, long offset, int key, byte contentType, byte flags, long position,
+    public boolean apply(int lane, long epoch, long offset, int key, byte contentType, byte flags, long position,
                   ByteBuffer receiveBuffer, int payloadIndex, int payloadLength) {
         BoundStream stream = stream(lane, key);
         if (stream == null || !stream.apply(contentType, position, receiveBuffer, payloadIndex, payloadLength,
@@ -285,7 +285,7 @@ public final class FollowerStreams {
     /**
      * @return false for a key the leader never bound, of another lane, or not replicated here
      */
-    boolean snapshotBegin(int lane, int key, ByteBuffer state, int stateIndex, int stateLength) {
+    public boolean snapshotBegin(int lane, int key, ByteBuffer state, int stateIndex, int stateLength) {
         BoundStream stream = replicatedStream(lane, key);
         if (stream == null) {
             return false;
@@ -294,7 +294,7 @@ public final class FollowerStreams {
         return true;
     }
 
-    boolean snapshotRecord(int lane, int key, byte contentType, byte flags, long position, ByteBuffer receiveBuffer,
+    public boolean snapshotRecord(int lane, int key, byte contentType, byte flags, long position, ByteBuffer receiveBuffer,
                            int payloadIndex, int payloadLength) {
         BoundStream stream = replicatedStream(lane, key);
         return stream != null && stream.snapshotRecord(contentType, position, receiveBuffer, payloadIndex,
@@ -304,7 +304,7 @@ public final class FollowerStreams {
     /**
      * @return false when the stream is unknown or the count is not what was received
      */
-    boolean snapshotEnd(int lane, int key, int recordCount, ByteBuffer state, int stateIndex, int stateLength) {
+    public boolean snapshotEnd(int lane, int key, int recordCount, ByteBuffer state, int stateIndex, int stateLength) {
         BoundStream stream = replicatedStream(lane, key);
         return stream != null && stream.snapshotEnd(recordCount, state, stateIndex, stateLength);
     }
@@ -317,7 +317,7 @@ public final class FollowerStreams {
      * Writes what the frames of a lane's read left pending, before it is acknowledged, then counts their records
      * applied: a write failing leaves them unapplied, so a reconnection resumes before them.
      */
-    void writeApplied(int lane) {
+    public void writeApplied(int lane) {
         forEachOf(lane, BoundStream::writePending);
         positions.written(lane);
     }
