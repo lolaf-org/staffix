@@ -60,7 +60,7 @@ abstract class LeaderConnectionHarness {
     final RecordingHandler sent;
     final JournalReplica replica;
     final JournalCopy main;
-    final ReplicaStreams replicaStreams;
+    final FollowerStreams followerStreams;
     final LeaderConnection connection;
     private final FrameDecoder sentDecoder;
     private FrameCipher sentOpener;
@@ -74,7 +74,7 @@ abstract class LeaderConnectionHarness {
         this.sentOpener = FrameCipher.CLEAR;
         this.replica = new JournalReplica();
         this.main = replica.configure(MAIN, StreamReplicationMode.ASYNC);
-        this.replicaStreams = new ReplicaStreams(replica);
+        this.followerStreams = new FollowerStreams(replica);
         this.connection = newConnection(0, 0);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         doAnswer(invocation -> {
@@ -222,7 +222,7 @@ abstract class LeaderConnectionHarness {
     private LeaderConnection newConnection(int lane, long checkIntervalNanos, KeyExchange keyExchange,
                                            boolean receivedAckedByNetworkThread) {
         latestKeyExchange = keyExchange;
-        latest = new LeaderConnection(ioSession, replicaStreams, () -> EPOCH, "follower-b", lane, replicaStreams::setLanes,
+        latest = new LeaderConnection(ioSession, followerStreams, () -> EPOCH, "follower-b", lane, followerStreams::setLanes,
                 checkIntervalNanos, new OnNetworkThreadAnswerSender(ioSession), receivedAckedByNetworkThread, keyExchange);
         sentOpener = FrameCipher.CLEAR;
         return latest;

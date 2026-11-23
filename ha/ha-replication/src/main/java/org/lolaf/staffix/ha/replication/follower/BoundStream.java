@@ -31,7 +31,7 @@ import java.nio.ByteBuffer;
  * One of the leader's streams as this follower holds it: its sink, none when it is not replicated here, and how far a
  * snapshot and the log brought it.
  */
-public final class ReplicaStream {
+public final class BoundStream {
 
     @Getter
     private final String streamName;
@@ -73,7 +73,7 @@ public final class ReplicaStream {
      */
     private @Nullable ByteBuffer assembledPayload;
 
-    private ReplicaStream(String streamName, StreamReplicationMode leaderMode, @Nullable ReplicaSink sink,
+    private BoundStream(String streamName, StreamReplicationMode leaderMode, @Nullable ReplicaSink sink,
                           StreamAnswer notReplicatedAnswer, @Nullable String leaderStorageIdentity) {
         this.streamName = streamName;
         this.leaderMode = leaderMode;
@@ -82,16 +82,16 @@ public final class ReplicaStream {
         this.leaderStorageIdentity = leaderStorageIdentity;
     }
 
-    static ReplicaStream replicated(String streamName, StreamReplicationMode leaderMode, ReplicaSink sink) {
-        return new ReplicaStream(streamName, leaderMode, sink, StreamAnswer.SNAPSHOT_NEEDED, null);
+    static BoundStream replicated(String streamName, StreamReplicationMode leaderMode, ReplicaSink sink) {
+        return new BoundStream(streamName, leaderMode, sink, StreamAnswer.SNAPSHOT_NEEDED, null);
     }
 
     /**
      * @param leaderStorageIdentity kept to bind the stream again, for an answer this node's configuration may change
      */
-    static ReplicaStream notReplicated(String streamName, StreamReplicationMode leaderMode, StreamAnswer answer,
+    static BoundStream notReplicated(String streamName, StreamReplicationMode leaderMode, StreamAnswer answer,
                                        @Nullable String leaderStorageIdentity) {
-        return new ReplicaStream(streamName, leaderMode, null, answer, leaderStorageIdentity);
+        return new BoundStream(streamName, leaderMode, null, answer, leaderStorageIdentity);
     }
 
     public boolean isReplicated() {

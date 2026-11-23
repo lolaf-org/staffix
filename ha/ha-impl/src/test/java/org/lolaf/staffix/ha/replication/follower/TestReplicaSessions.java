@@ -47,7 +47,7 @@ class TestReplicaSessions {
 
     private final RecordingEngine engine;
     private final ReplicaSessions replicaSessions;
-    private final ReplicaStreams streams;
+    private final FollowerStreams streams;
 
     TestReplicaSessions() {
         this.engine = new RecordingEngine().with(REPLICATED).with(SHARED).with(NOT_REPLICATED);

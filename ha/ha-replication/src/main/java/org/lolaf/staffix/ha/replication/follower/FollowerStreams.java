@@ -44,11 +44,11 @@ import java.util.function.ToLongFunction;
  * held, which the sink is free to skip.
  */
 @Slf4j
-public final class ReplicaStreams {
+public final class FollowerStreams {
 
     private final ReplicaBinder binder;
     private final LanePositions positions;
-    private volatile ReplicaStream[] streamsByKey;
+    private volatile BoundStream[] streamsByKey;
     /**
      * Times a read's writes after its records were acknowledged as received.
      */
@@ -56,9 +56,9 @@ public final class ReplicaStreams {
     @Setter
     private LatencyRecorder receivedWriteLatency;
 
-    public ReplicaStreams(ReplicaBinder binder) {
+    public FollowerStreams(ReplicaBinder binder) {
         this.positions = new LanePositions();
-        this.streamsByKey = new ReplicaStream[16];
+        this.streamsByKey = new BoundStream[16];
         this.receivedWriteLatency = LatencyRecorder.NONE;
         this.binder = binder;
     }
@@ -122,7 +122,7 @@ public final class ReplicaStreams {
      * exactly what the leader last wrote. Holds until the lane's next connection.
      */
     void handedOver(int lane) {
-        forEachOf(lane, ReplicaStream::handOver);
+        forEachOf(lane, BoundStream::handOver);
     }
 
     /**
@@ -134,7 +134,7 @@ public final class ReplicaStreams {
         if (positions.isAnyAnnouncing()) {
             return false;
         }
-        for (ReplicaStream stream : streamsByKey) {
+        for (BoundStream stream : streamsByKey) {
             if (stream != null && stream.isOutOfSync()) {
                 return false;
             }
@@ -146,15 +146,15 @@ public final class ReplicaStreams {
      * {@link #isInSync()} for the streams of one lane. Allocates nothing.
      */
     boolean isLaneInSync(int lane) {
-        return !positions.isAnnouncing(lane) && !anyOf(lane, ReplicaStream::isOutOfSync);
+        return !positions.isAnnouncing(lane) && !anyOf(lane, BoundStream::isOutOfSync);
     }
 
     /**
      * The lane's thread calls these on every read: given a method reference, which captures nothing, they allocate
      * nothing.
      */
-    private void forEachOf(int lane, Consumer<ReplicaStream> action) {
-        ReplicaStream[] streams = streamsByKey;
+    private void forEachOf(int lane, Consumer<BoundStream> action) {
+        BoundStream[] streams = streamsByKey;
         int lanes = positions.count();
         for (int key = lane; key < streams.length; key += lanes) {
             if (streams[key] != null) {
@@ -163,8 +163,8 @@ public final class ReplicaStreams {
         }
     }
 
-    private boolean anyOf(int lane, Predicate<ReplicaStream> matching) {
-        ReplicaStream[] streams = streamsByKey;
+    private boolean anyOf(int lane, Predicate<BoundStream> matching) {
+        BoundStream[] streams = streamsByKey;
         int lanes = positions.count();
         for (int key = lane; key < streams.length; key += lanes) {
             if (streams[key] != null && matching.test(streams[key])) {
@@ -174,8 +174,8 @@ public final class ReplicaStreams {
         return false;
     }
 
-    private long sumOf(int lane, ToLongFunction<ReplicaStream> value) {
-        ReplicaStream[] streams = streamsByKey;
+    private long sumOf(int lane, ToLongFunction<BoundStream> value) {
+        BoundStream[] streams = streamsByKey;
         int lanes = positions.count();
         long sum = 0;
         for (int key = lane; key < streams.length; key += lanes) {
@@ -194,7 +194,7 @@ public final class ReplicaStreams {
      */
     synchronized StreamAnswer bind(int key, String streamName, StreamReplicationMode leaderMode,
                                    @Nullable String leaderStorageIdentity) {
-        ReplicaStream current = key < streamsByKey.length ? streamsByKey[key] : null;
+        BoundStream current = key < streamsByKey.length ? streamsByKey[key] : null;
         if (current != null && current.getStreamName().equals(streamName) && current.isReplicated()
                 && leaderMode != StreamReplicationMode.NONE && leaderMode == binder.modeHere(streamName)) {
             // switched between the SYNC modes: the same copy, only its acknowledgement changes
@@ -206,23 +206,23 @@ public final class ReplicaStreams {
         }
         if (leaderMode == StreamReplicationMode.NONE) {
             log.info("Stream {} is not replicated: the leader does not replicate it", streamName);
-            return put(key, ReplicaStream.notReplicated(streamName, leaderMode, StreamAnswer.NOT_REPLICATED, null));
+            return put(key, BoundStream.notReplicated(streamName, leaderMode, StreamAnswer.NOT_REPLICATED, null));
         }
         return put(key, open(streamName, leaderMode, leaderStorageIdentity));
     }
 
-    private ReplicaStream open(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
+    private BoundStream open(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
         ReplicaBinder.Binding binding = binder.bind(streamName, leaderMode, leaderStorageIdentity);
         return binding.getSink() == null
-                ? ReplicaStream.notReplicated(streamName, leaderMode, binding.getAnswer(), leaderStorageIdentity)
-                : ReplicaStream.replicated(streamName, leaderMode, binding.getSink());
+                ? BoundStream.notReplicated(streamName, leaderMode, binding.getAnswer(), leaderStorageIdentity)
+                : BoundStream.replicated(streamName, leaderMode, binding.getSink());
     }
 
     /**
      * Republishes the array, so a thread reading the streams of another lane sees the one put.
      */
-    private StreamAnswer put(int key, ReplicaStream stream) {
-        ReplicaStream[] streams = streamsByKey;
+    private StreamAnswer put(int key, BoundStream stream) {
+        BoundStream[] streams = streamsByKey;
         if (key >= streams.length) {
             streams = Arrays.copyOf(streams, Math.max(key + 1, streams.length * 2));
         }
@@ -235,7 +235,7 @@ public final class ReplicaStreams {
      * What the sinks of the lane's streams have accepted and not written yet. Allocates nothing.
      */
     long getPendingWrites(int lane) {
-        return sumOf(lane, ReplicaStream::getPendingWrites);
+        return sumOf(lane, BoundStream::getPendingWrites);
     }
 
     /**
@@ -248,7 +248,7 @@ public final class ReplicaStreams {
     synchronized void bindAgain(int lane, ObjIntConsumer<StreamAnswer> onBound) {
         int lanes = positions.count();
         for (int key = lane; key < streamsByKey.length; key += lanes) {
-            ReplicaStream refused = streamsByKey[key];
+            BoundStream refused = streamsByKey[key];
             if (refused == null || !refused.isRefusedUntilConfigurationChange() || !nowAgrees(refused)) {
                 continue;
             }
@@ -259,14 +259,14 @@ public final class ReplicaStreams {
         }
     }
 
-    private boolean nowAgrees(ReplicaStream refused) {
+    private boolean nowAgrees(BoundStream refused) {
         StreamReplicationMode here = binder.modeHere(refused.getStreamName());
         return here != null && (refused.getNotReplicatedAnswer() == StreamAnswer.UNKNOWN_STREAM
                 || here == refused.getLeaderMode());
     }
 
     boolean hasStreamsToBindAgain(int lane) {
-        return anyOf(lane, ReplicaStream::isRefusedUntilConfigurationChange);
+        return anyOf(lane, BoundStream::isRefusedUntilConfigurationChange);
     }
 
     /**
@@ -274,7 +274,7 @@ public final class ReplicaStreams {
      */
     boolean apply(int lane, long epoch, long offset, int key, byte contentType, byte flags, long position,
                   ByteBuffer receiveBuffer, int payloadIndex, int payloadLength) {
-        ReplicaStream stream = stream(lane, key);
+        BoundStream stream = stream(lane, key);
         if (stream == null || !stream.apply(contentType, position, receiveBuffer, payloadIndex, payloadLength,
                 fragmentFlags(flags))) {
             return false;
@@ -287,7 +287,7 @@ public final class ReplicaStreams {
      * @return false for a key the leader never bound, of another lane, or not replicated here
      */
     boolean snapshotBegin(int lane, int key, ByteBuffer state, int stateIndex, int stateLength) {
-        ReplicaStream stream = replicatedStream(lane, key);
+        BoundStream stream = replicatedStream(lane, key);
         if (stream == null) {
             return false;
         }
@@ -297,7 +297,7 @@ public final class ReplicaStreams {
 
     boolean snapshotRecord(int lane, int key, byte contentType, byte flags, long position, ByteBuffer receiveBuffer,
                            int payloadIndex, int payloadLength) {
-        ReplicaStream stream = replicatedStream(lane, key);
+        BoundStream stream = replicatedStream(lane, key);
         return stream != null && stream.snapshotRecord(contentType, position, receiveBuffer, payloadIndex,
                 payloadLength, fragmentFlags(flags));
     }
@@ -306,7 +306,7 @@ public final class ReplicaStreams {
      * @return false when the stream is unknown or the count is not what was received
      */
     boolean snapshotEnd(int lane, int key, int recordCount, ByteBuffer state, int stateIndex, int stateLength) {
-        ReplicaStream stream = replicatedStream(lane, key);
+        BoundStream stream = replicatedStream(lane, key);
         return stream != null && stream.snapshotEnd(recordCount, state, stateIndex, stateLength);
     }
 
@@ -319,7 +319,7 @@ public final class ReplicaStreams {
      * applied: a write failing leaves them unapplied, so a reconnection resumes before them.
      */
     void writeApplied(int lane) {
-        forEachOf(lane, ReplicaStream::writePending);
+        forEachOf(lane, BoundStream::writePending);
         positions.written(lane);
     }
 
@@ -328,25 +328,25 @@ public final class ReplicaStreams {
      * network thread reads it for a lane applied on another.
      */
     boolean acksOnReceipt(int lane, int key) {
-        ReplicaStream stream = stream(lane, key);
+        BoundStream stream = stream(lane, key);
         return stream != null && stream.getLeaderMode() == StreamReplicationMode.SYNC_RECEIVED;
     }
 
-    private @Nullable ReplicaStream stream(int lane, int key) {
-        ReplicaStream[] streams = streamsByKey;
+    private @Nullable BoundStream stream(int lane, int key) {
+        BoundStream[] streams = streamsByKey;
         return key < streams.length && carries(lane, key) ? streams[key] : null;
     }
 
-    private @Nullable ReplicaStream replicatedStream(int lane, int key) {
-        ReplicaStream stream = stream(lane, key);
+    private @Nullable BoundStream replicatedStream(int lane, int key) {
+        BoundStream stream = stream(lane, key);
         return stream == null || !stream.isReplicated() ? null : stream;
     }
 
     /**
      * Null for a stream the leader never announced. Any thread.
      */
-    public @Nullable ReplicaStream find(String streamName) {
-        for (ReplicaStream stream : streamsByKey) {
+    public @Nullable BoundStream find(String streamName) {
+        for (BoundStream stream : streamsByKey) {
             if (stream != null && stream.getStreamName().equals(streamName)) {
                 return stream;
             }
@@ -358,7 +358,7 @@ public final class ReplicaStreams {
      * Stops every sink, before the application takes over its streams.
      */
     public synchronized void close(Deadline deadline) {
-        for (ReplicaStream stream : streamsByKey) {
+        for (BoundStream stream : streamsByKey) {
             if (stream != null) {
                 stream.stop(deadline);
             }

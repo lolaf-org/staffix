@@ -37,7 +37,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         read(welcome(EPOCH, WireFormat.NO_RESUME, 3));
 
         assertThat(connection.getState()).isEqualTo(LeaderConnection.State.STREAMING);
-        assertThat(replicaStreams.getLanes()).isEqualTo(3);
+        assertThat(followerStreams.getLanes()).isEqualTo(3);
     }
 
     @Test
@@ -102,14 +102,14 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
     @Test
     void aFollowerThatNeverStreamedHasNothingMissing() {
-        assertThat(replicaStreams.isInSync()).isTrue();
+        assertThat(followerStreams.isInSync()).isTrue();
     }
 
     @Test
     void aLaneIsInSyncOnceTheLeaderAnnouncedEveryStreamItReplicates() {
         read(welcome(EPOCH, WireFormat.NO_RESUME), announced(0));
 
-        assertThat(replicaStreams.isInSync()).isTrue();
+        assertThat(followerStreams.isInSync()).isTrue();
         assertThat(sent.frames).containsExactly("ACK epoch=7 applied=-1 inSync=true");
     }
 
@@ -117,21 +117,21 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     void aLaneTheWelcomeNamesIsNotInSyncUntilItsOwnStreamsAreAnnounced() {
         read(welcome(EPOCH, WireFormat.NO_RESUME, 2), announced(0));
 
-        assertThat(replicaStreams.isInSync()).as("lane 1 never connected").isFalse();
+        assertThat(followerStreams.isInSync()).as("lane 1 never connected").isFalse();
     }
 
     @Test
     void aResumedConnectionIsNotInSyncUntilItsStreamsAreAnnouncedAgain() {
         streaming();
         read(snapshotBegin(512, "13"), snapshotEnd(0, "14"));
-        assertThat(replicaStreams.isInSync()).isTrue();
+        assertThat(followerStreams.isInSync()).isTrue();
         LeaderConnection next = newConnection(0);
 
         decode(writeFrames(welcome(EPOCH, 48), stream(0, MAIN)), next);
-        assertThat(replicaStreams.isInSync()).as("a stream added on the leader meanwhile is not known yet").isFalse();
+        assertThat(followerStreams.isInSync()).as("a stream added on the leader meanwhile is not known yet").isFalse();
         decode(writeFrames(announced(1)), next);
 
-        assertThat(replicaStreams.isInSync()).isTrue();
+        assertThat(followerStreams.isInSync()).isTrue();
     }
 
     @Test
@@ -212,7 +212,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     void aReconnectionKeepsTheSinkAndResumesAfterTheLastRecord() {
         streaming();
         read(record(EPOCH, 0, 0, 3, "three"));
-        ReplicaStream stream = replicaStreams.find(MAIN);
+        BoundStream stream = followerStreams.find(MAIN);
 
         LeaderConnection next = newConnection(0);
         sent.frames.clear();
@@ -220,7 +220,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         decode(writeFrames(welcome(EPOCH, 48), stream(0, MAIN)), next);
 
         assertThat(sent.frames).startsWith("HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=0 lane=0");
-        assertThat(replicaStreams.find(MAIN)).isSameAs(stream);
+        assertThat(followerStreams.find(MAIN)).isSameAs(stream);
         assertThat(stream.getSink()).isSameAs(main);
         assertThat(main.getWrites()).containsExactly("3 three");
     }
@@ -233,7 +233,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
         assertThat(main.getWrites()).containsExactly("begin state=13", "snapshot 11 eleven", "snapshot 12 twelve",
                 "end state=14");
-        assertThat(replicaStreams.isInSync()).isTrue();
+        assertThat(followerStreams.isInSync()).isTrue();
         assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 REPLICATING", "ACK epoch=7 applied=-1 inSync=true");
     }
 
@@ -263,7 +263,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
         read(snapshotBegin(512, "13"), snapshotRecord(11, "eleven"), snapshotEnd(2, "13"));
 
-        assertThat(replicaStreams.isInSync()).isFalse();
+        assertThat(followerStreams.isInSync()).isFalse();
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 PROTOCOL_ERROR");
     }
 
@@ -279,7 +279,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
         assertThat(main.getWrites()).containsExactly("5 fragmented");
         assertThat(other.getWrites()).containsExactly("2 other's");
-        assertThat(replicaStreams.getLastAppliedOffset(0)).isEqualTo(128);
+        assertThat(followerStreams.getLastAppliedOffset(0)).isEqualTo(128);
     }
 
     @Test
@@ -338,7 +338,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), stream(0, MAIN)), notResumed);
         assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
-        assertThat(replicaStreams.getLastAppliedOffset(0)).as("nothing left to resume from").isEqualTo(-1);
+        assertThat(followerStreams.getLastAppliedOffset(0)).as("nothing left to resume from").isEqualTo(-1);
     }
 
     @Test
@@ -348,7 +348,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
         read(close(CloseReason.SHUTDOWN));
 
-        assertThat(replicaStreams.find(MAIN).isHandedOver()).isTrue();
+        assertThat(followerStreams.find(MAIN).isHandedOver()).isTrue();
     }
 
     @Test
@@ -357,7 +357,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
         read(close(CloseReason.SHUTDOWN));
 
-        assertThat(replicaStreams.find(MAIN).isHandedOver()).isFalse();
+        assertThat(followerStreams.find(MAIN).isHandedOver()).isFalse();
     }
 
     @Test
@@ -367,7 +367,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
         read(close(CloseReason.TOO_SLOW));
 
-        assertThat(replicaStreams.find(MAIN).isHandedOver()).isFalse();
+        assertThat(followerStreams.find(MAIN).isHandedOver()).isFalse();
     }
 
     @Test
@@ -378,7 +378,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
 
         decode(writeFrames(welcome(EPOCH, 48)), newConnection(0));
 
-        assertThat(replicaStreams.find(MAIN).isHandedOver()).isFalse();
+        assertThat(followerStreams.find(MAIN).isHandedOver()).isFalse();
     }
 
     @Test
@@ -441,7 +441,7 @@ class TestLeaderConnection extends LeaderConnectionHarness {
     void closingTheReplicaStopsItsSinks() {
         streaming();
 
-        replicaStreams.close(Deadline.unlimited());
+        followerStreams.close(Deadline.unlimited());
 
         assertThat(main.isStopped()).isTrue();
     }

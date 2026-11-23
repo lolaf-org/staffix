@@ -54,7 +54,7 @@ abstract class FixLeaderConnectionHarness {
     final RecordingHandler sent;
     final RecordingEngine engine;
     final ReplicaSessions replicaSessions;
-    final ReplicaStreams replicaStreams;
+    final FollowerStreams followerStreams;
     final LeaderConnection connection;
     private final FrameDecoder sentDecoder;
     private FrameCipher sentOpener;
@@ -68,7 +68,7 @@ abstract class FixLeaderConnectionHarness {
         this.sentOpener = FrameCipher.CLEAR;
         this.engine = new RecordingEngine().with(MAIN);
         this.replicaSessions = new ReplicaSessions(engine);
-        this.replicaStreams = replicaSessions.getStreams();
+        this.followerStreams = replicaSessions.getStreams();
         this.connection = newConnection(0, 0);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         doAnswer(invocation -> {
@@ -220,7 +220,7 @@ abstract class FixLeaderConnectionHarness {
     private LeaderConnection newConnection(int lane, long checkIntervalNanos, KeyExchange keyExchange,
                                            boolean receivedAckedByNetworkThread) {
         latestKeyExchange = keyExchange;
-        latest = new LeaderConnection(ioSession, replicaStreams, () -> EPOCH, "follower-b", lane, replicaStreams::setLanes,
+        latest = new LeaderConnection(ioSession, followerStreams, () -> EPOCH, "follower-b", lane, followerStreams::setLanes,
                 checkIntervalNanos, new OnNetworkThreadAnswerSender(ioSession), receivedAckedByNetworkThread, keyExchange);
         sentOpener = FrameCipher.CLEAR;
         return latest;

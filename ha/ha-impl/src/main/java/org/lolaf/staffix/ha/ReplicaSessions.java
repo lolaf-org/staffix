@@ -25,8 +25,8 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.replication.follower.ReplicaStream;
-import org.lolaf.staffix.ha.replication.follower.ReplicaStreams;
+import org.lolaf.staffix.ha.replication.follower.BoundStream;
+import org.lolaf.staffix.ha.replication.follower.FollowerStreams;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -40,14 +40,15 @@ public final class ReplicaSessions {
 
     private final EngineAccess engine;
     @Getter
-    private final ReplicaStreams streams;
+    private final FollowerStreams streams;
     @Getter
     private final SessionSettingsComparison settingsComparison;
 
     public ReplicaSessions(EngineAccess engine) {
         this.engine = engine;
         this.settingsComparison = new SessionSettingsComparison(engine);
-        this.streams = new ReplicaStreams(new FixSessionBinder(engine, new SessionSettingsReplica(settingsComparison)));
+        this.streams = new FollowerStreams(new FixSessionBinder(engine,
+                new SessionSettingsReplica(settingsComparison)));
     }
 
     public boolean isInSync() {
@@ -63,7 +64,7 @@ public final class ReplicaSessions {
      * Any thread.
      */
     public void describe(FixSessionType fixSessionType, String fixSessionId, HaSessionStatus.HaSessionStatusBuilder status) {
-        ReplicaStream stream = streams.find(new TypedSessionId(fixSessionType, fixSessionId).toStreamName());
+        BoundStream stream = streams.find(new TypedSessionId(fixSessionType, fixSessionId).toStreamName());
         if (stream == null) {
             return;
         }
@@ -80,7 +81,7 @@ public final class ReplicaSessions {
      * The store replaying the session, null when it is not replicated here.
      */
     public @Nullable FixSessionMessagesStore getStore(FixSessionType fixSessionType, String fixSessionId) {
-        ReplicaStream stream = streams.find(new TypedSessionId(fixSessionType, fixSessionId).toStreamName());
+        BoundStream stream = streams.find(new TypedSessionId(fixSessionType, fixSessionId).toStreamName());
         return stream == null || !stream.isReplicated() ? null : replica(stream).getStore();
     }
 
@@ -100,7 +101,7 @@ public final class ReplicaSessions {
     }
 
     private void takeOver(FixSessionSettings settings, long jump) {
-        ReplicaStream stream = streams.find(TypedSessionId.of(settings).toStreamName());
+        BoundStream stream = streams.find(TypedSessionId.of(settings).toStreamName());
         if (stream != null && stream.isHandedOver()) {
             log.info("FIX session {} {} taken over where the old leader cleanly left it", settings.getFixSessionType(),
                     settings.getFixSessionId());
@@ -119,7 +120,7 @@ public final class ReplicaSessions {
     /**
      * Only for a FIX session's stream, {@link FixSessionBinder} binding them all.
      */
-    private static FixSessionReplica replica(ReplicaStream stream) {
+    private static FixSessionReplica replica(BoundStream stream) {
         return (FixSessionReplica) stream.getSink();
     }
 

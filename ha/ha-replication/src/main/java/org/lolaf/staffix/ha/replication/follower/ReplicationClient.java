@@ -42,7 +42,7 @@ import java.util.function.Supplier;
 
 /**
  * The follower's connections to the leader, one per replication lane the leader announces, each made again whenever
- * it drops through a new {@link LeaderConnection} on the same {@link ReplicaStreams}. Lane 0 connects first; its
+ * it drops through a new {@link LeaderConnection} on the same {@link FollowerStreams}. Lane 0 connects first; its
  * WELCOME, or any lane's, says how many the leader has, and the others are opened or closed to match. Each lane has its
  * own IO thread, so the lanes are applied in parallel.
  */
@@ -52,7 +52,7 @@ public final class ReplicationClient {
     private static final Duration LANE_STOP = Duration.ofSeconds(1);
 
     private final InetSocketAddress leaderAddress;
-    private final ReplicaStreams replicaStreams;
+    private final FollowerStreams followerStreams;
     private final LongSupplier nodeEpoch;
     private final String nodeId;
     private final int maxReceivedFrameBytes;
@@ -72,7 +72,7 @@ public final class ReplicationClient {
      * @param checkInterval     how often a lane checks again its sinks' pending writes, reported to the leader, and
      *                          whether a stream refused until this node's configuration changes binds now
      */
-    public ReplicationClient(InetSocketAddress leaderAddress, ReplicaStreams replicaStreams, LongSupplier nodeEpoch,
+    public ReplicationClient(InetSocketAddress leaderAddress, FollowerStreams followerStreams, LongSupplier nodeEpoch,
                              String nodeId, int maxFrameBytes, Duration connectionRetry, SelectStrategy selectStrategy,
                              int sinkWriterThreads, Supplier<IdleStrategy> sinkWriterIdleStrategy, Duration checkInterval,
                              KeyExchange keyExchange) {
@@ -82,7 +82,7 @@ public final class ReplicationClient {
                 : new SinkWriterThreads(sinkWriterThreads, sinkWriterIdleStrategy, nodeId);
         this.selectStrategy = selectStrategy;
         this.leaderAddress = leaderAddress;
-        this.replicaStreams = replicaStreams;
+        this.followerStreams = followerStreams;
         this.nodeEpoch = nodeEpoch;
         this.nodeId = nodeId;
         this.maxReceivedFrameBytes = maxFrameBytes + WireFormat.TAG_BYTES;
@@ -118,7 +118,7 @@ public final class ReplicationClient {
      * Called on the IO thread of a lane below the count, so it never stops its caller.
      */
     private synchronized void lanesAnnounced(int lanes) {
-        replicaStreams.setLanes(lanes);
+        followerStreams.setLanes(lanes);
         LaneClient[] current = laneClients;
         if (stopped || lanes == current.length) {
             return;
@@ -168,7 +168,7 @@ public final class ReplicationClient {
     }
 
     public boolean isInSync() {
-        return isConnected() && replicaStreams.isInSync();
+        return isConnected() && followerStreams.isInSync();
     }
 
     /**
@@ -201,7 +201,7 @@ public final class ReplicationClient {
             this.decoder = new FrameDecoder(maxReceivedFrameBytes);
             this.lane = lane;
             this.writeQueue = sinkWriterThreads == null ? null
-                    : new LaneWriteQueue(lane, maxReceivedFrameBytes, replicaStreams, sinkWriterThreads.forLane(lane));
+                    : new LaneWriteQueue(lane, maxReceivedFrameBytes, followerStreams, sinkWriterThreads.forLane(lane));
             String id = "replication-follower-" + lane;
             ioWorkers = IOWorkersGroupSettings.builder().id(id)
                     .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
@@ -238,7 +238,7 @@ public final class ReplicationClient {
             boolean writtenBySinkWriter = writeQueue != null;
             AnswerSender answers = writtenBySinkWriter ?
                     new ThroughNetworkThreadAnswerSender(session) : new OnNetworkThreadAnswerSender(session);
-            LeaderConnection connected = new LeaderConnection(session, replicaStreams, nodeEpoch, nodeId, lane,
+            LeaderConnection connected = new LeaderConnection(session, followerStreams, nodeEpoch, nodeId, lane,
                     ReplicationClient.this::lanesAnnounced, checkIntervalNanos, answers, writtenBySinkWriter, keyExchange);
             session.setAttachment(connected);
             connection = connected;

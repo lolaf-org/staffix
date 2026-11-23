@@ -47,7 +47,7 @@ final class LaneWriteQueue implements SinkWriterThreads.WriteQueue, ByteFrameHan
 
     private final int lane;
     private final int maxFrameBytes;
-    private final ReplicaStreams replicaStreams;
+    private final FollowerStreams followerStreams;
     private final SinkWriterThreads.SinkWriterThread thread;
     private final ByteRingBuffer queue;
     private final Queue<LeaderConnection> connectedLeaders = new ConcurrentLinkedQueue<>();
@@ -69,10 +69,10 @@ final class LaneWriteQueue implements SinkWriterThreads.WriteQueue, ByteFrameHan
     private @Nullable ByteBuffer queueBufferView;
     private @Nullable ByteBuffer viewedQueueBuffer;
 
-    LaneWriteQueue(int lane, int maxFrameBytes, ReplicaStreams replicaStreams, SinkWriterThreads.SinkWriterThread thread) {
+    LaneWriteQueue(int lane, int maxFrameBytes, FollowerStreams followerStreams, SinkWriterThreads.SinkWriterThread thread) {
         this.lane = lane;
         this.maxFrameBytes = maxFrameBytes;
-        this.replicaStreams = replicaStreams;
+        this.followerStreams = followerStreams;
         this.thread = thread;
         this.queue = ByteRingBufferFactory.queue(queueCapacity(maxFrameBytes));
         this.writerDecoder = new FrameDecoder(maxFrameBytes);
@@ -118,7 +118,7 @@ final class LaneWriteQueue implements SinkWriterThreads.WriteQueue, ByteFrameHan
             long frameEpoch = message.getLong(index + WireFormat.OFFSET_EPOCH);
             if (message.get(index + WireFormat.OFFSET_TYPE) == FrameType.RECORD.getCode()
                     && readConnection.isReceivedAckedOnRead() && readConnection.isStreamEpoch(frameEpoch)
-                    && replicaStreams.acksOnReceipt(lane, FrameDecoder.recordStreamKey(message, index + WireFormat.RECORD_BODY_OFFSET))) {
+                    && followerStreams.acksOnReceipt(lane, FrameDecoder.recordStreamKey(message, index + WireFormat.RECORD_BODY_OFFSET))) {
                 lastReceivedOffset = FrameDecoder.recordLogOffset(message, index);
                 lastReceivedEpoch = frameEpoch;
             }

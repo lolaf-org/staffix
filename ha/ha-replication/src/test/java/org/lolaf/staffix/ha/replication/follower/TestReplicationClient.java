@@ -72,7 +72,7 @@ class TestReplicationClient {
     private final ReplicationServer server;
     private final JournalReplica replica;
     private final JournalCopy main;
-    private final ReplicaStreams replicaStreams;
+    private final FollowerStreams followerStreams;
     private final ReplicationStats twoLanesStats;
     private ReplicationClient client;
     private ReplicationServer twoLanesServer;
@@ -89,7 +89,7 @@ class TestReplicationClient {
         this.server = server(address, leader);
         this.replica = new JournalReplica();
         this.main = replica.configure(MAIN, StreamReplicationMode.SYNC_APPLIED);
-        this.replicaStreams = new ReplicaStreams(replica);
+        this.followerStreams = new FollowerStreams(replica);
         this.twoLanesStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()));
         leaderMain.append("first");
         server.start();
@@ -133,7 +133,7 @@ class TestReplicationClient {
     }
 
     private void connect(InetSocketAddress address, int maxFrameBytes) {
-        client = new ReplicationClient(address, replicaStreams, () -> EPOCH, "follower-b", maxFrameBytes,
+        client = new ReplicationClient(address, followerStreams, () -> EPOCH, "follower-b", maxFrameBytes,
                 Duration.ofMillis(50), new WakeupSelectStrategy(10), sinkWriterThreads, BackoffIdleStrategy::new,
                 Duration.ofSeconds(1), TestingKeyExchanges.CLEAR);
         client.start();
@@ -184,7 +184,7 @@ class TestReplicationClient {
         if (syncReceivedServer != null) {
             syncReceivedServer.stop(Deadline.of(Duration.ofSeconds(2)));
         }
-        replicaStreams.close(Deadline.of(Duration.ofSeconds(2)));
+        followerStreams.close(Deadline.of(Duration.ofSeconds(2)));
     }
 
     /**
@@ -279,7 +279,7 @@ class TestReplicationClient {
         connect();
         FollowerConnection connection = inSync();
         assertThat(main.getWrites()).startsWith("begin state=2", "snapshot 1 first", "end state=2");
-        assertThat(replicaStreams.isInSync()).isTrue();
+        assertThat(followerStreams.isInSync()).isTrue();
         main.getWrites().clear();
 
         leaderMain.append("second");
@@ -339,7 +339,7 @@ class TestReplicationClient {
     void aFollowerOpensEveryLaneTheLeaderAnnouncesAndReplicatesTheStreamsOfEach() {
         JournalCopy other = followTwoLanes();
 
-        assertThat(replicaStreams.getLanes()).isEqualTo(2);
+        assertThat(followerStreams.getLanes()).isEqualTo(2);
         assertThat(client.getConnection(1).getLane()).isEqualTo(1);
         twoLanesMain.append("main's");
         twoLanesOther.append("other's");

@@ -39,8 +39,8 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
 
         assertThat(engine.store(MAIN).writes).as("seqnums coalesced, written before the reset")
                 .containsExactly("message 5 " + MESSAGE, "incoming 3", "outgoing 7", "reset");
-        assertThat(replicaStreams.getLastAppliedEpoch(0)).isEqualTo(EPOCH);
-        assertThat(replicaStreams.getLastAppliedOffset(0)).isEqualTo(128);
+        assertThat(followerStreams.getLastAppliedEpoch(0)).isEqualTo(EPOCH);
+        assertThat(followerStreams.getLastAppliedOffset(0)).isEqualTo(128);
         assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
     }
 
@@ -56,7 +56,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
 
         assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(engine.store(MAIN).writes).as("the seqnum before it still pending").isEmpty();
-        assertThat(replicaStreams.getLastAppliedOffset(0)).as("resumed before the read").isEqualTo(-1);
+        assertThat(followerStreams.getLastAppliedOffset(0)).as("resumed before the read").isEqualTo(-1);
         assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
     }
 
@@ -115,7 +115,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
 
         assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(replicaStreams.getLastAppliedOffset(0)).isEqualTo(-1);
+        assertThat(followerStreams.getLastAppliedOffset(0)).isEqualTo(-1);
         assertThat(sent.frames).hasSize(2).first().isEqualTo("RECEIVED epoch=7 received=32");
         assertThat(sent.frames.get(1)).as("never acknowledged as applied").startsWith("CLOSE epoch=7 APPLY_FAILED");
     }
@@ -130,7 +130,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
 
         assertThat(connection.getState()).isEqualTo(LeaderConnection.State.STREAMING);
         assertThat(engine.store(MAIN).writes).containsExactly("message 6 six");
-        assertThat(replicaStreams.getLastAppliedOffset(0)).isEqualTo(32);
+        assertThat(followerStreams.getLastAppliedOffset(0)).isEqualTo(32);
         assertThat(lostWrites()).isEqualTo(1);
     }
 

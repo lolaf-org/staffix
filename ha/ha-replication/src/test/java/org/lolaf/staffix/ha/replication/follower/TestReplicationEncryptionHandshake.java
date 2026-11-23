@@ -60,7 +60,7 @@ class TestReplicationEncryptionHandshake {
     private final Journal leader;
     private final JournalStream leaderMain;
     private final JournalCopy main;
-    private final ReplicaStreams replicaStreams;
+    private final FollowerStreams followerStreams;
     private ReplicationServer server;
     private ReplicationClient client;
     private String leaderId;
@@ -71,7 +71,7 @@ class TestReplicationEncryptionHandshake {
         this.leaderMain = leader.add(MAIN, StreamReplicationMode.ASYNC);
         JournalReplica replica = new JournalReplica();
         this.main = replica.configure(MAIN, StreamReplicationMode.ASYNC);
-        this.replicaStreams = new ReplicaStreams(replica);
+        this.followerStreams = new FollowerStreams(replica);
     }
 
     private static KeyExchange exchange(EncryptionMode mode, String secret, String cipher) {
@@ -97,7 +97,7 @@ class TestReplicationEncryptionHandshake {
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), new TestingReplicationClock(),
                 leaderExchange);
         server.start();
-        client = new ReplicationClient(address, replicaStreams, () -> EPOCH, followerId,
+        client = new ReplicationClient(address, followerStreams, () -> EPOCH, followerId,
                 leader.getLogs().get(0).getMaxRecordFrameBytes(), Duration.ofMillis(50),
                 new WakeupSelectStrategy(10), sinkWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1),
                 followerExchange);
@@ -135,7 +135,7 @@ class TestReplicationEncryptionHandshake {
         if (server != null) {
             server.stop(Deadline.of(Duration.ofSeconds(2)));
         }
-        replicaStreams.close(Deadline.of(Duration.ofSeconds(2)));
+        followerStreams.close(Deadline.of(Duration.ofSeconds(2)));
     }
 
     @ParameterizedTest(name = "leader {0}, follower {1}, {6}")

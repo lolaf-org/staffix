@@ -143,7 +143,7 @@ class TestFixLeaderConnection extends FixLeaderConnectionHarness {
         read(fragment(96, 0, 5, "9=5\u0001", MIDDLE), fragment(128, 0, 5, "35=D\u000110=000\u0001", LAST));
 
         assertThat(engine.store(MAIN).writes).containsExactly("message 5 " + MESSAGE);
-        assertThat(replicaStreams.getLastAppliedOffset(0)).isEqualTo(128);
+        assertThat(followerStreams.getLastAppliedOffset(0)).isEqualTo(128);
     }
 
     @Test
