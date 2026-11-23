@@ -17,6 +17,9 @@ package org.lolaf.staffix.ha.replication.wire;
 
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import lombok.RequiredArgsConstructor;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -81,14 +84,15 @@ public class FrameDecoder {
     }
 
     /**
-     * Whether the frame at {@code frameIndex} is a RECORD or SNAPSHOT_RECORD flagged {@link WireFormat#PLAINTEXT}.
+     * Whether the frame at {@code frameIndex} is a RECORD or SNAPSHOT_RECORD flagged {@link RecordFlag#PLAINTEXT}.
      */
     public static boolean isPlaintext(ByteBuffer in, int frameIndex, FrameType type) {
         switch (type) {
             case RECORD:
-                return (in.get(frameIndex + WireFormat.OFFSET_RECORD_FLAGS) & WireFormat.PLAINTEXT) != 0;
+                return (in.get(frameIndex + WireFormat.OFFSET_RECORD_FLAGS) & RecordFlag.PLAINTEXT.getBits()) != 0;
             case SNAPSHOT_RECORD:
-                return (in.get(frameIndex + HEADER_BYTES + WireFormat.RECORD_BODY_FLAGS) & WireFormat.PLAINTEXT) != 0;
+                return (in.get(frameIndex + HEADER_BYTES + WireFormat.RECORD_BODY_FLAGS)
+                        & RecordFlag.PLAINTEXT.getBits()) != 0;
             default:
                 return false;
         }
@@ -227,10 +231,10 @@ public class FrameDecoder {
     }
 
     /**
-     * Without {@link WireFormat#PLAINTEXT}, which the opener already obeyed.
+     * Without {@link RecordFlag#PLAINTEXT}, which the opener already obeyed.
      */
     private static byte flags(ByteBuffer in, int bodyIndex) {
-        return (byte) (recordFlags(in, bodyIndex) & ~WireFormat.PLAINTEXT);
+        return (byte) (recordFlags(in, bodyIndex) & ~RecordFlag.PLAINTEXT.getBits());
     }
 
     private static void decodeClose(ByteBuffer in, int p, long epoch, int variableBytes, FrameHandler handler) {

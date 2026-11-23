@@ -32,7 +32,9 @@ import org.lolaf.staffix.ha.replication.log.ReplicationLogs;
 import org.lolaf.staffix.ha.replication.spi.LeaderStream;
 import org.lolaf.staffix.ha.replication.spi.LeaderStreams;
 import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.ReplicationClock;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.wire.*;
 
 import java.nio.ByteBuffer;
@@ -557,7 +559,7 @@ public final class FollowerConnection implements FrameHandler {
                 break;
             }
             if (snapshots.isOf(streamKey)) {
-                if ((FrameDecoder.recordFlags(dst, bodyIndex) & WireFormat.RESET) == 0) {
+                if ((FrameDecoder.recordFlags(dst, bodyIndex) & RecordFlag.RESET.getBits()) == 0) {
                     continue;
                 }
                 // left for the stream, after the snapshot's end

@@ -24,9 +24,9 @@ import org.lolaf.staffix.ha.replication.log.LogFullWait;
 import org.lolaf.staffix.ha.replication.log.LogRecord;
 import org.lolaf.staffix.ha.replication.log.ReplicationLog;
 import org.lolaf.staffix.ha.replication.spi.LeaderStream;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
-import org.lolaf.staffix.ha.replication.wire.WireFormat;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -102,31 +102,31 @@ public final class JournalStream implements LeaderStream {
     }
 
     public long append(String text) {
-        return append(TEXT, (byte) 0, text);
+        return append(TEXT, RecordFlag.NONE, text);
     }
 
     public long appendPlaintext(String text) {
-        return append(TEXT, WireFormat.PLAINTEXT, text);
+        return append(TEXT, RecordFlag.PLAINTEXT, text);
     }
 
     /**
-     * @param flags {@link WireFormat#PLAINTEXT} or none
+     * @param flag {@link RecordFlag#PLAINTEXT} or {@link RecordFlag#NONE}
      * @return the record's log offset
      */
-    public synchronized long append(byte contentType, byte flags, String text) {
-        return append(contentType, flags, ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII)));
+    public synchronized long append(byte contentType, RecordFlag flag, String text) {
+        return append(contentType, flag, ByteBuffer.wrap(text.getBytes(StandardCharsets.US_ASCII)));
     }
 
     /**
      * @param payload from its position to its limit, copied
      */
-    public synchronized long append(byte contentType, byte flags, ByteBuffer payload) {
+    public synchronized long append(byte contentType, RecordFlag flag, ByteBuffer payload) {
         long position = nextPosition;
         byte[] bytes = new byte[payload.remaining()];
         payload.duplicate().get(bytes);
-        entries.put(position, new Entry(contentType, flags, bytes));
+        entries.put(position, new Entry(contentType, flag, bytes));
         nextPosition = position + 1;
-        return appendToLog(contentType, flags, position, payload);
+        return appendToLog(contentType, flag, position, payload);
     }
 
     /**
@@ -135,16 +135,16 @@ public final class JournalStream implements LeaderStream {
      */
     public synchronized void hold(int count, int bytes) {
         for (int i = 0; i < count; i++) {
-            entries.put(nextPosition, new Entry(TEXT, (byte) 0, new byte[bytes]));
+            entries.put(nextPosition, new Entry(TEXT, RecordFlag.NONE, new byte[bytes]));
             nextPosition++;
         }
     }
 
     /**
-     * @param flags {@link WireFormat#PLAINTEXT} or none
+     * @param flag {@link RecordFlag#PLAINTEXT} or {@link RecordFlag#NONE}
      */
-    public synchronized void hold(byte flags, String text) {
-        entries.put(nextPosition, new Entry(TEXT, flags, text.getBytes(StandardCharsets.US_ASCII)));
+    public synchronized void hold(RecordFlag flag, String text) {
+        entries.put(nextPosition, new Entry(TEXT, flag, text.getBytes(StandardCharsets.US_ASCII)));
         nextPosition++;
     }
 
@@ -161,16 +161,16 @@ public final class JournalStream implements LeaderStream {
     public synchronized long reset() {
         entries.clear();
         nextPosition = 1;
-        return appendToLog(TEXT, WireFormat.RESET, 0, null);
+        return appendToLog(TEXT, RecordFlag.RESET, 0, null);
     }
 
     /**
      * @throws IllegalArgumentException for a record longer than the log holds, left out of the log
      */
-    private long appendToLog(byte contentType, byte flags, long position, @Nullable ByteBuffer payload) {
+    private long appendToLog(byte contentType, RecordFlag flag, long position, @Nullable ByteBuffer payload) {
         int payloadIndex = payload == null ? 0 : payload.position();
         int payloadLength = payload == null ? 0 : payload.remaining();
-        lastAppendedOffset = log.append(logRecord.set(key, contentType, flags, position, payload, payloadIndex,
+        lastAppendedOffset = log.append(logRecord.set(key, contentType, flag, position, payload, payloadIndex,
                 payloadLength), logFullWait);
         followers.wakeSenders();
         return lastAppendedOffset;
@@ -196,12 +196,12 @@ public final class JournalStream implements LeaderStream {
     private static final class Entry {
 
         private final byte contentType;
-        private final byte flags;
+        private final RecordFlag flag;
         private final byte[] payload;
 
-        private Entry(byte contentType, byte flags, byte[] payload) {
+        private Entry(byte contentType, RecordFlag flag, byte[] payload) {
             this.contentType = contentType;
-            this.flags = flags;
+            this.flag = flag;
             this.payload = payload;
         }
     }
@@ -232,7 +232,7 @@ public final class JournalStream implements LeaderStream {
             for (Map.Entry<Long, Entry> entry : entries.subMap(fromPosition, true, toPosition, true).entrySet()) {
                 snapshotReads.accept(entry.getKey());
                 Entry value = entry.getValue();
-                if (!consumer.onRecord(value.contentType, value.flags, entry.getKey(), ByteBuffer.wrap(value.payload), 0,
+                if (!consumer.onRecord(value.contentType, value.flag, entry.getKey(), ByteBuffer.wrap(value.payload), 0,
                         value.payload.length)) {
                     return;
                 }

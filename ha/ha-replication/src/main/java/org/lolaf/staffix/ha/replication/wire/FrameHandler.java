@@ -17,6 +17,9 @@ package org.lolaf.staffix.ha.replication.wire;
 
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.jspecify.annotations.Nullable;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 
@@ -97,7 +100,7 @@ public interface FrameHandler {
      * @param logOffset   the record's position in the leader's replication log
      * @param contentType the application's, telling what the payload holds
      * @param flags       {@link WireFormat#MORE_FRAGMENTS}, {@link WireFormat#CONTINUED_FRAGMENT} and
-     *                    {@link WireFormat#RESET}; zero for a whole record
+     *                    {@link RecordFlag#RESET}; zero for a whole record
      * @param position    the record's place in its stream, increasing between two resets
      */
     default void onRecord(long epoch, long logOffset, int streamKey, byte contentType, byte flags, long position,

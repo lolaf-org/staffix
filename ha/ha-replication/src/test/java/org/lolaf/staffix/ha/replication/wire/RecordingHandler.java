@@ -17,6 +17,9 @@ package org.lolaf.staffix.ha.replication.wire;
 
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.journal.Journal;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -154,7 +157,7 @@ public class RecordingHandler implements FrameHandler {
     private static String flags(byte flags) {
         return ((flags & WireFormat.CONTINUED_FRAGMENT) != 0 ? " continued" : "")
                 + ((flags & WireFormat.MORE_FRAGMENTS) != 0 ? " more" : "")
-                + ((flags & WireFormat.RESET) != 0 ? " reset" : "");
+                + ((flags & RecordFlag.RESET.getBits()) != 0 ? " reset" : "");
     }
 
     /**

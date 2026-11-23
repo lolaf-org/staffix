@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.wire;
+package org.lolaf.staffix.ha.replication.spi;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
- * What a stream's writes wait for, as its {@link FrameType#STREAM} announces it.
+ * What a stream's writes wait for, as its leader announces it.
  */
 @Getter
 @RequiredArgsConstructor

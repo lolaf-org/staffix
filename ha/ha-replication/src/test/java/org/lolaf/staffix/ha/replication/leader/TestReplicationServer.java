@@ -35,7 +35,7 @@ import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
 import org.lolaf.staffix.ha.replication.wire.FrameType;
 import org.lolaf.staffix.ha.replication.wire.RecordingHandler;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.replication.spi.TestingReplicationClock;
 

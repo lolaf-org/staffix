@@ -28,9 +28,9 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
 import org.lolaf.staffix.ha.replication.log.ReplicationLog;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
-import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -104,7 +104,7 @@ class TestReplicatingFixSessionMessagesStore {
         assertThat(nextEvent()).isEqualTo("0 2 7 ");
         assertThat(nextEvent()).isEqualTo("0 1 3 ");
         assertThat(nextEvent()).isEqualTo("0 3 0 ");
-        assertThat(lastEventFlags).as("a reset ends a snapshot in progress").isEqualTo(WireFormat.RESET);
+        assertThat(lastEventFlags).as("a reset ends a snapshot in progress").isEqualTo(RecordFlag.RESET.getBits());
         assertThat(nextEvent()).isEqualTo("none");
     }
 
@@ -202,7 +202,7 @@ class TestReplicatingFixSessionMessagesStore {
 
         assertThat(local.calls).containsExactly("message 5", "message 6", "outgoing 8");
         assertThat(nextEvent()).isEqualTo("0 0 5 " + MESSAGE);
-        assertThat(lastEventFlags).isEqualTo(WireFormat.PLAINTEXT);
+        assertThat(lastEventFlags).isEqualTo(RecordFlag.PLAINTEXT.getBits());
         assertThat(nextEvent()).isEqualTo("0 0 6 " + MESSAGE);
         assertThat(lastEventFlags).as("untyped").isZero();
         assertThat(nextEvent()).isEqualTo("0 2 8 ");

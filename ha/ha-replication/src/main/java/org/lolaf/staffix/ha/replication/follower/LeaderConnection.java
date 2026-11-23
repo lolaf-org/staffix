@@ -25,6 +25,8 @@ import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
 import org.lolaf.staffix.ha.replication.encryption.Negotiation;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.*;
 
 import java.nio.ByteBuffer;

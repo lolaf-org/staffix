@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.ringos.idling.RetryStrategy;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
@@ -122,7 +123,8 @@ class TestReplicationLog {
         });
         ByteBuffer buffer = message("--" + MESSAGE + "--");
 
-        long offset = log.append(record.set(1, JournalStream.TEXT, (byte) 0, 1, buffer, 2, MESSAGE.length()), wait);
+        long offset = log.append(record.set(1, JournalStream.TEXT, RecordFlag.NONE, 1, buffer, 2, MESSAGE.length()),
+                wait);
         readAsFrame(reader);
 
         assertThat(handler.frames).containsExactly("RECORD epoch=7 offset=" + offset + " key=1 type=1 pos=1 payload="
@@ -131,7 +133,7 @@ class TestReplicationLog {
 
     @Test
     void aPayloadLengthWithoutABufferIsRefused() {
-        assertThatThrownBy(() -> record.set(1, JournalStream.TEXT, (byte) 0, 1, null, 0, 3))
+        assertThatThrownBy(() -> record.set(1, JournalStream.TEXT, RecordFlag.NONE, 1, null, 0, 3))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("3 bytes");
     }

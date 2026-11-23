@@ -19,8 +19,8 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
-import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.nio.ByteBuffer;
 
@@ -77,7 +77,8 @@ final class FixSessionSnapshotSource implements SnapshotSource, StoreMessagesCon
     public boolean onMessage(long seqNum, ByteBuffer message) {
         boolean plaintext = unencryptedMessageTypes.isUnencrypted(
                 MessageTypeHash.of(message, message.position(), message.remaining()));
-        return consumer.onRecord(StoreEventType.STORE_MESSAGE.getCode(), plaintext ? WireFormat.PLAINTEXT : 0, seqNum,
-                message, message.position(), message.remaining());
+        RecordFlag flag = plaintext ? RecordFlag.PLAINTEXT : RecordFlag.NONE;
+        return consumer.onRecord(StoreEventType.STORE_MESSAGE.getCode(), flag, seqNum, message, message.position(),
+                message.remaining());
     }
 }

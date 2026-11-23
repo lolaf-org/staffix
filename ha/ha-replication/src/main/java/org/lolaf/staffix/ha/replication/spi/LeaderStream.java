@@ -16,7 +16,7 @@
 package org.lolaf.staffix.ha.replication.spi;
 
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 /**
  * One stream as its leader announces and snapshots it. Its mode and storage identity may change as the application

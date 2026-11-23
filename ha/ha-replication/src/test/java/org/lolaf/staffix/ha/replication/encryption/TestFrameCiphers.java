@@ -20,7 +20,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.TestingFrameEncoder;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
@@ -92,7 +93,7 @@ class TestFrameCiphers {
     private static int entry(ByteBuffer out, int index, String message, boolean unencrypted) {
         ByteBuffer bytes = ByteBuffer.wrap(message.getBytes(StandardCharsets.US_ASCII));
         int body = FrameEncoder.recordBody(out, index + WireFormat.RECORD_BODY_OFFSET, 3,
-                JournalStream.TEXT, unencrypted ? WireFormat.PLAINTEXT : 0, 42, bytes, 0,
+                JournalStream.TEXT, unencrypted ? RecordFlag.PLAINTEXT.getBits() : 0, 42, bytes, 0,
                 bytes.remaining());
         return FrameEncoder.recordHeader(out, index, 7, 1_000, body);
     }

@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.wire;
+package org.lolaf.staffix.ha.replication.spi;
 
 import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The follower's answer to a {@link FrameType#STREAM}: whether it replicates the stream, and why not.
+ * The follower's answer to a stream its leader announces: whether it replicates the stream, and why not.
  */
 @Getter
 public enum StreamAnswer {

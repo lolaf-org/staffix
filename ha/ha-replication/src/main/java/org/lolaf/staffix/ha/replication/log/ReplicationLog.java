@@ -36,7 +36,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class ReplicationLog {
 
-    static final int RECORD = 0;
+    private static final int RECORD = 0;
 
     private static final ByteTranslator<LogRecord> ENCODE = (buffer, index, length, logRecord) ->
             FrameEncoder.recordBody(buffer, index, logRecord.getStreamKey(), logRecord.getContentType(),

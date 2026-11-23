@@ -18,7 +18,7 @@ package org.lolaf.staffix.ha.replication.log;
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
-import org.lolaf.staffix.ha.replication.wire.WireFormat;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -30,10 +30,10 @@ import java.time.Duration;
 @UtilityClass
 public class TestingLogFragments {
 
-    public static void appendFragment(ReplicationLog log, int streamKey, long position, byte flags, ByteBuffer fragment,
-                                      byte fragmentFlags) {
+    public static void appendFragment(ReplicationLog log, int streamKey, long position, RecordFlag flag,
+                                      ByteBuffer fragment, byte fragmentFlags) {
         LogRecord record = new LogRecord()
-                .set(streamKey, JournalStream.TEXT, flags, position, fragment, fragment.position(), fragment.remaining())
+                .set(streamKey, JournalStream.TEXT, flag, position, fragment, fragment.position(), fragment.remaining())
                 .fragment(fragment.position(), fragment.remaining(), fragmentFlags);
         log.append(record, new LogFullWait(Duration.ofSeconds(1)));
     }
@@ -42,12 +42,12 @@ public class TestingLogFragments {
      * @param payload from its position to its limit, null for an entry carrying none
      */
     public static LogRecord entry(LogRecord record, int streamKey, long position, @Nullable ByteBuffer payload) {
-        return payload == null ? record.set(streamKey, JournalStream.TEXT, (byte) 0, position, null, 0, 0)
-                : record.set(streamKey, JournalStream.TEXT, (byte) 0, position, payload, payload.position(),
+        return payload == null ? record.set(streamKey, JournalStream.TEXT, RecordFlag.NONE, position, null, 0, 0)
+                : record.set(streamKey, JournalStream.TEXT, RecordFlag.NONE, position, payload, payload.position(),
                 payload.remaining());
     }
 
     public static LogRecord reset(LogRecord record, int streamKey) {
-        return record.set(streamKey, JournalStream.TEXT, WireFormat.RESET, 0, null, 0, 0);
+        return record.set(streamKey, JournalStream.TEXT, RecordFlag.RESET, 0, null, 0, 0);
     }
 }

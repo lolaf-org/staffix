@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.ha.replication.leader.Followers;
 import org.lolaf.staffix.ha.replication.log.ReplicationLogs;
 import org.lolaf.staffix.ha.replication.spi.LeaderStreams;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.time.Duration;
 import java.util.List;

@@ -26,7 +26,7 @@ import org.lolaf.betty.api.io.IOWriter.MessageSentCallback;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.FrameCipher;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.RecordingHandler;

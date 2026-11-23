@@ -18,6 +18,8 @@ package org.lolaf.staffix.ha.replication.wire;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;

@@ -30,6 +30,9 @@ import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -202,8 +205,8 @@ class TestFrameCodec {
     void aPlaintextFlagOnAClearConnectionIsIgnored() {
         ByteBuffer buffer = buffer(false);
         int record = plaintextRecord(buffer, 0, (byte) 0);
-        int snapshot = FrameEncoder.snapshotRecord(buffer, record, 7, 3, CONTENT_TYPE, WireFormat.PLAINTEXT, 42,
-                message(), 0, MESSAGE.length);
+        int snapshot = FrameEncoder.snapshotRecord(buffer, record, 7, 3, CONTENT_TYPE, RecordFlag.PLAINTEXT.getBits(),
+                42, message(), 0, MESSAGE.length);
 
         decoder.decode(buffer, 0, record, handler);
         decoder.decode(buffer, record, snapshot, handler);
@@ -214,7 +217,7 @@ class TestFrameCodec {
 
     private static int plaintextRecord(ByteBuffer buffer, int index, byte flags) {
         int body = FrameEncoder.recordBody(buffer, index + WireFormat.RECORD_BODY_OFFSET, 3, CONTENT_TYPE,
-                (byte) (WireFormat.PLAINTEXT | flags), 42, message(), 0, MESSAGE.length);
+                (byte) (RecordFlag.PLAINTEXT.getBits() | flags), 42, message(), 0, MESSAGE.length);
         return FrameEncoder.recordHeader(buffer, index, 7, 4096, body);
     }
 
@@ -225,9 +228,9 @@ class TestFrameCodec {
         FrameCipher sealer = exchange.newSealer(keys.getLeaderToFollower());
         FrameCipher opener = exchange.newOpener(keys.getLeaderToFollower());
         ByteBuffer buffer = buffer(true);
-        int record = sealer.seal(buffer, 0, plaintextRecord(buffer, 0, WireFormat.RESET));
+        int record = sealer.seal(buffer, 0, plaintextRecord(buffer, 0, RecordFlag.RESET.getBits()));
         int snapshot = sealer.seal(buffer, record, FrameEncoder.snapshotRecord(buffer, record, 7, 3, CONTENT_TYPE,
-                (byte) (WireFormat.PLAINTEXT | WireFormat.MORE_FRAGMENTS), 42, message(), 0, MESSAGE.length));
+                (byte) (RecordFlag.PLAINTEXT.getBits() | WireFormat.MORE_FRAGMENTS), 42, message(), 0, MESSAGE.length));
         List<Byte> flags = new ArrayList<>();
         FrameHandler flagsHandler = new FrameHandler() {
             @Override
@@ -246,7 +249,7 @@ class TestFrameCodec {
         assertThat(decoder.decode(buffer, 0, record, flagsHandler, opener)).isEqualTo(record);
         assertThat(decoder.decode(buffer, record, snapshot, flagsHandler, opener)).isEqualTo(snapshot);
 
-        assertThat(flags).containsExactly(WireFormat.RESET, WireFormat.MORE_FRAGMENTS);
+        assertThat(flags).containsExactly(RecordFlag.RESET.getBits(), WireFormat.MORE_FRAGMENTS);
     }
 
     @Test

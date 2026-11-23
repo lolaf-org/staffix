@@ -36,7 +36,7 @@ import org.lolaf.staffix.ha.replication.journal.JournalReplica;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.leader.SlowFollowers;
 import org.lolaf.staffix.ha.replication.spi.TestingReplicationClock;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.slf4j.event.Level;
 
 import java.net.InetSocketAddress;

@@ -48,11 +48,10 @@ public interface SnapshotSource {
     interface RecordConsumer {
 
         /**
-         * @param flags  {@link org.lolaf.staffix.ha.replication.wire.WireFormat#PLAINTEXT} or none
          * @param buffer holds the payload at {@code payloadIndex}, read during the call only and left untouched
          * @return false to stop before the next record
          */
-        boolean onRecord(byte contentType, byte flags, long position, ByteBuffer buffer, int payloadIndex,
+        boolean onRecord(byte contentType, RecordFlag flag, long position, ByteBuffer buffer, int payloadIndex,
                          int payloadLength);
     }
 }

@@ -34,14 +34,15 @@ import org.lolaf.staffix.ha.replication.log.TestingLogFragments;
 import org.lolaf.staffix.ha.replication.encryption.JceAeadAllocation;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.wire.CloseReason;
 import org.lolaf.staffix.ha.replication.wire.FrameCipher;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
 import org.lolaf.staffix.ha.replication.wire.FrameType;
-import org.lolaf.staffix.ha.replication.wire.StreamAnswer;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 import org.lolaf.staffix.ha.replication.wire.WireFormatException;
 import org.slf4j.event.Level;
@@ -280,11 +281,11 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         JournalStream orders = asyncStream("orders");
         streamingEncrypted();
 
-        TestingLogFragments.appendFragment(journal.getLogs().get(0), 0, 1, WireFormat.PLAINTEXT, ascii("quote-part-one"),
-                WireFormat.MORE_FRAGMENTS);
+        TestingLogFragments.appendFragment(journal.getLogs().get(0), 0, 1, RecordFlag.PLAINTEXT,
+                ascii("quote-part-one"), WireFormat.MORE_FRAGMENTS);
         orders.append(ORDER_TEXT);
-        TestingLogFragments.appendFragment(journal.getLogs().get(0), 0, 1, WireFormat.PLAINTEXT, ascii("quote-part-two"),
-                WireFormat.CONTINUED_FRAGMENT);
+        TestingLogFragments.appendFragment(journal.getLogs().get(0), 0, 1, RecordFlag.PLAINTEXT,
+                ascii("quote-part-two"), WireFormat.CONTINUED_FRAGMENT);
         fill();
 
         assertThat(sent.frames).filteredOn(frame -> frame.startsWith("RECORD")).extracting(frame -> frame.substring(frame.indexOf("key=")))
@@ -299,8 +300,8 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     @Test
     void aSnapshotSendsThePlaintextRecordsReadableTheOthersEncrypted() {
         JournalStream quotes = asyncStream("quotes");
-        quotes.hold(WireFormat.PLAINTEXT, QUOTE_TEXT);
-        quotes.hold((byte) 0, ORDER_TEXT);
+        quotes.hold(RecordFlag.PLAINTEXT, QUOTE_TEXT);
+        quotes.hold(RecordFlag.NONE, ORDER_TEXT);
         streamingEncrypted();
 
         connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
@@ -316,8 +317,8 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     @Test
     void aSnapshotFailingMidwaySendsWhatItSealedBeforeItsClose() {
         JournalStream main = asyncStream("main");
-        main.hold((byte) 0, ORDER_TEXT);
-        main.hold((byte) 0, ORDER_TEXT);
+        main.hold(RecordFlag.NONE, ORDER_TEXT);
+        main.hold(RecordFlag.NONE, ORDER_TEXT);
         main.setSnapshotReads(position -> {
             if (position == 2) {
                 throw new IllegalStateException("storage down");
@@ -336,8 +337,8 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     @Test
     void aCloseWhileTheSenderSnapshotsIsSealedAfterWhatTheSnapshotSealed() {
         JournalStream main = asyncStream("main");
-        main.hold((byte) 0, ORDER_TEXT);
-        main.hold((byte) 0, ORDER_TEXT);
+        main.hold(RecordFlag.NONE, ORDER_TEXT);
+        main.hold(RecordFlag.NONE, ORDER_TEXT);
         main.setSnapshotReads(position -> {
             if (position == 2) {
                 connection.close(CloseReason.PROTOCOL_ERROR, "closed mid-snapshot");

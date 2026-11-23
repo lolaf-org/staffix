@@ -21,8 +21,9 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.nio.ByteBuffer;
@@ -40,7 +41,7 @@ public class FixFrames {
      */
     public static int record(ByteBuffer out, int index, long epoch, long logOffset, int streamKey,
                              StoreEventType eventType, long sequenceNumber, @Nullable ByteBuffer message) {
-        byte flags = eventType == StoreEventType.RESET_SEQ_NUM ? WireFormat.RESET : 0;
+        byte flags = eventType == StoreEventType.RESET_SEQ_NUM ? RecordFlag.RESET.getBits() : 0;
         int bodyLength = FrameEncoder.recordBody(out, index + WireFormat.RECORD_BODY_OFFSET, streamKey,
                 eventType.getCode(), flags, sequenceNumber, message, message == null ? 0 : message.position(),
                 message == null ? 0 : message.remaining());

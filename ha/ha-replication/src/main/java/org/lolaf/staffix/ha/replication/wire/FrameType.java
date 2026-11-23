@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.replication.wire;
 
 import lombok.Getter;
 import org.jspecify.annotations.Nullable;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 
 /**
  * The frames of the replication stream, with the size of their fixed payload; a variable part (a string, a record's
@@ -46,8 +47,8 @@ import org.jspecify.annotations.Nullable;
  * </pre>
  *
  * <p>A record's content type is the application's, never read by the replication; its flags are
- * {@link WireFormat#MORE_FRAGMENTS}, {@link WireFormat#CONTINUED_FRAGMENT}, {@link WireFormat#PLAINTEXT} and
- * {@link WireFormat#RESET}. A stream's state is opaque bytes too, which a snapshot carries for the application to
+ * {@link WireFormat#MORE_FRAGMENTS}, {@link WireFormat#CONTINUED_FRAGMENT}, {@link RecordFlag#PLAINTEXT} and
+ * {@link RecordFlag#RESET}. A stream's state is opaque bytes too, which a snapshot carries for the application to
  * resume the stream from.
  *
  * <p>On an encrypted connection the frames after the handshake end with a tag, whatever their type; see

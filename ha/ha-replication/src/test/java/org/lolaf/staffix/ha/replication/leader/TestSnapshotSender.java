@@ -21,9 +21,10 @@ import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.TestingReplicationClock;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
-import org.lolaf.staffix.ha.replication.wire.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import java.time.Duration;
@@ -118,8 +119,8 @@ class TestSnapshotSender extends FollowerConnectionHarness {
     void aPlaintextRecordOfASnapshotIsFlaggedOnEveryFragment() {
         int fragment = journal.getLogs().get(0).getMaxRecordFrameBytes() - FrameEncoder.snapshotRecordBytes(0);
         JournalStream main = stream("main");
-        main.hold(WireFormat.PLAINTEXT, "x".repeat(2 * fragment + 1));
-        main.hold((byte) 0, "encrypted");
+        main.hold(RecordFlag.PLAINTEXT, "x".repeat(2 * fragment + 1));
+        main.hold(RecordFlag.NONE, "encrypted");
         hello();
         sentPlaintext.clear();
 
@@ -246,7 +247,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         int fragment = journal.getLogs().get(0).getMaxRecordFrameBytes() - FrameEncoder.snapshotRecordBytes(0);
         String x = "x".repeat(fragment);
         String y = "y".repeat(fragment);
-        stream("main").hold((byte) 0, x + y + "zzz");
+        stream("main").hold(RecordFlag.NONE, x + y + "zzz");
         hello();
         sent.frames.clear();
 

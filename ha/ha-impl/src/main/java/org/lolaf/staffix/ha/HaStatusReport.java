@@ -30,7 +30,7 @@ import org.lolaf.staffix.ha.replication.follower.ReplicationClient;
 import org.lolaf.staffix.ha.replication.leader.DroppedFollower;
 import org.lolaf.staffix.ha.replication.leader.FollowerConnection;
 import org.lolaf.staffix.ha.replication.leader.FollowerLaneStatus;
-import org.lolaf.staffix.ha.replication.wire.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 
 import java.util.ArrayList;
 import java.util.List;

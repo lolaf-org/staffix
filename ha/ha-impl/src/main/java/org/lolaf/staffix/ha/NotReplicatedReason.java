@@ -16,7 +16,7 @@
 package org.lolaf.staffix.ha;
 
 import lombok.experimental.UtilityClass;
-import org.lolaf.staffix.ha.replication.wire.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 
 /**
  * A follower's answer as the status and alerts name it, in terms of FIX sessions rather than the replication's

@@ -30,8 +30,8 @@ import org.lolaf.staffix.ha.replication.leader.Followers;
 import org.lolaf.staffix.ha.replication.log.LogFullWait;
 import org.lolaf.staffix.ha.replication.log.ReplicationLog;
 import org.lolaf.staffix.ha.replication.log.LogRecord;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
-import org.lolaf.staffix.ha.replication.wire.WireFormat;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -259,7 +259,8 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         int messageLength = message == null ? 0 : message.remaining();
         try {
             lastAppendedOffset = replicationLog.append(logRecord.set(session.getKey(), eventType.getCode(),
-                    flags(eventType, messageTypeHash), sequenceNumber, message, messageIndex, messageLength), logFullWait);
+                    flag(eventType, messageTypeHash), sequenceNumber, message, messageIndex, messageLength),
+                    logFullWait);
             followers.wakeSenders();
         } catch (IllegalArgumentException e) {
             session.recordUnreplicatedEvent();
@@ -269,11 +270,12 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         }
     }
 
-    private byte flags(StoreEventType eventType, int messageTypeHash) {
+    private RecordFlag flag(StoreEventType eventType, int messageTypeHash) {
         if (eventType == StoreEventType.RESET_SEQ_NUM) {
-            return WireFormat.RESET;
+            return RecordFlag.RESET;
         }
-        return session.getConfig().getUnencryptedMessageTypes().isUnencrypted(messageTypeHash) ? WireFormat.PLAINTEXT : 0;
+        return session.getConfig().getUnencryptedMessageTypes().isUnencrypted(messageTypeHash) 
+                ? RecordFlag.PLAINTEXT : RecordFlag.NONE;
     }
 
     /**

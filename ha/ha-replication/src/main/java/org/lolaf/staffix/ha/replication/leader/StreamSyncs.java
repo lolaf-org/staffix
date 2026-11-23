@@ -16,7 +16,7 @@
 package org.lolaf.staffix.ha.replication.leader;
 
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.ha.replication.wire.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 
 import java.util.concurrent.atomic.AtomicReferenceArray;
 

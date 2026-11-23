@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.replication.wire;
 
 import lombok.experimental.UtilityClass;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 
 /**
  * The byte layout of the replication stream between a leader and its follower, over TCP.
@@ -64,9 +65,10 @@ public class WireFormat {
     public static final int OFFSET_RECORD_FLAGS = RECORD_BODY_OFFSET + RECORD_BODY_FLAGS;
 
     /**
-     * Set in a record's flags when more fragments of its payload follow. A payload longer than a frame is sent as
-     * consecutive records of its stream: the first with this bit, the middle ones with both, the last with
-     * {@link #CONTINUED_FRAGMENT} alone, so a last fragment never reads as a whole payload.
+     * Set in a record's flags, beside the application's {@link org.lolaf.staffix.ha.replication.spi.RecordFlag},
+     * when more fragments of its payload follow. A payload longer than a frame is sent as consecutive records of its
+     * stream: the first with this bit, the middle ones with both, the last with {@link #CONTINUED_FRAGMENT} alone, so
+     * a last fragment never reads as a whole payload.
      */
     public static final byte MORE_FRAGMENTS = 0x01;
 
@@ -74,17 +76,6 @@ public class WireFormat {
      * Set on every fragment but a payload's first, as {@link #MORE_FRAGMENTS}.
      */
     public static final byte CONTINUED_FRAGMENT = 0x02;
-
-    /**
-     * The application lets the record's payload go unencrypted on an encrypted connection; the frame is still
-     * authenticated, this bit included. Meaningless on a clear connection, where nothing is encrypted.
-     */
-    public static final byte PLAINTEXT = 0x04;
-
-    /**
-     * The stream starts over with this record: a snapshot of the stream in progress ends before it.
-     */
-    public static final byte RESET = 0x08;
 
     /**
      * Opens {@link FrameType#HELLO} and {@link FrameType#WELCOME}, so a peer that is not a replication endpoint is

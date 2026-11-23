@@ -17,7 +17,7 @@ package org.lolaf.staffix.ha.replication.leader;
 
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.idling.IdleStrategy;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.util.Arrays;
 import java.util.List;

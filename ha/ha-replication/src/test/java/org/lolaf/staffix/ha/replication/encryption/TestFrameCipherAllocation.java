@@ -22,6 +22,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ReplicationEncryptionSettings;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.wire.FrameCipher;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
@@ -144,7 +145,7 @@ class TestFrameCipherAllocation {
 
     private int entry(long position) {
         int body = FrameEncoder.recordBody(frames, WireFormat.RECORD_BODY_OFFSET, 3,
-                JournalStream.TEXT, unencrypted ? WireFormat.PLAINTEXT : 0, position, message, 0,
+                JournalStream.TEXT, unencrypted ? RecordFlag.PLAINTEXT.getBits() : 0, position, message, 0,
                 message.remaining());
         return FrameEncoder.recordHeader(frames, 0, 7, position, body);
     }

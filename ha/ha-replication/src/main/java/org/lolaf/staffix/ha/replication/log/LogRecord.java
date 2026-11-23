@@ -17,7 +17,7 @@ package org.lolaf.staffix.ha.replication.log;
 
 import lombok.Getter;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.ha.replication.wire.WireFormat;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 
 import java.nio.ByteBuffer;
 
@@ -41,18 +41,17 @@ public final class LogRecord {
 
     /**
      * @param contentType the application's, carried untouched to the follower
-     * @param flags       {@link WireFormat#PLAINTEXT} and {@link WireFormat#RESET}; the log adds the fragment flags
      * @param buffer      holds the payload at {@code payloadIndex}, read during the append and left untouched; null for
      *                    a record carrying none
      */
-    public LogRecord set(int streamKey, byte contentType, byte flags, long position, @Nullable ByteBuffer buffer,
+    public LogRecord set(int streamKey, byte contentType, RecordFlag flag, long position, @Nullable ByteBuffer buffer,
                          int payloadIndex, int payloadLength) {
         if (buffer == null && payloadLength != 0) {
             throw new IllegalArgumentException("A payload of " + payloadLength + " bytes needs a buffer");
         }
         this.streamKey = streamKey;
         this.contentType = contentType;
-        this.flags = flags;
+        this.flags = flag.getBits();
         this.position = position;
         this.buffer = buffer;
         this.payloadIndex = payloadIndex;

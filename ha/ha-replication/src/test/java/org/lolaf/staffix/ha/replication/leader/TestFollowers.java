@@ -25,9 +25,9 @@ import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.journal.Journal;
 import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.log.ReplicationLogs;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
-import org.lolaf.staffix.ha.replication.wire.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 import org.lolaf.staffix.ha.replication.spi.TestingReplicationClock;
 

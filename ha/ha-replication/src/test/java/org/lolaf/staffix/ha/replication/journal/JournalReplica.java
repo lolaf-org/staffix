@@ -17,8 +17,8 @@ package org.lolaf.staffix.ha.replication.journal;
 
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.ha.replication.spi.ReplicaBinder;
-import org.lolaf.staffix.ha.replication.wire.StreamAnswer;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

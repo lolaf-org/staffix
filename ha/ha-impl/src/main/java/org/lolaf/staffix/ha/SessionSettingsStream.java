@@ -28,8 +28,9 @@ import org.lolaf.staffix.ha.replication.leader.Followers;
 import org.lolaf.staffix.ha.replication.log.LogRecord;
 import org.lolaf.staffix.ha.replication.log.ReplicationLog;
 import org.lolaf.staffix.ha.replication.spi.LeaderStream;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -148,7 +149,7 @@ public final class SessionSettingsStream implements LeaderStream {
         latest.put(digest.storedSession(), new Entry(next, contentType, digest, payload));
         version = next;
         try {
-            replicationLog.append(logRecord.set(key, contentType, (byte) 0, next, payload, payload.position(),
+            replicationLog.append(logRecord.set(key, contentType, RecordFlag.NONE, next, payload, payload.position(),
                     payload.remaining()), logFullWait);
             followers.wakeSenders();
         } catch (IllegalArgumentException e) {
@@ -201,8 +202,8 @@ public final class SessionSettingsStream implements LeaderStream {
             inRange.sort(Comparator.comparingLong(Entry::getVersion));
             for (Entry entry : inRange) {
                 ByteBuffer payload = entry.getPayload();
-                if (!consumer.onRecord(entry.getContentType(), (byte) 0, entry.getVersion(), payload, payload.position(),
-                        payload.remaining())) {
+                if (!consumer.onRecord(entry.getContentType(), RecordFlag.NONE, entry.getVersion(), payload,
+                        payload.position(), payload.remaining())) {
                     return;
                 }
             }

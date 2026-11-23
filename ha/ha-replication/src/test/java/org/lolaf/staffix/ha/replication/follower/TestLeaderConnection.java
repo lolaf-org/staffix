@@ -23,7 +23,7 @@ import org.lolaf.staffix.ha.replication.journal.JournalCopy;
 import org.lolaf.staffix.ha.replication.wire.CloseReason;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
-import org.lolaf.staffix.ha.replication.wire.StreamReplicationMode;
+import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
 
 import static org.assertj.core.api.Assertions.assertThat;

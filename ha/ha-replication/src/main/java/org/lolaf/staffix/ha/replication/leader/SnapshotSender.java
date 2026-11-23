@@ -21,6 +21,7 @@ import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.ha.replication.spi.LeaderStream;
 import org.lolaf.staffix.ha.replication.spi.LeaderStreams;
+import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
 import org.lolaf.staffix.ha.replication.wire.CloseReason;
 import org.lolaf.staffix.ha.replication.wire.FrameCipher;
@@ -307,7 +308,7 @@ final class SnapshotSender {
          * record frame, which a batch, rounded up for betty's pools, exceeds.
          */
         @Override
-        public boolean onRecord(byte contentType, byte flags, long position, ByteBuffer buffer, int payloadIndex,
+        public boolean onRecord(byte contentType, RecordFlag flag, long position, ByteBuffer buffer, int payloadIndex,
                                 int payloadLength) {
             int maxFragmentLength = maxRecordFrameBytes - FrameEncoder.snapshotRecordBytes(0);
             int fragments = Math.max(1, (payloadLength + maxFragmentLength - 1) / maxFragmentLength);
@@ -317,7 +318,7 @@ final class SnapshotSender {
                 stopped = true;
                 return false;
             }
-            int plaintext = flags & WireFormat.PLAINTEXT;
+            int plaintext = flag == RecordFlag.PLAINTEXT ? flag.getBits() : 0;
             int from = 0;
             do {
                 int length = Math.min(maxFragmentLength, payloadLength - from);
