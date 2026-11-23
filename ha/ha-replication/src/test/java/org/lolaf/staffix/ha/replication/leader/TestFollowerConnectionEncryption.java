@@ -426,10 +426,10 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         for (long seq = firstSeq; seq < firstSeq + records; seq++) {
             replicationLog.append(TestingLogFragments.entry(record, 0, seq, message), wait);
             if (seq % EVENTS_PER_BATCH == EVENTS_PER_BATCH - 1) {
-                filled += connection.fillBatch(batch);
+                filled += connection.getSender().fillBatch(batch);
             }
         }
-        return filled + connection.fillBatch(batch);
+        return filled + connection.getSender().fillBatch(batch);
     }
 
     /**
@@ -467,7 +467,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
 
         assertThatThrownBy(() -> read(ack(null, 1_000))).isInstanceOf(WireFormatException.class);
 
-        assertThat(connection.getAppliedOffset()).isEqualTo(-1);
+        assertThat(connection.getAcks().getAppliedOffset()).isEqualTo(-1);
     }
 
     @ParameterizedTest
@@ -477,7 +477,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         streamingEncrypted(cipher);
         ByteBuffer acked = ack(keyExchange.newSealer(connection.getEncryptionKeys().getFollowerToLeader()), 0);
         read(acked.duplicate());
-        assertThat(connection.getAppliedOffset()).isZero();
+        assertThat(connection.getAcks().getAppliedOffset()).isZero();
 
         assertThatThrownBy(() -> read(acked.duplicate())).isInstanceOf(WireFormatException.class)
                 .hasMessage("ACK fails its authentication tag");

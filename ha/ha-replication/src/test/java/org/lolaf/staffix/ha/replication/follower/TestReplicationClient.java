@@ -201,7 +201,7 @@ class TestReplicationClient {
         main.setWritesHeld(writeHeld);
 
         syncReceivedMain.append("second");
-        await().until(() -> connection.getReceivedOffset() > connection.getAppliedOffset());
+        await().until(() -> connection.getAcks().getReceivedOffset() > connection.getAcks().getAppliedOffset());
         ReplicationClient stopping = client;
         client = null;
         CompletableFuture<Void> stopped = CompletableFuture.runAsync(() -> stopping.stop(Deadline.of(Duration.ofSeconds(10))));
@@ -224,7 +224,7 @@ class TestReplicationClient {
         main.setWritesHeld(writeHeld);
 
         syncReceivedMain.append("second");
-        await().until(() -> connection.getReceivedOffset() > connection.getAppliedOffset());
+        await().until(() -> connection.getAcks().getReceivedOffset() > connection.getAcks().getAppliedOffset());
         ReplicationClient stopping = client;
         client = null;
         CompletableFuture<Void> stopped = CompletableFuture.runAsync(() -> stopping.stop(Deadline.of(Duration.ofSeconds(10))));
@@ -253,7 +253,7 @@ class TestReplicationClient {
         long secondRecord = syncReceivedLeader.getLogs().get(0).getTailOffset();
         syncReceivedMain.append("third");
 
-        await().until(() -> connection.getReceivedOffset() >= secondRecord);
+        await().until(() -> connection.getAcks().getReceivedOffset() >= secondRecord);
         assertThat(main.getWrites()).as("the first still held").doesNotContain("2 second", "3 third");
         writeHeld.countDown();
         await().until(() -> main.getWrites().contains("3 third"));
@@ -291,8 +291,8 @@ class TestReplicationClient {
         leaderMain.append("fourth");
 
         await().untilAsserted(() -> assertThat(main.getWrites()).containsExactly("2 second", "3 third", "4 fourth"));
-        await().until(() -> connection.getAppliedOffset() == lastOffset);
-        assertThat(connection.isReportedInSync()).isTrue();
+        await().until(() -> connection.getAcks().getAppliedOffset() == lastOffset);
+        assertThat(connection.getAcks().isReportedInSync()).isTrue();
     }
 
     @Test

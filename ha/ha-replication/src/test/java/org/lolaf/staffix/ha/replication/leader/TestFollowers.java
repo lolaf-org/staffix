@@ -80,7 +80,7 @@ class TestFollowers {
                 Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE), loop -> {
         }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
-        connection.fillBatch(ByteBuffer.allocate(1 << 16));
+        connection.getSender().fillBatch(ByteBuffer.allocate(1 << 16));
         connection.onStreamAnswer(EPOCH, KEY, StreamAnswer.REPLICATING);
         connection.onAck(EPOCH, appliedOffset, true, 0);
         followers.add(connection);
@@ -219,7 +219,7 @@ class TestFollowers {
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE), loop -> {
         }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         connectionOfMain.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
-        connectionOfMain.fillBatch(ByteBuffer.allocate(1 << 16));
+        connectionOfMain.getSender().fillBatch(ByteBuffer.allocate(1 << 16));
         connectionOfMain.onStreamAnswer(EPOCH, 0, StreamAnswer.REPLICATING);
         connectionOfMain.onAck(EPOCH, twoLanes.getLogs().get(0).getTailOffset(), true, 0);
         followers.add(connectionOfMain);
@@ -252,7 +252,7 @@ class TestFollowers {
                 new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE), loop -> {
         }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower", EPOCH, -1, lane, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
-        connection.fillBatch(ByteBuffer.allocate(1 << 16));
+        connection.getSender().fillBatch(ByteBuffer.allocate(1 << 16));
         followers.add(connection);
         return connection;
     }

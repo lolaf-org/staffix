@@ -138,8 +138,8 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
         sent.frames.clear();
 
-        connection.startPendingSnapshot();
-        connection.sendSnapshotChunk();
+        connection.getSender().startPendingSnapshot();
+        connection.getSender().sendSnapshotChunk();
 
         assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("SNAPSHOT_END"));
@@ -150,8 +150,8 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         assertThat(sent.frames.subList(chunked, sent.frames.size())).singleElement().asString()
                 .contains("key=1 type=1 pos=1");
 
-        while (connection.isSnapshotInProgress()) {
-            connection.sendSnapshotChunk();
+        while (connection.getSender().isSnapshotInProgress()) {
+            connection.getSender().sendSnapshotChunk();
         }
         assertThat(snapshotPositions()).as("the record appended meanwhile in the last round").isEqualTo(range(1, 1_001));
         assertThat(sent.frames).last().isEqualTo("SNAPSHOT_END epoch=7 key=0 count=1001 state=1002");
@@ -164,11 +164,11 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         streamHolding("main", 1_000);
         hello();
         connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
-        connection.startPendingSnapshot();
-        connection.sendSnapshotChunk();
+        connection.getSender().startPendingSnapshot();
+        connection.getSender().sendSnapshotChunk();
         sent.frames.clear();
 
-        connection.sendSnapshotChunk();
+        connection.getSender().sendSnapshotChunk();
 
         int recordFrameBytes = FrameEncoder.snapshotRecordBytes(MESSAGE_BYTES);
         assertThat(snapshotPositions()).hasSize(chunkBytes / recordFrameBytes);
@@ -208,18 +208,18 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         growsWhileSnapshotted(streamHolding("main", 1_000), 2_000);
         hello();
         connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
-        connection.startPendingSnapshot();
+        connection.getSender().startPendingSnapshot();
         while (snapshotPositions().size() < 1_000) {
-            connection.sendSnapshotChunk();
+            connection.getSender().sendSnapshotChunk();
         }
         sent.frames.clear();
 
-        connection.sendSnapshotChunk();
+        connection.getSender().sendSnapshotChunk();
 
         assertThat(snapshotPositions()).as("the second round, longer than the first, in one chunk")
                 .isEqualTo(range(1_001, 3_000));
         assertThat(sent.frames).last().isEqualTo("SNAPSHOT_END epoch=7 key=0 count=3000 state=3001");
-        assertThat(connection.isSnapshotInProgress()).isFalse();
+        assertThat(connection.getSender().isSnapshotInProgress()).isFalse();
     }
 
     @Test
@@ -227,16 +227,16 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         JournalStream main = streamHolding("main", 1_000);
         hello();
         connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
-        connection.startPendingSnapshot();
-        connection.sendSnapshotChunk();
+        connection.getSender().startPendingSnapshot();
+        connection.getSender().sendSnapshotChunk();
         sent.frames.clear();
 
         main.reset();
         fill();
-        connection.sendSnapshotChunk();
+        connection.getSender().sendSnapshotChunk();
         fill();
 
-        assertThat(connection.isSnapshotInProgress()).isFalse();
+        assertThat(connection.getSender().isSnapshotInProgress()).isFalse();
         assertThat(sent.frames).hasSize(2);
         assertThat(sent.frames.get(0)).startsWith("SNAPSHOT_END epoch=7 key=0 count=");
         assertThat(sent.frames.get(1)).endsWith("key=0 type=1 pos=0 payload= reset");

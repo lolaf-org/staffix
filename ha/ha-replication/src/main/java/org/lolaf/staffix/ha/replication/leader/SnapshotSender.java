@@ -182,10 +182,12 @@ final class SnapshotSender {
     /**
      * Sends the next chunk of the snapshot in progress: its next records while a batch holds them, the whole round
      * when the snapshot is not catching up, and its end once a round fitted in one chunk.
+     *
+     * @param sealer seals the chunk's frames, as it does the live batches'
      */
-    void sendChunk() {
+    void sendChunk(FrameCipher sealer) {
         LeaderStream stream = streams.get(streamKey);
-        writer.start(nodeEpoch.getAsLong());
+        writer.start(nodeEpoch.getAsLong(), sealer);
         try {
             boolean roundStarted = next > roundEnd;
             long lastPosition = roundEnd;
@@ -289,9 +291,9 @@ final class SnapshotSender {
             this.cipher = FrameCipher.CLEAR;
         }
 
-        void start(long epoch) {
+        void start(long epoch, FrameCipher sealer) {
             currentEpoch = epoch;
-            cipher = connection.getFrameCipher();
+            cipher = sealer;
             batch = null;
             filled = 0;
             stopped = false;

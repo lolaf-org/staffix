@@ -16,7 +16,6 @@
 package org.lolaf.staffix.ha.replication.follower;
 
 import org.lolaf.staffix.ha.replication.spi.WireFormatException;
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -24,6 +23,7 @@ import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
+import org.lolaf.staffix.ha.replication.encryption.KeyAgreement;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
 import org.lolaf.staffix.ha.replication.encryption.Negotiation;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
@@ -67,20 +67,11 @@ final class LeaderConnection implements FrameHandler {
     private final long checkIntervalNanos;
     private final ObjIntConsumer<StreamAnswer> sendBoundAnswer;
     private final KeyExchange keyExchange;
-    /**
-     * This connection's keys once both peers encrypt, null on a clear one.
-     */
-    @Getter(AccessLevel.PACKAGE)
-    private volatile @Nullable ConnectionEncryptionKeys encryptionKeys;
+    private final KeyAgreement keyAgreement;
     /**
      * Opens the leader's frames once both peers encrypt; the thread applying them only.
      */
     private FrameCipher frameCipher;
-    private byte[] followerNonce;
-    /**
-     * The HELLO as sent, which the KEY_CONFIRMATION covers.
-     */
-    private byte @Nullable [] sentHelloBytes;
     @Getter
     private volatile State state;
     @Getter
@@ -113,9 +104,9 @@ final class LeaderConnection implements FrameHandler {
                      KeyExchange keyExchange) {
         this.sendBoundAnswer = (answer, streamKey) -> sendStreamAnswer(streamKey, answer);
         this.frameCipher = FrameCipher.CLEAR;
-        this.followerNonce = new byte[WireFormat.NONCE_BYTES];
         this.state = State.AWAITING_WELCOME;
         this.keyExchange = keyExchange;
+        this.keyAgreement = KeyAgreement.ofFollower(keyExchange);
         this.answers = answers;
         this.receivedAckedByNetworkThread = receivedAckedByNetworkThread;
         this.checkIntervalNanos = checkIntervalNanos;
@@ -128,12 +119,11 @@ final class LeaderConnection implements FrameHandler {
     }
 
     void hello() {
-        followerNonce = keyExchange.newNonce();
         ByteBuffer frame = answers.claim(FrameEncoder.bytesWith(FrameType.HELLO, nodeId));
         int length = FrameEncoder.hello(frame, 0, nodeEpoch.getAsLong(), followerStreams.getApplicationId(), nodeId,
                 followerStreams.getLastAppliedEpoch(lane), followerStreams.getLastAppliedOffset(lane), lane,
-                keyExchange.getMode(), followerNonce);
-        sentHelloBytes = FrameDecoder.bytes(frame, 0, length);
+                keyExchange.getMode(), keyAgreement.getNonce());
+        keyAgreement.hello(FrameDecoder.bytes(frame, 0, length));
         answers.send(frame, length);
     }
 
@@ -142,14 +132,21 @@ final class LeaderConnection implements FrameHandler {
      * encrypted connection: the writer thread then does, once the record's tag verified.
      */
     boolean isReceivedAckedOnRead() {
-        return receivedAckedByNetworkThread && encryptionKeys == null;
+        return receivedAckedByNetworkThread && keyAgreement.getKeys() == null;
+    }
+
+    /**
+     * This connection's keys once both peers encrypt, null on a clear one.
+     */
+    @Nullable ConnectionEncryptionKeys getEncryptionKeys() {
+        return keyAgreement.getKeys();
     }
 
     /**
      * Streaming encrypted, the leader having accepted the keys.
      */
     public boolean isEncrypted() {
-        return state == State.STREAMING && encryptionKeys != null;
+        return state == State.STREAMING && keyAgreement.getKeys() != null;
     }
 
     /**
@@ -214,7 +211,7 @@ final class LeaderConnection implements FrameHandler {
         followerStreams.streamStarted(lane, resumed);
         state = State.STREAMING;
         ackDue = true;
-        if (encryptionKeys != null) {
+        if (keyAgreement.getKeys() != null) {
             log.info("Following leader {} encrypted on lane {}, {}", leaderId, lane, keyExchange.describeCipher());
         }
         log.info("Following leader {} at epoch {} on lane {} of {}, {}", leaderId, streamEpoch, lane, streamLanes,
@@ -226,16 +223,13 @@ final class LeaderConnection implements FrameHandler {
      */
     private void confirmKeys(long epoch, int applicationId, String leaderId, long resumeOffset, int lanes,
                              EncryptionMode leaderMode, byte[] leaderNonce) {
-        ConnectionEncryptionKeys keys = keyExchange.deriveKeys(followerNonce, leaderNonce);
-        byte[] receivedWelcomeBytes = FrameEncoder.welcomeBytes(epoch, applicationId, leaderId, resumeOffset, lanes,
-                leaderMode, leaderNonce);
-        byte[] confirmation = keyExchange.confirm(keys, sentHelloBytes, receivedWelcomeBytes);
-        frameCipher = keyExchange.newOpener(keys.getLeaderToFollower());
-        encryptionKeys = keys;
-        sentHelloBytes = null;
+        keyAgreement.agree(leaderNonce, FrameEncoder.welcomeBytes(epoch, applicationId, leaderId, resumeOffset, lanes,
+                leaderMode, leaderNonce));
+        byte[] confirmation = keyAgreement.confirmation();
+        frameCipher = keyAgreement.newOpener();
         ByteBuffer frame = answers.claim(FrameEncoder.fixedBytes(FrameType.KEY_CONFIRMATION));
         answers.sendKeyConfirmation(frame, FrameEncoder.keyConfirmation(frame, 0, nodeEpoch.getAsLong(), confirmation),
-                keyExchange.newSealer(keys.getFollowerToLeader()));
+                keyAgreement.newSealer());
     }
 
     @Override

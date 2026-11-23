@@ -154,7 +154,7 @@ public final class Followers {
         long pendingWrites = 0;
         for (FollowerConnection connection : connections) {
             if (connection.isConnected()) {
-                pendingWrites += connection.getFollowerPendingWrites();
+                pendingWrites += connection.getAcks().getPendingWrites();
             }
         }
         return pendingWrites;
@@ -218,7 +218,7 @@ public final class Followers {
         for (FollowerConnection connection : connections) {
             if (connection.isStreamInSync(streamKey)) {
                 anyInSync = true;
-                if (!connection.isAckOverdue()) {
+                if (!connection.getAcks().isOverdue()) {
                     anyWaitedFor = true;
                     acked &= ackedOffset(connection, received) >= offset;
                 }
@@ -236,7 +236,7 @@ public final class Followers {
         if (timeoutNanos != 0 && System.nanoTime() - startNanos >= timeoutNanos) {
             for (FollowerConnection connection : connections) {
                 if (connection.isStreamInSync(streamKey) && ackedOffset(connection, received) < offset) {
-                    connection.ackOverdue(offset);
+                    connection.getAcks().overdue(offset);
                 }
             }
             return Ack.TIMED_OUT;
@@ -249,7 +249,8 @@ public final class Followers {
      * trail the applied.
      */
     private static long ackedOffset(FollowerConnection connection, boolean received) {
-        long applied = connection.getAppliedOffset();
-        return received ? Math.max(connection.getReceivedOffset(), applied) : applied;
+        FollowerAcks acks = connection.getAcks();
+        long applied = acks.getAppliedOffset();
+        return received ? Math.max(acks.getReceivedOffset(), applied) : applied;
     }
 }

@@ -254,7 +254,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
 
         connection.onAck(EPOCH, 0, true, 7);
 
-        assertThat(connection.getFollowerPendingWrites()).isEqualTo(7);
+        assertThat(connection.getAcks().getPendingWrites()).isEqualTo(7);
     }
 
     @Test
@@ -602,8 +602,8 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         sent.frames.clear();
         ByteBuffer batch = ByteBuffer.allocate(256);
 
-        assertThat(connection.heartbeatIfDue(batch, 0)).isZero();
-        int length = connection.heartbeatIfDue(batch, Duration.ofMillis(100).toNanos());
+        assertThat(connection.getSender().heartbeatIfDue(batch, 0)).isZero();
+        int length = connection.getSender().heartbeatIfDue(batch, Duration.ofMillis(100).toNanos());
 
         decodeAll(batch.limit(length));
         assertThat(sent.frames).containsExactly("HEARTBEAT epoch=7 tail=" + journal.getLogs().get(0).getTailOffset());
@@ -645,7 +645,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void anAckRecordsWhatTheFollowerApplied() {
         connection.onAck(EPOCH, 4096, true, 0);
 
-        assertThat(connection.getAppliedOffset()).isEqualTo(4096);
+        assertThat(connection.getAcks().getAppliedOffset()).isEqualTo(4096);
         assertThat(List.copyOf(sent.frames)).isEmpty();
     }
 

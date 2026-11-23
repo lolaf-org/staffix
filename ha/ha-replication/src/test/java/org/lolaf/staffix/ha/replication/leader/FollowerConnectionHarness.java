@@ -232,7 +232,7 @@ abstract class FollowerConnectionHarness {
 
     void fill(int batchBytes) {
         ByteBuffer batch = ByteBuffer.allocateDirect(batchBytes);
-        int filled = connection.fillBatch(batch);
+        int filled = connection.getSender().fillBatch(batch);
         decodeAll(batch.limit(filled));
     }
 
@@ -240,9 +240,9 @@ abstract class FollowerConnectionHarness {
      * Starts the pending snapshot and sends its chunks until it ends, as the sender loop would with no live writes.
      */
     void snapshot() {
-        connection.startPendingSnapshot();
-        while (connection.isSnapshotInProgress() && connection.getState() == FollowerConnection.State.STREAMING) {
-            connection.sendSnapshotChunk();
+        connection.getSender().startPendingSnapshot();
+        while (connection.getSender().isSnapshotInProgress() && connection.getState() == FollowerConnection.State.STREAMING) {
+            connection.getSender().sendSnapshotChunk();
         }
     }
 
