@@ -158,11 +158,11 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         Runnable[] sender = new Runnable[1];
         connection = new FollowerConnection(ioSession, journal.getLogs(), journal, () -> EPOCH, "leader-a",
                 Duration.ofNanos(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
-        JournalStream store = stream("main");
-        store.append("");
+        JournalStream stream = stream("main");
+        stream.append("");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         for (int seq = 2; seq < 200; seq++) {
-            store.append("");
+            stream.append("");
         }
 
         sender[0].run();
@@ -248,7 +248,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     }
 
     @Test
-    void anAckTellsWhatTheFollowerHasYetToStore() {
+    void anAckTellsWhatTheFollowerHasYetToWrite() {
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         connection.onAck(EPOCH, 0, true, 7);
@@ -337,14 +337,14 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     }
 
     @Test
-    void aFollowerResumesAfterItsLastAppliedEventStillInTheLog() {
-        JournalStream store = stream("main");
-        store.append("");
+    void aFollowerResumesAfterItsLastAppliedRecordStillInTheLog() {
+        JournalStream stream = stream("main");
+        stream.append("");
         // entries without a payload are all one length, so the second starts halfway to the third
-        store.append("");
+        stream.append("");
         long third = journal.getLogs().get(0).getTailOffset();
         long second = third / 2;
-        store.append("");
+        stream.append("");
 
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
@@ -359,12 +359,12 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     }
 
     @Test
-    void aFollowerWhoseLastAppliedEventWasOverwrittenWhileAwayStreamsFromTheTailForASnapshot() {
+    void aFollowerWhoseLastAppliedRecordWasOverwrittenWhileAwayStreamsFromTheTailForASnapshot() {
         journal = Journal.ofCapacity(1024);
         connection = connection();
-        JournalStream store = stream("main");
+        JournalStream stream = stream("main");
         for (int seq = 1; seq < 200; seq++) {
-            store.append("");
+            stream.append("");
         }
 
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
@@ -447,11 +447,11 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection = new FollowerConnection(ioSession, journal.getLogs(), journal, () -> EPOCH, "leader-a",
                 Duration.ofHours(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), stats, loop -> sender[0] = loop,
                 new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
-        JournalStream store = stream("main");
-        store.append("");
+        JournalStream stream = stream("main");
+        stream.append("");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         for (int seq = 2; seq < 200; seq++) {
-            store.append("");
+            stream.append("");
         }
         assertThat(connection.getState()).as("the write only marks it").isEqualTo(FollowerConnection.State.DROPPED_AS_TOO_SLOW);
         assertThat(sent.frames).noneMatch(frame -> frame.startsWith("CLOSE"));
@@ -470,12 +470,12 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aStreamingFollowerHoldsWritesBackUntilItReadsWhatTheyWouldOverwrite() throws InterruptedException {
         journal = new Journal(new ReplicationLogs(1, 1024), Duration.ofMinutes(1));
         connection = connection();
-        JournalStream store = stream("main");
+        JournalStream stream = stream("main");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         CountDownLatch written = new CountDownLatch(1);
         Thread writer = new Thread(() -> {
             for (int seq = 1; seq < 200; seq++) {
-                store.append("");
+                stream.append("");
             }
             written.countDown();
         });
@@ -521,12 +521,12 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aFollowerNotStreamingHoldsNoWriteBack() {
         journal = Journal.ofCapacity(1024);
         connection = connection();
-        JournalStream store = stream("main");
+        JournalStream stream = stream("main");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.disconnected();
 
         for (int seq = 1; seq < 200; seq++) {
-            store.append("");
+            stream.append("");
         }
 
         assertThat(stats.getDroppedTooSlow()).isZero();
@@ -541,28 +541,28 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aFollowerClosingTheStreamHoldsNoWriteBack() {
         journal = new Journal(new ReplicationLogs(1, 1024), Duration.ofSeconds(30));
         connection = connection();
-        JournalStream store = stream("main");
+        JournalStream stream = stream("main");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
 
         connection.onClose(EPOCH, CloseReason.SHUTDOWN, "the follower stops");
 
         assertThat(CompletableFuture.runAsync(() -> {
             for (int seq = 1; seq < 200; seq++) {
-                store.append("");
+                stream.append("");
             }
         })).succeedsWithin(Duration.ofSeconds(5));
         assertThat(connection.getState()).isEqualTo(FollowerConnection.State.CLOSED);
     }
 
     @Test
-    void aBatchTakesEventsUntilTheNextDoesNotFitWhichStartsTheNextBatch() {
-        JournalStream store = stream("main");
-        store.append("");
+    void aBatchTakesRecordsUntilTheNextDoesNotFitWhichStartsTheNextBatch() {
+        JournalStream stream = stream("main");
+        stream.append("");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
         for (int seq = 2; seq <= 4; seq++) {
-            store.append("");
+            stream.append("");
         }
 
         fill(3 * TestingFrameEncoder.recordBytes(0) - 1);
@@ -611,15 +611,15 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aFollowerIsBehindFromAWriteUntilAnAckCoversItThenSampledAgainOnTheNextWriteItLacks() {
         LatencyRecorder lagTimer = mock(LatencyRecorder.class);
         stats.lagTimers((followerId, connection) -> lagTimer);
-        JournalStream store = stream("main");
+        JournalStream stream = stream("main");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         long first = journal.getLogs().get(0).getTailOffset();
-        store.append("");
+        stream.append("");
         fill();
         assertThat(connection.getLagNanos(System.nanoTime())).as("written, not acked").isPositive();
 
         long second = journal.getLogs().get(0).getTailOffset();
-        store.append("");
+        stream.append("");
         fill();
         connection.onAck(EPOCH, first, true, 0);
         verify(lagTimer).record(anyLong(), eq(TimeUnit.NANOSECONDS));
@@ -642,11 +642,11 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     }
 
     @Test
-    void aCleanHandOverClosesWithShutdownOnceEveryEventIsSent() {
-        JournalStream store = stream("main");
-        store.append("");
+    void aCleanHandOverClosesWithShutdownOnceEveryRecordIsSent() {
+        JournalStream stream = stream("main");
+        stream.append("");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
-        store.append("");
+        stream.append("");
         fill();
         followerHangsUpOnClose();
 
@@ -658,8 +658,8 @@ class TestFollowerConnection extends FollowerConnectionHarness {
 
     @Test
     void aHandOverTheFollowerDoesNotHangUpOnBeforeTheDeadlineFails() {
-        JournalStream store = stream("main");
-        store.append("");
+        JournalStream stream = stream("main");
+        stream.append("");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
 
@@ -681,11 +681,11 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     }
 
     @Test
-    void aFollowerNotSentEveryEventBeforeTheDeadlineIsDroppedWithoutShutdown() {
-        JournalStream store = stream("main");
-        store.append("");
+    void aFollowerNotSentEveryRecordBeforeTheDeadlineIsDroppedWithoutShutdown() {
+        JournalStream stream = stream("main");
+        stream.append("");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
-        store.append("");
+        stream.append("");
 
         assertThat(connection.handOver(Deadline.of(Duration.ofMillis(50)))).isFalse();
 

@@ -27,12 +27,12 @@ class TestThroughNetworkThreadAnswerSender {
     private final ThroughNetworkThreadAnswerSender throughNetworkThread = new ThroughNetworkThreadAnswerSender(mock(IOSession.class));
 
     @Test
-    void anAnswerQueuedByAStoreWriterThreadGetsTheRoomItClaims() {
+    void anAnswerQueuedByASinkWriterThreadGetsTheRoomItClaims() {
         assertThat(throughNetworkThread.claim(1024).remaining()).isGreaterThanOrEqualTo(1024);
     }
 
     @Test
-    void anAnswerLongerThanAStoreWriterThreadCanQueueIsRefused() {
+    void anAnswerLongerThanASinkWriterThreadCanQueueIsRefused() {
         assertThatThrownBy(() -> throughNetworkThread.claim(64 << 10))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("65536 bytes");

@@ -26,8 +26,8 @@ public enum StreamAnswer {
 
     REPLICATING(0),
     /**
-     * The follower's store is the leader's own storage, a configuration error: replicating into it would rewrite the
-     * leader's data, and each node needs a copy of its own.
+     * The follower's copy is stored where the leader stores the stream, a configuration error: replicating into it
+     * would rewrite the leader's data, and each node needs a copy of its own.
      */
     SHARED_STORAGE(1),
     /**

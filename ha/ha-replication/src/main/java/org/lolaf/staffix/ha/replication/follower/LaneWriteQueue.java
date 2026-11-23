@@ -33,11 +33,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.LockSupport;
 
 /**
- * A lane written by a store writer thread: the network thread queues the frames it reads, and its connections and
+ * A lane written by a sink writer thread: the network thread queues the frames it reads, and its connections and
  * disconnections in their place among them, so the writer takes each in order. Allocates nothing per read.
  */
 @Slf4j
-final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHandler {
+final class LaneWriteQueue implements SinkWriterThreads.WriteQueue, ByteFrameHandler {
 
     private static final int FRAME = 0;
     private static final int CONNECTED = 1;
@@ -48,13 +48,13 @@ final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHa
     private final int lane;
     private final int maxFrameBytes;
     private final ReplicaStreams replicaStreams;
-    private final StoreWriterThreads.StoreWriterThread thread;
+    private final SinkWriterThreads.SinkWriterThread thread;
     private final ByteRingBuffer queue;
     private final Queue<LeaderConnection> connectedLeaders = new ConcurrentLinkedQueue<>();
     private final FrameDecoder writerDecoder;
     private volatile boolean writing;
     /**
-     * The last event acknowledged as received; network thread only.
+     * The last record acknowledged as received; network thread only.
      */
     private long receivedOffsetAcked = -1;
     /**
@@ -63,13 +63,13 @@ final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHa
     private @Nullable LeaderConnection connection;
     private boolean framesUnwritten;
     /**
-     * The queue's buffer, which a store write moves the position and limit of while the network thread writes into
+     * The queue's buffer, which a sink write moves the position and limit of while the network thread writes into
      * it.
      */
     private @Nullable ByteBuffer queueBufferView;
     private @Nullable ByteBuffer viewedQueueBuffer;
 
-    LaneWriteQueue(int lane, int maxFrameBytes, ReplicaStreams replicaStreams, StoreWriterThreads.StoreWriterThread thread) {
+    LaneWriteQueue(int lane, int maxFrameBytes, ReplicaStreams replicaStreams, SinkWriterThreads.SinkWriterThread thread) {
         this.lane = lane;
         this.maxFrameBytes = maxFrameBytes;
         this.replicaStreams = replicaStreams;
@@ -95,7 +95,7 @@ final class LaneWriteQueue implements StoreWriterThreads.WriteQueue, ByteFrameHa
     }
 
     /**
-     * Queues the read's whole frames for the writer, then acknowledges as received the last event of a
+     * Queues the read's whole frames for the writer, then acknowledges as received the last record of a
      * {@code SYNC_RECEIVED} stream among them. A frame of an impossible length goes as its header alone, for the
      * writer's decoder to refuse, and the rest of the read with it.
      */

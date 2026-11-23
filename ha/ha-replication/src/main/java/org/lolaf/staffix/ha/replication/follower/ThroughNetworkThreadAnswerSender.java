@@ -26,7 +26,7 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * From a store writer thread: betty's pool is the network thread's alone, so the answers queue here and a task on that
+ * From a sink writer thread: betty's pool is the network thread's alone, so the answers queue here and a task on that
  * thread sends them, scheduled at most once at a time.
  */
 public final class ThroughNetworkThreadAnswerSender implements AnswerSender, ByteFrameHandler, Runnable {
@@ -44,7 +44,7 @@ public final class ThroughNetworkThreadAnswerSender implements AnswerSender, Byt
      */
     private FrameCipher sealer;
     /**
-     * Set by the store writer thread before it queues the KEY_CONFIRMATION.
+     * Set by the sink writer thread before it queues the KEY_CONFIRMATION.
      */
     private volatile FrameCipher nextSealer;
 
@@ -67,7 +67,7 @@ public final class ThroughNetworkThreadAnswerSender implements AnswerSender, Byt
     public ByteBuffer claim(int bytes) {
         if (bytes > answer.capacity()) {
             throw new IllegalArgumentException("An answer of " + bytes + " bytes is longer than the "
-                    + answer.capacity() + " a store writer thread can queue");
+                    + answer.capacity() + " a sink writer thread can queue");
         }
         return answer.clear();
     }

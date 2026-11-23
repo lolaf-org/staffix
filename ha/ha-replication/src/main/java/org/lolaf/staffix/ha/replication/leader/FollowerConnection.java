@@ -52,7 +52,7 @@ import java.util.function.LongSupplier;
  * to it.
  *
  * <p>Frames from the follower arrive on the connection's IO thread; the log is streamed from a thread of the connection's
- * own, which reads as many events as fit straight into a batch behind room for their headers, sends it, then a
+ * own, which reads as many records as fit straight into a batch behind room for their headers, sends it, then a
  * {@link SnapshotSender snapshot} chunk if one is in progress. While streaming, its reader holds appends back rather
  * than be lapped; a writer that waited the log full timeout for it drops it, and it reconnects to be caught up.
  */
@@ -124,12 +124,12 @@ public final class FollowerConnection implements FrameHandler {
     @Getter
     private volatile @Nullable String followerId;
     /**
-     * The offset of the last event the follower applied, -1 before it said.
+     * The offset of the last record the follower applied, -1 before it said.
      */
     @Getter
     private volatile long appliedOffset;
     /**
-     * The offset of the last event the follower holds, written to its store or not yet, -1 before it said.
+     * The offset of the last record the follower holds, written by its sink or not yet, -1 before it said.
      */
     @Getter
     private volatile long receivedOffset;
@@ -145,12 +145,12 @@ public final class FollowerConnection implements FrameHandler {
      */
     private volatile long overdueOffset;
     /**
-     * What the follower's stores for this lane have yet to store, as of its last ack.
+     * What the follower's sinks for this lane have yet to write, as of its last ack.
      */
     @Getter
     private volatile long followerPendingWrites;
     /**
-     * Where the next batch starts reading the log: once it is the log's tail, every event has been handed to betty.
+     * Where the next batch starts reading the log: once it is the log's tail, every record has been handed to betty.
      */
     private volatile long sentOffset;
     /**
@@ -180,15 +180,15 @@ public final class FollowerConnection implements FrameHandler {
     private int firstPassAnnounced;
     private boolean streamsAnnounced;
     private long lastSendNanos;
-    private long lastSentEventOffset;
+    private long lastSentRecordOffset;
     /**
      * When the follower last went from owing nothing to owing an ack, sender thread only.
      */
     private long owedSinceNanos;
     /**
-     * The offset of the last event the last {@link #fillBatch} took, -1 when it took none.
+     * The offset of the last record the last {@link #fillBatch} took, -1 when it took none.
      */
-    private long filledEventOffset;
+    private long filledRecordOffset;
     private AckLatencySampler ackLatency;
     private LagSampler lag;
 
@@ -214,8 +214,8 @@ public final class FollowerConnection implements FrameHandler {
         this.receivedOffset = -1;
         this.overdueOffset = -1;
         this.sentOffset = -1;
-        this.lastSentEventOffset = -1;
-        this.filledEventOffset = -1;
+        this.lastSentRecordOffset = -1;
+        this.filledRecordOffset = -1;
         this.ackLatency = new AckLatencySampler(LatencyRecorder.NONE);
         this.lag = new LagSampler(LatencyRecorder.NONE);
         this.ioSession = ioSession;
@@ -344,7 +344,7 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * Positions the reader after the follower's last applied event, if that event is still in the log.
+     * Positions the reader after the follower's last applied record, if that record is still in the log.
      */
     private boolean resume(long lastAppliedOffset) {
         if (lastAppliedOffset < 0 || !reader.seek(lastAppliedOffset)) {
@@ -401,7 +401,7 @@ public final class FollowerConnection implements FrameHandler {
     }
 
     /**
-     * A {@code SYNC} send stopped waiting for this follower to apply the event at {@code offset}.
+     * A {@code SYNC} send stopped waiting for this follower to apply the record at {@code offset}.
      */
     void ackOverdue(long offset) {
         overdueOffset = offset;
@@ -517,13 +517,13 @@ public final class FollowerConnection implements FrameHandler {
 
     /**
      * Fills {@code dst} from index 0, up to its limit, once streaming, with what the follower has not received: the
-     * streams it does not know yet, then events until the next one does not fit. An event of a stream registered
+     * streams it does not know yet, then records until the next one does not fit. A record of a stream registered
      * after this fill began is left for the next one, behind that stream's announcement.
      *
      * @return the bytes filled
      */
     int fillBatch(ByteBuffer dst) {
-        filledEventOffset = -1;
+        filledRecordOffset = -1;
         if (state != State.STREAMING) {
             return 0;
         }
@@ -565,9 +565,9 @@ public final class FollowerConnection implements FrameHandler {
                 reader.unread();
                 break;
             }
-            filledEventOffset = reader.getRecordOffset();
-            lag.onEventRead(filledEventOffset, reader.getOffset());
-            int frameLength = FrameEncoder.recordHeader(dst, filled, currentEpoch, filledEventOffset, body);
+            filledRecordOffset = reader.getRecordOffset();
+            lag.onRecordRead(filledRecordOffset, reader.getOffset());
+            int frameLength = FrameEncoder.recordHeader(dst, filled, currentEpoch, filledRecordOffset, body);
             filled += frameCipher.seal(dst, filled, frameLength);
         }
         sentOffset = reader.getOffset();
@@ -734,13 +734,13 @@ public final class FollowerConnection implements FrameHandler {
             batches.keep(batch);
             return false;
         }
-        if (filledEventOffset >= 0) {
-            if (lastSentEventOffset <= appliedOffset) {
+        if (filledRecordOffset >= 0) {
+            if (lastSentRecordOffset <= appliedOffset) {
                 owedSinceNanos = clock.nanoTime();
             }
-            lastSentEventOffset = filledEventOffset;
+            lastSentRecordOffset = filledRecordOffset;
             // before the send: an ack processed in between would otherwise leave the sample to the next one
-            ackLatency.onSent(filledEventOffset, System.nanoTime());
+            ackLatency.onSent(filledRecordOffset, System.nanoTime());
         }
         batches.send(batch, filled);
         return true;
@@ -750,12 +750,12 @@ public final class FollowerConnection implements FrameHandler {
      * Owing an ack and silent for the stall timeout: a slow follower still acks each read, a hung one does not.
      */
     private boolean isStalled(long nowNanos) {
-        return stallTimeoutNanos > 0 && lastSentEventOffset > appliedOffset
+        return stallTimeoutNanos > 0 && lastSentRecordOffset > appliedOffset
                 && nowNanos - Math.max(owedSinceNanos, lastAckNanos) > stallTimeoutNanos;
     }
 
     /**
-     * For a leader stopping cleanly, its writers already stopped: waits for every event of the log to be sent, then
+     * For a leader stopping cleanly, its writers already stopped: waits for every record of the log to be sent, then
      * closes with {@link CloseReason#SHUTDOWN}. Arriving after them on the same connection, it tells the follower it
      * holds everything, so the follower takes over knowing it lost no write. Returns once the follower hung up
      * on it, so it has read it before leadership moves. When the deadline passes first, the connection is dropped.

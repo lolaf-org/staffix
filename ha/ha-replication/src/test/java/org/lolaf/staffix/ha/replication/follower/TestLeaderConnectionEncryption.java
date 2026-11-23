@@ -276,11 +276,11 @@ class TestLeaderConnectionEncryption extends LeaderConnectionHarness {
     }
 
     @Test
-    void withAStoreWriterThreadAnEncryptedConnectionAcknowledgesReceiptOnceTheTagVerified() {
+    void withASinkWriterThreadAnEncryptedConnectionAcknowledgesReceiptOnceTheTagVerified() {
         replica.configure(MAIN, StreamReplicationMode.SYNC_RECEIVED);
-        assertThat(newStoreWriterConnection(TestingKeyExchanges.CLEAR).isReceivedAckedOnRead())
+        assertThat(newSinkWriterConnection(TestingKeyExchanges.CLEAR).isReceivedAckedOnRead())
                 .as("in clear, the network thread acknowledges what it reads").isTrue();
-        LeaderConnection encrypting = newStoreWriterConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
+        LeaderConnection encrypting = newSinkWriterConnection(TestingKeyExchanges.of(EncryptionMode.REQUIRED));
         FrameCipher sealer = streamingInSync(encrypting, StreamReplicationMode.SYNC_RECEIVED, TestingKeyExchanges.CIPHER);
         assertThat(encrypting.isReceivedAckedOnRead()).as("encrypted, it does not").isFalse();
 

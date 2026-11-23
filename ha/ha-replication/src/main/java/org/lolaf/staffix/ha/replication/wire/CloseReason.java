@@ -35,8 +35,8 @@ public enum CloseReason {
      */
     SNAPSHOT_FAILED(4),
     /**
-     * The follower could not apply what it received, a store write failing: it reconnects to resume after the last
-     * event it applied.
+     * The follower could not apply what it received, a sink failing to write: it reconnects to resume after the last
+     * record it applied.
      */
     APPLY_FAILED(5),
     /**

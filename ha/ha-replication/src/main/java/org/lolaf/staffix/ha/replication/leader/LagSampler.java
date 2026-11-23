@@ -21,7 +21,7 @@ import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Times how far a follower is behind: from an instant to the ack covering every event written to the log before it,
+ * Times how far a follower is behind: from an instant to the ack covering every record written to the log before it,
  * one sample at a time, as {@link AckLatencySampler} does. Unlike a timer, the pending sample's age keeps growing while
  * the follower applies nothing. Sampled by the sender thread, recorded by the connection's IO thread; allocates nothing.
  */
@@ -34,7 +34,7 @@ final class LagSampler {
     private long sampledTail = NONE;
     private volatile long sampledNanos;
     /**
-     * The start offset of the event ending at or past the sampled tail, which acks name; {@link #NONE} until read.
+     * The start offset of the record ending at or past the sampled tail, which acks name; {@link #NONE} until read.
      */
     private volatile long targetOffset = NONE;
     private volatile boolean pending;
@@ -43,8 +43,8 @@ final class LagSampler {
      * A fill starting: samples the log's tail unless a sample is pending or nothing was written since the last one.
      *
      * @param readOffset      where the sender reads next
-     * @param lastReadOffset  the start of the last event the sender read, -1 before any
-     * @param appliedOffset   the start of the last event the follower acked, -1 before any
+     * @param lastReadOffset  the start of the last record the sender read, -1 before any
+     * @param appliedOffset   the start of the last record the follower acked, -1 before any
      */
     void onFill(long tail, long readOffset, long lastReadOffset, long appliedOffset) {
         if (pending || tail == sampledTail) {
@@ -63,11 +63,11 @@ final class LagSampler {
     }
 
     /**
-     * An event the sender framed for the follower, from {@code eventOffset} up to {@code nextOffset}.
+     * A record the sender framed for the follower, from {@code recordOffset} up to {@code nextOffset}.
      */
-    void onEventRead(long eventOffset, long nextOffset) {
+    void onRecordRead(long recordOffset, long nextOffset) {
         if (pending && targetOffset == NONE && nextOffset >= sampledTail) {
-            targetOffset = eventOffset;
+            targetOffset = recordOffset;
         }
     }
 

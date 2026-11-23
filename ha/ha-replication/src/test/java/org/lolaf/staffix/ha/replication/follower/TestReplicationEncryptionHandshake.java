@@ -87,7 +87,7 @@ class TestReplicationEncryptionHandshake {
                 .collect(Collectors.toList());
     }
 
-    private InetSocketAddress connect(KeyExchange leaderExchange, KeyExchange followerExchange, int storeWriterThreads) {
+    private InetSocketAddress connect(KeyExchange leaderExchange, KeyExchange followerExchange, int sinkWriterThreads) {
         leaderId = "leader-" + System.identityHashCode(this);
         followerId = "follower-" + System.identityHashCode(this);
         InetSocketAddress address = new InetSocketAddress("localhost", TestingPorts.findFree());
@@ -99,7 +99,7 @@ class TestReplicationEncryptionHandshake {
         server.start();
         client = new ReplicationClient(address, replicaStreams, () -> EPOCH, followerId,
                 leader.getLogs().get(0).getMaxRecordFrameBytes(), Duration.ofMillis(50),
-                new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1),
+                new WakeupSelectStrategy(10), sinkWriterThreads, BackoffIdleStrategy::new, Duration.ofSeconds(1),
                 followerExchange);
         client.start();
         return address;
@@ -116,11 +116,11 @@ class TestReplicationEncryptionHandshake {
         await().untilAsserted(() -> assertThat(main.getWrites()).contains("1 " + ENTRY, "2 " + longEntry));
     }
 
-    @ParameterizedTest(name = "{0}, {1} store writer threads")
+    @ParameterizedTest(name = "{0}, {1} sink writer threads")
     @CsvSource({"AES/GCM/NoPadding, 1", "AES/CTR/NoPadding, 1", "ChaCha20, 0", "ChaCha20-Poly1305, 1"})
-    void anEncryptedPairReplicatesWhicheverThreadWritesTheFollowersSinks(String cipher, int storeWriterThreads) {
+    void anEncryptedPairReplicatesWhicheverThreadWritesTheFollowersSinks(String cipher, int sinkWriterThreads) {
         connect(exchange(EncryptionMode.REQUIRED, "pair-secret-0123", cipher),
-                exchange(EncryptionMode.REQUIRED, "pair-secret-0123", cipher), storeWriterThreads);
+                exchange(EncryptionMode.REQUIRED, "pair-secret-0123", cipher), sinkWriterThreads);
 
         awaitReplicated();
 

@@ -59,27 +59,27 @@ public final class ReplicationClient {
     private final Duration connectionRetry;
     private final long checkIntervalNanos;
     private final SelectStrategy selectStrategy;
-    private final @Nullable StoreWriterThreads storeWriterThreads;
+    private final @Nullable SinkWriterThreads sinkWriterThreads;
     private final KeyExchange keyExchange;
     private volatile LaneClient[] laneClients;
     private boolean stopped;
 
     /**
-     * @param maxFrameBytes      the largest frame the leader sends before its tag, see
-     *                           {@link org.lolaf.staffix.ha.replication.log.ReplicationLog#getMaxRecordFrameBytes()}
-     * @param storeWriterThreads threads writing what the lanes read into the stores, 0 to write on the lanes' network
-     *                           threads
-     * @param checkInterval      how often a lane checks again its sinks' pending writes, reported to the leader, and
-     *                           whether a stream refused until this node's configuration changes binds now
+     * @param maxFrameBytes     the largest frame the leader sends before its tag, see
+     *                          {@link org.lolaf.staffix.ha.replication.log.ReplicationLog#getMaxRecordFrameBytes()}
+     * @param sinkWriterThreads threads writing what the lanes read into the sinks, 0 to write on the lanes' network
+     *                          threads
+     * @param checkInterval     how often a lane checks again its sinks' pending writes, reported to the leader, and
+     *                          whether a stream refused until this node's configuration changes binds now
      */
     public ReplicationClient(InetSocketAddress leaderAddress, ReplicaStreams replicaStreams, LongSupplier nodeEpoch,
                              String nodeId, int maxFrameBytes, Duration connectionRetry, SelectStrategy selectStrategy,
-                             int storeWriterThreads, Supplier<IdleStrategy> storeWriterIdleStrategy, Duration checkInterval,
+                             int sinkWriterThreads, Supplier<IdleStrategy> sinkWriterIdleStrategy, Duration checkInterval,
                              KeyExchange keyExchange) {
         this.keyExchange = keyExchange;
         this.laneClients = new LaneClient[0];
-        this.storeWriterThreads = storeWriterThreads == 0 ? null
-                : new StoreWriterThreads(storeWriterThreads, storeWriterIdleStrategy, nodeId);
+        this.sinkWriterThreads = sinkWriterThreads == 0 ? null
+                : new SinkWriterThreads(sinkWriterThreads, sinkWriterIdleStrategy, nodeId);
         this.selectStrategy = selectStrategy;
         this.leaderAddress = leaderAddress;
         this.replicaStreams = replicaStreams;
@@ -96,12 +96,12 @@ public final class ReplicationClient {
     }
 
     /**
-     * Stops reading, then waits, within the deadline, for each lane to write what it read: an event acknowledged as
+     * Stops reading, then waits, within the deadline, for each lane to write what it read: a record acknowledged as
      * received is written before a promotion hands the streams over.
      */
     public void stop(Deadline deadline) {
         LaneClient[] stopping;
-        // not held while stopping: a store writer thread starting a stream takes it in lanesAnnounced
+        // not held while stopping: a sink writer thread starting a stream takes it in lanesAnnounced
         synchronized (this) {
             stopped = true;
             stopping = laneClients;
@@ -109,8 +109,8 @@ public final class ReplicationClient {
         for (LaneClient laneClient : stopping) {
             laneClient.stop(deadline, true);
         }
-        if (storeWriterThreads != null) {
-            storeWriterThreads.stop();
+        if (sinkWriterThreads != null) {
+            sinkWriterThreads.stop();
         }
     }
 
@@ -200,8 +200,8 @@ public final class ReplicationClient {
         LaneClient(int lane) {
             this.decoder = new FrameDecoder(maxFrameBytes);
             this.lane = lane;
-            this.writeQueue = storeWriterThreads == null ? null
-                    : new LaneWriteQueue(lane, maxFrameBytes, replicaStreams, storeWriterThreads.forLane(lane));
+            this.writeQueue = sinkWriterThreads == null ? null
+                    : new LaneWriteQueue(lane, maxFrameBytes, replicaStreams, sinkWriterThreads.forLane(lane));
             String id = "replication-follower-" + lane;
             ioWorkers = IOWorkersGroupSettings.builder().id(id)
                     .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
@@ -222,8 +222,8 @@ public final class ReplicationClient {
         }
 
         /**
-         * @param drain whether to wait, within the deadline, for the lane's store writer thread to write what was read;
-         *              not when the lane is dropped from a store writer thread, which may be the one to drain it
+         * @param drain whether to wait, within the deadline, for the lane's sink writer thread to write what was read;
+         *              not when the lane is dropped from a sink writer thread, which may be the one to drain it
          */
         void stop(Deadline deadline, boolean drain) {
             client.stop(deadline);
@@ -235,14 +235,14 @@ public final class ReplicationClient {
 
         @Override
         public void onConnected(IOSession session) {
-            boolean writtenByStoreWriter = writeQueue != null;
-            AnswerSender answers = writtenByStoreWriter ?
+            boolean writtenBySinkWriter = writeQueue != null;
+            AnswerSender answers = writtenBySinkWriter ?
                     new ThroughNetworkThreadAnswerSender(session) : new OnNetworkThreadAnswerSender(session);
             LeaderConnection connected = new LeaderConnection(session, replicaStreams, nodeEpoch, nodeId, lane,
-                    ReplicationClient.this::lanesAnnounced, checkIntervalNanos, answers, writtenByStoreWriter, keyExchange);
+                    ReplicationClient.this::lanesAnnounced, checkIntervalNanos, answers, writtenBySinkWriter, keyExchange);
             session.setAttachment(connected);
             connection = connected;
-            if (writtenByStoreWriter) {
+            if (writtenBySinkWriter) {
                 writeQueue.connected(connected);
             } else {
                 connected.hello();

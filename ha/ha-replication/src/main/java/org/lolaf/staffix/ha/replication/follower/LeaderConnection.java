@@ -102,7 +102,7 @@ public final class LeaderConnection implements FrameHandler {
     /**
      * @param lanesAnnounced               told the leader's lane count from its WELCOME, before the stream starts
      * @param answers                      how this lane's answers to the leader reach the connection
-     * @param receivedAckedByNetworkThread the network thread acknowledges events as received as it reads them, a store
+     * @param receivedAckedByNetworkThread the network thread acknowledges records as received as it reads them, a sink
      *                                     writer thread writing them
      */
     LeaderConnection(IOSession ioSession, ReplicaStreams replicaStreams, LongSupplier nodeEpoch, String nodeId, int lane, IntConsumer lanesAnnounced,
@@ -135,8 +135,8 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     /**
-     * With a store writer thread the network thread acknowledges an event as received as it reads it, but not on an
-     * encrypted connection: the writer thread then does, once the event's tag verified.
+     * With a sink writer thread the network thread acknowledges a record as received as it reads it, but not on an
+     * encrypted connection: the writer thread then does, once the record's tag verified.
      */
     boolean isReceivedAckedOnRead() {
         return receivedAckedByNetworkThread && encryptionKeys == null;
@@ -150,7 +150,7 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     /**
-     * Whether an event of this epoch read now can be acknowledged as received: the stream it belongs to is the one
+     * Whether a record of this epoch read now can be acknowledged as received: the stream it belongs to is the one
      * this lane follows.
      */
     boolean isStreamEpoch(long epoch) {
@@ -317,7 +317,7 @@ public final class LeaderConnection implements FrameHandler {
 
     /**
      * Applies every whole frame of a read, then acknowledges it. A frame that cannot be decoded or applied closes the
-     * stream: the frames after it in the read are dropped, and the follower reconnects to resume after the last event
+     * stream: the frames after it in the read are dropped, and the follower reconnects to resume after the last record
      * it applied rather than carrying on past a gap.
      */
     void read(ByteBuffer message, FrameDecoder decoder) {
@@ -366,7 +366,7 @@ public final class LeaderConnection implements FrameHandler {
 
     /**
      * Writes and acknowledges what the frames applied since the last call left pending, unless one failed: those
-     * after it are dropped, and the follower reconnects to resume after the last event it applied.
+     * after it are dropped, and the follower reconnects to resume after the last record it applied.
      */
     void endRead() {
         if (applyFailed) {

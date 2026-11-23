@@ -21,8 +21,8 @@ import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Times a follower's round trip, from an event handed to betty to the ack covering it, one event at a time: an ack
- * covers every event before it, so timing them all would need a queue, while one sample per round trip is enough for
+ * Times a follower's round trip, from a record handed to betty to the ack covering it, one record at a time: an ack
+ * covers every record before it, so timing them all would need a queue, while one sample per round trip is enough for
  * the latency's distribution. Sampled by the sender thread, recorded by the connection's IO thread; allocates nothing.
  */
 @RequiredArgsConstructor
@@ -33,12 +33,12 @@ final class AckLatencySampler {
     private long sentNanos;
 
     /**
-     * Samples the event unless one is still waiting for its ack.
+     * Samples the record unless one is still waiting for its ack.
      */
-    void onSent(long eventOffset, long nowNanos) {
+    void onSent(long recordOffset, long nowNanos) {
         if (sampledOffset < 0) {
             sentNanos = nowNanos;
-            sampledOffset = eventOffset;
+            sampledOffset = recordOffset;
         }
     }
 

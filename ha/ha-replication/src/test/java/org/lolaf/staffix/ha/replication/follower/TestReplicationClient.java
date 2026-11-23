@@ -52,7 +52,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * A leader's server and a follower's client over a real connection, the follower writing on its network threads
- * or on a store writer thread.
+ * or on a sink writer thread.
  */
 @ParameterizedClass
 @ValueSource(ints = {0, 1})
@@ -64,7 +64,7 @@ class TestReplicationClient {
     private static final Duration ACK_TIMEOUT = Duration.ofSeconds(5);
 
     @Parameter
-    int storeWriterThreads;
+    int sinkWriterThreads;
 
     private final Journal leader;
     private final JournalStream leaderMain;
@@ -134,14 +134,14 @@ class TestReplicationClient {
 
     private void connect(InetSocketAddress address, int maxFrameBytes) {
         client = new ReplicationClient(address, replicaStreams, () -> EPOCH, "follower-b", maxFrameBytes,
-                Duration.ofMillis(50), new WakeupSelectStrategy(10), storeWriterThreads, BackoffIdleStrategy::new,
+                Duration.ofMillis(50), new WakeupSelectStrategy(10), sinkWriterThreads, BackoffIdleStrategy::new,
                 Duration.ofSeconds(1), TestingKeyExchanges.CLEAR);
         client.start();
     }
 
     /**
      * {@link #MAIN} as {@code SYNC_RECEIVED} on a leader of its own, the client following it in sync. Its copy writes
-     * once a read is applied, after the RECEIVED, as a store does.
+     * once a read is applied, after the RECEIVED, as a sink does.
      */
     private FollowerConnection followSyncReceived(int maxFrameBytes) {
         replica.configure(MAIN, StreamReplicationMode.SYNC_RECEIVED);
@@ -211,11 +211,11 @@ class TestReplicationClient {
     }
 
     /**
-     * A store writer thread applying a WELCOME takes the client's lock, so a stop waiting for that thread must not
+     * A sink writer thread applying a WELCOME takes the client's lock, so a stop waiting for that thread must not
      * hold it: it used to, and the two waited for each other forever.
      */
     @Test
-    void aStopWaitingForTheStoreWriterLeavesTheClientLockFree() {
+    void aStopWaitingForTheSinkWriterLeavesTheClientLockFree() {
         FollowerConnection connection = followSyncReceived(leader.getLogs().get(0).getMaxRecordFrameBytes());
         CountDownLatch writeHeld = new CountDownLatch(1);
         main.setWritesHeld(writeHeld);
@@ -240,8 +240,8 @@ class TestReplicationClient {
     }
 
     @Test
-    void aStoreWriterThreadLeavesTheNetworkThreadAcknowledgingAsReceivedWhatItHasNotWrittenYet() {
-        assumeTrue(storeWriterThreads > 0, "the network thread writes itself otherwise");
+    void aSinkWriterThreadLeavesTheNetworkThreadAcknowledgingAsReceivedWhatItHasNotWrittenYet() {
+        assumeTrue(sinkWriterThreads > 0, "the network thread writes itself otherwise");
         FollowerConnection connection = followSyncReceived(leader.getLogs().get(0).getMaxRecordFrameBytes());
         CountDownLatch writeHeld = new CountDownLatch(1);
         main.setWritesHeld(writeHeld);
@@ -257,8 +257,8 @@ class TestReplicationClient {
     }
 
     @Test
-    void aFullWriteQueueHoldsTheReadsBackUntilTheStoreWriterCatchesUp() {
-        assumeTrue(storeWriterThreads > 0, "no write queue otherwise");
+    void aFullWriteQueueHoldsTheReadsBackUntilTheSinkWriterCatchesUp() {
+        assumeTrue(sinkWriterThreads > 0, "no write queue otherwise");
         int smallFrames = 256;
         followSyncReceived(smallFrames);
         CountDownLatch writeHeld = new CountDownLatch(1);

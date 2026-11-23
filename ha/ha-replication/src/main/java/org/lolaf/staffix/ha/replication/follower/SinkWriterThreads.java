@@ -22,21 +22,21 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 
 /**
- * The threads writing what a follower's lanes read into its stores, off their network threads, lane {@code i} on
+ * The threads writing what a follower's lanes read into its sinks, off their network threads, lane {@code i} on
  * thread {@code i % count}, so a lane's writes keep their order.
  */
-final class StoreWriterThreads {
+final class SinkWriterThreads {
 
-    private final StoreWriterThread[] threads;
+    private final SinkWriterThread[] threads;
 
-    StoreWriterThreads(int count, Supplier<IdleStrategy> idleStrategy, String nodeId) {
-        threads = new StoreWriterThread[count];
+    SinkWriterThreads(int count, Supplier<IdleStrategy> idleStrategy, String nodeId) {
+        threads = new SinkWriterThread[count];
         for (int i = 0; i < count; i++) {
-            threads[i] = new StoreWriterThread(idleStrategy.get(), "replication-store-writer-" + nodeId + "-" + i);
+            threads[i] = new SinkWriterThread(idleStrategy.get(), "replication-writer-" + nodeId + "-" + i);
         }
     }
 
-    StoreWriterThread forLane(int lane) {
+    SinkWriterThread forLane(int lane) {
         return threads[lane % threads.length];
     }
 
@@ -44,13 +44,13 @@ final class StoreWriterThreads {
      * Once every lane was drained and removed.
      */
     void stop() {
-        for (StoreWriterThread thread : threads) {
+        for (SinkWriterThread thread : threads) {
             thread.stop();
         }
     }
 
     /**
-     * A lane's frames, queued by its network thread for a store writer thread.
+     * A lane's frames, queued by its network thread for a sink writer thread.
      */
     interface WriteQueue {
         /**
@@ -60,7 +60,7 @@ final class StoreWriterThreads {
     }
 
     @Slf4j
-    static final class StoreWriterThread implements Runnable {
+    static final class SinkWriterThread implements Runnable {
 
         private static final WriteQueue[] NONE = new WriteQueue[0];
 
@@ -69,7 +69,7 @@ final class StoreWriterThreads {
         private volatile WriteQueue[] writeQueues = NONE;
         private volatile boolean running = true;
 
-        StoreWriterThread(IdleStrategy idle, String name) {
+        SinkWriterThread(IdleStrategy idle, String name) {
             this.idle = idle;
             this.thread = new Thread(this, name);
             thread.setDaemon(true);
@@ -104,7 +104,7 @@ final class StoreWriterThreads {
                     try {
                         framesTaken += writeQueue.writeQueued();
                     } catch (RuntimeException e) {
-                        log.error("Replication store writer thread {} failed on a lane", thread.getName(), e);
+                        log.error("Replication sink writer thread {} failed on a lane", thread.getName(), e);
                     }
                 }
                 idle.idle(framesTaken);

@@ -213,9 +213,9 @@ abstract class LeaderConnectionHarness {
     }
 
     /**
-     * As with a store writer thread, whose network thread acknowledges what it reads as received.
+     * As with a sink writer thread, whose network thread acknowledges what it reads as received.
      */
-    LeaderConnection newStoreWriterConnection(KeyExchange keyExchange) {
+    LeaderConnection newSinkWriterConnection(KeyExchange keyExchange) {
         return newConnection(0, TimeUnit.SECONDS.toNanos(1), keyExchange, true);
     }
 

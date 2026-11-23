@@ -32,7 +32,7 @@ public interface FrameHandler {
     /**
      * A follower's first frame.
      *
-     * @param lastAppliedOffset the offset of the last event it applied in {@code lastAppliedEpoch}, -1 for none: the
+     * @param lastAppliedOffset the offset of the last record it applied in {@code lastAppliedEpoch}, -1 for none: the
      *                          leader resumes after it when its log still holds it in the same epoch
      * @param lane              which of the leader's lanes this connection carries, 0 for the first, the one that
      *                          learns how many there are
@@ -135,19 +135,19 @@ public interface FrameHandler {
     }
 
     /**
-     * @param appliedOffset the offset of the last event the follower applied, which releases the {@code SYNC} sends
+     * @param appliedOffset the offset of the last record the follower applied, which releases the {@code SYNC} sends
      *                      waiting for it
      * @param inSync        whether the follower holds every stream the leader replicates
-     * @param pendingWrites what the follower's stores for this lane have yet to store, as of the last second or so
+     * @param pendingWrites what the follower's sinks for this lane have yet to write, as of the last second or so
      */
     default void onAck(long epoch, long appliedOffset, boolean inSync, long pendingWrites) {
         throw unexpected(FrameType.ACK);
     }
 
     /**
-     * Sent before a read's events are written to the follower's store, then followed by its {@link #onAck ACK}.
+     * Sent before a read's records are written to the follower's sinks, then followed by its {@link #onAck ACK}.
      *
-     * @param receivedOffset the offset of the last event the follower holds in memory, which releases the
+     * @param receivedOffset the offset of the last record the follower holds in memory, which releases the
      *                       {@code SYNC_RECEIVED} sends waiting for it
      */
     default void onReceived(long epoch, long receivedOffset) {
@@ -166,7 +166,7 @@ public interface FrameHandler {
 
     /**
      * The sender's last frame before it disconnects. A {@link CloseReason#SHUTDOWN} from the leader tells the follower
-     * it was sent every event, so it takes over knowing it lost no write.
+     * it was sent every record, so it takes over knowing it lost no write.
      */
     default void onClose(long epoch, CloseReason reason, String text) {
         throw unexpected(FrameType.CLOSE);

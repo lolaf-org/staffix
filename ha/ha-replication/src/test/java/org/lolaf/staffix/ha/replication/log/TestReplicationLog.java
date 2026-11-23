@@ -64,8 +64,8 @@ class TestReplicationLog {
     }
 
     /**
-     * Reads the next event the way a sender does: the body after room for the header, then the header with the
-     * event's offset, then decodes the whole frame.
+     * Reads the next record the way a sender does: the body after room for the header, then the header with the
+     * record's offset, then decodes the whole frame.
      */
     private int readAsFrame(ReplicationLog.Reader reader) {
         int body = reader.readInto(frame, WireFormat.RECORD_BODY_OFFSET);
@@ -95,7 +95,7 @@ class TestReplicationLog {
     }
 
     @Test
-    void offsetsGrowWithEveryEventFromZero() {
+    void offsetsGrowWithEveryRecordFromZero() {
         long first = log.append(TestingLogFragments.reset(record, 1), wait);
         long second = log.append(TestingLogFragments.entry(record, 1, 2, null), wait);
 
@@ -116,7 +116,7 @@ class TestReplicationLog {
     }
 
     @Test
-    void aReaderResumesFromAnEventStillInTheLog() {
+    void aReaderResumesFromARecordStillInTheLog() {
         log.append(TestingLogFragments.entry(record, 1, 1, message("first")), wait);
         long second = log.append(TestingLogFragments.entry(record, 1, 2, message("second")), wait);
         ReplicationLog.Reader reader = log.newReader(() -> {
@@ -129,7 +129,7 @@ class TestReplicationLog {
     }
 
     @Test
-    void aReaderCannotResumeFromAnEventOverwrittenSoTheFollowerNeedsASnapshot() {
+    void aReaderCannotResumeFromARecordOverwrittenSoTheFollowerNeedsASnapshot() {
         ReplicationLog small = new ReplicationLog(1024);
         long first = small.append(TestingLogFragments.entry(record, 1, 1, message(MESSAGE)), wait);
         for (int i = 2; i < 100; i++) {
@@ -178,7 +178,7 @@ class TestReplicationLog {
     }
 
     @Test
-    void aMessageThatFitsAFrameIsOneEventNotMarkedAsAFragment() {
+    void aPayloadThatFitsAFrameIsOneRecordNotMarkedAsAFragment() {
         ReplicationLog.Reader reader = log.newReader(() -> {
         });
 
@@ -191,11 +191,11 @@ class TestReplicationLog {
     }
 
     /**
-     * Fewer bytes than events rather than zero: a one-off may land in the window while the JIT settles, whereas an
-     * object per event would cost at least 16 bytes each.
+     * Fewer bytes than records rather than zero: a one-off may land in the window while the JIT settles, whereas an
+     * object per record would cost at least 16 bytes each.
      */
     @Test
-    void appendingAllocatesNothingPerEvent() {
+    void appendingAllocatesNothingPerRecord() {
         ByteBuffer message = message(MESSAGE);
         for (int i = 0; i < 20_000; i++) {
             log.append(TestingLogFragments.entry(record, 1, i, message), wait);
@@ -210,7 +210,7 @@ class TestReplicationLog {
     }
 
     /**
-     * Sessions appending from their own threads while a follower reads: each session's events arrive whole and in
+     * Streams appending from their own threads while a follower reads: each stream's records arrive whole and in
      * order, nothing lost.
      */
     @Test
@@ -294,7 +294,7 @@ class TestReplicationLog {
     }
 
     @Test
-    void aGatingReaderReadsAgainTheEventItUnread() {
+    void aGatingReaderReadsAgainTheRecordItUnread() {
         ReplicationLog.Reader reader = log.newReader(() -> {
         });
         long first = log.append(TestingLogFragments.entry(record, 1, 7, null), wait);

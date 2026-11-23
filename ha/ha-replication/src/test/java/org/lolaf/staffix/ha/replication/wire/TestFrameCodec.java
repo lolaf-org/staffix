@@ -225,8 +225,8 @@ class TestFrameCodec {
         FrameCipher sealer = exchange.newSealer(keys.getLeaderToFollower());
         FrameCipher opener = exchange.newOpener(keys.getLeaderToFollower());
         ByteBuffer buffer = buffer(true);
-        int event = sealer.seal(buffer, 0, plaintextRecord(buffer, 0, WireFormat.RESET));
-        int snapshot = sealer.seal(buffer, event, FrameEncoder.snapshotRecord(buffer, event, 7, 3, CONTENT_TYPE,
+        int record = sealer.seal(buffer, 0, plaintextRecord(buffer, 0, WireFormat.RESET));
+        int snapshot = sealer.seal(buffer, record, FrameEncoder.snapshotRecord(buffer, record, 7, 3, CONTENT_TYPE,
                 (byte) (WireFormat.PLAINTEXT | WireFormat.MORE_FRAGMENTS), 42, message(), 0, MESSAGE.length));
         List<Byte> flags = new ArrayList<>();
         FrameHandler flagsHandler = new FrameHandler() {
@@ -243,8 +243,8 @@ class TestFrameCodec {
             }
         };
 
-        assertThat(decoder.decode(buffer, 0, event, flagsHandler, opener)).isEqualTo(event);
-        assertThat(decoder.decode(buffer, event, snapshot, flagsHandler, opener)).isEqualTo(snapshot);
+        assertThat(decoder.decode(buffer, 0, record, flagsHandler, opener)).isEqualTo(record);
+        assertThat(decoder.decode(buffer, record, snapshot, flagsHandler, opener)).isEqualTo(snapshot);
 
         assertThat(flags).containsExactly(WireFormat.RESET, WireFormat.MORE_FRAGMENTS);
     }
@@ -476,11 +476,11 @@ class TestFrameCodec {
     }
 
     private void encodeAndDecodeFrequentFrames(ByteBuffer buffer, ByteBuffer message, CountingHandler counting, long i) {
-        int event = TestingFrameEncoder.record(buffer, 0, 7, i, 3, CONTENT_TYPE, (byte) 0, i, message);
-        int ack = FrameEncoder.ack(buffer, event, 7, i, true, 0);
-        int heartbeat = FrameEncoder.heartbeat(buffer, event + ack, 7, i);
+        int record = TestingFrameEncoder.record(buffer, 0, 7, i, 3, CONTENT_TYPE, (byte) 0, i, message);
+        int ack = FrameEncoder.ack(buffer, record, 7, i, true, 0);
+        int heartbeat = FrameEncoder.heartbeat(buffer, record + ack, 7, i);
         int decoded = 0;
-        while (decoded < event + ack + heartbeat) {
+        while (decoded < record + ack + heartbeat) {
             decoded += decoder.decode(buffer, decoded, MAX_FRAME_BYTES - decoded, counting);
         }
     }

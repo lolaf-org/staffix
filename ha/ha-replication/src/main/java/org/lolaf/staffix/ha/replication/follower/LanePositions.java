@@ -19,7 +19,7 @@ import java.util.Arrays;
 
 /**
  * Where each of the leader's lanes stands on this follower, kept across connections so a reconnection resumes: the
- * last event written, the last applied but not written yet, and whether its connection has announced every stream. A
+ * last record written, the last applied but not written yet, and whether its connection has announced every stream. A
  * lane's offsets are those of its own log. A lane's position is written by its own thread only; the last written and
  * the announcing are read by any. Allocates nothing but on a lane count change.
  */
@@ -105,7 +105,7 @@ final class LanePositions {
     }
 
     /**
-     * @param acksOnReceipt the event's stream is acknowledged as received
+     * @param acksOnReceipt the record's stream is acknowledged as received
      */
     void applied(int lane, long epoch, long offset, boolean acksOnReceipt) {
         Position position = positions[lane];

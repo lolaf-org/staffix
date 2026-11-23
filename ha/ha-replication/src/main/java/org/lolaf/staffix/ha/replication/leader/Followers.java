@@ -152,7 +152,7 @@ public final class Followers {
     }
 
     /**
-     * What the followers' stores have yet to store, as of their last acks, over every lane. A closed connection is
+     * What the followers' sinks have yet to write, as of their last acks, over every lane. A closed connection is
      * left out: it stays listed until its CLOSE is flushed, possibly beside its follower's new one.
      */
     public long getPendingWrites() {
@@ -185,7 +185,7 @@ public final class Followers {
 
 
     /**
-     * Waits until every follower in sync for the stream received or applied the event at {@code offset}, as its mode
+     * Waits until every follower in sync for the stream received or applied the record at {@code offset}, as its mode
      * asks. A follower falling out of sync stops being waited for, and with none left the wait ends at once. A follower
      * a wait timed out on is not waited for again until it applies what it missed, so a hung follower costs one
      * timeout, not one per send. Allocates nothing.
@@ -250,7 +250,8 @@ public final class Followers {
     }
 
     /**
-     * A read with no {@code SYNC_RECEIVED} event sends no {@code RECEIVED}, so the received offset can trail the applied.
+     * A read with no record of a {@code SYNC_RECEIVED} stream sends no {@code RECEIVED}, so the received offset can
+     * trail the applied.
      */
     private static long ackedOffset(FollowerConnection connection, boolean received) {
         long applied = connection.getAppliedOffset();

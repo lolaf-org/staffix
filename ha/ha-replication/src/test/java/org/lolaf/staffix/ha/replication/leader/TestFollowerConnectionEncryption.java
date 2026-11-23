@@ -373,19 +373,19 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     @ParameterizedTest
     @ValueSource(strings = {"clear", "AES/CTR/NoPadding", "ChaCha20"})
     void fillingABatchAllocatesNothingInClearOrWithAStreamCipher(String cipher) {
-        double allocated = fillBytesPerEvent(cipher);
+        double allocated = fillBytesPerRecord(cipher);
 
-        assertThat(allocated).as("bytes per event filled").isLessThan(1);
+        assertThat(allocated).as("bytes per record filled").isLessThan(1);
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"AES/GCM/NoPadding", "ChaCha20-Poly1305"})
     void fillingABatchWithAnAeadAllocatesNoMoreThanTheJceItself(String cipher) {
-        double allocated = fillBytesPerEvent(cipher);
+        double allocated = fillBytesPerRecord(cipher);
         double jce = JceAeadAllocation.bytesPerFrame(cipher, Cipher.ENCRYPT_MODE,
                 WireFormat.HEADER_BYTES + FrameType.RECORD.getFixedPayloadBytes(), FILLED_MESSAGE_BYTES);
 
-        assertThat(allocated).as("bytes per event filled, the JCE's %s", jce)
+        assertThat(allocated).as("bytes per record filled, the JCE's %s", jce)
                 .isLessThan(jce + JceAeadAllocation.JIT_SLACK_BYTES);
     }
 
@@ -393,7 +393,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
      * Appends records to the log and fills a batch every few, as an appending thread and the sender would, on this
      * thread.
      */
-    private double fillBytesPerEvent(String cipher) {
+    private double fillBytesPerRecord(String cipher) {
         asyncStream("main");
         if (cipher.equals("clear")) {
             hello(EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
@@ -413,16 +413,16 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
         long filled = appendAndFill(replicationLog, record, wait, message, batch, warmUp, JceAeadAllocation.MEASURED);
         long allocated = AllocatedBytes.ofCurrentThread() - before;
 
-        assertThat(filled).as("every event filled").isGreaterThan((long) JceAeadAllocation.MEASURED * FILLED_MESSAGE_BYTES);
-        double perEvent = (double) allocated / JceAeadAllocation.MEASURED;
-        log.info("Filling with {}: {} bytes per {} byte event", cipher, perEvent, FILLED_MESSAGE_BYTES);
-        return perEvent;
+        assertThat(filled).as("every record filled").isGreaterThan((long) JceAeadAllocation.MEASURED * FILLED_MESSAGE_BYTES);
+        double perRecord = (double) allocated / JceAeadAllocation.MEASURED;
+        log.info("Filling with {}: {} bytes per {} byte record", cipher, perRecord, FILLED_MESSAGE_BYTES);
+        return perRecord;
     }
 
     private long appendAndFill(ReplicationLog replicationLog, LogRecord record, LogFullWait wait, ByteBuffer message,
-                               ByteBuffer batch, long firstSeq, int events) {
+                               ByteBuffer batch, long firstSeq, int records) {
         long filled = 0;
-        for (long seq = firstSeq; seq < firstSeq + events; seq++) {
+        for (long seq = firstSeq; seq < firstSeq + records; seq++) {
             replicationLog.append(TestingLogFragments.entry(record, 0, seq, message), wait);
             if (seq % EVENTS_PER_BATCH == EVENTS_PER_BATCH - 1) {
                 filled += connection.fillBatch(batch);

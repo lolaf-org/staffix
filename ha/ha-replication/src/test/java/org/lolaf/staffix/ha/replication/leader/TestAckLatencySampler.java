@@ -29,7 +29,7 @@ class TestAckLatencySampler {
     private final AckLatencySampler sampler = new AckLatencySampler((duration, unit) -> recorded.add(unit.toNanos(duration)));
 
     @Test
-    void anAckBeforeTheSampledEventRecordsNothing() {
+    void anAckBeforeTheSampledRecordMeasuresNothing() {
         sampler.onSent(100, System.nanoTime());
 
         sampler.onAck(99);
@@ -38,7 +38,7 @@ class TestAckLatencySampler {
     }
 
     @Test
-    void theAckCoveringTheSampledEventRecordsTheTimeSinceItWasSentOnce() {
+    void theAckCoveringTheSampledRecordMeasuresTheTimeSinceItWasSentOnce() {
         sampler.onSent(100, System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(5));
 
         sampler.onAck(150);
@@ -60,7 +60,7 @@ class TestAckLatencySampler {
     }
 
     @Test
-    void theNextEventSentAfterAnAckIsSampled() {
+    void theNextRecordSentAfterAnAckIsSampled() {
         sampler.onSent(100, System.nanoTime());
         sampler.onAck(100);
         sampler.onSent(200, System.nanoTime());
