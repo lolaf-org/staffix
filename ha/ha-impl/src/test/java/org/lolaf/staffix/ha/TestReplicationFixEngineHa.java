@@ -662,6 +662,18 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         ha.stop(Deadline.of(Duration.ofSeconds(2)));
     }
 
+    @Test
+    void aNodeItsPeersGiveNoAddressIsRefused() {
+        ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
+                .nodeId("c").peer("a", addressA)
+                .leaderElection(FakeLeaderElection.Settings.builder().election(new FakeLeaderElection()).build())
+                .build());
+
+        assertThatThrownBy(() -> ha.bind(new RecordingEngine()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Replication high availability peers [a] have no address for this node, c");
+    }
+
     private ReplicationFixEngineHa naming(String settingsStore, RecordingEngine engine) {
         ReplicationFixEngineHa ha = new ReplicationFixEngineHa(ReplicationHaSettings.builder()
                 .nodeId("a").peer("a", addressA).replicatedSettingsStore(settingsStore)

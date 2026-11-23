@@ -111,9 +111,9 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         try {
             await().alias("the stream's announcement").until(() -> batchesSent.get() == 1);
-            for (int seq = 1; seq <= 10; seq++) {
+            for (int appended = 1; appended <= 10; appended++) {
                 main.append("");
-                int sent = seq + 1;
+                int sent = appended + 1;
                 await().until(() -> batchesSent.get() == sent);
                 senderClock.advance(Duration.ofMillis(60));
                 awaitSenderTurn();
@@ -162,7 +162,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         JournalStream stream = stream("main");
         stream.append("");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
-        for (int seq = 2; seq < 200; seq++) {
+        for (int appended = 2; appended < 200; appended++) {
             stream.append("");
         }
 
@@ -181,9 +181,9 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         try {
             await().alias("the stream's announcement").until(() -> batchesSent.get() == 1);
-            for (int seq = 1; seq <= 3; seq++) {
+            for (int appended = 1; appended <= 3; appended++) {
                 main.append("");
-                int sent = seq + 1;
+                int sent = appended + 1;
                 await().until(() -> batchesSent.get() == sent);
             }
 
@@ -364,7 +364,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         journal = Journal.ofCapacity(1024);
         connection = connection();
         JournalStream stream = stream("main");
-        for (int seq = 1; seq < 200; seq++) {
+        for (int appended = 1; appended < 200; appended++) {
             stream.append("");
         }
 
@@ -451,7 +451,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         JournalStream stream = stream("main");
         stream.append("");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
-        for (int seq = 2; seq < 200; seq++) {
+        for (int appended = 2; appended < 200; appended++) {
             stream.append("");
         }
         assertThat(connection.getState()).as("the write only marks it").isEqualTo(FollowerConnection.State.DROPPED_AS_TOO_SLOW);
@@ -475,7 +475,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         CountDownLatch written = new CountDownLatch(1);
         Thread writer = new Thread(() -> {
-            for (int seq = 1; seq < 200; seq++) {
+            for (int appended = 1; appended < 200; appended++) {
                 stream.append("");
             }
             written.countDown();
@@ -527,7 +527,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.disconnected();
 
-        for (int seq = 1; seq < 200; seq++) {
+        for (int appended = 1; appended < 200; appended++) {
             stream.append("");
         }
 
@@ -549,7 +549,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection.onClose(EPOCH, CloseReason.SHUTDOWN, "the follower stops");
 
         assertThat(CompletableFuture.runAsync(() -> {
-            for (int seq = 1; seq < 200; seq++) {
+            for (int appended = 1; appended < 200; appended++) {
                 stream.append("");
             }
         })).succeedsWithin(Duration.ofSeconds(5));
@@ -563,7 +563,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         fill();
         sent.frames.clear();
-        for (int seq = 2; seq <= 4; seq++) {
+        for (int appended = 2; appended <= 4; appended++) {
             stream.append("");
         }
 

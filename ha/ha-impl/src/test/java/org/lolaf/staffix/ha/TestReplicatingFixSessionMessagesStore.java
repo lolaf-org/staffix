@@ -237,6 +237,30 @@ class TestReplicatingFixSessionMessagesStore {
         assertThat(nextEvent()).isEqualTo("none");
     }
 
+    /**
+     * The sends ahead wrap around their first capacity before they outgrow it, so growing keeps them oldest first.
+     */
+    @Test
+    void moreSendsAheadThanTheFirstCapacityAreEachLoggedOnce() {
+        ReplicatingStore store = syncStore();
+        for (long seq = 1; seq <= 10; seq++) {
+            store.replicateSent(messageType(true), seq, message());
+            store.storeMessageSent(seq, message());
+        }
+
+        for (long seq = 11; seq <= 50; seq++) {
+            store.replicateSent(messageType(true), seq, message());
+        }
+        for (long seq = 11; seq <= 50; seq++) {
+            store.storeMessageSent(seq, message());
+        }
+
+        for (long seq = 1; seq <= 50; seq++) {
+            assertThat(nextEvent()).startsWith("0 0 " + seq + " ");
+        }
+        assertThat(nextEvent()).isEqualTo("none");
+    }
+
     @Test
     void aWriteNotReplicatedAheadIsLoggedAsAlways() {
         ReplicatingStore store = syncStore();

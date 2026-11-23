@@ -66,7 +66,7 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     private static final String QUOTE_TEXT = "a quote-text entry, plaintext";
     private static final String ORDER_TEXT = "an order-text entry, encrypted";
     private static final int FILLED_MESSAGE_BYTES = 200;
-    private static final int EVENTS_PER_BATCH = 10;
+    private static final int RECORDS_PER_BATCH = 10;
 
     private final TestLogger connectionLog;
 
@@ -421,11 +421,11 @@ class TestFollowerConnectionEncryption extends FollowerConnectionHarness {
     }
 
     private long appendAndFill(ReplicationLog replicationLog, LogRecord record, LogFullWait wait, ByteBuffer message,
-                               ByteBuffer batch, long firstSeq, int records) {
+                               ByteBuffer batch, long firstPosition, int records) {
         long filled = 0;
-        for (long seq = firstSeq; seq < firstSeq + records; seq++) {
-            replicationLog.append(TestingLogFragments.entry(record, 0, seq, message), wait);
-            if (seq % EVENTS_PER_BATCH == EVENTS_PER_BATCH - 1) {
+        for (long position = firstPosition; position < firstPosition + records; position++) {
+            replicationLog.append(TestingLogFragments.entry(record, 0, position, message), wait);
+            if (position % RECORDS_PER_BATCH == RECORDS_PER_BATCH - 1) {
                 filled += connection.getSender().fillBatch(batch);
             }
         }

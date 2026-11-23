@@ -30,6 +30,7 @@ import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -66,19 +67,22 @@ class TestReplicationNode {
         this.addressA = new InetSocketAddress("localhost", TestingPorts.findFree());
         this.addressB = new InetSocketAddress("localhost", TestingPorts.findFree());
         this.recordersAskedFor = new CopyOnWriteArrayList<>();
-        this.a = node("a", addressA, journalA, new JournalReplica());
-        this.b = node("b", addressB, journalB, replicaB);
+        this.a = node("a", addressA, journalA, new JournalReplica(), ReplicationEncryptionSettings.builder().build());
+        this.b = node("b", addressB, journalB, replicaB, ReplicationEncryptionSettings.builder().build());
     }
 
-    private ReplicationNode node(String nodeId, InetSocketAddress bindAddress, Journal journal, JournalReplica replica) {
+    private ReplicationNode node(String nodeId, InetSocketAddress bindAddress, Journal journal, JournalReplica replica,
+                                 ReplicationEncryptionSettings encryption) {
         ReplicationNode node = ReplicationNode.builder()
                 .nodeId(nodeId)
                 .bindAddress(bindAddress)
                 .streamsToReplicate(journal)
                 .replicaSinks(replica)
+                .encryption(encryption)
                 .logCapacity(1 << 16)
                 .heartbeatInterval(Duration.ofMillis(100))
                 .reconnectInterval(Duration.ofMillis(50))
+                .followerCheckInterval(Duration.ofMillis(50))
                 .metrics(new ReplicationMetrics() {
                     @Override
                     public LatencyRecorder followerAckLatency(String followerId, int lane) {
@@ -187,6 +191,71 @@ class TestReplicationNode {
             assertThat(stream.isReplicated()).isFalse();
             assertThat(stream.getNotReplicatedAnswer()).isEqualTo(StreamAnswer.SHARED_STORAGE);
         });
+    }
+
+    @Test
+    void aStreamUnknownToTheFollowerIsReplicatedOnceItIsConfigured() {
+        JournalStream late = journalA.add("late", StreamReplicationMode.SYNC_APPLIED);
+        late.append("first");
+        a.lead(1, stop());
+        b.follow(addressA, () -> 1, stop());
+        await().until(() -> a.followers().getStreamRefusals(0).equals(Map.of("b", StreamAnswer.UNKNOWN_STREAM)));
+
+        JournalCopy lateCopy = replicaB.configure("late", StreamReplicationMode.SYNC_APPLIED);
+
+        await().until(() -> a.followers().isStreamInSync(0));
+        late.append("second");
+        assertThat(late.awaitAck(ACK_TIMEOUT)).isEqualTo(StreamWriter.Ack.ACKED);
+        assertThat(lateCopy.getWrites()).containsExactly("begin state=2", "snapshot 1 first", "end state=2", "2 second");
+    }
+
+    @Test
+    void aStreamOfAnotherModeIsReplicatedOnceTheFollowerAgrees() {
+        JournalStream main = journalA.add(MAIN, StreamReplicationMode.SYNC_RECEIVED);
+        a.lead(1, stop());
+        b.follow(addressA, () -> 1, stop());
+        await().until(() -> a.followers().getStreamRefusals(0).equals(Map.of("b", StreamAnswer.MODE_MISMATCH)));
+
+        replicaB.configure(MAIN, StreamReplicationMode.SYNC_RECEIVED);
+
+        await().until(() -> a.followers().isStreamInSync(0));
+        main.append("first");
+        assertThat(main.awaitAck(ACK_TIMEOUT)).isEqualTo(StreamWriter.Ack.ACKED);
+        assertThat(b.leader().getStream(MAIN)).isNotNull().satisfies(stream -> assertThat(stream.isReplicated()).isTrue());
+    }
+
+    @Test
+    void encryptingNodesReplicateEncryptedAndSayWithWhichCipher() {
+        ReplicationEncryptionSettings encryption = ReplicationEncryptionSettings.builder()
+                .mode(EncryptionMode.REQUIRED)
+                .secret("a-secret-of-the-pair".getBytes(StandardCharsets.UTF_8))
+                .build();
+        Journal journalC = new Journal();
+        JournalReplica replicaD = new JournalReplica();
+        JournalCopy copyD = replicaD.configure(MAIN, StreamReplicationMode.SYNC_APPLIED);
+        InetSocketAddress addressC = new InetSocketAddress("localhost", TestingPorts.findFree());
+        ReplicationNode c = node("c", addressC, journalC, new JournalReplica(), encryption);
+        ReplicationNode d = node("d", new InetSocketAddress("localhost", TestingPorts.findFree()), new Journal(),
+                replicaD, encryption);
+        try {
+            JournalStream main = journalC.add(MAIN, StreamReplicationMode.SYNC_APPLIED);
+            c.lead(1, stop());
+            d.follow(addressC, () -> 1, stop());
+            await().until(() -> d.leader().isInSync() && c.followers().isAnyInSync());
+
+            main.append("first");
+
+            assertThat(main.awaitAck(ACK_TIMEOUT)).isEqualTo(StreamWriter.Ack.ACKED);
+            assertThat(copyD.getWrites()).endsWith("1 first");
+            assertThat(d.leader().isEncrypted()).isTrue();
+            assertThat(d.leader().getStatus()).isNotNull()
+                    .satisfies(status -> assertThat(status.getCipher()).isEqualTo(c.describeCipher()));
+            assertThat(c.followers().getLaneStatuses()).singleElement()
+                    .satisfies(lane -> assertThat(lane.getCipher()).isEqualTo(c.describeCipher()));
+        } finally {
+            c.close(stop());
+            d.close(stop());
+        }
     }
 
     @Test
