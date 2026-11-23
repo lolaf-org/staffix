@@ -23,10 +23,10 @@ import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 /**
- * How a follower holds the streams its leader announces, from its own configuration. Called on a lane's network
+ * Where a follower applies the streams its leader announces, from its own configuration. Called on a lane's network
  * thread, a stream being announced rarely.
  */
-public interface ReplicaBinder {
+public interface ReplicaSinks {
 
     /**
      * Sent in HELLO; a leader replicating another application is refused.
@@ -34,13 +34,13 @@ public interface ReplicaBinder {
     int getApplicationId();
 
     /**
-     * Opens what the stream is applied into, or refuses it. Never called for a stream the leader does not replicate.
+     * Opens the sink the stream is applied into, or refuses it. Never called for a stream the leader does not replicate.
      *
      * @param leaderStorageIdentity where the leader stores the stream, null when it does not know: a stream stored in
      *                              the same place here must be refused, as replicating into it would rewrite the
      *                              leader's data
      */
-    Binding bind(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity);
+    Binding open(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity);
 
     /**
      * The mode this node's configuration gives the stream, null when it has none: a stream refused as unknown or for

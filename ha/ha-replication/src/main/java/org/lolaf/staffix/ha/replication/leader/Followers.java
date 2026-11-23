@@ -17,6 +17,7 @@ package org.lolaf.staffix.ha.replication.leader;
 
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.idling.IdleStrategy;
+import org.lolaf.staffix.ha.replication.StreamWriter.Ack;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
 import java.util.Arrays;
@@ -28,12 +29,6 @@ import java.util.function.Predicate;
  * The followers connected to the leader, and what a {@code SYNC} send waits on: their acks.
  */
 public final class Followers {
-
-    public enum Ack {
-        ACKED,
-        TIMED_OUT,
-        NO_FOLLOWER_IN_SYNC
-    }
 
     private static final FollowerConnection[] NONE = new FollowerConnection[0];
     private static final IdleStrategy[] NO_WAITERS = new IdleStrategy[0];

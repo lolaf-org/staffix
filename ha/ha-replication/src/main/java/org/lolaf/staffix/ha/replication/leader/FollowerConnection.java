@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.replication.leader;
 
+import org.lolaf.staffix.ha.replication.FollowerLaneStatus;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Value;

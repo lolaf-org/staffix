@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.replication.follower;
 
+import org.lolaf.staffix.ha.replication.LeaderStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.betty.api.Client;

@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
+import org.lolaf.staffix.ha.replication.ReplicaStream;
 import org.lolaf.staffix.ha.replication.spi.ReplicaSink;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
@@ -31,7 +32,7 @@ import java.nio.ByteBuffer;
  * One of the leader's streams as this follower holds it: its sink, none when it is not replicated here, and how far a
  * snapshot and the log brought it.
  */
-public final class BoundStream {
+public final class BoundStream implements ReplicaStream {
 
     @Getter
     private final String streamName;

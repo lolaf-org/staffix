@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.replication.leader;
 
+import org.lolaf.staffix.ha.replication.DroppedFollower;
 import lombok.Value;
 import org.jspecify.annotations.Nullable;
 

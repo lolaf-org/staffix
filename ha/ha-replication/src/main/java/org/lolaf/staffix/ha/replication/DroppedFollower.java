@@ -13,34 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.follower;
+package org.lolaf.staffix.ha.replication;
 
 import lombok.Builder;
 import lombok.Value;
 import org.jspecify.annotations.Nullable;
 
+import java.time.Instant;
+
 /**
- * The leader as its follower sees it, over all lanes.
+ * A follower lane dropped for reading the log so slowly that a write waited the log full timeout for it.
+ */
+/**
+ * A follower's lane dropped as too slow and not back in sync since.
  */
 @Value
 @Builder
-public class LeaderStatus {
+public class DroppedFollower {
 
+    String nodeId;
+    int lane;
+    Instant droppedAt;
     /**
-     * Null until the leader said.
+     * Until when it is refused, so its resync does not add to the load that made it too slow; null once it may
+     * connect.
      */
-    @Nullable String leaderId;
-    String address;
-    /**
-     * Every lane is streaming.
-     */
-    boolean connected;
-    /**
-     * Holds every replicated stream in full, as of the last record applied.
-     */
-    boolean inSync;
-    /**
-     * What encrypts and authenticates every lane; null while a lane is not connected or replicates in clear.
-     */
-    @Nullable String cipher;
+    @Nullable Instant heldOffUntil;
 }

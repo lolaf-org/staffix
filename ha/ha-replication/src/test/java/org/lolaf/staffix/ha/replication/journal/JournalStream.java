@@ -18,11 +18,7 @@ package org.lolaf.staffix.ha.replication.journal;
 import lombok.Getter;
 import lombok.Setter;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.ringos.idling.BackoffIdleStrategy;
-import org.lolaf.staffix.ha.replication.leader.Followers;
-import org.lolaf.staffix.ha.replication.log.LogFullWait;
-import org.lolaf.staffix.ha.replication.log.LogRecord;
-import org.lolaf.staffix.ha.replication.log.ReplicationLog;
+import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.spi.LeaderStream;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
@@ -59,11 +55,8 @@ public final class JournalStream implements LeaderStream {
     @Getter
     @Setter
     private volatile @Nullable String storageIdentity;
-    private final ReplicationLog log;
-    private final Followers followers;
+    private final StreamWriter writer;
     private final NavigableMap<Long, Entry> entries;
-    private final LogRecord logRecord;
-    private final LogFullWait logFullWait;
     private volatile long nextPosition;
     private long lastAppendedOffset;
     /**
@@ -83,16 +76,13 @@ public final class JournalStream implements LeaderStream {
     private final List<long[]> snapshotRanges;
 
     JournalStream(int key, String streamName, StreamReplicationMode streamReplicationMode,
-                  @Nullable String storageIdentity, ReplicationLog log, Followers followers, Duration logFullTimeout) {
+                  @Nullable String storageIdentity, StreamWriter writer) {
         this.key = key;
         this.streamName = streamName;
         this.streamReplicationMode = streamReplicationMode;
         this.storageIdentity = storageIdentity;
-        this.log = log;
-        this.followers = followers;
+        this.writer = writer;
         this.entries = new ConcurrentSkipListMap<>();
-        this.logRecord = new LogRecord();
-        this.logFullWait = new LogFullWait(logFullTimeout);
         this.nextPosition = 1;
         this.lastAppendedOffset = -1;
         this.readable = true;
@@ -170,18 +160,15 @@ public final class JournalStream implements LeaderStream {
     private long appendToLog(byte contentType, RecordFlag flag, long position, @Nullable ByteBuffer payload) {
         int payloadIndex = payload == null ? 0 : payload.position();
         int payloadLength = payload == null ? 0 : payload.remaining();
-        lastAppendedOffset = log.append(logRecord.set(key, contentType, flag, position, payload, payloadIndex,
-                payloadLength), logFullWait);
-        followers.wakeSenders();
+        lastAppendedOffset = writer.append(contentType, flag, position, payload, payloadIndex, payloadLength);
         return lastAppendedOffset;
     }
 
     /**
      * As a sync mode asks, after the last append.
      */
-    public Followers.Ack awaitAck(Duration timeout) {
-        return followers.awaitAck(key, lastAppendedOffset, streamReplicationMode, timeout.toNanos(),
-                new BackoffIdleStrategy());
+    public StreamWriter.Ack awaitAck(Duration timeout) {
+        return writer.awaitAck(lastAppendedOffset, streamReplicationMode, timeout.toNanos());
     }
 
     public long getNextPosition() {

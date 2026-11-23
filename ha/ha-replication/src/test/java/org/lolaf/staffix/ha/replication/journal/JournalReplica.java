@@ -16,7 +16,7 @@
 package org.lolaf.staffix.ha.replication.journal;
 
 import org.jspecify.annotations.Nullable;
-import org.lolaf.staffix.ha.replication.spi.ReplicaBinder;
+import org.lolaf.staffix.ha.replication.spi.ReplicaSinks;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * The follower side of {@link Journal}: the journals this node is configured with, each bound into its own
  * {@link JournalCopy}.
  */
-public final class JournalReplica implements ReplicaBinder {
+public final class JournalReplica implements ReplicaSinks {
 
     private final Map<String, JournalCopy> copies;
 
@@ -65,7 +65,7 @@ public final class JournalReplica implements ReplicaBinder {
     }
 
     @Override
-    public Binding bind(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
+    public Binding open(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
         JournalCopy copy = copies.get(streamName);
         if (copy == null) {
             return Binding.refused(StreamAnswer.UNKNOWN_STREAM);

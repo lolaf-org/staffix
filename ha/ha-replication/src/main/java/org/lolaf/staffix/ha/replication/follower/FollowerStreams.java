@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
-import org.lolaf.staffix.ha.replication.spi.ReplicaBinder;
+import org.lolaf.staffix.ha.replication.spi.ReplicaSinks;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
@@ -36,7 +36,7 @@ import java.util.function.ToLongFunction;
 
 /**
  * What the follower holds of the leader's streams, kept across connections so a reconnection can resume: each
- * stream's sink, bound by the {@link ReplicaBinder}, whether it is in sync, and each lane's {@link LanePositions
+ * stream's sink, opened by the {@link ReplicaSinks}, whether it is in sync, and each lane's {@link LanePositions
  * position}.
  *
  * <p>A stream is in sync once a snapshot filled it, and until a lane fails to resume. A snapshot starts the copy over
@@ -46,7 +46,7 @@ import java.util.function.ToLongFunction;
 @Slf4j
 public final class FollowerStreams {
 
-    private final ReplicaBinder binder;
+    private final ReplicaSinks replicaSinks;
     private final LanePositions positions;
     private volatile BoundStream[] streamsByKey;
     /**
@@ -56,15 +56,15 @@ public final class FollowerStreams {
     @Setter
     private LatencyRecorder receivedWriteLatency;
 
-    public FollowerStreams(ReplicaBinder binder) {
+    public FollowerStreams(ReplicaSinks replicaSinks) {
         this.positions = new LanePositions();
         this.streamsByKey = new BoundStream[16];
         this.receivedWriteLatency = LatencyRecorder.NONE;
-        this.binder = binder;
+        this.replicaSinks = replicaSinks;
     }
 
     public int getApplicationId() {
-        return binder.getApplicationId();
+        return replicaSinks.getApplicationId();
     }
 
     public int getLanes() {
@@ -188,7 +188,7 @@ public final class FollowerStreams {
 
     /**
      * Binds the leader's key to the stream of that name, unless the leader does not replicate it. A stream refused is
-     * looked at again on the next connection, the binder's answer having changed perhaps. One the leader no longer
+     * looked at again on the next connection, the sinks' answer having changed perhaps. One the leader no longer
      * replicates, or with another mode here, has its sink stopped, and is caught up again by snapshot once both agree
      * it is replicated.
      */
@@ -196,7 +196,7 @@ public final class FollowerStreams {
                                    @Nullable String leaderStorageIdentity) {
         BoundStream current = key < streamsByKey.length ? streamsByKey[key] : null;
         if (current != null && current.getStreamName().equals(streamName) && current.isReplicated()
-                && leaderMode != StreamReplicationMode.NONE && leaderMode == binder.modeHere(streamName)) {
+                && leaderMode != StreamReplicationMode.NONE && leaderMode == replicaSinks.modeHere(streamName)) {
             // switched between the SYNC modes: the same copy, only its acknowledgement changes
             current.setLeaderMode(leaderMode);
             return current.answer();
@@ -212,7 +212,7 @@ public final class FollowerStreams {
     }
 
     private BoundStream open(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
-        ReplicaBinder.Binding binding = binder.bind(streamName, leaderMode, leaderStorageIdentity);
+        ReplicaSinks.Binding binding = replicaSinks.open(streamName, leaderMode, leaderStorageIdentity);
         return binding.getSink() == null
                 ? BoundStream.notReplicated(streamName, leaderMode, binding.getAnswer(), leaderStorageIdentity)
                 : BoundStream.replicated(streamName, leaderMode, binding.getSink());
@@ -260,7 +260,7 @@ public final class FollowerStreams {
     }
 
     private boolean nowAgrees(BoundStream refused) {
-        StreamReplicationMode here = binder.modeHere(refused.getStreamName());
+        StreamReplicationMode here = replicaSinks.modeHere(refused.getStreamName());
         return here != null && (refused.getNotReplicatedAnswer() == StreamAnswer.UNKNOWN_STREAM
                 || here == refused.getLeaderMode());
     }

@@ -24,7 +24,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.replication.leader.Followers;
+import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.spi.LeaderStream;
 import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
@@ -103,16 +103,16 @@ public final class ReplicatedSession implements LeaderStream {
      * From the session's thread only, after each {@code SYNC} send. Logs the change from acknowledged to not and back,
      * never each send.
      */
-    void recordAck(Followers.Ack ack) {
+    void recordAck(StreamWriter.Ack ack) {
         boolean wasUnacknowledged = lastSendUnacknowledged;
-        if (ack == Followers.Ack.ACKED) {
+        if (ack == StreamWriter.Ack.ACKED) {
             if (wasUnacknowledged) {
                 lastSendUnacknowledged = false;
                 log.info("FIX session {} {} sends are acknowledged by the follower again", fixSessionType, fixSessionId);
             }
             return;
         }
-        if (ack == Followers.Ack.TIMED_OUT) {
+        if (ack == StreamWriter.Ack.TIMED_OUT) {
             lastTimedOutNanos = System.nanoTime();
             timedOutSends++;
         } else {

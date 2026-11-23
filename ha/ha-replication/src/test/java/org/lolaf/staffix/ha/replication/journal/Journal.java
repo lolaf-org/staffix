@@ -17,7 +17,11 @@ package org.lolaf.staffix.ha.replication.journal;
 
 import lombok.Getter;
 import org.jspecify.annotations.Nullable;
+import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.staffix.ha.replication.ReplicationNode;
+import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.leader.Followers;
+import org.lolaf.staffix.ha.replication.leader.StreamLogWriter;
 import org.lolaf.staffix.ha.replication.log.ReplicationLogs;
 import org.lolaf.staffix.ha.replication.spi.LeaderStreams;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
@@ -25,10 +29,12 @@ import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.IntFunction;
 
 /**
  * The application the library's tests replicate: append-only journals of text entries, each journal a stream, on the
- * leader. {@link JournalReplica} is its follower side.
+ * leader. {@link JournalReplica} is its follower side. It writes straight to the logs, for the tests of the leader's
+ * parts, or through the node {@link #writeThrough written through}.
  */
 public final class Journal implements LeaderStreams {
 
@@ -37,21 +43,48 @@ public final class Journal implements LeaderStreams {
      */
     public static final int APPLICATION_ID = 0x4a524e4c;
 
+    /**
+     * Null for a journal written through a node.
+     */
     @Getter
-    private final ReplicationLogs logs;
+    private final @Nullable ReplicationLogs logs;
+    /**
+     * Null for a journal written through a node.
+     */
     @Getter
-    private final Followers followers;
-    private final Duration logFullTimeout;
+    private final @Nullable Followers followers;
     private final List<JournalStream> streams;
+    private volatile IntFunction<StreamWriter> writers;
 
     /**
      * @param logFullTimeout how long an append waits for a follower a whole log behind before the log drops it
      */
     public Journal(ReplicationLogs logs, Duration logFullTimeout) {
+        Followers direct = new Followers();
         this.logs = logs;
-        this.logFullTimeout = logFullTimeout;
-        this.followers = new Followers();
+        this.followers = direct;
         this.streams = new CopyOnWriteArrayList<>();
+        this.writers = key -> new StreamLogWriter(key, logs.forStream(key), direct, logFullTimeout,
+                new BackoffIdleStrategy());
+    }
+
+    /**
+     * Written through the node {@link #writeThrough} names, before any stream is added.
+     */
+    public Journal() {
+        this.logs = null;
+        this.followers = null;
+        this.streams = new CopyOnWriteArrayList<>();
+        this.writers = key -> {
+            throw new IllegalStateException("No node to write through yet");
+        };
+    }
+
+    /**
+     * The node replicating this journal, built with it.
+     */
+    public void writeThrough(ReplicationNode node) {
+        writers = node::writer;
     }
 
     /**
@@ -63,7 +96,7 @@ public final class Journal implements LeaderStreams {
 
     public synchronized JournalStream add(String name, StreamReplicationMode mode, @Nullable String storageIdentity) {
         JournalStream stream = new JournalStream(streams.size(), name, mode, storageIdentity,
-                logs.forStream(streams.size()), followers, logFullTimeout);
+                writers.apply(streams.size()));
         streams.add(stream);
         return stream;
     }

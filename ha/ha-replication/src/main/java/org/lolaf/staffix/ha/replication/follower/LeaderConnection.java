@@ -429,7 +429,7 @@ public final class LeaderConnection implements FrameHandler {
     }
 
     /**
-     * At most once a check interval: the binder looks each stream up, and a
+     * At most once a check interval: the sinks look each stream up, and a
      * refusal is rare.
      */
     private void bindStreamsAgain() {

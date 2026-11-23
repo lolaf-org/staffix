@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.lolaf.staffix.ha.replication.leader;
+package org.lolaf.staffix.ha.replication;
 
 import lombok.Builder;
 import lombok.Value;
@@ -21,6 +21,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One follower's connection for one lane, as its leader sees it.
+ */
+/**
+ * One lane of a follower, as its leader sees it.
  */
 @Value
 @Builder

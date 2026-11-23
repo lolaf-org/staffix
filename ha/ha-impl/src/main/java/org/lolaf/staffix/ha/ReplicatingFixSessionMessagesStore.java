@@ -26,6 +26,7 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.leader.Followers;
 import org.lolaf.staffix.ha.replication.log.LogFullWait;
 import org.lolaf.staffix.ha.replication.log.ReplicationLog;
@@ -107,10 +108,10 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (lastAppendedOffset >= 0) {
             long startNanos = System.nanoTime();
             ReplicatedSession.Config config = session.getConfig();
-            Followers.Ack ack = followers.awaitAck(session.getKey(), lastAppendedOffset,
+            StreamWriter.Ack ack = followers.awaitAck(session.getKey(), lastAppendedOffset,
                     StreamReplicationMode.from(config.getReplicationMode().getCode()),
                     config.getReplicationAckTimeoutNanos(), ackIdle);
-            if (ack == Followers.Ack.ACKED) {
+            if (ack == StreamWriter.Ack.ACKED) {
                 long waitedNanos = System.nanoTime() - startNanos;
                 Timer engineTimer = config.getReplicationMode() == ReplicationMode.SYNC_RECEIVED ? syncReceivedAckLatency
                         : syncAppliedAckLatency;

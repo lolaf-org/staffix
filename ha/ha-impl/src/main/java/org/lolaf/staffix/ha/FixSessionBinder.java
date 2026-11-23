@@ -22,7 +22,7 @@ import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.replication.spi.ReplicaBinder;
+import org.lolaf.staffix.ha.replication.spi.ReplicaSinks;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 import org.lolaf.staffix.ha.replication.wire.WireFormatException;
@@ -36,7 +36,7 @@ import java.util.Optional;
  */
 @Slf4j
 @RequiredArgsConstructor
-public final class FixSessionBinder implements ReplicaBinder {
+public final class FixSessionBinder implements ReplicaSinks {
 
     private final EngineAccess engine;
     private final SessionSettingsReplica settingsReplica;
@@ -51,7 +51,7 @@ public final class FixSessionBinder implements ReplicaBinder {
      * or disagree, or its storage is the leader's own.
      */
     @Override
-    public Binding bind(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
+    public Binding open(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
         if (SessionSettingsStream.STREAM_NAME.equals(streamName)) {
             return Binding.replicated(settingsReplica);
         }

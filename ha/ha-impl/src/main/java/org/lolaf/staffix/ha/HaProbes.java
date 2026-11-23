@@ -27,9 +27,9 @@ import org.lolaf.staffix.api.ha.LeaderElection;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.follower.ReplicationClient;
-import org.lolaf.staffix.ha.replication.leader.DroppedFollower;
+import org.lolaf.staffix.ha.replication.DroppedFollower;
 import org.lolaf.staffix.ha.replication.leader.FollowerConnection;
-import org.lolaf.staffix.ha.replication.leader.FollowerLaneStatus;
+import org.lolaf.staffix.ha.replication.FollowerLaneStatus;
 import org.lolaf.staffix.ha.replication.leader.Followers;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 

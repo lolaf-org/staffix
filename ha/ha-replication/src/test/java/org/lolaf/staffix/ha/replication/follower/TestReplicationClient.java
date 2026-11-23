@@ -23,6 +23,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.betty.api.ss.WakeupSelectStrategy;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.TestingPorts;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
 import org.lolaf.staffix.ha.replication.journal.Journal;
@@ -299,7 +300,7 @@ class TestReplicationClient {
 
         leaderMain.append("second");
 
-        assertThat(leaderMain.awaitAck(ACK_TIMEOUT)).isEqualTo(Followers.Ack.ACKED);
+        assertThat(leaderMain.awaitAck(ACK_TIMEOUT)).isEqualTo(StreamWriter.Ack.ACKED);
         assertThat(main.getWrites()).endsWith("2 second");
     }
 
@@ -312,7 +313,7 @@ class TestReplicationClient {
 
         leaderMain.append("second");
 
-        assertThat(leaderMain.awaitAck(ACK_TIMEOUT)).as("sent without waiting").isEqualTo(Followers.Ack.NO_FOLLOWER_IN_SYNC);
+        assertThat(leaderMain.awaitAck(ACK_TIMEOUT)).as("sent without waiting").isEqualTo(StreamWriter.Ack.NO_FOLLOWER_IN_SYNC);
         assertThat(main.getWrites()).isEmpty();
         assertThat(leader.getFollowers().connections().get(0).isStreamInSync(0)).isFalse();
     }

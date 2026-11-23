@@ -25,11 +25,11 @@ import org.lolaf.staffix.api.ha.LeaderElection.Role;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
-import org.lolaf.staffix.ha.replication.follower.LeaderStatus;
+import org.lolaf.staffix.ha.replication.LeaderStatus;
 import org.lolaf.staffix.ha.replication.follower.ReplicationClient;
-import org.lolaf.staffix.ha.replication.leader.DroppedFollower;
+import org.lolaf.staffix.ha.replication.DroppedFollower;
 import org.lolaf.staffix.ha.replication.leader.FollowerConnection;
-import org.lolaf.staffix.ha.replication.leader.FollowerLaneStatus;
+import org.lolaf.staffix.ha.replication.FollowerLaneStatus;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 
 import java.util.ArrayList;
