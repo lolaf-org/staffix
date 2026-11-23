@@ -220,11 +220,18 @@ final class SnapshotSender {
             }
             writer.flush();
         } catch (RuntimeException e) {
-            log.warn("Snapshot of stream {} failed", stream.getStreamName(), e);
             int failedKey = streamKey;
+            boolean sourceStopped = !source.isReadable();
             writer.flush();
             cancel();
             syncs.compareAndSet(failedKey, StreamSyncState.SNAPSHOT_SENT, StreamSyncState.SNAPSHOT_PENDING);
+            if (sourceStopped) {
+                log.info("Snapshot of stream {} to follower {} stopped with its source, retried once it is readable: {}",
+                        stream.getStreamName(), connection.getFollowerId(), e.toString());
+                retryAtNanos = System.nanoTime() + SOURCE_RETRY_NANOS;
+                return;
+            }
+            log.warn("Snapshot of stream {} failed", stream.getStreamName(), e);
             connection.close(CloseReason.SNAPSHOT_FAILED, "stream " + stream.getStreamName() + ": " + e.getMessage());
         }
     }

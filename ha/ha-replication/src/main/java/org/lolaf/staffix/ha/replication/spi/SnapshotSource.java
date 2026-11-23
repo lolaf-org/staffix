@@ -26,7 +26,8 @@ import java.nio.ByteBuffer;
 public interface SnapshotSource {
 
     /**
-     * False while the stream cannot be read yet, as before its storage started: the snapshot is retried shortly.
+     * False while the stream cannot be read, as before its storage started or once it stopped: the snapshot is retried
+     * shortly, as is one whose read failed once its source stopped.
      */
     boolean isReadable();
 

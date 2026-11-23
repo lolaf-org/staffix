@@ -33,7 +33,8 @@ public interface ReplicaSink {
     void apply(byte contentType, long position, ByteBuffer buffer, int payloadIndex, int payloadLength);
 
     /**
-     * Discards the copy: the snapshot's records and its end follow.
+     * Discards the copy: the snapshot's records and its end follow, unless the leader gives the snapshot up, its
+     * source having stopped; live records then follow until another snapshot starts the copy over.
      */
     void snapshotBegin(ByteBuffer buffer, int stateIndex, int stateLength);
 

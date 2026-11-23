@@ -15,6 +15,9 @@
  */
 package org.lolaf.staffix.ha.replication.leader;
 
+import com.github.valfirst.slf4jtest.LoggingEvent;
+import com.github.valfirst.slf4jtest.TestLogger;
+import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.staffix.ha.replication.EncryptionMode;
@@ -26,11 +29,13 @@ import org.lolaf.staffix.ha.replication.spi.TestingReplicationClock;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 import org.lolaf.staffix.ha.replication.wire.WireFormat;
+import org.slf4j.event.Level;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
@@ -299,6 +304,44 @@ class TestSnapshotSender extends FollowerConnectionHarness {
             snapshot();
             assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
         });
+        assertThat(connection.getSyncState(0)).isEqualTo(StreamSyncState.SNAPSHOT_SENT);
+    }
+
+    @Test
+    void aSnapshotWhoseSourceStopsIsRetriedOnceItIsReadableAgainOnTheSameConnection() {
+        JournalStream main = stream("main");
+        main.hold(4, 10);
+        AtomicInteger reads = new AtomicInteger();
+        main.setSnapshotReads(position -> {
+            if (reads.incrementAndGet() == 2) {
+                main.setReadable(false);
+                throw new IllegalStateException("store stopped");
+            }
+        });
+        hello();
+        sent.frames.clear();
+        connection.onStreamAnswer(EPOCH, 0, StreamAnswer.SNAPSHOT_NEEDED);
+        TestLogger snapshotLog = TestLoggerFactory.getTestLogger(SnapshotSender.class);
+        int loggedBefore = snapshotLog.getLoggingEvents().size();
+
+        snapshot();
+
+        assertThat(connection.getState()).isEqualTo(FollowerConnection.State.STREAMING);
+        assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
+        assertThat(sent.frames).noneMatch(frame -> frame.startsWith("CLOSE") || frame.startsWith("SNAPSHOT_END"));
+        assertThat(connection.getSyncState(0)).isEqualTo(StreamSyncState.SNAPSHOT_PENDING);
+        assertThat(snapshotLog.getLoggingEvents().subList(loggedBefore, snapshotLog.getLoggingEvents().size()))
+                .extracting(LoggingEvent::getLevel).containsExactly(Level.INFO);
+
+        sent.frames.clear();
+        main.setSnapshotReads(position -> {
+        });
+        main.setReadable(true);
+        await().untilAsserted(() -> {
+            snapshot();
+            assertThat(sent.frames).anyMatch(frame -> frame.startsWith("SNAPSHOT_END epoch=7 key=0 "));
+        });
+        assertThat(sent.frames).first().asString().startsWith("SNAPSHOT_BEGIN epoch=7 key=0 ");
         assertThat(connection.getSyncState(0)).isEqualTo(StreamSyncState.SNAPSHOT_SENT);
     }
 

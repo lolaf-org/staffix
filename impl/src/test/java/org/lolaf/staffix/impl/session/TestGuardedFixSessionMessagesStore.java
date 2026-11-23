@@ -330,7 +330,9 @@ class TestGuardedFixSessionMessagesStore {
 
     @Test
     void aStopWaitsForTheFindInProgressBeforeStoppingTheStoreEvenPastItsDeadline() throws Exception {
+        when(store.isStarted()).thenReturn(true);
         GuardedFixSessionMessagesStore guarded = guarded(CHECK_INTERVAL);
+        assertThat(guarded.isStarted()).isTrue();
         CountDownLatch finding = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         doAnswer(invocation -> {
@@ -348,6 +350,7 @@ class TestGuardedFixSessionMessagesStore {
         verify(store, never()).stop(any());
         assertThatThrownBy(() -> guarded.find(1, 2, (seqNum, message) -> true))
                 .as("no new find once stopping").hasMessageContaining("is not started");
+        assertThat(guarded.isStarted()).as("stopping, the store underneath not yet").isFalse();
 
         release.countDown();
         stopper.join();
