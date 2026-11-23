@@ -240,9 +240,9 @@ class TestReplicationAllocation {
 
     private static void logStall(ReplicationMode mode, FixEngine leaderEngine, ReplicationFixEngineHa follower,
                                  FixSessionMessagesStore replica) {
-        log.error("STALL {}: replica outgoing seqnum {}, follower applied epoch {} offset {}, complete {}",
-                mode, replica.getOutgoingSeqNum(), follower.getReplicaSessions().getStreams().getLastAppliedEpoch(0),
-                follower.getReplicaSessions().getStreams().getLastAppliedOffset(0), follower.getReplicaSessions().isInSync());
+        log.error("STALL {}: replica outgoing seqnum {}, follower's leader {}, complete {}", mode,
+                replica.getOutgoingSeqNum(), follower.getNode().leader().getStatus(),
+                follower.getNode().leader().isCopyInSync());
         log.error("STALL leader status: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getStatus).orElse(null));
         log.error("STALL leader sessions: {}", ((AdminApi) leaderEngine).getHa().map(HaAdmin::getSessionStatuses).orElse(null));
         log.error("STALL follower status: {}", follower.getStatus());

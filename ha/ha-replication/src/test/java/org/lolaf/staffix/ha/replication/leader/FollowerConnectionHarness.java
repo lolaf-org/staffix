@@ -15,6 +15,7 @@
  */
 package org.lolaf.staffix.ha.replication.leader;
 
+import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.encryption.ConnectionEncryptionKeys;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
@@ -91,7 +92,7 @@ abstract class FollowerConnectionHarness {
         this.sent = new RecordingHandler();
         this.sentPlaintext = new CopyOnWriteArrayList<>();
         this.sentBytes = new CopyOnWriteArrayList<>();
-        this.stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()));
+        this.stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE);
         this.unwrittenBatches = new ConcurrentLinkedQueue<>();
         this.batchesSent = new AtomicInteger();
         this.senderClock = new TestingReplicationClock();

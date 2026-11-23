@@ -22,9 +22,6 @@ import org.jspecify.annotations.Nullable;
 /**
  * The leader as its follower sees it, over all lanes.
  */
-/**
- * The leader, as its follower sees it.
- */
 @Value
 @Builder
 public class LeaderStatus {

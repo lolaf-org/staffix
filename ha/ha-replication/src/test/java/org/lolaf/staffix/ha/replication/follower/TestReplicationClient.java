@@ -23,6 +23,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.betty.api.ss.WakeupSelectStrategy;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
+import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.TestingPorts;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
@@ -90,14 +92,14 @@ class TestReplicationClient {
         this.server = server(address, leader);
         this.replica = new JournalReplica();
         this.main = replica.configure(MAIN, StreamReplicationMode.SYNC_APPLIED);
-        this.followerStreams = new FollowerStreams(replica);
-        this.twoLanesStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()));
+        this.followerStreams = new FollowerStreams(replica, LatencyRecorder.NONE);
+        this.twoLanesStats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE);
         leaderMain.append("first");
         server.start();
     }
 
     private static ReplicationServer server(InetSocketAddress address, Journal leader) {
-        return server(address, leader, new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())));
+        return server(address, leader, new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE));
     }
 
     private static ReplicationServer server(InetSocketAddress address, Journal leader, ReplicationStats stats) {

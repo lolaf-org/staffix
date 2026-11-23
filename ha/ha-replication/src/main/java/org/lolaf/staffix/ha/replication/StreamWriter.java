@@ -60,7 +60,7 @@ public interface StreamWriter extends AutoCloseable {
     Ack awaitAck(long offset, StreamReplicationMode mode, long timeoutNanos);
 
     /**
-     * Stops waking this writer's ack waits.
+     * Stops waking this writer's ack waits, which the acks wake from the first wait on; a later wait is woken again.
      */
     @Override
     void close();

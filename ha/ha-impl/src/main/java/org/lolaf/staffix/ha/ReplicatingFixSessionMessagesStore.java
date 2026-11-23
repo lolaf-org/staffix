@@ -18,7 +18,6 @@ package org.lolaf.staffix.ha;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
-import org.lolaf.ringos.idling.IdleStrategy;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.monitoring.FixSessionsMonitoringContext;
 import org.lolaf.staffix.api.monitoring.Timer;
@@ -27,10 +26,6 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
 import org.lolaf.staffix.ha.replication.StreamWriter;
-import org.lolaf.staffix.ha.replication.leader.Followers;
-import org.lolaf.staffix.ha.replication.log.LogFullWait;
-import org.lolaf.staffix.ha.replication.log.ReplicationLog;
-import org.lolaf.staffix.ha.replication.log.LogRecord;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.StreamReplicationMode;
 
@@ -45,19 +40,15 @@ import java.util.function.Consumer;
  *
  * <p>Relies on the engine's guarantees: the store it wraps never throws a storage failure, and the writes come from
  * the session's thread one at a time, which is what keeps the log in the order the writes were applied and lets one
- * {@link LogRecord} serve them all. A store event is a record whose content type is its {@link StoreEventType} code,
+ * {@link StreamWriter} serve them all. A store event is a record whose content type is its {@link StoreEventType} code,
  * and whose position is its seqnum.
  */
 @Slf4j
 final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
 
     private final FixSessionMessagesStore store;
-    private final ReplicationLog replicationLog;
-    private final LogFullWait logFullWait;
+    private final StreamWriter writer;
     private final ReplicatedSession session;
-    private final Followers followers;
-    private final LogRecord logRecord;
-    private final IdleStrategy ackIdle;
     private final ReplicatedAhead replicatedAhead;
     private final Timer syncReceivedAckLatency;
     private final Timer syncAppliedAckLatency;
@@ -70,18 +61,13 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      *                               it came; {@code syncAppliedAckLatency} the same for {@code SYNC_APPLIED}
      * @param onStarted              given this store once started, before the session writes, so what it writes is replicated
      */
-    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, ReplicationLog replicationLog,
-                                       LogFullWait logFullWait, ReplicatedSession session, Followers followers,
-                                       Timer syncReceivedAckLatency, Timer syncAppliedAckLatency, IdleStrategy ackIdle,
-                                       Consumer<FixSessionMessagesStore> onStarted) {
+    ReplicatingFixSessionMessagesStore(FixSessionMessagesStore store, StreamWriter writer,
+                                       ReplicatedSession session, Timer syncReceivedAckLatency,
+                                       Timer syncAppliedAckLatency, Consumer<FixSessionMessagesStore> onStarted) {
         this.lastAppendedOffset = -1;
         this.store = store;
-        this.replicationLog = replicationLog;
-        this.logFullWait = logFullWait;
+        this.writer = writer;
         this.session = session;
-        this.followers = followers;
-        this.logRecord = new LogRecord();
-        this.ackIdle = ackIdle;
         this.replicatedAhead = new ReplicatedAhead();
         this.syncReceivedAckLatency = syncReceivedAckLatency;
         this.syncAppliedAckLatency = syncAppliedAckLatency;
@@ -108,9 +94,9 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         if (lastAppendedOffset >= 0) {
             long startNanos = System.nanoTime();
             ReplicatedSession.Config config = session.getConfig();
-            StreamWriter.Ack ack = followers.awaitAck(session.getKey(), lastAppendedOffset,
+            StreamWriter.Ack ack = writer.awaitAck(lastAppendedOffset,
                     StreamReplicationMode.from(config.getReplicationMode().getCode()),
-                    config.getReplicationAckTimeoutNanos(), ackIdle);
+                    config.getReplicationAckTimeoutNanos());
             if (ack == StreamWriter.Ack.ACKED) {
                 long waitedNanos = System.nanoTime() - startNanos;
                 Timer engineTimer = config.getReplicationMode() == ReplicationMode.SYNC_RECEIVED ? syncReceivedAckLatency
@@ -134,14 +120,13 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
     @Override
     public FixSessionMessagesStore start() {
         store.start();
-        followers.addWaiter(ackIdle);
         onStarted.accept(this);
         return this;
     }
 
     @Override
     public FixSessionMessagesStore stop(Deadline stopDeadline) {
-        followers.removeWaiter(ackIdle);
+        writer.close();
         store.stop(stopDeadline);
         return this;
     }
@@ -259,10 +244,8 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
         int messageIndex = message == null ? 0 : message.position();
         int messageLength = message == null ? 0 : message.remaining();
         try {
-            lastAppendedOffset = replicationLog.append(logRecord.set(session.getKey(), eventType.getCode(),
-                    flag(eventType, messageTypeHash), sequenceNumber, message, messageIndex, messageLength),
-                    logFullWait);
-            followers.wakeSenders();
+            lastAppendedOffset = writer.append(eventType.getCode(), flag(eventType, messageTypeHash), sequenceNumber,
+                    message, messageIndex, messageLength);
         } catch (IllegalArgumentException e) {
             session.recordUnreplicatedEvent();
             log.error("FIX session {} {} {} {} not replicated, its follower will not have it: {}. Raise logCapacity to "

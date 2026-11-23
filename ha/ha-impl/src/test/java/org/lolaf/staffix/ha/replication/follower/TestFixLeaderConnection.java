@@ -209,7 +209,7 @@ class TestFixLeaderConnection extends FixLeaderConnectionHarness {
     void closingTheReplicaStopsItsStores() {
         streaming();
 
-        replicaSessions.close(Deadline.unlimited());
+        followerStreams.close(Deadline.unlimited());
 
         assertThat(engine.store(MAIN).started).isFalse();
     }

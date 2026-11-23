@@ -18,9 +18,9 @@ package org.lolaf.staffix.ha.replication.leader;
 import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
+import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiFunction;
 
 /**
  * What the leader's connections did over the engine's life, across reconnections, read by the meters on another thread.
@@ -31,38 +31,22 @@ public final class ReplicationStats {
     @Getter
     private final SlowFollowers slowFollowers;
     private final AtomicLong snapshots = new AtomicLong();
-    private final AtomicLong snapshotMessages = new AtomicLong();
+    private final AtomicLong snapshotRecords = new AtomicLong();
     private final AtomicLong sendWaits = new AtomicLong();
     private final AtomicLong sendBuffersAllocated = new AtomicLong();
-    private volatile BiFunction<String, Integer, LatencyRecorder> ackLatencyTimers = (followerId, lane) -> LatencyRecorder.NONE;
-    private volatile BiFunction<String, Integer, LatencyRecorder> lagTimers = (followerId, lane) -> LatencyRecorder.NONE;
+    private final ReplicationMetrics metrics;
 
-    public ReplicationStats(SlowFollowers slowFollowers) {
+    public ReplicationStats(SlowFollowers slowFollowers, ReplicationMetrics metrics) {
         this.slowFollowers = slowFollowers;
-    }
-
-    /**
-     * Where the connections time their followers' round trips, by follower node id and lane, once the engine's meters
-     * exist.
-     */
-    public void ackLatencyTimers(BiFunction<String, Integer, LatencyRecorder> timers) {
-        ackLatencyTimers = timers;
+        this.metrics = metrics;
     }
 
     LatencyRecorder ackLatency(String followerId, int lane) {
-        return ackLatencyTimers.apply(followerId, lane);
-    }
-
-    /**
-     * Where the connections time how far their followers are behind, by follower node id and lane, once the engine's
-     * meters exist.
-     */
-    public void lagTimers(BiFunction<String, Integer, LatencyRecorder> timers) {
-        lagTimers = timers;
+        return metrics.followerAckLatency(followerId, lane);
     }
 
     LatencyRecorder lag(String followerId, int lane) {
-        return lagTimers.apply(followerId, lane);
+        return metrics.followerLag(followerId, lane);
     }
 
     void droppedTooSlow(@Nullable String followerId, int lane) {
@@ -72,9 +56,9 @@ public final class ReplicationStats {
         }
     }
 
-    void snapshotSent(int messages) {
+    void snapshotSent(int records) {
         snapshots.incrementAndGet();
-        snapshotMessages.addAndGet(messages);
+        snapshotRecords.addAndGet(records);
     }
 
     void sendWaited() {
@@ -110,7 +94,7 @@ public final class ReplicationStats {
         return snapshots.get();
     }
 
-    public long getSnapshotMessages() {
-        return snapshotMessages.get();
+    public long getSnapshotRecords() {
+        return snapshotRecords.get();
     }
 }

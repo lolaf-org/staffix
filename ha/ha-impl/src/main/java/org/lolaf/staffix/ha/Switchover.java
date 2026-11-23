@@ -52,12 +52,12 @@ final class Switchover {
         Deadline deadline = Deadline.of(settings.switchingTimeout());
         log.info("Node {} switches over at epoch {}: logging its sessions out", settings.getNodeId(), ha.getRoleEpoch());
         ha.getEngine().deactivateWithLogout(deadline);
-        if (!ha.getServer().handOver(deadline)) {
+        if (!ha.getNode().handOver(deadline)) {
             resumeLeading("its follower was not sent every write");
             return SwitchoverOutcome.NOT_HANDED_OVER;
         }
         // a follower reconnecting to this node, which still leads, would start a stream and forget it was handed over
-        ha.stopServer(deadline);
+        ha.getNode().standDown(deadline);
         boolean transferring = election.transferLeadership();
         if (transferring) {
             deadline.waitAsLongAs(() -> election.getRole() == Role.LEADER);
@@ -76,18 +76,19 @@ final class Switchover {
     }
 
     private boolean isAnyFollowerReadyToLead() {
-        return isAnyFollowerInSync() && ha.getFollowers().getPendingWrites() <= ha.getSettings().getSwitchoverMaxPendingWrites();
+        return isAnyFollowerInSync()
+                && ha.getNode().followers().getPendingWrites() <= ha.getSettings().getSwitchoverMaxPendingWrites();
     }
 
     private boolean isAnyFollowerInSync() {
-        return ha.getFollowers().isAnyFollowerInSync(ha.getSessions().count(), ha.getReplicationLogs().count());
+        return ha.getNode().followers().isAnyInSync();
     }
 
     private SwitchoverOutcome notReadyToLead() {
         String nodeId = ha.getSettings().getNodeId();
         if (isAnyFollowerInSync()) {
             log.warn("Node {} does not switch over: its follower has {} writes left to store, more than {}", nodeId,
-                    ha.getFollowers().getPendingWrites(), ha.getSettings().getSwitchoverMaxPendingWrites());
+                    ha.getNode().followers().getPendingWrites(), ha.getSettings().getSwitchoverMaxPendingWrites());
             return SwitchoverOutcome.FOLLOWER_STORE_BEHIND;
         }
         log.warn("Node {} does not switch over: no follower holds every replicated session", nodeId);
@@ -99,8 +100,8 @@ final class Switchover {
      */
     private void resumeLeading(String reason) {
         log.warn("Node {} leads its sessions again at epoch {}: {}", ha.getSettings().getNodeId(), ha.getRoleEpoch(), reason);
-        if (ha.getServer() == null) {
-            ha.startServer(ha.getRoleEpoch());
+        if (!ha.getNode().isLeading()) {
+            ha.getNode().lead(ha.getRoleEpoch(), Deadline.of(ReplicationFixEngineHa.ROLE_CHANGE_DEADLINE));
         }
         ha.getEngine().activate();
     }

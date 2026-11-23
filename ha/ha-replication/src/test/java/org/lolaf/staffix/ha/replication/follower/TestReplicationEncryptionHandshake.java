@@ -23,6 +23,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.lolaf.betty.api.ss.WakeupSelectStrategy;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
+import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.TestingPorts;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
@@ -71,7 +73,7 @@ class TestReplicationEncryptionHandshake {
         this.leaderMain = leader.add(MAIN, StreamReplicationMode.ASYNC);
         JournalReplica replica = new JournalReplica();
         this.main = replica.configure(MAIN, StreamReplicationMode.ASYNC);
-        this.followerStreams = new FollowerStreams(replica);
+        this.followerStreams = new FollowerStreams(replica, LatencyRecorder.NONE);
     }
 
     private static KeyExchange exchange(EncryptionMode mode, String secret, String cipher) {
@@ -94,7 +96,7 @@ class TestReplicationEncryptionHandshake {
         server = new ReplicationServer(address, leader.getLogs(), leader, leader.getFollowers(),
                 () -> EPOCH, leaderId, Duration.ofMillis(100), Duration.ofSeconds(5), 4, Integer.MAX_VALUE,
                 BackoffIdleStrategy::new, new WakeupSelectStrategy(10),
-                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), new TestingReplicationClock(),
+                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE), new TestingReplicationClock(),
                 leaderExchange);
         server.start();
         client = new ReplicationClient(address, followerStreams, () -> EPOCH, followerId,

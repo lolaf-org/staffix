@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha.replication.follower;
 
 import org.lolaf.betty.api.io.IOSession;
+import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
@@ -74,7 +75,7 @@ abstract class LeaderConnectionHarness {
         this.sentOpener = FrameCipher.CLEAR;
         this.replica = new JournalReplica();
         this.main = replica.configure(MAIN, StreamReplicationMode.ASYNC);
-        this.followerStreams = new FollowerStreams(replica);
+        this.followerStreams = new FollowerStreams(replica, LatencyRecorder.NONE);
         this.connection = newConnection(0, 0);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         doAnswer(invocation -> {

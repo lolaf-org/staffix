@@ -112,7 +112,7 @@ class TestSnapshotSender extends FollowerConnectionHarness {
         assertThat(main.getSnapshotRanges()).singleElement().isEqualTo(new long[]{0, 2});
         assertThat(connection.getSyncState(0)).isEqualTo(StreamSyncState.SNAPSHOT_SENT);
         assertThat(stats.getSnapshots()).isEqualTo(1);
-        assertThat(stats.getSnapshotMessages()).isEqualTo(2);
+        assertThat(stats.getSnapshotRecords()).isEqualTo(2);
     }
 
     @Test

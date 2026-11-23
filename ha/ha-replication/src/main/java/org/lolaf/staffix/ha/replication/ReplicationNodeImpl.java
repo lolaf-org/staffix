@@ -90,11 +90,8 @@ final class ReplicationNodeImpl implements ReplicationNode {
         this.logs = new ReplicationLogs(builder.lanes(), builder.logCapacity());
         this.followers = new Followers();
         ReplicationMetrics metrics = builder.metrics();
-        this.stats = new ReplicationStats(new SlowFollowers(builder.slowFollowerHoldOff(), clock));
-        stats.ackLatencyTimers(metrics::followerAckLatency);
-        stats.lagTimers(metrics::followerLag);
-        this.followerStreams = new FollowerStreams(builder.replicaSinks());
-        followerStreams.setReceivedWriteLatency(metrics.receivedWriteLatency());
+        this.stats = new ReplicationStats(new SlowFollowers(builder.slowFollowerHoldOff(), clock), metrics);
+        this.followerStreams = new FollowerStreams(builder.replicaSinks(), metrics.receivedWriteLatency());
         this.followersView = new FollowersViewImpl(followers, stats, logs, streamsToReplicate);
         this.leaderView = new LeaderViewImpl(() -> client, followerStreams);
     }

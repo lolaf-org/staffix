@@ -20,6 +20,7 @@ import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.betty.api.io.IOSession;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
 import org.lolaf.ringos.idling.IdleStrategy;
+import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
@@ -76,7 +77,7 @@ class TestFollowers {
         IOSession ioSession = mock(IOSession.class);
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerConnection connection = new FollowerConnection(ioSession, journal.getLogs(), journal, () -> EPOCH, "leader-a",
-                Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), loop -> {
+                Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE), loop -> {
         }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower", EPOCH, 0, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.fillBatch(ByteBuffer.allocate(1 << 16));
@@ -215,7 +216,7 @@ class TestFollowers {
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerConnection connectionOfMain = new FollowerConnection(ioSession, twoLanes.getLogs(), twoLanes,
                 () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
-                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), loop -> {
+                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE), loop -> {
         }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         connectionOfMain.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connectionOfMain.fillBatch(ByteBuffer.allocate(1 << 16));
@@ -248,7 +249,7 @@ class TestFollowers {
         when(ioSession.borrow(anyInt())).then(invocation -> ByteBuffer.allocate(invocation.getArgument(0)));
         FollowerConnection connection = new FollowerConnection(ioSession, twoLanes.getLogs(), twoLanes,
                 () -> EPOCH, "leader-a", Duration.ofSeconds(1), Duration.ZERO, 4, Integer.MAX_VALUE, new BackoffIdleStrategy(),
-                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), loop -> {
+                new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE), loop -> {
         }, new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower", EPOCH, -1, lane, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         connection.fillBatch(ByteBuffer.allocate(1 << 16));

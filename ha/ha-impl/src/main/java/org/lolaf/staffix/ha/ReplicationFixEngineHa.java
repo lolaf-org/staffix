@@ -31,14 +31,9 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
-import org.lolaf.staffix.ha.replication.encryption.KeyExchange;
-import org.lolaf.staffix.ha.replication.follower.ReplicationClient;
-import org.lolaf.staffix.ha.replication.leader.Followers;
-import org.lolaf.staffix.ha.replication.leader.ReplicationServer;
-import org.lolaf.staffix.ha.replication.leader.ReplicationStats;
-import org.lolaf.staffix.ha.replication.leader.SlowFollowers;
-import org.lolaf.staffix.ha.replication.log.LogFullWait;
-import org.lolaf.staffix.ha.replication.log.ReplicationLogs;
+import org.lolaf.staffix.ha.replication.ReplicationNode;
+import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
+import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 
 import java.util.ArrayList;
 import java.net.InetSocketAddress;
@@ -61,17 +56,12 @@ import java.util.concurrent.*;
 @Slf4j
 public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineHa> implements FixEngineHa {
 
-    private static final Duration ROLE_CHANGE_DEADLINE = Duration.ofSeconds(10);
+    static final Duration ROLE_CHANGE_DEADLINE = Duration.ofSeconds(10);
 
     @Getter
     private final ReplicationHaSettings settings;
-    private final KeyExchange keyExchange;
-    @Getter
-    private final ReplicationLogs replicationLogs;
     @Getter
     private final ReplicatedSessions sessions;
-    @Getter
-    private final Followers followers;
     /**
      * Registered on the first start, which publishes the settings.
      */
@@ -79,6 +69,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private final LateTimer syncReceivedAckLatency;
     private final LateTimer syncAppliedAckLatency;
     private final LateTimer receivedWriteLatency;
+    private final LateMetrics followerTimers;
     private final PromotionSeqNumJumps promotionJumps;
     private final HaStatusReport statusReport;
     private final Switchover switchover;
@@ -86,8 +77,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
      * What unregisters each settings store's listener.
      */
     private final List<Runnable> settingsListeners;
+    /**
+     * Built on the first {@link #bind}, which a restarted engine calls again: it keeps its logs and its streams.
+     */
     @Getter
-    private volatile ReplicationStats stats;
+    private volatile ReplicationNode node;
     @Getter
     private volatile EngineAccess engine;
     @Getter
@@ -107,35 +101,28 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
     private @Nullable InetSocketAddress followedLeader;
     @Getter
     private volatile @Nullable Instant roleSince;
-    @Getter
-    private volatile @Nullable ReplicationServer server;
-    @Getter
-    private volatile @Nullable ReplicationClient client;
 
     public ReplicationFixEngineHa(ReplicationHaSettings settings) {
         this.syncReceivedAckLatency = new LateTimer();
         this.syncAppliedAckLatency = new LateTimer();
         this.receivedWriteLatency = new LateTimer();
+        this.followerTimers = new LateMetrics(receivedWriteLatency);
         this.statusReport = new HaStatusReport(this);
         this.switchover = new Switchover(this);
         this.role = Role.UNKNOWN;
         this.roleEpoch = -1;
         settings.validate();
         this.settings = settings;
-        this.keyExchange = new KeyExchange(settings.getEncryption());
-        logAllocatingCipher(keyExchange);
-        this.replicationLogs = new ReplicationLogs(settings.getReplicationLanes(), settings.getLogCapacity());
         this.sessions = new ReplicatedSessions();
-        this.followers = new Followers();
         this.promotionJumps = new PromotionSeqNumJumps(settings.getPromotionOutgoingSeqNumJump());
         this.settingsListeners = new ArrayList<>();
     }
 
-    private static void logAllocatingCipher(KeyExchange keyExchange) {
-        if (keyExchange.allocatesOnEveryFrame()) {
+    private static void logAllocatingCipher(ReplicationNode node) {
+        if (node.cipherAllocatesOnEveryFrame()) {
             log.info("HA replication cipher {} allocates on every frame, inside the JCE (a new nonce takes a new cipher "
                     + "init): replication adds garbage collections. AES/CTR/NoPadding with HmacSHA256 allocates nothing; "
-                    + "see \"Encrypting the replication\" in the high availability docs", keyExchange.describeCipher());
+                    + "see \"Encrypting the replication\" in the high availability docs", node.describeCipher());
         }
     }
 
@@ -151,13 +138,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         // between ASYNC and the SYNC modes too: a follower refuses a mode its own settings do not give
         if (previousMode != null && previousMode != mode) {
-            followers.reannounce(session.getKey());
+            node.reannounce(session.getKey());
         }
-        probes.add(HaProbes.sessionProbe(session, followers));
-        return new ReplicatingFixSessionMessagesStore(store, replicationLogs.forStream(session.getKey()),
-                new LogFullWait(settings.getLogFullTimeout()),
-                session, followers, syncReceivedAckLatency, syncAppliedAckLatency, settings.getSyncAckIdleStrategy().get(),
-                started -> promotionJumps.jumpOnStart(sessionSettings, started));
+        probes.add(HaProbes.sessionProbe(session, node.followers()));
+        return new ReplicatingFixSessionMessagesStore(store, node.writer(session.getKey()), session, syncReceivedAckLatency,
+                syncAppliedAckLatency, started -> promotionJumps.jumpOnStart(sessionSettings, started));
     }
 
     /**
@@ -184,16 +169,53 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         session.update(session.getConfig().notReplicated());
         log.info("FIX session {} {} is no longer replicated", session.getFixSessionType(), session.getFixSessionId());
-        followers.reannounce(session.getKey());
+        node.reannounce(session.getKey());
     }
 
     @Override
     public void bind(EngineAccess engine) {
         this.engine = engine;
-        this.replicaSessions = new ReplicaSessions(engine);
-        replicaSessions.getSettingsComparison().setApplyExecutor(this::onRoleThread);
-        replicaSessions.getStreams().setReceivedWriteLatency(receivedWriteLatency::record);
-        this.stats = new ReplicationStats(new SlowFollowers(settings.getSlowFollowerHoldOff(), new EngineReplicationClock(engine.getClock())));
+        if (node != null) {
+            return;
+        }
+        SessionSettingsComparison settingsComparison = new SessionSettingsComparison(engine);
+        settingsComparison.setApplyExecutor(this::onRoleThread);
+        ReplicationNode built = ReplicationNode.builder()
+                .nodeId(settings.getNodeId())
+                .bindAddress(ownAddress())
+                .streamsToReplicate(sessions)
+                .replicaSinks(new FixSessionSinks(engine, settingsComparison))
+                .lanes(settings.getReplicationLanes())
+                .logCapacity(settings.getLogCapacity())
+                .encryption(settings.getEncryption())
+                .logFullTimeout(settings.getLogFullTimeout())
+                .slowFollowerHoldOff(settings.getSlowFollowerHoldOff())
+                .heartbeatInterval(settings.getHeartbeatInterval())
+                .followerStallTimeout(settings.getFollowerStallTimeout())
+                .sendBuffers(settings.getSendBuffers())
+                .snapshotChunkBytes(settings.getSnapshotChunkBytes())
+                .senderIdleStrategy(settings.getSenderIdleStrategy())
+                .ackIdleStrategy(settings.getSyncAckIdleStrategy())
+                .reconnectInterval(settings.getReconnectInterval())
+                .followerCheckInterval(settings.getFollowerCheckInterval())
+                .sinkWriterThreads(settings.getFollowerStoreWriterThreads())
+                .sinkWriterIdleStrategy(settings.getFollowerStoreWriterIdleStrategy())
+                .selectStrategy(settings.getSelectStrategy())
+                .clock(new EngineReplicationClock(engine.getClock()))
+                .metrics(followerTimers)
+                .build();
+        logAllocatingCipher(built);
+        this.replicaSessions = new ReplicaSessions(engine, settingsComparison, built.leader());
+        this.node = built;
+    }
+
+    private InetSocketAddress ownAddress() {
+        InetSocketAddress own = settings.getPeers().get(settings.getNodeId());
+        if (own == null) {
+            throw new IllegalStateException("Replication high availability peers " + settings.getPeers().keySet()
+                    + " have no address for this node, " + settings.getNodeId());
+        }
+        return own;
     }
 
     @Override
@@ -224,7 +246,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         requireLeadingToResync();
         log.info("Every replicated session is sent again to the followers by snapshot");
         for (int key = 0; key < sessions.count(); key++) {
-            followers.resync(key);
+            node.resync(key);
         }
     }
 
@@ -236,7 +258,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
         requireLeadingToResync();
         log.info("FIX session {} {} is sent again to the followers by snapshot", fixSessionType, fixSessionId);
-        followers.resync(session.getKey());
+        node.resync(session.getKey());
     }
 
     /**
@@ -295,23 +317,19 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             throw new IllegalStateException("Replication high availability of node " + settings.getNodeId()
                     + " needs a leaderElection to tell which node runs the sessions");
         }
-        if (!settings.getPeers().containsKey(settings.getNodeId())) {
-            throw new IllegalStateException("Replication high availability peers " + settings.getPeers().keySet()
-                    + " have no address for this node, " + settings.getNodeId());
-        }
         requireReplicableSettingsStores();
         if (settingsStream == null) {
-            settingsStream = sessions.add(key -> new SessionSettingsStream(key, replicationLogs.forStream(key),
-                    new LogFullWait(settings.getLogFullTimeout()), followers));
+            settingsStream = sessions.add(key -> new SessionSettingsStream(key, node.writer(key)));
         }
         engine.getFixSessionsSettingsStores().forEach(this::listenTo);
         settingsChanged();
         election = settings.getLeaderElection().instance();
         if (settings.getMonitoringInstanceId() != null) {
-            HaMeters.Timers timers = HaMeters.register(engine.monitoring(settings.getMonitoringInstanceId()), this, stats);
+            HaMeters.Timers timers = HaMeters.register(engine.monitoring(settings.getMonitoringInstanceId()), this);
             syncReceivedAckLatency.target = timers.getSyncReceivedAckLatency();
             syncAppliedAckLatency.target = timers.getSyncAppliedAckLatency();
             receivedWriteLatency.target = timers.getReceivedWriteLatency();
+            followerTimers.target = timers.getFollowerTimers();
         }
         if (settings.getAlertsPublisherInstanceId() != null) {
             HaProbes.register(engine.probes(HaProbes.COMPONENT, settings.getAlertsPublisherInstanceId(), this::isStarted), this);
@@ -346,13 +364,11 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        if (role == Role.LEADER && server != null) {
+        if (role == Role.LEADER) {
             // the engine stopped the sessions before this, so what they last wrote is all in the log
-            server.handOver(Deadline.of(settings.getHandOverTimeout()));
+            node.handOver(Deadline.of(settings.getHandOverTimeout()));
         }
-        stopServer(stopDeadline);
-        stopClient(stopDeadline);
-        replicaSessions.close(stopDeadline);
+        node.close(stopDeadline);
         election.stop(stopDeadline);
     }
 
@@ -412,8 +428,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (role == Role.LEADER) {
             engine.deactivate();
         }
-        stopClient(deadline);
-        stopServer(deadline);
+        node.standDown(deadline);
         if (role != Role.LEADER) {
             if (!replicaSessions.isInSync()) {
                 log.warn("Node {} leads at epoch {} with sessions its follower copy did not hold in full", settings.getNodeId(), electionEpoch);
@@ -421,8 +436,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
             promotionJumps.promoted(sessionsInSettingsStores());
             replicaSessions.jumpOutgoingSeqNums(settings.getPromotionOutgoingSeqNumJump()).forEach(promotionJumps::jumped);
         }
-        replicaSessions.close(deadline);
-        startServer(electionEpoch);
+        node.lead(electionEpoch, deadline);
         engine.activate();
         roleChanged(Role.LEADER, electionEpoch, null);
     }
@@ -446,15 +460,6 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         }
     }
 
-    void startServer(long electionEpoch) {
-        server = new ReplicationServer(settings.getPeers().get(settings.getNodeId()), replicationLogs, sessions, followers,
-                () -> electionEpoch, settings.getNodeId(), settings.getHeartbeatInterval(), settings.getFollowerStallTimeout(),
-                settings.getSendBuffers(), settings.getSnapshotChunkBytes(),
-                settings.getSenderIdleStrategy(), settings.getSelectStrategy().get(), stats,
-                new EngineReplicationClock(engine.getClock()), keyExchange);
-        server.start();
-    }
-
     private void follow(long electionEpoch, @Nullable InetSocketAddress leader) {
         if (role == Role.FOLLOWER && roleEpoch == electionEpoch && sameAddress(leader)) {
             return;
@@ -463,17 +468,12 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (role == Role.LEADER) {
             promotionJumps.demoted();
             engine.deactivate();
-            stopServer(deadline);
         }
-        stopClient(deadline);
         if (leader == null) {
+            node.standDown(deadline);
             log.warn("Node {} follows at epoch {} but has no address for its leader", settings.getNodeId(), electionEpoch);
         } else {
-            client = new ReplicationClient(leader, replicaSessions.getStreams(), election::getEpoch, settings.getNodeId(),
-                    replicationLogs.getMaxRecordFrameBytes(), settings.getReconnectInterval(), settings.getSelectStrategy().get(),
-                    settings.getFollowerStoreWriterThreads(), settings.getFollowerStoreWriterIdleStrategy(),
-                    settings.getFollowerCheckInterval(), keyExchange);
-            client.start();
+            node.follow(leader, election::getEpoch, deadline);
         }
         roleChanged(Role.FOLLOWER, electionEpoch, leader);
     }
@@ -486,9 +486,8 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         if (role == Role.LEADER) {
             promotionJumps.demoted();
             engine.deactivate();
-            stopServer(deadline);
         }
-        stopClient(deadline);
+        node.standDown(deadline);
         roleChanged(Role.UNKNOWN, -1, null);
     }
 
@@ -502,20 +501,6 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         followedLeader = leader;
         roleSince = Instant.now();
         role = newRole;
-    }
-
-    void stopServer(Deadline deadline) {
-        if (server != null) {
-            server.stop(deadline);
-            server = null;
-        }
-    }
-
-    private void stopClient(Deadline deadline) {
-        if (client != null) {
-            client.stop(deadline);
-            client = null;
-        }
     }
 
     /**
@@ -542,6 +527,36 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         @Override
         public void record(long duration, TimeUnit unit) {
             target.record(duration, unit);
+        }
+    }
+
+    /**
+     * Gives the replication the meters' timers, which exist only once started: each connection asks for its own as it
+     * connects, the received writes' timer is asked for once and records through its late target.
+     */
+    private static final class LateMetrics implements ReplicationMetrics {
+
+        private final Timer receivedWriteLatency;
+        private volatile ReplicationMetrics target;
+
+        private LateMetrics(Timer receivedWriteLatency) {
+            this.receivedWriteLatency = receivedWriteLatency;
+            this.target = ReplicationMetrics.NONE;
+        }
+
+        @Override
+        public LatencyRecorder followerAckLatency(String followerId, int lane) {
+            return target.followerAckLatency(followerId, lane);
+        }
+
+        @Override
+        public LatencyRecorder followerLag(String followerId, int lane) {
+            return target.followerLag(followerId, lane);
+        }
+
+        @Override
+        public LatencyRecorder receivedWriteLatency() {
+            return receivedWriteLatency::record;
         }
     }
 

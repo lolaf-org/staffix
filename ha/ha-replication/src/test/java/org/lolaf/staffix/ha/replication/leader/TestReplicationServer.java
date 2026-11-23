@@ -26,6 +26,7 @@ import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.ss.WakeupSelectStrategy;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.TestingPorts;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
@@ -67,7 +68,7 @@ class TestReplicationServer {
         this.address = new InetSocketAddress("localhost", TestingPorts.findFree());
         this.server = new ReplicationServer(address, journal.getLogs(), journal, journal.getFollowers(), () -> EPOCH,
                 "leader-a", Duration.ofMillis(100), Duration.ZERO, 4, Integer.MAX_VALUE,
-                BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock())), new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
+                BackoffIdleStrategy::new, new WakeupSelectStrategy(10), new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE), new TestingReplicationClock(), TestingKeyExchanges.CLEAR);
         this.received = new RecordingHandler();
     }
 

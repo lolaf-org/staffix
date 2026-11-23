@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha.replication.leader;
 import org.junit.jupiter.api.Test;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.ringos.idling.BackoffIdleStrategy;
+import org.lolaf.staffix.ha.replication.spi.ReplicationMetrics;
 import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 import org.lolaf.staffix.ha.replication.encryption.EncryptionMode;
 import org.lolaf.staffix.ha.replication.encryption.TestingKeyExchanges;
@@ -378,7 +379,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     void aFollowerDroppedAsTooSlowIsAcceptedOnceItsHoldOffHasPassed() {
         TestingReplicationClock clock = new TestingReplicationClock();
         clock.toAdvanceableTime(Instant.parse("2026-11-01T10:00:00Z"));
-        stats = new ReplicationStats(new SlowFollowers(Duration.ofSeconds(1), clock));
+        stats = new ReplicationStats(new SlowFollowers(Duration.ofSeconds(1), clock), ReplicationMetrics.NONE);
         stats.droppedTooSlow("follower-b", 0);
         connection = connection();
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", EPOCH, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
@@ -494,7 +495,8 @@ class TestFollowerConnection extends FollowerConnectionHarness {
 
     @Test
     void aFollowerDroppedAsTooSlowIsRefusedWhileHeldOff() {
-        stats = new ReplicationStats(new SlowFollowers(Duration.ofMinutes(1), new TestingReplicationClock()));
+        stats = new ReplicationStats(new SlowFollowers(Duration.ofMinutes(1), new TestingReplicationClock()),
+                ReplicationMetrics.NONE);
         stats.droppedTooSlow("follower-b", 0);
         connection = connection();
 
@@ -506,7 +508,7 @@ class TestFollowerConnection extends FollowerConnectionHarness {
 
     @Test
     void aFollowerDroppedAsTooSlowIsAcceptedAtOnceWithoutAHoldOffAndClearedOnceInSync() {
-        stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()));
+        stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), ReplicationMetrics.NONE);
         stats.droppedTooSlow("follower-b", 0);
         connection = connection();
 
@@ -610,7 +612,13 @@ class TestFollowerConnection extends FollowerConnectionHarness {
     @Test
     void aFollowerIsBehindFromAWriteUntilAnAckCoversItThenSampledAgainOnTheNextWriteItLacks() {
         LatencyRecorder lagTimer = mock(LatencyRecorder.class);
-        stats.lagTimers((followerId, connection) -> lagTimer);
+        stats = new ReplicationStats(new SlowFollowers(Duration.ZERO, new TestingReplicationClock()), new ReplicationMetrics() {
+            @Override
+            public LatencyRecorder followerLag(String followerId, int lane) {
+                return lagTimer;
+            }
+        });
+        connection = connection();
         JournalStream stream = stream("main");
         connection.onHello(EPOCH, WireFormat.VERSION, Journal.APPLICATION_ID, "follower-b", 0, -1, 0, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
         long first = journal.getLogs().get(0).getTailOffset();

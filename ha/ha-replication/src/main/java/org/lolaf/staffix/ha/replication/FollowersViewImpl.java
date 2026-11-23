@@ -130,7 +130,7 @@ final class FollowersViewImpl implements FollowersView {
 
     @Override
     public long getSnapshotRecords() {
-        return stats.getSnapshotMessages();
+        return stats.getSnapshotRecords();
     }
 
     @Override

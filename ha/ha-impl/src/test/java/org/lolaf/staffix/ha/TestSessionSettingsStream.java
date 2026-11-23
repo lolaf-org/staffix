@@ -21,9 +21,6 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.version.FixRegularVersion;
-import org.lolaf.staffix.ha.replication.leader.Followers;
-import org.lolaf.staffix.ha.replication.log.LogFullWait;
-import org.lolaf.staffix.ha.replication.log.ReplicationLog;
 import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
 
 import java.nio.ByteBuffer;
@@ -37,13 +34,13 @@ import static org.mockito.Mockito.when;
 
 class TestSessionSettingsStream {
 
-    private final ReplicationLog log;
+    private final RecordingStreamWriters writers;
     private final SessionSettingsStream stream;
     private final FixSessionsSettingsStore store;
 
     TestSessionSettingsStream() {
-        this.log = new ReplicationLog(64 * 1024);
-        this.stream = new SessionSettingsStream(0, log, new LogFullWait(Duration.ofSeconds(1)), new Followers());
+        this.writers = new RecordingStreamWriters(32 * 1024);
+        this.stream = new SessionSettingsStream(0, writers.writer(0));
         this.store = mock(FixSessionsSettingsStore.class);
         when(store.getInstanceId()).thenReturn("files");
     }
@@ -77,13 +74,13 @@ class TestSessionSettingsStream {
     @Test
     void onlyWhatChangedIsAppended() {
         publish(session("A", Duration.ofSeconds(1)), session("B", Duration.ofSeconds(1)));
-        long tail = log.getTailOffset();
+        int appended = writers.count();
 
         publish(session("A", Duration.ofSeconds(1)), session("B", Duration.ofSeconds(1)));
-        assertThat(log.getTailOffset()).as("nothing changed").isEqualTo(tail);
+        assertThat(writers.count()).as("nothing changed").isEqualTo(appended);
 
         publish(session("A", Duration.ofSeconds(1)), session("B", Duration.ofSeconds(2)));
-        assertThat(log.getTailOffset()).isGreaterThan(tail);
+        assertThat(writers.count()).isEqualTo(appended + 1);
         assertThat(snapshot()).as("each session's latest, by version").hasSize(2).last().asString().startsWith("3 1 ");
     }
 

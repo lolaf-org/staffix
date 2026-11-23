@@ -17,7 +17,6 @@ package org.lolaf.staffix.ha.replication.follower;
 
 import lombok.AccessLevel;
 import lombok.Getter;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.ringos.Deadline;
@@ -53,13 +52,12 @@ public final class FollowerStreams {
      * Times a read's writes after its records were acknowledged as received.
      */
     @Getter(AccessLevel.PACKAGE)
-    @Setter
-    private LatencyRecorder receivedWriteLatency;
+    private final LatencyRecorder receivedWriteLatency;
 
-    public FollowerStreams(ReplicaSinks replicaSinks) {
+    public FollowerStreams(ReplicaSinks replicaSinks, LatencyRecorder receivedWriteLatency) {
         this.positions = new LanePositions();
         this.streamsByKey = new BoundStream[16];
-        this.receivedWriteLatency = LatencyRecorder.NONE;
+        this.receivedWriteLatency = receivedWriteLatency;
         this.replicaSinks = replicaSinks;
     }
 

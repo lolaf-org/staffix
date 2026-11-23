@@ -17,7 +17,10 @@ package org.lolaf.staffix.ha.replication.follower;
 
 import org.lolaf.staffix.ha.FixFrames;
 import org.lolaf.staffix.ha.RecordingEngine;
+import org.lolaf.staffix.ha.FixSessionSinks;
 import org.lolaf.staffix.ha.ReplicaSessions;
+import org.lolaf.staffix.ha.SessionSettingsComparison;
+import org.lolaf.staffix.ha.replication.spi.LatencyRecorder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -51,8 +54,9 @@ class TestReplicaSessions {
 
     TestReplicaSessions() {
         this.engine = new RecordingEngine().with(REPLICATED).with(SHARED).with(NOT_REPLICATED);
-        this.replicaSessions = new ReplicaSessions(engine);
-        this.streams = replicaSessions.getStreams();
+        SessionSettingsComparison settingsComparison = new SessionSettingsComparison(engine);
+        this.streams = new FollowerStreams(new FixSessionSinks(engine, settingsComparison), LatencyRecorder.NONE);
+        this.replicaSessions = new ReplicaSessions(engine, settingsComparison, new FollowerStreamsView(streams));
     }
 
     @Test

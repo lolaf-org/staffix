@@ -348,7 +348,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
         leads(leader, follower);
 
-        assertThat(follower.ha.getReplicaSessions().getLanes()).isEqualTo(2);
+        assertThat(follower.ha.getNode().leader().getLanes()).isEqualTo(2);
         assertThat(leader.ha.getStatus().getFollowerConnections()).extracting(HaStatus.FollowerConnection::getLane).containsExactlyInAnyOrder(0, 1);
     }
 
@@ -531,7 +531,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         try {
             a.store.storeNextIncomingSeqNum(7);
             ByteBuffer message = ByteBuffer.allocate(4096);
-            for (int seq = 1; a.ha.getStats().getDroppedTooSlow() == 0; seq++) {
+            for (int seq = 1; a.ha.getNode().followers().getDroppedTooSlow() == 0; seq++) {
                 assertThat(seq).as("messages written before the follower was dropped").isLessThan(100_000);
                 a.store.storeMessageSent(seq, message.clear());
             }

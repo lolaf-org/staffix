@@ -264,6 +264,9 @@ public class ReplicationHaSettings extends HaSettings {
      */
     void validate() {
         encryption.validate();
+        if (replicationLanes < 1) {
+            throw new IllegalArgumentException("replicationLanes must be at least 1, got " + replicationLanes);
+        }
         if (heartbeatInterval.isNegative() || heartbeatInterval.isZero()) {
             throw new IllegalArgumentException("heartbeatInterval must be positive, got " + heartbeatInterval);
         }

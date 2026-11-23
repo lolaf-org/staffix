@@ -20,19 +20,20 @@ import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.ha.HaProbes.SessionReplicationEvaluator;
 import org.lolaf.staffix.ha.replication.StreamWriter;
-import org.lolaf.staffix.ha.replication.leader.Followers;
+import org.lolaf.staffix.ha.replication.FollowersView;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class TestHaProbes {
 
     private final ReplicatedSession session = new ReplicatedSessions().register(
             RecordingEngine.session("main", FixSessionType.ACCEPTOR), new RecordingEngine.RecordingStore());
     private final AtomicLong elapsedNanos = new AtomicLong();
-    private final SessionReplicationEvaluator evaluator = new SessionReplicationEvaluator(session, new Followers(),
+    private final SessionReplicationEvaluator evaluator = new SessionReplicationEvaluator(session, mock(FollowersView.class),
             () -> System.nanoTime() + elapsedNanos.get(), Duration.ofMinutes(5).toNanos());
 
     @Test

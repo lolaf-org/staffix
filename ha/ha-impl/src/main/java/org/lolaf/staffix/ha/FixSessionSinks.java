@@ -15,7 +15,6 @@
  */
 package org.lolaf.staffix.ha;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.api.ha.FixEngineHa.EngineAccess;
@@ -35,11 +34,18 @@ import java.util.Optional;
  * {@link SessionSettingsStream} is always replicated, into the settings comparison.
  */
 @Slf4j
-@RequiredArgsConstructor
-public final class FixSessionBinder implements ReplicaSinks {
+public final class FixSessionSinks implements ReplicaSinks {
 
     private final EngineAccess engine;
     private final SessionSettingsReplica settingsReplica;
+
+    /**
+     * @param settingsComparison what the leader's session settings stream is applied into
+     */
+    public FixSessionSinks(EngineAccess engine, SessionSettingsComparison settingsComparison) {
+        this.engine = engine;
+        this.settingsReplica = new SessionSettingsReplica(settingsComparison);
+    }
 
     @Override
     public int getApplicationId() {
@@ -87,7 +93,7 @@ public final class FixSessionBinder implements ReplicaSinks {
         if (SessionSettingsStream.STREAM_NAME.equals(streamName)) {
             return StreamReplicationMode.ASYNC;
         }
-        return findSettings(sessionOf(streamName)).map(FixSessionBinder::modeOf).orElse(null);
+        return findSettings(sessionOf(streamName)).map(FixSessionSinks::modeOf).orElse(null);
     }
 
     private static Binding refused(TypedSessionId session, StreamAnswer refusal) {

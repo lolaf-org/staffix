@@ -38,6 +38,7 @@ public final class StreamLogWriter implements StreamWriter {
     private final LogRecord logRecord;
     private final LogFullWait logFullWait;
     private final IdleStrategy ackIdle;
+    private volatile boolean waiterAdded;
 
     /**
      * @param ackIdle what an ack wait parks on, woken by the acks
@@ -50,7 +51,6 @@ public final class StreamLogWriter implements StreamWriter {
         this.logRecord = new LogRecord();
         this.logFullWait = new LogFullWait(logFullTimeout);
         this.ackIdle = ackIdle;
-        followers.addWaiter(ackIdle);
     }
 
     @Override
@@ -69,11 +69,18 @@ public final class StreamLogWriter implements StreamWriter {
 
     @Override
     public Ack awaitAck(long offset, StreamReplicationMode mode, long timeoutNanos) {
+        if (!waiterAdded) {
+            followers.addWaiter(ackIdle);
+            waiterAdded = true;
+        }
         return followers.awaitAck(streamKey, offset, mode, timeoutNanos, ackIdle);
     }
 
     @Override
     public void close() {
-        followers.removeWaiter(ackIdle);
+        if (waiterAdded) {
+            followers.removeWaiter(ackIdle);
+            waiterAdded = false;
+        }
     }
 }

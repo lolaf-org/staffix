@@ -19,14 +19,11 @@ import lombok.Getter;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.lolaf.ringos.idling.RetryStrategy;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
 import org.lolaf.staffix.ha.SessionSettingsDigests.StoredSession;
-import org.lolaf.staffix.ha.replication.leader.Followers;
-import org.lolaf.staffix.ha.replication.log.LogRecord;
-import org.lolaf.staffix.ha.replication.log.ReplicationLog;
+import org.lolaf.staffix.ha.replication.StreamWriter;
 import org.lolaf.staffix.ha.replication.spi.LeaderStream;
 import org.lolaf.staffix.ha.replication.spi.RecordFlag;
 import org.lolaf.staffix.ha.replication.spi.SnapshotSource;
@@ -54,10 +51,7 @@ public final class SessionSettingsStream implements LeaderStream {
 
     @Getter
     private final int key;
-    private final ReplicationLog replicationLog;
-    private final RetryStrategy logFullWait;
-    private final Followers followers;
-    private final LogRecord logRecord;
+    private final StreamWriter writer;
     private final SnapshotSource snapshotSource;
     /**
      * Each session's latest record, kept once forgotten so a snapshot in progress copies that too.
@@ -73,12 +67,9 @@ public final class SessionSettingsStream implements LeaderStream {
      */
     private volatile long version;
 
-    SessionSettingsStream(int key, ReplicationLog replicationLog, RetryStrategy logFullWait, Followers followers) {
+    SessionSettingsStream(int key, StreamWriter writer) {
         this.key = key;
-        this.replicationLog = replicationLog;
-        this.logFullWait = logFullWait;
-        this.followers = followers;
-        this.logRecord = new LogRecord();
+        this.writer = writer;
         this.snapshotSource = new Snapshot();
         this.latest = new ConcurrentHashMap<>();
         this.removals = ConcurrentHashMap.newKeySet();
@@ -141,7 +132,7 @@ public final class SessionSettingsStream implements LeaderStream {
 
     private void append(byte contentType, Digest digest) {
         ByteBuffer payload = SessionSettingsRecords.encode(digest);
-        if (payload.remaining() > replicationLog.getMaxPayloadLength() && !digest.getDocument().isEmpty()) {
+        if (payload.remaining() > writer.getMaxPayloadLength() && !digest.getDocument().isEmpty()) {
             log.warn("The settings of FIX session {} are too long to replicate, they are only compared", digest.getFixSessionId());
             payload = SessionSettingsRecords.encode(digest.withoutDocument());
         }
@@ -149,9 +140,7 @@ public final class SessionSettingsStream implements LeaderStream {
         latest.put(digest.storedSession(), new Entry(next, contentType, digest, payload));
         version = next;
         try {
-            replicationLog.append(logRecord.set(key, contentType, RecordFlag.NONE, next, payload, payload.position(),
-                    payload.remaining()), logFullWait);
-            followers.wakeSenders();
+            writer.append(contentType, RecordFlag.NONE, next, payload, payload.position(), payload.remaining());
         } catch (IllegalArgumentException e) {
             log.error("The settings of FIX session {} are not replicated, a follower has them from its next snapshot: {}",
                     digest.getFixSessionId(), e.getMessage());
