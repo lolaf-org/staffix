@@ -41,7 +41,7 @@ public class ReplicationLog {
     private static final ByteTranslator<LogRecord> ENCODE = (buffer, index, length, logRecord) ->
             FrameEncoder.recordBody(buffer, index, logRecord.getStreamKey(), logRecord.getContentType(),
                     (byte) (logRecord.getFlags() | logRecord.getFragmentFlags()), logRecord.getPosition(),
-                    logRecord.getPayload(), logRecord.getFragmentIndex(), logRecord.getFragmentLength());
+                    logRecord.getBuffer(), logRecord.getFragmentIndex(), logRecord.getFragmentLength());
 
     private final BroadcastByteRingBuffer ring;
     private final List<Reader> readers;
@@ -89,7 +89,7 @@ public class ReplicationLog {
      * @throws IllegalArgumentException for a payload longer than {@link #getMaxPayloadLength()}
      */
     public long append(LogRecord logRecord, RetryStrategy logFullWait) {
-        int payloadLength = logRecord.payloadLength();
+        int payloadLength = logRecord.getPayloadLength();
         if (payloadLength <= maxFragmentLength) {
             return write(logRecord, logFullWait);
         }
@@ -97,7 +97,7 @@ public class ReplicationLog {
             throw new IllegalArgumentException("A payload of " + payloadLength + " bytes exceeds the "
                     + maxPayloadLength + " a replication log of " + ring.getCapacity() + " bytes can hold");
         }
-        int start = logRecord.getPayload().position();
+        int start = logRecord.getPayloadIndex();
         long offset = -1;
         for (int from = 0; from < payloadLength; from += maxFragmentLength) {
             int length = Math.min(maxFragmentLength, payloadLength - from);

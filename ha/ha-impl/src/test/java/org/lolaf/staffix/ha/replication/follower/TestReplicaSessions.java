@@ -209,8 +209,8 @@ class TestReplicaSessions {
     }
 
     private boolean apply(int lane, long epoch, long offset, int key, StoreEventType eventType, long seqNum,
-                          ByteBuffer message, int messageStart, int messageLength, byte fragmentFlags) {
+                          ByteBuffer message, int messageIndex, int messageLength, byte fragmentFlags) {
         return streams.apply(lane, epoch, offset, key, eventType.getCode(), fragmentFlags, seqNum, message,
-                messageStart, messageLength);
+                messageIndex, messageLength);
     }
 }

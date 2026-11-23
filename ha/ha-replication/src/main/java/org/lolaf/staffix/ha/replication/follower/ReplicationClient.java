@@ -55,7 +55,7 @@ public final class ReplicationClient {
     private final ReplicaStreams replicaStreams;
     private final LongSupplier nodeEpoch;
     private final String nodeId;
-    private final int maxFrameBytes;
+    private final int maxReceivedFrameBytes;
     private final Duration connectionRetry;
     private final long checkIntervalNanos;
     private final SelectStrategy selectStrategy;
@@ -85,7 +85,7 @@ public final class ReplicationClient {
         this.replicaStreams = replicaStreams;
         this.nodeEpoch = nodeEpoch;
         this.nodeId = nodeId;
-        this.maxFrameBytes = maxFrameBytes + WireFormat.TAG_BYTES;
+        this.maxReceivedFrameBytes = maxFrameBytes + WireFormat.TAG_BYTES;
         this.connectionRetry = connectionRetry;
         this.checkIntervalNanos = checkInterval.toNanos();
     }
@@ -198,10 +198,10 @@ public final class ReplicationClient {
         private volatile @Nullable LeaderConnection connection;
 
         LaneClient(int lane) {
-            this.decoder = new FrameDecoder(maxFrameBytes);
+            this.decoder = new FrameDecoder(maxReceivedFrameBytes);
             this.lane = lane;
             this.writeQueue = sinkWriterThreads == null ? null
-                    : new LaneWriteQueue(lane, maxFrameBytes, replicaStreams, sinkWriterThreads.forLane(lane));
+                    : new LaneWriteQueue(lane, maxReceivedFrameBytes, replicaStreams, sinkWriterThreads.forLane(lane));
             String id = "replication-follower-" + lane;
             ioWorkers = IOWorkersGroupSettings.builder().id(id)
                     .ioThreadGroup(IOWorkersGroupSettings.IOThreadGroup.builder().selectStrategy(selectStrategy).build())
@@ -213,7 +213,7 @@ public final class ReplicationClient {
                     .ioWorkersGroup(ioWorkers)
                     .ioSettings(IOSettings.builder()
                             .readBufferSize(WireFormat.READ_BUFFER_BYTES)
-                            .maxReadBufferSize(WireFormat.bufferBytes(maxFrameBytes))
+                            .maxReadBufferSize(WireFormat.bufferBytes(maxReceivedFrameBytes))
                             .socketOptions(Map.of(StandardSocketOptions.TCP_NODELAY, true))
                             .build())
                     .ioEventsListener(this)

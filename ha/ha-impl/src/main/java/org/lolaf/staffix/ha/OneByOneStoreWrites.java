@@ -35,17 +35,17 @@ final class OneByOneStoreWrites implements StoreWrites {
     }
 
     @Override
-    public void storeLiveMessage(long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength) {
-        storeSnapshotMessage(seqNum, receiveBuffer, messageStart, messageLength);
+    public void storeLiveMessage(long seqNum, ByteBuffer receiveBuffer, int messageIndex, int messageLength) {
+        storeSnapshotMessage(seqNum, receiveBuffer, messageIndex, messageLength);
         nextOutgoingSeqNum = -1;
     }
 
     @Override
-    public void storeSnapshotMessage(long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength) {
+    public void storeSnapshotMessage(long seqNum, ByteBuffer receiveBuffer, int messageIndex, int messageLength) {
         int position = receiveBuffer.position();
         int limit = receiveBuffer.limit();
         try {
-            store.storeMessageSent(seqNum, receiveBuffer.limit(messageStart + messageLength).position(messageStart));
+            store.storeMessageSent(seqNum, receiveBuffer.limit(messageIndex + messageLength).position(messageIndex));
         } catch (RuntimeException e) {
             lostWrites.failed(1, e);
         } finally {

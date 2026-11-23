@@ -40,17 +40,17 @@ final class BatchedStoreWrites implements StoreWrites {
     }
 
     @Override
-    public void storeLiveMessage(long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength) {
-        storeSnapshotMessage(seqNum, receiveBuffer, messageStart, messageLength);
+    public void storeLiveMessage(long seqNum, ByteBuffer receiveBuffer, int messageIndex, int messageLength) {
+        storeSnapshotMessage(seqNum, receiveBuffer, messageIndex, messageLength);
         nextOutgoingSeqNum = seqNum + 1;
     }
 
     @Override
-    public void storeSnapshotMessage(long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength) {
+    public void storeSnapshotMessage(long seqNum, ByteBuffer receiveBuffer, int messageIndex, int messageLength) {
         if (messages[messageCount] == null) {
             messages[messageCount] = new CopiedMessage();
         }
-        ((CopiedMessage) messages[messageCount]).copy(seqNum, receiveBuffer, messageStart, messageLength);
+        ((CopiedMessage) messages[messageCount]).copy(seqNum, receiveBuffer, messageIndex, messageLength);
         if (++messageCount == MAX_MESSAGES) {
             write(-1, -1);
         }
@@ -126,14 +126,14 @@ final class BatchedStoreWrites implements StoreWrites {
         /**
          * The message is lent as a range of {@code receiveBuffer}, which is put back as it was.
          */
-        void copy(long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength) {
+        void copy(long seqNum, ByteBuffer receiveBuffer, int messageIndex, int messageLength) {
             this.seqNum = seqNum;
             if (message.capacity() < messageLength) {
                 message = ByteBuffer.allocate(Math.max(messageLength, message.capacity() * 2));
             }
             int position = receiveBuffer.position();
             int limit = receiveBuffer.limit();
-            message.clear().put(receiveBuffer.limit(messageStart + messageLength).position(messageStart)).flip();
+            message.clear().put(receiveBuffer.limit(messageIndex + messageLength).position(messageIndex)).flip();
             receiveBuffer.limit(limit).position(position);
         }
 

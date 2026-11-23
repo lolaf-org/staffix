@@ -148,7 +148,8 @@ public final class SessionSettingsStream implements LeaderStream {
         latest.put(digest.storedSession(), new Entry(next, contentType, digest, payload));
         version = next;
         try {
-            replicationLog.append(logRecord.set(key, contentType, (byte) 0, next, payload), logFullWait);
+            replicationLog.append(logRecord.set(key, contentType, (byte) 0, next, payload, payload.position(),
+                    payload.remaining()), logFullWait);
             followers.wakeSenders();
         } catch (IllegalArgumentException e) {
             log.error("The settings of FIX session {} are not replicated, a follower has them from its next snapshot: {}",
@@ -199,7 +200,9 @@ public final class SessionSettingsStream implements LeaderStream {
             }
             inRange.sort(Comparator.comparingLong(Entry::getVersion));
             for (Entry entry : inRange) {
-                if (!consumer.onRecord(entry.getContentType(), (byte) 0, entry.getVersion(), entry.getPayload().duplicate())) {
+                ByteBuffer payload = entry.getPayload();
+                if (!consumer.onRecord(entry.getContentType(), (byte) 0, entry.getVersion(), payload, payload.position(),
+                        payload.remaining())) {
                     return;
                 }
             }

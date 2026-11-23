@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.lolaf.ringos.idling.RetryStrategy;
+import org.lolaf.staffix.ha.replication.journal.JournalStream;
 import org.lolaf.staffix.ha.replication.wire.AllocatedBytes;
 import org.lolaf.staffix.ha.replication.wire.FrameDecoder;
 import org.lolaf.staffix.ha.replication.wire.FrameEncoder;
@@ -78,7 +79,7 @@ class TestReplicationLog {
     }
 
     @Test
-    void eventsAreReadInTheOrderAppendedAsWholeWireFrames() {
+    void recordsAreReadInTheOrderAppendedAsWholeWireFrames() {
         ReplicationLog.Reader reader = log.newReader(() -> {
         });
         long first = log.append(TestingLogFragments.entry(record, 3, 42, message(MESSAGE)), wait);
@@ -113,6 +114,26 @@ class TestReplicationLog {
 
         assertThat(message.position()).isEqualTo(2);
         assertThat(message.limit()).isEqualTo(MESSAGE.length());
+    }
+
+    @Test
+    void aPayloadIsReadFromItsIndexWhateverItsBufferPosition() {
+        ReplicationLog.Reader reader = log.newReader(() -> {
+        });
+        ByteBuffer buffer = message("--" + MESSAGE + "--");
+
+        long offset = log.append(record.set(1, JournalStream.TEXT, (byte) 0, 1, buffer, 2, MESSAGE.length()), wait);
+        readAsFrame(reader);
+
+        assertThat(handler.frames).containsExactly("RECORD epoch=7 offset=" + offset + " key=1 type=1 pos=1 payload="
+                + MESSAGE);
+    }
+
+    @Test
+    void aPayloadLengthWithoutABufferIsRefused() {
+        assertThatThrownBy(() -> record.set(1, JournalStream.TEXT, (byte) 0, 1, null, 0, 3))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("3 bytes");
     }
 
     @Test
@@ -215,22 +236,22 @@ class TestReplicationLog {
      */
     @Test
     @Timeout(60)
-    void sessionsAppendingConcurrentlyReachTheReaderInEachSessionsOrder() throws InterruptedException {
-        int sessions = 4;
-        int eventsPerSession = 20_000;
+    void streamsAppendingConcurrentlyReachTheReaderInEachStreamsOrder() throws InterruptedException {
+        int streams = 4;
+        int recordsPerStream = 20_000;
         ReplicationLog big = new ReplicationLog(1 << 24);
         ReplicationLog.Reader reader = big.newReader(() -> {
         });
         CountDownLatch start = new CountDownLatch(1);
         List<Thread> writers = new ArrayList<>();
-        for (int s = 0; s < sessions; s++) {
-            int sessionKey = s;
+        for (int s = 0; s < streams; s++) {
+            int streamKey = s;
             writers.add(new Thread(() -> {
                 LogRecord own = new LogRecord();
                 LogFullWait ownWait = new LogFullWait(Duration.ofSeconds(1));
                 awaitQuietly(start);
-                for (int seq = 0; seq < eventsPerSession; seq++) {
-                    big.append(TestingLogFragments.entry(own, sessionKey, seq, message(sessionKey + ":" + seq)),
+                for (int position = 0; position < recordsPerStream; position++) {
+                    big.append(TestingLogFragments.entry(own, streamKey, position, message(streamKey + ":" + position)),
                             ownWait);
                 }
             }));
@@ -238,26 +259,28 @@ class TestReplicationLog {
         writers.forEach(Thread::start);
         start.countDown();
 
-        long[] next = new long[sessions];
+        long[] next = new long[streams];
         AtomicReference<String> failure = new AtomicReference<>();
         int read = 0;
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(50);
-        while (read < sessions * eventsPerSession && System.nanoTime() < deadline) {
+        while (read < streams * recordsPerStream && System.nanoTime() < deadline) {
             int body = reader.readInto(frame, 0);
             if (body < 0) {
                 Thread.onSpinWait();
                 continue;
             }
-            int sessionKey = frame.getInt(0);
-            long seq = frame.getLong(8);
+            int streamKey = frame.getInt(0);
+            long position = frame.getLong(8);
             byte[] text = new byte[frame.getInt(16)];
             for (int i = 0; i < text.length; i++) {
                 text[i] = frame.get(24 + i);
             }
-            if (seq != next[sessionKey] || !new String(text, StandardCharsets.US_ASCII).equals(sessionKey + ":" + seq)) {
-                failure.compareAndSet(null, "session " + sessionKey + " seq " + seq + " after " + (next[sessionKey] - 1));
+            if (position != next[streamKey]
+                    || !new String(text, StandardCharsets.US_ASCII).equals(streamKey + ":" + position)) {
+                failure.compareAndSet(null, "stream " + streamKey + " position " + position + " after "
+                        + (next[streamKey] - 1));
             }
-            next[sessionKey] = seq + 1;
+            next[streamKey] = position + 1;
             read++;
         }
         for (Thread writer : writers) {
@@ -265,7 +288,7 @@ class TestReplicationLog {
         }
 
         assertThat(failure.get()).isNull();
-        assertThat(read).isEqualTo(sessions * eventsPerSession);
+        assertThat(read).isEqualTo(streams * recordsPerStream);
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

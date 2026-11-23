@@ -33,19 +33,21 @@ public class TestingLogFragments {
     public static void appendFragment(ReplicationLog log, int streamKey, long position, byte flags, ByteBuffer fragment,
                                       byte fragmentFlags) {
         LogRecord record = new LogRecord()
-                .set(streamKey, JournalStream.TEXT, flags, position, fragment)
+                .set(streamKey, JournalStream.TEXT, flags, position, fragment, fragment.position(), fragment.remaining())
                 .fragment(fragment.position(), fragment.remaining(), fragmentFlags);
         log.append(record, new LogFullWait(Duration.ofSeconds(1)));
     }
 
     /**
-     * @param payload null for an entry carrying none
+     * @param payload from its position to its limit, null for an entry carrying none
      */
     public static LogRecord entry(LogRecord record, int streamKey, long position, @Nullable ByteBuffer payload) {
-        return record.set(streamKey, JournalStream.TEXT, (byte) 0, position, payload);
+        return payload == null ? record.set(streamKey, JournalStream.TEXT, (byte) 0, position, null, 0, 0)
+                : record.set(streamKey, JournalStream.TEXT, (byte) 0, position, payload, payload.position(),
+                payload.remaining());
     }
 
     public static LogRecord reset(LogRecord record, int streamKey) {
-        return record.set(streamKey, JournalStream.TEXT, WireFormat.RESET, 0, null);
+        return record.set(streamKey, JournalStream.TEXT, WireFormat.RESET, 0, null, 0, 0);
     }
 }

@@ -48,7 +48,7 @@ class TestAckLatencySampler {
     }
 
     @Test
-    void eventsSentWhileASampleWaitsAreNotSampled() {
+    void recordsSentWhileASampleWaitsAreNotSampled() {
         long first = System.nanoTime() - TimeUnit.SECONDS.toNanos(1);
         sampler.onSent(100, first);
         sampler.onSent(200, System.nanoTime());

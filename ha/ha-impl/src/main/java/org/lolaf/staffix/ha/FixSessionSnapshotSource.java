@@ -78,6 +78,6 @@ final class FixSessionSnapshotSource implements SnapshotSource, StoreMessagesCon
         boolean plaintext = unencryptedMessageTypes.isUnencrypted(
                 MessageTypeHash.of(message, message.position(), message.remaining()));
         return consumer.onRecord(StoreEventType.STORE_MESSAGE.getCode(), plaintext ? WireFormat.PLAINTEXT : 0, seqNum,
-                message);
+                message, message.position(), message.remaining());
     }
 }

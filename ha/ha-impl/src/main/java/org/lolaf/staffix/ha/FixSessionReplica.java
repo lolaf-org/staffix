@@ -52,13 +52,13 @@ final class FixSessionReplica implements ReplicaSink {
     }
 
     @Override
-    public void apply(byte contentType, long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength) {
+    public void apply(byte contentType, long seqNum, ByteBuffer receiveBuffer, int messageIndex, int messageLength) {
         switch (eventType(contentType)) {
             case STORE_MESSAGE:
                 if (seqNum <= highestStoredSeqNum) {
                     break;
                 }
-                storeWrites.storeLiveMessage(seqNum, receiveBuffer, messageStart, messageLength);
+                storeWrites.storeLiveMessage(seqNum, receiveBuffer, messageIndex, messageLength);
                 highestStoredSeqNum = seqNum;
                 break;
             case STORE_OUTGOING_SEQ_NUM:
@@ -89,12 +89,12 @@ final class FixSessionReplica implements ReplicaSink {
     }
 
     @Override
-    public void snapshotRecord(byte contentType, long seqNum, ByteBuffer receiveBuffer, int messageStart,
+    public void snapshotRecord(byte contentType, long seqNum, ByteBuffer receiveBuffer, int messageIndex,
                                int messageLength) {
         if (eventType(contentType) != StoreEventType.STORE_MESSAGE) {
             throw new WireFormatException("A snapshot of a FIX session carries messages only, got " + eventType(contentType));
         }
-        storeWrites.storeSnapshotMessage(seqNum, receiveBuffer, messageStart, messageLength);
+        storeWrites.storeSnapshotMessage(seqNum, receiveBuffer, messageIndex, messageLength);
         highestStoredSeqNum = Math.max(highestStoredSeqNum, seqNum);
     }
 

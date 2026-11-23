@@ -23,9 +23,9 @@ import java.nio.ByteBuffer;
  */
 interface StoreWrites {
 
-    void storeLiveMessage(long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength);
+    void storeLiveMessage(long seqNum, ByteBuffer receiveBuffer, int messageIndex, int messageLength);
 
-    void storeSnapshotMessage(long seqNum, ByteBuffer receiveBuffer, int messageStart, int messageLength);
+    void storeSnapshotMessage(long seqNum, ByteBuffer receiveBuffer, int messageIndex, int messageLength);
 
     void setNextIncomingSeqNum(long nextIncomingSeqNum);
 

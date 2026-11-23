@@ -307,8 +307,8 @@ final class SnapshotSender {
          * record frame, which a batch, rounded up for betty's pools, exceeds.
          */
         @Override
-        public boolean onRecord(byte contentType, byte flags, long position, ByteBuffer payload) {
-            int payloadLength = payload.remaining();
+        public boolean onRecord(byte contentType, byte flags, long position, ByteBuffer buffer, int payloadIndex,
+                                int payloadLength) {
             int maxFragmentLength = maxRecordFrameBytes - FrameEncoder.snapshotRecordBytes(0);
             int fragments = Math.max(1, (payloadLength + maxFragmentLength - 1) / maxFragmentLength);
             int fragmentBytes = FrameEncoder.snapshotRecordBytes(0) + cipher.getTagBytes();
@@ -325,7 +325,7 @@ final class SnapshotSender {
                         | (from > 0 ? WireFormat.CONTINUED_FRAGMENT : 0) | plaintext;
                 room(FrameEncoder.snapshotRecordBytes(length));
                 filled += cipher.seal(batch, filled, FrameEncoder.snapshotRecord(batch, filled, currentEpoch, streamKey,
-                        contentType, (byte) fragmentFlags, position, payload, payload.position() + from, length));
+                        contentType, (byte) fragmentFlags, position, buffer, payloadIndex + from, length));
                 from += length;
             } while (from < payloadLength && connection.isConnected());
             recordCount++;

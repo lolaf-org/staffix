@@ -65,8 +65,9 @@ class TestSessionSettingsStream {
         SnapshotSource source = stream.newSnapshotSource();
         long last = source.captureState(ByteBuffer.allocate(16));
         List<String> records = new ArrayList<>();
-        source.read(0, last, (contentType, flags, position, payload) -> {
-            SessionSettingsDigests.Digest digest = SessionSettingsRecords.decode(contentType, payload, payload.position(), payload.remaining());
+        source.read(0, last, (contentType, flags, position, buffer, payloadIndex, payloadLength) -> {
+            SessionSettingsDigests.Digest digest = SessionSettingsRecords.decode(contentType, buffer, payloadIndex,
+                    payloadLength);
             records.add(position + " " + contentType + " " + digest.getFixSessionId());
             return true;
         });
@@ -107,7 +108,8 @@ class TestSessionSettingsStream {
         publish(session("A", Duration.ofSeconds(2)), session("B", Duration.ofSeconds(1)));
 
         List<Long> positions = new ArrayList<>();
-        source.read(0, roundEnd, (contentType, flags, position, payload) -> positions.add(position));
+        source.read(0, roundEnd, (contentType, flags, position, buffer, payloadIndex, payloadLength) ->
+                positions.add(position));
         assertThat(positions).as("A moved past the round, for the next one").containsExactly(2L);
         assertThat(source.captureState(ByteBuffer.allocate(16))).isEqualTo(3);
     }

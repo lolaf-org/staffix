@@ -32,7 +32,9 @@ public final class LogRecord {
     private byte contentType;
     private byte flags;
     private long position;
-    private @Nullable ByteBuffer payload;
+    private @Nullable ByteBuffer buffer;
+    private int payloadIndex;
+    private int payloadLength;
     private int fragmentIndex;
     private int fragmentLength;
     private byte fragmentFlags;
@@ -40,16 +42,22 @@ public final class LogRecord {
     /**
      * @param contentType the application's, carried untouched to the follower
      * @param flags       {@link WireFormat#PLAINTEXT} and {@link WireFormat#RESET}; the log adds the fragment flags
-     * @param payload     the bytes from its position to its limit, read during the append and left untouched; null for
+     * @param buffer      holds the payload at {@code payloadIndex}, read during the append and left untouched; null for
      *                    a record carrying none
      */
-    public LogRecord set(int streamKey, byte contentType, byte flags, long position, @Nullable ByteBuffer payload) {
+    public LogRecord set(int streamKey, byte contentType, byte flags, long position, @Nullable ByteBuffer buffer,
+                         int payloadIndex, int payloadLength) {
+        if (buffer == null && payloadLength != 0) {
+            throw new IllegalArgumentException("A payload of " + payloadLength + " bytes needs a buffer");
+        }
         this.streamKey = streamKey;
         this.contentType = contentType;
         this.flags = flags;
         this.position = position;
-        this.payload = payload;
-        return fragment(payload == null ? 0 : payload.position(), payloadLength(), (byte) 0);
+        this.buffer = buffer;
+        this.payloadIndex = payloadIndex;
+        this.payloadLength = payloadLength;
+        return fragment(payloadIndex, payloadLength, (byte) 0);
     }
 
     /**
@@ -60,9 +68,5 @@ public final class LogRecord {
         this.fragmentLength = fragmentLength;
         this.fragmentFlags = fragmentFlags;
         return this;
-    }
-
-    int payloadLength() {
-        return payload == null ? 0 : payload.remaining();
     }
 }

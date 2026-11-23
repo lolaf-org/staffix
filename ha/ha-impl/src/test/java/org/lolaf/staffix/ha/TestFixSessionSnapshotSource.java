@@ -57,10 +57,10 @@ class TestFixSessionSnapshotSource {
 
     @Test
     void aReadFromZeroStartsAtTheFirstSeqNumAndAnEmptyRangeReadsNothing() {
-        source.read(0, 0, (contentType, flags, position, payload) -> true);
+        source.read(0, 0, (contentType, flags, position, buffer, payloadIndex, payloadLength) -> true);
         verify(store, never()).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
 
-        source.read(0, 5, (contentType, flags, position, payload) -> true);
+        source.read(0, 5, (contentType, flags, position, buffer, payloadIndex, payloadLength) -> true);
         verify(store).find(eq(1L), eq(5L), any(StoreMessagesConsumer.class));
     }
 
@@ -73,7 +73,8 @@ class TestFixSessionSnapshotSource {
         }).when(store).find(anyLong(), anyLong(), any(StoreMessagesConsumer.class));
         List<String> records = new ArrayList<>();
 
-        source.read(1, 2, (contentType, flags, position, payload) -> records.add(contentType + " " + flags + " " + position));
+        source.read(1, 2, (contentType, flags, position, buffer, payloadIndex, payloadLength) ->
+                records.add(contentType + " " + flags + " " + position));
 
         assertThat(records).containsExactly(StoreEventType.STORE_MESSAGE.getCode() + " " + WireFormat.PLAINTEXT + " 1",
                 StoreEventType.STORE_MESSAGE.getCode() + " 0 2");

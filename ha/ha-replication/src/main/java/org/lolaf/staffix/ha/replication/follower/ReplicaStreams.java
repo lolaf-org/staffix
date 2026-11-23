@@ -273,9 +273,9 @@ public final class ReplicaStreams {
      * @return false for a key the leader never bound, or of another lane
      */
     boolean apply(int lane, long epoch, long offset, int key, byte contentType, byte flags, long position,
-                  ByteBuffer receiveBuffer, int payloadStart, int payloadLength) {
+                  ByteBuffer receiveBuffer, int payloadIndex, int payloadLength) {
         ReplicaStream stream = stream(lane, key);
-        if (stream == null || !stream.apply(contentType, position, receiveBuffer, payloadStart, payloadLength,
+        if (stream == null || !stream.apply(contentType, position, receiveBuffer, payloadIndex, payloadLength,
                 fragmentFlags(flags))) {
             return false;
         }
@@ -296,9 +296,9 @@ public final class ReplicaStreams {
     }
 
     boolean snapshotRecord(int lane, int key, byte contentType, byte flags, long position, ByteBuffer receiveBuffer,
-                           int payloadStart, int payloadLength) {
+                           int payloadIndex, int payloadLength) {
         ReplicaStream stream = replicatedStream(lane, key);
-        return stream != null && stream.snapshotRecord(contentType, position, receiveBuffer, payloadStart,
+        return stream != null && stream.snapshotRecord(contentType, position, receiveBuffer, payloadIndex,
                 payloadLength, fragmentFlags(flags));
     }
 

@@ -255,9 +255,11 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
      * brings the follower's seqnums back in line.
      */
     private void append(StoreEventType eventType, long sequenceNumber, int messageTypeHash, @Nullable ByteBuffer message) {
+        int messageIndex = message == null ? 0 : message.position();
+        int messageLength = message == null ? 0 : message.remaining();
         try {
             lastAppendedOffset = replicationLog.append(logRecord.set(session.getKey(), eventType.getCode(),
-                    flags(eventType, messageTypeHash), sequenceNumber, message), logFullWait);
+                    flags(eventType, messageTypeHash), sequenceNumber, message, messageIndex, messageLength), logFullWait);
             followers.wakeSenders();
         } catch (IllegalArgumentException e) {
             session.recordUnreplicatedEvent();

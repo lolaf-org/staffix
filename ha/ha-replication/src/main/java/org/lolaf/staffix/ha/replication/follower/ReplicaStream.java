@@ -57,6 +57,10 @@ public final class ReplicaStream {
     @Getter
     @Setter(AccessLevel.PACKAGE)
     private volatile StreamReplicationMode leaderMode;
+    /**
+     * Holds everything the leader sent of the stream since a snapshot filled it; false when not replicated.
+     */
+    @Getter
     private volatile boolean inSync;
     @Getter
     private volatile boolean handedOver;
@@ -94,13 +98,6 @@ public final class ReplicaStream {
         return sink != null;
     }
 
-    /**
-     * Holds everything the leader sent of the stream since a snapshot filled it; false when not replicated.
-     */
-    public boolean isInSync() {
-        return inSync;
-    }
-
     StreamAnswer answer() {
         if (sink == null) {
             return notReplicatedAnswer;
@@ -136,13 +133,14 @@ public final class ReplicaStream {
     /**
      * @return false for a fragment out of place
      */
-    boolean apply(byte contentType, long position, ByteBuffer receiveBuffer, int payloadStart, int payloadLength,
+    boolean apply(byte contentType, long position, ByteBuffer receiveBuffer, int payloadIndex, int payloadLength,
                   byte fragmentFlags) {
         if (fragmentFlags != 0 || assembling) {
-            return assemble(contentType, position, receiveBuffer, payloadStart, payloadLength, fragmentFlags, false);
+            return assemble(contentType, position, receiveBuffer, payloadIndex, payloadLength, fragmentFlags,
+                    ReplicaSink::apply);
         }
         if (sink != null) {
-            sink.apply(contentType, position, receiveBuffer, payloadStart, payloadLength);
+            sink.apply(contentType, position, receiveBuffer, payloadIndex, payloadLength);
         }
         return true;
     }
@@ -161,14 +159,15 @@ public final class ReplicaStream {
     /**
      * @return false for a fragment out of place
      */
-    boolean snapshotRecord(byte contentType, long position, ByteBuffer receiveBuffer, int payloadStart,
+    boolean snapshotRecord(byte contentType, long position, ByteBuffer receiveBuffer, int payloadIndex,
                            int payloadLength, byte fragmentFlags) {
         if (fragmentFlags != 0 || assembling) {
-            if (!assemble(contentType, position, receiveBuffer, payloadStart, payloadLength, fragmentFlags, true)) {
+            if (!assemble(contentType, position, receiveBuffer, payloadIndex, payloadLength, fragmentFlags,
+                    ReplicaSink::snapshotRecord)) {
                 return false;
             }
         } else {
-            sink.snapshotRecord(contentType, position, receiveBuffer, payloadStart, payloadLength);
+            sink.snapshotRecord(contentType, position, receiveBuffer, payloadIndex, payloadLength);
         }
         if ((fragmentFlags & WireFormat.MORE_FRAGMENTS) == 0) {
             snapshotRecordCount++;
@@ -209,10 +208,11 @@ public final class ReplicaStream {
      * replicated here keeps no bytes, only where the payload ends. A continued fragment with no payload begun is what
      * a resume leaves of a record whose start it skipped: dropped, its stream catching up by snapshot.
      *
+     * @param assembled the sink method the whole payload goes to
      * @return false for a fragment out of place: another record's, or a new record before the last one ended
      */
-    private boolean assemble(byte contentType, long position, ByteBuffer receiveBuffer, int fragmentStart,
-                             int fragmentLength, byte fragmentFlags, boolean snapshot) {
+    private boolean assemble(byte contentType, long position, ByteBuffer receiveBuffer, int fragmentIndex,
+                             int fragmentLength, byte fragmentFlags, SinkMethod assembled) {
         boolean continued = (fragmentFlags & WireFormat.CONTINUED_FRAGMENT) != 0;
         boolean moreFragments = (fragmentFlags & WireFormat.MORE_FRAGMENTS) != 0;
         if (continued != assembling) {
@@ -227,14 +227,12 @@ public final class ReplicaStream {
         }
         if (sink != null) {
             ByteBuffer fragment = receiveBuffer.duplicate();
-            fragment.limit(fragmentStart + fragmentLength).position(fragmentStart);
+            fragment.limit(fragmentIndex + fragmentLength).position(fragmentIndex);
             assembledPayload = assembledPayloadWithRoomFor(fragmentLength).put(fragment);
         }
         if (!moreFragments) {
-            if (sink != null && snapshot) {
-                sink.snapshotRecord(assembledContentType, position, assembledPayload, 0, assembledPayload.position());
-            } else if (sink != null) {
-                sink.apply(assembledContentType, position, assembledPayload, 0, assembledPayload.position());
+            if (sink != null) {
+                assembled.call(sink, assembledContentType, position, assembledPayload, 0, assembledPayload.position());
             }
             discardAssembledPayload();
         }
@@ -265,5 +263,12 @@ public final class ReplicaStream {
         if (sink != null) {
             sink.stop(deadline);
         }
+    }
+
+    @FunctionalInterface
+    private interface SinkMethod {
+
+        void call(ReplicaSink sink, byte contentType, long position, ByteBuffer buffer, int payloadIndex,
+                  int payloadLength);
     }
 }

@@ -168,7 +168,10 @@ public final class JournalStream implements LeaderStream {
      * @throws IllegalArgumentException for a record longer than the log holds, left out of the log
      */
     private long appendToLog(byte contentType, byte flags, long position, @Nullable ByteBuffer payload) {
-        lastAppendedOffset = log.append(logRecord.set(key, contentType, flags, position, payload), logFullWait);
+        int payloadIndex = payload == null ? 0 : payload.position();
+        int payloadLength = payload == null ? 0 : payload.remaining();
+        lastAppendedOffset = log.append(logRecord.set(key, contentType, flags, position, payload, payloadIndex,
+                payloadLength), logFullWait);
         followers.wakeSenders();
         return lastAppendedOffset;
     }
@@ -229,7 +232,8 @@ public final class JournalStream implements LeaderStream {
             for (Map.Entry<Long, Entry> entry : entries.subMap(fromPosition, true, toPosition, true).entrySet()) {
                 snapshotReads.accept(entry.getKey());
                 Entry value = entry.getValue();
-                if (!consumer.onRecord(value.contentType, value.flags, entry.getKey(), ByteBuffer.wrap(value.payload))) {
+                if (!consumer.onRecord(value.contentType, value.flags, entry.getKey(), ByteBuffer.wrap(value.payload), 0,
+                        value.payload.length)) {
                     return;
                 }
             }
