@@ -553,7 +553,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     void aLeaderAlertsUntilAFollowerIsConnectedAndInSync() {
         a.election.elect(Role.LEADER, 3, "a");
         a.start();
-        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
+        await().until(() -> a.ha.getRole() == Role.LEADER);
 
         assertThat(HaProbes.followersEvaluator(a.ha).evaluate()).hasValueSatisfying(alert -> {
             assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
