@@ -113,7 +113,7 @@ final class StreamAnnouncer {
         if (dst.limit() - index < FrameEncoder.bytesWith(FrameType.STREAM, name, storageIdentity)) {
             return 0;
         }
-        syncs.set(stream.getKey(), StreamSyncState.ANNOUNCED);
+        syncs.announced(stream.getKey());
         return sealer.seal(dst, index, FrameEncoder.stream(dst, index, currentEpoch, stream.getKey(),
                 stream.getStreamReplicationMode(), name, storageIdentity));
     }

@@ -18,49 +18,70 @@ package org.lolaf.staffix.ha.replication.leader;
 import org.jspecify.annotations.Nullable;
 import org.lolaf.staffix.ha.replication.spi.StreamAnswer;
 
-import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
  * A lane's streams on one follower, by stream key: where each stands, and what the follower last answered for it,
- * which keeps a refusal's reason. Written by the connection's IO and sender threads, read by any; only growing
- * allocates.
+ * which keeps a refusal's reason. Only the sender thread grows it, as it announces a stream; a stream is written from
+ * then on by the connection's IO and sender threads, and read by any, without a lock: growing copies the streams, never
+ * replaces one, so no write is lost to it. Only growing allocates.
  */
 final class StreamSyncs {
 
     private static final int INITIAL_CAPACITY = 16;
 
-    private volatile AtomicReferenceArray<StreamSyncState> states = new AtomicReferenceArray<>(INITIAL_CAPACITY);
-    private volatile AtomicReferenceArray<StreamAnswer> answers = new AtomicReferenceArray<>(INITIAL_CAPACITY);
+    private volatile StreamSync[] streams;
+
+    StreamSyncs() {
+        this.streams = grown(new StreamSync[0], INITIAL_CAPACITY);
+    }
 
     /**
      * Null for a stream not announced to the follower.
      */
     @Nullable StreamSyncState get(int streamKey) {
-        AtomicReferenceArray<StreamSyncState> current = states;
-        return streamKey < current.length() ? current.get(streamKey) : null;
+        StreamSync[] current = streams;
+        return streamKey < current.length ? current[streamKey].state : null;
     }
 
     /**
      * Null until the follower answered the stream's announcement.
      */
     @Nullable StreamAnswer getAnswer(int streamKey) {
-        AtomicReferenceArray<StreamAnswer> current = answers;
-        return streamKey < current.length() ? current.get(streamKey) : null;
+        StreamSync[] current = streams;
+        return streamKey < current.length ? current[streamKey].answer : null;
     }
 
-    synchronized void set(int streamKey, StreamSyncState state) {
-        growFor(streamKey);
-        states.set(streamKey, state);
+    /**
+     * Sender thread only.
+     */
+    void announced(int streamKey) {
+        StreamSync[] current = streams;
+        if (streamKey >= current.length) {
+            current = grown(current, Math.max(streamKey + 1, current.length * 2));
+            streams = current;
+        }
+        current[streamKey].state = StreamSyncState.ANNOUNCED;
     }
 
-    synchronized boolean compareAndSet(int streamKey, StreamSyncState expected, StreamSyncState state) {
-        AtomicReferenceArray<StreamSyncState> current = states;
-        return streamKey < current.length() && current.compareAndSet(streamKey, expected, state);
+    /**
+     * Only for an announced stream.
+     */
+    void set(int streamKey, StreamSyncState state) {
+        streams[streamKey].state = state;
     }
 
-    synchronized void answered(int streamKey, StreamAnswer answer) {
-        growFor(streamKey);
-        answers.set(streamKey, answer);
+    boolean compareAndSet(int streamKey, StreamSyncState expected, StreamSyncState state) {
+        StreamSync[] current = streams;
+        return streamKey < current.length && current[streamKey].compareAndSet(expected, state);
+    }
+
+    /**
+     * Only for an announced stream.
+     */
+    void answered(int streamKey, StreamAnswer answer) {
+        streams[streamKey].answer = answer;
     }
 
     boolean isSnapshotInProgress(int streamCount) {
@@ -73,20 +94,24 @@ final class StreamSyncs {
         return false;
     }
 
-    private void growFor(int streamKey) {
-        int capacity = states.length();
-        if (streamKey >= capacity) {
-            int grown = Math.max(streamKey + 1, capacity * 2);
-            states = copy(states, grown);
-            answers = copy(answers, grown);
+    private static StreamSync[] grown(StreamSync[] from, int capacity) {
+        StreamSync[] grown = Arrays.copyOf(from, capacity);
+        for (int key = from.length; key < capacity; key++) {
+            grown[key] = new StreamSync();
         }
+        return grown;
     }
 
-    private static <T> AtomicReferenceArray<T> copy(AtomicReferenceArray<T> from, int capacity) {
-        AtomicReferenceArray<T> copy = new AtomicReferenceArray<>(capacity);
-        for (int i = 0; i < from.length(); i++) {
-            copy.set(i, from.get(i));
+    private static final class StreamSync {
+
+        private static final AtomicReferenceFieldUpdater<StreamSync, StreamSyncState> STATE =
+                AtomicReferenceFieldUpdater.newUpdater(StreamSync.class, StreamSyncState.class, "state");
+
+        private volatile @Nullable StreamSyncState state;
+        private volatile @Nullable StreamAnswer answer;
+
+        boolean compareAndSet(StreamSyncState expected, StreamSyncState changed) {
+            return STATE.compareAndSet(this, expected, changed);
         }
-        return copy;
     }
 }
