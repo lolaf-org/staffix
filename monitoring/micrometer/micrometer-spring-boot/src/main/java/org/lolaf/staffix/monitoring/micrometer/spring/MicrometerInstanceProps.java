@@ -15,56 +15,15 @@
  */
 package org.lolaf.staffix.monitoring.micrometer.spring;
 
-import org.springframework.boot.context.properties.NestedConfigurationProperty;
-import lombok.Data;
-import org.lolaf.staffix.api.msg.MessageType;
+import lombok.EqualsAndHashCode;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * One configured instance of the Micrometer monitoring plugin: its instance id and the settings a session naming that id gets.
  */
-@Data
-@ConfigurationPropertiesSource
-public class MicrometerInstanceProps {
-    /**
-     * Timer settings applied to every timer unless overridden below.
-     */
-    @NestedConfigurationProperty
-    private TimerSettingsProps defaultTimer;
-    /**
-     * Per-message-type overrides, for measuring one message type more finely than the rest.
-     */
-    private Map<MessageType, TimerSettingsProps> builtInTimerSettings = new LinkedHashMap<>();
-    /**
-     * Overrides by timer name, for the timers that are not per message type.
-     */
-    private Map<String, TimerSettingsProps> timerSettings = new LinkedHashMap<>();
-    /**
-     * Whether to enable the messages.read.latency timer. Defaults to true.
-     */
-    private boolean readLatencyEnabled = true;
-    /**
-     * Whether to enable the messages.write.latency timer. Defaults to true.
-     */
-    private boolean writeLatencyEnabled = true;
-    /**
-     * Whether to enable the messages.decoding.latency timer. Defaults to false.
-     */
-    private boolean decodingLatencyEnabled = false;
-    /**
-     * Whether to enable the messages.encoding.latency timer. Defaults to false.
-     */
-    private boolean encodingLatencyEnabled = false;
 
-    /**
-     * Spring bean name of Consumer of MeterRegistry invoked when the registry stops.
-     */
-    private String stoppingMeterRegistryConsumerBean;
-    /**
-     * Spring bean name of Consumer of MeterRegistry invoked when the registry has started.
-     */
-    private String startedMeterRegistryConsumerBean;
+@EqualsAndHashCode(callSuper = true)
+@ConfigurationPropertiesSource
+public class MicrometerInstanceProps extends MicrometerInstanceBaseProps {
+
 }

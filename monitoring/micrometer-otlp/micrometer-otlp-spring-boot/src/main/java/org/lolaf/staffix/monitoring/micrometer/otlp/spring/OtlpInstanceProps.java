@@ -19,7 +19,7 @@ import io.micrometer.registry.otlp.AggregationTemporality;
 import io.micrometer.registry.otlp.HistogramFlavor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.lolaf.staffix.monitoring.micrometer.spring.MicrometerInstanceProps;
+import org.lolaf.staffix.monitoring.micrometer.spring.MicrometerInstanceBaseProps;
 import org.springframework.boot.context.properties.ConfigurationPropertiesSource;
 
 import java.time.Duration;
@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ConfigurationPropertiesSource
-public class OtlpInstanceProps extends MicrometerInstanceProps {
+public class OtlpInstanceProps extends MicrometerInstanceBaseProps {
     /**
      * The collector's address.
      */
