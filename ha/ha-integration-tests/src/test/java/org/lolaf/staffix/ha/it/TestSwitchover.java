@@ -816,7 +816,8 @@ class TestSwitchover {
     }
 
     /**
-     * Unlike a restarted follower, a dropped one keeps its copy, which the snapshot replaces under a running session.
+     * Unlike a restarted follower, a dropped one keeps its copy, which a snapshot completes with only what it missed,
+     * under a running session.
      */
     @ParameterizedTest
     @EnumSource(value = ReplicationMode.class, names = {"ASYNC", "SYNC_RECEIVED", "SYNC_APPLIED"})
@@ -843,7 +844,7 @@ class TestSwitchover {
 
         await().atMost(Duration.ofSeconds(60)).until(() -> a.getStatus().getDroppedFollowers().isEmpty());
         await().until(() -> b.getStatus().getLeader() != null && b.getStatus().getLeader().isInSync());
-        assertThat(followerStore.resets()).as("a snapshot replaced the follower's copy").isGreaterThan(resetsBefore);
+        assertThat(followerStore.resets()).as("the snapshot kept the follower's copy").isEqualTo(resetsBefore);
         counterparty.roundTrips(10);
         long expected = counterpartyIncomingSeqNum();
 

@@ -26,7 +26,10 @@ one on your machine, with a witness and a counterparty, to kill and restart by h
   follower acknowledges what it applied. The replication itself is [replicos](https://github.com/lolaf-org/replicos),
   a library of its own: each replicated session, and the session settings, are one of its streams.
 - **A follower that connects late, or lost the stream, catches up**: from where it left off when the leader still holds
-  those writes, else by a snapshot of each session (its sequence numbers and every message its store keeps). A snapshot
+  those writes, else by a snapshot of each session. A snapshot carries the session's sequence numbers and the messages
+  the follower's store misses: only those after its last messages when its last 16 are byte for byte the leader's, as
+  after a restart with a store that keeps them or a drop as too slow; every message the leader's store keeps
+  otherwise, as for a store holding nothing or a deposed leader holding messages the new one never got. A snapshot
   goes in chunks between the other sessions' writes, so they keep replicating, and their `SYNC` sends keep flowing,
   while it lasts, if more slowly: `replicationLanes` keeps that to the sessions sharing its lane.
 - **On taking over**, the new leader runs the sessions at the sequence numbers the old one left them, when the old
@@ -444,12 +447,13 @@ decide, as it is the one encrypting.
   error and alerts; a resend of that message after a failover is gap filled. Messages up to that size are replicated
   in pieces, but a large message takes a large share of the log, and a follower a whole log behind makes writes wait:
   size `logCapacity` to at least four times your largest message.
-- **A snapshot copies every message the leader's store keeps, and the follower's store then keeps what its own
-  settings allow.** Give the follower's store at least the leader's retention (`maxEntriesInMemory`, the file store's
+- **A snapshot copying a whole session copies every message the leader's store keeps, and the follower's store then
+  keeps what its own settings allow.** Give the follower's store at least the leader's retention (`maxEntriesInMemory`, the file store's
   `blocksCount` and `blockSize`, `maxMessagesPerSession`): a resend asking for a message it dropped is answered with a
   gap fill once it leads. A store keeping everything makes a long snapshot, which slows the `SYNC` sends of its lane a little
   (see Latency), and the session is not in sync until it ends.
-- **A restarted follower is caught up by snapshot**: it does not remember where it left the stream.
+- **A restarted follower is caught up by snapshot**: it does not remember where it left the stream. With a store that
+  keeps its messages across the restart, the snapshot copies only those it misses.
 
 ## Watching it
 

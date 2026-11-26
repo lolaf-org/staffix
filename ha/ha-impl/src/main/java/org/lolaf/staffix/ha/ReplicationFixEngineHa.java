@@ -31,6 +31,7 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.replicos.CatchUp;
 import org.lolaf.replicos.FollowerSettings;
 import org.lolaf.replicos.LeaderSettings;
 import org.lolaf.replicos.ReplicationNode;
@@ -205,6 +206,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                         .sinkWriterIdleStrategy(settings.getFollowerStoreWriterIdleStrategy())
                         .build())
                 .logCapacity(settings.getLogCapacity())
+                .catchUp(CatchUp.byLastRecords())
                 .encryption(settings.getEncryption())
                 .selectStrategy(settings.getSelectStrategy())
                 .clock(new EngineReplicationClock(engine.getClock()))
