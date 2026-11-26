@@ -143,7 +143,7 @@ class TestReplicaSessions extends FixLeaderConnectionHarness {
         String answerLine = "STREAM_ANSWER epoch=" + EPOCH + " key=" + key + " ";
         return sent.frames.stream()
                 .filter(frame -> frame.startsWith(answerLine))
-                .map(frame -> StreamAnswer.valueOf(frame.substring(answerLine.length())))
+                .map(frame -> StreamAnswer.valueOf(frame.substring(answerLine.length()).split(" ")[0]))
                 .reduce((earlier, later) -> later)
                 .orElse(null);
     }

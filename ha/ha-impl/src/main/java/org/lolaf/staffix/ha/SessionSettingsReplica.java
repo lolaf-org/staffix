@@ -38,7 +38,7 @@ final class SessionSettingsReplica implements ReplicaSink {
     }
 
     @Override
-    public void snapshotBegin(ByteBuffer buffer, int stateIndex, int stateLength) {
+    public void snapshotBegin(long fromPosition, ByteBuffer buffer, int stateIndex, int stateLength) {
         requireNoState(stateLength);
         comparison.snapshotBegin();
     }

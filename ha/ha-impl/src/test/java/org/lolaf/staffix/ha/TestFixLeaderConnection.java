@@ -50,7 +50,7 @@ class TestFixLeaderConnection extends FixLeaderConnectionHarness {
     @Test
     void aSnapshotStateThatIsNotTwoSeqNumsClosesTheStream() {
         streaming();
-        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, ByteBuffer.allocate(3), 0, 3));
+        read((out, index) -> FrameEncoder.snapshotBegin(out, index, EPOCH, 0, 512, 0, ByteBuffer.allocate(3), 0, 3));
 
         assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
         assertThat(sent.frames).last().asString()
@@ -79,7 +79,7 @@ class TestFixLeaderConnection extends FixLeaderConnectionHarness {
         next.hello();
         decode(writeFrames(welcome(EPOCH, 48), session(0, MAIN)), next);
 
-        assertThat(sent.frames).startsWith("HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastOffset=0 lane=0");
+        assertThat(sent.frames).startsWith("HELLO epoch=7 version=1 node=follower-b lastEpoch=7 lastLeadership=41 lastOffset=0 lane=0");
         assertThat(engine.store(MAIN)).isSameAs(store);
         assertThat(store.started).isTrue();
     }
@@ -96,7 +96,7 @@ class TestFixLeaderConnection extends FixLeaderConnectionHarness {
         assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13", "message 11 eleven",
                 "message 12 twelve", "incoming 22", "outgoing 14");
         assertThat(replicaSessions.isInSync()).isTrue();
-        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 REPLICATING", "ACK epoch=7 applied=-1 inSync=true");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 REPLICATING FULL_COPY last=-1", "ACK epoch=7 applied=-1 inSync=true");
     }
 
     @Test
@@ -112,7 +112,7 @@ class TestFixLeaderConnection extends FixLeaderConnectionHarness {
 
         assertThat(engine.store(MAIN).writes).containsExactly("reset", "incoming 21", "outgoing 13",
                 "batch 11 eleven, 12 twelve", "batch 13 thirteen", "incoming 22", "outgoing 14");
-        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=0 REPLICATING");
+        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=0 REPLICATING FULL_COPY last=-1");
     }
 
     @Test
@@ -155,7 +155,7 @@ class TestFixLeaderConnection extends FixLeaderConnectionHarness {
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, 0), session(0, MAIN)), resumed);
 
-        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED FULL_COPY last=-1");
         decode(writeFrames(fragment(64, 0, 5, "9=5", LAST)), resumed);
         assertThat(engine.store(MAIN).writes).as("the rest of a message alone is not applied").noneMatch(w -> w.startsWith("message"));
     }

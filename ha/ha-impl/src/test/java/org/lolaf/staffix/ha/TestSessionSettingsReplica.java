@@ -72,7 +72,7 @@ class TestSessionSettingsReplica {
     @Test
     void theLeadersSetIsWholeOnceASnapshotEnds() {
         record(SessionSettingsRecords.DIGEST, digest("before"), false);
-        replica.snapshotBegin(NO_STATE, 0, 0);
+        replica.snapshotBegin(0, NO_STATE, 0, 0);
         record(SessionSettingsRecords.DIGEST, digest("a"), true);
         record(SessionSettingsRecords.DIGEST, digest("b"), true);
         record(SessionSettingsRecords.FORGOTTEN, digest("b"), true);
@@ -85,7 +85,7 @@ class TestSessionSettingsReplica {
 
     @Test
     void recordsAfterTheSnapshotKeepItCurrent() {
-        replica.snapshotBegin(NO_STATE, 0, 0);
+        replica.snapshotBegin(0, NO_STATE, 0, 0);
         replica.snapshotEnd(NO_STATE, 0, 0);
 
         record(SessionSettingsRecords.DIGEST, digest("a"), false);
@@ -103,7 +103,7 @@ class TestSessionSettingsReplica {
                 .isInstanceOf(WireFormatException.class).hasMessageContaining("record type 9");
         assertThatThrownBy(() -> replica.apply(SessionSettingsRecords.DIGEST, 1, payload, 0, payload.remaining() - 1))
                 .isInstanceOf(WireFormatException.class);
-        assertThatThrownBy(() -> replica.snapshotBegin(ByteBuffer.allocate(8), 0, 8))
+        assertThatThrownBy(() -> replica.snapshotBegin(0, ByteBuffer.allocate(8), 0, 8))
                 .isInstanceOf(WireFormatException.class).hasMessageContaining("no state");
     }
 }

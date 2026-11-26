@@ -79,7 +79,7 @@ final class FixSessionReplica implements ReplicaSink {
     }
 
     @Override
-    public void snapshotBegin(ByteBuffer state, int stateIndex, int stateLength) {
+    public void snapshotBegin(long fromPosition, ByteBuffer state, int stateIndex, int stateLength) {
         checkState(stateLength);
         store.resetSequenceNumbers();
         lostWrites.reset();

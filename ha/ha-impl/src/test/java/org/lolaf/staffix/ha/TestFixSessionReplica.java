@@ -53,7 +53,7 @@ class TestFixSessionReplica {
         FixSessionReplica replica = new FixSessionReplica(mock(FixSessionMessagesStore.class), "alpha");
         ByteBuffer payload = ByteBuffer.allocate(8);
 
-        assertThatThrownBy(() -> replica.snapshotBegin(ByteBuffer.allocate(3), 0, 3)).isInstanceOf(WireFormatException.class);
+        assertThatThrownBy(() -> replica.snapshotBegin(0, ByteBuffer.allocate(3), 0, 3)).isInstanceOf(WireFormatException.class);
         assertThatThrownBy(() -> replica.snapshotRecord(StoreEventType.STORE_INCOMING_SEQ_NUM.getCode(), 1, payload, 0, 0))
                 .isInstanceOf(WireFormatException.class);
         assertThatThrownBy(() -> replica.apply((byte) 9, 1, payload, 0, 0)).isInstanceOf(WireFormatException.class)

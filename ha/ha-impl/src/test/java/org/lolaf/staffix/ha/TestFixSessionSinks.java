@@ -33,7 +33,7 @@ class TestFixSessionSinks extends FixLeaderConnectionHarness {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
 
         assertThat(engine.store(MAIN).started).isTrue();
-        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED", "ACK epoch=7 applied=-1 inSync=false");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED FULL_COPY last=-1", "ACK epoch=7 applied=-1 inSync=false");
     }
 
     @Test
@@ -46,7 +46,7 @@ class TestFixSessionSinks extends FixLeaderConnectionHarness {
         read(event(EPOCH, 0, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
 
         assertThat(engine.store(late).started).isTrue();
-        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=3 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=3 SNAPSHOT_NEEDED FULL_COPY last=-1");
     }
 
     @Test
@@ -57,7 +57,7 @@ class TestFixSessionSinks extends FixLeaderConnectionHarness {
 
         assertThat(engine.stores).isEmpty();
         assertThat(sent.frames).as("a session it should hold is missing, so it is not in sync")
-                .containsExactly("STREAM_ANSWER epoch=7 key=3 UNKNOWN_STREAM", "ACK epoch=7 applied=0 inSync=false");
+                .containsExactly("STREAM_ANSWER epoch=7 key=3 UNKNOWN_STREAM FULL_COPY last=-1", "ACK epoch=7 applied=0 inSync=false");
     }
 
     @Test
@@ -68,14 +68,14 @@ class TestFixSessionSinks extends FixLeaderConnectionHarness {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, sync));
 
         assertThat(engine.store(MAIN)).as("no store opened").isNull();
-        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 MODE_MISMATCH", "ACK epoch=7 applied=-1 inSync=false");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 MODE_MISMATCH FULL_COPY last=-1", "ACK epoch=7 applied=-1 inSync=false");
         sent.frames.clear();
 
         engine.replace(sync);
         read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
 
         assertThat(engine.store(sync).started).isTrue();
-        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED FULL_COPY last=-1");
     }
 
     @Test
@@ -85,7 +85,7 @@ class TestFixSessionSinks extends FixLeaderConnectionHarness {
 
         assertThat(engine.store(MAIN).started).isFalse();
         assertThat(engine.store(MAIN).writes).isEmpty();
-        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SHARED_STORAGE", "ACK epoch=7 applied=0 inSync=false");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SHARED_STORAGE FULL_COPY last=-1", "ACK epoch=7 applied=0 inSync=false");
     }
 
     @Test
@@ -105,7 +105,7 @@ class TestFixSessionSinks extends FixLeaderConnectionHarness {
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN));
 
         assertThat(engine.store(MAIN).started).isFalse();
-        assertThat(sent.frames).first().isEqualTo("STREAM_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
+        assertThat(sent.frames).first().isEqualTo("STREAM_ANSWER epoch=7 key=0 UNKNOWN_STORAGE FULL_COPY last=-1");
     }
 
     @Test
@@ -113,7 +113,7 @@ class TestFixSessionSinks extends FixLeaderConnectionHarness {
         read(welcome(EPOCH, WireFormat.NO_RESUME), (out, index) -> FixFrames.stream(out, index, EPOCH, 0,
                 MAIN.getFixSessionType(), ReplicationMode.ASYNC, MAIN.getFixSessionId().toString(), null));
 
-        assertThat(sent.frames).first().isEqualTo("STREAM_ANSWER epoch=7 key=0 UNKNOWN_STORAGE");
+        assertThat(sent.frames).first().isEqualTo("STREAM_ANSWER epoch=7 key=0 UNKNOWN_STORAGE FULL_COPY last=-1");
     }
 
     @Test
@@ -126,7 +126,7 @@ class TestFixSessionSinks extends FixLeaderConnectionHarness {
         sent.frames.clear();
         decode(writeFrames(welcome(EPOCH, WireFormat.NO_RESUME), session(0, MAIN)), next);
 
-        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED");
+        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED FULL_COPY last=-1");
         assertThat(engine.store(MAIN).started).isTrue();
     }
 }

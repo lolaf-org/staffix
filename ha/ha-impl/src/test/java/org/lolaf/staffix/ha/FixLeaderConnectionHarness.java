@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.replicos.CatchUp;
 import org.lolaf.replicos.EncryptionMode;
 import org.lolaf.replicos.follower.FollowerStreams;
 import org.lolaf.replicos.spi.LatencyRecorder;
@@ -52,7 +53,8 @@ abstract class FixLeaderConnectionHarness extends AbstractLeaderConnectionHarnes
     }
 
     private FixLeaderConnectionHarness(RecordingEngine engine, SessionSettingsComparison settingsComparison) {
-        super(new FollowerStreams(new FixSessionSinks(engine, settingsComparison), LatencyRecorder.NONE),
+        super(new FollowerStreams(new FixSessionSinks(engine, settingsComparison), CatchUp.fullCopy(),
+                LatencyRecorder.NONE),
                 new FixRecordingHandler());
         this.engine = engine;
         this.replicaSessions = new ReplicaSessions(engine, settingsComparison, new FollowerStreamsView(followerStreams));
@@ -63,7 +65,8 @@ abstract class FixLeaderConnectionHarness extends AbstractLeaderConnectionHarnes
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> welcome(long epoch, long resumeOffset, int lanes) {
-        return (out, index) -> FixFrames.welcome(out, index, epoch, "leader-a", resumeOffset, lanes, EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
+        return (out, index) -> FixFrames.welcome(out, index, epoch, "leader-a", LEADERSHIP, resumeOffset, lanes,
+                EncryptionMode.DISABLED, TestingKeyExchanges.NO_NONCE);
     }
 
     static ToIntBiFunction<ByteBuffer, Integer> session(int key, FixSessionSettings settings) {
