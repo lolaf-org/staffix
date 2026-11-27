@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.lolaf.betty.api.io.IOSession;
+import org.lolaf.betty.api.io.IOWorkersGroup;
+import org.lolaf.betty.api.settings.IOWorkersGroupSettings;
 import org.lolaf.betty.api.settings.IOSettings;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.FixEngine;
@@ -50,6 +52,7 @@ import org.lolaf.staffix.tests.TestingFixSessionMessagesStore;
 import java.io.EOFException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -346,6 +349,104 @@ class TestFixMessagesSending extends AbstractFixTests {
                 .build()
                 .instance().start();
         fixAcceptor = acceptorFixEngine.newAcceptor(fixAcceptorBuilder);
+    }
+
+    /**
+     * IO threads shared with other connections keep running when an initiator stops, and the stop of a connection gives
+     * up on a busy one at its own deadline: the store must wait for the callback still running there, not close under
+     * it.
+     */
+    @Test
+    void testStopOfAnInitiatorOnSharedIOThreadsWaitsForTheCallbackStillRunningBeforeReleasingTheStore() throws Exception {
+        IOWorkersGroup sharedIOThreads = IOWorkersGroupSettings.builder().id("shared-io-threads").build().newInstance();
+        sharedIOThreads.start();
+        try {
+            fixInitiator = initiatorFixEngine.newInitiator(fixInitiatorBuilder.toBuilder()
+                    .instanceId("shared-io-initiator")
+                    .ioWorkersGroup(sharedIOThreads)
+                    .shutdownMaxDelay(Duration.ofSeconds(4))
+                    .build());
+            logonClient();
+            CountDownLatch callbackHeld = new CountDownLatch(1);
+            CountDownLatch callbackReleased = new CountDownLatch(1);
+            doAnswer(invocation -> {
+                callbackHeld.countDown();
+                awaitUninterruptibly(callbackReleased);
+                return invocation.callRealMethod();
+            }).when(getDecoder(testMessageType, ConnectorType.INITIATOR)).onDecoded(any(), anyBoolean(), anyBoolean());
+            fixAcceptorSession.send(encodeTestMessage(), null);
+            assertThat(callbackHeld.await(10, TimeUnit.SECONDS)).isTrue();
+
+            Thread stopping = new Thread(fixInitiator::stop, "stopping-initiator");
+            try {
+                stopping.start();
+                await().until(() -> isIn(stopping, "releaseResources"));
+
+                assertThat(initiatorMessagesStore.isStarted()).as("kept for the callback still running").isTrue();
+            } finally {
+                callbackReleased.countDown();
+            }
+            stopping.join(10_000);
+            assertThat(stopping.isAlive()).as("the stop returned").isFalse();
+            assertThat(initiatorMessagesStore.isStarted()).isFalse();
+            assertThat(initiatorMessagesStore.getWritesRefusedWhileStopped()).isEmpty();
+        } finally {
+            sharedIOThreads.stop(Deadline.of(Duration.ofSeconds(5)));
+        }
+    }
+
+    /**
+     * A callback still running when the whole stop deadline has passed does not hold the stop: the store is released
+     * at the deadline and that callback's writes are refused, so nothing is left to release after the stop returned,
+     * where it could stop the store a restarted session took over.
+     */
+    @Test
+    void testStopOfAnInitiatorOnSharedIOThreadsReleasesTheStoreAtItsDeadlineUnderACallbackStillRunning() throws Exception {
+        IOWorkersGroup sharedIOThreads = IOWorkersGroupSettings.builder().id("shared-io-threads").build().newInstance();
+        sharedIOThreads.start();
+        try {
+            Duration shutdownMaxDelay = Duration.ofSeconds(1);
+            fixInitiator = initiatorFixEngine.newInitiator(fixInitiatorBuilder.toBuilder()
+                    .instanceId("shared-io-initiator")
+                    .ioWorkersGroup(sharedIOThreads)
+                    .shutdownMaxDelay(shutdownMaxDelay)
+                    .build());
+            logonClient();
+            CountDownLatch callbackHeld = new CountDownLatch(1);
+            CountDownLatch callbackReleased = new CountDownLatch(1);
+            CountDownLatch callbackReturned = new CountDownLatch(1);
+            doAnswer(invocation -> {
+                callbackHeld.countDown();
+                awaitUninterruptibly(callbackReleased);
+                try {
+                    return invocation.callRealMethod();
+                } finally {
+                    callbackReturned.countDown();
+                }
+            }).when(getDecoder(testMessageType, ConnectorType.INITIATOR)).onDecoded(any(), anyBoolean(), anyBoolean());
+            fixAcceptorSession.send(encodeTestMessage(), null);
+            assertThat(callbackHeld.await(10, TimeUnit.SECONDS)).isTrue();
+
+            try {
+                long stoppingSince = System.nanoTime();
+                fixInitiator.stop();
+
+                assertThat(Duration.ofNanos(System.nanoTime() - stoppingSince)).isLessThan(shutdownMaxDelay.multipliedBy(3));
+                assertThat(initiatorMessagesStore.isStarted()).as("released at the deadline").isFalse();
+            } finally {
+                callbackReleased.countDown();
+            }
+            assertThat(callbackReturned.await(10, TimeUnit.SECONDS)).isTrue();
+            await().untilAsserted(() -> assertThat(initiatorMessagesStore.getWritesRefusedWhileStopped())
+                    .as("the late callback's writes").containsExactly("storeNextIncomingSeqNum 3", "getNextOutgoingSeqNum"));
+            initiatorMessagesStore.getWritesRefusedWhileStopped().clear();
+        } finally {
+            sharedIOThreads.stop(Deadline.of(Duration.ofSeconds(5)));
+        }
+    }
+
+    private static boolean isIn(Thread thread, String methodName) {
+        return Arrays.stream(thread.getStackTrace()).anyMatch(frame -> frame.getMethodName().equals(methodName));
     }
 
     private static void awaitUninterruptibly(CountDownLatch latch) {

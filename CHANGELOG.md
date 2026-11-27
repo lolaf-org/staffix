@@ -195,6 +195,12 @@ could mean.
 
 ### Fixed
 
+- **A session's message store is no longer closed while its connection is still handling a message.** When IO
+  threads are shared with other connections (an initiator given an `ioWorkersGroup`, or a session removed from a
+  running acceptor), stopping a session whose IO thread was busy, for instance in your application's callback, closed
+  its store and logger under that callback: the writes that followed failed and were lost. The stop now waits, within
+  its deadline, for the connection to be fully closed before closing the store. A callback still running when the
+  deadline has passed finds the store closed, as before, and the stop logs a warning.
 - **Settings updated while an initiator session is disconnected now take effect**: the next logon used to keep the
   old ones until the initiator was restarted.
 - **A session logged out from the admin API stays logged out when its settings are updated**, and one logged on stays

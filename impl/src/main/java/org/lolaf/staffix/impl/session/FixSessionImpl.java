@@ -122,6 +122,7 @@ public class FixSessionImpl implements FixSession {
     @Getter
     private Collection<Certificate> remoteCertificates;
     private IOSession ioSession;
+    private volatile CompletionStage<Void> disconnection;
     private boolean connectionHeldLogged;
     @Getter
     @Setter
@@ -147,6 +148,7 @@ public class FixSessionImpl implements FixSession {
         SessionDownEvaluator.probe(this, fixSessionSettings.getSessionDownAlertDelay()).ifPresent(probes::add);
         this.alertsPublisher = fixSessionRuntimeDependencies.getFixAlertsPublisher();
         this.ownershipHandover = new ReentrantLock();
+        this.disconnection = CompletableFuture.completedFuture(null);
         this.fixSessionId = wiring.fixSessionId;
         this.fixApplication = wiring.fixApplication;
         this.fieldsRegistry = wiring.fieldsRegistry;
@@ -195,10 +197,6 @@ public class FixSessionImpl implements FixSession {
     public void onSessionRemoved() {
         Deadline stopDeadline = Deadline.of(fixSessionSettings.getDisconnectMessagesFlushDeadline());
         stopProtocol("FIX session has been removed", stopDeadline);
-        // the acceptor keeps its IO running, so only the connection closing guarantees no read is still on its way
-        if (!stopDeadline.waitAsLongAs(this::isConnected)) {
-            log.warn("FIX session {} removed before its connection closed", fixSessionId);
-        }
         releaseResources(stopDeadline);
     }
 
@@ -716,6 +714,7 @@ public class FixSessionImpl implements FixSession {
         ioSession.setId(getFixSessionId().getQualifiedName());
         ownershipHandover.lock();
         try {
+            this.disconnection = ioSession.whenDisconnected();
             this.ioSession = ioSession;
         } finally {
             ownershipHandover.unlock();
@@ -774,12 +773,36 @@ public class FixSessionImpl implements FixSession {
         awaitTheOfflineOwner(stopDeadline);
     }
 
+    /**
+     * Stops the store and the logger and frees the encoders, first waiting within the deadline for the callbacks of the
+     * last connection to be over: an IO thread shared with other connections can still be in one after the stop of
+     * that connection returned. Past the deadline, releases anyway.
+     */
     @ExternalThread
     public void releaseResources(Deadline stopDeadline) {
+        if (!isDisconnectedWithin(stopDeadline)) {
+            log.warn("FIX session {} releases its store at the stop deadline while its last connection's IO thread is still"
+                    + " in a callback", fixSessionId);
+        }
         awaitTheOfflineOwner(stopDeadline);
         fixMessagesLogger.stop(stopDeadline);
         fixSessionMessagesStore.stop(stopDeadline);
         codecs.destroyEncodersPools();
+    }
+
+    private boolean isDisconnectedWithin(Deadline stopDeadline) {
+        try {
+            disconnection.toCompletableFuture().get(Math.max(1L, stopDeadline.getRemainingTime().toMillis()), TimeUnit.MILLISECONDS);
+            return true;
+        } catch (ExecutionException lostItsIOThread) {
+            // its callbacks are over all the same
+            return true;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (TimeoutException ex) {
+            return false;
+        }
     }
 
     public void onWatermarkEvent(boolean highWatermarkReached, long bytesLeftToWrite) {
