@@ -21,6 +21,7 @@ import org.lolaf.staffix.api.ha.HaStatus.SessionSettingsDifference;
 import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
+import org.lolaf.replicos.spi.RecordFlag;
 import org.lolaf.replicos.spi.WireFormatException;
 
 import java.nio.ByteBuffer;
@@ -60,7 +61,7 @@ class TestSessionSettingsReplica {
         if (snapshot) {
             replica.snapshotRecord(contentType, 1, payload, 0, payload.remaining());
         } else {
-            replica.apply(contentType, 1, payload, 0, payload.remaining());
+            replica.apply(contentType, RecordFlag.NONE, 1, payload, 0, payload.remaining());
         }
     }
 
@@ -99,9 +100,9 @@ class TestSessionSettingsReplica {
     void whatTheStreamNeverCarriesIsTheLeadersError() {
         ByteBuffer payload = SessionSettingsRecords.encode(digest("a"));
 
-        assertThatThrownBy(() -> replica.apply((byte) 9, 1, payload, 0, payload.remaining()))
+        assertThatThrownBy(() -> replica.apply((byte) 9, RecordFlag.NONE, 1, payload, 0, payload.remaining()))
                 .isInstanceOf(WireFormatException.class).hasMessageContaining("record type 9");
-        assertThatThrownBy(() -> replica.apply(SessionSettingsRecords.DIGEST, 1, payload, 0, payload.remaining() - 1))
+        assertThatThrownBy(() -> replica.apply(SessionSettingsRecords.DIGEST, RecordFlag.NONE, 1, payload, 0, payload.remaining() - 1))
                 .isInstanceOf(WireFormatException.class);
         assertThatThrownBy(() -> replica.snapshotBegin(0, ByteBuffer.allocate(8), 0, 8))
                 .isInstanceOf(WireFormatException.class).hasMessageContaining("no state");

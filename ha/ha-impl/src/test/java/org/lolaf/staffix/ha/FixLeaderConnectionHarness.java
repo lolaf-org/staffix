@@ -130,5 +130,6 @@ abstract class FixLeaderConnectionHarness extends AbstractLeaderConnectionHarnes
         read((out, index) -> FixFrames.snapshotBegin(out, index, EPOCH, 0, 0, 1, 1),
                 (out, index) -> FixFrames.snapshotEnd(out, index, EPOCH, 0, 0, 1, 1));
         engine.store(MAIN).writes.clear();
+        sent.frames.clear();
     }
 }

@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha;
 import lombok.RequiredArgsConstructor;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.ha.SessionSettingsDigests.Digest;
+import org.lolaf.replicos.spi.RecordFlag;
 import org.lolaf.replicos.spi.ReplicaSink;
 import org.lolaf.replicos.spi.WireFormatException;
 
@@ -33,7 +34,8 @@ final class SessionSettingsReplica implements ReplicaSink {
     private final SessionSettingsComparison comparison;
 
     @Override
-    public void apply(byte contentType, long position, ByteBuffer buffer, int payloadIndex, int payloadLength) {
+    public void apply(byte contentType, RecordFlag flag, long position, ByteBuffer buffer, int payloadIndex,
+                      int payloadLength) {
         take(contentType, buffer, payloadIndex, payloadLength);
     }
 

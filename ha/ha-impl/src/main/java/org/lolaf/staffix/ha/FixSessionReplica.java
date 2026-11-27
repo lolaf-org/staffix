@@ -23,6 +23,7 @@ import org.lolaf.staffix.api.stores.FixMessagesStore.BatchingFixSessionMessagesS
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessage;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.replicos.spi.RecordFlag;
 import org.lolaf.replicos.spi.ReplicaSink;
 import org.lolaf.replicos.spi.WireFormatException;
 
@@ -56,7 +57,8 @@ final class FixSessionReplica implements ReplicaSink {
     }
 
     @Override
-    public void apply(byte contentType, long seqNum, ByteBuffer receiveBuffer, int messageIndex, int messageLength) {
+    public void apply(byte contentType, RecordFlag flag, long seqNum, ByteBuffer receiveBuffer, int messageIndex,
+                      int messageLength) {
         switch (eventType(contentType)) {
             case STORE_MESSAGE:
                 if (seqNum <= highestStoredSeqNum) {

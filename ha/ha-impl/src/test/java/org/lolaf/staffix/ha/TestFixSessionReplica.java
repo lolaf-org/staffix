@@ -20,6 +20,7 @@ import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore.StoreMessagesConsumer;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.replicos.spi.RecordFlag;
 import org.lolaf.replicos.spi.WireFormatException;
 
 import java.nio.ByteBuffer;
@@ -123,7 +124,7 @@ class TestFixSessionReplica {
         FixSessionMessagesStore store = storeHolding(Map.of(1L, "one", 2L, "two"));
         FixSessionReplica replica = new FixSessionReplica(store, "alpha");
         readLast(replica, 16);
-        replica.apply(StoreEventType.STORE_MESSAGE.getCode(), 3, ascii("three"), 0, 5);
+        replica.apply(StoreEventType.STORE_MESSAGE.getCode(), RecordFlag.NONE, 3, ascii("three"), 0, 5);
 
         replica.snapshotBegin(3, FixFrames.seqNums(7, 5), 0, 2 * Long.BYTES);
         replica.snapshotRecord(StoreEventType.STORE_MESSAGE.getCode(), 3, ascii("three"), 0, 5);
@@ -168,7 +169,7 @@ class TestFixSessionReplica {
         assertThatThrownBy(() -> replica.snapshotBegin(0, ByteBuffer.allocate(3), 0, 3)).isInstanceOf(WireFormatException.class);
         assertThatThrownBy(() -> replica.snapshotRecord(StoreEventType.STORE_INCOMING_SEQ_NUM.getCode(), 1, payload, 0, 0))
                 .isInstanceOf(WireFormatException.class);
-        assertThatThrownBy(() -> replica.apply((byte) 9, 1, payload, 0, 0)).isInstanceOf(WireFormatException.class)
+        assertThatThrownBy(() -> replica.apply((byte) 9, RecordFlag.NONE, 1, payload, 0, 0)).isInstanceOf(WireFormatException.class)
                 .hasMessage("Unknown store event type 9");
         replica.snapshotEnd(FixFrames.seqNums(4, 5), 0, 2 * Long.BYTES);
     }

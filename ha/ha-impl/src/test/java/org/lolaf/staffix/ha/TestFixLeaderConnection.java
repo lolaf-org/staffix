@@ -38,6 +38,7 @@ class TestFixLeaderConnection extends FixLeaderConnectionHarness {
     @Test
     void aRecordOfAContentTypeNoStoreEventHasClosesTheStream() {
         streaming();
+        complete();
         read((out, index) -> {
             int body = FrameEncoder.recordBody(out, index + WireFormat.RECORD_BODY_OFFSET, 0, (byte) 9, (byte) 0, 1, null, 0, 0);
             return FrameEncoder.recordHeader(out, index, EPOCH, 64, body);
@@ -135,6 +136,7 @@ class TestFixLeaderConnection extends FixLeaderConnectionHarness {
     void theFragmentsOfAMessageAreAppliedAsOneMessageOnceTheLastArrives() {
         FixSessionSettings other = RecordingEngine.session("other", FixSessionType.INITIATOR);
         streaming();
+        complete();
         read(session(3, other));
 
         read(fragment(0, 0, 5, "8=FIX.4.4\u0001", FIRST), event(EPOCH, 64, 3, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));

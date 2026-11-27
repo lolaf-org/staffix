@@ -31,6 +31,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
     @Test
     void storeEventsAreAppliedInOrderAndAcknowledgedOncePerRead() {
         streaming();
+        complete();
 
         read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, MESSAGE),
                 event(EPOCH, 64, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 7, null),
@@ -41,12 +42,13 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
                 .containsExactly("message 5 " + MESSAGE, "incoming 3", "outgoing 7", "reset");
         assertThat(followerStreams.getLastAppliedEpoch(0)).isEqualTo(EPOCH);
         assertThat(followerStreams.getLastAppliedOffset(0)).isEqualTo(128);
-        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=false");
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=128 inSync=true");
     }
 
     @Test
     void aStoreWriteFailingWithItsResourceDownClosesTheStreamWithoutApplyingOrAcknowledgingWhatFollowsIt() {
         streaming();
+        complete();
         engine.store(MAIN).messageWritesFail = true;
         engine.store(MAIN).resourceDown = true;
 
@@ -64,6 +66,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
     void aReadsMessagesGoToABatchingStoreAsOneBatchThenItsLastSeqnums() {
         engine.batchingStores = true;
         streaming();
+        complete();
 
         read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
                 event(EPOCH, 64, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null),
@@ -71,13 +74,14 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
                 event(EPOCH, 160, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 3, null));
 
         assertThat(engine.store(MAIN).writes).containsExactly("batch 5 five, 6 six", "incoming 3", "outgoing 7");
-        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=160 inSync=false");
+        assertThat(sent.frames).containsExactly("ACK epoch=7 applied=160 inSync=true");
     }
 
     @Test
     void anOutgoingSeqnumKeepsItsPlaceAmongTheMessagesOfARead() {
         engine.batchingStores = true;
         streaming();
+        complete();
 
         read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
                 event(EPOCH, 64, 0, StoreEventType.STORE_OUTGOING_SEQ_NUM, 10, null));
@@ -91,6 +95,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
     void aFullBatchIsWrittenWithinTheRead() {
         engine.batchingStores = true;
         streaming();
+        complete();
 
         read(IntStream.rangeClosed(1, 300)
                 .mapToObj(seq -> event(EPOCH, seq * 64L, 0, StoreEventType.STORE_MESSAGE, seq, "m"))
@@ -107,6 +112,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
     void aBatchThatFailsLeavesTheReadReceivedButUnapplied() {
         engine.batchingStores = true;
         streamingSyncReceived();
+        complete();
         engine.store(MAIN).messageWritesFail = true;
         engine.store(MAIN).resourceDown = true;
 
@@ -123,6 +129,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
     @Test
     void aStoreWriteFailingWithItsResourceUpCostsThatMessageAlone() {
         streaming();
+        complete();
         engine.store(MAIN).refusedSeqNum = 5;
 
         read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
@@ -138,6 +145,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
     void aBatchFailingWithItsResourceUpCostsTheMessageTheStoreRefusesAlone() {
         engine.batchingStores = true;
         streaming();
+        complete();
         engine.store(MAIN).refusedSeqNum = 5;
 
         read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 4, "four"),
@@ -152,6 +160,7 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
     @Test
     void aSnapshotForgetsTheWritesLost() {
         streaming();
+        complete();
         engine.store(MAIN).refusedSeqNum = 5;
         read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"));
         assertThat(lostWrites()).isEqualTo(1);
