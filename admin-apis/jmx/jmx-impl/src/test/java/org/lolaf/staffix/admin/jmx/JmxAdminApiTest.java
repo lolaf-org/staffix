@@ -308,7 +308,7 @@ class JmxAdminApiTest {
                 .peer("2").peer("3")
                 .syncFollower("2")
                 .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
-                        .syncFollower(true).unsentBytes(128).appliedOffset(4096).lagMillis(3).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
+                        .syncFollower(true).unsentBytes(128).appliedOffset(4096).lagMillis(3).catchUpMillis(1200).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
                 .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1).droppedAt(SINCE).build())
                 .build());
         adminApi.ha = ha;
@@ -327,6 +327,7 @@ class JmxAdminApiTest {
             assertThat(follower.getUnsentBytes()).isEqualTo(128);
             assertThat(follower.getAppliedOffset()).isEqualTo(4096);
             assertThat(follower.getLagMillis()).isEqualTo(3);
+            assertThat(follower.getCatchUpMillis()).isEqualTo(1200);
             assertThat(follower.getCipher()).isEqualTo("AES/CTR/NoPadding 256 HmacSHA256");
         });
         assertThat(status.getDroppedFollowers()).singleElement().satisfies(dropped -> {

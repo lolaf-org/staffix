@@ -82,11 +82,16 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         return delegate.switchover().name();
     }
 
+    @Override
+    public String switchoverTo(String nodeId) {
+        return delegate.switchover(nodeId).name();
+    }
+
     private static FollowerConnection followerConnection(HaStatus.FollowerConnection connection) {
         return new FollowerConnectionImpl(connection.getNodeId(), connection.getLane(), connection.getAddress(),
                 connection.isConnected(), connection.isInSync(), connection.isSyncFollower(),
                 connection.isSnapshotInProgress(), connection.getUnsentBytes(), connection.getAppliedOffset(),
-                connection.getLagMillis(), connection.getCipher());
+                connection.getLagMillis(), connection.getCatchUpMillis(), connection.getCipher());
     }
 
     private static LanePosition lanePosition(HaStatus.LanePosition position) {
@@ -181,6 +186,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         long unsentBytes;
         long appliedOffset;
         long lagMillis;
+        long catchUpMillis;
         String cipher;
     }
 

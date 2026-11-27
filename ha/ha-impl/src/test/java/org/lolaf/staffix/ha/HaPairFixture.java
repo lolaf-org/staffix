@@ -16,6 +16,7 @@
 package org.lolaf.staffix.ha;
 
 import org.junit.jupiter.api.AfterEach;
+import org.lolaf.replicos.FollowerLaneStatus;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.FixEngineHa.ReplicatingStore;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
@@ -35,7 +36,7 @@ import java.util.function.UnaryOperator;
 import static org.awaitility.Awaitility.await;
 
 /**
- * Two nodes, each an engine's high availability with an election the test decides, replicating over TCP, the follower
+ * Two nodes, or three, each an engine's high availability with an election the test decides, replicating over TCP, the follower
  * writing on its network threads or on a store writer thread.
  */
 abstract class HaPairFixture {
@@ -44,6 +45,7 @@ abstract class HaPairFixture {
     static final FixSessionSettings OTHER = RecordingEngine.session("other", FixSessionType.ACCEPTOR);
     final InetSocketAddress addressA = new InetSocketAddress("localhost", TestPorts.findFree());
     final InetSocketAddress addressB = new InetSocketAddress("localhost", TestPorts.findFree());
+    final InetSocketAddress addressC = new InetSocketAddress("localhost", TestPorts.findFree());
     final List<ReplicationFixEngineHa> started = new ArrayList<>();
     /**
      * One per lane, so a stalled lane holds back no other.
@@ -51,6 +53,10 @@ abstract class HaPairFixture {
     final boolean storeWriterThreads;
     Node a;
     Node b;
+    /**
+     * Only once {@link #threeNodes} made it.
+     */
+    Node c;
 
     HaPairFixture(boolean storeWriterThreads) {
         this.storeWriterThreads = storeWriterThreads;
@@ -146,6 +152,35 @@ abstract class HaPairFixture {
         await().until(() -> a.engine.activity.contains("activate, stores open 0"));
         await().until(() -> b.engine.store(MAIN) != null && b.ha.getReplicaSessions().isInSync());
         await().until(() -> a.engine.meters.read("ha.followers.in.sync") == 1);
+    }
+
+    /**
+     * Makes a, b and c anew, each naming the three as peers.
+     */
+    void threeNodes(UnaryOperator<ReplicationHaSettingsBuilder> tuning) {
+        UnaryOperator<ReplicationHaSettingsBuilder> withC = settings -> tuning.apply(settings.peer("c", addressC));
+        a = tuned("a", withC);
+        b = tuned("b", withC);
+        c = tuned("c", withC);
+    }
+
+    /**
+     * {@link #startPairInSync()} with c following a too, returning once a has both in sync.
+     */
+    void startThreeInSync() {
+        a.election.elect(Role.LEADER, 3, "a");
+        b.election.elect(Role.FOLLOWER, 3, "a");
+        c.election.elect(Role.FOLLOWER, 3, "a");
+        a.start();
+        b.start();
+        c.start();
+        await().until(() -> a.engine.activity.contains("activate, stores open 0"));
+        await().until(() -> a.ha.getNode().followers().getLaneStatuses().stream().filter(FollowerLaneStatus::isInSync).count() == 2);
+    }
+
+    long pendingWritesOn(Node leader, String follower) {
+        return leader.ha.getNode().followers().getLaneStatuses().stream()
+                .filter(lane -> follower.equals(lane.getNodeId())).mapToLong(FollowerLaneStatus::getPendingWrites).sum();
     }
 
     Node notWaitingToSwitchOver(String nodeId) {

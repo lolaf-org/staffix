@@ -169,15 +169,20 @@ far away: it then gets every message without slowing a send. **`replicationQuoru
 them**, the first to acknowledge: with two standbys, `1` waits for the faster one. With fewer sync followers in sync
 than the quorum, a send does not wait, and is counted unacknowledged. A second node connecting under the id of one
 already connected is refused. **Promote a sync follower in sync**: it holds every message a `SYNC` send was
-acknowledged for, where a disaster-recovery copy may lack some.
+acknowledged for, where a disaster-recovery copy may lack some. **A crash failover does not check it**: the election
+picks any electable node. With the default quorum every sync follower in sync holds every acknowledged message; with a
+quorum below the number of sync followers, the one elected may lack what only another acknowledged, and the messages
+it sent and lacks are then gap filled, so lost. Keep the default quorum where the election is automatic.
 
 `v1/ha` lists the `syncFollowers`, connected or not, and tags each follower connection `syncFollower`, with its
 `appliedOffset`: on one lane, the gap between two followers' is how many bytes of the log one is behind the other.
+`catchUpMillis` is how long the lane's last return to sync took, after connecting, a re-sync or a session added; -1
+before the first.
 **To promote a disaster-recovery copy by hand, compare positions first**: with the leader down, each node's
 `lanePositions` gives the last write it holds on each lane; two compare only at the same `epoch` and `leadership`,
 the larger `offset` holding more. Keep a disaster-recovery copy unelectable (`{"electable": false}`, see
-[maintenance mode](#planned-switchover-and-maintenance)): neither an election nor a switchover names a successor, so
-either may give it the leadership.
+[maintenance mode](#planned-switchover-and-maintenance)): a switchover never hands it the leadership, but an
+election after a crash may.
 
 **A follower that cannot keep up slows the writes, briefly, and is then dropped.** The leader keeps what a connected
 follower has not been sent in its replication log, `logCapacity` bytes. When the follower falls that far behind, a
@@ -263,9 +268,10 @@ In production, `ha.follower.ack.latency` times the follower's part (a batch sent
 a Logout from one node and a Logon from the other, and nothing else. That is the case for:
 
 - **a planned switchover**, below;
-- **a leader engine stopping cleanly**: it logs its sessions out, sends its follower every remaining write, then tells
-  it so. With the primos election staffix runs, stopping the engine also hands primos leadership over. With your own
-  primos node, stop the engine before the node.
+- **a leader engine stopping cleanly**: it logs its sessions out, sends its followers every remaining write, then tells
+  them so. With the primos election staffix runs, or your own with `leadershipControl`, it then hands leadership to
+  the sync follower in sync with the least left to store, never to a disaster-recovery copy; with none in sync,
+  primos picks. With your own primos node, stop the engine before the node.
 
 **When the old leader failed instead** (crashed, killed, cut off), the new leader cannot know whether it sent messages
 the follower never received. Reusing their numbers would make the counterparty refuse the next message as too low, so
@@ -293,7 +299,9 @@ The high availability has its own admin entry point, `AdminApi.getHa()`, also ov
   follower holds every replicated session, this node logs its sessions out, gives the follower every write, then has
   the election transfer leadership. The counterparty sees an orderly Logout and logs on to the new leader at the same
   sequence numbers. A follower also has to be close to done storing what it received, as it must store
-  all of it before it can lead: see `switchoverMaxPendingWrites`. The answer names the outcome: `TRANSFERRED`;
+  all of it before it can lead: see `switchoverMaxPendingWrites`. With several followers, leadership goes to the
+  sync follower in sync with the least left to store, never to a disaster-recovery copy; `?to=<node id>` names the
+  sync follower to hand it to, and waits for that one. The answer names the outcome: `TRANSFERRED`;
   `NO_FOLLOWER_IN_SYNC` or `FOLLOWER_STORE_BEHIND`, nothing was changed; `NOT_HANDED_OVER` or `NOT_TRANSFERRED`, this node
   leads its sessions again.
 - **Maintenance mode** (`POST v1/ha/electable`, `{"electable": false}`) takes a node out of elections: it still votes,
@@ -476,7 +484,7 @@ decide, as it is the one encrypting.
 
 - **Meters** (`ha.*`): role, epoch, followers connected and in sync, unsent bytes, how far each follower is behind,
   `SYNC` sends that went out unacknowledged, snapshots, followers dropped as too slow, writes held by a full log, the
-  acknowledgement round trip and the catch-up time per follower and lane, connections closed by reason, and on the
+  acknowledgement round trip per follower and lane, connections closed by reason, and on the
   follower its reconnections and what it received; see [Monitoring](monitoring.md).
 - **Probes**: the node's (`ha-followers`, `ha-leader-connection`, `ha-leadership`, `ha-session-settings`, `ha-encryption`)
   and each replicated session's (`ha-replication`); see [Alerting](alerting.md).

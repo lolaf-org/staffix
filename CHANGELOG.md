@@ -35,8 +35,9 @@ could mean.
   standby rather than a disaster-recovery copy far away, and `highAvailability.replicationQuorum` lets a session wait
   only for the first of them to acknowledge. The leader is elected by primos with a witness, or by an election of your
   own.
-  A planned switchover logs the sessions out and the other engine carries on at the same sequence numbers; after a
-  failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. A leader cut off from
+  A planned switchover logs the sessions out and hands leadership to the sync follower with the least left to store,
+  or to the one you name, which carries on at the same sequence numbers; a leader stopping cleanly hands it to that
+  sync follower too; after a failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. A leader cut off from
   the others drops its sessions a fencing margin (50 ms by default) before the other engine can be elected. Two
   engines sharing one database or directory are detected and not replicated into. Modules `staffix-ha-impl`,
   `staffix-ha-primos`, `staffix-ha-spring-boot` and `staffix-ha-primos-spring-boot`; see [High availability](docs/high-availability.md),
@@ -59,8 +60,9 @@ could mean.
   `highAvailability.unencryptedMessageTypes`. The status names the cipher of each replication lane. See
   [Encrypting the replication](docs/high-availability.md#encrypting-the-replication).
 - **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
-  switchover, maintenance mode and a re-sync of the follower; it publishes `ha.*` meters, among them how long a
-  follower takes to catch up, how long writes waited on a full replication log and the connections closed by reason,
+  switchover, maintenance mode and a re-sync of the follower, its status telling how long each follower took to catch
+  up; it publishes `ha.*` meters, among them how long writes waited on a full replication log and the connections
+  closed by reason,
   and alerts when the follower is missing, out of sync, behind, or dropped for being too slow. With several followers,
   the status tells the sync followers apart, lists one that is down, shows how far one is behind another and, with the
   leader down, the last write each holds, to choose which to promote. The alerts tell them apart too: major when no

@@ -44,9 +44,10 @@ public final class FakeLeaderElection implements LeaderElection {
     private volatile boolean electableSupported;
     private volatile boolean electable = true;
     private volatile @Nullable Runnable transfer;
+    private volatile @Nullable String transferredTo;
 
     /**
-     * Lets {@link #transferLeadership()} start a transfer, which runs {@code transfer}: electing another node, or
+     * Lets {@link #transferLeadership(String)} start a transfer, which runs {@code transfer}: electing another node, or
      * nothing for a transfer that never lands.
      */
     public void transfersWith(Runnable transfer) {
@@ -113,9 +114,14 @@ public final class FakeLeaderElection implements LeaderElection {
     }
 
     @Override
-    public boolean transferLeadership() {
+    public boolean transferLeadership(String nodeId) {
+        transferredTo = nodeId;
         transfer.run();
         return true;
+    }
+
+    public @Nullable String getTransferredTo() {
+        return transferredTo;
     }
 
     @Override

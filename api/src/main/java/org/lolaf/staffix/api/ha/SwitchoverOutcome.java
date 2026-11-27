@@ -25,16 +25,16 @@ public enum SwitchoverOutcome {
      */
     TRANSFERRED,
     /**
-     * No follower held every replicated session in sync before the timeout: nothing was changed.
+     * No sync follower held every replicated session in sync before the timeout: nothing was changed.
      */
     NO_FOLLOWER_IN_SYNC,
     /**
-     * A follower was in sync but had too much left to store to take over quickly, up to the timeout: nothing was
-     * changed, this node still leads and its sessions never stopped.
+     * Sync followers were in sync but each had too much left to store to take over quickly, up to the timeout:
+     * nothing was changed, this node still leads and its sessions never stopped.
      */
     FOLLOWER_STORE_BEHIND,
     /**
-     * The follower was not sent every write before the timeout: this node leads its sessions again.
+     * No follower was sent every write before the timeout: this node leads its sessions again.
      */
     NOT_HANDED_OVER,
     /**

@@ -79,12 +79,15 @@ public interface LeaderElection extends Startable<LeaderElection> {
     }
 
     /**
-     * Hands leadership to another node without leaving the election, for a planned switchover.
+     * Hands leadership to the named node without leaving the election, for a planned switchover: with several
+     * followers, only the caller knows which one holds every replicated session.
      *
-     * @return whether the handover was started; the outcome arrives through {@link Listener#onRoleChanged}
+     * @param nodeId the successor's id, as {@link #getLeaderId()} would give it
+     * @return whether the handover was started, false for a node the election cannot hand it to; the outcome arrives
+     * through {@link Listener#onRoleChanged}
      * @throws UnsupportedOperationException unless {@link #isTransferLeadershipSupported()}
      */
-    default boolean transferLeadership() {
+    default boolean transferLeadership(String nodeId) {
         throw new UnsupportedOperationException(getClass().getName() + " cannot transfer leadership");
     }
 

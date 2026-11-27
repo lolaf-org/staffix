@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.lolaf.replicos.FollowerLaneStatus;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.alerting.AlertLevel;
 import org.lolaf.staffix.api.alerting.Probe;
@@ -115,6 +116,63 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         await().until(() -> b.engine.activity.contains("activate, stores open 0"));
         assertThat(b.engine.store(MAIN).writes).as("the last write reached b before the handover").contains("incoming 7")
                 .doesNotContain("outgoing 10001");
+    }
+
+    @Test
+    void afterAFailoverToTheSyncFollowerTheDisasterRecoveryCopyFollowsItAndGetsWhatItWrites() {
+        threeNodes(settings -> settings.syncFollower("a").syncFollower("b"));
+        startThreeInSync();
+        a.store.storeNextIncomingSeqNum(7);
+        await().until(() -> c.engine.store(MAIN) != null && c.engine.store(MAIN).writes.contains("incoming 7"));
+
+        b.election.elect(Role.LEADER, 4, "b");
+        a.election.elect(Role.FOLLOWER, 4, "b");
+        c.election.elect(Role.FOLLOWER, 4, "b");
+
+        await().until(() -> b.engine.activity.contains("activate, stores open 0"));
+        assertThat(b.engine.store(MAIN).writes).as("moved past what a may have sent").endsWith("outgoing 10001");
+        assertThat(c.engine.activity).isEmpty();
+        await().until(() -> b.ha.getNode().followers().getLaneStatuses().stream().filter(FollowerLaneStatus::isInSync).count() == 2);
+        b.store.storeNextIncomingSeqNum(8);
+        await().untilAsserted(() -> assertThat(c.engine.store(MAIN).writes).endsWith("incoming 8"));
+        await().untilAsserted(() -> assertThat(a.engine.store(MAIN).writes).endsWith("incoming 8"));
+    }
+
+    @Test
+    void aLeaderStoppingCleanlyHandsLeadershipToItsSyncFollowerRatherThanTheDisasterRecoveryCopy() {
+        threeNodes(settings -> settings.syncFollower("a").syncFollower("b"));
+        startThreeInSync();
+        a.store.storeNextIncomingSeqNum(7);
+        a.election.transfersWith(() -> {
+            a.election.elect(Role.FOLLOWER, 4, "b");
+            b.election.elect(Role.LEADER, 4, "b");
+            c.election.elect(Role.FOLLOWER, 4, "b");
+        });
+
+        a.ha.stop(Deadline.of(Duration.ofSeconds(2)));
+        started.remove(a.ha);
+
+        assertThat(a.election.getTransferredTo()).isEqualTo("b");
+        await().until(() -> b.engine.activity.contains("activate, stores open 0"));
+        assertThat(b.engine.store(MAIN).writes).as("handed over, not failed over").contains("incoming 7")
+                .doesNotContain("outgoing 10001");
+    }
+
+    @Test
+    void aLeaderStoppingWithNoSyncFollowerInSyncLeavesTheChoiceToTheElection() {
+        threeNodes(settings -> settings.syncFollower("a").syncFollower("b"));
+        a.election.elect(Role.LEADER, 3, "a");
+        c.election.elect(Role.FOLLOWER, 3, "a");
+        a.start();
+        c.start();
+        await().until(() -> a.ha.getNode().followers().getLaneStatuses().stream().anyMatch(FollowerLaneStatus::isInSync));
+        a.election.transfersWith(() -> {
+        });
+
+        a.ha.stop(Deadline.of(Duration.ofSeconds(2)));
+        started.remove(a.ha);
+
+        assertThat(a.election.getTransferredTo()).as("c is no sync follower").isNull();
     }
 
     @Test
@@ -326,7 +384,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         startPairInSync();
         RecordingMeters leader = a.engine.meters;
         RecordingMeters follower = b.engine.meters;
-        await().until(() -> leader.recordings(HaMeters.FOLLOWER_CATCH_UP, Map.of("follower", "b", "lane", "0")) == 1);
+        await().until(() -> a.ha.getStatus().getFollowerConnections().get(0).getCatchUpMillis() >= 0);
         double received = follower.read("ha.replica.received");
         double events = follower.read("ha.replica.received.events");
 

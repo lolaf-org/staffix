@@ -59,12 +59,22 @@ public interface HaAdmin {
     void resync(FixSessionId fixSessionId, FixSessionType fixSessionType);
 
     /**
-     * Hands leadership to a follower while this node keeps running, for planned maintenance: once a follower holds
-     * every replicated session, this node logs its sessions out, sends the follower every write and tells it so,
-     * which spares it the seqnum jump of a failover, then has the leader election transfer leadership. Blocks until
-     * it ends, at most the switchover timeout of the implementation.
+     * Hands leadership to a follower while this node keeps running, for planned maintenance: once a sync follower
+     * holds every replicated session, this node logs its sessions out, sends its followers every write and tells them
+     * so, which spares the successor the seqnum jump of a failover, then has the leader election transfer leadership to
+     * that follower, the one with the fewest writes left to store. Blocks until it ends, at most the switchover timeout
+     * of the implementation.
      *
      * @throws IllegalStateException unless this node leads, with a leader election that can transfer leadership
      */
     SwitchoverOutcome switchover();
+
+    /**
+     * {@link #switchover()} to the named follower, for an operator choosing between two standbys: waits for that one
+     * to be ready to lead, whatever the others are.
+     *
+     * @throws IllegalArgumentException for a node that is not a sync follower among the peers
+     * @throws IllegalStateException unless this node leads, with a leader election that can transfer leadership
+     */
+    SwitchoverOutcome switchover(String nodeId);
 }

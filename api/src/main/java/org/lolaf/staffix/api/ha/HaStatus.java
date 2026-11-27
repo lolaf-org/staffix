@@ -171,6 +171,11 @@ public class HaStatus {
          */
         long lagMillis;
         /**
+         * How long the lane's last return to sync took, after connecting, a re-sync or a session added, snapshots
+         * included: how long a failover to it would have lost writes; -1 before the first.
+         */
+        long catchUpMillis;
+        /**
          * What encrypts and authenticates the lane: the cipher, its key size and, for a stream cipher, its MAC. Null
          * while the lane is not connected or replicates in clear.
          */

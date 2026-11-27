@@ -608,7 +608,7 @@ class AdminApiEndpointsTest {
                 .peer("2")
                 .syncFollower("2")
                 .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
-                        .syncFollower(true).unsentBytes(0).appliedOffset(4096).lagMillis(3).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
+                        .syncFollower(true).unsentBytes(0).appliedOffset(4096).lagMillis(3).catchUpMillis(1200).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
                 .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1)
                         .droppedAt(Instant.parse("2026-10-10T10:05:00Z"))
                         .heldOffUntil(Instant.parse("2026-10-10T10:05:02Z")).build())
@@ -627,7 +627,7 @@ class AdminApiEndpointsTest {
                         + "\"leaderElectionType\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
                         + "\"transferLeadershipSupported\":false,\"electableSupported\":false,\"electable\":false,\"switchoverMaxDuration\":\"PT1M\",\"monitoringInstanceId\":\"metrics\",\"peers\":[\"2\"],\"syncFollowers\":[\"2\"],"
                         + "\"followerConnections\":[{\"nodeId\":\"2\",\"lane\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
-                        + "\"syncFollower\":true,\"snapshotInProgress\":false,\"unsentBytes\":0,\"appliedOffset\":4096,\"lagMillis\":3,\"cipher\":\"AES/CTR/NoPadding 256 HmacSHA256\"}],"
+                        + "\"syncFollower\":true,\"snapshotInProgress\":false,\"unsentBytes\":0,\"appliedOffset\":4096,\"lagMillis\":3,\"catchUpMillis\":1200,\"cipher\":\"AES/CTR/NoPadding 256 HmacSHA256\"}],"
                         + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"lane\":1,\"droppedAt\":\"2026-10-10T10:05:00Z\","
                         + "\"heldOffUntil\":\"2026-10-10T10:05:02Z\"}],"
                         + "\"sessionSettingsDifferences\":[{\"store\":\"files\",\"fixSessionType\":\"ACCEPTOR\",\"fixSessionId\":\"s\",\"kind\":\"DIFFERENT\"}],"
@@ -655,6 +655,11 @@ class AdminApiEndpointsTest {
         HttpResponse<String> switchover = call("POST", "/engines/alpha-engine/v1/ha/switchover", null);
         assertThat(switchover.statusCode()).isEqualTo(200);
         assertThat(switchover.body()).isEqualTo("{\"outcome\":\"NOT_TRANSFERRED\"}");
+        when(ha.switchover("node 2")).thenReturn(SwitchoverOutcome.TRANSFERRED);
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/switchover?to=node%202", null).body())
+                .isEqualTo("{\"outcome\":\"TRANSFERRED\"}");
+        when(ha.switchover("3")).thenThrow(new IllegalArgumentException("not a sync follower"));
+        assertThat(call("POST", "/engines/alpha-engine/v1/ha/switchover?to=3", null).statusCode()).isEqualTo(400);
 
         verify(ha).setElectable(false);
         verify(ha).resync();

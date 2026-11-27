@@ -67,16 +67,12 @@ final class SharedLeaderElection implements LeaderElection {
         return true;
     }
 
-    /**
-     * Elects the first other node, as a transfer that lands.
-     */
     @Override
-    public boolean transferLeadership() {
-        if (getRole() != Role.LEADER) {
+    public boolean transferLeadership(String successor) {
+        if (getRole() != Role.LEADER || ballot.views.stream().noneMatch(view -> view.nodeId.equals(successor))) {
             return false;
         }
-        ballot.views.stream().map(view -> view.nodeId).filter(other -> !other.equals(nodeId)).findFirst()
-                .ifPresent(ballot::elect);
+        ballot.elect(successor);
         return true;
     }
 

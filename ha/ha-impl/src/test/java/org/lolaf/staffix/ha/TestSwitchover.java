@@ -18,6 +18,7 @@ package org.lolaf.staffix.ha;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.lolaf.replicos.FollowerLaneStatus;
 import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
@@ -53,11 +54,96 @@ class TestSwitchover extends HaPairFixture {
 
         assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
 
+        assertThat(a.election.getTransferredTo()).isEqualTo("b");
         assertThat(a.engine.activity).contains("deactivate with logout");
         await().until(() -> b.engine.activity.contains("activate, stores open 0"));
         assertThat(b.engine.store(MAIN).writes).as("every write reached b before the transfer").contains("incoming 7")
                 .doesNotContain("outgoing 10001");
         await().until(() -> a.ha.getStatus().getRole() == Role.FOLLOWER);
+    }
+
+    @Test
+    void aSwitchoverGoesToTheSyncFollowerWithTheLeastLeftToStore() {
+        threeNodes(settings -> settings);
+        startThreeInSync();
+        b.engine.store(MAIN).pendingWrites = 5_000;
+        await().until(() -> pendingWritesOn(a, "b") == 5_000);
+        a.election.transfersWith(() -> {
+            a.election.elect(Role.FOLLOWER, 4, "c");
+            b.election.elect(Role.FOLLOWER, 4, "c");
+            c.election.elect(Role.LEADER, 4, "c");
+        });
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+
+        assertThat(a.election.getTransferredTo()).isEqualTo("c");
+        await().until(() -> c.engine.activity.contains("activate, stores open 0"));
+        assertThat(c.engine.store(MAIN).writes).as("handed over, not failed over").doesNotContain("outgoing 10001");
+    }
+
+    @Test
+    void aDisasterRecoveryCopyBehindNeitherHoldsBackNorTakesASwitchover() {
+        threeNodes(settings -> settings.syncFollower("a").syncFollower("b"));
+        startThreeInSync();
+        c.engine.store(MAIN).pendingWrites = 5_000;
+        await().until(() -> pendingWritesOn(a, "c") == 5_000);
+        bTakesOverOnTransfer();
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+
+        assertThat(a.election.getTransferredTo()).isEqualTo("b");
+    }
+
+    @Test
+    void aSwitchoverNeverGoesToADisasterRecoveryCopy() {
+        threeNodes(settings -> settings.syncFollower("a").syncFollower("b").switchoverTimeout(GIVING_UP_SOON));
+        a.election.elect(Role.LEADER, 3, "a");
+        c.election.elect(Role.FOLLOWER, 3, "a");
+        a.start();
+        c.start();
+        await().until(() -> a.ha.getNode().followers().getLaneStatuses().stream().anyMatch(FollowerLaneStatus::isInSync));
+        a.election.transfersWith(() -> {
+        });
+
+        assertThat(a.ha.switchover()).isEqualTo(SwitchoverOutcome.NO_FOLLOWER_IN_SYNC);
+
+        assertThat(a.election.getTransferredTo()).isNull();
+        assertThat(a.engine.activity).doesNotContain("deactivate with logout");
+    }
+
+    @Test
+    void aSwitchoverToANamedFollowerWaitsForThatOneWhateverTheOthers() {
+        threeNodes(settings -> settings.switchoverTimeout(GIVING_UP_SOON));
+        startThreeInSync();
+        c.engine.store(MAIN).pendingWrites = 5_000;
+        await().until(() -> pendingWritesOn(a, "c") == 5_000);
+        a.election.transfersWith(() -> {
+            a.election.elect(Role.FOLLOWER, 4, "c");
+            b.election.elect(Role.FOLLOWER, 4, "c");
+            c.election.elect(Role.LEADER, 4, "c");
+        });
+
+        assertThat(a.ha.switchover("c")).as("b being ready changes nothing").isEqualTo(SwitchoverOutcome.FOLLOWER_STORE_BEHIND);
+        assertThat(a.engine.activity).doesNotContain("deactivate with logout");
+
+        c.engine.store(MAIN).pendingWrites = 0;
+        await().until(() -> pendingWritesOn(a, "c") == 0);
+        assertThat(a.ha.switchover("c")).isEqualTo(SwitchoverOutcome.TRANSFERRED);
+        assertThat(a.election.getTransferredTo()).isEqualTo("c");
+    }
+
+    @Test
+    void aSwitchoverToANodeThatIsNotASyncFollowerIsRefusedAtOnce() {
+        threeNodes(settings -> settings.syncFollower("a").syncFollower("b"));
+        startThreeInSync();
+        a.election.transfersWith(() -> {
+        });
+
+        assertThatThrownBy(() -> a.ha.switchover("c")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Node a cannot switch over to c, which is not one of its sync followers among the peers [a, b, c]");
+        assertThatThrownBy(() -> a.ha.switchover("a")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> a.ha.switchover("z")).isInstanceOf(IllegalArgumentException.class);
+        assertThat(a.election.getTransferredTo()).isNull();
     }
 
     @Test

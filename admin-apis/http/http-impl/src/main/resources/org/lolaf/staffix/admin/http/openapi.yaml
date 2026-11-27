@@ -434,11 +434,19 @@ paths:
   /v1/ha/switchover:
     post:
       summary: Hands leadership to a follower while this node keeps running
-      description: Once a follower holds every replicated session, this node logs its sessions out, sends the follower
-        every write and tells it so, which spares it the sequence number jump of a failover, then has the leader
-        election transfer leadership. Answers once it ended, at most the switchover timeout later. Refused unless this
-        node leads with a leader election that can transfer leadership.
+      description: Once a sync follower holds every replicated session, this node logs its sessions out, sends its
+        followers every write and tells them so, which spares the successor the sequence number jump of a failover,
+        then has the leader election transfer leadership to it, the sync follower with the fewest writes left to store
+        unless to names one. Answers once it ended, at most the switchover timeout later. Refused unless this node
+        leads with a leader election that can transfer leadership.
       operationId: switchoverHa
+      parameters:
+        - name: to
+          in: query
+          required: false
+          description: The node id of the sync follower to hand leadership to; 400 for a node that is not one.
+          schema:
+            type: string
       responses:
         '200':
           description: How the switchover ended.
@@ -446,6 +454,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SwitchoverResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1289,7 +1299,8 @@ components:
             $ref: '#/components/schemas/HaLanePosition'
     HaFollowerConnection:
       type: object
-      required: [lane, address, connected, inSync, syncFollower, snapshotInProgress, unsentBytes, appliedOffset, lagMillis]
+      required: [lane, address, connected, inSync, syncFollower, snapshotInProgress, unsentBytes, appliedOffset, lagMillis,
+        catchUpMillis]
       properties:
         nodeId:
           type: string
@@ -1333,6 +1344,12 @@ components:
           description: >-
             How long the follower has been behind a write it has not applied yet, 0 when caught up. It grows while the
             follower is stalled, which inSync, as of its last ack, does not show.
+        catchUpMillis:
+          type: integer
+          format: int64
+          description: >-
+            How long the lane's last return to sync took, after connecting, a re-sync or a session added, snapshots
+            included: how long a failover to it would have lost writes. -1 before the first.
         cipher:
           type: string
           description: >-

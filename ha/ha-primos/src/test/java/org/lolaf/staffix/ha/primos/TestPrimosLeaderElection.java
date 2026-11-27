@@ -177,19 +177,30 @@ class TestPrimosLeaderElection {
     }
 
     @Test
-    void aLeaderTransfersLeadershipAndStaysAsAFollower() {
+    void aLeaderTransfersLeadershipToTheNodeItNamesAndStaysAsAFollower() {
         List<LeaderElection> cluster = startCluster();
-        await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).isPresent());
+        await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).isPresent()
+                && cluster.stream().filter(e -> e.getRole() == Role.FOLLOWER).count() == NODES - 1);
         LeaderElection old = leader(cluster).get();
         long epoch = old.getEpoch();
+        LeaderElection successor = cluster.get(cluster.get(NODES - 1) == old ? 0 : NODES - 1);
+        String successorId = String.valueOf(cluster.indexOf(successor) + 1);
         assertThat(old.isTransferLeadershipSupported()).isTrue();
 
-        assertThat(old.transferLeadership()).isTrue();
+        assertThat(old.transferLeadership(successorId)).isTrue();
 
-        await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).filter(next -> next != old).isPresent());
-        assertThat(leader(cluster).get().getEpoch()).isGreaterThan(epoch);
+        await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).filter(next -> next == successor).isPresent());
+        assertThat(successor.getEpoch()).isGreaterThan(epoch);
         assertThat(old.getRole()).isEqualTo(Role.FOLLOWER);
         assertThat(old.isStarted()).isTrue();
+    }
+
+    @Test
+    void aTransferToANodeIdPrimosCannotReadStartsNothing() {
+        List<LeaderElection> cluster = startCluster();
+        await().atMost(Duration.ofSeconds(15)).until(() -> leader(cluster).isPresent());
+
+        assertThat(leader(cluster).get().transferLeadership("b")).isFalse();
     }
 
     @Test
@@ -219,7 +230,7 @@ class TestPrimosLeaderElection {
 
         assertThat(listening.isTransferLeadershipSupported()).isFalse();
         assertThat(listening.isElectableSupported()).isFalse();
-        assertThatThrownBy(listening::transferLeadership).isInstanceOf(UnsupportedOperationException.class)
+        assertThatThrownBy(() -> listening.transferLeadership("2")).isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("unless leadershipControl allows it");
         assertThatThrownBy(() -> listening.setElectable(false)).isInstanceOf(UnsupportedOperationException.class);
 

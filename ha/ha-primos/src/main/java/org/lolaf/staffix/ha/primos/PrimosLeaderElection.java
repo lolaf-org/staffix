@@ -128,12 +128,20 @@ public final class PrimosLeaderElection implements LeaderElection {
     }
 
     /**
-     * Primos's own transfer: this node keeps leading until its successor campaigns.
+     * Primos's own transfer: this node keeps leading until its successor campaigns. A node id that is not a primos
+     * one, a number, names no node to hand it to.
      */
     @Override
-    public boolean transferLeadership() {
+    public boolean transferLeadership(String nodeId) {
         requireLeadershipControl("transfer leadership");
-        return node.transferLeadership();
+        int targetId;
+        try {
+            targetId = Integer.parseInt(nodeId);
+        } catch (NumberFormatException notPrimos) {
+            log.warn("primos cannot transfer leadership to {}, which is not a primos node id", nodeId);
+            return false;
+        }
+        return node.transferLeadership(targetId);
     }
 
     @Override

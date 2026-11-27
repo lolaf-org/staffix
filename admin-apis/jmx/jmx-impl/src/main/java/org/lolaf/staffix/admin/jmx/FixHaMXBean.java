@@ -52,6 +52,13 @@ public interface FixHaMXBean {
     String switchover();
 
     /**
+     * See {@link org.lolaf.staffix.api.ha.HaAdmin#switchover(String)}.
+     *
+     * @return its {@link org.lolaf.staffix.api.ha.SwitchoverOutcome} name
+     */
+    String switchoverTo(String nodeId);
+
+    /**
      * See {@link org.lolaf.staffix.api.ha.HaStatus}; leader is null unless this node follows one.
      */
     interface Status {
@@ -124,6 +131,8 @@ public interface FixHaMXBean {
         long getAppliedOffset();
 
         long getLagMillis();
+
+        long getCatchUpMillis();
 
         String getCipher();
     }

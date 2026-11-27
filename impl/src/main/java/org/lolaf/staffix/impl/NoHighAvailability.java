@@ -90,6 +90,11 @@ final class NoHighAvailability implements FixEngineHa {
         throw noHighAvailability();
     }
 
+    @Override
+    public SwitchoverOutcome switchover(String nodeId) {
+        throw noHighAvailability();
+    }
+
     private static IllegalStateException noHighAvailability() {
         return new IllegalStateException("The engine has no high availability configured");
     }

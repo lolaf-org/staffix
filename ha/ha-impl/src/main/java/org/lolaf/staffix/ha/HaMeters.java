@@ -53,7 +53,6 @@ class HaMeters {
     static final String SESSION_SYNC_ACK_LATENCY = "ha.session.sync.ack.latency";
     static final String FOLLOWER_ACK_LATENCY = "ha.follower.ack.latency";
     static final String FOLLOWER_LAG = "ha.follower.lag";
-    static final String FOLLOWER_CATCH_UP = "ha.follower.catch.up";
     static final String LOG_FULL_WAIT = "ha.log.full.wait";
 
     /**
@@ -112,14 +111,6 @@ class HaMeters {
             public LatencyRecorder followerLag(String followerId, int lane) {
                 return recorder(meters.getTimer(FOLLOWER_LAG, "How far a follower is behind on a replication lane:"
                         + " from a write to the lane's log to the follower's ack of it, sampled once per round trip.",
-                        followerTags(followerId, lane)));
-            }
-
-            @Override
-            public LatencyRecorder followerCatchUp(String followerId, int lane) {
-                return recorder(meters.getTimer(FOLLOWER_CATCH_UP, "How long a follower took, from connecting a"
-                        + " replication lane, to hold every session of the lane in sync, snapshots included: how long a"
-                        + " failover to it would have lost writes. Once per connection.",
                         followerTags(followerId, lane)));
             }
         };

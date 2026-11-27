@@ -67,6 +67,7 @@ class TestHaStatusReport extends HaPairFixture {
                 assertThat(follower.isSnapshotInProgress()).isFalse();
                 assertThat(follower.getUnsentBytes()).isZero();
                 assertThat(follower.getLagMillis()).isZero();
+                assertThat(follower.getCatchUpMillis()).as("caught up").isNotNegative();
                 assertThat(follower.getCipher()).as("in clear").isNull();
             });
         });

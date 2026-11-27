@@ -162,6 +162,7 @@ final class HaStatusReport {
                 .unsentBytes(lane.getUnsentBytes())
                 .appliedOffset(lane.getAppliedOffset())
                 .lagMillis(lane.getLagMillis())
+                .catchUpMillis(lane.getCatchUpMillis())
                 .cipher(lane.getCipher())
                 .build();
     }

@@ -78,7 +78,7 @@ public abstract class Route {
         return Boolean.parseBoolean(value);
     }
 
-    private static Optional<String> queryParameter(HttpExchange exchange, String name) {
+    protected static Optional<String> queryParameter(HttpExchange exchange, String name) {
         String query = exchange.getRequestURI().getRawQuery();
         if (query == null) {
             return Optional.empty();

@@ -22,8 +22,11 @@ import org.lolaf.staffix.api.admin.AdminApi;
 import org.lolaf.staffix.api.ha.SwitchoverOutcome;
 
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Answers 200 with the outcome once the switchover ended, whichever it is: only a node that cannot switch over at
@@ -43,8 +46,9 @@ public final class HaSwitchoverRoute extends Route {
 
     @Override
     public void handle(HttpExchange exchange, List<String> path) throws IOException {
-        log.info("Admin API: switch over");
-        SwitchoverOutcome outcome = haAdmin(adminApi).switchover();
+        Optional<String> successor = queryParameter(exchange, "to").map(nodeId -> URLDecoder.decode(nodeId, StandardCharsets.UTF_8));
+        log.info("Admin API: switch over{}", successor.map(nodeId -> " to " + nodeId).orElse(""));
+        SwitchoverOutcome outcome = successor.isPresent() ? haAdmin(adminApi).switchover(successor.get()) : haAdmin(adminApi).switchover();
         log.info("Admin API: switchover {}", outcome);
         send(exchange, 200, "application/json", mapper.writeValueAsBytes(Map.of("outcome", outcome)));
     }

@@ -276,12 +276,26 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
      */
     @Override
     public SwitchoverOutcome switchover() {
+        return switchoverTo(null);
+    }
+
+    @Override
+    public SwitchoverOutcome switchover(String nodeId) {
+        boolean syncFollower = settings.getSyncFollowers().isEmpty() || settings.getSyncFollowers().contains(nodeId);
+        if (nodeId.equals(settings.getNodeId()) || !settings.getPeers().containsKey(nodeId) || !syncFollower) {
+            throw new IllegalArgumentException("Node " + settings.getNodeId() + " cannot switch over to " + nodeId
+                    + ", which is not one of its sync followers among the peers " + settings.getPeers().keySet());
+        }
+        return switchoverTo(nodeId);
+    }
+
+    private SwitchoverOutcome switchoverTo(@Nullable String successor) {
         ScheduledExecutorService thread = roleThread;
         if (thread == null) {
             throw new IllegalStateException("The high availability of node " + settings.getNodeId() + " has not started");
         }
         try {
-            return thread.submit(switchover::run).get();
+            return thread.submit(() -> switchover.run(successor)).get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while node " + settings.getNodeId() + " switched over", e);
@@ -373,12 +387,37 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        if (role == Role.LEADER) {
-            // the engine stopped the sessions before this, so what they last wrote is all in the log
-            node.handOver(Deadline.of(settings.getHandOverTimeout()));
+        if (role != Role.LEADER) {
+            node.close(stopDeadline);
+            election.stop(stopDeadline);
+            return;
         }
+        // chosen before the hand over, which closes the followers' connections
+        @Nullable String successor = election.isTransferLeadershipSupported() ? switchover.bestSuccessor() : null;
+        Deadline handOver = Deadline.of(settings.getHandOverTimeout());
+        // the engine stopped the sessions before this, so what they last wrote is all in the log
+        node.handOver(handOver);
         node.close(stopDeadline);
+        if (successor != null) {
+            handLeadershipTo(successor, stopDeadline.getRemainingTime().compareTo(handOver.getRemainingTime()) < 0
+                    ? stopDeadline : handOver);
+        }
         election.stop(stopDeadline);
+    }
+
+    /**
+     * An election stopping on its leader hands leadership to any node, a disaster-recovery copy included.
+     */
+    private void handLeadershipTo(String successor, Deadline deadline) {
+        if (election.transferLeadership(successor)) {
+            deadline.waitAsLongAs(() -> election.getRole() == Role.LEADER);
+        }
+        if (election.getRole() == Role.LEADER) {
+            log.warn("Node {} stops leading without handing leadership to {}: the election picks the next leader",
+                    settings.getNodeId(), successor);
+        } else {
+            log.info("Node {} stopped leading, handing leadership to {}", settings.getNodeId(), successor);
+        }
     }
 
     /**
@@ -573,11 +612,6 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
         @Override
         public LatencyRecorder followerLag(String followerId, int lane) {
             return target.followerLag(followerId, lane);
-        }
-
-        @Override
-        public LatencyRecorder followerCatchUp(String followerId, int lane) {
-            return target.followerCatchUp(followerId, lane);
         }
 
         @Override
