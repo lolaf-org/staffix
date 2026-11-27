@@ -15,10 +15,12 @@
  */
 package org.lolaf.staffix.ha;
 
-import org.lolaf.replicos.follower.LeaderConnection;
+import com.github.valfirst.slf4jtest.LoggingEvent;
+import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import org.junit.jupiter.api.Test;
+import org.lolaf.replicos.follower.LeaderConnection;
+import org.lolaf.ringos.Deadline;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
-import org.lolaf.replicos.wire.FrameEncoder;
 
 import java.util.List;
 import java.util.function.ToIntBiFunction;
@@ -124,6 +126,36 @@ class TestStoreWrites extends FixLeaderConnectionHarness {
         assertThat(followerStreams.getLastAppliedOffset(0)).isEqualTo(-1);
         assertThat(sent.frames).hasSize(2).first().isEqualTo("RECEIVED epoch=7 received=32");
         assertThat(sent.frames.get(1)).as("never acknowledged as applied").startsWith("CLOSE epoch=7 APPLY_FAILED");
+    }
+
+    @Test
+    void aStoreWriteFailingOnAStoppedStoreClosesTheStreamRatherThanLoseTheMessage() {
+        streaming();
+        complete();
+        engine.store(MAIN).refusedSeqNum = 5;
+        engine.store(MAIN).stop(Deadline.immediate());
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"));
+
+        assertThat(connection.getState()).isEqualTo(LeaderConnection.State.CLOSED);
+        assertThat(lostWrites()).isZero();
+        assertThat(sent.frames).singleElement().asString().startsWith("CLOSE epoch=7 APPLY_FAILED");
+    }
+
+    @Test
+    void onlyTheFirstWriteGivenUpLogsItsStackTrace() {
+        TestLoggerFactory.clearAll();
+        streaming();
+        complete();
+        engine.store(MAIN).messageWritesFail = true;
+
+        read(event(EPOCH, 0, 0, StoreEventType.STORE_MESSAGE, 5, "five"),
+                event(EPOCH, 32, 0, StoreEventType.STORE_MESSAGE, 6, "six"));
+
+        List<LoggingEvent> givenUp = TestLoggerFactory.getTestLogger(LostWrites.class).getAllLoggingEvents();
+        assertThat(givenUp).extracting(event -> event.getThrowable().isPresent()).containsExactly(true, false);
+        assertThat(givenUp.get(1).getFormattedMessage()).contains("gives up 1 message", "2 times since its last reset");
+        assertThat(lostWrites()).isEqualTo(2);
     }
 
     @Test
