@@ -252,11 +252,11 @@ using that database, once each however many calls fail, with the same name, so A
 notification. Behind the async store or logger, the async probes report the outage of what it writes to, and these two
 report failures of the async queue itself, such as a full disk.
 
-`ha-replication` is on every replicated session. A late ack or a message too long for the replication log keeps the
-alert raised for 5 minutes after the last one, since nothing tells that they stopped; a follower refusing the session
-(it has no settings for it, gives it another replication mode, or cannot identify its storage) keeps it raised for as
-long as it refuses. A send with no follower in sync is left to the node's `ha-followers`, so one outage raises one
-alert rather than one per session.
+`ha-replication` is on every replicated session. A late ack, a send that went out with fewer sync followers in sync
+than the session's `replicationQuorum`, or a message too long for the replication log keeps the alert raised for 5
+minutes after the last one, since nothing tells that they stopped; a follower refusing the session (it has no settings
+for it, or cannot identify its storage) keeps it raised for as long as it refuses. A send with no sync follower in sync
+is left to the node's `ha-followers`, so one outage raises one alert rather than one per session.
 
 Component `ha` has the node's own probes when `ReplicationHaSettings.alertsPublisherInstanceId` names a publisher
 (unknown, the engine refuses to start). Each is raised once its condition has lasted 10 seconds, and reports nothing in
@@ -264,9 +264,9 @@ a role it does not apply to:
 
 | probe | level | raised when |
 |-------|-------|-------------|
-| `ha-followers` | `MAJOR`, `WARNING` | leading with no follower connected, a follower dropped as too slow (a write waited `logFullTimeout` for it) and not back in sync, or a follower that has not applied a write for longer than `followerLagAlertThreshold` (5 s by default); a follower connected but not in sync, or catching up by snapshot |
+| `ha-followers` | `MAJOR`, `WARNING` | leading, `MAJOR`: no follower connected, or none of the `syncFollowers` (a disaster-recovery copy alone does not count), a sync follower dropped as too slow (a write waited `logFullTimeout` for it) and not back in sync, or one that has not applied a write for longer than `followerLagAlertThreshold` (5 s by default). `WARNING`: a peer not connected, a follower connected but not in sync or catching up by snapshot, and a disaster-recovery copy (marked `(async)`) stalled or dropped as too slow |
 | `ha-session-settings` | `WARNING` | following, with session settings that differ from the leader's: a failover runs this node's own |
-| `ha-leader-connection` | `MAJOR`, `WARNING` | following without a connection to the leader; connected but not holding every session in full |
+| `ha-leader-connection` | `MAJOR`, `WARNING` | following without a connection to the leader, saying so when the leader refuses this node's id because another node is connected under it; connected but not holding every session in full |
 | `ha-encryption` | `WARNING` | encryption `PREFERRED` and a replication lane in clear, the other node having encryption disabled |
 | `ha-leadership` | `CRITICAL` | the node has no role, or is elected leader but cannot prove it, so it runs no session |
 

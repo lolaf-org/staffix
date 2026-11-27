@@ -61,7 +61,12 @@ could mean.
 - **The high availability can be watched and driven** through the admin API, HTTP and JMX: its status, a
   switchover, maintenance mode and a re-sync of the follower; it publishes `ha.*` meters, among them how long a
   follower takes to catch up, how long writes waited on a full replication log and the connections closed by reason,
-  and alerts when the follower is missing, out of sync, behind, or dropped for being too slow.
+  and alerts when the follower is missing, out of sync, behind, or dropped for being too slow. With several followers,
+  the status tells the sync followers apart, lists one that is down, shows how far one is behind another and, with the
+  leader down, the last write each holds, to choose which to promote. The alerts tell them apart too: major when no
+  sync follower is connected, a warning when a disaster-recovery copy is down or behind, a session alerting when fewer
+  sync followers are in sync than its quorum, and a follower saying when the leader refuses it because another node
+  is connected under its node id.
 - **The engine's own components have meters and probes**, beside the sessions': a monitoring manager that supports
   it (Micrometer's does) publishes engine meters, listed by the HTTP admin API's `GET engine/meters`, and their probes
   are listed and cleared under `engine/{component}/probes`, or through JMX.

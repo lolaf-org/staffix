@@ -21,6 +21,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.lolaf.staffix.api.ha.HaSessionStatus;
 import org.lolaf.staffix.api.ha.HaStatus;
 import org.lolaf.staffix.api.ha.LeaderElection.Role;
+import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 
 import java.time.Duration;
 
@@ -62,6 +63,7 @@ class TestHaStatusReport extends HaPairFixture {
                 assertThat(follower.getNodeId()).isEqualTo("b");
                 assertThat(follower.isConnected()).isTrue();
                 assertThat(follower.isInSync()).isTrue();
+                assertThat(follower.isSyncFollower()).as("with no sync follower named").isTrue();
                 assertThat(follower.isSnapshotInProgress()).isFalse();
                 assertThat(follower.getUnsentBytes()).isZero();
                 assertThat(follower.getLagMillis()).isZero();
@@ -77,6 +79,33 @@ class TestHaStatusReport extends HaPairFixture {
         assertThat(follower.getLeader().isConnected()).isTrue();
         assertThat(follower.getLeader().isInSync()).isTrue();
         assertThat(follower.getLeader().getCipher()).as("in clear").isNull();
+        assertThat(a.ha.getStatus().getLanePositions()).as("a leader's").isEmpty();
+    }
+
+    @Test
+    void theLeaderSeesWhereItsFollowerStandsInTheLog() {
+        startPairInSync();
+
+        a.store.storeNextIncomingSeqNum(7);
+
+        await().untilAsserted(() -> {
+            HaStatus.LanePosition position = b.ha.getStatus().getLanePositions().get(0);
+            assertThat(position.getLane()).isZero();
+            assertThat(position.getEpoch()).isEqualTo(3);
+            assertThat(position.getLeadership()).isNotZero();
+            assertThat(position.getOffset()).isNotNegative();
+            assertThat(a.ha.getStatus().getFollowerConnections()).singleElement()
+                    .extracting(HaStatus.FollowerConnection::getAppliedOffset).isEqualTo(position.getOffset());
+        });
+    }
+
+    @Test
+    void theStatusListsThePeersAndTheSyncFollowersButThisNode() {
+        a = tuned("a", settings -> settings.syncFollower("a").syncFollower("b"));
+
+        assertThat(a.ha.getStatus().getPeers()).containsExactly("b");
+        assertThat(a.ha.getStatus().getSyncFollowers()).containsExactly("b");
+        assertThat(b.ha.getStatus().getSyncFollowers()).as("every follower").isEmpty();
     }
 
     @Test
@@ -94,6 +123,15 @@ class TestHaStatusReport extends HaPairFixture {
         assertThat(replicated.getNextIncomingSeqNum()).isEqualTo(1);
         assertThat(replicated.getNextOutgoingSeqNum()).isEqualTo(1);
         assertThat(replicated.isHandedOver()).isFalse();
+    }
+
+    @Test
+    void aSessionTellsItsQuorum() {
+        a.engine.replace(MAIN.toBuilder().highAvailability(MAIN.getHighAvailability().toBuilder()
+                .replicationMode(ReplicationMode.SYNC_APPLIED).replicationQuorum(2).build()).build());
+
+        assertThat(a.ha.getSessionStatuses()).singleElement()
+                .extracting(HaSessionStatus::getReplicationQuorum).isEqualTo(2);
     }
 
     @Test

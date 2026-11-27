@@ -28,7 +28,9 @@ import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.Replic
 import org.lolaf.replicos.DroppedFollower;
 import org.lolaf.replicos.FollowerLaneStatus;
 import org.lolaf.replicos.FollowersView;
+import org.lolaf.replicos.LanePosition;
 import org.lolaf.replicos.LeaderStatus;
+import org.lolaf.replicos.ReplicationNode;
 import org.lolaf.replicos.spi.StreamAnswer;
 
 import java.util.ArrayList;
@@ -61,12 +63,26 @@ final class HaStatusReport {
                 .electable(election == null || election.isElectable())
                 .switchoverMaxDuration(settings.switchoverMaxDuration())
                 .monitoringInstanceId(settings.getMonitoringInstanceId());
+        for (String peer : settings.getPeers().keySet()) {
+            if (!peer.equals(settings.getNodeId())) {
+                status.peer(peer);
+            }
+        }
+        for (String syncFollower : settings.getSyncFollowers()) {
+            if (!syncFollower.equals(settings.getNodeId())) {
+                status.syncFollower(syncFollower);
+            }
+        }
+        ReplicationNode node = ha.getNode();
+        if (node != null && role != Role.LEADER) {
+            node.leader().getLanePositions().forEach(position -> status.lanePosition(lanePosition(position)));
+        }
         if (role == Role.LEADER) {
-            FollowersView followers = ha.getNode().followers();
+            FollowersView followers = node.followers();
             followers.getLaneStatuses().forEach(lane -> status.followerConnection(followerConnection(lane)));
             followers.getDroppedFollowers().forEach(dropped -> status.droppedFollower(droppedFollower(dropped)));
         }
-        LeaderStatus leader = role == Role.FOLLOWER ? ha.getNode().leader().getStatus() : null;
+        LeaderStatus leader = role == Role.FOLLOWER ? node.leader().getStatus() : null;
         if (leader != null) {
             status.leader(leader(leader));
         }
@@ -105,6 +121,7 @@ final class HaStatusReport {
                 .fixSessionType(sessionSettings.getFixSessionType())
                 .replicationMode(haSettings.getReplicationMode())
                 .replicationAckTimeout(haSettings.getReplicationAckTimeout())
+                .replicationQuorum(haSettings.getReplicationQuorum())
                 .unencryptedMessageTypes(haSettings.getUnencryptedMessageTypes())
                 .nextIncomingSeqNum(-1)
                 .nextOutgoingSeqNum(-1);
@@ -140,10 +157,21 @@ final class HaStatusReport {
                 .address(lane.getAddress())
                 .connected(lane.isConnected())
                 .inSync(lane.isInSync())
+                .syncFollower(lane.isSyncFollower())
                 .snapshotInProgress(lane.isSnapshotInProgress())
                 .unsentBytes(lane.getUnsentBytes())
+                .appliedOffset(lane.getAppliedOffset())
                 .lagMillis(lane.getLagMillis())
                 .cipher(lane.getCipher())
+                .build();
+    }
+
+    private static HaStatus.LanePosition lanePosition(LanePosition position) {
+        return HaStatus.LanePosition.builder()
+                .lane(position.getLane())
+                .epoch(position.getEpoch())
+                .leadership(position.getLeadership())
+                .offset(position.getOffset())
                 .build();
     }
 

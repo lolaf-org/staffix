@@ -305,8 +305,10 @@ class JmxAdminApiTest {
         HaAdmin ha = mock(HaAdmin.class);
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
                 .leaderId("1").leaderElectionType("PrimosLeaderElection").roleSince(SINCE).monitoringInstanceId("metrics")
+                .peer("2").peer("3")
+                .syncFollower("2")
                 .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
-                        .unsentBytes(128).lagMillis(3).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
+                        .syncFollower(true).unsentBytes(128).appliedOffset(4096).lagMillis(3).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
                 .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1).droppedAt(SINCE).build())
                 .build());
         adminApi.ha = ha;
@@ -316,10 +318,14 @@ class JmxAdminApiTest {
 
         assertThat(status.getPairName()).isEqualTo("gateway");
         assertThat(status.getMonitoringInstanceId()).isEqualTo("metrics");
+        assertThat(status.getPeers()).containsExactly("2", "3");
+        assertThat(status.getSyncFollowers()).containsExactly("2");
         assertThat(status.getFollowerConnections()).singleElement().satisfies(follower -> {
             assertThat(follower.getNodeId()).isEqualTo("2");
             assertThat(follower.getLane()).isEqualTo(1);
+            assertThat(follower.isSyncFollower()).isTrue();
             assertThat(follower.getUnsentBytes()).isEqualTo(128);
+            assertThat(follower.getAppliedOffset()).isEqualTo(4096);
             assertThat(follower.getLagMillis()).isEqualTo(3);
             assertThat(follower.getCipher()).isEqualTo("AES/CTR/NoPadding 256 HmacSHA256");
         });
@@ -337,10 +343,11 @@ class JmxAdminApiTest {
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").role(LeaderElection.Role.FOLLOWER).epoch(7)
                 .leaderId("2").leaderElectionType("PrimosLeaderElection").roleSince(SINCE)
                 .leader(HaStatus.Leader.builder().leaderId("2").address("/10.0.0.2:17101").connected(true).inSync(true).build())
+                .lanePosition(HaStatus.LanePosition.builder().lane(0).epoch(7).leadership(42).offset(4096).build())
                 .build());
         when(ha.getSessionStatuses()).thenReturn(List.of(HaSessionStatus.builder().fixSessionId(ACCEPTOR_SESSION)
                 .fixSessionType(FixSession.FixSessionType.ACCEPTOR).replicationMode(ReplicationMode.SYNC_APPLIED)
-                .replicationAckTimeout(Duration.ofMillis(200)).unencryptedMessageType("S").inSync(true).nextIncomingSeqNum(12)
+                .replicationAckTimeout(Duration.ofMillis(200)).replicationQuorum(1).unencryptedMessageType("S").inSync(true).nextIncomingSeqNum(12)
                 .nextOutgoingSeqNum(34)
                 .handedOver(true).pendingWrites(7).lostWrites(2).build()));
         adminApi.ha = ha;
@@ -356,10 +363,16 @@ class JmxAdminApiTest {
         assertThat(status.getLeader().getAddress()).isEqualTo("/10.0.0.2:17101");
         assertThat(status.getLeader().isInSync()).isTrue();
         assertThat(status.getLeader().getCipher()).as("in clear").isNull();
+        assertThat(status.getLanePositions()).singleElement().satisfies(position -> {
+            assertThat(position.getEpoch()).isEqualTo(7);
+            assertThat(position.getLeadership()).isEqualTo(42);
+            assertThat(position.getOffset()).isEqualTo(4096);
+        });
         assertThat(proxy.getSessionStatuses()).singleElement().satisfies(session -> {
             assertThat(session.getFixSessionId()).isEqualTo(ACCEPTOR_SESSION.toString());
             assertThat(session.getReplicationMode()).isEqualTo("SYNC_APPLIED");
             assertThat(session.getReplicationAckTimeout()).isEqualTo("PT0.2S");
+            assertThat(session.getReplicationQuorum()).isEqualTo(1);
             assertThat(session.getUnencryptedMessageTypes()).containsExactly("S");
             assertThat(session.getNextOutgoingSeqNum()).isEqualTo(34);
             assertThat(session.isHandedOver()).isTrue();

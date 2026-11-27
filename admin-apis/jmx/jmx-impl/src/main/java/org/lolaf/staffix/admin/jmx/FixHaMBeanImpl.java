@@ -41,11 +41,12 @@ public class FixHaMBeanImpl implements FixHaMXBean {
                 status.getLeaderId(), status.isLeadershipValid(), status.getLeaderElectionType(),
                 toStringOrNull(status.getSwitchoverMaxDuration()), toStringOrNull(status.getRoleSince()),
                 status.getMonitoringInstanceId(), status.isTransferLeadershipSupported(), status.isElectableSupported(),
-                status.isElectable(),
+                status.isElectable(), status.getPeers(), status.getSyncFollowers(),
                 status.getFollowerConnections().stream().map(FixHaMBeanImpl::followerConnection).collect(Collectors.toList()),
                 status.getDroppedFollowers().stream().map(FixHaMBeanImpl::droppedFollower).collect(Collectors.toList()),
                 status.getSessionSettingsDifferences().stream().map(FixHaMBeanImpl::sessionSettingsDifference).collect(Collectors.toList()),
-                status.getLeader() == null ? null : leader(status.getLeader()));
+                status.getLeader() == null ? null : leader(status.getLeader()),
+                status.getLanePositions().stream().map(FixHaMBeanImpl::lanePosition).collect(Collectors.toList()));
     }
 
     @Override
@@ -83,8 +84,13 @@ public class FixHaMBeanImpl implements FixHaMXBean {
 
     private static FollowerConnection followerConnection(HaStatus.FollowerConnection connection) {
         return new FollowerConnectionImpl(connection.getNodeId(), connection.getLane(), connection.getAddress(),
-                connection.isConnected(), connection.isInSync(), connection.isSnapshotInProgress(),
-                connection.getUnsentBytes(), connection.getLagMillis(), connection.getCipher());
+                connection.isConnected(), connection.isInSync(), connection.isSyncFollower(),
+                connection.isSnapshotInProgress(), connection.getUnsentBytes(), connection.getAppliedOffset(),
+                connection.getLagMillis(), connection.getCipher());
+    }
+
+    private static LanePosition lanePosition(HaStatus.LanePosition position) {
+        return new LanePositionImpl(position.getLane(), position.getEpoch(), position.getLeadership(), position.getOffset());
     }
 
     private static DroppedFollower droppedFollower(HaStatus.DroppedFollower dropped) {
@@ -108,7 +114,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
 
     private static Session session(HaSessionStatus status) {
         return new SessionImpl(status.getFixSessionId().toString(), status.getFixSessionType().name(),
-                status.getReplicationMode().name(), status.getReplicationAckTimeout().toString(),
+                status.getReplicationMode().name(), status.getReplicationAckTimeout().toString(), status.getReplicationQuorum(),
                 status.getUnencryptedMessageTypes(), status.isInSync(),
                 status.getNotReplicatedReason(), status.isLastSendUnacknowledged(),
                 status.getUnacknowledgedSends(), status.getNextIncomingSeqNum(), status.getNextOutgoingSeqNum(),
@@ -130,10 +136,21 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         boolean transferLeadershipSupported;
         boolean electableSupported;
         boolean electable;
+        List<String> peers;
+        List<String> syncFollowers;
         List<FollowerConnection> followerConnections;
         List<DroppedFollower> droppedFollowers;
         List<SessionSettingsDifference> sessionSettingsDifferences;
         Leader leader;
+        List<LanePosition> lanePositions;
+    }
+
+    @Value
+    private static class LanePositionImpl implements LanePosition {
+        int lane;
+        long epoch;
+        long leadership;
+        long offset;
     }
 
     @Value
@@ -159,8 +176,10 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         String address;
         boolean connected;
         boolean inSync;
+        boolean syncFollower;
         boolean snapshotInProgress;
         long unsentBytes;
+        long appliedOffset;
         long lagMillis;
         String cipher;
     }
@@ -180,6 +199,7 @@ public class FixHaMBeanImpl implements FixHaMXBean {
         String fixSessionType;
         String replicationMode;
         String replicationAckTimeout;
+        int replicationQuorum;
         List<String> unencryptedMessageTypes;
         boolean inSync;
         String notReplicatedReason;

@@ -143,7 +143,8 @@ class HaMeters {
                 + " its rate is the replication's throughput.", Map.of(), node::getLogBytesWritten);
         meters.getGauge("ha.followers.connected", "Followers streaming this leader's writes over every replication"
                 + " lane.", Map.of(), () -> whileLeading(ha, FollowersView::countConnected));
-        meters.getGauge("ha.followers.in.sync", "Followers holding every replicated session in sync.", Map.of(),
+        meters.getGauge("ha.followers.in.sync", "Sync followers holding every replicated session in sync: those a"
+                + " failover may go to without losing what SYNC sends acknowledged.", Map.of(),
                 () -> whileLeading(ha, FollowersView::countInSync));
         meters.getGauge("ha.follower.unsent", "The most bytes this leader wrote and has not sent a follower yet: a follower"
                 + " falling the replication log's capacity behind is dropped, then caught up by snapshot.", Map.of(),
@@ -152,6 +153,9 @@ class HaMeters {
                 + " late.", Map.of("reason", "timed_out"), () -> sum(ha, ReplicatedSession::getTimedOutSends));
         meters.getCounter("ha.sync.unacknowledged", "SYNC sends that went out without the follower's ack, no follower being"
                 + " in sync.", Map.of("reason", "no_follower"), () -> sum(ha, ReplicatedSession::getNoFollowerSends));
+        meters.getCounter("ha.sync.unacknowledged", "SYNC sends that went out without the followers' acks, fewer sync"
+                + " followers being in sync than the session's quorum.", Map.of("reason", "not_enough_followers"),
+                () -> sum(ha, ReplicatedSession::getNotEnoughFollowersSends));
         meters.getGauge("ha.follower.lag.pending", "Milliseconds the most behind follower has not applied a write for,"
                 + " 0 when every follower is caught up: it keeps growing while a follower is stalled.", Map.of(),
                 () -> TimeUnit.NANOSECONDS.toMillis(followers.getMaxLagNanos()));

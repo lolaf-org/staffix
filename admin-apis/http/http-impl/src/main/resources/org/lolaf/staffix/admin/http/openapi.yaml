@@ -1208,7 +1208,7 @@ components:
     HaNodeStatus:
       type: object
       required: [nodeId, role, epoch, leadershipValid, leaderElectionType, transferLeadershipSupported, electableSupported,
-        electable, followerConnections, droppedFollowers, sessionSettingsDifferences]
+        electable, peers, syncFollowers, followerConnections, droppedFollowers, sessionSettingsDifferences, lanePositions]
       properties:
         nodeId:
           type: string
@@ -1251,6 +1251,18 @@ components:
         electable:
           type: boolean
           description: This node stands for election.
+        peers:
+          type: array
+          description: The other nodes, by node id; while this node leads, the followers it expects, connected or not.
+          items:
+            type: string
+        syncFollowers:
+          type: array
+          description: >-
+            The followers a SYNC send waits for, this node left out; empty makes every follower one. Listed whether
+            connected or not, so one that is down still shows.
+          items:
+            type: string
         followerConnections:
           type: array
           description: The connections of the followers to this node, one entry per follower and lane, while it leads.
@@ -1268,9 +1280,16 @@ components:
             $ref: '#/components/schemas/HaSessionSettingsDifference'
         leader:
           $ref: '#/components/schemas/HaLeader'
+        lanePositions:
+          type: array
+          description: >-
+            While this node does not lead, the last write it holds on each lane, kept with the leader down, to choose
+            which follower to promote.
+          items:
+            $ref: '#/components/schemas/HaLanePosition'
     HaFollowerConnection:
       type: object
-      required: [lane, address, connected, inSync, snapshotInProgress, unsentBytes, lagMillis]
+      required: [lane, address, connected, inSync, syncFollower, snapshotInProgress, unsentBytes, appliedOffset, lagMillis]
       properties:
         nodeId:
           type: string
@@ -1285,7 +1304,14 @@ components:
           description: Streaming the leader's writes.
         inSync:
           type: boolean
-          description: Holds every session of the lane in sync.
+          description: >-
+            Holds every session of the lane in sync: a failover to it loses nothing acknowledged if it is also a sync
+            follower.
+        syncFollower:
+          type: boolean
+          description: >-
+            One of the followers a SYNC send waits for; a disaster-recovery copy is not, and may lack what a SYNC send
+            acknowledged.
         snapshotInProgress:
           type: boolean
         unsentBytes:
@@ -1295,6 +1321,12 @@ components:
             Bytes the leader wrote and has not sent this follower yet, -1 before it started sending. Reaching the
             replication log's capacity makes the leader's writes wait, then drops the follower, which a snapshot then
             catches up.
+        appliedOffset:
+          type: integer
+          format: int64
+          description: >-
+            The offset in the lane's replication log of the last write the follower applied, -1 before it applied one
+            of this leadership's. Only the gap between two followers of a lane means anything, in bytes of that log.
         lagMillis:
           type: integer
           format: int64
@@ -1306,6 +1338,27 @@ components:
           description: >-
             What encrypts and authenticates the lane: the cipher, its key size and, for a stream cipher, its MAC,
             such as "AES/CTR/NoPadding 256 HmacSHA256". Absent while the lane is not connected or replicates in clear.
+    HaLanePosition:
+      type: object
+      description: >-
+        The last write a follower holds on one lane. Two followers' positions compare only at the same epoch and
+        leadership, the offset being in the log of the leadership that sent it.
+      required: [lane, epoch, leadership, offset]
+      properties:
+        lane:
+          type: integer
+        epoch:
+          type: integer
+          format: int64
+          description: 0 before the follower applied any write.
+        leadership:
+          type: integer
+          format: int64
+          description: The random id its leader drew on starting to lead; 0 before the follower applied any write.
+        offset:
+          type: integer
+          format: int64
+          description: The write's offset in the lane's replication log, -1 for none since the lane last connected without resuming.
     HaSessionSettingsDifference:
       type: object
       required: [store, fixSessionType, fixSessionId, kind]
@@ -1360,7 +1413,7 @@ components:
             Absent while a lane is not connected or replicates in clear.
     HaSession:
       type: object
-      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, unencryptedMessageTypes, inSync,
+      required: [group, name, fixSessionType, replicationMode, replicationAckTimeout, replicationQuorum, unencryptedMessageTypes, inSync,
                  lastSendUnacknowledged, unacknowledgedSends, nextIncomingSeqNum, nextOutgoingSeqNum, handedOver, pendingWrites, lostWrites]
       properties:
         group:
@@ -1376,6 +1429,9 @@ components:
         replicationAckTimeout:
           type: string
           format: duration
+        replicationQuorum:
+          type: integer
+          description: How many sync followers a SYNC send waits for, the first to acknowledge; 0 waits for every one in sync.
         unencryptedMessageTypes:
           type: array
           items:
@@ -1393,6 +1449,7 @@ components:
         unacknowledgedSends:
           type: integer
           format: int64
+          description: A leader's SYNC sends that went out without the followers' acks, on a timeout or with too few in sync.
         nextIncomingSeqNum:
           type: integer
           format: int64

@@ -105,11 +105,11 @@ apply to, and all but the timers are read at export, so they cost the session th
 | `ha.role` | 2 leader, 1 follower, 0 unknown |
 | `ha.epoch` | the election's epoch, -1 when unknown |
 | `ha.leadership.valid` | 1 while this node leads and can prove it |
-| `ha.followers.connected`, `ha.followers.in.sync` | followers streaming this leader's writes, and holding every replicated session |
+| `ha.followers.connected`, `ha.followers.in.sync` | followers streaming this leader's writes, and sync followers holding every replicated session |
 | `ha.follower.unsent` | the most bytes written and not yet sent to a follower; one falling the log's capacity behind is caught up by snapshot |
 | `ha.log.written` | bytes written to the replication log: its rate is the replication's throughput |
 | `ha.sync.ack.latency` | how long `SYNC` sends waited for the follower, for those it acknowledged, tagged `mode` = `sync_received` or `sync_applied` |
-| `ha.sync.unacknowledged` | `SYNC` sends that went out unacknowledged, tagged `reason` = `timed_out` or `no_follower` |
+| `ha.sync.unacknowledged` | `SYNC` sends that went out unacknowledged, tagged `reason` = `timed_out`, `no_follower`, or `not_enough_followers` (fewer sync followers in sync than the session's `replicationQuorum`) |
 | `ha.follower.ack.latency` | a follower's round trip, from a batch of writes sent to its acknowledgement, tagged `follower`; covers `ASYNC` too |
 | `ha.follower.lag` | how far a follower is behind: from a write to the replication log to the follower applying it, tagged `follower`, sampled once per round trip |
 | `ha.follower.lag.pending` | how long, in milliseconds, the most behind follower has not applied a write, 0 when all are caught up; unlike the timer, it keeps growing while a follower is stalled |

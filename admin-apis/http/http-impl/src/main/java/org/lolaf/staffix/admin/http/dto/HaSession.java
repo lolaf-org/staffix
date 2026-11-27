@@ -33,6 +33,7 @@ public class HaSession {
     FixSessionType fixSessionType;
     ReplicationMode replicationMode;
     Duration replicationAckTimeout;
+    int replicationQuorum;
     List<String> unencryptedMessageTypes;
     boolean inSync;
     String notReplicatedReason;
@@ -46,7 +47,7 @@ public class HaSession {
 
     public static HaSession of(HaSessionStatus status) {
         return new HaSession(status.getFixSessionId().getGroup(), status.getFixSessionId().getName(),
-                status.getFixSessionType(), status.getReplicationMode(), status.getReplicationAckTimeout(),
+                status.getFixSessionType(), status.getReplicationMode(), status.getReplicationAckTimeout(), status.getReplicationQuorum(),
                 status.getUnencryptedMessageTypes(),
                 status.isInSync(), status.getNotReplicatedReason(), status.isLastSendUnacknowledged(),
                 status.getUnacknowledgedSends(), status.getNextIncomingSeqNum(), status.getNextOutgoingSeqNum(),

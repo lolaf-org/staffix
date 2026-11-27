@@ -46,21 +46,27 @@ public final class ReplicatedSession implements LeaderStream {
      */
     private volatile Config config;
     /**
-     * {@code SYNC} sends that went out without the follower's ack because it did not come in time.
+     * {@code SYNC} sends that went out without the followers' acks because they did not come in time.
      */
     private volatile long timedOutSends;
     /**
-     * {@code SYNC} sends that went out without the follower's ack because no follower was in sync.
+     * {@code SYNC} sends that went out without the followers' acks because no sync follower was in sync.
      */
     private volatile long noFollowerSends;
+    /**
+     * {@code SYNC} sends that went out without the followers' acks because fewer sync followers than the session's
+     * quorum were in sync.
+     */
+    private volatile long notEnoughFollowersSends;
     private volatile long lastTimedOutNanos;
+    private volatile long lastNotEnoughFollowersNanos;
     /**
      * Store events left out of the replication log, too long for it.
      */
     private volatile long unreplicatedEvents;
     private volatile long lastUnreplicatedNanos;
     /**
-     * The last {@code SYNC} send went out without the follower's ack: a failover now may lose it.
+     * The last {@code SYNC} send went out without the followers' acks: a failover now may lose it.
      */
     private volatile boolean lastSendUnacknowledged;
 
@@ -109,19 +115,22 @@ public final class ReplicatedSession implements LeaderStream {
         if (ack == StreamWriter.Ack.ACKED) {
             if (wasUnacknowledged) {
                 lastSendUnacknowledged = false;
-                log.info("FIX session {} {} sends are acknowledged by the follower again", fixSessionType, fixSessionId);
+                log.info("FIX session {} {} sends are acknowledged by the followers again", fixSessionType, fixSessionId);
             }
             return;
         }
         if (ack == StreamWriter.Ack.TIMED_OUT) {
             lastTimedOutNanos = System.nanoTime();
             timedOutSends++;
+        } else if (ack == StreamWriter.Ack.NOT_ENOUGH_FOLLOWERS) {
+            lastNotEnoughFollowersNanos = System.nanoTime();
+            notEnoughFollowersSends++;
         } else {
             noFollowerSends++;
         }
         if (!wasUnacknowledged) {
             lastSendUnacknowledged = true;
-            log.warn("FIX session {} {} sends without the follower's ack: {}", fixSessionType, fixSessionId, ack);
+            log.warn("FIX session {} {} sends without the followers' acks: {}", fixSessionType, fixSessionId, ack);
         }
     }
 
@@ -134,10 +143,10 @@ public final class ReplicatedSession implements LeaderStream {
     }
 
     /**
-     * {@code SYNC} sends that went out without the follower's ack, on a timeout or with no follower in sync.
+     * {@code SYNC} sends that went out without the followers' acks, whatever the reason.
      */
     public long getUnacknowledgedSends() {
-        return timedOutSends + noFollowerSends;
+        return timedOutSends + noFollowerSends + notEnoughFollowersSends;
     }
 
     /**

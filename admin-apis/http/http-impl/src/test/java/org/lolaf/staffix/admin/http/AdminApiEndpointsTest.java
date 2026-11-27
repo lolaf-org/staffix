@@ -605,8 +605,10 @@ class AdminApiEndpointsTest {
         when(ha.getStatus()).thenReturn(HaStatus.builder().nodeId("1").pairName("gateway").role(LeaderElection.Role.LEADER).epoch(7)
                 .leaderId("1").leadershipValid(true).leaderElectionType("PrimosLeaderElection")
                 .roleSince(Instant.parse("2026-10-10T10:00:00Z")).switchoverMaxDuration(Duration.ofMinutes(1)).monitoringInstanceId("metrics")
+                .peer("2")
+                .syncFollower("2")
                 .followerConnection(HaStatus.FollowerConnection.builder().nodeId("2").lane(1).address("/10.0.0.2:40000").connected(true).inSync(true)
-                        .unsentBytes(0).lagMillis(3).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
+                        .syncFollower(true).unsentBytes(0).appliedOffset(4096).lagMillis(3).cipher("AES/CTR/NoPadding 256 HmacSHA256").build())
                 .droppedFollower(HaStatus.DroppedFollower.builder().nodeId("3").lane(1)
                         .droppedAt(Instant.parse("2026-10-10T10:05:00Z"))
                         .heldOffUntil(Instant.parse("2026-10-10T10:05:02Z")).build())
@@ -623,15 +625,16 @@ class AdminApiEndpointsTest {
         assertThat(call("GET", "/engines/alpha-engine/v1/ha", null).body())
                 .isEqualTo("{\"nodeId\":\"1\",\"pairName\":\"gateway\",\"role\":\"LEADER\",\"epoch\":7,\"leaderId\":\"1\",\"leadershipValid\":true,"
                         + "\"leaderElectionType\":\"PrimosLeaderElection\",\"roleSince\":\"2026-10-10T10:00:00Z\","
-                        + "\"transferLeadershipSupported\":false,\"electableSupported\":false,\"electable\":false,\"switchoverMaxDuration\":\"PT1M\",\"monitoringInstanceId\":\"metrics\","
+                        + "\"transferLeadershipSupported\":false,\"electableSupported\":false,\"electable\":false,\"switchoverMaxDuration\":\"PT1M\",\"monitoringInstanceId\":\"metrics\",\"peers\":[\"2\"],\"syncFollowers\":[\"2\"],"
                         + "\"followerConnections\":[{\"nodeId\":\"2\",\"lane\":1,\"address\":\"/10.0.0.2:40000\",\"connected\":true,\"inSync\":true,"
-                        + "\"snapshotInProgress\":false,\"unsentBytes\":0,\"lagMillis\":3,\"cipher\":\"AES/CTR/NoPadding 256 HmacSHA256\"}],"
+                        + "\"syncFollower\":true,\"snapshotInProgress\":false,\"unsentBytes\":0,\"appliedOffset\":4096,\"lagMillis\":3,\"cipher\":\"AES/CTR/NoPadding 256 HmacSHA256\"}],"
                         + "\"droppedFollowers\":[{\"nodeId\":\"3\",\"lane\":1,\"droppedAt\":\"2026-10-10T10:05:00Z\","
                         + "\"heldOffUntil\":\"2026-10-10T10:05:02Z\"}],"
-                        + "\"sessionSettingsDifferences\":[{\"store\":\"files\",\"fixSessionType\":\"ACCEPTOR\",\"fixSessionId\":\"s\",\"kind\":\"DIFFERENT\"}]}");
+                        + "\"sessionSettingsDifferences\":[{\"store\":\"files\",\"fixSessionType\":\"ACCEPTOR\",\"fixSessionId\":\"s\",\"kind\":\"DIFFERENT\"}],"
+                        + "\"lanePositions\":[]}");
         assertThat(call("GET", "/engines/alpha-engine/v1/ha/sessions", null).body())
                 .isEqualTo("[{\"group\":\"alpha\",\"name\":\"trading\",\"fixSessionType\":\"INITIATOR\",\"replicationMode\":\"ASYNC\","
-                        + "\"replicationAckTimeout\":\"PT0S\",\"unencryptedMessageTypes\":[\"S\"],\"inSync\":true,\"lastSendUnacknowledged\":false,"
+                        + "\"replicationAckTimeout\":\"PT0S\",\"replicationQuorum\":0,\"unencryptedMessageTypes\":[\"S\"],\"inSync\":true,\"lastSendUnacknowledged\":false,"
                         + "\"unacknowledgedSends\":0,\"nextIncomingSeqNum\":-1,\"nextOutgoingSeqNum\":-1,\"handedOver\":false,\"pendingWrites\":0,\"lostWrites\":0}]");
     }
 

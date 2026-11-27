@@ -171,6 +171,14 @@ than the quorum, a send does not wait, and is counted unacknowledged. A second n
 already connected is refused. **Promote a sync follower in sync**: it holds every message a `SYNC` send was
 acknowledged for, where a disaster-recovery copy may lack some.
 
+`v1/ha` lists the `syncFollowers`, connected or not, and tags each follower connection `syncFollower`, with its
+`appliedOffset`: on one lane, the gap between two followers' is how many bytes of the log one is behind the other.
+**To promote a disaster-recovery copy by hand, compare positions first**: with the leader down, each node's
+`lanePositions` gives the last write it holds on each lane; two compare only at the same `epoch` and `leadership`,
+the larger `offset` holding more. Keep a disaster-recovery copy unelectable (`{"electable": false}`, see
+[maintenance mode](#planned-switchover-and-maintenance)): neither an election nor a switchover names a successor, so
+either may give it the leadership.
+
 **A follower that cannot keep up slows the writes, briefly, and is then dropped.** The leader keeps what a connected
 follower has not been sent in its replication log, `logCapacity` bytes. When the follower falls that far behind, a
 session's next write waits for it, holding the FIX IO thread it runs on, and every session on that thread, for at most
@@ -475,7 +483,8 @@ decide, as it is the one encrypting.
 - **Status**: `GET v1/ha` and `GET v1/ha/sessions` say who leads, whether the follower holds each session and how far
   behind it is, which followers were dropped as too slow and are not back in sync, and, on the follower, whether a
   session would be taken over cleanly now. Each follower lane's `cipher`, on the leader, and the leader's, on the
-  follower, names the cipher of an encrypted replication, and is absent in clear.
+  follower, names the cipher of an encrypted replication, and is absent in clear. With several followers,
+  `syncFollowers`, `appliedOffset` and `lanePositions` tell them apart: see [Replication modes](#replication-modes).
 - **A follower in sync may still have writes to store.** With the async store, in sync means queued: `pendingWrites` in
   `GET v1/ha/sessions` counts what it has not stored yet, and it must store all of it before it can lead, so a large
   count delays a takeover, a snapshot after a restart above all. A switchover waits for it; a failover cannot, and past

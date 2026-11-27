@@ -40,6 +40,10 @@ public class HaSessionStatus {
     ReplicationMode replicationMode;
     Duration replicationAckTimeout;
     /**
+     * As {@link org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings#getReplicationQuorum()}.
+     */
+    int replicationQuorum;
+    /**
      * As {@link org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings#getUnencryptedMessageTypes()}.
      */
     @Singular
@@ -57,8 +61,8 @@ public class HaSessionStatus {
      */
     boolean lastSendUnacknowledged;
     /**
-     * The leader's {@code SYNC} sends that went out without the follower's ack, on a timeout or with no follower in
-     * sync.
+     * The leader's {@code SYNC} sends that went out without the followers' acks: on a timeout, or with fewer sync
+     * followers in sync than the quorum.
      */
     long unacknowledgedSends;
     /**

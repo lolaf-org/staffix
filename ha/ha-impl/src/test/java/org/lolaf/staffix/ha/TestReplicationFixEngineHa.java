@@ -510,6 +510,23 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     }
 
     @Test
+    void aSyncSendWithFewerFollowersInSyncThanItsQuorumIsCountedUnacknowledged() {
+        FixSessionSettings quorumOfTwo = sync(MAIN, false);
+        quorumOfTwo = quorumOfTwo.toBuilder().highAvailability(quorumOfTwo.getHighAvailability().toBuilder()
+                .replicationQuorum(2).build()).build();
+        ReplicatingStore store = a.ha.replicatingStore(quorumOfTwo, new RecordingEngine.RecordingStore().start(),
+                new RecordingProbes());
+        startPairInSync();
+
+        store.storeNextIncomingSeqNum(7);
+        store.awaitReplicated();
+
+        RecordingMeters meters = a.engine.meters;
+        assertThat(meters.read("ha.sync.unacknowledged", Map.of("reason", "not_enough_followers"))).isEqualTo(1);
+        assertThat(meters.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isZero();
+    }
+
+    @Test
     void theNodeProbesItsReplicationThroughTheAlertsPublisherItNames() {
         a.start();
 
@@ -599,6 +616,25 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         await().until(() -> HaProbes.followersEvaluator(a.ha).evaluate().isEmpty());
         await().until(() -> HaProbes.leaderConnectionEvaluator(b.ha).evaluate().isEmpty());
         assertThat(HaProbes.followersEvaluator(b.ha).evaluate()).as("a leader's probe").isEmpty();
+    }
+
+    @Test
+    void aLeaderAlertsWhileNoFollowerItsSyncSendsWaitForIsConnected() {
+        a = tuned("a", settings -> settings.syncFollower("a"));
+        a.election.elect(Role.LEADER, 3, "a");
+        b.election.elect(Role.FOLLOWER, 3, "a");
+        a.start();
+        b.start();
+
+        await().untilAsserted(() -> assertThat(a.ha.getStatus().getFollowerConnections()).singleElement().satisfies(follower -> {
+            assertThat(follower.isInSync()).isTrue();
+            assertThat(follower.isSyncFollower()).isFalse();
+        }));
+        assertThat(HaProbes.followersEvaluator(a.ha).evaluate()).hasValueSatisfying(alert -> {
+            assertThat(alert.getLevel()).isEqualTo(AlertLevel.MAJOR);
+            assertThat(alert.getMessage()).startsWith("No sync follower connected");
+        });
+        assertThat(a.engine.meters.read("ha.followers.in.sync")).as("sync followers only").isZero();
     }
 
     @Test

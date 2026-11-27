@@ -88,6 +88,10 @@ public interface FixHaMXBean {
 
         boolean isElectable();
 
+        List<String> getPeers();
+
+        List<String> getSyncFollowers();
+
         List<FollowerConnection> getFollowerConnections();
 
         List<DroppedFollower> getDroppedFollowers();
@@ -95,6 +99,8 @@ public interface FixHaMXBean {
         List<SessionSettingsDifference> getSessionSettingsDifferences();
 
         Leader getLeader();
+
+        List<LanePosition> getLanePositions();
     }
 
     interface FollowerConnection {
@@ -109,13 +115,31 @@ public interface FixHaMXBean {
 
         boolean isInSync();
 
+        boolean isSyncFollower();
+
         boolean isSnapshotInProgress();
 
         long getUnsentBytes();
 
+        long getAppliedOffset();
+
         long getLagMillis();
 
         String getCipher();
+    }
+
+    /**
+     * See {@link org.lolaf.staffix.api.ha.HaStatus.LanePosition}.
+     */
+    interface LanePosition {
+
+        int getLane();
+
+        long getEpoch();
+
+        long getLeadership();
+
+        long getOffset();
     }
 
     /**
@@ -172,6 +196,8 @@ public interface FixHaMXBean {
         String getReplicationMode();
 
         String getReplicationAckTimeout();
+
+        int getReplicationQuorum();
 
         List<String> getUnencryptedMessageTypes();
 

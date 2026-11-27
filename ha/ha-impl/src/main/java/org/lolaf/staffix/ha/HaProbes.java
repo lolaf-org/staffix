@@ -33,14 +33,16 @@ import org.lolaf.replicos.LeaderStatus;
 import org.lolaf.replicos.LeaderView;
 import org.lolaf.replicos.ReplicationNode;
 import org.lolaf.replicos.spi.StreamAnswer;
+import org.lolaf.replicos.wire.CloseReason;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.LongSupplier;
-import java.util.stream.Collectors;
 
 /**
  * The replication's probes: the node's own, of component {@link #COMPONENT}, and each replicated session's. A probe
@@ -71,8 +73,9 @@ class HaProbes {
      * Adds the node's probes, replacing those of a previous start.
      */
     static void register(Probes probes, ReplicationFixEngineHa ha) {
-        replace(probes, FOLLOWERS, "While leading: the followers connected, in sync and applying the writes, without"
-                + " which a failover loses the sessions' latest writes.", followersEvaluator(ha));
+        replace(probes, FOLLOWERS, "While leading: every peer connected, a sync follower among them, and the followers in"
+                + " sync and applying the writes, without which a failover loses the sessions' latest writes.",
+                followersEvaluator(ha));
         replace(probes, LEADER_CONNECTION, "While following: the connection to the leader and whether this node holds every"
                 + " replicated session in full, as a failover to it needs.", leaderConnectionEvaluator(ha));
         replace(probes, LEADERSHIP, "Whether this node knows its role: without one it neither runs the sessions nor"
@@ -91,8 +94,9 @@ class HaProbes {
     static Probe sessionProbe(ReplicatedSession session, FollowersView followers) {
         return Probe.builder()
                 .name(REPLICATION)
-                .description("While leading: SYNC sends the follower did not ack in time, messages longer than half the"
-                        + " replication log, and a follower refusing to replicate the session.")
+                .description("While leading: SYNC sends the followers did not ack in time or that fewer sync followers"
+                        + " than the quorum were in sync for, messages longer than half the replication log, and a"
+                        + " follower refusing to replicate the session.")
                 .evaluator(new SessionReplicationEvaluator(session, followers, System::nanoTime, SESSION_ALERT_EXPIRY.toNanos()))
                 .onlyWhileActive(false)
                 .build();
@@ -103,49 +107,76 @@ class HaProbes {
             if (ha.getRole() != Role.LEADER) {
                 return Optional.empty();
             }
-            List<String> lagging = new ArrayList<>();
+            ReplicationHaSettings settings = ha.getSettings();
+            ReplicationNode node = ha.getNode();
+            int lanes = node.getLanes();
+            long thresholdMillis = settings.getFollowerLagAlertThreshold().toMillis();
             List<String> stalled = new ArrayList<>();
-            long thresholdMillis = ha.getSettings().getFollowerLagAlertThreshold().toMillis();
+            List<String> warnings = new ArrayList<>();
             boolean anyConnected = false;
-            int lanes = ha.getNode().getLanes();
-            for (FollowerLaneStatus follower : ha.getNode().followers().getLaneStatuses()) {
-                anyConnected |= follower.isConnected();
-                String name = laneName(follower.getNodeId(), follower.getLane(), lanes);
-                if (follower.isConnected() && follower.getLagMillis() > thresholdMillis) {
-                    stalled.add(name + " has not applied a write for " + follower.getLagMillis() + " ms");
-                } else if (follower.isConnected() && (!follower.isInSync() || follower.isSnapshotInProgress())) {
-                    lagging.add(name + (follower.isSnapshotInProgress() ? " catching up by snapshot"
-                            : " not in sync") + ", " + follower.getUnsentBytes() + " bytes unsent");
+            boolean anySyncFollowerConnected = false;
+            Set<String> connected = new HashSet<>();
+            for (FollowerLaneStatus follower : node.followers().getLaneStatuses()) {
+                if (!follower.isConnected()) {
+                    continue;
+                }
+                anyConnected = true;
+                anySyncFollowerConnected |= follower.isSyncFollower();
+                connected.add(follower.getNodeId());
+                String name = followerName(follower.getNodeId(), follower.getLane(), lanes, follower.isSyncFollower());
+                if (follower.getLagMillis() > thresholdMillis) {
+                    String problem = name + " has not applied a write for " + follower.getLagMillis() + " ms";
+                    (follower.isSyncFollower() ? stalled : warnings).add(problem);
+                } else if (!follower.isInSync() || follower.isSnapshotInProgress()) {
+                    warnings.add(name + (follower.isSnapshotInProgress() ? " catching up by snapshot" : " not in sync")
+                            + ", " + follower.getUnsentBytes() + " bytes unsent");
                 }
             }
-            Optional<Alert> droppedTooSlow = droppedTooSlowAlert(ha, lanes);
-            if (droppedTooSlow.isPresent()) {
-                return droppedTooSlow;
+            List<String> droppedSyncFollowers = new ArrayList<>();
+            for (DroppedFollower dropped : node.followers().getDroppedFollowers()) {
+                boolean sync = isSyncFollower(settings, dropped.getNodeId());
+                String problem = followerName(dropped.getNodeId(), dropped.getLane(), lanes, sync) + " dropped as too slow at "
+                        + dropped.getDroppedAt()
+                        + (dropped.getHeldOffUntil() == null ? "" : ", held off until " + dropped.getHeldOffUntil());
+                (sync ? droppedSyncFollowers : warnings).add(problem);
+                connected.add(dropped.getNodeId());
+            }
+            if (!droppedSyncFollowers.isEmpty()) {
+                return Optional.of(Alert.major("Follower " + String.join("; ", droppedSyncFollowers) + ", a write having"
+                        + " waited " + settings.getLogFullTimeout().toMillis() + " ms for it, and not back in sync: a"
+                        + " failover now loses what it has not applied"));
             }
             if (!anyConnected) {
                 return Optional.of(Alert.major("No follower connected for " + RAISE_DELAY.toSeconds()
                         + " s: a failover now loses the sessions' latest writes"));
             }
+            if (!anySyncFollowerConnected) {
+                return Optional.of(Alert.major("No sync follower connected for " + RAISE_DELAY.toSeconds()
+                        + " s, only followers SYNC sends do not wait for: a failover now may lose the sessions' latest"
+                        + " writes"));
+            }
             if (!stalled.isEmpty()) {
                 return Optional.of(Alert.major("Follower " + String.join("; ", stalled)
                         + ": a failover now loses what it has not applied"));
             }
-            return lagging.isEmpty() ? Optional.empty() : Optional.of(Alert.warning("Follower " + String.join("; ", lagging)));
+            for (String peer : settings.getPeers().keySet()) {
+                if (!peer.equals(settings.getNodeId()) && !connected.contains(peer)) {
+                    warnings.add(followerName(peer, 0, 1, isSyncFollower(settings, peer)) + " not connected");
+                }
+            }
+            return warnings.isEmpty() ? Optional.empty() : Optional.of(Alert.warning("Follower " + String.join("; ", warnings)));
         };
     }
 
-    private static Optional<Alert> droppedTooSlowAlert(ReplicationFixEngineHa ha, int lanes) {
-        List<DroppedFollower> dropped = ha.getNode().followers().getDroppedFollowers();
-        if (dropped.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(Alert.major("Follower " + dropped.stream()
-                .map(follower -> laneName(follower.getNodeId(), follower.getLane(), lanes) + " dropped as too slow at "
-                        + follower.getDroppedAt()
-                        + (follower.getHeldOffUntil() == null ? "" : ", held off until " + follower.getHeldOffUntil()))
-                .collect(Collectors.joining("; ")) + ", a write having waited "
-                + ha.getSettings().getLogFullTimeout().toMillis() + " ms for it, and not back in sync: a"
-                + " failover now loses what it has not applied"));
+    private static boolean isSyncFollower(ReplicationHaSettings settings, String nodeId) {
+        return settings.getSyncFollowers().isEmpty() || settings.getSyncFollowers().contains(nodeId);
+    }
+
+    /**
+     * Marks a follower {@code SYNC} sends do not wait for, as a failover to it may lose what they acknowledged.
+     */
+    private static String followerName(@Nullable String nodeId, int lane, int lanes, boolean syncFollower) {
+        return laneName(nodeId, lane, lanes) + (syncFollower ? "" : " (async)");
     }
 
     private static String laneName(@Nullable String nodeId, int lane, int lanes) {
@@ -153,22 +184,7 @@ class HaProbes {
     }
 
     static ProbeEvaluator leaderConnectionEvaluator(ReplicationFixEngineHa ha) {
-        return () -> {
-            if (ha.getRole() != Role.FOLLOWER) {
-                return Optional.empty();
-            }
-            LeaderView leader = ha.getNode().leader();
-            LeaderStatus status = leader.getStatus();
-            if (status == null) {
-                return Optional.of(Alert.major("No address for the leader, " + leaderId(ha) + ", to replicate from"));
-            }
-            if (!status.isConnected()) {
-                return Optional.of(Alert.major("Not connected to the leader " + status.getAddress()
-                        + " for " + RAISE_DELAY.toSeconds() + " s"));
-            }
-            return status.isInSync() ? Optional.empty()
-                    : Optional.of(Alert.warning("Connected to the leader, but not holding every replicated session in full"));
-        };
+        return new LeaderConnectionEvaluator(ha);
     }
 
     static ProbeEvaluator sessionSettingsEvaluator(ReplicationFixEngineHa ha) {
@@ -229,6 +245,52 @@ class HaProbes {
     }
 
     /**
+     * Tells a leader refusing this node's id, another node being connected under it, from a leader out of reach: only
+     * the closes counted since this node was last connected say which.
+     */
+    static final class LeaderConnectionEvaluator implements ProbeEvaluator {
+
+        private static final String DUPLICATE_NODE_ID = CloseReason.DUPLICATE_NODE_ID.name();
+
+        private final ReplicationFixEngineHa ha;
+        private @Nullable ReplicationNode node;
+        private long duplicateClosesWhenConnected;
+
+        LeaderConnectionEvaluator(ReplicationFixEngineHa ha) {
+            this.ha = ha;
+        }
+
+        @Override
+        public Optional<Alert> evaluate() {
+            if (ha.getRole() != Role.FOLLOWER) {
+                return Optional.empty();
+            }
+            ReplicationNode current = ha.getNode();
+            if (current != node) {
+                node = current;
+                duplicateClosesWhenConnected = 0;
+            }
+            LeaderView leader = current.leader();
+            LeaderStatus status = leader.getStatus();
+            if (status == null) {
+                return Optional.of(Alert.major("No address for the leader, " + leaderId(ha) + ", to replicate from"));
+            }
+            long duplicateCloses = leader.getCloses().getOrDefault(DUPLICATE_NODE_ID, 0L);
+            if (status.isConnected()) {
+                duplicateClosesWhenConnected = duplicateCloses;
+                return status.isInSync() ? Optional.empty()
+                        : Optional.of(Alert.warning("Connected to the leader, but not holding every replicated session in full"));
+            }
+            if (duplicateCloses > duplicateClosesWhenConnected) {
+                return Optional.of(Alert.major("Refused by the leader " + status.getAddress() + ": another node is"
+                        + " connected under this node's id, " + ha.getSettings().getNodeId()));
+            }
+            return Optional.of(Alert.major("Not connected to the leader " + status.getAddress()
+                    + " for " + RAISE_DELAY.toSeconds() + " s"));
+        }
+    }
+
+    /**
      * Reads what the session's thread records, so it holds no state of its own and a rebuilt session's probe takes
      * over from the previous one's.
      */
@@ -250,11 +312,15 @@ class HaProbes {
             long now = nanoClock.getAsLong();
             if (session.getTimedOutSends() > 0 && now - session.getLastTimedOutNanos() < expiryNanos) {
                 problems = add(problems,
-                        session.getTimedOutSends() + " SYNC sends went out without the follower's ack in time");
+                        session.getTimedOutSends() + " SYNC sends went out without the followers' acks in time");
+            }
+            if (session.getNotEnoughFollowersSends() > 0 && now - session.getLastNotEnoughFollowersNanos() < expiryNanos) {
+                problems = add(problems, session.getNotEnoughFollowersSends() + " SYNC sends went out unacknowledged, fewer"
+                        + " sync followers being in sync than the session's quorum");
             }
             if (session.getUnreplicatedEvents() > 0 && now - session.getLastUnreplicatedNanos() < expiryNanos) {
                 problems = add(problems, session.getUnreplicatedEvents()
-                        + " messages longer than half the replication log, missing on the follower");
+                        + " messages longer than half the replication log, missing on the followers");
             }
             return problems == null ? Optional.empty() : Optional.of(Alert.major(String.join("; ", problems)));
         }

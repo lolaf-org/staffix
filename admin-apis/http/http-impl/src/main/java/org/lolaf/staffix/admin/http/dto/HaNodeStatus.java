@@ -53,15 +53,20 @@ public class HaNodeStatus {
      * Absent when the node publishes no meters of its own.
      */
     String monitoringInstanceId;
+    List<String> peers;
+    List<String> syncFollowers;
     List<HaStatus.FollowerConnection> followerConnections;
     List<HaStatus.DroppedFollower> droppedFollowers;
     List<HaStatus.SessionSettingsDifference> sessionSettingsDifferences;
     HaStatus.Leader leader;
+    List<HaStatus.LanePosition> lanePositions;
 
     public static HaNodeStatus of(HaStatus status) {
         return new HaNodeStatus(status.getNodeId(), status.getPairName(), status.getRole(), status.getEpoch(), status.getLeaderId(),
                 status.isLeadershipValid(), status.getLeaderElectionType(),
                 status.getRoleSince(), status.isTransferLeadershipSupported(), status.isElectableSupported(),
-                status.isElectable(), status.getSwitchoverMaxDuration(), status.getMonitoringInstanceId(), status.getFollowerConnections(), status.getDroppedFollowers(), status.getSessionSettingsDifferences(), status.getLeader());
+                status.isElectable(), status.getSwitchoverMaxDuration(), status.getMonitoringInstanceId(), status.getPeers(), status.getSyncFollowers(),
+                status.getFollowerConnections(), status.getDroppedFollowers(), status.getSessionSettingsDifferences(),
+                status.getLeader(), status.getLanePositions());
     }
 }

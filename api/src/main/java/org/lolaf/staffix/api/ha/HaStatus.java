@@ -84,6 +84,17 @@ public class HaStatus {
      */
     @Nullable String monitoringInstanceId;
     /**
+     * The other nodes, by node id: while this node leads, the followers it expects, so one that is down still shows.
+     */
+    @Singular
+    List<String> peers;
+    /**
+     * The followers a {@code SYNC} send waits for, this node left out; empty makes every follower one. Each is listed
+     * whether connected or not, so one that is down still shows.
+     */
+    @Singular
+    List<String> syncFollowers;
+    /**
      * While this node leads: its followers' connections, one per follower and lane.
      */
     @Singular
@@ -102,6 +113,12 @@ public class HaStatus {
      * This node's leader, over all its lanes, while it follows one.
      */
     @Nullable Leader leader;
+    /**
+     * While this node does not lead: the last write it holds on each lane, kept with the leader down, to choose which
+     * follower to promote.
+     */
+    @Singular
+    List<LanePosition> lanePositions;
 
     /**
      * One follower's connection for one lane, as its leader sees it.
@@ -124,9 +141,15 @@ public class HaStatus {
          */
         boolean connected;
         /**
-         * Holds every session of the lane in sync, so a failover to it loses nothing acknowledged.
+         * Holds every session of the lane in sync: a failover to it loses nothing acknowledged if it is also a
+         * {@link #isSyncFollower() sync follower}.
          */
         boolean inSync;
+        /**
+         * One of the {@link HaStatus#getSyncFollowers() followers a SYNC send waits for}; a disaster-recovery copy is
+         * not, and may lack what a {@code SYNC} send acknowledged.
+         */
+        boolean syncFollower;
         /**
          * A session's snapshot is waiting or on its way.
          */
@@ -138,6 +161,11 @@ public class HaStatus {
          */
         long unsentBytes;
         /**
+         * The offset in the lane's replication log of the last write the follower applied, -1 before it applied one of
+         * this leadership's: only the gap between two followers of a lane means anything, in bytes of that log.
+         */
+        long appliedOffset;
+        /**
          * How long the follower has been behind a write it has not applied yet, 0 when caught up: it grows while the
          * follower is stalled, which {@link #inSync}, as of its last ack, does not show.
          */
@@ -147,6 +175,29 @@ public class HaStatus {
          * while the lane is not connected or replicates in clear.
          */
         @Nullable String cipher;
+    }
+
+    /**
+     * The last write a follower holds on one lane. Two followers' positions compare only at the same epoch and
+     * leadership, the offset being in the log of the leadership that sent it.
+     */
+    @Value
+    @Builder
+    public static class LanePosition {
+
+        int lane;
+        /**
+         * 0 before the follower applied any write.
+         */
+        long epoch;
+        /**
+         * The random id its leader drew on starting to lead; 0 before the follower applied any write.
+         */
+        long leadership;
+        /**
+         * The write's offset in the lane's replication log, -1 for none since the lane last connected without resuming.
+         */
+        long offset;
     }
 
     /**
