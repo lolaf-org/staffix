@@ -67,6 +67,7 @@ public class ReplicationHaContributor implements HaSettingsContributor {
         ifSet(props.getFollowerStoreWriterThreads(), settings::followerStoreWriterThreads);
         ifSet(props.getSessionSettingsReplicated(), settings::sessionSettingsReplicated);
         settings.replicatedSettingsStores(props.getReplicatedSettingsStores());
+        settings.syncFollowers(props.getSyncFollowers());
         ifBusySpin(props.getFollowerStoreWriterIdleStrategy(), settings::followerStoreWriterIdleStrategy);
         if (props.getSelectStrategy() == ReplicationHaProps.Waiting.BUSY_SPIN) {
             settings.selectStrategy(() -> new IdleStrategySelectStrategy(BusySpinIdleStrategy::getInstance));

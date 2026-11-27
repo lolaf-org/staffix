@@ -372,6 +372,34 @@ class TestFixSessionSettingsValidator {
                 .hasMessageContaining("highAvailability.replicationAckTimeout must be set and not negative");
     }
 
+    @Test
+    void aNegativeReplicationQuorumIsRejected() {
+        FixSessionSettings settings = validSettings()
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC_APPLIED)
+                        .replicationQuorum(-1)
+                        .build())
+                .build();
+
+        assertThatThrownBy(() -> FixSessionSettingsValidator.validate(settings))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("highAvailability.replicationQuorum must not be negative");
+    }
+
+    @Test
+    void aReplicationQuorumOnAnAsyncSessionIsRejected() {
+        FixSessionSettings settings = validSettings()
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.ASYNC)
+                        .replicationQuorum(1)
+                        .build())
+                .build();
+
+        assertThatThrownBy(() -> FixSessionSettingsValidator.validate(settings))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("highAvailability.replicationQuorum applies to a SYNC replicationMode only");
+    }
+
     private FixSessionSettings withUnencryptedMessageTypes(String... codes) {
         return validSettings()
                 .highAvailability(FixSessionSettings.HaSessionSettings.builder()

@@ -220,6 +220,7 @@ class TestToFixSessionSettingsDocumentTransformer {
                 .highAvailability(FixSessionSettings.HaSessionSettings.builder()
                         .replicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC_APPLIED)
                         .replicationAckTimeout(Duration.ofMillis(500))
+                        .replicationQuorum(2)
                         .syncAckLatencyEnabled(true)
                         .unencryptedMessageType("S")
                         .unencryptedMessageType("W")

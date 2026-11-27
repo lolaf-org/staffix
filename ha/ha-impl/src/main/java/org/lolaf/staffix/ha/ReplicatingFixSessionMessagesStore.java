@@ -25,9 +25,9 @@ import org.lolaf.staffix.api.msg.MessageType;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.staffix.api.stores.FixMessagesStore.StoreEventType;
+import org.lolaf.replicos.AckWait;
 import org.lolaf.replicos.StreamWriter;
 import org.lolaf.replicos.spi.RecordFlag;
-import org.lolaf.replicos.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -91,12 +91,11 @@ final class ReplicatingFixSessionMessagesStore implements ReplicatingStore {
 
     @Override
     public void awaitReplicated() {
-        if (lastAppendedOffset >= 0) {
+        ReplicatedSession.Config config = session.getConfig();
+        AckWait ackWait = config.getAckWait();
+        if (lastAppendedOffset >= 0 && ackWait != null) {
             long startNanos = System.nanoTime();
-            ReplicatedSession.Config config = session.getConfig();
-            StreamWriter.Ack ack = writer.awaitAck(lastAppendedOffset,
-                    StreamReplicationMode.from(config.getReplicationMode().getCode()),
-                    config.getReplicationAckTimeoutNanos());
+            StreamWriter.Ack ack = writer.awaitAck(lastAppendedOffset, ackWait);
             if (ack == StreamWriter.Ack.ACKED) {
                 long waitedNanos = System.nanoTime() - startNanos;
                 Timer engineTimer = config.getReplicationMode() == ReplicationMode.SYNC_RECEIVED ? syncReceivedAckLatency

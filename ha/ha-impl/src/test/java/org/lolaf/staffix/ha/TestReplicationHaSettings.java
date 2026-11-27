@@ -22,6 +22,7 @@ import org.lolaf.replicos.EncryptionMode;
 import org.lolaf.replicos.ReplicationEncryptionSettings;
 
 import java.nio.charset.StandardCharsets;
+import java.net.InetSocketAddress;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -66,6 +67,17 @@ class TestReplicationHaSettings {
 
         assertThatThrownBy(settings::validate).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("reconnectInterval");
+    }
+
+    @Test
+    void aSyncFollowerMustBeAPeer() {
+        ReplicationHaSettings settings = ReplicationHaSettings.builder()
+                .peer("1", new InetSocketAddress("localhost", 17101))
+                .peer("2", new InetSocketAddress("localhost", 17102))
+                .syncFollower("1").syncFollower("3")
+                .build();
+        assertThatThrownBy(settings::validate).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("syncFollowers names 3");
     }
 
     @Test

@@ -443,6 +443,11 @@ public class FixSessionSettingsProps {
          */
         private Duration replicationAckTimeout;
         /**
+         * How many sync followers a SYNC send waits for, the first to acknowledge; unset or 0 waits for every one in
+         * sync.
+         */
+        private Integer replicationQuorum;
+        /**
          * Whether the session's monitoring times each SYNC send's wait for the follower's acknowledgement.
          */
         private Boolean syncAckLatencyEnabled;

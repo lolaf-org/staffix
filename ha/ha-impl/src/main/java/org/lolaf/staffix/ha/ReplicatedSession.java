@@ -24,6 +24,7 @@ import org.lolaf.staffix.api.session.FixSessionId;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
+import org.lolaf.replicos.AckWait;
 import org.lolaf.replicos.StreamWriter;
 import org.lolaf.replicos.spi.LeaderStream;
 import org.lolaf.replicos.spi.SnapshotSource;
@@ -146,7 +147,10 @@ public final class ReplicatedSession implements LeaderStream {
     public static class Config {
 
         ReplicationMode replicationMode;
-        long replicationAckTimeoutNanos;
+        /**
+         * What a {@code SYNC} send waits for, built once with the session; null when it waits for nothing.
+         */
+        @Nullable AckWait ackWait;
         boolean syncAckLatencyEnabled;
         UnencryptedMessageTypes unencryptedMessageTypes;
         @Nullable String storageIdentity;
@@ -156,14 +160,22 @@ public final class ReplicatedSession implements LeaderStream {
         FixSessionMessagesStore store;
 
         Config notReplicated() {
-            return new Config(ReplicationMode.NONE, replicationAckTimeoutNanos, syncAckLatencyEnabled, unencryptedMessageTypes,
-                    storageIdentity, store);
+            return new Config(ReplicationMode.NONE, null, syncAckLatencyEnabled, unencryptedMessageTypes, storageIdentity,
+                    store);
         }
 
         static Config of(HaSessionSettings settings, FixSessionMessagesStore store) {
-            return new Config(settings.getReplicationMode(), settings.getReplicationAckTimeout().toNanos(),
-                    settings.isSyncAckLatencyEnabled(), UnencryptedMessageTypes.of(settings.getUnencryptedMessageTypes()),
-                    store.getStorageIdentity().orElse(null), store);
+            return new Config(settings.getReplicationMode(), ackWaitOf(settings), settings.isSyncAckLatencyEnabled(),
+                    UnencryptedMessageTypes.of(settings.getUnencryptedMessageTypes()), store.getStorageIdentity().orElse(null),
+                    store);
+        }
+
+        private static @Nullable AckWait ackWaitOf(HaSessionSettings settings) {
+            if (!settings.getReplicationMode().isSync()) {
+                return null;
+            }
+            return AckWait.of(StreamReplicationMode.from(settings.getReplicationMode().getCode()),
+                    settings.getReplicationQuorum(), settings.getReplicationAckTimeout());
         }
     }
 }

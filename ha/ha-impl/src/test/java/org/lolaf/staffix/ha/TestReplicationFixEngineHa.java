@@ -28,6 +28,7 @@ import org.lolaf.staffix.api.session.FixSession.FixSessionType;
 import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.session.FixSessionSettings.HaSessionSettings.ReplicationMode;
 import org.lolaf.staffix.api.session.FixSessionsSettingsStore;
+import org.lolaf.replicos.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -238,7 +239,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
     }
 
     @Test
-    void aSessionTheLeaderStopsReplicatingIsDroppedBeforeTheFollowerSettingsCatchUpWithoutARefusal() {
+    void aSessionTheLeaderStopsReplicatingIsDroppedBeforeTheFollowerSettingsCatchUp() {
         startPairInSync();
         await().until(() -> b.ha.getSessionStatuses().get(0).isInSync());
         RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);
@@ -246,22 +247,27 @@ class TestReplicationFixEngineHa extends HaPairFixture {
         a.ha.onSessionNotReplicated(MAIN);
 
         await().until(() -> !replicaStore.isStarted());
-        assertThat(b.ha.getSessionStatuses().get(0).getNotReplicatedReason()).isNotEqualTo("MODE_MISMATCH");
-        assertThat(a.ha.getSessionStatuses().get(0).getNotReplicatedReason()).isNotEqualTo("MODE_MISMATCH");
     }
 
     @Test
-    void aReplicationModeChangedOnTheLeaderAloneIsRefusedByTheFollower() {
+    void aReplicationModeChangedOnTheLeaderAloneKeepsTheFollowersCopyAndIsAcked() {
         startPairInSync();
         await().until(() -> b.ha.getSessionStatuses().get(0).isInSync());
-        FixSessionSettings sync = MAIN.toBuilder()
+        RecordingEngine.RecordingStore replicaStore = b.engine.store(MAIN);
+        FixSessionSettings sync = untilAcked(MAIN.toBuilder()
                 .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
-                .build();
+                .build());
+        String streamName = new TypedSessionId(MAIN.getFixSessionType(), MAIN.getFixSessionId().toString()).toStreamName();
 
-        a.ha.replicatingStore(sync, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        ReplicatingStore store = a.ha.replicatingStore(sync, new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        await().until(() -> b.ha.getNode().leader().getStream(streamName).getLeaderMode() == StreamReplicationMode.SYNC_APPLIED
+                && b.ha.getSessionStatuses().get(0).isInSync());
+        store.storeNextIncomingSeqNum(7);
+        store.awaitReplicated();
 
-        await().until(() -> "MODE_MISMATCH".equals(a.ha.getSessionStatuses().get(0).getNotReplicatedReason()));
-        assertThat(b.ha.getSessionStatuses().get(0).getNotReplicatedReason()).isEqualTo("MODE_MISMATCH");
+        assertThat(a.engine.meters.recordings(HaMeters.SYNC_ACK_LATENCY, Map.of("mode", "sync_applied"))).isEqualTo(1);
+        assertThat(b.engine.store(MAIN)).as("the follower's own settings say ASYNC").isSameAs(replicaStore);
+        assertThat(replicaStore.writes).endsWith("incoming 7");
     }
 
     @Test
@@ -283,7 +289,7 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void theMetersFollowTheReplicationOnBothNodes() {
-        ReplicatingStore store = a.ha.replicatingStore(untilAcked(MAIN), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
+        ReplicatingStore store = a.ha.replicatingStore(sync(MAIN, false), new RecordingEngine.RecordingStore().start(), new RecordingProbes());
         startPairInSync();
         RecordingMeters leader = a.engine.meters;
         RecordingMeters follower = b.engine.meters;
@@ -488,12 +494,14 @@ class TestReplicationFixEngineHa extends HaPairFixture {
 
     @Test
     void aSyncSendWithoutAFollowerIsCountedUnacknowledged() {
+        ReplicatingStore store = a.ha.replicatingStore(sync(MAIN, false), new RecordingEngine.RecordingStore().start(),
+                new RecordingProbes());
         a.election.elect(Role.LEADER, 3, "a");
         a.start();
         await().until(() -> a.engine.activity.contains("activate, stores open 0"));
 
-        a.store.storeNextIncomingSeqNum(7);
-        a.store.awaitReplicated();
+        store.storeNextIncomingSeqNum(7);
+        store.awaitReplicated();
 
         RecordingMeters meters = a.engine.meters;
         assertThat(meters.read("ha.sync.unacknowledged", Map.of("reason", "no_follower"))).isEqualTo(1);

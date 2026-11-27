@@ -74,16 +74,11 @@ class TestReplicaSessions extends FixLeaderConnectionHarness {
     }
 
     @Test
-    void aSessionReplicatedByTheLeaderButNotHereIsRefusedAndNotMovedAhead() {
+    void aSessionReplicatedByTheLeaderButNotHereIsHeldAllTheSame() {
         assertThat(announce(0, withMode(NOT_REPLICATED, ReplicationMode.ASYNC), "leader-storage"))
-                .isEqualTo(StreamAnswer.MODE_MISMATCH);
-        read(announced(1));
-        assertThat(engine.store(NOT_REPLICATED)).isNull();
-        assertThat(replicaSessions.isInSync()).as("a refused session is missing").isFalse();
+                .isEqualTo(StreamAnswer.SNAPSHOT_NEEDED);
 
-        replicaSessions.jumpOutgoingSeqNums(1_000);
-
-        assertThat(engine.store(NOT_REPLICATED)).as("this node's settings do not replicate it").isNull();
+        assertThat(engine.store(NOT_REPLICATED).started).as("the leader alone decides").isTrue();
     }
 
     @Test
@@ -95,13 +90,14 @@ class TestReplicaSessions extends FixLeaderConnectionHarness {
     }
 
     @Test
-    void aReplicationModeChangedOnTheLeaderAloneStopsTheReplica() {
+    void aReplicationModeChangedOnTheLeaderAloneKeepsTheReplica() {
         announce(0, MAIN, "leader-storage");
         RecordingEngine.RecordingStore replicaStore = engine.store(MAIN);
 
-        assertThat(announce(0, withMode(MAIN, ReplicationMode.SYNC_APPLIED), "leader-storage"))
-                .isEqualTo(StreamAnswer.MODE_MISMATCH);
-        assertThat(replicaStore.started).isFalse();
+        announce(0, withMode(MAIN, ReplicationMode.SYNC_APPLIED), "leader-storage");
+
+        assertThat(engine.store(MAIN)).isSameAs(replicaStore);
+        assertThat(replicaStore.started).isTrue();
     }
 
     @ParameterizedTest

@@ -148,6 +148,7 @@ public class FromFixSessionSettingsDocumentTransformer {
             FixSessionSettings.HaSessionSettings.HaSessionSettingsBuilder<?, ?> hb = FixSessionSettings.HaSessionSettings.builder();
             mergeIfNeeded(yha::getReplicationMode, hb::replicationMode);
             mergeIfNeeded(yha::getReplicationAckTimeout, hb::replicationAckTimeout);
+            mergeIfNeeded(yha::getReplicationQuorum, hb::replicationQuorum);
             mergeIfNeeded(yha::getSyncAckLatencyEnabled, hb::syncAckLatencyEnabled);
             mergeIfNeeded(yha::getUnencryptedMessageTypes, hb::unencryptedMessageTypes);
             builder.highAvailability(hb.build());

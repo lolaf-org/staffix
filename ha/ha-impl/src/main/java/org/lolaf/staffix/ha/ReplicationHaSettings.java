@@ -33,6 +33,7 @@ import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -102,6 +103,14 @@ public class ReplicationHaSettings extends HaSettings {
      */
     @Singular
     private final Map<String, InetSocketAddress> peers;
+
+    /**
+     * The {@link #getPeers() peers} a {@code SYNC} session's send waits for: those a failover goes to, not a
+     * disaster-recovery copy, which then replicates as if {@code ASYNC}. The same set on every node, its own id included.
+     * Empty, the default, makes every follower one.
+     */
+    @Singular
+    private final Set<String> syncFollowers;
 
     /**
      * False stops the leader changing the follower's session settings stores: they are only compared.
@@ -264,6 +273,12 @@ public class ReplicationHaSettings extends HaSettings {
      */
     void validate() {
         encryption.validate();
+        for (String syncFollower : syncFollowers) {
+            if (!peers.containsKey(syncFollower)) {
+                throw new IllegalArgumentException("syncFollowers names " + syncFollower + ", which is not among the peers "
+                        + peers.keySet() + ": a node a failover goes to must have its own address to lead from");
+            }
+        }
         if (replicationLanes < 1) {
             throw new IllegalArgumentException("replicationLanes must be at least 1, got " + replicationLanes);
         }

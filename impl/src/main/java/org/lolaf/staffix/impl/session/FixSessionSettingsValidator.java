@@ -223,6 +223,11 @@ public class FixSessionSettingsValidator {
             violations.add("highAvailability.replicationMode must be set");
         }
         requireNonNegative(violations, ha.getReplicationAckTimeout(), "highAvailability.replicationAckTimeout");
+        if (ha.getReplicationQuorum() < 0) {
+            violations.add("highAvailability.replicationQuorum must not be negative");
+        } else if (ha.getReplicationQuorum() > 0 && ha.getReplicationMode() != null && !ha.getReplicationMode().isSync()) {
+            violations.add("highAvailability.replicationQuorum applies to a SYNC replicationMode only");
+        }
         List<String> unencrypted = ha.getUnencryptedMessageTypes();
         if (unencrypted.contains(CoreMessageType.LOGON.code())) {
             violations.add("highAvailability.unencryptedMessageTypes must not name Logon (A): it carries the password");

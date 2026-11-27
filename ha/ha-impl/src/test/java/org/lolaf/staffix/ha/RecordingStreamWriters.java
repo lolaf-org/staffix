@@ -18,9 +18,9 @@ package org.lolaf.staffix.ha;
 import lombok.Getter;
 import lombok.Setter;
 import org.jspecify.annotations.Nullable;
+import org.lolaf.replicos.AckWait;
 import org.lolaf.replicos.StreamWriter;
 import org.lolaf.replicos.spi.RecordFlag;
-import org.lolaf.replicos.spi.StreamReplicationMode;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -51,6 +51,11 @@ final class RecordingStreamWriters {
     private @Nullable RecordFlag lastFlag;
     @Getter
     private int openWriters;
+    /**
+     * The quorum of the last ack wait, -1 before any.
+     */
+    @Getter
+    private int lastQuorum;
     private long nextOffset;
 
     RecordingStreamWriters(int maxPayloadLength) {
@@ -58,6 +63,7 @@ final class RecordingStreamWriters {
         this.appended = new ArrayDeque<>();
         this.recording = true;
         this.ack = StreamWriter.Ack.NO_FOLLOWER_IN_SYNC;
+        this.lastQuorum = -1;
     }
 
     StreamWriter writer(int streamKey) {
@@ -124,7 +130,8 @@ final class RecordingStreamWriters {
         }
 
         @Override
-        public Ack awaitAck(long offset, StreamReplicationMode mode, long timeoutNanos) {
+        public Ack awaitAck(long offset, AckWait wait) {
+            lastQuorum = wait.getQuorum();
             return ack;
         }
 

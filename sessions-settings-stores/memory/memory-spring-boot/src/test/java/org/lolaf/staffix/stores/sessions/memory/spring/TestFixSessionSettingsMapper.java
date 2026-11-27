@@ -146,6 +146,17 @@ class TestFixSessionSettingsMapper {
     }
 
     @Test
+    void mapsTheReplicationQuorum() {
+        FixSessionSettingsProps.HaProps ha = new FixSessionSettingsProps.HaProps();
+        ha.setReplicationMode(FixSessionSettings.HaSessionSettings.ReplicationMode.SYNC_APPLIED);
+        ha.setReplicationQuorum(1);
+        FixSessionSettingsProps props = sessionProps();
+        props.setHa(ha);
+
+        assertThat(FixSessionSettingsMapper.toSettings(props).getHighAvailability().getReplicationQuorum()).isEqualTo(1);
+    }
+
+    @Test
     void leavesASessionUnreplicatedWithoutHaProps() {
         assertThat(FixSessionSettingsMapper.toSettings(sessionProps()).getHighAvailability().getReplicationMode())
                 .isEqualTo(FixSessionSettings.HaSessionSettings.ReplicationMode.NONE);

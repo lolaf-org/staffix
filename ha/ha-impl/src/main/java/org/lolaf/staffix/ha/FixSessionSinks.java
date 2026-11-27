@@ -23,14 +23,13 @@ import org.lolaf.staffix.api.session.FixSessionSettings;
 import org.lolaf.staffix.api.stores.FixMessagesStore.FixSessionMessagesStore;
 import org.lolaf.replicos.spi.ReplicaSinks;
 import org.lolaf.replicos.spi.StreamAnswer;
-import org.lolaf.replicos.spi.StreamReplicationMode;
 import org.lolaf.replicos.spi.WireFormatException;
 
 import java.util.Optional;
 
 /**
- * Decides, from this node's own settings, how the follower holds a session the leader announces, and opens the store
- * of one it replicates. The engine's settings are listed for each, a session being announced rarely. The
+ * Decides, from this node's own settings, whether the follower holds a session the leader announces, and opens the
+ * store of one it replicates. The engine's settings are listed for each, a session being announced rarely. The
  * {@link SessionSettingsStream} is always replicated, into the settings comparison.
  */
 @Slf4j
@@ -53,11 +52,11 @@ public final class FixSessionSinks implements ReplicaSinks {
     }
 
     /**
-     * Opens and starts the session's store, unless the session is not replicated here: its settings here are missing
-     * or disagree, or its storage is the leader's own.
+     * Opens and starts the session's store, unless the session is not replicated here: its settings here are missing,
+     * or its storage is the leader's own. Its replication mode is the leader's alone.
      */
     @Override
-    public Binding open(String streamName, StreamReplicationMode leaderMode, @Nullable String leaderStorageIdentity) {
+    public Binding open(String streamName, @Nullable String leaderStorageIdentity) {
         if (SessionSettingsStream.STREAM_NAME.equals(streamName)) {
             return Binding.replicated(settingsReplica);
         }
@@ -67,12 +66,6 @@ public final class FixSessionSinks implements ReplicaSinks {
         FixSessionSettings settings = findSettings(session).orElse(null);
         if (settings == null) {
             return refused(session, StreamAnswer.UNKNOWN_STREAM);
-        }
-        StreamReplicationMode modeHere = modeOf(settings);
-        if (modeHere != leaderMode) {
-            log.error("FIX session {} {} is not replicated here: the leader's settings give it replication mode {}, this "
-                    + "node's {}", fixSessionType, fixSessionId, leaderMode, modeHere);
-            return Binding.refused(StreamAnswer.MODE_MISMATCH);
         }
         FixSessionMessagesStore store = engine.openStore(settings);
         String storageIdentity = store.getStorageIdentity().orElse(null);
@@ -89,21 +82,14 @@ public final class FixSessionSinks implements ReplicaSinks {
     }
 
     @Override
-    public @Nullable StreamReplicationMode modeHere(String streamName) {
-        if (SessionSettingsStream.STREAM_NAME.equals(streamName)) {
-            return StreamReplicationMode.ASYNC;
-        }
-        return findSettings(sessionOf(streamName)).map(FixSessionSinks::modeOf).orElse(null);
+    public boolean isConfigured(String streamName) {
+        return SessionSettingsStream.STREAM_NAME.equals(streamName) || findSettings(sessionOf(streamName)).isPresent();
     }
 
     private static Binding refused(TypedSessionId session, StreamAnswer refusal) {
         log.warn("FIX session {} {} is not replicated here: {}", session.getFixSessionType(), session.getFixSessionId(),
                 NotReplicatedReason.of(refusal));
         return Binding.refused(refusal);
-    }
-
-    private static StreamReplicationMode modeOf(FixSessionSettings settings) {
-        return StreamReplicationMode.from(settings.getHighAvailability().getReplicationMode().getCode());
     }
 
     private static TypedSessionId sessionOf(String streamName) {

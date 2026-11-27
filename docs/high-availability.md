@@ -80,6 +80,7 @@ Then ask for replication per session, in its settings:
 highAvailability:
   replicationMode: ASYNC        # NONE (default), ASYNC, SYNC_RECEIVED or SYNC_APPLIED
   replicationAckTimeout: PT1S   # SYNC modes only: how long a send waits for the follower, zero for ever
+  replicationQuorum: 0          # SYNC modes only: how many sync followers a send waits for, 0 (default) for all in sync
   unencryptedMessageTypes: []   # MsgType(35) values an encrypted replication leaves unencrypted, such as [S]; ["*"] for all
 ```
 
@@ -98,6 +99,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `snapshotChunkBytes` | 64 KiB | The most bytes of a snapshot sent between two batches of the other sessions' writes. The leader reads each chunk from the session's store while the lane's live writes wait, about 70 µs from a file store at 64 KiB. Larger finishes a snapshot sooner under load, smaller delays the other sessions less. |
 | `senderIdleStrategy` | backs off | How the leader's sender, a thread per follower lane, waits for writes. It parks when idle, woken by a write; `BusySpinIdleStrategy` saves the wake-up, for a core per follower. |
 | `syncAckIdleStrategy` | backs off | How a `SYNC` send waits for its acknowledgement, on the session's thread. `BusySpinIdleStrategy` sees it at once, for that thread's core while it waits. |
+| `syncFollowers` | every follower | The peers a `SYNC` send waits for, by node id: those a failover goes to, not a disaster-recovery copy, which then replicates as if `ASYNC`. The same set on every node, its own id included; each must be among the `peers`. See [Replication modes](#replication-modes). |
 | `sessionSettingsReplicated` | true | False stops the leader changing the follower's session settings stores: differences are only reported. |
 | `replicatedSettingsStores` | every store that can be | Instance ids of the session settings stores the leader replicates to the follower; a memory store cannot be. The others are only compared. The engine refuses to start on a named store it does not have, or one that cannot be replicated. |
 | `followerStoreWriterThreads` | 0 | Threads writing what the follower receives into its stores, its lanes spread over them; 0 writes on each lane's network thread. Set it to the lane count with a durable follower store or `SYNC_RECEIVED` sessions: the network thread then keeps reading while a store writes. Fewer threads than lanes make the lanes sharing one wait for each other's writes. A memory store gains nothing. |
@@ -107,7 +109,7 @@ The other settings of `ReplicationHaSettings`, with their defaults:
 | `handOverTimeout` | 5s | How long a leader stopping cleanly waits to give its follower every write. |
 | `switchoverTimeout` | 30s | How long a planned switchover waits for a follower ready to lead, its sessions running meanwhile, then how long it may take before this node leads again. `0s` does not wait: a follower not ready now is refused, and `handOverTimeout` bounds the rest. |
 | `switchoverMaxPendingWrites` | 1 000 | The most a follower may have left to store for a switchover to go ahead. Never 0 under traffic. |
-| `followerCheckInterval` | 1s | How often a follower checks again two things: how many writes its stores still have to make, which it reports to the leader for a switchover to wait on, and whether it can now accept a session it refused because its settings were missing or differed from the leader's. Each check looks at every session of a lane. Must be positive. |
+| `followerCheckInterval` | 1s | How often a follower checks again two things: how many writes its stores still have to make, which it reports to the leader for a switchover to wait on, and whether it can now accept a session it refused because its settings were missing. Each check looks at every session of a lane. Must be positive. |
 | `followerLagAlertThreshold` | 5s | How long a connected follower may go without applying a write before the leader raises a major alert. A follower stalled while connected still reads as in sync, as of its last acknowledgement. |
 | `followerStallTimeout` | 10s | How long a follower owing an acknowledgement may stay silent before the leader drops it as hung; it reconnects and is caught up. A slow follower still acknowledges each read and is kept. Zero never drops. |
 | `logFullTimeout` | 1s | How long a write waits for a follower a whole `logCapacity` behind before the leader drops it as too slow; it reconnects and is caught up by snapshot. The wait holds the FIX IO thread writing, and every session on it. Must be positive. |
@@ -160,6 +162,14 @@ costs one timeout, not one per message; the leader drops it after `followerStall
 (not connected, catching up), a send does not wait at all. Either way the
 session is flagged `lastSendUnacknowledged` and its `ha-replication` probe alerts, and waiting resumes once a follower is back in
 sync. `syncAckLatencyEnabled: true` adds a timer of the wait to the session's own meters.
+
+**With several followers, a `SYNC` send waits only for the sync followers**, `syncFollowers` (every follower when
+unset), and only for those in sync. Name the local standby a failover goes to, and leave out a disaster-recovery copy
+far away: it then gets every message without slowing a send. **`replicationQuorum` lets a session wait for some of
+them**, the first to acknowledge: with two standbys, `1` waits for the faster one. With fewer sync followers in sync
+than the quorum, a send does not wait, and is counted unacknowledged. A second node connecting under the id of one
+already connected is refused. **Promote a sync follower in sync**: it holds every message a `SYNC` send was
+acknowledged for, where a disaster-recovery copy may lack some.
 
 **A follower that cannot keep up slows the writes, briefly, and is then dropped.** The leader keeps what a connected
 follower has not been sent in its replication log, `logCapacity` bytes. When the follower falls that far behind, a
@@ -330,9 +340,8 @@ admin API only: code calling a store directly on a follower is not stopped.
 
 A settings difference does not stop replication, since it should not remove protection: the follower lists it in the
 status as `sessionSettingsDifferences` (`MISSING_HERE`, `EXTRA_HERE` or `DIFFERENT`) and its `ha-session-settings` probe
-raises a `WARNING`, as a failover would run that node's own settings. One exception: a follower asked to replicate a
-session in a `replicationMode` other than its own refuses that session, logs an error and makes the leader raise the
-`ha-replication` alert, until both agree.
+raises a `WARNING`, as a failover would run that node's own settings. A follower whose own `replicationMode` for a
+session differs still replicates it: the leader's mode decides how a send waits.
 
 ## Each node needs its own storage
 

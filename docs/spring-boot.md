@@ -192,6 +192,7 @@ staffix.ha-replication.fencing-margin=50ms
 # per session
 …sessions[0].ha.replication-mode=SYNC_APPLIED
 …sessions[0].ha.replication-ack-timeout=50ms
+…sessions[0].ha.replication-quorum=1
 …sessions[0].ha.sync-ack-latency-enabled=true
 ```
 
@@ -199,7 +200,7 @@ staffix.ha-replication.fencing-margin=50ms
 looks that name up in `peers`. The other `ReplicationHaSettings` settings bind the same way (`pair-name`, `log-capacity`,
 `replication-lanes`, `heartbeat-interval`, `reconnect-interval`, `send-buffers`, `snapshot-chunk-bytes`,
 `promotion-outgoing-seq-num-jump`, `hand-over-timeout`, `switchover-timeout`, `switchover-max-pending-writes`, `follower-check-interval`, `follower-lag-alert-threshold`,
-`follower-stall-timeout`, `log-full-timeout`, `slow-follower-hold-off`, `session-settings-replicated`, `replicated-settings-stores`); their defaults are in the guide.
+`follower-stall-timeout`, `log-full-timeout`, `slow-follower-hold-off`, `session-settings-replicated`, `replicated-settings-stores`, `sync-followers`); their defaults are in the guide.
 `sender-idle-strategy`, `sync-ack-idle-strategy` and `select-strategy` take `default` or `busy-spin`; see
 [Latency](high-availability.md#latency). `encryption.mode` takes `disabled`, `preferred` or `required`, beside
 `encryption.cipher`, `encryption.key-bits`, `encryption.mac` and `encryption.provider`.

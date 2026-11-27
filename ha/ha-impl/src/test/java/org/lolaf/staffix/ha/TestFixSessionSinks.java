@@ -61,20 +61,13 @@ class TestFixSessionSinks extends FixLeaderConnectionHarness {
     }
 
     @Test
-    void aSessionWithAnotherReplicationModeHereIsRefusedUntilTheSettingsHereAgree() {
+    void aSessionWithAnotherReplicationModeHereIsHeldInTheLeadersMode() {
         FixSessionSettings sync = MAIN.toBuilder()
                 .highAvailability(FixSessionSettings.HaSessionSettings.builder().replicationMode(ReplicationMode.SYNC_APPLIED).build())
                 .build();
         read(welcome(EPOCH, WireFormat.NO_RESUME), session(0, sync));
 
-        assertThat(engine.store(MAIN)).as("no store opened").isNull();
-        assertThat(sent.frames).containsExactly("STREAM_ANSWER epoch=7 key=0 MODE_MISMATCH FULL_COPY last=-1", "ACK epoch=7 applied=-1 inSync=false");
-        sent.frames.clear();
-
-        engine.replace(sync);
-        read(event(EPOCH, 0, 0, StoreEventType.STORE_INCOMING_SEQ_NUM, 2, null));
-
-        assertThat(engine.store(sync).started).isTrue();
+        assertThat(engine.store(MAIN).started).isTrue();
         assertThat(sent.frames).contains("STREAM_ANSWER epoch=7 key=0 SNAPSHOT_NEEDED FULL_COPY last=-1");
     }
 

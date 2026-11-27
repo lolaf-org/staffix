@@ -193,6 +193,7 @@ public class ReplicationFixEngineHa extends Startable.SimpleStartable<FixEngineH
                         .slowFollowerHoldOff(settings.getSlowFollowerHoldOff())
                         .heartbeatInterval(settings.getHeartbeatInterval())
                         .followerStallTimeout(settings.getFollowerStallTimeout())
+                        .syncFollowers(settings.getSyncFollowers())
                         .sendBuffers(settings.getSendBuffers())
                         .snapshotChunkBytes(settings.getSnapshotChunkBytes())
                         .senderIdleStrategy(settings.getSenderIdleStrategy())

@@ -339,6 +339,20 @@ class TestReplicatingFixSessionMessagesStore {
     }
 
     @Test
+    void aSyncSendWaitsForTheSessionsQuorum() {
+        writers.setAck(StreamWriter.Ack.ACKED);
+        ReplicatingStore store = replicatingStore(session("main", FixSessionType.INITIATOR).toBuilder()
+                .highAvailability(FixSessionSettings.HaSessionSettings.builder()
+                        .replicationMode(ReplicationMode.SYNC_APPLIED).replicationQuorum(2).build())
+                .build(), local, new RecordingProbes());
+
+        store.storeNextOutgoingSeqNum(2);
+        store.awaitReplicated();
+
+        assertThat(writers.getLastQuorum()).isEqualTo(2);
+    }
+
+    @Test
     void aStoppedStoreClosesItsWriter() {
         ReplicatingStore store = replicatingStore(session("main", FixSessionType.INITIATOR), local, new RecordingProbes());
         assertThat(writers.getOpenWriters()).isEqualTo(1);

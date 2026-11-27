@@ -71,6 +71,7 @@ rttMeasurementSettings:
 highAvailability:
   replicationMode: "SYNC_APPLIED"
   replicationAckTimeout: "PT0.5S"
+  replicationQuorum: 2
   syncAckLatencyEnabled: true
   unencryptedMessageTypes:
     - "S"

@@ -31,7 +31,10 @@ could mean.
   connections to the follower, so a slow one or a session being caught up holds back only the sessions of its lane,
   and the follower applies them in parallel. A follower catching up that still holds part of a session, after a
   restart with a store that keeps its messages, a drop, or a failover it followed, is sent only the messages it
-  misses. The leader is elected by primos with a witness, or by an election of your own.
+  misses. An engine may have several followers: `syncFollowers` names those a `SYNC` send waits for, such as a local
+  standby rather than a disaster-recovery copy far away, and `highAvailability.replicationQuorum` lets a session wait
+  only for the first of them to acknowledge. The leader is elected by primos with a witness, or by an election of your
+  own.
   A planned switchover logs the sessions out and the other engine carries on at the same sequence numbers; after a
   failure the new leader moves its sequence numbers ahead and answers the gap with a gap fill. A leader cut off from
   the others drops its sessions a fencing margin (50 ms by default) before the other engine can be elected. Two

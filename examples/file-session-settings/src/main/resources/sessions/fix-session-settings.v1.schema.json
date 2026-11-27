@@ -440,6 +440,17 @@
           "description" : "Whether the session's store is replicated, and whether a send waits for the follower. A change applies when the session is next built: turned on, the follower catches up by snapshot; turned off, it stops holding the session.",
           "default" : "NONE"
         },
+        "replicationQuorum" : {
+          "anyOf" : [ {
+            "type" : "integer"
+          }, {
+            "type" : "string",
+            "pattern" : ".*\\$\\{[^}]+}.*",
+            "description" : "A ${...} placeholder, resolved when the file is loaded"
+          } ],
+          "description" : "How many of the engine's sync followers a SYNC send waits for, the first to acknowledge; 0, the default, waits for every one in sync. With fewer than this in sync, a send does not wait. Only for a SYNC mode.",
+          "default" : 0
+        },
         "syncAckLatencyEnabled" : {
           "anyOf" : [ {
             "type" : "boolean"

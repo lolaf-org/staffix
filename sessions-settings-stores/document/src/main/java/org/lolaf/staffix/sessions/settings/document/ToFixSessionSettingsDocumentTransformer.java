@@ -197,6 +197,7 @@ public class ToFixSessionSettingsDocumentTransformer {
             FixSessionSettings.HaSessionSettings ha = settings.getHighAvailability();
             mergeIfNeeded(ha::getReplicationMode, hb::replicationMode);
             mergeIfNeeded(ha::getReplicationAckTimeout, hb::replicationAckTimeout);
+            mergeIfNeeded(ha::getReplicationQuorum, hb::replicationQuorum);
             mergeIfNeeded(ha::isSyncAckLatencyEnabled, hb::syncAckLatencyEnabled);
             if (!ha.getUnencryptedMessageTypes().isEmpty()) {
                 hb.unencryptedMessageTypes(ha.getUnencryptedMessageTypes());

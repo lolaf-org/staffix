@@ -398,6 +398,14 @@ public class FixSessionSettings {
         Duration replicationAckTimeout = Duration.ofSeconds(1);
 
         /**
+         * How many of the engine's sync followers a {@link ReplicationMode#isSync() SYNC} send waits for, the first to
+         * acknowledge; 0, the default, waits for every one in sync. With fewer than this in sync, a send does not wait.
+         * Only for a {@code SYNC} mode.
+         */
+        @Builder.Default
+        int replicationQuorum = 0;
+
+        /**
          * Whether the session's monitoring times each {@link ReplicationMode#isSync() SYNC} send's wait for the follower's
          * acknowledgement. Off by default: recording costs the session's thread on every send.
          */

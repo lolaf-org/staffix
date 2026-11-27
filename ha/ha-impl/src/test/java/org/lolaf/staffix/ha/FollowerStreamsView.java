@@ -18,10 +18,12 @@ package org.lolaf.staffix.ha;
 import org.lolaf.replicos.follower.FollowerStreams;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
+import org.lolaf.replicos.LanePosition;
 import org.lolaf.replicos.LeaderStatus;
 import org.lolaf.replicos.LeaderView;
 import org.lolaf.replicos.ReplicaStream;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -60,6 +62,11 @@ final class FollowerStreamsView implements LeaderView {
     @Override
     public int getLanes() {
         return streams.getLanes();
+    }
+
+    @Override
+    public List<LanePosition> getLanePositions() {
+        return streams.getLanePositions();
     }
 
     @Override

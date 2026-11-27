@@ -25,8 +25,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Properties for replicating the sessions' stores to a follower engine.
@@ -50,6 +52,12 @@ public class ReplicationHaProps {
      * overrides the leader's entry.
      */
     private Map<String, String> peers;
+
+    /**
+     * The node ids, among the peers, a SYNC session's send waits for: those a failover goes to, not a
+     * disaster-recovery copy. The same on every node, its own id included; unset makes every follower one.
+     */
+    private Set<String> syncFollowers;
 
     /**
      * Names the pair in the status, the same on both nodes; unset takes the leader election's name, such as primos's
@@ -243,6 +251,7 @@ public class ReplicationHaProps {
 
     public ReplicationHaProps() {
         this.peers = new LinkedHashMap<>();
+        this.syncFollowers = new LinkedHashSet<>();
         this.encryption = new Encryption();
         this.replicatedSettingsStores = new ArrayList<>();
     }
